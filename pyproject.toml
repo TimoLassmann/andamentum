@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "andamento"
+version = "0.0.1"
+description = "Composable agentic systems for scientific automation."
+readme = "README.md"
+requires-python = ">=3.10"
