@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "andamentum"
+version = "0.1.0"
+description = "Composable agentic systems for scientific automation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Timo Lassmann" },
+]
+dependencies = [
+    # Flat union of epistemic, deep_research, and document_store deps.
+    # Cross-package deps collapsed (one distribution). Stricter version wins.
+    "pydantic>=2.0.0",           # epistemic, deep-research, document-store
+    "aiosqlite>=0.19.0",         # document-store
+    "numpy>=1.24.0",             # document-store
+    "scipy>=1.10.0",             # document-store
+    "rank-bm25>=0.2.2",          # document-store, epistemic[search]
+    "httpx>=0.28.1",             # deep-research, epistemic[http], document-store[embeddings] (stricter: 0.28.1 > 0.24.0)
+    "trafilatura>=2.0.0",        # deep-research
+    "docling>=2.54.0",           # deep-research
+    "scikit-learn>=1.3",         # epistemic
+    "pydantic-ai>=1.0.1",        # epistemic[llm], deep-research[llm], document-store[llm] (stricter: 1.0.1 > 1.0.0)
+    "pydantic-graph>=0.1.0",     # deep-research[llm]
+    "python-dotenv>=1.0.0",      # epistemic[llm], deep-research[llm]
+    "rich>=13.0.0",              # epistemic[llm]
+]
+
+[project.scripts]
+andamentum-epistemic = "andamentum.epistemic.cli:main"
+andamentum-research  = "andamentum.deep_research.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/andamentum"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/andamentum",
+    "doc",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["src/andamentum"]
+asyncio_mode = "auto"
