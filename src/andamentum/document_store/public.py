@@ -1,0 +1,807 @@
+"""Public API for the document store.
+
+Seven functions:
+    ingest(database, content) → doc_id
+    search(database, query) → list[SearchResult]
+    find_by_metadata(database, filters) → list[SearchResult]
+    update_metadata(database, doc_id, metadata) → bool
+    delete(database, doc_id) → bool
+    repair(database) → RepairReport
+    find_duplicates(database) → list[DuplicateGroup]
+
+Usage:
+    from document_store import ingest, search, find_by_metadata, update_metadata, delete
+
+    doc_id = await ingest("brain", "I think MAP-Elites could work for antibody optimization")
+    results = await search("brain", "What decisions did I make about GROVE last month?")
+    tasks = await find_by_metadata("brain", {"record_type": "task", "status": "todo"})
+    await update_metadata("brain", doc_id, {"status": "done"})
+    await delete("brain", doc_id)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Optional
+
+from ._defaults import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL
+from .api import DocumentStore
+from .chunking import chunk_markdown
+from .extraction import extract_chunk_metadata, extract_document_metadata
+
+logger = logging.getLogger(__name__)
+
+# Module-level caches
+_stores: dict[str, DocumentStore] = {}
+_preflight_done: set[str] = set()
+
+
+async def _get_store(database: str) -> DocumentStore:
+    """Get or create an initialized DocumentStore."""
+    if database not in _stores:
+        store = DocumentStore.for_database(database)
+        await store.initialize()
+        _stores[database] = store
+    return _stores[database]
+
+
+async def _preflight(database: str, model: str, embedding_model: str) -> None:
+    """Test that embedding service and LLM are reachable. Raises on failure.
+
+    Called once per (database, model, embedding_model) combination.
+    """
+    cache_key = f"{database}:{model}:{embedding_model}"
+    if cache_key in _preflight_done:
+        return
+
+    from .embeddings import EmbeddingService
+
+    embed_svc = EmbeddingService(model=embedding_model)
+    try:
+        await embed_svc.embed_text("preflight", text_type="query")
+    except Exception as e:
+        raise RuntimeError(
+            f"Embedding service unavailable (model={embedding_model}). Is Ollama running? Error: {e}"
+        ) from e
+    finally:
+        await embed_svc.close()
+
+    try:
+        from pydantic_ai import Agent
+
+        agent: Agent[None, str] = Agent(model, output_type=str)
+        await agent.run("Reply with exactly: ok")
+    except ImportError:
+        raise RuntimeError("pydantic-ai not installed. Install with: pip install mosaic-document-store[llm]")
+    except Exception as e:
+        raise RuntimeError(f"LLM model '{model}' unavailable. Error: {e}") from e
+
+    _preflight_done.add(cache_key)
+    logger.info(f"Preflight passed: database={database}, model={model}, embeddings={embedding_model}")
+
+    # Run repair on first access — fix any incomplete ingestions from previous crashes
+    store = await _get_store(database)
+    report = await _repair_incomplete(store, model, embedding_model)
+    if report.documents_repaired > 0:
+        logger.info(f"Auto-repair: fixed {report.documents_repaired} incomplete documents in '{database}'")
+    if report.documents_failed > 0:
+        logger.warning(f"Auto-repair: {report.documents_failed} documents could not be repaired in '{database}'")
+
+
+# ---------------------------------------------------------------------------
+# Public data models
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SearchResult:
+    """A search result from the knowledge base."""
+
+    doc_id: str
+    title: str
+    snippet: str
+    score: float
+    metadata: dict = field(default_factory=dict)
+    match_type: str = ""
+    warning: str = ""
+
+
+@dataclass
+class DuplicateGroup:
+    """A group of documents that are near-duplicates based on embedding similarity."""
+
+    doc_ids: list[str] = field(default_factory=list)
+    titles: list[str] = field(default_factory=list)
+    similarity: float = 0.0
+
+
+@dataclass
+class RepairReport:
+    """Report from a repair() run."""
+
+    documents_scanned: int = 0
+    documents_incomplete: int = 0
+    documents_repaired: int = 0
+    documents_failed: int = 0
+    failures: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# ingest()
+# ---------------------------------------------------------------------------
+
+
+async def ingest(
+    database: str,
+    content: str,
+    title: str | None = None,
+    source: str = "manual",
+    metadata: dict | None = None,
+    model: str | None = None,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+) -> str:
+    """Add content to the knowledge base. Returns doc_id.
+
+    Two-phase design:
+    - Phase 1 (atomic): Register document in DB. FTS5 indexes immediately.
+      The document is keyword-searchable the moment this returns.
+    - Phase 2 (can fail): Chunk, embed, extract metadata, store chunks.
+      If this fails, repair() can re-run it later.
+
+    Args:
+        database: Database name (e.g., "brain")
+        content: Text content (markdown or plain text)
+        title: Optional title. If None, LLM generates one.
+        source: Where content came from (manual, slack, claude_code, zotero, voice)
+        metadata: Optional dict merged with LLM-extracted metadata. Caller values win.
+        model: LLM model for metadata extraction. Uses DEFAULT_LLM_MODEL if None.
+        embedding_model: Embedding model. Uses DEFAULT_EMBEDDING_MODEL if None.
+
+    Returns:
+        Document ID (UUID string)
+
+    Raises:
+        RuntimeError: If embedding service or LLM model is unavailable.
+    """
+    model = model or DEFAULT_LLM_MODEL
+    store = await _get_store(database)
+    await _preflight(database, model, embedding_model)
+
+    # --- Phase 1: Register document (atomic, FTS5 immediate) ---
+    doc_meta = await extract_document_metadata(content, model=model)
+    doc_meta.source = source
+    if title:
+        doc_meta.title = title
+    elif not doc_meta.title:
+        first_line = next(
+            (line.strip().lstrip("#").strip() for line in content.split("\n") if line.strip()), "Untitled"
+        )
+        doc_meta.title = first_line
+
+    doc_meta_dict = doc_meta.model_dump(mode="json")  # datetime → ISO string for JSON storage
+    if metadata:
+        doc_meta_dict.update(metadata)
+
+    doc_id = await store.register_document(
+        title=doc_meta.title,
+        content=content,
+        metadata=doc_meta_dict,
+    )
+
+    # --- Phase 2: Chunk, embed, store (can be repaired if interrupted) ---
+    await _run_phase2(store, doc_id, content, doc_meta.title, model, embedding_model)
+
+    logger.info(f"Ingested '{doc_meta.title}' into {database}: doc_id={doc_id}")
+    return doc_id
+
+
+async def _run_phase2(
+    store: DocumentStore,
+    doc_id: str,
+    content: str,
+    title: str,
+    model: str,
+    embedding_model: str,
+) -> None:
+    """Phase 2 of ingestion: chunk, embed, extract metadata, store.
+
+    Separated so repair() can re-run this for incomplete documents.
+    Idempotent: deletes existing chunks before re-storing.
+    """
+    from .chunking import Chunk
+    from .embeddings import EmbeddingService
+
+    # Delete any existing chunks (idempotent for repair)
+    await store.delete_chunks(doc_id)
+
+    # Chunk
+    chunks = chunk_markdown(content, max_tokens=500, overlap_tokens=50)
+    if not chunks:
+        chunks = [Chunk(text=content, section_path="", chunk_index=0, start_char=0, end_char=len(content))]
+
+    # Embed and store chunks
+    embed_svc = EmbeddingService(model=embedding_model)
+    try:
+        for chunk in chunks:
+            chunk_emb = await embed_svc.embed_text(chunk.text, text_type="document")
+
+            chunk_meta = await extract_chunk_metadata(chunk.text, model=model)
+            chunk_meta.parent_doc_id = doc_id
+            chunk_meta.section_path = chunk.section_path
+            chunk_meta.chunk_index = chunk.chunk_index
+
+            await store.store_chunk(
+                doc_id,
+                chunk.text,
+                chunk_emb,
+                metadata=chunk_meta.model_dump(mode="json"),
+                chunk_index=chunk.chunk_index,
+                start_char=chunk.start_char,
+                end_char=chunk.end_char,
+            )
+
+        # Doc-level embedding — attempt on full content, skip gracefully if too large for the model
+        try:
+            doc_emb = await embed_svc.embed_text(content, text_type="document", title=title)
+            await store.store_doc_embedding(doc_id, doc_emb)
+        except Exception:
+            logger.info(f"Doc-level embedding skipped for '{title}' (content too large for embedding model)")
+    finally:
+        await embed_svc.close()
+
+
+# ---------------------------------------------------------------------------
+# repair()
+# ---------------------------------------------------------------------------
+
+
+async def repair(
+    database: str,
+    model: str | None = None,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+) -> RepairReport:
+    """Scan database for incomplete ingestions and re-run phase 2.
+
+    A document is incomplete if ANY of these are true:
+    - Has no chunks
+    - Has chunks but some are missing embeddings (chunk_embeddings)
+    - Has no document-level embedding (doc_embedding column)
+
+    For each incomplete document, the entire phase 2 is re-run:
+    delete all existing chunks/embeddings → re-chunk → re-embed → re-store.
+
+    This is safe to run at any time — it's idempotent and only touches
+    documents that are genuinely incomplete.
+
+    Note: repair also runs automatically on the first ingest()/search() call
+    for each database, as part of the preflight check.
+
+    Args:
+        database: Database name
+        model: LLM model for metadata extraction
+        embedding_model: Embedding model
+
+    Returns:
+        RepairReport with counts and any failures
+
+    Raises:
+        RuntimeError: If embedding service or LLM is unavailable.
+    """
+    model = model or DEFAULT_LLM_MODEL
+    store = await _get_store(database)
+    await _preflight(database, model, embedding_model)
+
+    return await _repair_incomplete(store, model, embedding_model)
+
+
+async def _repair_incomplete(
+    store: DocumentStore,
+    model: str,
+    embedding_model: str,
+) -> RepairReport:
+    """Internal: scan for incomplete documents and re-run phase 2.
+
+    Used by both repair() (explicit) and _preflight() (automatic on first access).
+    """
+    report = RepairReport()
+
+    from .database import get_async_connection
+
+    async with get_async_connection(str(store.db_path)) as db:
+        async with db.execute(
+            "SELECT doc_uuid, dc_title, markdown_content FROM documents WHERE markdown_content IS NOT NULL AND deleted_at IS NULL"
+        ) as cursor:
+            all_docs = list(await cursor.fetchall())
+
+    report.documents_scanned = len(all_docs)
+
+    for doc_uuid, title, content in all_docs:
+        if not content:
+            continue
+
+        incomplete = await _is_incomplete(store, doc_uuid)
+        if not incomplete:
+            continue
+
+        report.documents_incomplete += 1
+        logger.info(f"Repairing '{title}' ({doc_uuid}): {incomplete}")
+
+        try:
+            await _run_phase2(store, doc_uuid, content, title or "Untitled", model, embedding_model)
+            report.documents_repaired += 1
+            logger.info(f"Repaired '{title}' ({doc_uuid})")
+        except Exception as e:
+            report.documents_failed += 1
+            msg = f"Failed to repair '{title}' ({doc_uuid}): {e}"
+            report.failures.append(msg)
+            logger.warning(msg)
+
+    return report
+
+
+async def _is_incomplete(store: DocumentStore, doc_uuid: str) -> str:
+    """Check if a document's phase 2 is incomplete. Returns reason string, or empty if complete."""
+    from .database import get_async_connection
+
+    async with get_async_connection(str(store.db_path)) as db:
+        # Check: has chunks?
+        async with db.execute(
+            """
+            SELECT COUNT(*) FROM chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE d.doc_uuid = ?
+            """,
+            (doc_uuid,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            chunk_count = row[0] if row else 0
+
+        if chunk_count == 0:
+            return "no chunks"
+
+        # Doc-level embedding is optional (skipped for large documents).
+        # Don't treat its absence as incomplete.
+
+    # Check: all chunks have embeddings? (requires sync connection for vec0)
+    from pathlib import Path
+
+    from .connection import get_connection
+
+    with get_connection(Path(str(store.db_path))) as conn:
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*) FROM chunks c
+            JOIN documents d ON c.document_id = d.id
+            LEFT JOIN chunk_embeddings ce ON ce.chunk_id = c.id
+            WHERE d.doc_uuid = ? AND ce.chunk_id IS NULL
+            """,
+            (doc_uuid,),
+        )
+        row = cursor.fetchone()
+        missing_embeddings = row[0] if row else 0
+
+    if missing_embeddings > 0:
+        return f"{missing_embeddings} chunks missing embeddings"
+
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# search()
+# ---------------------------------------------------------------------------
+
+
+async def search(
+    database: str,
+    query: str,
+    limit: int = 10,
+    model: str | None = None,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+) -> list[SearchResult]:
+    """Search the knowledge base with natural language.
+
+    Parses the query into a search plan (semantic query + optional metadata filter)
+    using the LLM, then executes against the database.
+
+    Args:
+        database: Database name (e.g., "brain")
+        query: Natural language query
+        limit: Max results
+        model: LLM model for query planning. Uses DEFAULT_LLM_MODEL if None.
+        embedding_model: Embedding model. Uses DEFAULT_EMBEDDING_MODEL if None.
+
+    Returns:
+        List of SearchResult objects sorted by relevance.
+
+    Raises:
+        RuntimeError: If LLM or embedding service is unavailable.
+    """
+    model = model or DEFAULT_LLM_MODEL
+    store = await _get_store(database)
+    await _preflight(database, model, embedding_model)
+
+    # 1. Query planning — LLM decomposes into semantic query + optional filter
+    from .query_planner import plan_search
+
+    plan = await plan_search(query, model=model)
+    logger.info(
+        f"Search plan: semantic_query='{plan.semantic_query}', "
+        f"filter={plan.filter.field if plan.filter else 'none'}, "
+        f"needs_search={plan.needs_semantic_search}"
+    )
+
+    # 2. Apply metadata filter → set of matching doc_uuids
+    doc_uuids: Optional[set[str]] = None
+    warning = ""
+
+    if plan.filter is not None:
+        from .database import find_doc_uuids_by_filters
+
+        filter_dicts = [plan.filter.model_dump()]
+        doc_uuids = await find_doc_uuids_by_filters(str(store.db_path), filter_dicts)
+
+        if not doc_uuids:
+            logger.warning(f"Filter produced no results, searching without filter: {plan.filter.model_dump()}")
+            doc_uuids = None
+            warning = "Filter produced no results, showing unfiltered results."
+
+    # 3. Run search
+    query_embedding: Optional[list[float]] = None
+    if plan.needs_semantic_search and plan.semantic_query.strip():
+        from .embeddings import EmbeddingService
+
+        embed_svc = EmbeddingService(model=embedding_model)
+        try:
+            query_embedding = await embed_svc.embed_text(plan.semantic_query, text_type="query")
+        finally:
+            await embed_svc.close()
+
+    search_query = plan.semantic_query.strip() if plan.semantic_query.strip() else query
+
+    from .search import search_unified
+
+    fetch_limit = limit * 3 if doc_uuids is not None else limit
+
+    raw_results = await search_unified(
+        db_path=str(store.db_path),
+        query=search_query,
+        limit=fetch_limit,
+        query_embedding=query_embedding,
+        doc_uuids=doc_uuids,
+    )
+
+    # 4. Pure metadata query with no search results — return filtered docs directly
+    if not plan.needs_semantic_search and doc_uuids is not None and not raw_results:
+        from .database import get_document_metadata
+
+        results: list[SearchResult] = []
+        for uuid in list(doc_uuids)[:limit]:
+            meta = await get_document_metadata(str(store.db_path), uuid)
+            if meta:
+                results.append(
+                    SearchResult(
+                        doc_id=uuid,
+                        title=meta.title,
+                        snippet="",
+                        score=1.0,
+                        metadata=meta.metadata,
+                        match_type="metadata_filter",
+                        warning=warning,
+                    )
+                )
+        return results
+
+    # 5. Enrich results with document metadata
+    from .database import get_document_metadata
+
+    results = []
+    for r in raw_results[:limit]:
+        meta = await get_document_metadata(str(store.db_path), r.doc_id)
+        title = meta.title if meta else ""
+        doc_metadata = meta.metadata if meta else {}
+
+        snippet = r.snippet
+        if not snippet and meta:
+            # No chunk snippet — return full document content
+            doc = await store.read(r.doc_id)
+            snippet = doc.content if doc else ""
+
+        results.append(
+            SearchResult(
+                doc_id=r.doc_id,
+                title=title,
+                snippet=snippet,
+                score=r.score,
+                metadata=doc_metadata,
+                match_type=r.tier,
+                warning=warning,
+            )
+        )
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# find_by_metadata()
+# ---------------------------------------------------------------------------
+
+
+async def find_by_metadata(
+    database: str,
+    filters: dict,
+    limit: int = 100,
+) -> list[SearchResult]:
+    """Find documents by exact metadata field values.
+
+    Structured query for when the upstream agent knows exactly what to look for.
+    Uses SQLite JSON functions on the metadata column.
+
+    This is the complement to search(): search() uses natural language + embeddings,
+    find_by_metadata() uses exact field matching. Agents use this for structured
+    workflows (find all tasks for a goal, find all open delegations, etc.).
+
+    Args:
+        database: Database name (e.g., "brain")
+        filters: Dict of {field_name: expected_value} to match.
+            All conditions are ANDed. Values can be str, bool, int.
+        limit: Maximum results to return
+
+    Returns:
+        List of SearchResult objects (score=1.0, match_type="metadata").
+
+    Examples:
+        # All open tasks
+        await find_by_metadata("brain", {"record_type": "task", "status": "todo"})
+
+        # All tasks for a specific goal
+        await find_by_metadata("brain", {"goal_id": "abc-123", "record_type": "task"})
+
+        # All decision frameworks
+        await find_by_metadata("brain", {"record_type": "framework"})
+
+        # Everything from Slack
+        await find_by_metadata("brain", {"source": "slack"})
+    """
+    from .database import find_by_metadata as _find_by_metadata
+
+    store = await _get_store(database)
+    docs = await _find_by_metadata(str(store.db_path), filters, limit)
+
+    results: list[SearchResult] = []
+    for meta in docs:
+        doc = await store.read(meta.doc_id)
+        content = doc.content if doc else ""
+
+        results.append(
+            SearchResult(
+                doc_id=meta.doc_id,
+                title=meta.title,
+                snippet=content,
+                score=1.0,
+                metadata=meta.metadata,
+                match_type="metadata",
+            )
+        )
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# delete()
+# ---------------------------------------------------------------------------
+
+
+async def delete(database: str, doc_id: str) -> bool:
+    """Delete a document and all its chunks from the knowledge base.
+
+    Args:
+        database: Database name (e.g., "brain")
+        doc_id: Document UUID to delete
+
+    Returns:
+        True if deleted, False if not found
+    """
+    store = await _get_store(database)
+    return await store.delete(doc_id)
+
+
+# ---------------------------------------------------------------------------
+# update_metadata()
+# ---------------------------------------------------------------------------
+
+
+async def update_metadata(
+    database: str,
+    doc_id: str,
+    metadata: dict,
+    merge: bool = True,
+) -> bool:
+    """Update metadata on a document. Changes are recorded in _history.
+
+    This is how higher layers manage structured workflows — tasks, goals,
+    decisions — by writing status and relationship fields into the metadata.
+
+    Every change is recorded in a _history list within the metadata, capturing
+    what changed, when, and what the previous values were. History is capped
+    at 50 entries.
+
+    Args:
+        database: Database name (e.g., "brain")
+        doc_id: Document UUID
+        metadata: Dict of fields to update. Merged with existing metadata by default.
+        merge: If True, merge with existing metadata (caller values win).
+            If False, replace metadata entirely.
+
+    Returns:
+        True if document was found and updated, False if not found.
+    """
+    from datetime import datetime, timezone
+
+    store = await _get_store(database)
+
+    # Read current metadata to compute diff for history
+    if merge:
+        doc = await store.read(doc_id)
+        if doc and doc.metadata and doc.metadata.metadata:
+            current = doc.metadata.metadata
+            # Compute what actually changed (exclude _history from diff)
+            changed_fields = {}
+            for key, new_val in metadata.items():
+                if key.startswith("_"):
+                    continue
+                old_val = current.get(key)
+                if old_val != new_val:
+                    changed_fields[key] = old_val
+
+            if changed_fields:
+                history = current.get("_history", [])
+                history.append({
+                    "changed_at": datetime.now(timezone.utc).isoformat(),
+                    "old_values": changed_fields,
+                })
+                # Cap at 50 entries
+                metadata["_history"] = history[-50:]
+
+    result = await store.update(doc_id, metadata=metadata, merge_metadata=merge)
+    return result.success
+
+
+# ---------------------------------------------------------------------------
+# restore() / purge() / list_deleted()
+# ---------------------------------------------------------------------------
+
+
+async def restore(database: str, doc_id: str) -> bool:
+    """Restore a soft-deleted document. Returns True if found and restored."""
+    store = await _get_store(database)
+    return await store.restore(doc_id)
+
+
+async def purge(database: str, older_than_days: int = 30) -> int:
+    """Permanently delete soft-deleted documents older than N days. Returns count purged."""
+    from .database import purge_deleted
+
+    store = await _get_store(database)
+    return await purge_deleted(str(store.db_path), older_than_days)
+
+
+async def list_deleted(database: str, limit: int = 50) -> list[SearchResult]:
+    """List soft-deleted documents (for trash view / undo UI)."""
+    from .database import list_deleted_documents
+
+    store = await _get_store(database)
+    results = await list_deleted_documents(str(store.db_path), limit)
+    return [
+        SearchResult(
+            doc_id=r.doc_id,
+            title=r.title,
+            snippet="",
+            score=0.0,
+            metadata=r.metadata,
+        )
+        for r in results
+    ]
+
+
+# ---------------------------------------------------------------------------
+# find_duplicates()
+# ---------------------------------------------------------------------------
+
+
+async def find_duplicates(
+    database: str,
+    threshold: float = 0.92,
+) -> list[DuplicateGroup]:
+    """Find groups of near-duplicate documents using embedding similarity.
+
+    Compares doc-level embeddings (cosine similarity) across all documents.
+    Documents without embeddings are skipped.
+
+    Args:
+        database: Database name (e.g., "brain")
+        threshold: Cosine similarity threshold for considering documents
+            as duplicates. Default 0.92 (very similar content).
+
+    Returns:
+        List of DuplicateGroup, each containing 2+ documents that are
+        near-duplicates. Empty list if no duplicates found.
+    """
+    import json
+
+    import numpy as np
+
+    from .database import get_async_connection
+
+    store = await _get_store(database)
+
+    # Load all documents with embeddings
+    async with get_async_connection(str(store.db_path)) as db:
+        async with db.execute(
+            "SELECT doc_uuid, dc_title, doc_embedding, metadata FROM documents WHERE doc_embedding IS NOT NULL AND deleted_at IS NULL"
+        ) as cursor:
+            rows = list(await cursor.fetchall())
+
+    if len(rows) < 2:
+        return []
+
+    # Build a set of derived_from relationships to skip
+    derived_pairs: set[tuple[str, str]] = set()
+    doc_metadata: dict[str, dict] = {}
+    for row in rows:
+        doc_uuid = row[0]
+        meta = json.loads(row[3]) if row[3] else {}
+        doc_metadata[doc_uuid] = meta
+        if derived_from := meta.get("derived_from"):
+            derived_pairs.add((doc_uuid, derived_from))
+            derived_pairs.add((derived_from, doc_uuid))
+
+    # Parse embeddings and L2-normalize for cosine similarity
+    docs: list[tuple[str, str, np.ndarray]] = []
+    for row in rows:
+        doc_uuid, title, embedding_json = row[0], row[1] or "", row[2]
+        embedding = np.array(json.loads(embedding_json), dtype=np.float64)
+        norm = np.linalg.norm(embedding)
+        if norm > 1e-10:
+            embedding = embedding / norm
+        docs.append((doc_uuid, title, embedding))
+
+    # Cosine similarity matrix (all vectors L2-normalized, so dot product = cosine)
+    n = len(docs)
+    matrix = np.stack([d[2] for d in docs])
+    similarity = matrix @ matrix.T
+
+    # Greedy grouping above threshold
+    grouped: set[int] = set()
+    groups: list[DuplicateGroup] = []
+
+    for i in range(n):
+        if i in grouped:
+            continue
+
+        group_indices = [i]
+        for j in range(i + 1, n):
+            if j in grouped:
+                continue
+            if similarity[i, j] >= threshold:
+                # Skip pairs where one is derived from the other
+                id_i, id_j = docs[i][0], docs[j][0]
+                if (id_i, id_j) in derived_pairs:
+                    continue
+                group_indices.append(j)
+                grouped.add(j)
+
+        if len(group_indices) > 1:
+            grouped.add(i)
+            sims = [float(similarity[a, b]) for a in group_indices for b in group_indices if a < b]
+            avg_sim = sum(sims) / len(sims) if sims else 0.0
+
+            groups.append(
+                DuplicateGroup(
+                    doc_ids=[docs[idx][0] for idx in group_indices],
+                    titles=[docs[idx][1] for idx in group_indices],
+                    similarity=round(avg_sim, 4),
+                )
+            )
+
+    return groups

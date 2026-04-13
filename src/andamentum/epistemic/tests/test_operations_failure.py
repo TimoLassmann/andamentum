@@ -1,0 +1,936 @@
+"""Tests for epistemic operations under failure conditions.
+
+Verifies that operations handle errors gracefully when:
+- Agent runner throws exceptions
+- Repository lookups fail
+- Evidence scoring fallback chain is tested at each level
+- Counterargument evaluation fails
+- Writer-validator loop handles all edge cases
+
+Each test triggers a specific error path and verifies the operation
+either fails with a clear message or degrades gracefully.
+"""
+
+import pytest
+from dataclasses import dataclass, field
+from types import SimpleNamespace
+from typing import Any
+
+from epistemic.entities import (
+    Claim,
+    ClaimStage,
+    Evidence,
+    Objective,
+    Snapshot,
+    Uncertainty,
+    UncertaintyType,
+)
+from epistemic.operations import (
+    create_operations,
+    ExtractEvidenceOperation,
+    ScrutiniseClaimOperation,
+    AdversarialSearchOperation,
+    SynthesizeReportOperation,
+    GeneratePredictionOperation,
+    InvestigateClaimOperation,
+    ResolveUncertaintyOperation,
+    OperationResult,
+    GatheredEvidence,
+    QualityScore,
+)
+from epistemic.patterns import WorkItem
+from epistemic.storage import InMemoryStorageBackend
+from epistemic.repository import EpistemicRepository
+
+import sys
+import pathlib
+
+_test_dir = str(pathlib.Path(__file__).parent)
+if _test_dir not in sys.path:
+    sys.path.insert(0, _test_dir)
+
+from conftest import (  # noqa: E402
+    FakeAgentRunner,
+    PartiallyFailingRunner,
+    FailingRepo,
+    _to_namespace,
+    _FAKE_DEFAULTS,
+)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+class MockQualityScorer:
+    """Quality scorer that can be configured to succeed or fail."""
+
+    def __init__(self, score: QualityScore | None = None, fail: bool = False):
+        self._score = score
+        self._fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    async def score(self, source_ref: str, source_type: str) -> QualityScore:
+        self.calls.append((source_ref, source_type))
+        if self._fail:
+            raise RuntimeError("Scorer failed")
+        if self._score is not None:
+            return self._score
+        # Return a "needs_assessment" marker so Path 1 falls through
+        return QualityScore(score=0.0, source="needs_assessment")
+
+
+class MockGatherer:
+    """Evidence gatherer that can be configured to succeed or fail."""
+
+    def __init__(
+        self,
+        results: list[GatheredEvidence] | None = None,
+        fail: bool = False,
+    ):
+        self._results = results or []
+        self._fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
+        self.calls.append((source_type, query))
+        if self._fail:
+            raise RuntimeError("Gatherer failed")
+        return self._results
+
+
+async def _make_repo() -> EpistemicRepository:
+    """Create a fresh in-memory repo."""
+    backend = InMemoryStorageBackend()
+    return EpistemicRepository(backend)
+
+
+async def _save_objective(repo: EpistemicRepository, description: str = "Test question") -> Objective:
+    """Create and save an objective."""
+    obj = Objective(description=description, phase="planned")
+    # Objectives are self-referential: objective_id == entity_id
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+    return obj
+
+
+async def _save_evidence(
+    repo: EpistemicRepository,
+    objective_id: str,
+    *,
+    extracted: bool = False,
+    source_ref: str = "test-source",
+    source_type: str = "web_search",
+    content: str = "",
+    quality_score: float | None = None,
+) -> Evidence:
+    """Create and save an evidence entity."""
+    ev = Evidence(
+        objective_id=objective_id,
+        source_ref=source_ref,
+        source_type=source_type,
+        extracted=extracted,
+        extracted_content=content,
+        quality_score=quality_score,
+    )
+    await repo.save(ev)
+    return ev
+
+
+async def _save_claim(
+    repo: EpistemicRepository,
+    objective_id: str,
+    *,
+    statement: str = "Test claim",
+    stage: ClaimStage = ClaimStage.HYPOTHESIS,
+    evidence_ids: list[str] | None = None,
+    scrutiny_verdict: str | None = None,
+) -> Claim:
+    """Create and save a claim entity."""
+    claim = Claim(
+        objective_id=objective_id,
+        statement=statement,
+        stage=stage,
+        evidence_ids=evidence_ids or [],
+        scrutiny_verdict=scrutiny_verdict,
+    )
+    await repo.save(claim)
+    return claim
+
+
+async def _save_uncertainty(
+    repo: EpistemicRepository,
+    objective_id: str,
+    *,
+    description: str = "Test uncertainty",
+    uncertainty_type: UncertaintyType = UncertaintyType.UNKNOWN,
+    affected_claim_ids: list[str] | None = None,
+) -> Uncertainty:
+    """Create and save an uncertainty entity."""
+    u = Uncertainty(
+        objective_id=objective_id,
+        description=description,
+        uncertainty_type=uncertainty_type,
+        affected_claim_ids=affected_claim_ids or [],
+    )
+    await repo.save(u)
+    return u
+
+
+# ── 1. Evidence Scoring Fallback Chain ───────────────────────────────────────
+
+
+class TestEvidenceScoringFallbackChain:
+    """Test the 4-path fallback chain in _score_evidence."""
+
+    @pytest.mark.asyncio
+    async def test_path1_openalex_success(self):
+        """Path 1: OpenAlex scorer succeeds -> use its score."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="10.1234/test")
+
+        scorer = MockQualityScorer(
+            score=QualityScore(score=0.85, source="openalex", raw_metadata={"cited_by": 100})
+        )
+        gatherer = MockGatherer(
+            results=[GatheredEvidence(content="Test content", source_ref="10.1234/test", source_type="openalex")]
+        )
+        runner = FakeAgentRunner()
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        assert updated.quality_score == 0.85
+        assert updated.quality_metadata is not None
+        assert updated.quality_metadata.get("cited_by") == 100
+
+    @pytest.mark.asyncio
+    async def test_path1_fails_path2_agent_succeeds(self):
+        """Path 1 fails -> Path 2: Agent assessment succeeds."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
+
+        # Scorer that throws
+        scorer = MockQualityScorer(fail=True)
+        gatherer = MockGatherer(
+            results=[GatheredEvidence(content="Test content", source_ref="http://example.com", source_type="web_search")]
+        )
+        runner = FakeAgentRunner()
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        # Agent path computes: 0.35*0.7 + 0.25*0.8 + 0.25*0.6 + 0.15*0.7 = 0.245+0.2+0.15+0.105 = 0.7
+        assert updated.quality_score is not None
+        assert updated.quality_score > 0.0
+        assert updated.quality_metadata is not None
+        assert updated.quality_metadata.get("source") == "agent"
+
+    @pytest.mark.asyncio
+    async def test_paths_1_and_2_fail_path3_gatherer(self):
+        """Paths 1+2 fail -> Path 3: Use gatherer's pre-computed score."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
+
+        scorer = MockQualityScorer(fail=True)
+        # Gatherer provides a pre-computed quality_score
+        gatherer = MockGatherer(
+            results=[
+                GatheredEvidence(
+                    content="Test content",
+                    source_ref="http://example.com",
+                    source_type="web_search",
+                    quality_score=0.65,
+                )
+            ]
+        )
+        # Runner that fails on quality assessment agent
+        runner = PartiallyFailingRunner(
+            fail_on={"epistemic_assess_evidence_quality"},
+        )
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        assert updated.quality_score == 0.65
+        assert updated.quality_metadata is not None
+        assert updated.quality_metadata.get("source") == "gatherer_fallback"
+
+    @pytest.mark.asyncio
+    async def test_all_paths_fail_path4_default(self):
+        """Paths 1+2+3 fail -> Path 4: Default minimum 0.1."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
+
+        scorer = MockQualityScorer(fail=True)
+        # Gatherer returns content but no quality_score
+        gatherer = MockGatherer(
+            results=[
+                GatheredEvidence(
+                    content="Some content here",
+                    source_ref="http://example.com",
+                    source_type="web_search",
+                    quality_score=None,
+                )
+            ]
+        )
+        # Runner that fails on quality assessment
+        runner = PartiallyFailingRunner(
+            fail_on={"epistemic_assess_evidence_quality"},
+        )
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        # Path 4 default minimum
+        assert updated.quality_score == 0.1
+        assert updated.quality_metadata is not None
+        assert updated.quality_metadata.get("source") == "default_minimum"
+
+    @pytest.mark.asyncio
+    async def test_no_content_no_score(self):
+        """No scoring paths succeed AND no content -> no score set."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
+
+        # Gatherer returns empty content with no quality_score
+        gatherer = MockGatherer(
+            results=[
+                GatheredEvidence(
+                    content="",
+                    source_ref="http://example.com",
+                    source_type="web_search",
+                    quality_score=None,
+                )
+            ]
+        )
+        # No scorer, failing agent
+        runner = PartiallyFailingRunner(
+            fail_on={"epistemic_assess_evidence_quality"},
+        )
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=None)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        # Empty content: final guard only fires if content has non-whitespace
+        # The gatherer provided empty content, so Path 4 _score_evidence won't set a score,
+        # but the final guard in execute() checks too. Since content is empty, no score.
+        assert updated.quality_score is None
+
+    @pytest.mark.asyncio
+    async def test_agent_extraction_fallback_when_gatherer_fails(self):
+        """When gatherer throws, fall through to agent extraction path."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
+
+        # Failing gatherer
+        gatherer = MockGatherer(fail=True)
+        runner = FakeAgentRunner()
+
+        op = ExtractEvidenceOperation(repo, runner, evidence_gatherer=gatherer, quality_scorer=None)
+        work = WorkItem(entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("evidence", ev.entity_id)
+        assert isinstance(updated, Evidence)
+        assert updated.extracted is True
+        # Content came from agent extraction
+        assert updated.extracted_content != ""
+
+
+# ── 2. Scrutiny Operation Failure ────────────────────────────────────────────
+
+
+class TestScrutinyOperationFailure:
+    """Test ScrutiniseClaimOperation under failure."""
+
+    @pytest.mark.asyncio
+    async def test_evidence_loading_fails_silently(self):
+        """Evidence loading in try/except loop should skip failed evidence."""
+        backend = InMemoryStorageBackend()
+        failing_repo = FailingRepo(backend, fail_on={"bad-evidence-id"})
+        obj = await _save_objective(failing_repo)
+
+        # Create evidence that exists
+        good_ev = await _save_evidence(
+            failing_repo, obj.entity_id, extracted=True, content="Good evidence"
+        )
+
+        # Create claim with one good ID and one bad ID
+        claim = await _save_claim(
+            failing_repo,
+            obj.entity_id,
+            evidence_ids=[good_ev.entity_id, "bad-evidence-id"],
+        )
+
+        runner = FakeAgentRunner()
+        op = ScrutiniseClaimOperation(failing_repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim")
+        result = await op.execute(work)
+
+        # Should succeed despite one evidence failing to load
+        assert result.success
+        updated = await failing_repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.scrutiny_verdict is not None
+
+    @pytest.mark.asyncio
+    async def test_agent_failure_propagates(self):
+        """If scrutiny agent throws, operation should fail.
+
+        Tests the split path (epistemic_assess_evidence) since it is preferred
+        when the split agents are registered.
+        """
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        claim = await _save_claim(repo, obj.entity_id)
+
+        runner = PartiallyFailingRunner(fail_on={"epistemic_assess_evidence"})
+        op = ScrutiniseClaimOperation(repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim")
+
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
+
+    @pytest.mark.asyncio
+    async def test_no_agent_runner_defaults_to_pass(self):
+        """Without agent runner, scrutiny verdict defaults to pass."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        claim = await _save_claim(repo, obj.entity_id)
+
+        op = ScrutiniseClaimOperation(repo, agent_runner=None)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.scrutiny_verdict == "pass"
+
+
+# ── 3. Adversarial Search Failure ────────────────────────────────────────────
+
+
+class TestAdversarialSearchFailure:
+    """Test AdversarialSearchOperation under failure."""
+
+    @pytest.mark.asyncio
+    async def test_counterargument_evaluation_fails_uses_defaults(self):
+        """If evaluate_counterargument agent fails, operation uses create_counterargument fallback."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(
+            repo, obj.entity_id, extracted=True, content="Evidence text", quality_score=0.7
+        )
+        claim = await _save_claim(
+            repo,
+            obj.entity_id,
+            stage=ClaimStage.SUPPORTED,
+            evidence_ids=[ev.entity_id],
+        )
+
+        # Runner that succeeds on adversarial_search but fails on evaluate_counterargument
+        runner = FakeAgentRunner(overrides={
+            "epistemic_adversarial_search": {
+                "counterarguments": [
+                    {"summary": "This contradicts the claim", "source_url": "http://counter.example.com"},
+                ],
+                "recommendation": "maintain",
+            },
+        })
+        failing_runner = PartiallyFailingRunner(
+            fail_on={"epistemic_evaluate_counterargument"},
+            fallback_runner=runner,
+        )
+
+        op = AdversarialSearchOperation(repo, failing_runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="adversarial_search")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.adversarial_checked is True
+        # Balance should still be computed (fallback counterargument used)
+        assert updated.adversarial_balance is not None
+
+    @pytest.mark.asyncio
+    async def test_gatherer_search_fails_per_query(self):
+        """Individual search query failures should not crash the operation."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(
+            repo, obj.entity_id, extracted=True, content="Evidence text", quality_score=0.7
+        )
+        claim = await _save_claim(
+            repo,
+            obj.entity_id,
+            stage=ClaimStage.SUPPORTED,
+            evidence_ids=[ev.entity_id],
+        )
+
+        gatherer = MockGatherer(fail=True)
+        runner = FakeAgentRunner()
+
+        op = AdversarialSearchOperation(repo, runner, evidence_gatherer=gatherer)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="adversarial_search")
+        result = await op.execute(work)
+
+        # Should succeed — search failures are caught per-query
+        assert result.success
+        updated = await repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.adversarial_checked is True
+
+    @pytest.mark.asyncio
+    async def test_no_evidence_gatherer(self):
+        """Without gatherer, adversarial search uses world knowledge only."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        claim = await _save_claim(repo, obj.entity_id, stage=ClaimStage.SUPPORTED)
+
+        runner = FakeAgentRunner()
+        op = AdversarialSearchOperation(repo, runner, evidence_gatherer=None)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="adversarial_search")
+        result = await op.execute(work)
+
+        assert result.success
+
+
+# ── 4. Writer-Validator Loop ─────────────────────────────────────────────────
+
+
+class TestWriterValidatorLoop:
+    """Test the writer-validator loop in SynthesizeReportOperation."""
+
+    async def _setup_synthesis(
+        self,
+        runner: Any,
+    ) -> tuple[EpistemicRepository, Snapshot, WorkItem]:
+        """Create the full entity chain needed for SynthesizeReportOperation."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo, description="What is spaced repetition?")
+        obj.phase = "claims_done"
+        await repo.save(obj)
+
+        ev = await _save_evidence(
+            repo,
+            obj.entity_id,
+            extracted=True,
+            content="Spaced repetition improves memory retention.",
+            quality_score=0.7,
+            source_ref="study.pdf",
+        )
+        claim = await _save_claim(
+            repo,
+            obj.entity_id,
+            statement="Spaced repetition improves retention",
+            stage=ClaimStage.SUPPORTED,
+            evidence_ids=[ev.entity_id],
+            scrutiny_verdict="pass",
+        )
+
+        snapshot = Snapshot(
+            objective_id=obj.entity_id,
+            claim_ids=[claim.entity_id],
+            evidence_ids=[ev.entity_id],
+            uncertainty_ids=[],
+            snapshot_type="final",
+        )
+        await repo.save(snapshot)
+
+        work = WorkItem(entity_id=snapshot.entity_id, entity_type="snapshot", operation="synthesize_report")
+        return repo, snapshot, work
+
+    @pytest.mark.asyncio
+    async def test_validator_rejects_then_accepts(self):
+        """Validator rejects first round, accepts second."""
+        call_count = {"validate": 0}
+
+        class RoundAwareRunner(FakeAgentRunner):
+            async def run(self, agent_name: str, **kwargs: Any) -> Any:
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_validate_answer":
+                    call_count["validate"] += 1
+                    if call_count["validate"] == 1:
+                        return _to_namespace({"approved": False, "feedback": ["Missing evidence citation"]})
+                    return _to_namespace({"approved": True, "feedback": []})
+                raw = _FAKE_DEFAULTS.get(agent_name, {})
+                return _to_namespace(raw)
+
+        runner = RoundAwareRunner()
+        repo, snapshot, work = await self._setup_synthesis(runner)
+
+        op = SynthesizeReportOperation(repo, runner)
+        result = await op.execute(work)
+
+        assert result.success
+        assert call_count["validate"] == 2
+        # Writer should have been called twice (once fresh, once with feedback)
+        write_calls = [c for c in runner.calls if c[0] == "epistemic_write_answer"]
+        assert len(write_calls) == 2
+        # Second call should include prior feedback
+        assert "validator_feedback" in write_calls[1][1]
+
+    @pytest.mark.asyncio
+    async def test_validator_rejects_all_rounds(self):
+        """Validator rejects all rounds -> best effort answer used."""
+
+        class AlwaysRejectRunner(FakeAgentRunner):
+            async def run(self, agent_name: str, **kwargs: Any) -> Any:
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_validate_answer":
+                    return _to_namespace({"approved": False, "feedback": ["Still not good enough"]})
+                raw = _FAKE_DEFAULTS.get(agent_name, {})
+                return _to_namespace(raw)
+
+        runner = AlwaysRejectRunner()
+        repo, snapshot, work = await self._setup_synthesis(runner)
+
+        op = SynthesizeReportOperation(repo, runner)
+        result = await op.execute(work)
+
+        # Should still succeed with best-effort answer
+        assert result.success
+        # Verify all 10 rounds were attempted
+        validate_calls = [c for c in runner.calls if c[0] == "epistemic_validate_answer"]
+        assert len(validate_calls) == SynthesizeReportOperation.MAX_VALIDATION_ROUNDS
+
+    @pytest.mark.asyncio
+    async def test_writer_returns_empty_answer(self):
+        """Writer returning empty answer -> loop terminates early."""
+
+        class EmptyWriterRunner(FakeAgentRunner):
+            async def run(self, agent_name: str, **kwargs: Any) -> Any:
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_write_answer":
+                    return _to_namespace({"title": "Empty Report", "answer": ""})
+                raw = _FAKE_DEFAULTS.get(agent_name, {})
+                return _to_namespace(raw)
+
+        runner = EmptyWriterRunner()
+        repo, snapshot, work = await self._setup_synthesis(runner)
+
+        op = SynthesizeReportOperation(repo, runner)
+        result = await op.execute(work)
+
+        # Should still succeed (empty answer is valid, report has deterministic sections)
+        assert result.success
+        # Validator should NOT have been called since answer was empty
+        validate_calls = [c for c in runner.calls if c[0] == "epistemic_validate_answer"]
+        assert len(validate_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_validator_throws(self):
+        """If validator agent throws, operation propagates the error."""
+        runner = PartiallyFailingRunner(fail_on={"epistemic_validate_answer"})
+        repo, snapshot, work = await self._setup_synthesis(runner)
+
+        op = SynthesizeReportOperation(repo, runner)
+        # The validator throw propagates since there's no try/except around it
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
+
+    @pytest.mark.asyncio
+    async def test_validator_approves_immediately(self):
+        """Validator approves on first round -> single iteration."""
+        runner = FakeAgentRunner(overrides={
+            "epistemic_validate_answer": {"approved": True, "feedback": []},
+        })
+        repo, snapshot, work = await self._setup_synthesis(runner)
+
+        op = SynthesizeReportOperation(repo, runner)
+        result = await op.execute(work)
+
+        assert result.success
+        validate_calls = [c for c in runner.calls if c[0] == "epistemic_validate_answer"]
+        assert len(validate_calls) == 1
+
+
+# ── 5. Prediction Classification Failure ─────────────────────────────────────
+
+
+class TestPredictionClassificationFailure:
+    """Test GeneratePredictionOperation when classify_prediction agent fails.
+
+    The decomposed flow (identify → specify → falsify → classify) catches
+    failures per-aspect. If classify_prediction fails, that aspect is skipped
+    entirely (no partial prediction stored) but the operation still succeeds.
+    """
+
+    @pytest.mark.asyncio
+    async def test_classification_fails_skips_aspect(self):
+        """If classify_prediction throws, that aspect is skipped but operation succeeds."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        ev = await _save_evidence(
+            repo, obj.entity_id, extracted=True, content="Evidence text", quality_score=0.7
+        )
+        claim = await _save_claim(
+            repo,
+            obj.entity_id,
+            stage=ClaimStage.ROBUST,
+            evidence_ids=[ev.entity_id],
+        )
+
+        runner = PartiallyFailingRunner(fail_on={"epistemic_classify_prediction"})
+        op = GeneratePredictionOperation(repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="generate_prediction")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.predictions_generated is True
+        # All aspects fail at classify step, so no predictions stored
+        assert len(updated.predictions) == 0
+
+    @pytest.mark.asyncio
+    async def test_evidence_loading_fails_silently(self):
+        """Evidence loading in prediction generation skips failed evidence."""
+        backend = InMemoryStorageBackend()
+        failing_repo = FailingRepo(backend, fail_on={"bad-evidence-id"})
+        obj = await _save_objective(failing_repo)
+        claim = await _save_claim(
+            failing_repo,
+            obj.entity_id,
+            stage=ClaimStage.ROBUST,
+            evidence_ids=["bad-evidence-id"],
+        )
+
+        runner = FakeAgentRunner()
+        op = GeneratePredictionOperation(failing_repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="generate_prediction")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await failing_repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.predictions_generated is True
+
+
+# ── 6. Investigate Claim Failure ─────────────────────────────────────────────
+
+
+class TestInvestigateClaimFailure:
+    """Test InvestigateClaimOperation under failure."""
+
+    @pytest.mark.asyncio
+    async def test_evidence_loading_fails_silently(self):
+        """Evidence loading in investigate skips failed evidence."""
+        backend = InMemoryStorageBackend()
+        failing_repo = FailingRepo(backend, fail_on={"bad-evidence-id"})
+        obj = await _save_objective(failing_repo)
+        claim = await _save_claim(
+            failing_repo,
+            obj.entity_id,
+            evidence_ids=["bad-evidence-id"],
+            scrutiny_verdict="needs_resolution",
+        )
+
+        runner = FakeAgentRunner()
+        op = InvestigateClaimOperation(failing_repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="investigate_claim")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await failing_repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.investigation_count == 1
+        assert updated.scrutiny_verdict is None  # Reset for re-scrutiny
+
+    @pytest.mark.asyncio
+    async def test_uncertainty_loading_fails_silently(self):
+        """Uncertainty query failure in investigate is caught."""
+        backend = InMemoryStorageBackend()
+        failing_repo = FailingRepo(backend, fail_on_query={"uncertainty"})
+        obj = await _save_objective(failing_repo)
+        claim = await _save_claim(
+            failing_repo,
+            obj.entity_id,
+            scrutiny_verdict="needs_resolution",
+        )
+
+        runner = FakeAgentRunner()
+        op = InvestigateClaimOperation(failing_repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="investigate_claim")
+        result = await op.execute(work)
+
+        assert result.success
+
+    @pytest.mark.asyncio
+    async def test_investigation_exhausted_abandons_claim(self):
+        """After MAX_INVESTIGATION_ATTEMPTS, claim is abandoned."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        claim = await _save_claim(
+            repo,
+            obj.entity_id,
+            scrutiny_verdict="needs_resolution",
+        )
+        # Set investigation_count to max
+        claim.investigation_count = 3  # MAX_INVESTIGATION_ATTEMPTS
+        await repo.save(claim)
+
+        runner = FakeAgentRunner()
+        op = InvestigateClaimOperation(repo, runner)
+        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="investigate_claim")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("claim", claim.entity_id)
+        assert isinstance(updated, Claim)
+        assert updated.abandoned is True
+        assert updated.scrutiny_verdict == "fail"
+
+
+# ── 7. Resolve Uncertainty Failure ───────────────────────────────────────────
+
+
+class TestResolveUncertaintyFailure:
+    """Test ResolveUncertaintyOperation under failure."""
+
+    @pytest.mark.asyncio
+    async def test_parent_entity_loading_fails_silently(self):
+        """Loading objective/claims with try/except should not crash."""
+        backend = InMemoryStorageBackend()
+        # Create a real objective first so _maybe_advance_phase doesn't crash
+        repo = EpistemicRepository(backend)
+        obj = Objective(description="Test", phase="claims_proposed")
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        # Now create a failing repo that fails on claim lookups
+        failing_repo = FailingRepo(backend, fail_on={"bad-claim-id"})
+
+        u = Uncertainty(
+            objective_id=obj.entity_id,
+            description="Test uncertainty",
+            uncertainty_type=UncertaintyType.UNKNOWN,
+            affected_claim_ids=["bad-claim-id"],
+        )
+        await failing_repo.save(u)
+
+        runner = FakeAgentRunner()
+        op = ResolveUncertaintyOperation(failing_repo, runner)
+        work = WorkItem(entity_id=u.entity_id, entity_type="uncertainty", operation="resolve_uncertainty")
+        result = await op.execute(work)
+
+        # Should succeed even though claim entity failed to load
+        assert result.success
+
+    @pytest.mark.asyncio
+    async def test_unresolvable_uncertainty(self):
+        """When agent says can't resolve, uncertainty is marked as acknowledged limitation."""
+        repo = await _make_repo()
+        obj = await _save_objective(repo)
+        u = await _save_uncertainty(repo, obj.entity_id)
+
+        runner = FakeAgentRunner(overrides={
+            "epistemic_resolve_uncertainty": {
+                "can_resolve": False,
+                "resolution": "",
+                "remaining_concerns": [],
+            },
+        })
+        op = ResolveUncertaintyOperation(repo, runner)
+        work = WorkItem(entity_id=u.entity_id, entity_type="uncertainty", operation="resolve_uncertainty")
+        result = await op.execute(work)
+
+        assert result.success
+        updated = await repo.get("uncertainty", u.entity_id)
+        assert isinstance(updated, Uncertainty)
+        assert updated.resolution is not None
+        assert "Unresolvable" in updated.resolution
+
+
+# ── 8. create_operations Registry ────────────────────────────────────────────
+
+
+class TestCreateOperationsErrorHandling:
+    """Test create_operations() initialization."""
+
+    @pytest.mark.asyncio
+    async def test_creates_all_operations(self):
+        """create_operations should return all registered operation types."""
+        backend = InMemoryStorageBackend()
+        repo = EpistemicRepository(backend)
+        runner = FakeAgentRunner()
+
+        ops = create_operations(repo, runner)
+
+        expected = {
+            "clarify_question",
+            "conceptual_analysis",
+            "plan_task",
+            "propose_claims",
+            "extract_evidence",
+            "scrutinise_claim",
+            "promote_claim",
+            "demote_claim",
+            "adversarial_search",
+            "assess_convergence",
+            "validate_deductively",
+            "verify_computationally",
+            "resolve_uncertainty",
+            "freeze_snapshot",
+            "synthesize_report",
+            "analyze_argument",
+            "generate_prediction",
+            "record_decision",
+            "investigate_claim",
+            "invalidate_evidence",
+            "revalidate_claim",
+        }
+        assert expected.issubset(set(ops.keys())), f"Missing: {expected - set(ops.keys())}"
+
+    @pytest.mark.asyncio
+    async def test_operations_share_repo_and_runner(self):
+        """All operations should reference the same repo and runner."""
+        backend = InMemoryStorageBackend()
+        repo = EpistemicRepository(backend)
+        runner = FakeAgentRunner()
+
+        ops = create_operations(repo, runner)
+
+        for name, op in ops.items():
+            assert op.repo is repo, f"{name} has wrong repo"
+            assert op.agent_runner is runner, f"{name} has wrong runner"
+
+    @pytest.mark.asyncio
+    async def test_no_runner_creates_operations(self):
+        """create_operations works without agent runner."""
+        backend = InMemoryStorageBackend()
+        repo = EpistemicRepository(backend)
+
+        ops = create_operations(repo, agent_runner=None)
+        assert len(ops) > 0
+        for op in ops.values():
+            assert op.agent_runner is None
