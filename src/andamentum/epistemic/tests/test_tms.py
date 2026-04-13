@@ -7,13 +7,13 @@ the validate_current_stage gate function, pattern matching, and transitive casca
 import pytest
 
 from ..entities import Claim, ClaimStage, Evidence, Objective
-from ..gates import validate_current_stage, GateResult
+from ..gates import validate_current_stage
 from ..operations import (
     InvalidateEvidenceOperation,
     RevalidateClaimOperation,
     OPERATION_CLASSES,
 )
-from ..patterns import WORK_PATTERNS, DEFAULT_OPERATION_BUDGETS, Pattern
+from ..patterns import WORK_PATTERNS, DEFAULT_OPERATION_BUDGETS
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -95,7 +95,10 @@ class TestInvalidateEvidenceOperation:
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence")
+
+        work = WorkItem(
+            entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -119,7 +122,10 @@ class TestInvalidateEvidenceOperation:
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence")
+
+        work = WorkItem(
+            entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -137,7 +143,10 @@ class TestInvalidateEvidenceOperation:
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence")
+
+        work = WorkItem(
+            entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -160,7 +169,10 @@ class TestInvalidateEvidenceOperation:
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence")
+
+        work = WorkItem(
+            entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -200,7 +212,10 @@ class TestRevalidateClaimOperation:
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -224,7 +239,10 @@ class TestRevalidateClaimOperation:
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -254,7 +272,10 @@ class TestRevalidateClaimOperation:
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -276,7 +297,10 @@ class TestRevalidateClaimOperation:
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -299,7 +323,10 @@ class TestRevalidateClaimOperation:
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         await op.execute(work)
 
         updated = await repo.get("claim", "cl-1")
@@ -379,7 +406,9 @@ class TestTransitiveCascade:
 
         # Step 1: Invalidate evidence E1 → cascade to C1
         op1 = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        work1 = WorkItem(entity_id="e1", entity_type="evidence", operation="invalidate_evidence")
+        work1 = WorkItem(
+            entity_id="e1", entity_type="evidence", operation="invalidate_evidence"
+        )
         r1 = await op1.execute(work1)
         assert r1.success
 
@@ -389,7 +418,9 @@ class TestTransitiveCascade:
 
         # Step 2: Revalidate C1 → should be demoted → E2 gets invalidated
         op2 = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        work2 = WorkItem(entity_id="c1", entity_type="claim", operation="revalidate_claim")
+        work2 = WorkItem(
+            entity_id="c1", entity_type="claim", operation="revalidate_claim"
+        )
         r2 = await op2.execute(work2)
         assert r2.success
 
@@ -403,7 +434,9 @@ class TestTransitiveCascade:
 
         # Step 3: Cascade E2 → C2
         op3 = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        work3 = WorkItem(entity_id="e2", entity_type="evidence", operation="invalidate_evidence")
+        work3 = WorkItem(
+            entity_id="e2", entity_type="evidence", operation="invalidate_evidence"
+        )
         r3 = await op3.execute(work3)
         assert r3.success
 
@@ -419,7 +452,9 @@ class TestTransitiveCascade:
 
         # Unrelated claim
         e_other = _make_evidence(eid="e-other", quality_score=0.5)
-        c_other = _make_claim(cid="c-other", stage=ClaimStage.SUPPORTED, evidence_ids=["e-other"])
+        c_other = _make_claim(
+            cid="c-other", stage=ClaimStage.SUPPORTED, evidence_ids=["e-other"]
+        )
         await repo.save(e1)
         await repo.save(c1)
         await repo.save(e_other)
@@ -427,7 +462,10 @@ class TestTransitiveCascade:
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
         from andamentum.epistemic.patterns import WorkItem
-        work = WorkItem(entity_id="e1", entity_type="evidence", operation="invalidate_evidence")
+
+        work = WorkItem(
+            entity_id="e1", entity_type="evidence", operation="invalidate_evidence"
+        )
         await op.execute(work)
 
         # Unrelated claim untouched
@@ -446,7 +484,9 @@ class TestTransitiveCascade:
         await repo.save(claim)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        work = WorkItem(entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence")
+        work = WorkItem(
+            entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
+        )
 
         # First execution
         r1 = await op.execute(work)
@@ -474,7 +514,11 @@ class TestTMSPatterns:
 
     def test_patterns_in_work_patterns(self):
         """Both TMS patterns exist in WORK_PATTERNS."""
-        tms_patterns = [p for p in WORK_PATTERNS if p.operation in ("invalidate_evidence", "revalidate_claim")]
+        tms_patterns = [
+            p
+            for p in WORK_PATTERNS
+            if p.operation in ("invalidate_evidence", "revalidate_claim")
+        ]
         assert len(tms_patterns) == 2
 
     def test_budgets_not_capped(self):
@@ -546,10 +590,14 @@ class TestInvestigationStubDependency:
     async def test_tms_cascade_with_depends_on_claim_id(self, repo):
         """When claim is demoted by TMS, derived evidence with depends_on_claim_id is invalidated."""
         # Create evidence that depends on a claim
-        ev = _make_evidence(eid="ev-derived", depends_on_claim_id="cl-1", quality_score=0.5)
+        ev = _make_evidence(
+            eid="ev-derived", depends_on_claim_id="cl-1", quality_score=0.5
+        )
         # Create the claim at SUPPORTED with enough evidence to pass basic gate
         ev_supporting = _make_evidence(eid="ev-support", quality_score=0.5)
-        claim = _make_claim(cid="cl-1", stage=ClaimStage.SUPPORTED, evidence_ids=["ev-support"])
+        claim = _make_claim(
+            cid="cl-1", stage=ClaimStage.SUPPORTED, evidence_ids=["ev-support"]
+        )
         # Remove evidence so gate fails → demotion
         claim.evidence_ids = []
         claim.evidence_count = 0
@@ -561,7 +609,9 @@ class TestInvestigationStubDependency:
         from andamentum.epistemic.patterns import WorkItem
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="revalidate_claim")
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -588,7 +638,7 @@ class TestValidateCurrentStageExtended:
 
         result = await validate_current_stage(claim, repo)
         assert not result.passed
-        assert "adversarial" in result.reason.lower()
+        assert "adversarial" in (result.reason or "").lower()
 
     @pytest.mark.asyncio
     async def test_adversarial_ok_passes_gate(self, repo):
@@ -634,7 +684,7 @@ class TestValidateCurrentStageExtended:
 
         result = await validate_current_stage(claim, repo)
         assert not result.passed
-        assert "contradicting" in result.reason.lower()
+        assert "contradicting" in (result.reason or "").lower()
 
     @pytest.mark.asyncio
     async def test_supporting_outweighs_contradicting_passes(self, repo):
@@ -714,7 +764,9 @@ class TestPromotionGuard:
         await repo.save(claim)
 
         op = PromoteClaimOperation(repo=repo, agent_runner=None)
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="promote_claim")
+        work = WorkItem(
+            entity_id="cl-1", entity_type="claim", operation="promote_claim"
+        )
         result = await op.execute(work)
 
         assert not result.success

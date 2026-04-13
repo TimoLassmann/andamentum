@@ -107,7 +107,7 @@ class ReportGenerator:
             for line in content.split("\n"):
                 stripped = line.strip()
                 if stripped.startswith("> **Verdict:**"):
-                    verdict = stripped[len("> **Verdict:**"):].strip()
+                    verdict = stripped[len("> **Verdict:**") :].strip()
                     break
 
             # Extract content, removing the header and verdict if present
@@ -119,7 +119,8 @@ class ReportGenerator:
             if verdict:
                 content_lines = content.split("\n")
                 content_lines = [
-                    ln for ln in content_lines
+                    ln
+                    for ln in content_lines
                     if not ln.strip().startswith("> **Verdict:**")
                 ]
                 content = "\n".join(content_lines)
@@ -152,10 +153,14 @@ class ReportGenerator:
         adversarial_by_claim: dict[str, object] = {}
         convergence_by_claim: dict[str, object] = {}
         for claim in all_claims:
-            adv_evidence = await self.repo.get_adversarial_evidence_for_claim(claim.claim_id)
+            adv_evidence = await self.repo.get_adversarial_evidence_for_claim(
+                claim.claim_id
+            )
             if adv_evidence:
                 adversarial_by_claim[claim.claim_id] = adv_evidence
-            conv_evidence = await self.repo.get_convergent_evidence_for_claim(claim.claim_id)
+            conv_evidence = await self.repo.get_convergent_evidence_for_claim(
+                claim.claim_id
+            )
             if conv_evidence:
                 convergence_by_claim[claim.claim_id] = conv_evidence
 
@@ -176,7 +181,9 @@ class ReportGenerator:
 
         # Sort: supporting first, then contradicting, then other
         judgment_order = {"supports": 0, "contradicts": 1}
-        deduped_evidence.sort(key=lambda e: judgment_order.get(e.support_judgment or "", 2))
+        deduped_evidence.sort(
+            key=lambda e: judgment_order.get(e.support_judgment or "", 2)
+        )
 
         # Build sequential index map: old entity_id -> new [1..N]
         evidence_index_map: dict[str, int] = {}
@@ -213,20 +220,35 @@ class ReportGenerator:
                 verification_parts.append(f"Scrutiny: {verdict_str}")
             if claim.adversarial_checked:
                 adv = adversarial_by_claim.get(claim.claim_id)
-                if adv and hasattr(adv, "adversarial_balance"):
-                    balance = adv.adversarial_balance
-                    if balance < 0.3:
-                        verification_parts.append(f"Adversarial search: found strong counter-evidence (balance: {balance:.2f})")
-                    elif balance > 0.8:
-                        verification_parts.append(f"Adversarial search: withstood challenge (balance: {balance:.2f})")
+                if adv is not None:
+                    balance = getattr(adv, "adversarial_balance", None)
+                    if balance is not None:
+                        if balance < 0.3:
+                            verification_parts.append(
+                                f"Adversarial search: found strong counter-evidence (balance: {balance:.2f})"
+                            )
+                        elif balance > 0.8:
+                            verification_parts.append(
+                                f"Adversarial search: withstood challenge (balance: {balance:.2f})"
+                            )
+                        else:
+                            verification_parts.append(
+                                f"Adversarial search: mixed results (balance: {balance:.2f})"
+                            )
                     else:
-                        verification_parts.append(f"Adversarial search: mixed results (balance: {balance:.2f})")
+                        verification_parts.append("Adversarial search: completed")
                 else:
                     verification_parts.append("Adversarial search: completed")
             if claim.convergence_checked:
                 conv = convergence_by_claim.get(claim.claim_id)
-                if conv and hasattr(conv, "verdict"):
-                    verification_parts.append(f"Convergence: {conv.verdict.lower()}")
+                if conv is not None:
+                    verdict_val = getattr(conv, "verdict", None)
+                    if verdict_val is not None:
+                        verification_parts.append(
+                            f"Convergence: {str(verdict_val).lower()}"
+                        )
+                    else:
+                        verification_parts.append("Convergence: assessed")
                 else:
                     verification_parts.append("Convergence: assessed")
             if claim.deductive_checked:
@@ -234,7 +256,9 @@ class ReportGenerator:
             if claim.computational_checked:
                 verification_parts.append("Computational verification: completed")
 
-            verification_summary = ". ".join(verification_parts) + "." if verification_parts else ""
+            verification_summary = (
+                ". ".join(verification_parts) + "." if verification_parts else ""
+            )
 
             # Map evidence IDs to sequential display numbers
             evidence_refs_display = sorted(
@@ -291,7 +315,9 @@ class ReportGenerator:
                     uncertainty_id=unc.uncertainty_id,
                     uncertainty_type=unc.uncertainty_type.value,
                     description=unc.description,
-                    scope=", ".join(unc.affected_claim_ids[:3]) if unc.affected_claim_ids else "global",
+                    scope=", ".join(unc.affected_claim_ids[:3])
+                    if unc.affected_claim_ids
+                    else "global",
                     is_blocking=is_blocking,
                     is_resolved=unc.is_resolved,
                     affected_claim_ids=unc.affected_claim_ids or [],
@@ -302,24 +328,31 @@ class ReportGenerator:
         adversarial_summaries: list[AdversarialSummary] = []
         for claim in all_claims:
             adv_evidence = adversarial_by_claim.get(claim.claim_id)
-            if adv_evidence and hasattr(adv_evidence, "counterarguments") and adv_evidence.counterarguments:
-                for ca in adv_evidence.counterarguments:
-                    adversarial_summaries.append(
-                        AdversarialSummary(
-                            claim_id=claim.claim_id,
-                            counterargument=ca.summary,
-                            strength=ca.weight,
-                            source_ref=ca.source_ref,
-                            rebuttal=ca.supporting_evidence,
+            if adv_evidence is not None:
+                counterarguments = getattr(adv_evidence, "counterarguments", None)
+                if counterarguments:
+                    for ca in counterarguments:
+                        adversarial_summaries.append(
+                            AdversarialSummary(
+                                claim_id=claim.claim_id,
+                                counterargument=ca.summary,
+                                strength=ca.weight,
+                                source_ref=ca.source_ref,
+                                rebuttal=ca.supporting_evidence,
+                            )
                         )
-                    )
 
         # Build convergence summaries for backward compat
         convergence_summaries: list[ConvergenceSummary] = []
         for claim in all_claims:
             conv_evidence = convergence_by_claim.get(claim.claim_id)
-            if conv_evidence and hasattr(conv_evidence, "domain_clusters") and conv_evidence.domain_clusters:
-                for cluster in conv_evidence.domain_clusters:
+            domain_clusters = (
+                getattr(conv_evidence, "domain_clusters", None)
+                if conv_evidence is not None
+                else None
+            )
+            if domain_clusters:
+                for cluster in domain_clusters:
                     if cluster.representative_classification:
                         domain = cluster.cluster_label or "Unknown Domain"
                         convergence_summaries.append(
@@ -356,8 +389,12 @@ class ReportGenerator:
 
         # Build investigation narrative
         investigation_narrative = self._build_investigation_narrative(
-            objective, all_claims, all_evidence, all_uncertainties,
-            adversarial_by_claim, resolved_count,
+            objective,
+            all_claims,
+            all_evidence,
+            all_uncertainties,
+            adversarial_by_claim,
+            resolved_count,
         )
 
         # Compute confidence scores
@@ -428,14 +465,21 @@ class ReportGenerator:
         # Question type
         question_type = getattr(objective, "question_type", None) or "unknown"
         from .html_report import QUESTION_TYPE_LABELS
+
         qt_label = QUESTION_TYPE_LABELS.get(question_type, question_type)
 
         # Evidence gathering
         source_types: dict[str, int] = {}
         for ev in all_evidence:
-            provider = ev.created_by if hasattr(ev, "created_by") and ev.created_by != "system" else ev.source_type
+            provider = (
+                ev.created_by
+                if hasattr(ev, "created_by") and ev.created_by != "system"
+                else ev.source_type
+            )
             source_types[provider] = source_types.get(provider, 0) + 1
-        providers_str = ", ".join(f"{k} ({v})" for k, v in sorted(source_types.items(), key=lambda x: -x[1]))
+        providers_str = ", ".join(
+            f"{k} ({v})" for k, v in sorted(source_types.items(), key=lambda x: -x[1])
+        )
         parts.append(
             f"This {qt_label} was investigated using {len(source_types)} evidence "
             f"provider{'s' if len(source_types) != 1 else ''} ({providers_str}), "
@@ -445,16 +489,22 @@ class ReportGenerator:
         # Claim formation
         non_abandoned = [c for c in all_claims if not c.abandoned]
         if non_abandoned:
-            parts.append(f"\n{len(non_abandoned)} claims were proposed from evidence clusters.")
+            parts.append(
+                f"\n{len(non_abandoned)} claims were proposed from evidence clusters."
+            )
 
         # Scrutiny
         scrutiny_passed = sum(1 for c in non_abandoned if c.scrutiny_verdict == "pass")
         scrutiny_failed = sum(1 for c in non_abandoned if c.scrutiny_verdict == "fail")
-        scrutiny_needs = sum(1 for c in non_abandoned if c.scrutiny_verdict == "needs_resolution")
+        scrutiny_needs = sum(
+            1 for c in non_abandoned if c.scrutiny_verdict == "needs_resolution"
+        )
         scrutiny_total = scrutiny_passed + scrutiny_failed + scrutiny_needs
         if scrutiny_total > 0:
             if scrutiny_total == scrutiny_passed:
-                parts.append(f"All {scrutiny_total} claims passed skeptical review (scrutiny).")
+                parts.append(
+                    f"All {scrutiny_total} claims passed skeptical review (scrutiny)."
+                )
             else:
                 detail_parts = []
                 if scrutiny_passed:
@@ -462,18 +512,22 @@ class ReportGenerator:
                 if scrutiny_failed:
                     detail_parts.append(f"{scrutiny_failed} failed")
                 if scrutiny_needs:
-                    detail_parts.append(f"{scrutiny_needs} flagged for further investigation")
+                    detail_parts.append(
+                        f"{scrutiny_needs} flagged for further investigation"
+                    )
                 parts.append(f"Scrutiny results: {', '.join(detail_parts)}.")
 
         # Adversarial search
         adversarial_checked = [c for c in non_abandoned if c.adversarial_checked]
         if adversarial_checked:
             strong_counter = sum(
-                1 for c in adversarial_checked
+                1
+                for c in adversarial_checked
                 if c.adversarial_balance is not None and c.adversarial_balance < 0.3
             )
             survived = sum(
-                1 for c in adversarial_checked
+                1
+                for c in adversarial_checked
                 if c.adversarial_balance is not None and c.adversarial_balance >= 0.7
             )
             parts.append(
@@ -486,7 +540,9 @@ class ReportGenerator:
                     f"by the Truth Maintenance System."
                 )
             if survived > 0:
-                parts.append(f"{survived} claims survived adversarial challenge (balance >= 0.7).")
+                parts.append(
+                    f"{survived} claims survived adversarial challenge (balance >= 0.7)."
+                )
 
         # TMS demotions (from promotion_history)
         demotion_count = 0
@@ -495,7 +551,13 @@ class ReportGenerator:
                 from_stage = entry.get("from", "")
                 to_stage = entry.get("to", "")
                 # A demotion is when the target stage is lower
-                _STAGE_ORDER = {"hypothesis": 0, "supported": 1, "provisional": 2, "robust": 3, "actionable": 4}
+                _STAGE_ORDER = {
+                    "hypothesis": 0,
+                    "supported": 1,
+                    "provisional": 2,
+                    "robust": 3,
+                    "actionable": 4,
+                }
                 if _STAGE_ORDER.get(to_stage, 0) < _STAGE_ORDER.get(from_stage, 0):
                     demotion_count += 1
         if demotion_count > 0:
@@ -533,7 +595,9 @@ class ReportGenerator:
                 f"{resolved_count} were resolved through additional evidence gathering and analysis."
             )
             if blocking_blocking > 0:
-                parts.append(f"{blocking_blocking} blocking uncertainties remain unresolved.")
+                parts.append(
+                    f"{blocking_blocking} blocking uncertainties remain unresolved."
+                )
 
         return " ".join(parts)
 

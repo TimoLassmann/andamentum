@@ -13,13 +13,15 @@ from urllib.parse import urlparse
 
 SEARXNG_WHITELIST = frozenset({"localhost:4070", "127.0.0.1:4070"})
 
-CLOUD_METADATA_HOSTS = frozenset({
-    "169.254.169.254",
-    "metadata.google.internal",
-    "metadata.google.com",
-    "metadata",
-    "169.254.0.1",
-})
+CLOUD_METADATA_HOSTS = frozenset(
+    {
+        "169.254.169.254",
+        "metadata.google.internal",
+        "metadata.google.com",
+        "metadata",
+        "169.254.0.1",
+    }
+)
 
 BLOCKED_SCHEMES = frozenset({"file", "ftp", "gopher", "data", "javascript"})
 ALLOWED_SCHEMES = frozenset({"http", "https"})
@@ -29,7 +31,13 @@ def is_internal_ip(ip_str: str) -> bool:
     """Check if an IP address is internal/private."""
     try:
         ip = ipaddress.ip_address(ip_str)
-        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        )
     except ValueError:
         return False
 
@@ -77,8 +85,12 @@ def is_safe_url(url: str, allow_searxng: bool = False) -> tuple[bool, str]:
         return False, f"Blocked localhost: {host}"
 
     internal_patterns = [
-        r"^internal\.", r"^private\.", r"^local\.",
-        r"\.internal$", r"\.local$", r"\.localhost$",
+        r"^internal\.",
+        r"^private\.",
+        r"^local\.",
+        r"\.internal$",
+        r"\.local$",
+        r"\.localhost$",
     ]
     for pattern in internal_patterns:
         if re.search(pattern, host, re.IGNORECASE):
@@ -90,16 +102,81 @@ def is_safe_url(url: str, allow_searxng: bool = False) -> tuple[bool, str]:
 # ── Topic Anchoring ─────────────────────────────────────────────────────
 
 STOP_WORDS = {
-    "about", "after", "also", "been", "being", "between", "both", "could",
-    "does", "doing", "during", "each", "even", "from", "have", "having",
-    "here", "into", "just", "like", "make", "many", "more", "most", "much",
-    "only", "other", "over", "said", "same", "should", "some", "such",
-    "than", "that", "their", "them", "then", "there", "these", "they",
-    "this", "through", "under", "very", "want", "well", "were", "what",
-    "when", "where", "which", "while", "will", "with", "would", "your",
-    "keep", "need", "going", "know", "think", "look", "looking", "help",
-    "helps", "helping", "work", "working", "result", "results", "cause",
-    "causes", "effect", "effects",
+    "about",
+    "after",
+    "also",
+    "been",
+    "being",
+    "between",
+    "both",
+    "could",
+    "does",
+    "doing",
+    "during",
+    "each",
+    "even",
+    "from",
+    "have",
+    "having",
+    "here",
+    "into",
+    "just",
+    "like",
+    "make",
+    "many",
+    "more",
+    "most",
+    "much",
+    "only",
+    "other",
+    "over",
+    "said",
+    "same",
+    "should",
+    "some",
+    "such",
+    "than",
+    "that",
+    "their",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "through",
+    "under",
+    "very",
+    "want",
+    "well",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "will",
+    "with",
+    "would",
+    "your",
+    "keep",
+    "need",
+    "going",
+    "know",
+    "think",
+    "look",
+    "looking",
+    "help",
+    "helps",
+    "helping",
+    "work",
+    "working",
+    "result",
+    "results",
+    "cause",
+    "causes",
+    "effect",
+    "effects",
 }
 
 
@@ -154,7 +231,9 @@ def guard_query_against_goal(
         topic_prefix = " ".join(core_anchors[:3])
         repaired = f"{topic_prefix}: {query}"
         if logger:
-            logger.warning(f"TopicGuard: Repaired drifted query: '{query}' → '{repaired}'")
+            logger.warning(
+                f"TopicGuard: Repaired drifted query: '{query}' → '{repaired}'"
+            )
         return repaired
 
 

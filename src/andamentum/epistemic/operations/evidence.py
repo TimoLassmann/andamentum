@@ -125,7 +125,9 @@ class ExtractEvidenceOperation(BaseOperation):
 
         # Strategy 2: Use agent runner (primary when no gatherer, or fallback when gatherer fails)
         if self.agent_runner:
-            _extract_log.info("[extract_evidence] AGENT extraction for %s", evidence.entity_id)
+            _extract_log.info(
+                "[extract_evidence] AGENT extraction for %s", evidence.entity_id
+            )
             # Load objective description for context
             objective_description = ""
             if evidence.objective_id:
@@ -151,15 +153,24 @@ class ExtractEvidenceOperation(BaseOperation):
 
         # Strategy 3: Placeholder (no agent runner available)
         else:
-            _extract_log.info("[extract_evidence] PLACEHOLDER for %s (no runner)", evidence.entity_id)
+            _extract_log.info(
+                "[extract_evidence] PLACEHOLDER for %s (no runner)", evidence.entity_id
+            )
             evidence.extracted_content = f"[Content from {evidence.source_ref}]"
 
         evidence.extracted = True
         # Final guard: ensure quality_score is never None for extracted evidence with content
-        if evidence.quality_score is None and evidence.extracted_content and evidence.extracted_content.strip():
+        if (
+            evidence.quality_score is None
+            and evidence.extracted_content
+            and evidence.extracted_content.strip()
+        ):
             evidence.quality_score = 0.1
             evidence.quality_metadata = {"source": "default_minimum"}
-            _extract_log.info("[extract_evidence] FINAL GUARD applied default_minimum for %s", evidence.entity_id)
+            _extract_log.info(
+                "[extract_evidence] FINAL GUARD applied default_minimum for %s",
+                evidence.entity_id,
+            )
 
         _extract_log.info(
             "[extract_evidence] DONE %s extracted=%s quality_score=%s quality_source=%s content_len=%d",
@@ -176,7 +187,11 @@ class ExtractEvidenceOperation(BaseOperation):
         # extraction. Judge immediately after content is available.
         # For plan-created evidence, no claim exists yet — judging happens
         # inside ProposeClaimsOperation after claims are created.
-        if self.agent_runner and evidence.extracted_content and evidence.support_judgment is None:
+        if (
+            self.agent_runner
+            and evidence.extracted_content
+            and evidence.support_judgment is None
+        ):
             claims = await self.repo.query("claim", objective_id=evidence.objective_id)
             linked_claim = None
             for c in claims:
@@ -204,7 +219,10 @@ class ExtractEvidenceOperation(BaseOperation):
                 # TMS trigger: if this verdict is "contradicts" and the claim is
                 # already promoted, check whether contradicting evidence now outweighs
                 # supporting. validate_current_stage handles the balance check.
-                if verdict == "contradicts" and linked_claim.stage != ClaimStage.HYPOTHESIS:
+                if (
+                    verdict == "contradicts"
+                    and linked_claim.stage != ClaimStage.HYPOTHESIS
+                ):
                     supporting = 0
                     contradicting_count = 0
                     for eid_check in linked_claim.evidence_ids:
@@ -219,7 +237,9 @@ class ExtractEvidenceOperation(BaseOperation):
                                 contradicting_count += 1
                         except Exception:
                             pass
-                    if (supporting + contradicting_count) >= 2 and contradicting_count >= supporting:
+                    if (
+                        supporting + contradicting_count
+                    ) >= 2 and contradicting_count >= supporting:
                         linked_claim.needs_revalidation = True
                         await self.repo.save(linked_claim)
                         _extract_log.info(
@@ -235,7 +255,9 @@ class ExtractEvidenceOperation(BaseOperation):
             message=f"Extracted {len(evidence.extracted_content)} chars",
         )
 
-    def _fill_evidence_from_gathered(self, evidence: Evidence, gathered: GatheredEvidence) -> None:
+    def _fill_evidence_from_gathered(
+        self, evidence: Evidence, gathered: GatheredEvidence
+    ) -> None:
         """Fill an Evidence entity's content fields from a GatheredEvidence item."""
         evidence.extracted_content = gathered.content
         evidence.source_ref = gathered.source_ref or evidence.source_ref
@@ -247,7 +269,9 @@ class ExtractEvidenceOperation(BaseOperation):
 
             # Annotation-based format (from passage extraction)
             if annotations := gathered.structured_data.get("annotations"):
-                parts.append("Evidence pointers:\n" + "\n".join(f"- {a}" for a in annotations))
+                parts.append(
+                    "Evidence pointers:\n" + "\n".join(f"- {a}" for a in annotations)
+                )
 
             # Legacy format (from fallback strategies or other providers)
             if ai_summary := gathered.structured_data.get("ai_summary"):
@@ -255,50 +279,82 @@ class ExtractEvidenceOperation(BaseOperation):
             if key_points := gathered.structured_data.get("key_points"):
                 parts.append("Key Points:\n" + "\n".join(f"- {p}" for p in key_points))
             if key_excerpts := gathered.structured_data.get("key_excerpts"):
-                parts.append("Verbatim Excerpts:\n" + "\n".join(f'"{e}"' for e in key_excerpts))
+                parts.append(
+                    "Verbatim Excerpts:\n" + "\n".join(f'"{e}"' for e in key_excerpts)
+                )
 
             if parts:
                 evidence.experimental_context = "\n\n".join(parts)
 
-    async def _score_evidence(self, evidence: Evidence, gathered: GatheredEvidence | None = None) -> None:
+    async def _score_evidence(
+        self, evidence: Evidence, gathered: GatheredEvidence | None = None
+    ) -> None:
         """Score evidence quality. Four paths: OpenAlex -> agent assessment -> gatherer fallback -> minimum default."""
         import logging
 
         _log = logging.getLogger(__name__)
-        _log.info("[_score_evidence] START %s gathered=%s", evidence.entity_id, gathered is not None)
+        _log.info(
+            "[_score_evidence] START %s gathered=%s",
+            evidence.entity_id,
+            gathered is not None,
+        )
 
         # Path 1: Try OpenAlex if we have a DOI or PMID identifier
         if self.quality_scorer:
             try:
-                qs = await self.quality_scorer.score(evidence.source_ref, evidence.source_type)
+                qs = await self.quality_scorer.score(
+                    evidence.source_ref, evidence.source_type
+                )
                 if qs is not None and qs.source != "needs_assessment":
                     evidence.quality_score = qs.score
                     evidence.quality_metadata = qs.raw_metadata
-                    _log.info("[_score_evidence] PATH1 OpenAlex %s score=%s", evidence.entity_id, qs.score)
+                    _log.info(
+                        "[_score_evidence] PATH1 OpenAlex %s score=%s",
+                        evidence.entity_id,
+                        qs.score,
+                    )
                     return
             except Exception as e:
-                _log.warning("[_score_evidence] PATH1 OpenAlex failed for %s: %r", evidence.entity_id, e)
+                _log.warning(
+                    "[_score_evidence] PATH1 OpenAlex failed for %s: %r",
+                    evidence.entity_id,
+                    e,
+                )
 
         # Path 2: Agent-based quality assessment
         if self.agent_runner:
             try:
                 claim_context = ""
                 if evidence.objective_id:
-                    claims = await self.repo.query("claim", objective_id=evidence.objective_id)
+                    claims = await self.repo.query(
+                        "claim", objective_id=evidence.objective_id
+                    )
                     if claims:
                         claim_context = claims[0].statement
 
-                source_header = f"Source: {evidence.source_type} — {evidence.source_ref}"
+                source_header = (
+                    f"Source: {evidence.source_type} — {evidence.source_ref}"
+                )
                 if gathered and gathered.quality_metadata:
-                    provider = gathered.quality_metadata.get("provider", evidence.source_type)
+                    provider = gathered.quality_metadata.get(
+                        "provider", evidence.source_type
+                    )
                     source_header = f"Source: {provider} — {evidence.source_ref}"
-                    extra = {k: v for k, v in gathered.quality_metadata.items() if k != "provider"}
+                    extra = {
+                        k: v
+                        for k, v in gathered.quality_metadata.items()
+                        if k != "provider"
+                    }
                     if extra:
                         source_header += f"\nMetadata: {extra}"
 
-                content = evidence.extracted_content or (gathered.content if gathered else "")
+                content = evidence.extracted_content or (
+                    gathered.content if gathered else ""
+                )
                 _log.info(
-                    "[_score_evidence] PATH2 calling agent for %s content_len=%d", evidence.entity_id, len(content)
+                    "[_score_evidence] PATH2 calling agent for %s content_len=%d",
+                    evidence.entity_id,
+                    len(content),
                 )
                 result = await self.run_agent(
                     "epistemic_assess_evidence_quality",
@@ -322,7 +378,11 @@ class ExtractEvidenceOperation(BaseOperation):
                     "recency_appropriate": result.recency_appropriate,
                     "justification": result.justification,
                 }
-                _log.info("[_score_evidence] PATH2 agent scored %s = %.3f", evidence.entity_id, evidence.quality_score)
+                _log.info(
+                    "[_score_evidence] PATH2 agent scored %s = %.3f",
+                    evidence.entity_id,
+                    evidence.quality_score,
+                )
 
                 # TMS trigger: agent-assessed evidence scoring near zero is unreliable.
                 # 0.10 threshold means all four quality dimensions averaged near zero.
@@ -355,7 +415,9 @@ class ExtractEvidenceOperation(BaseOperation):
             evidence.quality_score = max(0.05, gathered.quality_score)
             evidence.quality_metadata = {"source": "gatherer_fallback"}
             _log.info(
-                "[_score_evidence] PATH3 gatherer_fallback %s score=%s", evidence.entity_id, evidence.quality_score
+                "[_score_evidence] PATH3 gatherer_fallback %s score=%s",
+                evidence.entity_id,
+                evidence.quality_score,
             )
             return
 
@@ -363,6 +425,12 @@ class ExtractEvidenceOperation(BaseOperation):
         if evidence.extracted_content and evidence.extracted_content.strip():
             evidence.quality_score = 0.1
             evidence.quality_metadata = {"source": "default_minimum"}
-            _log.info("[_score_evidence] PATH4 default_minimum %s score=0.1", evidence.entity_id)
+            _log.info(
+                "[_score_evidence] PATH4 default_minimum %s score=0.1",
+                evidence.entity_id,
+            )
         else:
-            _log.warning("[_score_evidence] NO SCORE for %s — no content to score", evidence.entity_id)
+            _log.warning(
+                "[_score_evidence] NO SCORE for %s — no content to score",
+                evidence.entity_id,
+            )

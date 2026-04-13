@@ -61,7 +61,11 @@ async def deduplicate_evidence(
     if n == 0:
         return []
     if n == 1:
-        return [EvidenceCluster(medoid_index=0, representative_indices=[0], member_indices=[0], count=1)]
+        return [
+            EvidenceCluster(
+                medoid_index=0, representative_indices=[0], member_indices=[0], count=1
+            )
+        ]
 
     # Chunk each document and embed all chunks via Ollama.
     # Long documents (e.g. raw web pages) are split into ~2000-char chunks
@@ -77,7 +81,9 @@ async def deduplicate_evidence(
         for j in range(i + 1, n):
             # cosine_distances returns a matrix; we want the min distance
             # (= max similarity) between any chunk pair
-            chunk_dists = cosine_distances(all_chunk_embeddings[i], all_chunk_embeddings[j])
+            chunk_dists = cosine_distances(
+                all_chunk_embeddings[i], all_chunk_embeddings[j]
+            )
             min_dist = float(chunk_dists.min())
             dist_matrix[i, j] = min_dist
             dist_matrix[j, i] = min_dist
@@ -90,7 +96,7 @@ async def deduplicate_evidence(
         min_cluster_size=min_cluster_size,
         min_samples=1,
         metric="precomputed",
-        copy=True,
+        copy=True,  # type: ignore[arg-type]
     )
     labels = clusterer.fit_predict(dist_matrix)
 
@@ -103,7 +109,7 @@ async def deduplicate_evidence(
         if label == -1:
             noise_indices.append(idx)
         else:
-            cluster_map.setdefault(label, []).append(idx)
+            cluster_map.setdefault(int(label), []).append(idx)
 
     result: list[EvidenceCluster] = []
 
@@ -114,17 +120,21 @@ async def deduplicate_evidence(
 
     # Noise points become singleton clusters (truly unique evidence)
     for idx in noise_indices:
-        result.append(EvidenceCluster(
-            medoid_index=idx,
-            representative_indices=[idx],
-            member_indices=[idx],
-            count=1,
-        ))
+        result.append(
+            EvidenceCluster(
+                medoid_index=idx,
+                representative_indices=[idx],
+                member_indices=[idx],
+                count=1,
+            )
+        )
 
     return result
 
 
-def _build_cluster(emb_matrix: np.ndarray, member_indices: list[int]) -> EvidenceCluster:
+def _build_cluster(
+    emb_matrix: np.ndarray, member_indices: list[int]
+) -> EvidenceCluster:
     """Build an EvidenceCluster with medoid as the sole representative.
 
     The medoid (most central document) captures what the cluster is about.

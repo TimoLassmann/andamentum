@@ -107,7 +107,9 @@ class ConfidenceScores:
     answer_confidence_level: str = "moderate"
     checks_passed: int = 0
     checks_total: int = 0
-    checks: list[tuple[str, str, bool]] = field(default_factory=list)  # (name, tradition, passed)
+    checks: list[tuple[str, str, bool]] = field(
+        default_factory=list
+    )  # (name, tradition, passed)
 
     # Posterior (None if not applicable)
     posterior: Optional[float] = None
@@ -870,7 +872,6 @@ def _stage_class(stage: str) -> str:
     return stage.lower().replace("_", "-")
 
 
-
 def _format_datetime(dt: datetime) -> str:
     """Format datetime for display."""
     return dt.strftime("%Y-%m-%d %H:%M")
@@ -911,7 +912,11 @@ CHECK_LABELS = {
 def _claim_status_label(stage: str, adversarial_balance: Optional[float]) -> str:
     """Get plain-English claim status label."""
     stage_lower = stage.lower()
-    if stage_lower == "hypothesis" and adversarial_balance is not None and adversarial_balance < 0.3:
+    if (
+        stage_lower == "hypothesis"
+        and adversarial_balance is not None
+        and adversarial_balance < 0.3
+    ):
         return "Challenged by counter-evidence"
     return STAGE_LABELS.get(stage_lower, stage)
 
@@ -932,14 +937,21 @@ def _render_counterargument(ca: AdversarialSummary) -> str:
                 </div>"""
 
 
-def _render_claim(claim: ClaimSummary, evidence_index_map: dict[str, int], counterarguments: list[AdversarialSummary] | None = None) -> str:
+def _render_claim(
+    claim: ClaimSummary,
+    evidence_index_map: dict[str, int],
+    counterarguments: list[AdversarialSummary] | None = None,
+) -> str:
     """Render a single claim as a finding card."""
     status_label = _claim_status_label(claim.stage, claim.adversarial_balance)
 
     # Evidence references as superscript numbers
     evidence_refs_html = ""
     if claim.evidence_refs_display:
-        ref_links = [f'<a href="#evidence-{idx}" class="cite-link">{idx}</a>' for idx in claim.evidence_refs_display]
+        ref_links = [
+            f'<a href="#evidence-{idx}" class="cite-link">{idx}</a>'
+            for idx in claim.evidence_refs_display
+        ]
         evidence_refs_html = f'<sup class="claim-citations">{",".join(ref_links)}</sup>'
 
     # Build the statement with inline citations — superscript before final period
@@ -956,10 +968,14 @@ def _render_claim(claim: ClaimSummary, evidence_index_map: dict[str, int], count
     detail_parts: list[str] = []
 
     if claim.scope and claim.scope.lower() not in ("general", "specific", ""):
-        detail_parts.append(f'<div class="claim-detail"><span class="claim-detail-label">Scope:</span> {_escape(claim.scope)}</div>')
+        detail_parts.append(
+            f'<div class="claim-detail"><span class="claim-detail-label">Scope:</span> {_escape(claim.scope)}</div>'
+        )
 
     if claim.verification_summary:
-        detail_parts.append(f'<div class="claim-detail"><span class="claim-detail-label">Verification:</span> {_escape(claim.verification_summary)}</div>')
+        detail_parts.append(
+            f'<div class="claim-detail"><span class="claim-detail-label">Verification:</span> {_escape(claim.verification_summary)}</div>'
+        )
 
     # Adversarial story — if checked, show what happened
     if claim.adversarial_balance is not None:
@@ -969,8 +985,12 @@ def _render_claim(claim: ClaimSummary, evidence_index_map: dict[str, int], count
         elif balance >= 0.8:
             adv_text = f"Counter-evidence search found no significant opposition (balance: {balance:.2f})."
         else:
-            adv_text = f"Counter-evidence search found mixed results (balance: {balance:.2f})."
-        detail_parts.append(f'<div class="claim-detail"><span class="claim-detail-label">Adversarial:</span> {adv_text}</div>')
+            adv_text = (
+                f"Counter-evidence search found mixed results (balance: {balance:.2f})."
+            )
+        detail_parts.append(
+            f'<div class="claim-detail"><span class="claim-detail-label">Adversarial:</span> {adv_text}</div>'
+        )
 
     # Counterargument details — show what the opposition actually said
     if counterarguments:
@@ -1023,7 +1043,9 @@ def _render_evidence_item(evidence: EvidenceSummary, index: int) -> str:
     # Source as clickable link
     ref = evidence.source_ref
     if ref.startswith("http"):
-        source_html = f'<a href="{_escape(ref)}" class="evidence-source">{_escape(ref)}</a>'
+        source_html = (
+            f'<a href="{_escape(ref)}" class="evidence-source">{_escape(ref)}</a>'
+        )
     else:
         source_html = f'<span class="evidence-source">{_escape(ref)}</span>'
 
@@ -1047,7 +1069,9 @@ def _render_evidence_item(evidence: EvidenceSummary, index: int) -> str:
         </div>"""
 
 
-def _render_evidence_bibliography(evidence: list[EvidenceSummary], evidence_index_map: dict[str, int]) -> str:
+def _render_evidence_bibliography(
+    evidence: list[EvidenceSummary], evidence_index_map: dict[str, int]
+) -> str:
     """Render evidence as a bibliography grouped by judgment."""
     supporting = [e for e in evidence if e.support_judgment == "supports"]
     contradicting = [e for e in evidence if e.support_judgment == "contradicts"]
@@ -1065,7 +1089,11 @@ def _render_evidence_bibliography(evidence: list[EvidenceSummary], evidence_inde
             parts.append(_render_evidence_item(e, idx))
 
     # Any remaining judged evidence not in supports/contradicts
-    other = [e for e in evidence if e.support_judgment and e.support_judgment not in ("supports", "contradicts")]
+    other = [
+        e
+        for e in evidence
+        if e.support_judgment and e.support_judgment not in ("supports", "contradicts")
+    ]
     if other:
         parts.append("<h3>Other</h3>")
         for e in other:
@@ -1097,12 +1125,14 @@ def _render_sidebar(data: ReportData) -> str:
         for name, _tradition, passed in scores.checks:
             icon = "&#10003;" if passed else "&#10007;"
             css_class = "check-pass" if passed else "check-fail"
-            display_name = _escape(CHECK_LABELS.get(name, name.replace("_", " ").replace("track:", "")))
+            display_name = _escape(
+                CHECK_LABELS.get(name, name.replace("_", " ").replace("track:", ""))
+            )
             check_items.append(
                 f'<li class="{css_class}">'
                 f'<span class="check-icon">{icon}</span>'
-                f'{display_name}'
-                f'</li>'
+                f"{display_name}"
+                f"</li>"
             )
         checklist_html = "\n".join(check_items)
 
@@ -1131,7 +1161,11 @@ def _render_sidebar(data: ReportData) -> str:
                 <div class="sidebar-value">P(Y) = {scores.posterior:.4f}</div>
                 <div class="sidebar-label">{_escape(evidence_line)}</div>
             </div>""")
-        elif scores.posterior_question_type and scores.posterior_question_type not in ("verificatory", "comparative", "predictive"):
+        elif scores.posterior_question_type and scores.posterior_question_type not in (
+            "verificatory",
+            "comparative",
+            "predictive",
+        ):
             sections.append(f"""
             <div class="sidebar-section">
                 <div class="sidebar-title">Posterior</div>
@@ -1140,14 +1174,26 @@ def _render_sidebar(data: ReportData) -> str:
 
     # 3. Investigation Stats
     stats = data.stats
-    supported = stats.claims_by_stage.get("SUPPORTED", 0) + stats.claims_by_stage.get("ROBUST", 0) + stats.claims_by_stage.get("ACTIONABLE", 0)
-    hypothesis = stats.claims_by_stage.get("HYPOTHESIS", 0) + stats.claims_by_stage.get("PROVISIONAL", 0)
-    total_uncertainties = stats.blocking_uncertainties + stats.non_blocking_uncertainties + stats.resolved_uncertainties
+    supported = (
+        stats.claims_by_stage.get("SUPPORTED", 0)
+        + stats.claims_by_stage.get("ROBUST", 0)
+        + stats.claims_by_stage.get("ACTIONABLE", 0)
+    )
+    hypothesis = stats.claims_by_stage.get("HYPOTHESIS", 0) + stats.claims_by_stage.get(
+        "PROVISIONAL", 0
+    )
+    total_uncertainties = (
+        stats.blocking_uncertainties
+        + stats.non_blocking_uncertainties
+        + stats.resolved_uncertainties
+    )
 
     # Question type in sidebar
     question_type_html = ""
     if data.question_type:
-        qt_label = _escape(QUESTION_TYPE_LABELS.get(data.question_type, data.question_type))
+        qt_label = _escape(
+            QUESTION_TYPE_LABELS.get(data.question_type, data.question_type)
+        )
         question_type_html = f'<div class="sidebar-row"><span class="sidebar-row-label">Type</span><span class="sidebar-row-value">{qt_label}</span></div>'
 
     sections.append(f"""
@@ -1172,7 +1218,11 @@ def _render_sidebar(data: ReportData) -> str:
 def _build_key_findings_qa(data: ReportData) -> str:
     """Build the Key Findings Q&A section from deterministic data."""
     # What was studied?
-    studied = data.clarified_question if data.clarified_question != data.research_question else data.research_question
+    studied = (
+        data.clarified_question
+        if data.clarified_question != data.research_question
+        else data.research_question
+    )
 
     # What did we find?
     stats = data.stats
@@ -1183,7 +1233,8 @@ def _build_key_findings_qa(data: ReportData) -> str:
         + stats.claims_by_stage.get("ACTIONABLE", 0)
     )
     challenged_count = sum(
-        1 for c in data.claims
+        1
+        for c in data.claims
         if c.stage.lower() == "hypothesis"
         and c.adversarial_balance is not None
         and c.adversarial_balance < 0.3
@@ -1194,25 +1245,33 @@ def _build_key_findings_qa(data: ReportData) -> str:
     if data.verdict:
         findings_parts.append(data.verdict)
     if supported_count > 0:
-        findings_parts.append(f"{supported_count} claim{'s' if supported_count != 1 else ''} supported by evidence")
+        findings_parts.append(
+            f"{supported_count} claim{'s' if supported_count != 1 else ''} supported by evidence"
+        )
     if challenged_count > 0:
         findings_parts.append(f"{challenged_count} challenged by counter-evidence")
     hypothesis_only = stats.claims_by_stage.get("HYPOTHESIS", 0) - challenged_count
     if hypothesis_only > 0:
         findings_parts.append(f"{hypothesis_only} under investigation")
-    claims_summary = ". ".join(findings_parts) if findings_parts else "No claims established"
+    claims_summary = (
+        ". ".join(findings_parts) if findings_parts else "No claims established"
+    )
 
     # How confident are we?
     confidence_str = "Not assessed"
     if data.confidence_scores is not None:
         sc = data.confidence_scores
-        confidence_str = f"{sc.answer_confidence_level.capitalize()} ({sc.answer_confidence:.2f})"
+        confidence_str = (
+            f"{sc.answer_confidence_level.capitalize()} ({sc.answer_confidence:.2f})"
+        )
         if sc.posterior is not None:
             confidence_str += f". Posterior P(Y) = {sc.posterior:.4f}"
 
     # How thorough was the investigation?
     checks_total = data.confidence_scores.checks_total if data.confidence_scores else 0
-    checks_passed = data.confidence_scores.checks_passed if data.confidence_scores else 0
+    checks_passed = (
+        data.confidence_scores.checks_passed if data.confidence_scores else 0
+    )
     thoroughness = f"{stats.total_evidence} evidence sources examined, {checks_passed}/{checks_total} verification checks passed"
 
     return f"""
@@ -1276,12 +1335,15 @@ def render(data: ReportData) -> str:
     # Findings (per-claim cards) — with intro text
     claims_html = ""
     if data.claims:
-        claims_items = "".join(_render_claim(c, evidence_index_map, adversarial_by_claim.get(c.claim_id)) for c in data.claims)
+        claims_items = "".join(
+            _render_claim(c, evidence_index_map, adversarial_by_claim.get(c.claim_id))
+            for c in data.claims
+        )
         n_claims = len(data.claims)
         claims_html = f"""
         <section id="claims">
             <h2>Findings</h2>
-            <p class="section-intro">The investigation produced {n_claims} distinct finding{'s' if n_claims != 1 else ''}, each traced to specific evidence sources. Findings are ordered by strength of support.</p>
+            <p class="section-intro">The investigation produced {n_claims} distinct finding{"s" if n_claims != 1 else ""}, each traced to specific evidence sources. Findings are ordered by strength of support.</p>
             {claims_items}
         </section>"""
 
@@ -1298,8 +1360,12 @@ def render(data: ReportData) -> str:
     # Limitations (non-blocking + blocking uncertainties)
     limitations_html = ""
     if data.uncertainties:
-        blocking = [u for u in data.uncertainties if u.is_blocking and not u.is_resolved]
-        non_blocking = [u for u in data.uncertainties if not u.is_blocking and not u.is_resolved]
+        blocking = [
+            u for u in data.uncertainties if u.is_blocking and not u.is_resolved
+        ]
+        non_blocking = [
+            u for u in data.uncertainties if not u.is_blocking and not u.is_resolved
+        ]
 
         uncertainty_items: list[str] = []
         if blocking:
@@ -1355,7 +1421,9 @@ def render(data: ReportData) -> str:
     question_type_html = ""
     if data.question_type:
         qt_label = QUESTION_TYPE_LABELS.get(data.question_type, data.question_type)
-        question_type_html = f'<div class="question-type">This is a {_escape(qt_label)}</div>'
+        question_type_html = (
+            f'<div class="question-type">This is a {_escape(qt_label)}</div>'
+        )
 
     # Meta line
     meta_parts = [

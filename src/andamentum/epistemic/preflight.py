@@ -93,6 +93,7 @@ async def preflight(
     # 1. LLM connectivity
     try:
         from .runner import DefaultAgentRunner
+
         runner = DefaultAgentRunner(model=model)
         tasks.append(("LLM", runner))
     except ImportError:
@@ -100,13 +101,21 @@ async def preflight(
         pass
     except Exception as e:
         # Model resolution failed (e.g., bad boto3 config)
-        return PreflightResult(checks=[
-            CheckResult(name="LLM", status="fail", message=f"Model init failed: {e}", elapsed_ms=0.0),
-        ])
+        return PreflightResult(
+            checks=[
+                CheckResult(
+                    name="LLM",
+                    status="fail",
+                    message=f"Model init failed: {e}",
+                    elapsed_ms=0.0,
+                ),
+            ]
+        )
 
     # 2. Web search (SearXNG)
     try:
         from .evidence_gathering import WebSearchGatherer
+
         web = WebSearchGatherer(model=model)
         tasks.append(("WebSearch", web))
     except ImportError:
@@ -119,12 +128,21 @@ async def preflight(
                 tasks.append((name, provider))
 
     if not tasks:
-        return PreflightResult(checks=[
-            CheckResult(name="preflight", status="skip", message="No checkable components found", elapsed_ms=0.0),
-        ])
+        return PreflightResult(
+            checks=[
+                CheckResult(
+                    name="preflight",
+                    status="skip",
+                    message="No checkable components found",
+                    elapsed_ms=0.0,
+                ),
+            ]
+        )
 
     if verbose:
-        logger.info("Running %d preflight checks: %s", len(tasks), [t[0] for t in tasks])
+        logger.info(
+            "Running %d preflight checks: %s", len(tasks), [t[0] for t in tasks]
+        )
 
     # Run all checks concurrently
     coros = [_run_check(component, name) for name, component in tasks]

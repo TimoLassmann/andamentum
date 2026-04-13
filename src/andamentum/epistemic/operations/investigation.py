@@ -71,14 +71,18 @@ class GeneratePredictionOperation(BaseOperation):
             for i in range(self.NUM_ASPECTS):
                 try:
                     if aspects:
-                        prev_text = "\n".join(f"- {a.testable_dimension}" for a in aspects)
+                        prev_text = "\n".join(
+                            f"- {a.testable_dimension}" for a in aspects
+                        )
                     else:
                         prev_text = "(none yet)"
 
                     aspect_result = await self.run_agent(
                         "epistemic_identify_testable_aspect",
                         claim=claim.statement,
-                        evidence_summary=evidence_summary if evidence_summary else "[No evidence available]",
+                        evidence_summary=evidence_summary
+                        if evidence_summary
+                        else "[No evidence available]",
                         aspect_number=i + 1,
                         previously_identified=prev_text,
                     )
@@ -176,7 +180,9 @@ class RecordDecisionOperation(BaseOperation):
             )
 
         statement = f"Accept claim: {claim.statement}"
-        justification = f"Claim reached ACTIONABLE stage with {claim.evidence_count} evidence items"
+        justification = (
+            f"Claim reached ACTIONABLE stage with {claim.evidence_count} evidence items"
+        )
 
         if self.agent_runner:
             # Build context: objective + all claims for multi-claim reasoning
@@ -188,10 +194,16 @@ class RecordDecisionOperation(BaseOperation):
                     if isinstance(obj, Objective):
                         objective_description = obj.description
                     # Load all claims for this objective
-                    all_claims = await self.repo.query("claim", objective_id=claim.objective_id)
+                    all_claims = await self.repo.query(
+                        "claim", objective_id=claim.objective_id
+                    )
                     for i, c in enumerate(all_claims):
                         if isinstance(c, Claim) and not c.abandoned:
-                            marker = " <- (this claim)" if c.entity_id == claim.entity_id else ""
+                            marker = (
+                                " <- (this claim)"
+                                if c.entity_id == claim.entity_id
+                                else ""
+                            )
                             all_claims_text.append(
                                 f"[{i}] [{c.stage.value}] {c.statement} "
                                 f"(evidence: {c.evidence_count}, confidence: {c.confidence_score or 'N/A'}){marker}"
@@ -202,7 +214,9 @@ class RecordDecisionOperation(BaseOperation):
             result = await self.run_agent(
                 "epistemic_record_decision",
                 objective_description=objective_description or claim.statement,
-                available_claims="\n".join(all_claims_text) if all_claims_text else f"[0] {claim.statement}",
+                available_claims="\n".join(all_claims_text)
+                if all_claims_text
+                else f"[0] {claim.statement}",
                 claim_count=len(all_claims_text) or 1,
                 decision_context=f"Claim '{claim.statement}' has reached ACTIONABLE stage with {claim.evidence_count} evidence items.",
             )
@@ -279,7 +293,9 @@ class InvestigateClaimOperation(BaseOperation):
             try:
                 ev = await self.repo.get("evidence", eid)
                 if isinstance(ev, Evidence) and ev.extracted_content:
-                    evidence_summaries.append(f"[{ev.source_type}] {ev.extracted_content}")
+                    evidence_summaries.append(
+                        f"[{ev.source_type}] {ev.extracted_content}"
+                    )
                     source_types_seen.add(ev.source_type)
             except Exception:
                 continue
@@ -308,8 +324,12 @@ class InvestigateClaimOperation(BaseOperation):
                 "epistemic_investigate_claim",
                 claim_statement=claim.statement,
                 claim_scope=claim.scope,
-                existing_evidence="\n".join(evidence_summaries) if evidence_summaries else "No evidence gathered yet",
-                scrutiny_issues="\n".join(scrutiny_issues) if scrutiny_issues else "No specific issues recorded",
+                existing_evidence="\n".join(evidence_summaries)
+                if evidence_summaries
+                else "No evidence gathered yet",
+                scrutiny_issues="\n".join(scrutiny_issues)
+                if scrutiny_issues
+                else "No specific issues recorded",
                 available_source_types=", ".join(sorted(source_types_seen))
                 if source_types_seen
                 else "openalex, web_search",
@@ -318,7 +338,11 @@ class InvestigateClaimOperation(BaseOperation):
 
             # Create evidence stubs from agent output
             for eq in result.evidence_queries:
-                source_type = eq.get("source_type", "web_search") if isinstance(eq, dict) else "web_search"
+                source_type = (
+                    eq.get("source_type", "web_search")
+                    if isinstance(eq, dict)
+                    else "web_search"
+                )
                 query = eq.get("query", "") if isinstance(eq, dict) else str(eq)
                 if not query:
                     continue

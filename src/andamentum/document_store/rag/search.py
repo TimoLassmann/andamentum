@@ -27,19 +27,27 @@ from .database import search_chunks, get_connection, DEFAULT_DB_PATH
 @dataclass
 class SearchConfig:
     """Configuration for semantic search and re-ranking."""
+
     include_bm25: bool = True  # Enable BM25 keyword scoring
     bm25_weight: float = 0.5  # 50% keyword, 50% vector (balanced hybrid)
     min_similarity: float = 0.0  # Minimum similarity threshold (0-1)
 
     # Cross-encoder re-ranking configuration
-    enable_reranking: bool = True  # Enable cross-encoder re-ranking (production quality)
-    reranking_model: str = "cross-encoder/ms-marco-MiniLM-L-12-v2"  # Cross-encoder model name
-    reranking_top_k: Optional[int] = 20  # Re-rank top 20 results for optimal speed/quality balance
+    enable_reranking: bool = (
+        True  # Enable cross-encoder re-ranking (production quality)
+    )
+    reranking_model: str = (
+        "cross-encoder/ms-marco-MiniLM-L-12-v2"  # Cross-encoder model name
+    )
+    reranking_top_k: Optional[int] = (
+        20  # Re-rank top 20 results for optimal speed/quality balance
+    )
 
 
 @dataclass
 class SearchResult:
     """A search result with file context and metadata."""
+
     content: str  # Chunk content
     file_path: str  # Relative file path
     doc_id: str  # Document UUID (for DocumentStore.read() integration)
@@ -85,8 +93,7 @@ def normalize_scores(scores: List[float]) -> List[float]:
 
 
 def reciprocal_rank_fusion(
-    result_lists: List[List[SearchResult]],
-    k: int = 60
+    result_lists: List[List[SearchResult]], k: int = 60
 ) -> List[SearchResult]:
     """Fuse multiple ranked lists using Reciprocal Rank Fusion (RRF).
 
@@ -133,7 +140,7 @@ def reciprocal_rank_fusion(
                     dc_format=result.dc_format,
                     dc_creator=result.dc_creator,
                     dc_subject=result.dc_subject,
-                    para_type=result.para_type
+                    para_type=result.para_type,
                 )
 
     sorted_chunks = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
@@ -145,7 +152,7 @@ def semantic_search(
     query_embedding: List[float],
     limit: int = 10,
     config: Optional[SearchConfig] = None,
-    db_path: Optional[Path] = None
+    db_path: Optional[Path] = None,
 ) -> List[SearchResult]:
     """Search using vector similarity + optional BM25 keyword scoring.
 
@@ -173,9 +180,7 @@ def semantic_search(
     vector_limit = limit * 3 if config.include_bm25 else limit
 
     vector_results = search_chunks(
-        query_embedding=query_embedding,
-        limit=vector_limit,
-        db_path=db_path
+        query_embedding=query_embedding, limit=vector_limit, db_path=db_path
     )
 
     if not vector_results:
@@ -184,7 +189,7 @@ def semantic_search(
     # 2. If BM25 enabled, combine with keyword scoring
     if config.include_bm25 and len(vector_results) > 0:
         # Tokenize corpus (all chunk contents)
-        corpus = [result['content'].lower().split() for result in vector_results]
+        corpus = [result["content"].lower().split() for result in vector_results]
 
         # Build BM25 index
         bm25 = BM25Okapi(corpus)
@@ -194,52 +199,56 @@ def semantic_search(
         bm25_scores = bm25.get_scores(query_tokens)
 
         # Normalize both score types to 0-1 range
-        vector_scores = [1 - result['distance'] for result in vector_results]  # Convert distance to similarity
+        vector_scores = [
+            1 - result["distance"] for result in vector_results
+        ]  # Convert distance to similarity
         vector_normalized = normalize_scores(vector_scores)
-        bm25_normalized = normalize_scores(list(bm25_scores))  # Convert numpy array to list
+        bm25_normalized = normalize_scores(
+            list(bm25_scores)
+        )  # Convert numpy array to list
 
         # Combine scores: weighted sum
         for i, result in enumerate(vector_results):
-            combined_score = (
-                (1 - config.bm25_weight) * vector_normalized[i] +
-                config.bm25_weight * bm25_normalized[i]
-            )
-            result['similarity_score'] = combined_score
-            result['match_type'] = 'hybrid'
+            combined_score = (1 - config.bm25_weight) * vector_normalized[
+                i
+            ] + config.bm25_weight * bm25_normalized[i]
+            result["similarity_score"] = combined_score
+            result["match_type"] = "hybrid"
 
         # Re-sort by combined score (descending)
-        vector_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+        vector_results.sort(key=lambda x: x["similarity_score"], reverse=True)
 
     else:
         # Pure vector search - convert distance to similarity
         for result in vector_results:
-            result['similarity_score'] = 1 - result['distance']
-            result['match_type'] = 'semantic'
+            result["similarity_score"] = 1 - result["distance"]
+            result["match_type"] = "semantic"
 
     # 3. Filter by minimum similarity threshold
     filtered_results = [
-        r for r in vector_results
-        if r['similarity_score'] >= config.min_similarity
+        r for r in vector_results if r["similarity_score"] >= config.min_similarity
     ]
 
     # 4. Convert to SearchResult objects
     search_results = []
     for result in filtered_results[:limit]:
-        search_results.append(SearchResult(
-            content=result['content'],
-            file_path=result['file_path'],
-            doc_id=result['doc_id'],
-            similarity_score=result['similarity_score'],
-            match_type=result['match_type'],
-            start_char=result['start_char'],
-            end_char=result['end_char'],
-            token_count=result.get('token_count'),
-            dc_title=result.get('dc_title'),
-            dc_format=result.get('dc_format'),
-            dc_creator=result.get('dc_creator'),
-            dc_subject=result.get('dc_subject'),
-            metadata=result.get('metadata', {})
-        ))
+        search_results.append(
+            SearchResult(
+                content=result["content"],
+                file_path=result["file_path"],
+                doc_id=result["doc_id"],
+                similarity_score=result["similarity_score"],
+                match_type=result["match_type"],
+                start_char=result["start_char"],
+                end_char=result["end_char"],
+                token_count=result.get("token_count"),
+                dc_title=result.get("dc_title"),
+                dc_format=result.get("dc_format"),
+                dc_creator=result.get("dc_creator"),
+                dc_subject=result.get("dc_subject"),
+                metadata=result.get("metadata", {}),
+            )
+        )
 
     # 5. Optional cross-encoder re-ranking for improved relevance
     if config.enable_reranking and search_results:
@@ -250,7 +259,7 @@ def semantic_search(
             query=query,
             results=search_results,
             top_k=config.reranking_top_k,
-            config=rerank_config
+            config=rerank_config,
         )
 
     return search_results
@@ -281,21 +290,19 @@ def _sanitize_fts5_query(query: str) -> str:
     import re
 
     # Replace hyphens with spaces (avoid NOT operator interpretation)
-    query = query.replace('-', ' ')
+    query = query.replace("-", " ")
 
     # Remove FTS5 special characters: ():"*?.,/%
-    query = re.sub(r'[():"*?.,/%]', ' ', query)
+    query = re.sub(r'[():"*?.,/%]', " ", query)
 
     # Normalize whitespace
-    query = ' '.join(query.split())
+    query = " ".join(query.split())
 
     return query
 
 
 def fts_search(
-    query: str,
-    limit: int = 10,
-    db_path: Optional[Path] = None
+    query: str, limit: int = 10, db_path: Optional[Path] = None
 ) -> List[SearchResult]:
     """Chunk-level full-text search using SQLite FTS5.
 
@@ -328,7 +335,8 @@ def fts_search(
         cursor = conn.cursor()
 
         # Chunk-level FTS5 search with BM25 ranking on full corpus
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 c.id as chunk_id,
                 c.content,
@@ -349,15 +357,30 @@ def fts_search(
             WHERE chunks_fts MATCH ? AND d.deleted_at IS NULL
             ORDER BY fts.rank
             LIMIT ?
-        """, (sanitized_query, limit))
+        """,
+            (sanitized_query, limit),
+        )
 
         rows = cursor.fetchall()
 
         # Convert to SearchResult objects
         results = []
         for row in rows:
-            chunk_id, content, start_char, end_char, token_count, metadata_json, \
-                doc_id, file_path, dc_title, dc_format, dc_creator, dc_subject, rank = row
+            (
+                chunk_id,
+                content,
+                start_char,
+                end_char,
+                token_count,
+                metadata_json,
+                doc_id,
+                file_path,
+                dc_title,
+                dc_format,
+                dc_creator,
+                dc_subject,
+                rank,
+            ) = row
 
             # Parse metadata
             metadata = {}
@@ -373,7 +396,9 @@ def fts_search(
                 try:
                     dc_subject_list = json.loads(dc_subject)
                 except Exception:
-                    dc_subject_list = dc_subject.split(',') if isinstance(dc_subject, str) else None
+                    dc_subject_list = (
+                        dc_subject.split(",") if isinstance(dc_subject, str) else None
+                    )
 
             # Convert rank (negative value) to positive similarity score (0-1)
             # FTS5 rank is negative, more negative = better match
@@ -384,24 +409,26 @@ def fts_search(
             metadata["fts_rank"] = rank
 
             # Extract para_type from metadata if available
-            para_type = metadata.get('para_type')
+            para_type = metadata.get("para_type")
 
-            results.append(SearchResult(
-                content=content,
-                file_path=file_path,
-                doc_id=doc_id,
-                similarity_score=similarity_score,
-                match_type="keyword",
-                start_char=start_char,
-                end_char=end_char,
-                token_count=token_count,
-                dc_title=dc_title,
-                dc_format=dc_format,
-                dc_creator=dc_creator,
-                dc_subject=dc_subject_list,
-                para_type=para_type,
-                metadata=metadata
-            ))
+            results.append(
+                SearchResult(
+                    content=content,
+                    file_path=file_path,
+                    doc_id=doc_id,
+                    similarity_score=similarity_score,
+                    match_type="keyword",
+                    start_char=start_char,
+                    end_char=end_char,
+                    token_count=token_count,
+                    dc_title=dc_title,
+                    dc_format=dc_format,
+                    dc_creator=dc_creator,
+                    dc_subject=dc_subject_list,
+                    para_type=para_type,
+                    metadata=metadata,
+                )
+            )
 
         return results
 
@@ -421,7 +448,11 @@ def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
         return ""
 
     # Simple tokenization - split query into terms
-    query_terms = [term.strip('"').lower() for term in query.split() if term.strip('"').lower() not in {'and', 'or', 'not'}]
+    query_terms = [
+        term.strip('"').lower()
+        for term in query.split()
+        if term.strip('"').lower() not in {"and", "or", "not"}
+    ]
 
     if not query_terms:
         # No valid query terms, return beginning
@@ -432,7 +463,7 @@ def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
     first_match_pos = -1
 
     for term in query_terms:
-        pos = content_lower.find(term.rstrip('*'))  # Handle wildcard
+        pos = content_lower.find(term.rstrip("*"))  # Handle wildcard
         if pos != -1 and (first_match_pos == -1 or pos < first_match_pos):
             first_match_pos = pos
 
@@ -463,7 +494,7 @@ def ensemble_search(
     keyword_limit: int = 50,
     enable_reranking: bool = False,
     reranking_model: str = "cross-encoder/ms-marco-MiniLM-L-12-v2",
-    db_path: Optional[Path] = None
+    db_path: Optional[Path] = None,
 ) -> List[SearchResult]:
     """True ensemble search with independent strategies, RRF fusion, and optional re-ranking.
 
@@ -516,31 +547,35 @@ def ensemble_search(
     # Returns chunks ranked by cosine similarity
     semantic_results = []
     try:
-        raw_semantic = search_chunks(query_embedding, limit=semantic_limit, db_path=db_path)
+        raw_semantic = search_chunks(
+            query_embedding, limit=semantic_limit, db_path=db_path
+        )
         for result in raw_semantic:
             # Convert to SearchResult
-            similarity = 1.0 - result['distance']  # cosine distance → similarity
+            similarity = 1.0 - result["distance"]  # cosine distance → similarity
 
             # Parse metadata
-            metadata = result.get('metadata', {})
-            para_type = metadata.get('para_type')
+            metadata = result.get("metadata", {})
+            para_type = metadata.get("para_type")
 
-            semantic_results.append(SearchResult(
-                content=result['content'],
-                file_path=result['file_path'],
-                doc_id=result['doc_id'],
-                similarity_score=similarity,
-                match_type="semantic",
-                start_char=result['start_char'],
-                end_char=result['end_char'],
-                token_count=result.get('token_count'),
-                dc_title=result.get('dc_title'),
-                dc_format=result.get('dc_format'),
-                dc_creator=result.get('dc_creator'),
-                dc_subject=result.get('dc_subject'),
-                para_type=para_type,
-                metadata=metadata
-            ))
+            semantic_results.append(
+                SearchResult(
+                    content=result["content"],
+                    file_path=result["file_path"],
+                    doc_id=result["doc_id"],
+                    similarity_score=similarity,
+                    match_type="semantic",
+                    start_char=result["start_char"],
+                    end_char=result["end_char"],
+                    token_count=result.get("token_count"),
+                    dc_title=result.get("dc_title"),
+                    dc_format=result.get("dc_format"),
+                    dc_creator=result.get("dc_creator"),
+                    dc_subject=result.get("dc_subject"),
+                    para_type=para_type,
+                    metadata=metadata,
+                )
+            )
     except Exception as e:
         print(f"⚠️  Semantic search failed: {e}")
 
@@ -564,7 +599,7 @@ def ensemble_search(
         # Both strategies returned results - fuse with RRF
         fused_results = reciprocal_rank_fusion(
             result_lists=[semantic_results, keyword_results],
-            k=60  # Industry standard
+            k=60,  # Industry standard
         )
 
     # Optional: Cross-encoder re-ranking
@@ -574,9 +609,13 @@ def ensemble_search(
 
         # Re-rank with cross-encoder
         # Note: We retrieve limit * 2 from fusion, then re-rank to get best top-k
-        candidates = fused_results[: limit * 2] if len(fused_results) > limit else fused_results
+        candidates = (
+            fused_results[: limit * 2] if len(fused_results) > limit else fused_results
+        )
 
         config = RerankingConfig(model_name=reranking_model)
-        fused_results = rerank_results(query=query, results=candidates, top_k=limit, config=config)
+        fused_results = rerank_results(
+            query=query, results=candidates, top_k=limit, config=config
+        )
 
     return fused_results[:limit]

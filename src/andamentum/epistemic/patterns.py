@@ -142,7 +142,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="revalidate_claim",
         description="TMS: Re-validate claim stage gate",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 0-2: PRE-PLANNING
     # ══════════════════════════════════════════════════════════════════
@@ -170,7 +169,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="plan_task",
         description="Plan evidence collection",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 3: EVIDENCE COLLECTION
     # Plan creates evidence stubs with extracted=False
@@ -181,20 +179,22 @@ WORK_PATTERNS: list[Pattern] = [
         operation="extract_evidence",
         description="Extract content from evidence source",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 3b: INVESTIGATION (Peirce inquiry cycling)
     # When scrutiny produces doubt, investigate evidence gaps
     # ══════════════════════════════════════════════════════════════════
-
     # needs_resolution at any stage → investigate (unless saturated)
     Pattern(
         entity_type="claim",
-        filters={"scrutiny_verdict": "needs_resolution", "investigation_count__lt": 3, "abandoned": False, "saturated": False},
+        filters={
+            "scrutiny_verdict": "needs_resolution",
+            "investigation_count__lt": 3,
+            "abandoned": False,
+            "saturated": False,
+        },
         operation="investigate_claim",
         description="Investigate evidence gaps after ambiguous scrutiny",
     ),
-
     # fail at HYPOTHESIS → investigate (can't demote below HYPOTHESIS, unless saturated)
     Pattern(
         entity_type="claim",
@@ -208,7 +208,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="investigate_claim",
         description="Investigate failed hypothesis before abandoning",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 4: CLAIM PROPOSAL
     # Triggered after plan_task when objective is in "planned" phase
@@ -219,7 +218,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="propose_claims",
         description="Propose claims from evidence",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 5: INITIAL SCRUTINY
     # All new claims get skeptic review
@@ -230,7 +228,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="scrutinise_claim",
         description="Skeptic review of claim",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 5.5: ROUTING DEFAULTS
     # Pre-mark skipped verification tracks so promotion isn't blocked
@@ -238,16 +235,18 @@ WORK_PATTERNS: list[Pattern] = [
     # ══════════════════════════════════════════════════════════════════
     Pattern(
         entity_type="claim",
-        filters={"stage": ClaimStage.SUPPORTED.value, "scrutiny_verdict": "pass", "routing_applied": False},
+        filters={
+            "stage": ClaimStage.SUPPORTED.value,
+            "scrutiny_verdict": "pass",
+            "routing_applied": False,
+        },
         operation="set_routing_defaults",
         description="Pre-mark skipped verification tracks based on question type routing",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 6: VERIFICATION TRACKS
     # Claims at SUPPORTED stage need verification before PROVISIONAL
     # ══════════════════════════════════════════════════════════════════
-
     # Adversarial search - seek disconfirming evidence
     Pattern(
         entity_type="claim",
@@ -255,7 +254,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="adversarial_search",
         description="Search for disconfirming evidence",
     ),
-
     # Cross-domain convergence - check independent evidence lines
     Pattern(
         entity_type="claim",
@@ -263,7 +261,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="assess_convergence",
         description="Assess cross-domain convergence",
     ),
-
     # Deductive validation - first principles, consistency checks
     Pattern(
         entity_type="claim",
@@ -271,7 +268,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="validate_deductively",
         description="Validate using first principles",
     ),
-
     # Computational verification - for verifiable claims only
     Pattern(
         entity_type="claim",
@@ -279,7 +275,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="verify_computationally",
         description="Verify computationally if applicable",
     ),
-
     # Contrastive evaluation - pairwise claim comparison
     Pattern(
         entity_type="claim",
@@ -287,7 +282,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="contrastive_evaluation",
         description="Pairwise contrastive evaluation of competing claims",
     ),
-
     # Cross-claim consistency - pairwise conflict check
     Pattern(
         entity_type="claim",
@@ -295,12 +289,10 @@ WORK_PATTERNS: list[Pattern] = [
         operation="cross_claim_consistency",
         description="Check cross-claim consistency",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 7: STAGE PROMOTION
     # Claims advance through stages when gates pass
     # ══════════════════════════════════════════════════════════════════
-
     # HYPOTHESIS → SUPPORTED (basic scrutiny passed)
     Pattern(
         entity_type="claim",
@@ -308,7 +300,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="promote_claim",
         description="Promote from HYPOTHESIS to SUPPORTED",
     ),
-
     # SUPPORTED → PROVISIONAL (verification tracks complete)
     Pattern(
         entity_type="claim",
@@ -323,7 +314,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="promote_claim",
         description="Promote from SUPPORTED to PROVISIONAL",
     ),
-
     # PROVISIONAL → ROBUST (independent evidence + counterevidence addressed)
     Pattern(
         entity_type="claim",
@@ -337,7 +327,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="promote_claim",
         description="Promote from PROVISIONAL to ROBUST",
     ),
-
     # ROBUST → ACTIONABLE (decision criteria met, predictions required)
     Pattern(
         entity_type="claim",
@@ -349,7 +338,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="promote_claim",
         description="Promote from ROBUST to ACTIONABLE (requires predictions)",
     ),
-
     # Demotion on scrutiny failure (exclude HYPOTHESIS — can't demote further)
     Pattern(
         entity_type="claim",
@@ -357,7 +345,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="demote_claim",
         description="Demote claim after scrutiny failure",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 8: UNCERTAINTY RESOLUTION
     # Only BLOCKING uncertainties must be resolved before synthesis
@@ -369,7 +356,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="resolve_uncertainty",
         description="Resolve blocking uncertainty",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 8b: BATCH CONCERN DEDUP
     # After all blocking uncertainties are resolved, batch dedup any
@@ -381,7 +367,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="deduplicate_concerns",
         description="Batch dedup buffered remaining concerns",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PHASE 9: SYNTHESIS
     # Freeze snapshot when claims are ready, then compile
@@ -398,7 +383,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="synthesize_report",
         description="Synthesize report from snapshot",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # ARGUMENT ANALYSIS
     # Claims that passed scrutiny get argument quality analysis
@@ -409,7 +393,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="analyze_argument",
         description="Analyze argument structure and quality",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # PREDICTION GENERATION
     # Robust claims get testable predictions (Lakatos)
@@ -420,7 +403,6 @@ WORK_PATTERNS: list[Pattern] = [
         operation="generate_prediction",
         description="Generate testable predictions from robust claim",
     ),
-
     # ══════════════════════════════════════════════════════════════════
     # DECISION TRACKING
     # ══════════════════════════════════════════════════════════════════
@@ -468,12 +450,15 @@ DEFAULT_OPERATION_BUDGETS: dict[str, int] = {
 }
 
 # Synthesis operations are never budget-limited — they must always be able to run.
-SYNTHESIS_OPS: set[str] = {"freeze_snapshot", "synthesize_report", "deduplicate_concerns"}
+SYNTHESIS_OPS: set[str] = {
+    "freeze_snapshot",
+    "synthesize_report",
+    "deduplicate_concerns",
+}
 
 # Per-(entity, operation) attempt limit.  Once an (entity, op) pair has been
 # attempted this many times, it is permanently excluded for the rest of the run.
 MAX_ENTITY_ATTEMPTS = 3
-
 
 
 class PatternScheduler:
@@ -509,7 +494,11 @@ class PatternScheduler:
         self.patterns = patterns or WORK_PATTERNS
         # Per-operation-type counters (total executions this run)
         self._op_counts: dict[str, int] = {}
-        self._op_budgets = operation_budgets if operation_budgets is not None else dict(DEFAULT_OPERATION_BUDGETS)
+        self._op_budgets = (
+            operation_budgets
+            if operation_budgets is not None
+            else dict(DEFAULT_OPERATION_BUDGETS)
+        )
         # Per-(entity, operation) attempt counters — permanent, never reset
         self._entity_attempts: dict[tuple[str, str], int] = {}
 
@@ -543,9 +532,13 @@ class PatternScheduler:
 
     def _is_entity_exhausted(self, entity_id: str, operation: str) -> bool:
         """Check if this (entity, operation) pair has exceeded attempt limit."""
-        return self._entity_attempts.get((entity_id, operation), 0) >= MAX_ENTITY_ATTEMPTS
+        return (
+            self._entity_attempts.get((entity_id, operation), 0) >= MAX_ENTITY_ATTEMPTS
+        )
 
-    async def get_pending_work(self, objective_id: Optional[str] = None) -> list[WorkItem]:
+    async def get_pending_work(
+        self, objective_id: Optional[str] = None
+    ) -> list[WorkItem]:
         """Get all pending work items.
 
         Round-aware: resolve_uncertainty work is only returned when no
@@ -567,23 +560,30 @@ class PatternScheduler:
                 entities = await self.repo.query(pattern.entity_type, **filters)
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "Pattern query failed for %s (operation=%s): %s",
-                    pattern.entity_type, pattern.operation, e,
+                    pattern.entity_type,
+                    pattern.operation,
+                    e,
                 )
                 continue
 
             for entity in entities:
-                if pattern.matches(entity) and not self._is_entity_exhausted(entity.entity_id, pattern.operation):
-                    work_items.append(WorkItem(
-                        entity_id=entity.entity_id,
-                        entity_type=pattern.entity_type,
-                        operation=pattern.operation,
-                        metadata={
-                            "pattern_description": pattern.description,
-                            "objective_id": entity.objective_id,
-                        },
-                    ))
+                if pattern.matches(entity) and not self._is_entity_exhausted(
+                    entity.entity_id, pattern.operation
+                ):
+                    work_items.append(
+                        WorkItem(
+                            entity_id=entity.entity_id,
+                            entity_type=pattern.entity_type,
+                            operation=pattern.operation,
+                            metadata={
+                                "pattern_description": pattern.description,
+                                "objective_id": entity.objective_id,
+                            },
+                        )
+                    )
 
         # Apply routing filter
         if work_items:
@@ -708,7 +708,9 @@ class PatternScheduler:
         # Unknown track — fire by default (safe)
         return True
 
-    async def get_next_work(self, objective_id: Optional[str] = None) -> Optional[WorkItem]:
+    async def get_next_work(
+        self, objective_id: Optional[str] = None
+    ) -> Optional[WorkItem]:
         """Get highest priority pending work item.
 
         Args:

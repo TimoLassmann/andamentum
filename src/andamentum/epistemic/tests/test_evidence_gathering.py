@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ..evidence_gathering import WebSearchGatherer
-from ..operations import GatheredEvidence
 
 
 def _make_research_result(
@@ -20,8 +19,6 @@ def _make_research_result(
     """Build a mock ResearchResult with the fields WebSearchGatherer accesses."""
     from andamentum.deep_research.models import (
         EvidenceReport,
-        FetchedPage,
-        PageSummary,
         ResearchErrors,
         ResearchResult,
     )
@@ -32,13 +29,17 @@ def _make_research_result(
         page_summaries = []
 
     report = EvidenceReport(
-        evidence_summary=evidence_summary if evidence_summary is not None else "Fallback summary",
+        evidence_summary=evidence_summary
+        if evidence_summary is not None
+        else "Fallback summary",
         key_findings=["finding1"],
         sources=sources or ["http://example.com"],
         total_searches_performed=1,
         total_pages_fetched=len(fetched_pages),
         iterations_required=1,
     )
+
+    from andamentum.deep_research.verification import VerificationResult
 
     return ResearchResult(
         output=report,
@@ -47,7 +48,14 @@ def _make_research_result(
         iterations=1,
         searches=1,
         pages_fetched=len(fetched_pages),
-        verification={},
+        verification=VerificationResult(
+            total_cited=0,
+            verified_count=0,
+            verified=[],
+            unverified=[],
+            accessed_not_cited=[],
+            verification_rate=0.0,
+        ),
         errors=ResearchErrors(search_errors=0, fetch_errors=0),
     )
 
@@ -59,7 +67,7 @@ def _make_fetched_page(
     word_count: int = 50,
     relevance_score: float = 0.8,
     is_relevant: bool = True,
-) -> "FetchedPage":
+):
     from andamentum.deep_research.models import FetchedPage
 
     return FetchedPage(
@@ -80,7 +88,7 @@ def _make_page_summary(
     key_points: list[str] | None = None,
     key_excerpts: list[str] | None = None,
     relevance_score: float = 0.8,
-) -> "PageSummary":
+):
     from andamentum.deep_research.models import PageSummary
 
     return PageSummary(
@@ -109,7 +117,11 @@ class TestWebSearchGathererRawContent:
         )
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -130,7 +142,11 @@ class TestWebSearchGathererRawContent:
         result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -147,7 +163,11 @@ class TestWebSearchGathererRawContent:
         result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -161,7 +181,11 @@ class TestWebSearchGathererRawContent:
         result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -180,7 +204,11 @@ class TestWebSearchGathererEdgeCases:
         result = _make_research_result(fetched_pages=[page], page_summaries=[])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -198,7 +226,11 @@ class TestWebSearchGathererEdgeCases:
         result = _make_research_result(fetched_pages=[], page_summaries=[summary])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -220,7 +252,11 @@ class TestWebSearchGathererEdgeCases:
         result = _make_research_result(fetched_pages=pages, page_summaries=summaries)
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -239,7 +275,11 @@ class TestWebSearchGathererEdgeCases:
         )
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 
@@ -255,7 +295,11 @@ class TestWebSearchGathererEdgeCases:
         result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
 
         gatherer = WebSearchGatherer(model="test")
-        with patch("andamentum.deep_research.orchestrator.run_research", new_callable=AsyncMock, return_value=result):
+        with patch(
+            "andamentum.deep_research.orchestrator.run_research",
+            new_callable=AsyncMock,
+            return_value=result,
+        ):
             with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
                 gathered = await gatherer.gather("web_search", "test query")
 

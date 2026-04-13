@@ -21,13 +21,40 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Deep research with iterative search, verification, and synthesis.",
     )
     parser.add_argument("query", help="Research question")
-    parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
-    parser.add_argument("--max-iterations", type=int, default=3, help="Max research iterations (default: 3)")
-    parser.add_argument("--searxng-url", default="http://127.0.0.1:4070", help="SearXNG instance URL (default: http://127.0.0.1:4070)")
-    parser.add_argument("--max-results", type=int, default=10, help="Max search results per query (default: 10)")
-    parser.add_argument("--max-pages", type=int, default=5, help="Max pages to fetch per iteration (default: 5)")
-    parser.add_argument("--verbose", action="store_true", help="Print progress messages")
-    parser.add_argument("--json", action="store_true", dest="json_output", help="Output result as JSON")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=3,
+        help="Max research iterations (default: 3)",
+    )
+    parser.add_argument(
+        "--searxng-url",
+        default="http://127.0.0.1:4070",
+        help="SearXNG instance URL (default: http://127.0.0.1:4070)",
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=10,
+        help="Max search results per query (default: 10)",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=5,
+        help="Max pages to fetch per iteration (default: 5)",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="json_output", help="Output result as JSON"
+    )
     return parser
 
 
@@ -84,23 +111,30 @@ def _display_results(result: Any, verbose: bool) -> None:
         rate = verification.get("verification_rate", 0.0)
         verified = verification.get("verified_count", 0)
         total = verification.get("total_cited", 0)
-        print(f"\n=== Verification ===\n")
+        print("\n=== Verification ===\n")
         print(f"  Rate: {rate:.0%} ({verified}/{total} sources verified)")
 
     # Stats
-    print(f"\n--- Stats: {result.iterations} iterations, {result.searches} searches, "
-          f"{result.pages_fetched} pages fetched ---")
+    print(
+        f"\n--- Stats: {result.iterations} iterations, {result.searches} searches, "
+        f"{result.pages_fetched} pages fetched ---"
+    )
 
     # Errors
     if result.errors.search_errors or result.errors.fetch_errors:
-        print(f"\n--- Errors: {result.errors.search_errors} search, {result.errors.fetch_errors} fetch ---")
+        print(
+            f"\n--- Errors: {result.errors.search_errors} search, {result.errors.fetch_errors} fetch ---"
+        )
 
 
 async def _run(args: argparse.Namespace) -> None:
     try:
         from .orchestrator import run_research
     except ImportError:
-        print("Error: pydantic-ai is required. Install with: pip install andamentum[llm]", file=sys.stderr)
+        print(
+            "Error: pydantic-ai is required. Install with: pip install andamentum[llm]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     model = _resolve_model(args)

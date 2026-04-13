@@ -173,13 +173,15 @@ Before finalizing, apply this test:
 
 Now answer the research question."""
 
-register_agent(AgentDefinition(
-    name="epistemic_write_answer",
-    prompt=WRITE_ANSWER_PROMPT,
-    output_model=WriteAnswerOutput,
-    retries=2,
-    output_retries=3,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_write_answer",
+        prompt=WRITE_ANSWER_PROMPT,
+        output_model=WriteAnswerOutput,
+        retries=2,
+        output_retries=3,
+    )
+)
 
 
 # ── epistemic_validate_answer ──────────────────────────────────────────
@@ -237,13 +239,15 @@ You will receive:
 - If the answer is faithful to the data, approve it. Do not find problems where none exist.
 """
 
-register_agent(AgentDefinition(
-    name="epistemic_validate_answer",
-    prompt=VALIDATE_ANSWER_PROMPT,
-    output_model=AnswerValidation,
-    retries=2,
-    output_retries=3,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_validate_answer",
+        prompt=VALIDATE_ANSWER_PROMPT,
+        output_model=AnswerValidation,
+        retries=2,
+        output_retries=3,
+    )
+)
 
 
 # ── epistemic_record_decision ────────────────────────────────────────────
@@ -339,13 +343,15 @@ Note: Output simple integers that reference claim indices. Python will resolve t
 
 Now record the decision based on the available claims and context."""
 
-register_agent(AgentDefinition(
-    name="epistemic_record_decision",
-    prompt=RECORD_DECISION_PROMPT,
-    output_model=RecordDecisionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_record_decision",
+        prompt=RECORD_DECISION_PROMPT,
+        output_model=RecordDecisionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_classify_prediction ──────────────────────────────────────
@@ -375,13 +381,15 @@ Given a prediction statement and the claim it derives from, classify its type an
 - 0.0: Unfalsifiable or trivially true
 """
 
-register_agent(AgentDefinition(
-    name="epistemic_classify_prediction",
-    prompt=CLASSIFY_PREDICTION_PROMPT,
-    output_model=ClassifyPredictionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_classify_prediction",
+        prompt=CLASSIFY_PREDICTION_PROMPT,
+        output_model=ClassifyPredictionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_identify_testable_aspect ──────────────────────────────────
@@ -411,13 +419,15 @@ or binary (yes/no)
 
 Now identify a testable aspect of the given claim."""
 
-register_agent(AgentDefinition(
-    name="epistemic_identify_testable_aspect",
-    prompt=IDENTIFY_TESTABLE_ASPECT_PROMPT,
-    output_model=IdentifyTestableAspectOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_identify_testable_aspect",
+        prompt=IDENTIFY_TESTABLE_ASPECT_PROMPT,
+        output_model=IdentifyTestableAspectOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_specify_prediction ────────────────────────────────────────
@@ -448,13 +458,15 @@ and when.
 
 Now specify the prediction."""
 
-register_agent(AgentDefinition(
-    name="epistemic_specify_prediction",
-    prompt=SPECIFY_PREDICTION_PROMPT,
-    output_model=SpecifyPredictionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_specify_prediction",
+        prompt=SPECIFY_PREDICTION_PROMPT,
+        output_model=SpecifyPredictionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_define_falsification ──────────────────────────────────────
@@ -482,11 +494,12 @@ it wrong.
 
 Now define the falsification criterion."""
 
-register_agent(AgentDefinition(
-    name="epistemic_define_falsification",
-    prompt=DEFINE_FALSIFICATION_PROMPT,
-    output_model=DefineFalsificationOutput,
-    retries=3,
-    output_retries=5,
-))
-
+register_agent(
+    AgentDefinition(
+        name="epistemic_define_falsification",
+        prompt=DEFINE_FALSIFICATION_PROMPT,
+        output_model=DefineFalsificationOutput,
+        retries=3,
+        output_retries=5,
+    )
+)

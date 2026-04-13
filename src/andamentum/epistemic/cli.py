@@ -23,40 +23,103 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # Subcommand: ask (primary interface)
-    ask_parser = sub.add_parser("ask", help="Ask a research question and get validated findings")
+    ask_parser = sub.add_parser(
+        "ask", help="Ask a research question and get validated findings"
+    )
     ask_parser.add_argument("question", help="Research question to investigate")
-    ask_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
-    ask_parser.add_argument("--max-iterations", type=int, default=50, help="Maximum scheduler iterations (default: 50)")
-    ask_parser.add_argument("--keep", action="store_true", help="Keep project database after completion")
-    ask_parser.add_argument("--name", default=None, help="Project name (auto-generated if not specified)")
-    ask_parser.add_argument("--provider", default="all", choices=["all", "web_search"], help="Evidence provider (default: all)")
-    ask_parser.add_argument("--quick", action="store_true", help="Skip preplanning (clarification + conceptual analysis)")
-    ask_parser.add_argument("--trace", default="timeline", choices=["timeline", "flow", "claims", "all", "none"], help="Trace visualization mode")
+    ask_parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    ask_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=50,
+        help="Maximum scheduler iterations (default: 50)",
+    )
+    ask_parser.add_argument(
+        "--keep", action="store_true", help="Keep project database after completion"
+    )
+    ask_parser.add_argument(
+        "--name", default=None, help="Project name (auto-generated if not specified)"
+    )
+    ask_parser.add_argument(
+        "--provider",
+        default="all",
+        choices=["all", "web_search"],
+        help="Evidence provider (default: all)",
+    )
+    ask_parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip preplanning (clarification + conceptual analysis)",
+    )
+    ask_parser.add_argument(
+        "--trace",
+        default="timeline",
+        choices=["timeline", "flow", "claims", "all", "none"],
+        help="Trace visualization mode",
+    )
     ask_parser.add_argument("--output", default=None, help="Path to save HTML report")
-    ask_parser.add_argument("--verbose", action="store_true", help="Print progress messages")
+    ask_parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
 
     # Subcommand: run
     run_parser = sub.add_parser("run", help="Run an epistemic agent")
-    run_parser.add_argument("agent", help="Agent name (e.g. epistemic_clarify_question)")
-    run_parser.add_argument("kwargs", nargs="*", help="Key=value pairs for the agent (e.g. question='What is X?')")
-    run_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
-    run_parser.add_argument("--verbose", action="store_true", help="Print progress messages")
+    run_parser.add_argument(
+        "agent", help="Agent name (e.g. epistemic_clarify_question)"
+    )
+    run_parser.add_argument(
+        "kwargs",
+        nargs="*",
+        help="Key=value pairs for the agent (e.g. question='What is X?')",
+    )
+    run_parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    run_parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
 
     # Subcommand: agents
     sub.add_parser("agents", help="List registered agents and their output models")
 
     # Subcommand: preflight
-    pf_parser = sub.add_parser("preflight", help="Check LLM, SearXNG, and provider connectivity before a run")
-    pf_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
-    pf_parser.add_argument("--providers", default=None, help="Provider set: 'biomedical' or omit for none")
+    pf_parser = sub.add_parser(
+        "preflight", help="Check LLM, SearXNG, and provider connectivity before a run"
+    )
+    pf_parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    pf_parser.add_argument(
+        "--providers", default=None, help="Provider set: 'biomedical' or omit for none"
+    )
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
     # Subcommand: confidence
-    conf_parser = sub.add_parser("confidence", help="Compute post-hoc confidence for a completed epistemic run")
+    conf_parser = sub.add_parser(
+        "confidence", help="Compute post-hoc confidence for a completed epistemic run"
+    )
     conf_parser.add_argument("--db", required=True, help="Database name")
-    conf_parser.add_argument("--db-dir", default=None, help="Custom database directory (default: ~/.config/andamentum/databases/)")
-    conf_parser.add_argument("--objective", default=None, help="Objective ID (auto-detected if only one exists)")
-    conf_parser.add_argument("--verbose", action="store_true", help="Show per-claim detail")
+    conf_parser.add_argument(
+        "--db-dir",
+        default=None,
+        help="Custom database directory (default: ~/.config/andamentum/databases/)",
+    )
+    conf_parser.add_argument(
+        "--objective",
+        default=None,
+        help="Objective ID (auto-detected if only one exists)",
+    )
+    conf_parser.add_argument(
+        "--verbose", action="store_true", help="Show per-claim detail"
+    )
 
     return parser
 
@@ -78,7 +141,10 @@ def _parse_kwargs(raw: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for item in raw:
         if "=" not in item:
-            print(f"Error: invalid argument '{item}' — expected key=value format", file=sys.stderr)
+            print(
+                f"Error: invalid argument '{item}' — expected key=value format",
+                file=sys.stderr,
+            )
             sys.exit(1)
         key, _, value = item.partition("=")
         result[key] = value
@@ -104,6 +170,7 @@ async def _preflight(args: argparse.Namespace) -> None:
     providers = None
     if args.providers == "biomedical":
         from .providers import get_biomedical_providers
+
         providers = get_biomedical_providers()
 
     result = await preflight(model=model, providers=providers, verbose=args.verbose)
@@ -154,7 +221,9 @@ async def _confidence(args: argparse.Namespace) -> None:
     if posterior is not None:
         print()
         print(f"Posterior P(Y): {posterior.posterior:.4f}")
-        print(f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting")
+        print(
+            f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting"
+        )
         print(f"  {posterior.explanation}")
 
     if args.verbose:
@@ -167,7 +236,10 @@ async def _ask(args: argparse.Namespace) -> None:
     try:
         from .cli_handlers import handle_ask
     except ImportError:
-        print("Error: pydantic-ai and rich are required. Install with: pip install andamentum[llm]", file=sys.stderr)
+        print(
+            "Error: pydantic-ai and rich are required. Install with: pip install andamentum[llm]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     model = _resolve_model(args)
@@ -192,7 +264,10 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         from .runner import DefaultAgentRunner
     except ImportError:
-        print("Error: pydantic-ai is required. Install with: pip install andamentum[llm]", file=sys.stderr)
+        print(
+            "Error: pydantic-ai is required. Install with: pip install andamentum[llm]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     model = _resolve_model(args)

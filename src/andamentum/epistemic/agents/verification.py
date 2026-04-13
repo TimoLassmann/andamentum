@@ -116,13 +116,15 @@ These cannot both be true."
 
 Now assess the evidence weight for the given claim."""
 
-register_agent(AgentDefinition(
-    name="epistemic_assess_evidence",
-    prompt=ASSESS_EVIDENCE_PROMPT,
-    output_model=AssessEvidenceOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_assess_evidence",
+        prompt=ASSESS_EVIDENCE_PROMPT,
+        output_model=AssessEvidenceOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_identify_single_issue (narrow, per-evidence) ──────────────
@@ -160,13 +162,15 @@ For all non-blocking types: reversal_test is false.
 
 Now identify one issue (or set has_issue to false if none remain)."""
 
-register_agent(AgentDefinition(
-    name="epistemic_identify_single_issue",
-    prompt=IDENTIFY_SINGLE_ISSUE_PROMPT,
-    output_model=IdentifySingleIssueOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_identify_single_issue",
+        prompt=IDENTIFY_SINGLE_ISSUE_PROMPT,
+        output_model=IdentifySingleIssueOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_generate_counterquery ─────────────────────────────────────
@@ -205,13 +209,15 @@ You will be given a framing angle. Focus your query on that specific angle:
 
 Now generate an adversarial query for the given claim."""
 
-register_agent(AgentDefinition(
-    name="epistemic_generate_counterquery",
-    prompt=GENERATE_COUNTERQUERY_PROMPT,
-    output_model=GenerateCounterqueryOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_generate_counterquery",
+        prompt=GENERATE_COUNTERQUERY_PROMPT,
+        output_model=GenerateCounterqueryOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_check_pairwise_independence ───────────────────────────────
@@ -244,13 +250,15 @@ a flaw in one would NOT affect the other. Specifically:
 
 Now assess these two evidence items."""
 
-register_agent(AgentDefinition(
-    name="epistemic_check_pairwise_independence",
-    prompt=CHECK_PAIRWISE_INDEPENDENCE_PROMPT,
-    output_model=CheckPairwiseIndependenceOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_check_pairwise_independence",
+        prompt=CHECK_PAIRWISE_INDEPENDENCE_PROMPT,
+        output_model=CheckPairwiseIndependenceOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_deductive_validation ───────────────────────────────────────
@@ -497,13 +505,15 @@ The parallel inductive track handles evidence. You handle logic. A claim needs B
 
 Now validate the given claim using deductive reasoning."""
 
-register_agent(AgentDefinition(
-    name="epistemic_deductive_validation",
-    prompt=DEDUCTIVE_VALIDATION_PROMPT,
-    output_model=DeductiveValidationOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_deductive_validation",
+        prompt=DEDUCTIVE_VALIDATION_PROMPT,
+        output_model=DeductiveValidationOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_verify_computationally ─────────────────────────────────────
@@ -630,13 +640,15 @@ Provide:
 
 Now generate verification code for the given claim."""
 
-register_agent(AgentDefinition(
-    name="epistemic_verify_computationally",
-    prompt=VERIFY_COMPUTATIONALLY_PROMPT,
-    output_model=VerifyComputationallyOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_verify_computationally",
+        prompt=VERIFY_COMPUTATIONALLY_PROMPT,
+        output_model=VerifyComputationallyOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_analyze_argument ───────────────────────────────────────────
@@ -739,13 +751,15 @@ fallacies: ["appeal_to_popularity", "hasty_generalization"]
 
 Now analyze the given claim's argument structure."""
 
-register_agent(AgentDefinition(
-    name="epistemic_analyze_argument",
-    prompt=ANALYZE_ARGUMENT_PROMPT,
-    output_model=AnalyzeArgumentOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_analyze_argument",
+        prompt=ANALYZE_ARGUMENT_PROMPT,
+        output_model=AnalyzeArgumentOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_evaluate_counterargument ─────────────────────────────────
@@ -787,13 +801,15 @@ replication scores high on evidence_backed.
 theoretical, replication, alternative_explanation, ethical)
 """
 
-register_agent(AgentDefinition(
-    name="epistemic_evaluate_counterargument",
-    prompt=EVALUATE_COUNTERARGUMENT_PROMPT,
-    output_model=EvaluateCounterargumentOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_evaluate_counterargument",
+        prompt=EVALUATE_COUNTERARGUMENT_PROMPT,
+        output_model=EvaluateCounterargumentOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_classify_evidence_domain ─────────────────────────────────
@@ -836,13 +852,15 @@ Read the evidence content and its source metadata, then classify along each dime
 - predictive: Forecasts future outcomes based on current state
 """
 
-register_agent(AgentDefinition(
-    name="epistemic_classify_evidence_domain",
-    prompt=CLASSIFY_EVIDENCE_DOMAIN_PROMPT,
-    output_model=ClassifyEvidenceDomainOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_classify_evidence_domain",
+        prompt=CLASSIFY_EVIDENCE_DOMAIN_PROMPT,
+        output_model=ClassifyEvidenceDomainOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_assess_evidence_quality ──────────────────────────────────
@@ -885,13 +903,15 @@ Read the evidence content and source metadata, then assess quality along four di
 - 0.0: Outdated in a rapidly evolving field
 """
 
-register_agent(AgentDefinition(
-    name="epistemic_assess_evidence_quality",
-    prompt=ASSESS_EVIDENCE_QUALITY_PROMPT,
-    output_model=AssessEvidenceQualityOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_assess_evidence_quality",
+        prompt=ASSESS_EVIDENCE_QUALITY_PROMPT,
+        output_model=AssessEvidenceQualityOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_contrastive_evaluation ────────────────────────────────────
@@ -923,13 +943,15 @@ Given Claim A and Claim B, and their shared evidence base:
 
 Now compare the two claims."""
 
-register_agent(AgentDefinition(
-    name="epistemic_contrastive_evaluation",
-    prompt=CONTRASTIVE_EVALUATION_PROMPT,
-    output_model=ContrastiveEvaluationOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_contrastive_evaluation",
+        prompt=CONTRASTIVE_EVALUATION_PROMPT,
+        output_model=ContrastiveEvaluationOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_cross_claim_consistency ───────────────────────────────────
@@ -965,10 +987,12 @@ Given Claim A and Claim B (both from the same research objective):
 
 Now check these two claims for consistency."""
 
-register_agent(AgentDefinition(
-    name="epistemic_cross_claim_consistency",
-    prompt=CROSS_CLAIM_CONSISTENCY_PROMPT,
-    output_model=CrossClaimConsistencyOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_cross_claim_consistency",
+        prompt=CROSS_CLAIM_CONSISTENCY_PROMPT,
+        output_model=CrossClaimConsistencyOutput,
+        retries=3,
+        output_retries=5,
+    )
+)

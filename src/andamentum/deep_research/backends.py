@@ -53,7 +53,9 @@ class HttpxSearchBackend:
     ):
         self.searxng_url = searxng_url
         self._owns_client = http_client is None
-        self._http = http_client or httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+        self._http = http_client or httpx.AsyncClient(
+            timeout=30.0, follow_redirects=True
+        )
 
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
         """Search via SearXNG JSON API."""
@@ -61,7 +63,9 @@ class HttpxSearchBackend:
 
         breaker = get_searxng_breaker()
         if not breaker.allow_request():
-            logger.warning(f"Circuit breaker open, skipping search for '{query[:50]}...'")
+            logger.warning(
+                f"Circuit breaker open, skipping search for '{query[:50]}...'"
+            )
             return []
 
         try:
@@ -84,14 +88,16 @@ class HttpxSearchBackend:
             url = item.get("url", "")
             if not url:
                 continue
-            results.append(SearchResult(
-                link_id=i,
-                title=item.get("title", "No title").strip(),
-                url=url,
-                snippet=item.get("content", item.get("snippet", "")).strip(),
-                domain=urlparse(url).netloc or "unknown",
-                relevance_score=0.8,
-            ))
+            results.append(
+                SearchResult(
+                    link_id=i,
+                    title=item.get("title", "No title").strip(),
+                    url=url,
+                    snippet=item.get("content", item.get("snippet", "")).strip(),
+                    domain=urlparse(url).netloc or "unknown",
+                    relevance_score=0.8,
+                )
+            )
         return results
 
     async def fetch_page(self, url: str) -> FetchedPage:

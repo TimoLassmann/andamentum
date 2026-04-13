@@ -28,12 +28,11 @@ class Objective(EpistemicEntity):
     # Core fields
     description: str = Field(description="What are we trying to learn/produce")
     goal_context: Optional[str] = Field(
-        default=None,
-        description="Higher-level goal for alignment (goal grounding)"
+        default=None, description="Higher-level goal for alignment (goal grounding)"
     )
     artefact_specs: list[str] = Field(
         default_factory=list,
-        description="Expected deliverables (summary, report, etc.)"
+        description="Expected deliverables (summary, report, etc.)",
     )
 
     # Clarification results (populated by ClarifyQuestionOperation)
@@ -57,9 +56,15 @@ class Objective(EpistemicEntity):
     phase: str = Field(default="new", description="Current workflow phase")
 
     # State fields for pattern matching
-    claims_proposed: bool = Field(default=False, description="Whether claims have been proposed")
-    snapshot_id: Optional[str] = Field(default=None, description="ID of current snapshot")
-    artefact_id: Optional[str] = Field(default=None, description="ID of generated artefact")
+    claims_proposed: bool = Field(
+        default=False, description="Whether claims have been proposed"
+    )
+    snapshot_id: Optional[str] = Field(
+        default=None, description="ID of current snapshot"
+    )
+    artefact_id: Optional[str] = Field(
+        default=None, description="ID of generated artefact"
+    )
 
     # Buffered remaining concerns from uncertainty resolution.
     # Collected during the resolution round and batch-deduped before
@@ -71,7 +76,9 @@ class Objective(EpistemicEntity):
     )
 
     # Status (separate from phase - can pause/abandon at any phase)
-    status: str = Field(default="active", description="active, paused, completed, abandoned")
+    status: str = Field(
+        default="active", description="active, paused, completed, abandoned"
+    )
 
     @property
     def pending_concerns_count(self) -> int:
@@ -101,7 +108,9 @@ class Objective(EpistemicEntity):
         """Reconstruct from metadata (legacy support)."""
         return cls(
             entity_id=metadata.get("objective_id", ""),
-            objective_id=metadata.get("objective_id", ""),  # Self-referential for objectives
+            objective_id=metadata.get(
+                "objective_id", ""
+            ),  # Self-referential for objectives
             description=content or metadata.get("description", ""),
             goal_context=metadata.get("goal_context"),
             artefact_specs=metadata.get("artefact_specs", []),
@@ -113,6 +122,10 @@ class Objective(EpistemicEntity):
             snapshot_id=metadata.get("snapshot_id"),
             artefact_id=metadata.get("artefact_id"),
             status=metadata.get("status", "active"),
-            created_at=datetime.fromisoformat(metadata.get("created_at", datetime.now().isoformat())),
-            updated_at=datetime.fromisoformat(metadata.get("updated_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                metadata.get("created_at", datetime.now().isoformat())
+            ),
+            updated_at=datetime.fromisoformat(
+                metadata.get("updated_at", datetime.now().isoformat())
+            ),
         )

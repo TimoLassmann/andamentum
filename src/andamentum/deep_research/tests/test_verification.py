@@ -1,6 +1,5 @@
 """Tests for deep research source verification."""
 
-import pytest
 from ..verification import normalize_url, verify_sources
 
 
@@ -20,16 +19,24 @@ class TestURLNormalization:
         assert normalize_url("http://example.com/page") == "https://example.com/page"
 
     def test_normalize_whitespace(self):
-        assert normalize_url("  https://example.com/page  ") == "https://example.com/page"
+        assert (
+            normalize_url("  https://example.com/page  ") == "https://example.com/page"
+        )
 
     def test_normalize_query_params(self):
-        assert normalize_url("https://example.com/page?q=test") == "https://example.com/page?q=test"
+        assert (
+            normalize_url("https://example.com/page?q=test")
+            == "https://example.com/page?q=test"
+        )
 
     def test_normalize_empty(self):
         assert normalize_url("") == ""
 
     def test_normalize_complex_path(self):
-        assert normalize_url("HTTP://Example.COM/Path/To/Page/") == "https://example.com/path/to/page"
+        assert (
+            normalize_url("HTTP://Example.COM/Path/To/Page/")
+            == "https://example.com/path/to/page"
+        )
 
 
 class TestSourceVerification:
@@ -134,7 +141,9 @@ class TestSourceVerification:
         assert len(result["unverified"]) == 3
 
     def test_verification_result_structure(self):
-        result = verify_sources(["https://example.com/page1"], {"https://example.com/page1"}, set())
+        result = verify_sources(
+            ["https://example.com/page1"], {"https://example.com/page1"}, set()
+        )
         assert isinstance(result["total_cited"], int)
         assert isinstance(result["verified_count"], int)
         assert isinstance(result["verified"], list)

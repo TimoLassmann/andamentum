@@ -49,7 +49,8 @@ def get_connection(db_path: Optional[Path] = None):
     # Load sqlite-vec extension
     conn.enable_load_extension(True)
     try:
-        import sqlite_vec
+        import sqlite_vec  # type: ignore[import-not-found]
+
         sqlite_vec.load(conn)
     except Exception as e:
         print(f"Warning: Could not load sqlite-vec extension: {e}")

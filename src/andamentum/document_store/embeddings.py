@@ -11,6 +11,7 @@ from typing import List, Literal, Optional
 import httpx
 import numpy as np
 
+
 class EmbeddingService:
     """Ollama-compatible embedding service for RAG."""
 
@@ -71,13 +72,17 @@ class EmbeddingService:
         norm_product = np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8
         return float(dot_product / norm_product)
 
-    def mean_knn_distance(self, embedding: List[float], archive: List[List[float]], k: int = 10) -> float:
+    def mean_knn_distance(
+        self, embedding: List[float], archive: List[List[float]], k: int = 10
+    ) -> float:
         """Calculate mean distance to k nearest neighbors."""
         if not archive:
             return 1.0
 
         similarities = [self.cosine_similarity(embedding, vec) for vec in archive]
-        similarities_sorted = sorted(similarities, reverse=True)[: min(k, len(similarities))]
+        similarities_sorted = sorted(similarities, reverse=True)[
+            : min(k, len(similarities))
+        ]
         distances = [1 - sim for sim in similarities_sorted]
         return sum(distances) / len(distances) if distances else 1.0
 

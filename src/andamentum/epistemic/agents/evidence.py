@@ -1,6 +1,11 @@
 """Evidence agents — extract_evidence, extract_assertion, draft_claim."""
 
-from .output_models import ExtractEvidenceOutput, ExtractAssertionOutput, DraftClaimOutput, ScreenRelevanceOutput
+from .output_models import (
+    ExtractEvidenceOutput,
+    ExtractAssertionOutput,
+    DraftClaimOutput,
+    ScreenRelevanceOutput,
+)
 from . import AgentDefinition, register_agent
 
 # ── epistemic_extract_evidence ───────────────────────────────────────────
@@ -76,13 +81,15 @@ limitations:
 
 Now analyze the source_content provided and extract structured evidence."""
 
-register_agent(AgentDefinition(
-    name="epistemic_extract_evidence",
-    prompt=EXTRACT_EVIDENCE_PROMPT,
-    output_model=ExtractEvidenceOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_extract_evidence",
+        prompt=EXTRACT_EVIDENCE_PROMPT,
+        output_model=ExtractEvidenceOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_extract_assertion ─────────────────────────────────────────
@@ -127,13 +134,15 @@ BAD: "A double-blind study assessed the effects of the intervention on Z scores.
 
 Now extract one assertion from the given evidence."""
 
-register_agent(AgentDefinition(
-    name="epistemic_extract_assertion",
-    prompt=EXTRACT_ASSERTION_PROMPT,
-    output_model=ExtractAssertionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_extract_assertion",
+        prompt=EXTRACT_ASSERTION_PROMPT,
+        output_model=ExtractAssertionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_draft_claim ───────────────────────────────────────────────
@@ -185,13 +194,15 @@ BAD statement: "Several studies have assessed the intervention in controlled cli
 
 Now draft a claim from these assertions."""
 
-register_agent(AgentDefinition(
-    name="epistemic_draft_claim",
-    prompt=DRAFT_CLAIM_PROMPT,
-    output_model=DraftClaimOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_draft_claim",
+        prompt=DRAFT_CLAIM_PROMPT,
+        output_model=DraftClaimOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_screen_relevance ──────────────────────────────────────────
@@ -237,10 +248,12 @@ is clearly off-topic — where a knowledgeable researcher would immediately say 
 
 Now screen this evidence."""
 
-register_agent(AgentDefinition(
-    name="epistemic_screen_relevance",
-    prompt=SCREEN_RELEVANCE_PROMPT,
-    output_model=ScreenRelevanceOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_screen_relevance",
+        prompt=SCREEN_RELEVANCE_PROMPT,
+        output_model=ScreenRelevanceOutput,
+        retries=3,
+        output_retries=5,
+    )
+)

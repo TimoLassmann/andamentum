@@ -36,20 +36,42 @@ class TestSearchQuery:
 
 class TestSearchResult:
     def test_construction(self):
-        r = SearchResult(link_id=1, title="Page", url="https://example.com", snippet="text", domain="example.com")
+        r = SearchResult(
+            link_id=1,
+            title="Page",
+            url="https://example.com",
+            snippet="text",
+            domain="example.com",
+        )
         assert r.link_id == 1
         assert r.relevance_score == 0.0
 
     def test_score_bounds(self):
-        r = SearchResult(link_id=1, title="P", url="u", snippet="s", domain="d", relevance_score=0.5)
+        r = SearchResult(
+            link_id=1, title="P", url="u", snippet="s", domain="d", relevance_score=0.5
+        )
         assert r.relevance_score == 0.5
 
     def test_score_out_of_bounds(self):
         with pytest.raises(ValidationError):
-            SearchResult(link_id=1, title="P", url="u", snippet="s", domain="d", relevance_score=1.5)
+            SearchResult(
+                link_id=1,
+                title="P",
+                url="u",
+                snippet="s",
+                domain="d",
+                relevance_score=1.5,
+            )
 
         with pytest.raises(ValidationError):
-            SearchResult(link_id=1, title="P", url="u", snippet="s", domain="d", relevance_score=-0.1)
+            SearchResult(
+                link_id=1,
+                title="P",
+                url="u",
+                snippet="s",
+                domain="d",
+                relevance_score=-0.1,
+            )
 
 
 class TestSearchPlan:
@@ -77,7 +99,14 @@ class TestFetchedPage:
 
     def test_relevance_bounds(self):
         with pytest.raises(ValidationError):
-            FetchedPage(url="u", title="t", content="c", word_count=1, relevance_score=2.0, is_relevant=True)
+            FetchedPage(
+                url="u",
+                title="t",
+                content="c",
+                word_count=1,
+                relevance_score=2.0,
+                is_relevant=True,
+            )
 
 
 class TestFetchPlan:
@@ -109,7 +138,9 @@ class TestPageSummary:
 
     def test_relevance_bounds(self):
         with pytest.raises(ValidationError):
-            PageSummary(url="u", title="t", summary="s", key_points=["p"], relevance_score=1.5)
+            PageSummary(
+                url="u", title="t", summary="s", key_points=["p"], relevance_score=1.5
+            )
 
 
 class TestGapAnalysis:
@@ -132,12 +163,16 @@ class TestGapAnalysis:
 
 class TestEvidenceItem:
     def test_construction(self):
-        ei = EvidenceItem(finding="Result X", source_url="https://example.com", source_title="Paper")
+        ei = EvidenceItem(
+            finding="Result X", source_url="https://example.com", source_title="Paper"
+        )
         assert ei.confidence == "medium"  # default
 
     def test_confidence_values(self):
         for level in ("high", "medium", "low"):
-            ei = EvidenceItem(finding="f", source_url="u", source_title="t", confidence=level)
+            ei = EvidenceItem(
+                finding="f", source_url="u", source_title="t", confidence=level
+            )
             assert ei.confidence == level
 
 
@@ -181,7 +216,9 @@ class TestEvidenceReport:
             evidence_summary="Summary",
             key_findings=["finding 1", "finding 2"],
             sources=["https://example.com"],
-            evidence_items=[EvidenceItem(finding="f", source_url="u", source_title="t")],
+            evidence_items=[
+                EvidenceItem(finding="f", source_url="u", source_title="t")
+            ],
             total_searches_performed=3,
             total_pages_fetched=5,
             iterations_required=2,

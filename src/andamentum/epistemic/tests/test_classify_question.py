@@ -10,8 +10,13 @@ class TestQuestionTypeEnum:
 
     def test_values(self):
         expected = {
-            "verificatory", "explanatory", "exploratory",
-            "comparative", "predictive", "compositional", "normative",
+            "verificatory",
+            "explanatory",
+            "exploratory",
+            "comparative",
+            "predictive",
+            "compositional",
+            "normative",
         }
         assert {qt.value for qt in QuestionType} == expected
 
@@ -20,7 +25,7 @@ class TestQuestionTypeEnum:
         assert isinstance(QuestionType.VERIFICATORY, str)
 
 
-from ..entities.objective import Objective
+from ..entities.objective import Objective  # noqa: E402
 
 
 class TestObjectiveQuestionType:
@@ -64,8 +69,8 @@ class TestObjectiveQuestionType:
         assert restored.question_type is None
 
 
-from ..agents import get_agent
-from ..agents.output_models import ClassifyQuestionOutput
+from ..agents import get_agent  # noqa: E402
+from ..agents.output_models import ClassifyQuestionOutput  # noqa: E402
 
 
 class TestClassifyQuestionAgent:
@@ -92,8 +97,8 @@ class TestClassifyQuestionAgent:
         assert output.question_type == "verificatory"
 
 
-from types import SimpleNamespace
-from ..adapters import adapt_agent_output
+from types import SimpleNamespace  # noqa: E402
+from ..adapters import adapt_agent_output  # noqa: E402
 
 
 class TestClassifyQuestionAdapter:
@@ -123,10 +128,10 @@ class TestClassifyQuestionAdapter:
         assert result.question_type == "explanatory"
 
 
-from ..storage import InMemoryStorageBackend
-from ..repository import EpistemicRepository
-from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES
-from ..patterns import WorkItem
+from ..storage import InMemoryStorageBackend  # noqa: E402
+from ..repository import EpistemicRepository  # noqa: E402
+from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES  # noqa: E402
+from ..patterns import WorkItem  # noqa: E402
 
 
 class TestClassifyQuestionOperation:
@@ -144,12 +149,14 @@ class TestClassifyQuestionOperation:
             def __init__(self):
                 self.calls = []
                 self._agent_calls = []
+
             async def run(self, agent_name, **kwargs):
                 self.calls.append((agent_name, kwargs))
                 return SimpleNamespace(
                     question_type="explanatory",
                     reasoning="Asks how a mechanism works",
                 )
+
         return Runner()
 
     @pytest.mark.asyncio
@@ -246,7 +253,7 @@ class TestClassifyQuestionOperation:
         assert len(mock_runner.calls) == 0  # No agent call
 
 
-from ..patterns import PatternScheduler, WORK_PATTERNS, Pattern
+from ..patterns import PatternScheduler, WORK_PATTERNS  # noqa: E402
 
 
 class TestClassifyQuestionPattern:
@@ -261,7 +268,9 @@ class TestClassifyQuestionPattern:
 
     def test_pattern_does_not_match_already_classified(self):
         pattern = next(p for p in WORK_PATTERNS if p.operation == "classify_question")
-        obj = Objective(description="test", phase="clarified", question_type="verificatory")
+        obj = Objective(
+            description="test", phase="clarified", question_type="verificatory"
+        )
         assert not pattern.matches(obj)
 
     def test_pattern_does_not_match_new_phase(self):
@@ -270,8 +279,14 @@ class TestClassifyQuestionPattern:
         assert not pattern.matches(obj)
 
     def test_classify_before_conceptual_analysis(self):
-        classify_idx = next(i for i, p in enumerate(WORK_PATTERNS) if p.operation == "classify_question")
-        conceptual_idx = next(i for i, p in enumerate(WORK_PATTERNS) if p.operation == "conceptual_analysis")
+        classify_idx = next(
+            i for i, p in enumerate(WORK_PATTERNS) if p.operation == "classify_question"
+        )
+        conceptual_idx = next(
+            i
+            for i, p in enumerate(WORK_PATTERNS)
+            if p.operation == "conceptual_analysis"
+        )
         assert classify_idx < conceptual_idx
 
     @pytest.mark.asyncio

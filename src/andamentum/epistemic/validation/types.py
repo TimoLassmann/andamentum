@@ -70,13 +70,25 @@ class ValidationResult:
     def add_error(self, code: str, message: str, **details: Any) -> None:
         """Add an error (blocks operation)."""
         self.valid = False
-        self.errors.append(ValidationError(code=code, message=message, severity=ValidationSeverity.ERROR, details=details))
+        self.errors.append(
+            ValidationError(
+                code=code,
+                message=message,
+                severity=ValidationSeverity.ERROR,
+                details=details,
+            )
+        )
 
     def add_warning(self, code: str, message: str, **details: Any) -> None:
         """Add a warning (logged but doesn't block)."""
         self.valid = False  # Not fully valid, but can_proceed is still True
         self.warnings.append(
-            ValidationError(code=code, message=message, severity=ValidationSeverity.WARNING, details=details)
+            ValidationError(
+                code=code,
+                message=message,
+                severity=ValidationSeverity.WARNING,
+                details=details,
+            )
         )
 
     def merge(self, other: "ValidationResult") -> "ValidationResult":

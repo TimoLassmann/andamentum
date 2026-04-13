@@ -84,9 +84,15 @@ class StageGate:
     requires_deductive: bool
     requires_computational: bool
     blocks_on_uncertainties: bool
-    min_supporting_sources: int = 0  # Log-odds: independent clusters judged "supports" (0 = disabled)
-    adversarial_balance_threshold: float = 0.0  # 0.0 = disabled; claim must have balance >= this
-    custom_check: Optional[Callable[["Claim", "EpistemicRepository"], Awaitable[bool]]] = None
+    min_supporting_sources: int = (
+        0  # Log-odds: independent clusters judged "supports" (0 = disabled)
+    )
+    adversarial_balance_threshold: float = (
+        0.0  # 0.0 = disabled; claim must have balance >= this
+    )
+    custom_check: Optional[
+        Callable[["Claim", "EpistemicRepository"], Awaitable[bool]]
+    ] = None
 
     def describe(self) -> str:
         """Return human-readable description of gate requirements."""
@@ -137,7 +143,9 @@ class GateResult:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-async def check_independent_evidence_lines(claim: "Claim", repo: "EpistemicRepository") -> bool:
+async def check_independent_evidence_lines(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> bool:
     """Check that claim has independent evidence from different domains.
 
     ROBUST stage requires evidence from at least 2 different domains
@@ -275,7 +283,9 @@ def count_modifications_in_window(
         return 0
 
     cutoff = datetime.now() - timedelta(hours=hours)
-    return sum(1 for ts in modification_timestamps if datetime.fromisoformat(ts) > cutoff)
+    return sum(
+        1 for ts in modification_timestamps if datetime.fromisoformat(ts) > cutoff
+    )
 
 
 class DegeneracyCodes:
@@ -331,7 +341,9 @@ def check_degeneracy(claim: "Claim") -> list[str]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-async def quality_weighted_evidence_sum(claim: "Claim", repo: "EpistemicRepository") -> float:
+async def quality_weighted_evidence_sum(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> float:
     """Sum of quality_score for all scored evidence supporting this claim.
 
     Evidence without a quality_score is skipped (not counted toward the sum).
@@ -350,12 +362,17 @@ async def quality_weighted_evidence_sum(claim: "Claim", repo: "EpistemicReposito
             evidence = await repo.get("evidence", eid)
             if evidence.invalidated:
                 continue
-            if getattr(evidence, "cluster_status", "unclustered") in ("corroborative", "deferred"):
+            if getattr(evidence, "cluster_status", "unclustered") in (
+                "corroborative",
+                "deferred",
+            ):
                 continue
             if evidence.quality_score is not None:
                 total += evidence.quality_score
         except Exception as e:
-            logger.warning("quality_weighted_evidence_sum: failed to load evidence %s: %s", eid, e)
+            logger.warning(
+                "quality_weighted_evidence_sum: failed to load evidence %s: %s", eid, e
+            )
     return total
 
 
@@ -367,7 +384,9 @@ async def _any_evidence_judged(claim: "Claim", repo: "EpistemicRepository") -> b
             if getattr(evidence, "support_judgment", None) is not None:
                 return True
         except Exception as e:
-            logger.warning("_any_evidence_judged: failed to load evidence %s: %s", eid, e)
+            logger.warning(
+                "_any_evidence_judged: failed to load evidence %s: %s", eid, e
+            )
     return False
 
 
@@ -395,12 +414,17 @@ async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") 
             evidence = await repo.get("evidence", eid)
             if evidence.invalidated:
                 continue
-            if getattr(evidence, "cluster_status", "unclustered") in ("corroborative", "deferred"):
+            if getattr(evidence, "cluster_status", "unclustered") in (
+                "corroborative",
+                "deferred",
+            ):
                 continue
             if getattr(evidence, "support_judgment", None) == "supports":
                 count += 1
         except Exception as e:
-            logger.warning("count_supporting_sources: failed to load evidence %s: %s", eid, e)
+            logger.warning(
+                "count_supporting_sources: failed to load evidence %s: %s", eid, e
+            )
     return count
 
 
@@ -482,6 +506,7 @@ async def validate_promotion(
     if question_type:
         try:
             from .routing import get_routing_profile
+
             profile = get_routing_profile(question_type)
             stage_key = target_stage.value.lower()  # e.g., "supported", "provisional"
             overrides = profile.gate_thresholds.get(stage_key, {})
@@ -541,7 +566,9 @@ async def validate_promotion(
         pass
 
     # Adversarial balance threshold — use override if available
-    balance_threshold = float(overrides.get("min_adversarial_balance", gate.adversarial_balance_threshold))  # type: ignore[arg-type]
+    balance_threshold = float(  # type: ignore[arg-type]
+        overrides.get("min_adversarial_balance", gate.adversarial_balance_threshold)  # type: ignore[arg-type]
+    )
     if balance_threshold > 0:
         balance = claim.adversarial_balance
         if balance is not None and balance < balance_threshold:
@@ -552,13 +579,17 @@ async def validate_promotion(
     # Routing-specific requirements
     if overrides.get("requires_falsification_criteria"):
         if not claim.predictions_generated:
-            reasons.append("Falsification criteria required but no predictions generated")
+            reasons.append(
+                "Falsification criteria required but no predictions generated"
+            )
         elif not any(p.get("failure_criteria") for p in claim.predictions):
             reasons.append("Predictions exist but none have falsification criteria")
 
     if overrides.get("requires_fact_value_separation"):
         # For normative questions — advisory check until claim tagging is implemented (Phase 3)
-        warnings.append("Fact-value separation check: advisory — full implementation pending")
+        warnings.append(
+            "Fact-value separation check: advisory — full implementation pending"
+        )
 
     # Blocking uncertainties
     if gate.blocks_on_uncertainties:
@@ -652,10 +683,14 @@ async def validate_current_stage(
             if not evidence.invalidated:
                 valid_evidence_count += 1
         except Exception as e:
-            logger.warning("validate_current_stage: failed to load evidence %s: %s", eid, e)
+            logger.warning(
+                "validate_current_stage: failed to load evidence %s: %s", eid, e
+            )
 
     if valid_evidence_count < gate.min_evidence:
-        reasons.append(f"Need {gate.min_evidence} evidence, have {valid_evidence_count} (after invalidation)")
+        reasons.append(
+            f"Need {gate.min_evidence} evidence, have {valid_evidence_count} (after invalidation)"
+        )
 
     # Quality-weighted sum (already filters invalidated in quality_weighted_evidence_sum)
     if gate.min_quality_sum > 0:

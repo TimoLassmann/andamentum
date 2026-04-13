@@ -24,10 +24,21 @@ from .searxng import SearxngManager, check_health as check_searxng_health
 from .verification import verify_sources
 
 # Content extraction
-from .content_extractor import extract_html, extract_pdf, extract_content, ExtractionError
+from .content_extractor import (
+    extract_html,
+    extract_pdf,
+    extract_content,
+    ExtractionError,
+)
 
 # Novelty checking (submodule)
-from .novelty import check_novelty, NoveltyReport, NoveltyAssessment, SimilarWork, Relevance
+from .novelty import (
+    check_novelty,
+    NoveltyReport,
+    NoveltyAssessment,
+    SimilarWork,
+    Relevance,
+)
 
 # Agent definitions (Python-native)
 from .agents import AgentDefinition, AGENT_REGISTRY

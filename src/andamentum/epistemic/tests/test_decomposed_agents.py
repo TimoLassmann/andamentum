@@ -1,6 +1,5 @@
 """Tests for decomposed agent operations (Phase 3)."""
 
-import pytest
 from types import SimpleNamespace
 
 from ..agents import get_agent
@@ -26,7 +25,9 @@ class TestGenerateCounterqueryAgent:
         assert len(fields) == 2
 
     def test_adapter(self):
-        raw = SimpleNamespace(query="  failed replication test  ", framing="  replication_failures  ")
+        raw = SimpleNamespace(
+            query="  failed replication test  ", framing="  replication_failures  "
+        )
         result = adapt_agent_output("epistemic_generate_counterquery", raw)
         assert result.query == "failed replication test"
         assert result.framing == "replication_failures"
@@ -58,8 +59,8 @@ class TestCheckPairwiseIndependenceAgent:
 # Select providers (deterministic routing)
 # ──────────────────────────────────────────────────────────────────────────────
 
-from ..routing import select_providers
-from ..agents.output_models import FormulateQueryOutput
+from ..routing import select_providers  # noqa: E402
+from ..agents.output_models import FormulateQueryOutput  # noqa: E402
 
 
 class TestSelectProviders:
@@ -68,7 +69,9 @@ class TestSelectProviders:
         assert "web_search" in providers
 
     def test_biomedical_keywords(self):
-        providers = select_providers("verificatory", key_terms=["gene", "disease", "BRCA1"])
+        providers = select_providers(
+            "verificatory", key_terms=["gene", "disease", "BRCA1"]
+        )
         assert "pubmed" in providers
         assert "monarch" in providers
 
@@ -85,7 +88,9 @@ class TestSelectProviders:
         assert len(providers) == len(set(providers))
 
     def test_context_summary_used(self):
-        providers = select_providers("verificatory", context_summary="this is about clinical trials")
+        providers = select_providers(
+            "verificatory", context_summary="this is about clinical trials"
+        )
         assert "clinicaltrials" in providers
 
 
@@ -123,12 +128,16 @@ class TestIdentifyTestableAspectAgent:
         assert len(fields) == 2
 
     def test_adapter(self):
-        raw = SimpleNamespace(testable_dimension="test dim", observation_type="  QUANTITATIVE  ")
+        raw = SimpleNamespace(
+            testable_dimension="test dim", observation_type="  QUANTITATIVE  "
+        )
         result = adapt_agent_output("epistemic_identify_testable_aspect", raw)
         assert result.observation_type == "quantitative"
 
     def test_adapter_strips_and_lowercases(self):
-        raw = SimpleNamespace(testable_dimension="BP decrease", observation_type="  Binary  ")
+        raw = SimpleNamespace(
+            testable_dimension="BP decrease", observation_type="  Binary  "
+        )
         result = adapt_agent_output("epistemic_identify_testable_aspect", raw)
         assert result.observation_type == "binary"
         assert result.testable_dimension == "BP decrease"
@@ -190,8 +199,8 @@ class TestDefineFalsificationAgent:
 # Claim proposal decomposition: extract_assertion + cluster + draft_claim
 # ──────────────────────────────────────────────────────────────────────────────
 
-from ..similarity import group_by_similarity as cluster_by_similarity
-from ..agents.output_models import ExtractAssertionOutput, DraftClaimOutput
+from ..similarity import group_by_similarity as cluster_by_similarity  # noqa: E402
+from ..agents.output_models import ExtractAssertionOutput, DraftClaimOutput  # noqa: E402
 
 
 class TestEmbeddingsClustering:
@@ -261,12 +270,16 @@ class TestDraftClaimAgent:
         assert len(fields) == 3
 
     def test_adapter(self):
-        raw = SimpleNamespace(statement="test", scope="general", direction="  SUPPORTS  ")
+        raw = SimpleNamespace(
+            statement="test", scope="general", direction="  SUPPORTS  "
+        )
         result = adapt_agent_output("epistemic_draft_claim", raw)
         assert result.direction == "supports"
 
     def test_adapter_strips_whitespace(self):
-        raw = SimpleNamespace(statement="  claim  ", scope="  wide  ", direction="neutral")
+        raw = SimpleNamespace(
+            statement="  claim  ", scope="  wide  ", direction="neutral"
+        )
         result = adapt_agent_output("epistemic_draft_claim", raw)
         assert result.statement == "claim"
         assert result.scope == "wide"

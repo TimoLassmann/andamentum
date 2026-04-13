@@ -13,7 +13,6 @@ from .base import BaseOperation, OperationResult
 
 from ..entities import (
     Claim,
-    Evidence,
     Uncertainty,
     UncertaintyType,
 )
@@ -109,7 +108,8 @@ class ContrastiveEvaluationOperation(BaseOperation):
         # Find sibling claims at same stage, non-abandoned
         siblings = await self.repo.query("claim", objective_id=claim.objective_id)
         siblings = [
-            s for s in siblings
+            s
+            for s in siblings
             if s.entity_id != claim.entity_id
             and s.stage == claim.stage
             and not s.abandoned
@@ -130,7 +130,11 @@ class ContrastiveEvaluationOperation(BaseOperation):
                 except Exception:
                     pass
 
-            shared_evidence = "\n---\n".join(evidence_texts) if evidence_texts else "No shared evidence"
+            shared_evidence = (
+                "\n---\n".join(evidence_texts)
+                if evidence_texts
+                else "No shared evidence"
+            )
 
             result = await self.run_agent(
                 "epistemic_contrastive_evaluation",
@@ -215,7 +219,8 @@ class CrossClaimConsistencyOperation(BaseOperation):
         # Find sibling claims at same stage, non-abandoned
         siblings = await self.repo.query("claim", objective_id=claim.objective_id)
         siblings = [
-            s for s in siblings
+            s
+            for s in siblings
             if s.entity_id != claim.entity_id
             and s.stage == claim.stage
             and not s.abandoned

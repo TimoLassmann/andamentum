@@ -65,11 +65,19 @@ class MonarchProvider:
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
-                    name="MonarchProvider", status="fail", message=f"HTTP {response.status_code}", elapsed_ms=elapsed
+                    name="MonarchProvider",
+                    status="fail",
+                    message=f"HTTP {response.status_code}",
+                    elapsed_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="MonarchProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="MonarchProvider",
+                status="fail",
+                message=str(e),
+                elapsed_ms=elapsed,
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search Monarch for gene-disease associations.
@@ -152,7 +160,9 @@ class MonarchProvider:
                 gathered.append(
                     GatheredEvidence(
                         content="\n".join(content_parts),
-                        source_ref=f"https://monarchinitiative.org/{item_id}" if item_id else name,
+                        source_ref=f"https://monarchinitiative.org/{item_id}"
+                        if item_id
+                        else name,
                         source_type="monarch_initiative",
                         evidence_kind="gene_disease",
                         identifiers={"monarch_id": item_id} if item_id else {},
@@ -167,7 +177,9 @@ class MonarchProvider:
                             "entity_id": item_id,
                             "category": category,
                         },
-                        limitations=["Entity metadata only; see associations for evidence details"],
+                        limitations=[
+                            "Entity metadata only; see associations for evidence details"
+                        ],
                     )
                 )
 
@@ -177,7 +189,9 @@ class MonarchProvider:
             logger.debug(f"Monarch search failed: {e}")
             return []
 
-    async def _get_associations(self, client: Any, entity_id: str) -> list[GatheredEvidence]:
+    async def _get_associations(
+        self, client: Any, entity_id: str
+    ) -> list[GatheredEvidence]:
         """Get associations for a specific entity (gene or disease)."""
         try:
             response = await client.get(
@@ -222,7 +236,9 @@ class MonarchProvider:
                 ]
 
                 if evidence_types:
-                    content_parts.append(f"Evidence types: {', '.join(str(e) for e in evidence_types)}")
+                    content_parts.append(
+                        f"Evidence types: {', '.join(str(e) for e in evidence_types)}"
+                    )
                 if sources:
                     source_strs = [str(s) for s in sources[:5]]
                     content_parts.append(f"Sources: {', '.join(source_strs)}")
@@ -235,7 +251,14 @@ class MonarchProvider:
                         else f"monarch:{entity_id}",
                         source_type="monarch_initiative",
                         evidence_kind="gene_disease",
-                        identifiers={k: v for k, v in [("subject_id", subject_id), ("object_id", object_id)] if v},
+                        identifiers={
+                            k: v
+                            for k, v in [
+                                ("subject_id", subject_id),
+                                ("object_id", object_id),
+                            ]
+                            if v
+                        },
                         structured_data={
                             "subject_name": subject_name,
                             "object_name": object_name,
@@ -250,7 +273,9 @@ class MonarchProvider:
                             "predicate": predicate,
                             "evidence_types": evidence_types,
                         },
-                        limitations=["Curated database association; strength of evidence varies by source"],
+                        limitations=[
+                            "Curated database association; strength of evidence varies by source"
+                        ],
                     )
                 )
 
@@ -261,7 +286,9 @@ class MonarchProvider:
             return []
 
     @staticmethod
-    def _extract_entity_ids(search_results: list[GatheredEvidence], query: str) -> list[str]:
+    def _extract_entity_ids(
+        search_results: list[GatheredEvidence], query: str
+    ) -> list[str]:
         """Extract entity IDs from search results for association lookup."""
         ids: list[str] = []
         for result in search_results:

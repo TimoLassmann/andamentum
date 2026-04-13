@@ -1,8 +1,6 @@
 """Tests for epistemic entity classes."""
 
-import json
 import pytest
-from datetime import datetime
 
 from ..entities import (
     EpistemicEntity,
@@ -13,7 +11,6 @@ from ..entities import (
     ClaimStage,
     Uncertainty,
     UncertaintyType,
-    UncertaintyScope,
     BLOCKING_TYPES,
     Decision,
     Snapshot,
@@ -34,7 +31,9 @@ class TestEntityCreation:
         assert e.entity_type == "evidence"
 
     def test_objective_creation(self):
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Test question")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test question"
+        )
         assert o.phase == "new"
         assert o.status == "active"
 
@@ -77,8 +76,13 @@ class TestEntityCreation:
 class TestEntityClasses:
     def test_entity_registry(self):
         assert set(ENTITY_CLASSES.keys()) == {
-            "objective", "evidence", "claim", "uncertainty",
-            "decision", "snapshot", "artefact",
+            "objective",
+            "evidence",
+            "claim",
+            "uncertainty",
+            "decision",
+            "snapshot",
+            "artefact",
         }
 
     def test_all_classes_inherit_from_base(self):
@@ -185,7 +189,9 @@ class TestClaimMethods:
 
     def test_record_promotion(self):
         c = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS)
-        c.record_promotion(ClaimStage.HYPOTHESIS, ClaimStage.SUPPORTED, "Evidence found")
+        c.record_promotion(
+            ClaimStage.HYPOTHESIS, ClaimStage.SUPPORTED, "Evidence found"
+        )
         assert c.stage == ClaimStage.SUPPORTED
         assert len(c.promotion_history) == 1
         assert c.promotion_history[0]["from"] == "hypothesis"
@@ -211,7 +217,9 @@ class TestDecisionReverse:
         assert d.reversal_reason == "Changed mind"
 
     def test_irreversible(self):
-        d = Decision(objective_id="o", statement="Go", justification="Why", reversible=False)
+        d = Decision(
+            objective_id="o", statement="Go", justification="Why", reversible=False
+        )
         with pytest.raises(ValueError, match="irreversible"):
             d.reverse("Nope")
 

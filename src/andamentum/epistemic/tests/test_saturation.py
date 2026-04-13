@@ -38,7 +38,7 @@ def _make_runner(verdict: str = "needs_resolution"):
     else:
         weight = "weak"
 
-    from tests.conftest import FakeAgentRunner
+    from tests.conftest import FakeAgentRunner  # type: ignore[import-not-found]
 
     return FakeAgentRunner(
         overrides={
@@ -283,7 +283,9 @@ class TestSaturationCheck:
 class TestSaturationPatternFilter:
     def test_investigation_pattern_excludes_saturated(self):
         """Investigation patterns should have saturated=False filter."""
-        investigate_patterns = [p for p in WORK_PATTERNS if p.operation == "investigate_claim"]
+        investigate_patterns = [
+            p for p in WORK_PATTERNS if p.operation == "investigate_claim"
+        ]
         assert len(investigate_patterns) >= 1
         for p in investigate_patterns:
             assert p.filters.get("saturated") is False, (
@@ -292,7 +294,9 @@ class TestSaturationPatternFilter:
 
     def test_saturated_claim_does_not_match_investigation(self):
         """A saturated claim should not match investigation patterns."""
-        investigate_patterns = [p for p in WORK_PATTERNS if p.operation == "investigate_claim"]
+        investigate_patterns = [
+            p for p in WORK_PATTERNS if p.operation == "investigate_claim"
+        ]
         claim = Claim(
             statement="test",
             objective_id="obj-1",
@@ -311,7 +315,8 @@ class TestSaturationPatternFilter:
         needs_resolution_patterns = [
             p
             for p in WORK_PATTERNS
-            if p.operation == "investigate_claim" and p.filters.get("scrutiny_verdict") == "needs_resolution"
+            if p.operation == "investigate_claim"
+            and p.filters.get("scrutiny_verdict") == "needs_resolution"
         ]
         assert len(needs_resolution_patterns) >= 1
         claim = Claim(

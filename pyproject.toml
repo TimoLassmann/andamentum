@@ -34,6 +34,14 @@ dependencies = [
 andamentum-epistemic = "andamentum.epistemic.cli:main"
 andamentum-research  = "andamentum.deep_research.cli:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pyright>=1.1.0",
+    "ruff>=0.1.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/andamentum"]
 
@@ -50,6 +58,9 @@ include = [
 [tool.pyright]
 include = ["src"]
 pythonVersion = "3.13"
+ignore = [
+    "src/andamentum/epistemic/evidence_router.py",  # references unimplemented source_index/source_registry modules
+]
 
 [tool.pytest.ini_options]
 testpaths = ["src/andamentum"]

@@ -47,11 +47,13 @@ def render_timeline(trace: ReasoningTrace, console: Console) -> None:
 
     # Header
     console.print()
-    console.print(Panel(
-        "[bold]REASONING TIMELINE[/bold]",
-        border_style="blue",
-        padding=(0, 2),
-    ))
+    console.print(
+        Panel(
+            "[bold]REASONING TIMELINE[/bold]",
+            border_style="blue",
+            padding=(0, 2),
+        )
+    )
 
     # Group consecutive operations of same type
     grouped_steps = _group_consecutive_steps(trace.steps)
@@ -103,7 +105,9 @@ def _render_timeline_group(steps: List[TraceStep], console: Console) -> None:
 
     # Header line with timestamp and operation
     count_suffix = f" ({len(steps)})" if len(steps) > 1 else ""
-    status_icon = "[green]✓[/green]" if all(s.success for s in steps) else "[red]✗[/red]"
+    status_icon = (
+        "[green]✓[/green]" if all(s.success for s in steps) else "[red]✗[/red]"
+    )
 
     header = f"[dim]{timestamp}[/dim] │ [{color}]{op_name}{count_suffix}[/{color}] {status_icon}"
     console.print(header)
@@ -121,7 +125,9 @@ def _render_timeline_group(steps: List[TraceStep], console: Console) -> None:
 
         # Error if failed
         if not step.success and step.error:
-            console.print(f"         │     [red]Error: {rich_escape(str(step.error))}[/red]")
+            console.print(
+                f"         │     [red]Error: {rich_escape(str(step.error))}[/red]"
+            )
 
     console.print("         │")
 
@@ -141,17 +147,28 @@ def render_flow(trace: ReasoningTrace, console: Console) -> None:
 
     # Header
     console.print()
-    console.print(Panel(
-        "[bold]REASONING FLOW[/bold]",
-        border_style="blue",
-        padding=(0, 2),
-    ))
+    console.print(
+        Panel(
+            "[bold]REASONING FLOW[/bold]",
+            border_style="blue",
+            padding=(0, 2),
+        )
+    )
 
     # Group by operation type (preserving order)
     grouped = trace.get_grouped_steps()
 
     # Define the canonical pipeline order
-    pipeline_order = ["PLAN", "COLLECT", "EXTRACT", "PROPOSE", "SCRUTINISE", "PROMOTE", "FREEZE", "COMPILE"]
+    pipeline_order = [
+        "PLAN",
+        "COLLECT",
+        "EXTRACT",
+        "PROPOSE",
+        "SCRUTINISE",
+        "PROMOTE",
+        "FREEZE",
+        "COMPILE",
+    ]
 
     prev_count = 1
     for op_name in pipeline_order:
@@ -182,7 +199,9 @@ def render_flow(trace: ReasoningTrace, console: Console) -> None:
         # Render phase box(es)
         if count == 1:
             step = steps[0]
-            _render_flow_box(op_name, step.description, step.success, color, console, single=True)
+            _render_flow_box(
+                op_name, step.description, step.success, color, console, single=True
+            )
         else:
             # Multiple parallel operations
             _render_flow_boxes_parallel(op_name, steps, color, console)
@@ -195,7 +214,14 @@ def render_flow(trace: ReasoningTrace, console: Console) -> None:
     console.print()
 
 
-def _render_flow_box(op_name: str, description: str, success: bool, color: str, console: Console, single: bool = True) -> None:
+def _render_flow_box(
+    op_name: str,
+    description: str,
+    success: bool,
+    color: str,
+    console: Console,
+    single: bool = True,
+) -> None:
     """Render a single flow box."""
     status = "[green]✓[/green]" if success else "[red]✗[/red]"
     width = 30
@@ -205,10 +231,14 @@ def _render_flow_box(op_name: str, description: str, success: bool, color: str, 
         padding = " " * 14
         console.print(f"{padding}┌{'─' * width}┐")
         name_line = f" [{color}]{op_name}[/{color}] {status}"
-        console.print(f"{padding}│{name_line:^{width + 20}}│")  # Extra space for color codes
+        console.print(
+            f"{padding}│{name_line:^{width + 20}}│"
+        )  # Extra space for color codes
 
         # Truncate description if needed
-        desc_display = description[:width - 4] if len(description) > width - 4 else description
+        desc_display = (
+            description[: width - 4] if len(description) > width - 4 else description
+        )
         console.print(f"{padding}│  {desc_display:<{width - 4}}  │")
         console.print(f"{padding}└{'─' * width}┘")
     else:
@@ -218,7 +248,9 @@ def _render_flow_box(op_name: str, description: str, success: bool, color: str, 
         console.print(f"└{'─' * 20}┘")
 
 
-def _render_flow_boxes_parallel(op_name: str, steps: List[TraceStep], color: str, console: Console) -> None:
+def _render_flow_boxes_parallel(
+    op_name: str, steps: List[TraceStep], color: str, console: Console
+) -> None:
     """Render multiple parallel flow boxes side by side (simplified)."""
     # For simplicity, render as a list rather than true parallel boxes
     console.print("              ▼" + " " * 10 + "▼" + " " * 10 + "▼")
@@ -228,7 +260,9 @@ def _render_flow_boxes_parallel(op_name: str, steps: List[TraceStep], color: str
         prefix = f"[{color}]{op_name}[/{color}]"
 
         # Extract key info from description
-        short_desc = step.description[:40] if len(step.description) > 40 else step.description
+        short_desc = (
+            step.description[:40] if len(step.description) > 40 else step.description
+        )
 
         console.print(f"              {prefix} #{i + 1}: {short_desc} {status}")
 
@@ -252,11 +286,13 @@ def render_claims(trace: ReasoningTrace, console: Console) -> None:
 
     # Header
     console.print()
-    console.print(Panel(
-        "[bold]CLAIM LINEAGE[/bold]",
-        border_style="blue",
-        padding=(0, 2),
-    ))
+    console.print(
+        Panel(
+            "[bold]CLAIM LINEAGE[/bold]",
+            border_style="blue",
+            padding=(0, 2),
+        )
+    )
 
     for lineage in trace.claim_lineages:
         _render_claim_card(lineage, console)
@@ -278,19 +314,25 @@ def _render_claim_card(lineage: ClaimLineage, console: Console) -> None:
 
     # Header
     console.print()
-    header_table = Table(show_header=False, box=box.DOUBLE_EDGE, border_style="blue", width=80)
+    header_table = Table(
+        show_header=False, box=box.DOUBLE_EDGE, border_style="blue", width=80
+    )
     header_table.add_column("Content", width=78)
 
     # Claim statement
     header_table.add_row(f"[bold]CLAIM:[/bold] {lineage.statement}")
-    header_table.add_row(f"[bold]Stage:[/bold] [{stage_color}]{lineage.stage.upper()}[/{stage_color}]")
+    header_table.add_row(
+        f"[bold]Stage:[/bold] [{stage_color}]{lineage.stage.upper()}[/{stage_color}]"
+    )
     if lineage.scope:
         header_table.add_row(f"[bold]Scope:[/bold] [dim]{lineage.scope}[/dim]")
 
     console.print(header_table)
 
     # Two-column layout: Evidence | Uncertainties
-    content_table = Table(show_header=True, box=box.SIMPLE, border_style="dim", width=80)
+    content_table = Table(
+        show_header=True, box=box.SIMPLE, border_style="dim", width=80
+    )
     content_table.add_column("Supporting Evidence", width=38, style="green")
     content_table.add_column("Uncertainties", width=38, style="yellow")
 
@@ -305,7 +347,7 @@ def _render_claim_card(lineage: ClaimLineage, console: Console) -> None:
         evidence_lines.append(f"[{ev_type}] {ev_ref}{verify_tag}")
         preview = ev.get("extracted_content_preview", "")
         if preview:
-            evidence_lines.append(f"[dim]\"{preview}\"[/dim]")
+            evidence_lines.append(f'[dim]"{preview}"[/dim]')
         evidence_lines.append("")  # Spacing
 
     # Prepare uncertainty rows

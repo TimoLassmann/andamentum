@@ -11,18 +11,14 @@ from ..entities import (
     Objective,
     Uncertainty,
     Snapshot,
-    Artefact,
 )
 from ..entities.uncertainty import UncertaintyType
 from ..operations import (
-    BaseOperation,
     ExtractEvidenceOperation,
-    OperationResult,
     GatheredEvidence,
     OPERATION_CLASSES,
     create_operations,
     ProposeClaimsOperation,
-    ResolveUncertaintyOperation,
 )
 from ..patterns import WorkItem
 
@@ -61,16 +57,26 @@ class TestOperationRegistry:
 
 class TestPreplanningChain:
     async def test_clarify_question(self, repo, fake_runner):
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="What is spaced repetition?")
+        obj = Objective(
+            entity_id="obj-1",
+            objective_id="obj-1",
+            description="What is spaced repetition?",
+        )
         await repo.save(obj)
 
         from andamentum.epistemic.alignment import AlignmentResult
 
-        mock_validation = AsyncMock(return_value=AlignmentResult(aligned=True, issue="", suggestion=""))
+        mock_validation = AsyncMock(
+            return_value=AlignmentResult(aligned=True, issue="", suggestion="")
+        )
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="clarify_question")
-        with patch("andamentum.epistemic.alignment.validate_alignment", mock_validation):
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="clarify_question"
+        )
+        with patch(
+            "andamentum.epistemic.alignment.validate_alignment", mock_validation
+        ):
             result = await ops["clarify_question"].execute(work)
 
         assert result.success
@@ -87,7 +93,9 @@ class TestPreplanningChain:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="conceptual_analysis")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="conceptual_analysis"
+        )
         result = await ops["conceptual_analysis"].execute(work)
 
         assert result.success
@@ -104,7 +112,9 @@ class TestPreplanningChain:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="plan_task")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="plan_task"
+        )
         result = await ops["plan_task"].execute(work)
 
         assert result.success
@@ -114,76 +124,165 @@ class TestPreplanningChain:
 
 class TestEvidenceExtraction:
     async def test_extract_evidence(self, repo, fake_runner):
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Test Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-1",
+            objective_id="obj-1",
+            description="Test Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-1", objective_id="obj-1", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-1",
+            objective_id="obj-1",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
         gatherer = FakeEvidenceGatherer()
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-1", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-1", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
         assert result.success
         loaded = await repo.get_evidence("e-1")
         assert loaded.extracted is True
 
-    async def test_extract_multiple_creates_per_source_entities(self, repo, fake_runner):
+    async def test_extract_multiple_creates_per_source_entities(
+        self, repo, fake_runner
+    ):
         """Multiple GatheredEvidence items create individual Evidence entities."""
-        obj = Objective(entity_id="obj-m", objective_id="obj-m", description="Multi Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-m",
+            objective_id="obj-m",
+            description="Multi Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-m", objective_id="obj-m", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-m",
+            objective_id="obj-m",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
-        gatherer = FakeEvidenceGatherer(items=[
-            GatheredEvidence(content="Source A content", source_ref="https://a.com", source_type="web_search", quality_score=0.5),
-            GatheredEvidence(content="Source B content", source_ref="https://b.com", source_type="web_search", quality_score=0.6),
-            GatheredEvidence(content="Source C content", source_ref="https://c.com", source_type="openalex", quality_score=0.8),
-        ])
+        gatherer = FakeEvidenceGatherer(
+            items=[
+                GatheredEvidence(
+                    content="Source A content",
+                    source_ref="https://a.com",
+                    source_type="web_search",
+                    quality_score=0.5,
+                ),
+                GatheredEvidence(
+                    content="Source B content",
+                    source_ref="https://b.com",
+                    source_type="web_search",
+                    quality_score=0.6,
+                ),
+                GatheredEvidence(
+                    content="Source C content",
+                    source_ref="https://c.com",
+                    source_type="openalex",
+                    quality_score=0.8,
+                ),
+            ]
+        )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-m", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-m", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
         assert result.success
         assert len(result.created_entities) == 3
 
         # Verify all entities exist and are extracted
-        all_evidence = await repo.query("evidence", objective_id="obj-m", extracted=True)
+        all_evidence = await repo.query(
+            "evidence", objective_id="obj-m", extracted=True
+        )
         assert len(all_evidence) == 3
 
     async def test_new_entities_have_extracted_true(self, repo, fake_runner):
         """New Evidence entities from multi-source extraction must have extracted=True."""
-        obj = Objective(entity_id="obj-ext", objective_id="obj-ext", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-ext",
+            objective_id="obj-ext",
+            description="Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-ext", objective_id="obj-ext", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-ext",
+            objective_id="obj-ext",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
-        gatherer = FakeEvidenceGatherer(items=[
-            GatheredEvidence(content="First", source_ref="https://1.com", source_type="web_search"),
-            GatheredEvidence(content="Second", source_ref="https://2.com", source_type="web_search"),
-        ])
+        gatherer = FakeEvidenceGatherer(
+            items=[
+                GatheredEvidence(
+                    content="First",
+                    source_ref="https://1.com",
+                    source_type="web_search",
+                ),
+                GatheredEvidence(
+                    content="Second",
+                    source_ref="https://2.com",
+                    source_type="web_search",
+                ),
+            ]
+        )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-ext", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-ext", entity_type="evidence", operation="extract_evidence"
+        )
         await ops["extract_evidence"].execute(work)
 
-        all_evidence = await repo.query("evidence", objective_id="obj-ext", extracted=True)
+        all_evidence = await repo.query(
+            "evidence", objective_id="obj-ext", extracted=True
+        )
         assert len(all_evidence) == 2
         for ev in all_evidence:
-            assert ev.extracted is True, f"Evidence {ev.entity_id} should have extracted=True"
+            assert ev.extracted is True, (
+                f"Evidence {ev.entity_id} should have extracted=True"
+            )
 
     async def test_new_entities_inherit_objective_id(self, repo, fake_runner):
         """New Evidence entities must inherit objective_id from the original stub."""
-        obj = Objective(entity_id="obj-inh", objective_id="obj-inh", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-inh",
+            objective_id="obj-inh",
+            description="Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-inh", objective_id="obj-inh", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-inh",
+            objective_id="obj-inh",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
-        gatherer = FakeEvidenceGatherer(items=[
-            GatheredEvidence(content="A", source_ref="https://a.com", source_type="web_search"),
-            GatheredEvidence(content="B", source_ref="https://b.com", source_type="openalex"),
-        ])
+        gatherer = FakeEvidenceGatherer(
+            items=[
+                GatheredEvidence(
+                    content="A", source_ref="https://a.com", source_type="web_search"
+                ),
+                GatheredEvidence(
+                    content="B", source_ref="https://b.com", source_type="openalex"
+                ),
+            ]
+        )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-inh", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-inh", entity_type="evidence", operation="extract_evidence"
+        )
         await ops["extract_evidence"].execute(work)
 
         all_evidence = await repo.query("evidence", objective_id="obj-inh")
@@ -193,34 +292,64 @@ class TestEvidenceExtraction:
 
     async def test_quality_scores_per_entity(self, repo, fake_runner):
         """Each Evidence entity gets a quality score via agent assessment."""
-        obj = Objective(entity_id="obj-qs", objective_id="obj-qs", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-qs", objective_id="obj-qs", description="Q", phase="planned"
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-qs", objective_id="obj-qs", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-qs",
+            objective_id="obj-qs",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
-        gatherer = FakeEvidenceGatherer(items=[
-            GatheredEvidence(content="A", source_ref="https://a.com", source_type="web_search"),
-            GatheredEvidence(content="B", source_ref="https://b.com", source_type="openalex"),
-            GatheredEvidence(content="C", source_ref="https://c.com", source_type="web_search"),
-        ])
+        gatherer = FakeEvidenceGatherer(
+            items=[
+                GatheredEvidence(
+                    content="A", source_ref="https://a.com", source_type="web_search"
+                ),
+                GatheredEvidence(
+                    content="B", source_ref="https://b.com", source_type="openalex"
+                ),
+                GatheredEvidence(
+                    content="C", source_ref="https://c.com", source_type="web_search"
+                ),
+            ]
+        )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-qs", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-qs", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
         assert result.success
-        all_evidence = await repo.query("evidence", objective_id="obj-qs", extracted=True)
+        all_evidence = await repo.query(
+            "evidence", objective_id="obj-qs", extracted=True
+        )
         # All evidence scored by agent assessment (no OpenAlex scorer injected)
         for ev in all_evidence:
-            assert ev.quality_score is not None, f"Evidence {ev.entity_id} should have a quality score"
+            assert ev.quality_score is not None, (
+                f"Evidence {ev.entity_id} should have a quality score"
+            )
             assert ev.quality_metadata is not None
             assert ev.quality_metadata.get("source") == "agent"
 
     @pytest.mark.asyncio
-    async def test_structured_data_passed_to_experimental_context(self, repo, fake_runner):
+    async def test_structured_data_passed_to_experimental_context(
+        self, repo, fake_runner
+    ):
         """When GatheredEvidence has structured_data, it should populate Evidence.experimental_context."""
-        obj = Objective(entity_id="obj-sd", objective_id="obj-sd", description="Test objective")
+        obj = Objective(
+            entity_id="obj-sd", objective_id="obj-sd", description="Test objective"
+        )
         await repo.save(obj)
-        evidence = Evidence(entity_id="e-sd", objective_id="obj-sd", source_type="web_search", source_ref="http://example.com")
+        evidence = Evidence(
+            entity_id="e-sd",
+            objective_id="obj-sd",
+            source_type="web_search",
+            source_ref="http://example.com",
+        )
         await repo.save(evidence)
 
         gathered = GatheredEvidence(
@@ -246,9 +375,16 @@ class TestEvidenceExtraction:
     @pytest.mark.asyncio
     async def test_empty_structured_data_leaves_context_none(self, repo, fake_runner):
         """When structured_data is empty, experimental_context should stay None."""
-        obj = Objective(entity_id="obj-nosd", objective_id="obj-nosd", description="Test objective")
+        obj = Objective(
+            entity_id="obj-nosd", objective_id="obj-nosd", description="Test objective"
+        )
         await repo.save(obj)
-        evidence = Evidence(entity_id="e-nosd", objective_id="obj-nosd", source_type="web_search", source_ref="http://example.com")
+        evidence = Evidence(
+            entity_id="e-nosd",
+            objective_id="obj-nosd",
+            source_type="web_search",
+            source_ref="http://example.com",
+        )
         await repo.save(evidence)
 
         gathered = GatheredEvidence(
@@ -269,40 +405,68 @@ class TestAgentOnlyExtraction:
 
     async def test_agent_only_extraction_scores_evidence(self, repo, fake_runner):
         """When no evidence_gatherer is provided, agent extraction still scores quality."""
-        obj = Objective(entity_id="obj-ao", objective_id="obj-ao", description="Test Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-ao",
+            objective_id="obj-ao",
+            description="Test Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-ao", objective_id="obj-ao", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-ao",
+            objective_id="obj-ao",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
         # Create operations WITHOUT evidence_gatherer (model=None skips auto-creation)
         ops = create_operations(repo, fake_runner, evidence_gatherer=None)
-        work = WorkItem(entity_id="e-ao", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-ao", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
         assert result.success
         loaded = await repo.get_evidence("e-ao")
         assert loaded.extracted is True
-        assert loaded.quality_score is not None, "Agent-only extraction must score evidence"
+        assert loaded.quality_score is not None, (
+            "Agent-only extraction must score evidence"
+        )
         assert loaded.quality_metadata is not None
         assert loaded.quality_metadata.get("source") == "agent"
 
     async def test_default_minimum_when_agent_fails(self, repo):
         """When agent scoring fails (no runner), extracted evidence gets minimum default score."""
-        obj = Objective(entity_id="obj-df", objective_id="obj-df", description="Test Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-df",
+            objective_id="obj-df",
+            description="Test Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-df", objective_id="obj-df", source_type="web_search", extracted=False)
+        e = Evidence(
+            entity_id="e-df",
+            objective_id="obj-df",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
         # Create operations with NO runner and NO gatherer (testing mode)
         ops = create_operations(repo, agent_runner=None, evidence_gatherer=None)
-        work = WorkItem(entity_id="e-df", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-df", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
         assert result.success
         loaded = await repo.get_evidence("e-df")
         assert loaded.extracted is True
         # Placeholder content triggers default minimum scoring
-        assert loaded.quality_score is not None, "Extracted evidence must never have null quality_score"
+        assert loaded.quality_score is not None, (
+            "Extracted evidence must never have null quality_score"
+        )
         assert loaded.quality_score >= 0.05
         assert loaded.quality_metadata is not None
 
@@ -310,19 +474,32 @@ class TestAgentOnlyExtraction:
         """When gatherer throws, operation falls through to agent-based extraction."""
 
         class FailingGatherer:
-            async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
                 raise ConnectionError("SearXNG not running")
 
-        obj = Objective(entity_id="obj-gf", objective_id="obj-gf", description="Test Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-gf",
+            objective_id="obj-gf",
+            description="Test Q",
+            phase="planned",
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-gf", objective_id="obj-gf", source_type="all", extracted=False)
+        e = Evidence(
+            entity_id="e-gf", objective_id="obj-gf", source_type="all", extracted=False
+        )
         await repo.save(e)
 
         ops = create_operations(repo, fake_runner, evidence_gatherer=FailingGatherer())
-        work = WorkItem(entity_id="e-gf", entity_type="evidence", operation="extract_evidence")
+        work = WorkItem(
+            entity_id="e-gf", entity_type="evidence", operation="extract_evidence"
+        )
         result = await ops["extract_evidence"].execute(work)
 
-        assert result.success, f"Operation should succeed via agent fallback: {result.message}"
+        assert result.success, (
+            f"Operation should succeed via agent fallback: {result.message}"
+        )
         loaded = await repo.get_evidence("e-gf")
         assert loaded.extracted is True
         assert loaded.extracted_content, "Agent should have extracted content"
@@ -343,6 +520,7 @@ class TestAgentOnlyExtraction:
                     raise RuntimeError("LLM unavailable")
                 # Return a SimpleNamespace for extract_evidence
                 from types import SimpleNamespace
+
                 return SimpleNamespace(
                     relevant_quotes=["Test content"],
                     limitations=[],
@@ -351,40 +529,60 @@ class TestAgentOnlyExtraction:
 
         runner = FailingRunner()
 
-        obj = Objective(entity_id="obj-fb", objective_id="obj-fb", description="Test Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-fb",
+            objective_id="obj-fb",
+            description="Test Q",
+            phase="planned",
+        )
         await repo.save(obj)
 
-        gatherer = FakeEvidenceGatherer([
-            GatheredEvidence(
-                content="Real evidence content",
-                source_ref="https://example.com",
-                source_type="web_search",
-                quality_score=0.6,
-            ),
-        ])
+        gatherer = FakeEvidenceGatherer(
+            [
+                GatheredEvidence(
+                    content="Real evidence content",
+                    source_ref="https://example.com",
+                    source_type="web_search",
+                    quality_score=0.6,
+                ),
+            ]
+        )
 
         ops = create_operations(repo, runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id="e-fb", entity_type="evidence", operation="extract_evidence")
-        e = Evidence(entity_id="e-fb", objective_id="obj-fb", source_type="web_search", extracted=False)
+        work = WorkItem(
+            entity_id="e-fb", entity_type="evidence", operation="extract_evidence"
+        )
+        e = Evidence(
+            entity_id="e-fb",
+            objective_id="obj-fb",
+            source_type="web_search",
+            extracted=False,
+        )
         await repo.save(e)
 
         result = await ops["extract_evidence"].execute(work)
         assert result.success
         loaded = await repo.get_evidence("e-fb")
-        assert loaded.quality_score is not None, "Gatherer fallback must set quality_score"
+        assert loaded.quality_score is not None, (
+            "Gatherer fallback must set quality_score"
+        )
         assert loaded.quality_score >= 0.05
         assert loaded.quality_metadata.get("source") == "gatherer_fallback"
 
 
 class TestScrutiny:
     async def test_scrutiny_pass(self, repo, fake_runner):
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
+        )
         await repo.save(obj)
         c = Claim(entity_id="c-1", objective_id="obj-1", statement="X causes Y")
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="c-1", entity_type="claim", operation="scrutinise_claim")
+        work = WorkItem(
+            entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
+        )
         result = await ops["scrutinise_claim"].execute(work)
 
         assert result.success
@@ -402,7 +600,11 @@ class TestScrutiny:
         fake_runner._overrides["epistemic_identify_issues"] = {
             "claim_id": "c-1",
             "issues": [
-                {"description": "Poorly scoped", "issue_type": "scope_difference", "reversal_test": False},
+                {
+                    "description": "Poorly scoped",
+                    "issue_type": "scope_difference",
+                    "reversal_test": False,
+                },
             ],
         }
         # Also override legacy agent for backward compat testing
@@ -414,13 +616,19 @@ class TestScrutiny:
             "evidence_weight": 0.2,
             "confidence_estimate": 0.3,
         }
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
+        )
         await repo.save(obj)
-        c = Claim(entity_id="c-1", objective_id="obj-1", statement="Everything is related")
+        c = Claim(
+            entity_id="c-1", objective_id="obj-1", statement="Everything is related"
+        )
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="c-1", entity_type="claim", operation="scrutinise_claim")
+        work = WorkItem(
+            entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
+        )
         result = await ops["scrutinise_claim"].execute(work)
 
         assert result.success
@@ -430,9 +638,13 @@ class TestScrutiny:
 
 class TestPromotion:
     async def test_promote_hypothesis_to_supported(self, repo, fake_runner):
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
+        )
         await repo.save(obj)
-        e = Evidence(entity_id="e-1", objective_id="obj-1", quality_score=0.5, extracted=True)
+        e = Evidence(
+            entity_id="e-1", objective_id="obj-1", quality_score=0.5, extracted=True
+        )
         await repo.save(e)
         c = Claim(
             entity_id="c-1",
@@ -466,11 +678,17 @@ class TestProposeClaims:
         )
         await repo.save(obj)
 
-        mock_validation = AsyncMock(return_value=AlignmentResult(aligned=True, issue="", suggestion=""))
+        mock_validation = AsyncMock(
+            return_value=AlignmentResult(aligned=True, issue="", suggestion="")
+        )
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="propose_claims")
-        with patch("andamentum.epistemic.alignment.validate_alignment", mock_validation):
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="propose_claims"
+        )
+        with patch(
+            "andamentum.epistemic.alignment.validate_alignment", mock_validation
+        ):
             result = await ops["propose_claims"].execute(work)
 
         assert result.success
@@ -499,7 +717,9 @@ class TestFreezeSnapshot:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+        )
         result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -536,7 +756,9 @@ class TestFreezeSnapshot:
         await repo.save(s)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+        )
         result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -566,7 +788,9 @@ class TestFreezeSnapshot:
         await repo.save(a)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+        )
         result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -595,12 +819,14 @@ class TestCaveatDedup:
         dup_emb_3 = [0.96, 0.15, 0.0]  # cosine ≈ 0.988 to dup_emb
         distinct_emb = [0.0, 0.0, 1.0]  # cosine = 0.0 to dup_emb
 
-        for i, (eid, desc) in enumerate([
-            ("u-dup1", "Evidence is about radiologists not comp bio"),
-            ("u-dup2", "Source focuses on radiology not computational biology"),
-            ("u-dup3", "Studies examined radiologists not bioinformatics"),
-            ("u-distinct", "Sample sizes are too small"),
-        ]):
+        for i, (eid, desc) in enumerate(
+            [
+                ("u-dup1", "Evidence is about radiologists not comp bio"),
+                ("u-dup2", "Source focuses on radiology not computational biology"),
+                ("u-dup3", "Studies examined radiologists not bioinformatics"),
+                ("u-distinct", "Sample sizes are too small"),
+            ]
+        ):
             u = Uncertainty(
                 entity_id=eid,
                 objective_id="obj-1",
@@ -622,8 +848,12 @@ class TestCaveatDedup:
         async def fake_embed(texts, **kwargs):
             return [emb_map.get(t, [0.5, 0.5, 0.0]) for t in texts]
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
+        ):
+            work = WorkItem(
+                entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+            )
             result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -662,7 +892,9 @@ class TestCaveatDedup:
         await repo.save(u)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+        )
         result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -692,7 +924,9 @@ class TestCaveatDedup:
             await repo.save(u)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
+        )
         result = await ops["freeze_snapshot"].execute(work)
 
         assert result.success
@@ -703,13 +937,20 @@ class TestCaveatDedup:
 
 class TestSynthesizeReport:
     async def test_synthesize_report(self, repo, fake_runner):
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="claims_done")
+        obj = Objective(
+            entity_id="obj-1",
+            objective_id="obj-1",
+            description="Q",
+            phase="claims_done",
+        )
         await repo.save(obj)
         snap = Snapshot(entity_id="snap-1", objective_id="obj-1", snapshot_type="final")
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="snap-1", entity_type="snapshot", operation="synthesize_report")
+        work = WorkItem(
+            entity_id="snap-1", entity_type="snapshot", operation="synthesize_report"
+        )
         result = await ops["synthesize_report"].execute(work)
 
         assert result.success
@@ -723,7 +964,9 @@ class TestResolveUncertaintySiblingGrouping:
 
     async def test_similar_siblings_resolved_together(self, repo, fake_runner):
         """When resolving an uncertainty, similar siblings (cosine > 0.8) get the same resolution."""
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Test objective")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test objective"
+        )
         await repo.save(obj)
 
         claim = Claim(
@@ -769,7 +1012,7 @@ class TestResolveUncertaintySiblingGrouping:
         # target=emb[0], similar=emb[1], different=emb[2]
         # We arrange embeddings so target·similar > 0.8 and target·different < 0.5
         target_emb = [1.0, 0.0, 0.0]
-        similar_emb = [0.9, 0.1, 0.0]   # cosine with target ≈ 0.994
+        similar_emb = [0.9, 0.1, 0.0]  # cosine with target ≈ 0.994
         different_emb = [0.0, 1.0, 0.0]  # cosine with target = 0.0
 
         # embed_texts is called with [target_desc] + [sibling_descs...]
@@ -789,8 +1032,14 @@ class TestResolveUncertaintySiblingGrouping:
                     result.append(different_emb)
             return result
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
-            work = WorkItem(entity_id="u-target", entity_type="uncertainty", operation="resolve_uncertainty")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
+        ):
+            work = WorkItem(
+                entity_id="u-target",
+                entity_type="uncertainty",
+                operation="resolve_uncertainty",
+            )
             result = await ops["resolve_uncertainty"].execute(work)
 
         assert result.success
@@ -808,9 +1057,13 @@ class TestResolveUncertaintySiblingGrouping:
         loaded_different = await repo.get("uncertainty", "u-different")
         assert loaded_different.resolution is None
 
-    async def test_sibling_grouping_fails_when_embedding_unavailable(self, repo, fake_runner):
+    async def test_sibling_grouping_fails_when_embedding_unavailable(
+        self, repo, fake_runner
+    ):
         """When embed_texts raises, the error propagates — no silent fallbacks."""
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Test objective")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test objective"
+        )
         await repo.save(obj)
 
         u_target = Uncertainty(
@@ -832,8 +1085,15 @@ class TestResolveUncertaintySiblingGrouping:
 
         ops = create_operations(repo, fake_runner)
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=RuntimeError("Ollama unavailable")):
-            work = WorkItem(entity_id="u-target", entity_type="uncertainty", operation="resolve_uncertainty")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts",
+            side_effect=RuntimeError("Ollama unavailable"),
+        ):
+            work = WorkItem(
+                entity_id="u-target",
+                entity_type="uncertainty",
+                operation="resolve_uncertainty",
+            )
             with pytest.raises(RuntimeError, match="Ollama unavailable"):
                 await ops["resolve_uncertainty"].execute(work)
 
@@ -847,7 +1107,9 @@ class TestResolveUncertaintyDedup:
 
     async def test_duplicate_concern_not_spawned(self, repo, fake_runner):
         """A remaining concern similar to an existing uncertainty is skipped."""
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Test objective")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test objective"
+        )
         await repo.save(obj)
 
         claim = Claim(
@@ -882,19 +1144,23 @@ class TestResolveUncertaintyDedup:
         await repo.save(u_new)
 
         # Configure fake_runner to return a concern similar to the existing uncertainty
-        concern_text = "Absence of long-term studies on caffeine"  # near-duplicate of existing
-        runner = fake_runner.__class__(overrides={
-            "epistemic_resolve_uncertainty": {
-                "can_resolve": True,
-                "resolution": "Resolved",
-                "remaining_concerns": [concern_text],
+        concern_text = (
+            "Absence of long-term studies on caffeine"  # near-duplicate of existing
+        )
+        runner = fake_runner.__class__(
+            overrides={
+                "epistemic_resolve_uncertainty": {
+                    "can_resolve": True,
+                    "resolution": "Resolved",
+                    "remaining_concerns": [concern_text],
+                }
             }
-        })
+        )
 
         ops = create_operations(repo, runner)
 
         existing_emb = [1.0, 0.0, 0.0]
-        concern_emb = [0.95, 0.05, 0.0]   # cosine ≈ 0.998 — near-duplicate
+        concern_emb = [0.95, 0.05, 0.0]  # cosine ≈ 0.998 — near-duplicate
 
         async def fake_embed_texts(texts, **kwargs):
             result = []
@@ -908,8 +1174,14 @@ class TestResolveUncertaintyDedup:
                     result.append([0.5, 0.5, 0.0])
             return result
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
-            work = WorkItem(entity_id="u-new", entity_type="uncertainty", operation="resolve_uncertainty")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
+        ):
+            work = WorkItem(
+                entity_id="u-new",
+                entity_type="uncertainty",
+                operation="resolve_uncertainty",
+            )
             result = await ops["resolve_uncertainty"].execute(work)
 
         assert result.success
@@ -923,7 +1195,9 @@ class TestResolveUncertaintyDedup:
 
     async def test_unique_concern_is_spawned(self, repo, fake_runner):
         """A remaining concern NOT similar to any existing uncertainty IS spawned."""
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Test objective")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test objective"
+        )
         await repo.save(obj)
 
         claim = Claim(
@@ -953,19 +1227,23 @@ class TestResolveUncertaintyDedup:
         )
         await repo.save(u_new)
 
-        concern_text = "Impact of caffeine on cognitive performance"  # unrelated to existing
-        runner = fake_runner.__class__(overrides={
-            "epistemic_resolve_uncertainty": {
-                "can_resolve": True,
-                "resolution": "Resolved",
-                "remaining_concerns": [concern_text],
+        concern_text = (
+            "Impact of caffeine on cognitive performance"  # unrelated to existing
+        )
+        runner = fake_runner.__class__(
+            overrides={
+                "epistemic_resolve_uncertainty": {
+                    "can_resolve": True,
+                    "resolution": "Resolved",
+                    "remaining_concerns": [concern_text],
+                }
             }
-        })
+        )
 
         ops = create_operations(repo, runner)
 
         existing_emb = [1.0, 0.0, 0.0]
-        concern_emb = [0.0, 0.0, 1.0]   # cosine = 0.0 to all others
+        concern_emb = [0.0, 0.0, 1.0]  # cosine = 0.0 to all others
 
         async def fake_embed_texts(texts, **kwargs):
             result = []
@@ -978,8 +1256,14 @@ class TestResolveUncertaintyDedup:
                     result.append([0.0, 1.0, 0.0])  # orthogonal to both
             return result
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
-            work = WorkItem(entity_id="u-new", entity_type="uncertainty", operation="resolve_uncertainty")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
+        ):
+            work = WorkItem(
+                entity_id="u-new",
+                entity_type="uncertainty",
+                operation="resolve_uncertainty",
+            )
             result = await ops["resolve_uncertainty"].execute(work)
 
         assert result.success
@@ -1000,7 +1284,6 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_batch_dedup_collapses_duplicates(self, repo, fake_runner):
         """Near-duplicate buffered concerns collapse to one uncertainty."""
-        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1008,10 +1291,30 @@ class TestDeduplicateConcerns:
             description="Test objective",
             phase="claims_done",
             pending_concerns=[
-                {"text": "Evidence is about radiologists not comp bio", "parent_id": "u-1", "affected_claim_ids": ["c-1"], "depth": 1},
-                {"text": "Source focuses on radiology not computational biology", "parent_id": "u-2", "affected_claim_ids": ["c-1"], "depth": 1},
-                {"text": "Studies examined radiologists not bioinformatics", "parent_id": "u-3", "affected_claim_ids": ["c-1"], "depth": 1},
-                {"text": "Sample sizes are too small for conclusions", "parent_id": "u-4", "affected_claim_ids": ["c-2"], "depth": 1},
+                {
+                    "text": "Evidence is about radiologists not comp bio",
+                    "parent_id": "u-1",
+                    "affected_claim_ids": ["c-1"],
+                    "depth": 1,
+                },
+                {
+                    "text": "Source focuses on radiology not computational biology",
+                    "parent_id": "u-2",
+                    "affected_claim_ids": ["c-1"],
+                    "depth": 1,
+                },
+                {
+                    "text": "Studies examined radiologists not bioinformatics",
+                    "parent_id": "u-3",
+                    "affected_claim_ids": ["c-1"],
+                    "depth": 1,
+                },
+                {
+                    "text": "Sample sizes are too small for conclusions",
+                    "parent_id": "u-4",
+                    "affected_claim_ids": ["c-2"],
+                    "depth": 1,
+                },
             ],
         )
         await repo.save(obj)
@@ -1034,8 +1337,14 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [emb_map.get(t, [0.5, 0.5, 0.0]) for t in texts]
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
+        ):
+            work = WorkItem(
+                entity_id="obj-1",
+                entity_type="objective",
+                operation="deduplicate_concerns",
+            )
             result = await ops["deduplicate_concerns"].execute(work)
 
         assert result.success
@@ -1051,7 +1360,6 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_filters_against_existing_uncertainties(self, repo, fake_runner):
         """Concerns that match existing uncertainties are dropped entirely."""
-        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1059,7 +1367,12 @@ class TestDeduplicateConcerns:
             description="Test objective",
             phase="claims_done",
             pending_concerns=[
-                {"text": "This duplicates an existing uncertainty", "parent_id": "u-1", "affected_claim_ids": ["c-1"], "depth": 1},
+                {
+                    "text": "This duplicates an existing uncertainty",
+                    "parent_id": "u-1",
+                    "affected_claim_ids": ["c-1"],
+                    "depth": 1,
+                },
             ],
         )
         await repo.save(obj)
@@ -1080,8 +1393,14 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [[1.0, 0.0, 0.0] for _ in texts]
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
+        ):
+            work = WorkItem(
+                entity_id="obj-1",
+                entity_type="objective",
+                operation="deduplicate_concerns",
+            )
             result = await ops["deduplicate_concerns"].execute(work)
 
         assert result.success
@@ -1094,7 +1413,6 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_empty_buffer_noop(self, repo, fake_runner):
         """Empty pending_concerns is a no-op."""
-        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1105,7 +1423,9 @@ class TestDeduplicateConcerns:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
+        work = WorkItem(
+            entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns"
+        )
         result = await ops["deduplicate_concerns"].execute(work)
 
         assert result.success
@@ -1114,7 +1434,6 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_depth_demotion(self, repo, fake_runner):
         """Concerns at depth >= MAX_UNCERTAINTY_DEPTH become non-blocking."""
-        from andamentum.epistemic.operations import DeduplicateConcernsOperation
         from andamentum.epistemic.operations.base import MAX_UNCERTAINTY_DEPTH
 
         obj = Objective(
@@ -1123,7 +1442,12 @@ class TestDeduplicateConcerns:
             description="Test objective",
             phase="claims_done",
             pending_concerns=[
-                {"text": "Deep concern", "parent_id": "u-1", "affected_claim_ids": ["c-1"], "depth": MAX_UNCERTAINTY_DEPTH},
+                {
+                    "text": "Deep concern",
+                    "parent_id": "u-1",
+                    "affected_claim_ids": ["c-1"],
+                    "depth": MAX_UNCERTAINTY_DEPTH,
+                },
             ],
         )
         await repo.save(obj)
@@ -1133,8 +1457,14 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [[float(i), 0.0, 0.0] for i, _ in enumerate(texts)]
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
+        ):
+            work = WorkItem(
+                entity_id="obj-1",
+                entity_type="objective",
+                operation="deduplicate_concerns",
+            )
             result = await ops["deduplicate_concerns"].execute(work)
 
         assert result.success
@@ -1186,18 +1516,28 @@ class TestEvidenceRelevanceFiltering:
             if agent_name == "epistemic_screen_relevance":
                 content = kwargs.get("evidence_content", "")
                 if "sensors" in content.lower():
-                    return SimpleNamespace(is_relevant=False, reason="About sensors, not biology careers")
-                return SimpleNamespace(is_relevant=True, reason="Directly about AI in biology")
+                    return SimpleNamespace(
+                        is_relevant=False, reason="About sensors, not biology careers"
+                    )
+                return SimpleNamespace(
+                    is_relevant=True, reason="Directly about AI in biology"
+                )
             return await original_run(agent_name, **kwargs)
 
         fake_runner.run = tracking_run
 
         op = ProposeClaimsOperation(repo, fake_runner)
-        work = WorkItem(entity_id=obj.entity_id, entity_type="objective", operation="propose_claims")
+        work = WorkItem(
+            entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
+        )
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
+        ) as mock_embed:
             mock_embed.return_value = [[0.5] * 10]
-            with patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster:
+            with patch(
+                "andamentum.epistemic.similarity.group_by_similarity"
+            ) as mock_cluster:
                 mock_cluster.return_value = [[0]]
                 result = await op.execute(work)
 
@@ -1240,11 +1580,17 @@ class TestEvidenceRelevanceFiltering:
         fake_runner.run = failing_screen
 
         op = ProposeClaimsOperation(repo, fake_runner)
-        work = WorkItem(entity_id=obj.entity_id, entity_type="objective", operation="propose_claims")
+        work = WorkItem(
+            entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
+        )
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
+        ) as mock_embed:
             mock_embed.return_value = [[0.5] * 10]
-            with patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster:
+            with patch(
+                "andamentum.epistemic.similarity.group_by_similarity"
+            ) as mock_cluster:
                 mock_cluster.return_value = [[0]]
                 result = await op.execute(work)
 

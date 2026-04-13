@@ -57,9 +57,7 @@ class GateValidators:
         )
 
     def check_skepticism_invariant(
-        self,
-        workitem: WorkItem,
-        completed_workitem_ids: Set[str]
+        self, workitem: WorkItem, completed_workitem_ids: Set[str]
     ) -> ValidationResult:
         """Check that skepticism requirements are met for promotion.
 
@@ -99,9 +97,7 @@ class GateValidators:
         return result
 
     def get_gate_requirements(
-        self,
-        from_stage: ClaimStage,
-        to_stage: ClaimStage
+        self, from_stage: ClaimStage, to_stage: ClaimStage
     ) -> Optional[str]:
         """Get human-readable gate requirements for a transition.
 

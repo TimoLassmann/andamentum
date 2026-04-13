@@ -15,7 +15,9 @@ from .primitives import ClaimStage
 logger = logging.getLogger(__name__)
 
 
-async def get_objective_stats(store: DocumentStore, objective_id: str) -> dict[str, Any]:
+async def get_objective_stats(
+    store: DocumentStore, objective_id: str
+) -> dict[str, Any]:
     """Get statistics for an objective using metadata queries.
 
     Args:
@@ -50,18 +52,30 @@ async def get_objective_stats(store: DocumentStore, objective_id: str) -> dict[s
     # Count claims by stage
     for stage in ClaimStage:
         claim_results = await store.find_by_metadata(
-            {"objective_id": objective_id, "epistemic_type": "claim", "claim_stage": stage.value},
+            {
+                "objective_id": objective_id,
+                "epistemic_type": "claim",
+                "claim_stage": stage.value,
+            },
             limit=1000,
         )
         stats["claims_by_stage"][stage.value] = len(claim_results)
 
     # Count uncertainties
     unresolved = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "uncertainty", "is_resolved": False},
+        {
+            "objective_id": objective_id,
+            "epistemic_type": "uncertainty",
+            "is_resolved": False,
+        },
         limit=1000,
     )
     resolved = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "uncertainty", "is_resolved": True},
+        {
+            "objective_id": objective_id,
+            "epistemic_type": "uncertainty",
+            "is_resolved": True,
+        },
         limit=1000,
     )
     stats["uncertainties_unresolved"] = len(unresolved)
@@ -81,7 +95,11 @@ async def get_objective_stats(store: DocumentStore, objective_id: str) -> dict[s
     # Count workitems
     for status in ["queued", "done", "failed"]:
         wi_results = await store.find_by_metadata(
-            {"objective_id": objective_id, "epistemic_type": "workitem", "workitem_status": status},
+            {
+                "objective_id": objective_id,
+                "epistemic_type": "workitem",
+                "workitem_status": status,
+            },
             limit=1000,
         )
         stats[f"workitems_{status}"] = len(wi_results)
@@ -102,7 +120,9 @@ async def get_objective_stats(store: DocumentStore, objective_id: str) -> dict[s
     return stats
 
 
-async def get_all_verification_evidence(store: DocumentStore, objective_id: str) -> dict[str, list[Any]]:
+async def get_all_verification_evidence(
+    store: DocumentStore, objective_id: str
+) -> dict[str, list[Any]]:
     """Get all verification evidence for an objective, grouped by type.
 
     Queries the repository for adversarial and convergent evidence records

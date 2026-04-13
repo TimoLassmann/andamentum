@@ -36,9 +36,13 @@ class BaseResult(BaseModel):
 class InitResult(BaseResult):
     """Result from handle_init."""
 
-    objective_id: Optional[str] = Field(default=None, description="Created objective ID")
+    objective_id: Optional[str] = Field(
+        default=None, description="Created objective ID"
+    )
     database_name: Optional[str] = Field(default=None, description="Database name")
-    description: Optional[str] = Field(default=None, description="Objective description")
+    description: Optional[str] = Field(
+        default=None, description="Objective description"
+    )
 
 
 class RunStats(BaseModel):
@@ -52,7 +56,9 @@ class RunStats(BaseModel):
     claims_by_stage: Dict[str, int] = Field(default_factory=dict)
     evidence_count: int = Field(default=0)
     uncertainty_count: int = Field(default=0)
-    synthesis: Optional[Dict[str, Any]] = Field(default=None, description="Synthesis results")
+    synthesis: Optional[Dict[str, Any]] = Field(
+        default=None, description="Synthesis results"
+    )
     reasoning_trace: Optional[ReasoningTrace] = Field(default=None)
 
 
@@ -84,7 +90,9 @@ class StatusResult(BaseResult):
     """Result from handle_status."""
 
     objective_id: Optional[str] = Field(default=None)
-    stats: Optional[ObjectiveStats] = Field(default=None, description="Objective statistics")
+    stats: Optional[ObjectiveStats] = Field(
+        default=None, description="Objective statistics"
+    )
 
 
 class DebateResult(BaseResult):
@@ -96,7 +104,9 @@ class DebateResult(BaseResult):
     contested: int = Field(default=0, description="Claims with CONTESTED verdict")
     challenged: int = Field(default=0, description="Claims with CHALLENGED verdict")
     refuted: int = Field(default=0, description="Claims with REFUTED verdict")
-    overall_balance: float = Field(default=0.0, description="Overall adversarial balance (0-1)")
+    overall_balance: float = Field(
+        default=0.0, description="Overall adversarial balance (0-1)"
+    )
 
 
 class ClaimsResult(BaseResult):
@@ -166,12 +176,20 @@ class AskResult(BaseResult):
 
     question: str = Field(default="", description="The original research question")
     project_name: str = Field(default="", description="Project/database name")
-    claims: List[Claim] = Field(default_factory=list, description="Research claims found")
-    evidence: List[Evidence] = Field(default_factory=list, description="Supporting evidence")
-    uncertainties: List[Uncertainty] = Field(default_factory=list, description="Open uncertainties")
+    claims: List[Claim] = Field(
+        default_factory=list, description="Research claims found"
+    )
+    evidence: List[Evidence] = Field(
+        default_factory=list, description="Supporting evidence"
+    )
+    uncertainties: List[Uncertainty] = Field(
+        default_factory=list, description="Open uncertainties"
+    )
     stats: Optional[RunStats] = Field(default=None, description="Execution statistics")
     kept: bool = Field(default=False, description="Whether project was kept")
-    artefact_content: Optional[str] = Field(default=None, description="Full artefact markdown — the canonical output")
+    artefact_content: Optional[str] = Field(
+        default=None, description="Full artefact markdown — the canonical output"
+    )
 
 
 class CleanupResult(BaseResult):
@@ -193,5 +211,9 @@ class ReportResult(BaseResult):
     database_name: str = Field(default="", description="Database name")
     output_path: str = Field(default="", description="Path to generated HTML file")
     claims_count: int = Field(default=0, description="Number of claims in report")
-    evidence_count: int = Field(default=0, description="Number of evidence items in report")
-    uncertainties_count: int = Field(default=0, description="Number of uncertainties in report")
+    evidence_count: int = Field(
+        default=0, description="Number of evidence items in report"
+    )
+    uncertainties_count: int = Field(
+        default=0, description="Number of uncertainties in report"
+    )

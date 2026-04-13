@@ -27,7 +27,9 @@ class OutputValidators:
 
     def __init__(self) -> None:
         """Initialize output validators registry."""
-        self._validators: Dict[WorkItemType, Callable[[Dict[str, Any]], ValidationResult]] = {
+        self._validators: Dict[
+            WorkItemType, Callable[[Dict[str, Any]], ValidationResult]
+        ] = {
             # Pre-planning validators
             WorkItemType.CLARIFY_QUESTION: self._validate_clarification_output,
             WorkItemType.CONCEPTUAL_ANALYSIS: self._validate_conceptual_analysis_output,
@@ -51,7 +53,9 @@ class OutputValidators:
             WorkItemType.DECIDE: self._validate_decision_output,
         }
 
-    def validate(self, operation_type: WorkItemType, output: Dict[str, Any]) -> ValidationResult:
+    def validate(
+        self, operation_type: WorkItemType, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate executor output against constitution rules.
 
         Args:
@@ -68,11 +72,16 @@ class OutputValidators:
         if validator:
             result = validator(output)
         else:
-            result.add_warning("UNKNOWN_OPERATION", f"No validator for operation type: {operation_type.value}")
+            result.add_warning(
+                "UNKNOWN_OPERATION",
+                f"No validator for operation type: {operation_type.value}",
+            )
 
         return result
 
-    def _validate_clarification_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_clarification_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate CLARIFY_QUESTION output.
 
         Format (from epistemic_clarify_question.md):
@@ -93,18 +102,23 @@ class OutputValidators:
         if not ambiguity_level:
             result.add_error("CLARIF_002", "ambiguity_level is required")
         elif ambiguity_level not in valid_levels:
-            result.add_error("CLARIF_003", f"ambiguity_level must be one of {valid_levels}, got: {ambiguity_level}")
+            result.add_error(
+                "CLARIF_003",
+                f"ambiguity_level must be one of {valid_levels}, got: {ambiguity_level}",
+            )
 
         # SOFT: High ambiguity should have reasoning
         if ambiguity_level == "high" and not output.get("reasoning"):
             result.add_warning(
                 "CLARIF_010",
-                "High ambiguity questions should include reasoning for interpretation choice"
+                "High ambiguity questions should include reasoning for interpretation choice",
             )
 
         return result
 
-    def _validate_conceptual_analysis_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_conceptual_analysis_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate CONCEPTUAL_ANALYSIS output.
 
         Format (from epistemic_conceptual_analysis.md):
@@ -126,20 +140,28 @@ class OutputValidators:
         if terms and definitions and len(terms) != len(definitions):
             result.add_error(
                 "CONCEPT_002",
-                f"terms and definitions must be parallel lists of same length (got {len(terms)} terms, {len(definitions)} definitions)"
+                f"terms and definitions must be parallel lists of same length (got {len(terms)} terms, {len(definitions)} definitions)",
             )
 
         # SOFT: Should have at least one term defined
         if not terms:
-            result.add_warning("CONCEPT_010", "No terms defined - consider identifying key terms for the investigation")
+            result.add_warning(
+                "CONCEPT_010",
+                "No terms defined - consider identifying key terms for the investigation",
+            )
 
         # SOFT: Should have assumptions surfaced
         if not output.get("assumptions"):
-            result.add_warning("CONCEPT_011", "No assumptions surfaced - most questions have embedded assumptions")
+            result.add_warning(
+                "CONCEPT_011",
+                "No assumptions surfaced - most questions have embedded assumptions",
+            )
 
         return result
 
-    def _validate_argument_analysis_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_argument_analysis_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate ANALYZE_ARGUMENT output.
 
         Format (from epistemic_analyze_argument.md):
@@ -159,25 +181,39 @@ class OutputValidators:
         validity = output.get("validity", "")
         valid_validity = {"valid", "invalid", "indeterminate"}
         if validity and validity not in valid_validity:
-            result.add_error("ARGMT_002", f"validity must be one of {valid_validity}, got: {validity}")
+            result.add_error(
+                "ARGMT_002",
+                f"validity must be one of {valid_validity}, got: {validity}",
+            )
 
         # HARD: soundness must be valid value
         soundness = output.get("soundness", "")
         valid_soundness = {"sound", "unsound", "questionable"}
         if soundness and soundness not in valid_soundness:
-            result.add_error("ARGMT_003", f"soundness must be one of {valid_soundness}, got: {soundness}")
+            result.add_error(
+                "ARGMT_003",
+                f"soundness must be one of {valid_soundness}, got: {soundness}",
+            )
 
         # SOFT: Should have at least one premise
         if not output.get("premises"):
-            result.add_warning("ARGMT_010", "No premises identified - most arguments have explicit or implicit premises")
+            result.add_warning(
+                "ARGMT_010",
+                "No premises identified - most arguments have explicit or implicit premises",
+            )
 
         # SOFT: Consistency check - sound requires valid
         if soundness == "sound" and validity == "invalid":
-            result.add_warning("ARGMT_011", "soundness='sound' but validity='invalid' - sound arguments must be valid")
+            result.add_warning(
+                "ARGMT_011",
+                "soundness='sound' but validity='invalid' - sound arguments must be valid",
+            )
 
         return result
 
-    def _validate_computational_verification_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_computational_verification_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate VERIFY_COMPUTATIONALLY output.
 
         Format (from epistemic_verify_computationally.md):
@@ -199,7 +235,9 @@ class OutputValidators:
 
         # HARD: Must have claim_id
         if not output.get("claim_id"):
-            result.add_error("COMPVER_001", "claim_id is required for computational verification")
+            result.add_error(
+                "COMPVER_001", "claim_id is required for computational verification"
+            )
 
         # HARD: Must have verification_code
         verification_code = output.get("verification_code", "")
@@ -208,11 +246,16 @@ class OutputValidators:
 
         # HARD: Code must be non-trivial (at least 50 chars to avoid placeholder code)
         if verification_code and len(verification_code.strip()) < 50:
-            result.add_error("COMPVER_003", "verification_code appears to be placeholder (too short)")
+            result.add_error(
+                "COMPVER_003", "verification_code appears to be placeholder (too short)"
+            )
 
         # SOFT: Should have test_description
         if not output.get("test_description"):
-            result.add_warning("COMPVER_010", "test_description is recommended for explaining what the test does")
+            result.add_warning(
+                "COMPVER_010",
+                "test_description is recommended for explaining what the test does",
+            )
 
         # SOFT: Code should have required template structure
         if verification_code:
@@ -220,23 +263,31 @@ class OutputValidators:
             if "def run_verification" not in verification_code:
                 result.add_warning(
                     "COMPVER_011",
-                    "verification_code should define run_verification() function per template"
+                    "verification_code should define run_verification() function per template",
                 )
 
             # Check for JSON output (required for structured results)
-            if "json.dumps" not in verification_code and "import json" not in verification_code:
+            if (
+                "json.dumps" not in verification_code
+                and "import json" not in verification_code
+            ):
                 result.add_warning(
                     "COMPVER_012",
-                    "verification_code should output JSON for structured results"
+                    "verification_code should output JSON for structured results",
                 )
 
             # Check for determinism hints (seeds for randomness)
-            has_random = "random" in verification_code.lower() or "np.random" in verification_code
-            has_seed = "seed(" in verification_code or "random_state" in verification_code
+            has_random = (
+                "random" in verification_code.lower()
+                or "np.random" in verification_code
+            )
+            has_seed = (
+                "seed(" in verification_code or "random_state" in verification_code
+            )
             if has_random and not has_seed:
                 result.add_warning(
                     "COMPVER_013",
-                    "Code uses randomness but may not set seed - could cause non-reproducible results"
+                    "Code uses randomness but may not set seed - could cause non-reproducible results",
                 )
 
         return result
@@ -258,33 +309,46 @@ class OutputValidators:
 
         # Check for NEW format (deterministic workflow arguments)
         # Use 'in' check to detect new format even if lists are empty
-        has_new_format = "evidence_strategy" in output or "verification_strategy" in output
+        has_new_format = (
+            "evidence_strategy" in output or "verification_strategy" in output
+        )
         evidence_strategy = output.get("evidence_strategy", [])
         verification_strategy = output.get("verification_strategy", [])
 
         if has_new_format:
             # NEW FORMAT: Validate evidence strategy
             if not evidence_strategy:
-                result.add_warning("PLAN_001", "No evidence strategy specified - will use defaults")
+                result.add_warning(
+                    "PLAN_001", "No evidence strategy specified - will use defaults"
+                )
 
             for i, task in enumerate(evidence_strategy):
                 if not task.get("provider"):
-                    result.add_warning("PLAN_011", f"Evidence task {i} missing provider field")
+                    result.add_warning(
+                        "PLAN_011", f"Evidence task {i} missing provider field"
+                    )
 
             # NEW FORMAT: Validate verification strategy
             if not verification_strategy:
-                result.add_warning("PLAN_012", "No verification strategy specified - will use defaults")
+                result.add_warning(
+                    "PLAN_012", "No verification strategy specified - will use defaults"
+                )
 
             for i, task in enumerate(verification_strategy):
                 if not task.get("method"):
-                    result.add_warning("PLAN_013", f"Verification task {i} missing method field")
+                    result.add_warning(
+                        "PLAN_013", f"Verification task {i} missing method field"
+                    )
 
             return result
 
         # LEGACY FORMAT: tasks list (deprecated but still supported)
         tasks = output.get("tasks", [])
         if not tasks:
-            result.add_error("PLAN_001", "Plan must specify evidence_strategy and verification_strategy (or legacy tasks)")
+            result.add_error(
+                "PLAN_001",
+                "Plan must specify evidence_strategy and verification_strategy (or legacy tasks)",
+            )
             return result
 
         # Validate each task has required fields
@@ -294,11 +358,17 @@ class OutputValidators:
                 result.add_warning("PLAN_011", f"Task {i} missing description field")
             task_type = task.get("task_type", "")
             if task_type and task_type not in valid_types:
-                result.add_warning("PLAN_012", f"Task {i} has unknown task_type: {task_type}", valid_types=list(valid_types))
+                result.add_warning(
+                    "PLAN_012",
+                    f"Task {i} has unknown task_type: {task_type}",
+                    valid_types=list(valid_types),
+                )
 
         return result
 
-    def _validate_evidence_collection_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_evidence_collection_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate collect_evidence executor output.
 
         Format (from epistemic_collect_evidence.md manifest):
@@ -316,7 +386,10 @@ class OutputValidators:
         # SOFT VALIDATION: No sources is a warning, not blocking error
         # The pipeline can continue and be honest about finding nothing
         if not sources:
-            result.add_warning("EVID_010", "Evidence collection found no sources - will continue with partial results")
+            result.add_warning(
+                "EVID_010",
+                "Evidence collection found no sources - will continue with partial results",
+            )
             return result
 
         # Validate each source has required fields
@@ -341,7 +414,10 @@ class OutputValidators:
         quotes = output.get("relevant_quotes", [])
         summary = output.get("summary", "")
         if not quotes and not summary:
-            result.add_warning("EVID_021", "Evidence extraction found no relevant content - continuing with empty evidence")
+            result.add_warning(
+                "EVID_021",
+                "Evidence extraction found no relevant content - continuing with empty evidence",
+            )
 
         return result
 
@@ -364,14 +440,21 @@ class OutputValidators:
             for i, claim in enumerate(claims_list):
                 stmt = claim.get("statement", "") if isinstance(claim, dict) else ""
                 if len(stmt.strip()) < 10:
-                    result.add_warning("CLAIM_003", f"Claim statement {i} seems too short", statement=stmt)
+                    result.add_warning(
+                        "CLAIM_003",
+                        f"Claim statement {i} seems too short",
+                        statement=stmt,
+                    )
             return result
 
         # Legacy format: parallel arrays
         # SOFT VALIDATION: No claims is a warning, not an error
         # The pipeline can still synthesize results based on evidence alone
         if not statements:
-            result.add_warning("CLAIM_001", "No claims proposed - synthesis will proceed with evidence only")
+            result.add_warning(
+                "CLAIM_001",
+                "No claims proposed - synthesis will proceed with evidence only",
+            )
             return result
 
         # Scopes should match statements (structural - ERROR)
@@ -381,7 +464,9 @@ class OutputValidators:
         # Claims should have substance (quality - WARNING)
         for i, stmt in enumerate(statements):
             if len(stmt.strip()) < 10:
-                result.add_warning("CLAIM_003", f"Claim statement {i} seems too short", statement=stmt)
+                result.add_warning(
+                    "CLAIM_003", f"Claim statement {i} seems too short", statement=stmt
+                )
 
         return result
 
@@ -397,14 +482,21 @@ class OutputValidators:
         recommendation = output.get("recommendation", "")
         valid_recs = {"promote", "hold", "demote"}
         if recommendation not in valid_recs:
-            result.add_error("SCRUT_002", f"recommendation must be one of {valid_recs}, got: {recommendation}")
+            result.add_error(
+                "SCRUT_002",
+                f"recommendation must be one of {valid_recs}, got: {recommendation}",
+            )
 
         # passes_scrutiny should be consistent with recommendation
         passes = output.get("passes_scrutiny", False)
         if passes and recommendation == "demote":
-            result.add_warning("SCRUT_003", "passes_scrutiny=True but recommendation is 'demote'")
+            result.add_warning(
+                "SCRUT_003", "passes_scrutiny=True but recommendation is 'demote'"
+            )
         if not passes and recommendation == "promote":
-            result.add_warning("SCRUT_004", "passes_scrutiny=False but recommendation is 'promote'")
+            result.add_warning(
+                "SCRUT_004", "passes_scrutiny=False but recommendation is 'promote'"
+            )
 
         return result
 
@@ -418,7 +510,9 @@ class OutputValidators:
         proposed_stage = output.get("proposed_stage", "")
         valid_stages = {s.value for s in ClaimStage}
         if proposed_stage not in valid_stages:
-            result.add_error("PROMO_002", f"proposed_stage must be one of {valid_stages}")
+            result.add_error(
+                "PROMO_002", f"proposed_stage must be one of {valid_stages}"
+            )
 
         if not output.get("justification"):
             result.add_error("PROMO_003", "Promotion must include justification")
@@ -439,7 +533,10 @@ class OutputValidators:
         # Check for include_indices (manifest field name, not llm_models.py name)
         include_indices = output.get("include_indices", [])
         if not include_indices:
-            result.add_error("SNAP_001", "Snapshot must include at least one claim (include_indices is empty)")
+            result.add_error(
+                "SNAP_001",
+                "Snapshot must include at least one claim (include_indices is empty)",
+            )
 
         return result
 
@@ -460,9 +557,14 @@ class OutputValidators:
 
         answer = output.get("answer", "")
         if not answer or len(answer) < 50:
-            result.add_error("SYNTH_002", f"Answer too short ({len(answer)} chars, minimum 50)")
+            result.add_error(
+                "SYNTH_002", f"Answer too short ({len(answer)} chars, minimum 50)"
+            )
         elif len(answer) < 200:
-            result.add_warning("SYNTH_003", f"Answer is short ({len(answer)} chars) - consider expanding")
+            result.add_warning(
+                "SYNTH_003",
+                f"Answer is short ({len(answer)} chars) - consider expanding",
+            )
 
         return result
 
@@ -490,19 +592,25 @@ class OutputValidators:
         # HARD: Must reference at least one claim (agent outputs claim_indices, transformed to claim_ids later)
         claim_indices = output.get("claim_indices", [])
         if not claim_indices:
-            result.add_error("DECIDE_003", "Decision must reference at least one claim (via claim_indices)")
+            result.add_error(
+                "DECIDE_003",
+                "Decision must reference at least one claim (via claim_indices)",
+            )
 
         # SOFT: Should have reversal conditions when reversible
         reversible = output.get("reversible", True)
         reversal_conditions = output.get("reversal_conditions", "")
         if reversible and not reversal_conditions:
             result.add_warning(
-                "DECIDE_010", "Decision marked reversible but no reversal_conditions provided - consider specifying when to reconsider"
+                "DECIDE_010",
+                "Decision marked reversible but no reversal_conditions provided - consider specifying when to reconsider",
             )
 
         return result
 
-    def _validate_world_knowledge_claims_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_world_knowledge_claims_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate WORLD_KNOWLEDGE_CLAIMS output.
 
         Expected fields (from epistemic_world_knowledge_claims.md):
@@ -523,13 +631,21 @@ class OutputValidators:
         scopes = output.get("scopes", [])
         reasoning = output.get("reasoning", [])
         if len(scopes) != len(statements):
-            result.add_warning("WK_002", f"Mismatched scopes count ({len(scopes)}) vs statements ({len(statements)})")
+            result.add_warning(
+                "WK_002",
+                f"Mismatched scopes count ({len(scopes)}) vs statements ({len(statements)})",
+            )
         if len(reasoning) != len(statements):
-            result.add_warning("WK_003", f"Mismatched reasoning count ({len(reasoning)}) vs statements ({len(statements)})")
+            result.add_warning(
+                "WK_003",
+                f"Mismatched reasoning count ({len(reasoning)}) vs statements ({len(statements)})",
+            )
 
         return result
 
-    def _validate_adversarial_search_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_adversarial_search_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate ADVERSARIAL_SEARCH output.
 
         Expected fields (from epistemic_adversarial_search.md):
@@ -546,11 +662,15 @@ class OutputValidators:
 
         balance = output.get("adversarial_balance", 0.5)
         if not 0 <= balance <= 1:
-            result.add_warning("ADV_002", f"adversarial_balance should be 0-1, got {balance}")
+            result.add_warning(
+                "ADV_002", f"adversarial_balance should be 0-1, got {balance}"
+            )
 
         return result
 
-    def _validate_deductive_validation_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_deductive_validation_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate VALIDATE_DEDUCTIVELY output.
 
         Expected fields (from epistemic_deductive_validation.md):
@@ -566,7 +686,9 @@ class OutputValidators:
 
         # HARD: Must have claim_id
         if not output.get("claim_id"):
-            result.add_error("DEDUCT_001", "claim_id is required for deductive validation")
+            result.add_error(
+                "DEDUCT_001", "claim_id is required for deductive validation"
+            )
 
         # HARD: deductive_soundness must be valid value
         soundness = output.get("deductive_soundness", "")
@@ -574,7 +696,10 @@ class OutputValidators:
         if not soundness:
             result.add_error("DEDUCT_002", "deductive_soundness is required")
         elif soundness not in valid_soundness:
-            result.add_error("DEDUCT_003", f"deductive_soundness must be one of {valid_soundness}, got: {soundness}")
+            result.add_error(
+                "DEDUCT_003",
+                f"deductive_soundness must be one of {valid_soundness}, got: {soundness}",
+            )
 
         # HARD: recommendation must be valid value
         recommendation = output.get("recommendation", "")
@@ -582,19 +707,30 @@ class OutputValidators:
         if not recommendation:
             result.add_error("DEDUCT_004", "recommendation is required")
         elif recommendation not in valid_recs:
-            result.add_error("DEDUCT_005", f"recommendation must be one of {valid_recs}, got: {recommendation}")
+            result.add_error(
+                "DEDUCT_005",
+                f"recommendation must be one of {valid_recs}, got: {recommendation}",
+            )
 
         # SOFT: confidence_estimate should be 0-1
         confidence = output.get("confidence_estimate", 0.5)
         if not 0 <= confidence <= 1:
-            result.add_warning("DEDUCT_010", f"confidence_estimate should be 0-1, got {confidence}")
+            result.add_warning(
+                "DEDUCT_010", f"confidence_estimate should be 0-1, got {confidence}"
+            )
 
         # SOFT: Consistency checks
         passes = output.get("passes_deductive_validation", False)
         if soundness == "unsound" and passes:
-            result.add_warning("DEDUCT_011", "deductive_soundness='unsound' but passes_deductive_validation=True")
+            result.add_warning(
+                "DEDUCT_011",
+                "deductive_soundness='unsound' but passes_deductive_validation=True",
+            )
         if soundness == "sound" and not passes:
-            result.add_warning("DEDUCT_012", "deductive_soundness='sound' but passes_deductive_validation=False")
+            result.add_warning(
+                "DEDUCT_012",
+                "deductive_soundness='sound' but passes_deductive_validation=False",
+            )
 
         return result
 
@@ -614,11 +750,15 @@ class OutputValidators:
 
         strength = output.get("convergence_strength", 0.0)
         if not 0 <= strength <= 1:
-            result.add_warning("CONV_002", f"convergence_strength should be 0-1, got {strength}")
+            result.add_warning(
+                "CONV_002", f"convergence_strength should be 0-1, got {strength}"
+            )
 
         return result
 
-    def _validate_prediction_generation_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_prediction_generation_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate GENERATE_PREDICTION output.
 
         Expected fields (from epistemic_generate_prediction.md):
@@ -634,13 +774,19 @@ class OutputValidators:
         # Each prediction should have statement, success_criteria, failure_criteria
         for i, pred in enumerate(predictions):
             if not pred.get("prediction_statement"):
-                result.add_warning("PRED_002", f"Prediction {i} missing prediction_statement")
+                result.add_warning(
+                    "PRED_002", f"Prediction {i} missing prediction_statement"
+                )
             if not pred.get("success_criteria"):
-                result.add_warning("PRED_003", f"Prediction {i} missing success_criteria")
+                result.add_warning(
+                    "PRED_003", f"Prediction {i} missing success_criteria"
+                )
 
         return result
 
-    def _validate_prediction_resolution_output(self, output: Dict[str, Any]) -> ValidationResult:
+    def _validate_prediction_resolution_output(
+        self, output: Dict[str, Any]
+    ) -> ValidationResult:
         """Validate RESOLVE_PREDICTION output.
 
         Expected fields (from epistemic_resolve_prediction.md):
@@ -651,11 +797,19 @@ class OutputValidators:
         result = ValidationResult(valid=True)
 
         status = output.get("resolution_status", "")
-        if status not in ("confirmed", "refuted", "partially_confirmed", "inconclusive", ""):
+        if status not in (
+            "confirmed",
+            "refuted",
+            "partially_confirmed",
+            "inconclusive",
+            "",
+        ):
             result.add_warning("RESOL_001", f"Unknown resolution_status: {status}")
 
         confidence = output.get("confidence", 0.5)
         if not 0 <= confidence <= 1:
-            result.add_warning("RESOL_002", f"confidence should be 0-1, got {confidence}")
+            result.add_warning(
+                "RESOL_002", f"confidence should be 0-1, got {confidence}"
+            )
 
         return result

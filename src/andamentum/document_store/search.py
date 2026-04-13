@@ -132,8 +132,14 @@ def _load_cluster_state(db_path: str) -> tuple[dict[int, "ClusterState"], "DHPCo
                 last_active_at=0.0,
             )
 
-        config_row = conn.execute("SELECT config FROM cluster_runs ORDER BY id DESC LIMIT 1").fetchone()
-        config = DHPConfig.from_dict(json.loads(config_row["config"])) if config_row else DHPConfig()
+        config_row = conn.execute(
+            "SELECT config FROM cluster_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        config = (
+            DHPConfig.from_dict(json.loads(config_row["config"]))
+            if config_row
+            else DHPConfig()
+        )
 
         _cluster_cache[db_path] = _ClusterCacheEntry(
             cluster_states=cluster_states, config=config, timestamp=now
@@ -174,7 +180,9 @@ def _get_production_search_config() -> SearchConfig:
     )
 
 
-async def search_fts5(db_path: str, query: str, limit: int = 10) -> list[tuple[str, float]]:
+async def search_fts5(
+    db_path: str, query: str, limit: int = 10
+) -> list[tuple[str, float]]:
     """Search all documents using FTS5.
 
     Args:
@@ -212,7 +220,9 @@ async def search_fts5(db_path: str, query: str, limit: int = 10) -> list[tuple[s
             return results
 
 
-def _search_doc_embeddings(db_path: str, query_embedding: list[float], limit: int = 20) -> list[tuple[str, float]]:
+def _search_doc_embeddings(
+    db_path: str, query_embedding: list[float], limit: int = 20
+) -> list[tuple[str, float]]:
     """Search document-level embeddings using vec0 cosine distance.
 
     Uses the sync get_connection() which loads sqlite-vec extension.
@@ -281,7 +291,10 @@ async def _run_fts5_signal(
             logger.debug(f"FTS5 search returned {len(fts5_results)} results")
             return (
                 "fts5",
-                [UnifiedSearchResult(doc_id=doc_id, score=score, tier="fts5") for doc_id, score in fts5_results],
+                [
+                    UnifiedSearchResult(doc_id=doc_id, score=score, tier="fts5")
+                    for doc_id, score in fts5_results
+                ],
             )
     except Exception as e:
         logger.debug(f"FTS5 search failed: {type(e).__name__}: {e}")
@@ -302,7 +315,9 @@ async def _run_chunk_search(
             features.append(f"rerank(top-{config.reranking_top_k})")
         if query_embedding:
             features.append("semantic")
-        logger.info(f"Chunk search config: {' + '.join(features) if features else 'keyword-only'}")
+        logger.info(
+            f"Chunk search config: {' + '.join(features) if features else 'keyword-only'}"
+        )
 
         start_time = time.perf_counter()
         rag_results = await asyncio.to_thread(
@@ -314,15 +329,21 @@ async def _run_chunk_search(
             config=config,
         )
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.info(f"Chunk search completed: {len(rag_results)} results in {elapsed_ms:.0f}ms")
+        logger.info(
+            f"Chunk search completed: {len(rag_results)} results in {elapsed_ms:.0f}ms"
+        )
 
         if rag_results:
             chunk_results: list[UnifiedSearchResult] = []
             for r in rag_results:
                 metadata = SearchResultMetadata(
                     match_type=r.match_type,
-                    entity_matches=r.metadata.get("matched_entities", []) if r.metadata else [],
-                    tag_matches=r.metadata.get("matched_tags", []) if r.metadata else [],
+                    entity_matches=r.metadata.get("matched_entities", [])
+                    if r.metadata
+                    else [],
+                    tag_matches=r.metadata.get("matched_tags", [])
+                    if r.metadata
+                    else [],
                 )
                 chunk_results.append(
                     UnifiedSearchResult(
@@ -351,7 +372,9 @@ async def _run_doc_embedding_search(
             _search_doc_embeddings, db_path, query_embedding, limit * 2
         )
         if doc_level_results:
-            logger.debug(f"Document-level semantic search returned {len(doc_level_results)} results")
+            logger.debug(
+                f"Document-level semantic search returned {len(doc_level_results)} results"
+            )
             return (
                 "doc_semantic",
                 [
@@ -380,7 +403,9 @@ async def _run_cluster_search(
             _search_via_clusters, db_path, query_embedding, limit * 2
         )
         if cluster_results:
-            logger.debug(f"Cluster-boosted search returned {len(cluster_results)} results")
+            logger.debug(
+                f"Cluster-boosted search returned {len(cluster_results)} results"
+            )
             return (
                 "cluster",
                 [
@@ -404,6 +429,7 @@ async def search_unified(
     limit: int = 10,
     query_embedding: Optional[list[float]] = None,
     doc_uuids: Optional[set[str]] = None,
+    embedding_model: Optional[str] = None,
 ) -> list[UnifiedSearchResult]:
     """Unified search across all documents with RRF fusion.
 
@@ -421,6 +447,7 @@ async def search_unified(
         doc_uuids: Optional set of document UUIDs to restrict results to.
             When provided, only results matching these doc_ids are returned.
             Used by the query planner for metadata pre-filtering.
+        embedding_model: Model name for embedding generation (required when query_embedding is None)
 
     Returns:
         List of UnifiedSearchResult objects sorted by score.
@@ -428,9 +455,11 @@ async def search_unified(
     all_results: list[tuple[str, list[UnifiedSearchResult]]] = []
 
     # Generate embedding first — gates signals 2-4
-    if query_embedding is None:
+    if query_embedding is None and embedding_model is not None:
         try:
-            query_embedding = await generate_embedding(query, text_type="query")
+            query_embedding = await generate_embedding(
+                query, model=embedding_model, text_type="query"
+            )
             logger.debug(f"Generated embedding with {len(query_embedding)} dimensions")
         except Exception as e:
             logger.warning(f"Embedding generation failed: {type(e).__name__}: {e}")
@@ -467,9 +496,13 @@ async def search_unified(
             # Skip results not in the filtered set
             if doc_uuids is not None and result.doc_id not in doc_uuids:
                 continue
-            rrf_scores[result.doc_id] = rrf_scores.get(result.doc_id, 0.0) + 1.0 / (rank + 60)
+            rrf_scores[result.doc_id] = rrf_scores.get(result.doc_id, 0.0) + 1.0 / (
+                rank + 60
+            )
             existing = doc_lookup.get(result.doc_id)
-            if existing is None or _tier_priority(result.tier) > _tier_priority(existing.tier):
+            if existing is None or _tier_priority(result.tier) > _tier_priority(
+                existing.tier
+            ):
                 doc_lookup[result.doc_id] = result
 
     # Sort by RRF score
@@ -502,7 +535,9 @@ def _tier_priority(tier: str) -> int:
     return priorities.get(tier, 0)
 
 
-def _search_via_clusters(db_path: str, query_embedding: list[float], limit: int = 20) -> list[tuple[str, float]]:
+def _search_via_clusters(
+    db_path: str, query_embedding: list[float], limit: int = 20
+) -> list[tuple[str, float]]:
     """Score documents via DHP temporal cluster relevance.
 
     Uses cached cluster state (5-minute TTL) to avoid per-query JSON parsing.
@@ -528,7 +563,9 @@ def _search_via_clusters(db_path: str, query_embedding: list[float], limit: int 
 
         current_time = timestamp_to_hours(time.time())
         query_emb = np.array(query_embedding, dtype=np.float64)
-        scored = score_clusters_for_query(query_emb, current_time, cluster_states, config)
+        scored = score_clusters_for_query(
+            query_emb, current_time, cluster_states, config
+        )
 
         if not scored:
             return []
@@ -615,7 +652,9 @@ async def search_multi_database(
     rrf_data: dict[tuple[str, str], MultiDatabaseSearchResult] = {}
     rrf_scores: dict[tuple[str, str], float] = {}
 
-    for rank, result in enumerate(sorted(all_results, key=lambda x: x.score, reverse=True)):
+    for rank, result in enumerate(
+        sorted(all_results, key=lambda x: x.score, reverse=True)
+    ):
         key = (result.doc_id, result.database_name)
         if key not in rrf_data:
             rrf_data[key] = result

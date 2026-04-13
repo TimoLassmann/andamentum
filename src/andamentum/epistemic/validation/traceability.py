@@ -29,7 +29,7 @@ class TraceabilityValidators:
         self,
         claim: Claim,
         available_evidence_ids: Set[str],
-        available_uncertainty_ids: Set[str]
+        available_uncertainty_ids: Set[str],
     ) -> ValidationResult:
         """Validate that a claim has proper traceability.
 
@@ -48,12 +48,20 @@ class TraceabilityValidators:
         # Check evidence links exist
         for eid in claim.evidence_ids:
             if eid not in available_evidence_ids:
-                result.add_error("TRACE_001", f"Claim references unknown evidence: {eid}", claim_id=claim.claim_id)
+                result.add_error(
+                    "TRACE_001",
+                    f"Claim references unknown evidence: {eid}",
+                    claim_id=claim.claim_id,
+                )
 
         # Check uncertainty links exist
         for uid in claim.uncertainty_ids:
             if uid not in available_uncertainty_ids:
-                result.add_error("TRACE_002", f"Claim references unknown uncertainty: {uid}", claim_id=claim.claim_id)
+                result.add_error(
+                    "TRACE_002",
+                    f"Claim references unknown uncertainty: {uid}",
+                    claim_id=claim.claim_id,
+                )
 
         # Higher stages require evidence
         if claim.stage != ClaimStage.HYPOTHESIS and not claim.evidence_ids:
@@ -66,10 +74,7 @@ class TraceabilityValidators:
         return result
 
     def validate_artefact_traceability(
-        self,
-        artefact: Artefact,
-        snapshot: Snapshot,
-        available_claim_ids: Set[str]
+        self, artefact: Artefact, snapshot: Snapshot, available_claim_ids: Set[str]
     ) -> ValidationResult:
         """Validate that an artefact is properly traceable to its snapshot.
 
@@ -133,12 +138,12 @@ class TraceabilityValidators:
             if para_key not in artefact_trace:
                 result.add_warning(
                     "TRACE_COMPLETE_001",
-                    f"Paragraph {i} has no trace entry - cannot trace back to claims"
+                    f"Paragraph {i} has no trace entry - cannot trace back to claims",
                 )
             elif not artefact_trace[para_key]:
                 result.add_warning(
                     "TRACE_COMPLETE_002",
-                    f"Paragraph {i} has empty trace entry - no claim references"
+                    f"Paragraph {i} has empty trace entry - no claim references",
                 )
 
         # Check all claim references are valid
@@ -147,7 +152,7 @@ class TraceabilityValidators:
                 if cid not in snapshot_claim_ids:
                     result.add_error(
                         "TRACE_COMPLETE_010",
-                        f"{para_key} references claim {cid} which is not in the snapshot"
+                        f"{para_key} references claim {cid} which is not in the snapshot",
                     )
 
         return result

@@ -6,6 +6,15 @@ import uuid
 
 import pytest
 
+try:
+    import sqlite_vec as _sv  # type: ignore[import-not-found]  # noqa: F401
+
+    _HAS_SQLITE_VEC = True
+except ImportError:
+    _HAS_SQLITE_VEC = False
+
+pytestmark = pytest.mark.skipif(not _HAS_SQLITE_VEC, reason="sqlite_vec not installed")
+
 
 @pytest.fixture
 async def db():

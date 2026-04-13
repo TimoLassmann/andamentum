@@ -63,7 +63,9 @@ async def run_research(
     from .verification import verify_sources
 
     # Auto-start SearXNG if using localhost and no backend provided
-    if backend is None and searxng_url.startswith(("http://127.0.0.1:", "http://localhost:")):
+    if backend is None and searxng_url.startswith(
+        ("http://127.0.0.1:", "http://localhost:")
+    ):
         try:
             from .searxng import SearxngManager
 

@@ -47,14 +47,27 @@ class TestCircuitBreakerStates:
         assert cb.state == CircuitState.OPEN
 
         # Simulate time passing beyond recovery timeout
-        with patch("andamentum.deep_research.circuit_breaker.time.monotonic", return_value=cb._last_failure_time + 11.0):
+        last_failure_time = cb._last_failure_time or 0.0
+        with patch(
+            "andamentum.deep_research.circuit_breaker.time.monotonic",
+            return_value=last_failure_time + 11.0,
+        ):
             assert cb.state == CircuitState.HALF_OPEN
 
     def test_half_open_allows_limited_requests(self):
-        cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout=10.0, half_open_max_calls=1)
+        cb = CircuitBreaker(
+            name="test",
+            failure_threshold=1,
+            recovery_timeout=10.0,
+            half_open_max_calls=1,
+        )
         cb.record_failure()
 
-        with patch("andamentum.deep_research.circuit_breaker.time.monotonic", return_value=cb._last_failure_time + 11.0):
+        last_failure_time = cb._last_failure_time or 0.0
+        with patch(
+            "andamentum.deep_research.circuit_breaker.time.monotonic",
+            return_value=last_failure_time + 11.0,
+        ):
             assert cb.allow_request() is True  # First call allowed
             assert cb.allow_request() is False  # Second call rejected
 
@@ -62,7 +75,11 @@ class TestCircuitBreakerStates:
         cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout=10.0)
         cb.record_failure()
 
-        with patch("andamentum.deep_research.circuit_breaker.time.monotonic", return_value=cb._last_failure_time + 11.0):
+        last_failure_time = cb._last_failure_time or 0.0
+        with patch(
+            "andamentum.deep_research.circuit_breaker.time.monotonic",
+            return_value=last_failure_time + 11.0,
+        ):
             _ = cb.state  # Trigger transition to HALF_OPEN
             cb.record_success()
             assert cb.state == CircuitState.CLOSED
@@ -72,7 +89,11 @@ class TestCircuitBreakerStates:
         cb = CircuitBreaker(name="test", failure_threshold=1, recovery_timeout=10.0)
         cb.record_failure()
 
-        with patch("andamentum.deep_research.circuit_breaker.time.monotonic", return_value=cb._last_failure_time + 11.0):
+        last_failure_time = cb._last_failure_time or 0.0
+        with patch(
+            "andamentum.deep_research.circuit_breaker.time.monotonic",
+            return_value=last_failure_time + 11.0,
+        ):
             _ = cb.state  # Trigger transition to HALF_OPEN
             cb.record_failure()
             assert cb._state == CircuitState.OPEN

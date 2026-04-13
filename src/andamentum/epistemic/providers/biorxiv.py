@@ -58,11 +58,19 @@ class BioRxivProvider:
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
-                    name="BioRxivProvider", status="fail", message=f"HTTP {response.status_code}", elapsed_ms=elapsed
+                    name="BioRxivProvider",
+                    status="fail",
+                    message=f"HTTP {response.status_code}",
+                    elapsed_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="BioRxivProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="BioRxivProvider",
+                status="fail",
+                message=str(e),
+                elapsed_ms=elapsed,
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search bioRxiv for preprints.
@@ -120,7 +128,9 @@ class BioRxivProvider:
                     title = article.get("title", "")
                     source = article.get("source", "")
                     authors_list = article.get("authors", [])
-                    authors = [a.get("name", "") for a in authors_list if isinstance(a, dict)]
+                    authors = [
+                        a.get("name", "") for a in authors_list if isinstance(a, dict)
+                    ]
                     pubdate = article.get("pubdate", "")
                     doi = ""
                     for aid in article.get("articleids", []):
@@ -156,7 +166,10 @@ class BioRxivProvider:
                                 "server": self.server,
                             },
                             quality_score=0.5,  # Preprint: not peer-reviewed
-                            quality_metadata={"peer_reviewed": False, "server": self.server},
+                            quality_metadata={
+                                "peer_reviewed": False,
+                                "server": self.server,
+                            },
                             limitations=["Preprint — not peer-reviewed"],
                         )
                     )
@@ -225,8 +238,13 @@ class BioRxivProvider:
                             "server": self.server,
                         },
                         quality_score=0.55 if published else 0.5,
-                        quality_metadata={"peer_reviewed": bool(published), "version": version},
-                        limitations=["Preprint — not peer-reviewed"] if not published else [],
+                        quality_metadata={
+                            "peer_reviewed": bool(published),
+                            "version": version,
+                        },
+                        limitations=["Preprint — not peer-reviewed"]
+                        if not published
+                        else [],
                     )
                 )
 

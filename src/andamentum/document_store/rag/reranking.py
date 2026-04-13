@@ -27,7 +27,9 @@ from dataclasses import dataclass
 class RerankingConfig:
     """Configuration for cross-encoder re-ranking."""
 
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2"  # Fast, accurate model for ranking
+    model_name: str = (
+        "cross-encoder/ms-marco-MiniLM-L-12-v2"  # Fast, accurate model for ranking
+    )
     batch_size: int = 32  # Batch size for scoring (adjust based on memory)
     max_length: int = 512  # Maximum sequence length (query + document)
     device: Optional[str] = None  # Device for inference (None = auto-detect)
@@ -52,7 +54,7 @@ def _get_model(config: RerankingConfig):
     # Lazy load model on first use
     if _model_instance is None or _current_model_name != config.model_name:
         try:
-            from sentence_transformers import CrossEncoder
+            from sentence_transformers import CrossEncoder  # type: ignore[import-not-found]
         except ImportError:
             raise ImportError(
                 "sentence-transformers is required for re-ranking. "
@@ -68,7 +70,9 @@ def _get_model(config: RerankingConfig):
     return _model_instance
 
 
-def score_pairs(query: str, documents: List[str], config: Optional[RerankingConfig] = None) -> List[float]:
+def score_pairs(
+    query: str, documents: List[str], config: Optional[RerankingConfig] = None
+) -> List[float]:
     """Score query-document pairs using cross-encoder.
 
     Args:
@@ -107,7 +111,10 @@ def score_pairs(query: str, documents: List[str], config: Optional[RerankingConf
 
 
 def rerank_results(
-    query: str, results: List, top_k: Optional[int] = None, config: Optional[RerankingConfig] = None
+    query: str,
+    results: List,
+    top_k: Optional[int] = None,
+    config: Optional[RerankingConfig] = None,
 ) -> List:
     """Re-rank search results using cross-encoder model.
 

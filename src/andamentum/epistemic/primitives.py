@@ -12,7 +12,6 @@ This module defines domain-specific models that are NOT entities:
 Architecture: Layer 1 (framework-agnostic, no model calls)
 """
 
-
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
@@ -21,13 +20,13 @@ import uuid
 
 
 # --- Entity re-exports (canonical definitions in entities/) ---
-from .entities.claim import ClaimStage, Claim
-from .entities.evidence import Evidence
-from .entities.uncertainty import Uncertainty, UncertaintyType, UncertaintyScope
-from .entities.decision import Decision
-from .entities.objective import Objective
-from .entities.snapshot import Snapshot
-from .entities.artefact import Artefact
+from .entities.claim import ClaimStage, Claim  # noqa: F401
+from .entities.evidence import Evidence  # noqa: F401
+from .entities.uncertainty import Uncertainty, UncertaintyType, UncertaintyScope  # noqa: F401
+from .entities.decision import Decision  # noqa: F401
+from .entities.objective import Objective  # noqa: F401
+from .entities.snapshot import Snapshot  # noqa: F401
+from .entities.artefact import Artefact  # noqa: F401
 
 
 # --- Enums ---
@@ -58,7 +57,9 @@ class WorkItemType(str, Enum):
     COLLECT_EVIDENCE = "collect_evidence"
     EXTRACT_EVIDENCE = "extract_evidence"
     PROPOSE_CLAIMS = "propose_claims"
-    WORLD_KNOWLEDGE_CLAIMS = "world_knowledge_claims"  # Generate claims from LLM world knowledge (fallback)
+    WORLD_KNOWLEDGE_CLAIMS = (
+        "world_knowledge_claims"  # Generate claims from LLM world knowledge (fallback)
+    )
     SCRUTINISE_CLAIM = "scrutinise_claim"
     ANALYZE_ARGUMENT = "analyze_argument"  # Formal argument structure analysis (separate from scrutiny)
     VERIFY_COMPUTATIONALLY = "verify_computationally"  # Test claims by running code
@@ -66,18 +67,26 @@ class WorkItemType(str, Enum):
     FREEZE_SNAPSHOT = "freeze_snapshot"
     SYNTHESIZE_REPORT = "synthesize_report"
     DECIDE = "decide"  # Record decisions based on actionable claims
-    DEMOTE_CLAIM = "demote_claim"  # Demote claim to lower stage when evidence contradicted
+    DEMOTE_CLAIM = (
+        "demote_claim"  # Demote claim to lower stage when evidence contradicted
+    )
     RESOLVE_UNCERTAINTY = "resolve_uncertainty"  # Mark uncertainty as resolved
     REVERSE_DECISION = "reverse_decision"  # Reverse decision when circumstances change
 
     # Independence verification methods
-    ADVERSARIAL_SEARCH = "adversarial_search"  # Seek disconfirming evidence and counterarguments
+    ADVERSARIAL_SEARCH = (
+        "adversarial_search"  # Seek disconfirming evidence and counterarguments
+    )
     ASSESS_CONVERGENCE = "assess_convergence"  # Assess cross-domain convergence
-    GENERATE_PREDICTION = "generate_prediction"  # Generate testable predictions from claims
+    GENERATE_PREDICTION = (
+        "generate_prediction"  # Generate testable predictions from claims
+    )
     RESOLVE_PREDICTION = "resolve_prediction"  # Resolve predictions against outcomes
 
     # Deductive validation track (parallel to inductive evidence)
-    VALIDATE_DEDUCTIVELY = "validate_deductively"  # First principles, consistency, plausibility checks
+    VALIDATE_DEDUCTIVELY = (
+        "validate_deductively"  # First principles, consistency, plausibility checks
+    )
 
 
 class VerifiabilityType(str, Enum):
@@ -86,9 +95,15 @@ class VerifiabilityType(str, Enum):
     Used by the claim classifier to determine how a claim can be verified.
     """
 
-    COMPUTATIONALLY_VERIFIABLE = "computationally_verifiable"  # Can be tested by running code
-    SIMULATION_VERIFIABLE = "simulation_verifiable"  # Can be tested against a domain simulator
-    TEXTUALLY_VERIFIABLE = "textually_verifiable"  # Can only be corroborated by other text
+    COMPUTATIONALLY_VERIFIABLE = (
+        "computationally_verifiable"  # Can be tested by running code
+    )
+    SIMULATION_VERIFIABLE = (
+        "simulation_verifiable"  # Can be tested against a domain simulator
+    )
+    TEXTUALLY_VERIFIABLE = (
+        "textually_verifiable"  # Can only be corroborated by other text
+    )
     HUMAN_VERIFIABLE = "human_verifiable"  # Requires human judgment (normative claims)
 
 
@@ -101,13 +116,13 @@ class QuestionType(str, Enum):
     economics, or philosophy.
     """
 
-    VERIFICATORY = "verificatory"      # "Is P true?"
-    EXPLANATORY = "explanatory"        # "Why P?" / "How does P work?"
-    EXPLORATORY = "exploratory"        # "What might be involved in P?"
-    COMPARATIVE = "comparative"        # "Is A better/more likely than B?"
-    PREDICTIVE = "predictive"          # "What will happen if P?"
-    COMPOSITIONAL = "compositional"    # "What are the parts/factors of X?"
-    NORMATIVE = "normative"            # "Should we do X?"
+    VERIFICATORY = "verificatory"  # "Is P true?"
+    EXPLANATORY = "explanatory"  # "Why P?" / "How does P work?"
+    EXPLORATORY = "exploratory"  # "What might be involved in P?"
+    COMPARATIVE = "comparative"  # "Is A better/more likely than B?"
+    PREDICTIVE = "predictive"  # "What will happen if P?"
+    COMPOSITIONAL = "compositional"  # "What are the parts/factors of X?"
+    NORMATIVE = "normative"  # "Should we do X?"
 
 
 # --- Pre-Planning Primitives ---
@@ -121,14 +136,24 @@ class ClarifiedQuestion(BaseModel):
     """
 
     clarification_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    objective_id: str = Field(description="Parent objective this clarification belongs to")
+    objective_id: str = Field(
+        description="Parent objective this clarification belongs to"
+    )
 
     # Core output (matches agent's 4 fields)
-    original_question: str = Field(description="The original question before clarification")
+    original_question: str = Field(
+        description="The original question before clarification"
+    )
     clarified_question: str = Field(description="Rewritten unambiguous question")
-    ambiguity_level: str = Field(description="Level of ambiguity: 'clear', 'moderate', or 'high'")
-    key_terms: List[str] = Field(default_factory=list, description="Terms that need explicit definition")
-    reasoning: str = Field(default="", description="Explanation of interpretation choice")
+    ambiguity_level: str = Field(
+        description="Level of ambiguity: 'clear', 'moderate', or 'high'"
+    )
+    key_terms: List[str] = Field(
+        default_factory=list, description="Terms that need explicit definition"
+    )
+    reasoning: str = Field(
+        default="", description="Explanation of interpretation choice"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -155,13 +180,24 @@ class ConceptualAnalysis(BaseModel):
 
     analysis_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     objective_id: str = Field(description="Parent objective this analysis belongs to")
-    clarification_id: Optional[str] = Field(None, description="Link to prior clarification if any")
+    clarification_id: Optional[str] = Field(
+        None, description="Link to prior clarification if any"
+    )
 
     # Core output (matches agent's 4 fields - parallel lists)
-    terms: List[str] = Field(default_factory=list, description="Key terms being defined")
-    definitions: List[str] = Field(default_factory=list, description="Working definition for each term (parallel to terms)")
-    assumptions: List[str] = Field(default_factory=list, description="Assumptions embedded in the question")
-    context_summary: str = Field(default="", description="2-3 sentence summary for downstream agents")
+    terms: List[str] = Field(
+        default_factory=list, description="Key terms being defined"
+    )
+    definitions: List[str] = Field(
+        default_factory=list,
+        description="Working definition for each term (parallel to terms)",
+    )
+    assumptions: List[str] = Field(
+        default_factory=list, description="Assumptions embedded in the question"
+    )
+    context_summary: str = Field(
+        default="", description="2-3 sentence summary for downstream agents"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -192,11 +228,24 @@ class ArgumentAnalysis(BaseModel):
     objective_id: str = Field(description="Parent objective")
 
     # Core output (matches agent's 5 fields)
-    premises: List[str] = Field(default_factory=list, description="Identified premises supporting the claim")
-    conclusion: str = Field(default="", description="The claim restated as a conclusion")
-    validity: str = Field(default="indeterminate", description="Does conclusion follow from premises? 'valid', 'invalid', or 'indeterminate'")
-    soundness: str = Field(default="questionable", description="Are premises true/supported? 'sound', 'unsound', or 'questionable'")
-    fallacies: List[str] = Field(default_factory=list, description="Logical fallacies detected (e.g., 'correlation_causation')")
+    premises: List[str] = Field(
+        default_factory=list, description="Identified premises supporting the claim"
+    )
+    conclusion: str = Field(
+        default="", description="The claim restated as a conclusion"
+    )
+    validity: str = Field(
+        default="indeterminate",
+        description="Does conclusion follow from premises? 'valid', 'invalid', or 'indeterminate'",
+    )
+    soundness: str = Field(
+        default="questionable",
+        description="Are premises true/supported? 'sound', 'unsound', or 'questionable'",
+    )
+    fallacies: List[str] = Field(
+        default_factory=list,
+        description="Logical fallacies detected (e.g., 'correlation_causation')",
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -233,22 +282,40 @@ class ComputationalEvidence(BaseModel):
 
     # Code and execution
     verification_code: str = Field(description="The Python code that tests the claim")
-    packages_required: List[str] = Field(default_factory=list, description="Python packages needed")
+    packages_required: List[str] = Field(
+        default_factory=list, description="Python packages needed"
+    )
 
     # Phase 1: Codex execution results
-    codex_verdict: str = Field(description="Result from Codex run: 'passed', 'failed', 'error'")
+    codex_verdict: str = Field(
+        description="Result from Codex run: 'passed', 'failed', 'error'"
+    )
     codex_output: str = Field(default="", description="Raw output from Codex execution")
 
     # Phase 2: Deterministic re-execution results
-    deterministic_verdict: str = Field(default="pending", description="'matched', 'mismatched', 'error', 'pending'")
-    deterministic_output: str = Field(default="", description="Raw output from deterministic re-run")
+    deterministic_verdict: str = Field(
+        default="pending", description="'matched', 'mismatched', 'error', 'pending'"
+    )
+    deterministic_output: str = Field(
+        default="", description="Raw output from deterministic re-run"
+    )
 
     # Final interpretation
-    final_verdict: str = Field(description="'SUPPORTED', 'REFUTED', 'INCONCLUSIVE', 'INVALID_TEST'")
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in the verdict")
-    measurements: Dict[str, Any] = Field(default_factory=dict, description="Extracted quantitative data")
-    reproducible: bool = Field(default=False, description="True if deterministic executor matched Codex")
-    explanation: str = Field(default="", description="Human-readable explanation of the verification")
+    final_verdict: str = Field(
+        description="'SUPPORTED', 'REFUTED', 'INCONCLUSIVE', 'INVALID_TEST'"
+    )
+    confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Confidence in the verdict"
+    )
+    measurements: Dict[str, Any] = Field(
+        default_factory=dict, description="Extracted quantitative data"
+    )
+    reproducible: bool = Field(
+        default=False, description="True if deterministic executor matched Codex"
+    )
+    explanation: str = Field(
+        default="", description="Human-readable explanation of the verification"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -280,13 +347,17 @@ class CriticismCategory(str, Enum):
 
     METHODOLOGICAL = "methodological"  # Study design was flawed (High weight)
     STATISTICAL = "statistical"  # Analysis was incorrect (High weight)
-    REPLICATION_FAILURE = "replication_failure"  # Finding didn't replicate (Very High weight)
+    REPLICATION_FAILURE = (
+        "replication_failure"  # Finding didn't replicate (Very High weight)
+    )
     CONFOUNDING = "confounding"  # Effect explained by other variable (High weight)
     GENERALIZATION = "generalization"  # Finding doesn't generalize (Medium weight)
     INTERPRETATION = "interpretation"  # Data doesn't support conclusion (Medium weight)
     THEORETICAL = "theoretical"  # Theoretical framework is wrong (Medium weight)
     FRINGE = "fringe"  # Non-mainstream criticism (Low weight)
-    AD_HOMINEM = "ad_hominem"  # Attack on researcher, not research (Zero weight - filter out)
+    AD_HOMINEM = (
+        "ad_hominem"  # Attack on researcher, not research (Zero weight - filter out)
+    )
 
 
 # Category weights for evidence calculation
@@ -313,13 +384,23 @@ class CounterargumentQuality(BaseModel):
     relevance: float = Field(ge=0.0, le=1.0, description="Does this address the claim?")
     specificity: float = Field(ge=0.0, le=1.0, description="Is this specific or vague?")
     evidence_backed: float = Field(ge=0.0, le=1.0, description="Does it cite evidence?")
-    source_credibility: float = Field(ge=0.0, le=1.0, description="Is the critic qualified?")
-    novelty: float = Field(ge=0.0, le=1.0, description="Is this new vs already-addressed?")
+    source_credibility: float = Field(
+        ge=0.0, le=1.0, description="Is the critic qualified?"
+    )
+    novelty: float = Field(
+        ge=0.0, le=1.0, description="Is this new vs already-addressed?"
+    )
 
     @property
     def combined_score(self) -> float:
         """Combined quality score (sum of dimensions)."""
-        return self.relevance + self.specificity + self.evidence_backed + self.source_credibility + self.novelty
+        return (
+            self.relevance
+            + self.specificity
+            + self.evidence_backed
+            + self.source_credibility
+            + self.novelty
+        )
 
     @property
     def passes_threshold(self) -> bool:
@@ -339,8 +420,12 @@ class Counterargument(BaseModel):
     # Content
     summary: str = Field(description="What is the criticism?")
     source_ref: str = Field(description="URL/DOI of the criticism source")
-    source_author: Optional[str] = Field(None, description="Who is making this criticism?")
-    supporting_evidence: str = Field(default="", description="What evidence supports the criticism?")
+    source_author: Optional[str] = Field(
+        None, description="Who is making this criticism?"
+    )
+    supporting_evidence: str = Field(
+        default="", description="What evidence supports the criticism?"
+    )
 
     # Classification
     category: CriticismCategory = Field(description="Type of criticism")
@@ -348,7 +433,9 @@ class Counterargument(BaseModel):
     match_strength: str = Field(description="'strong', 'partial', 'weak', or 'none'")
 
     # Weighting
-    weight: float = Field(default=0.0, description="Evidence weight based on quality and category")
+    weight: float = Field(
+        default=0.0, description="Evidence weight based on quality and category"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -358,7 +445,9 @@ class Counterargument(BaseModel):
             return 0.0
         category_weight = CRITICISM_CATEGORY_WEIGHTS.get(self.category, 1.0)
         quality_factor = self.quality.combined_score / 5.0  # Normalize to 0-1
-        match_factor = {"strong": 1.0, "partial": 0.6, "weak": 0.3, "none": 0.0}.get(self.match_strength, 0.5)
+        match_factor = {"strong": 1.0, "partial": 0.6, "weak": 0.3, "none": 0.0}.get(
+            self.match_strength, 0.5
+        )
         return category_weight * quality_factor * match_factor
 
     def to_metadata(self) -> Dict[str, Any]:
@@ -401,27 +490,42 @@ class AdversarialEvidence(BaseModel):
     objective_id: str = Field(description="Parent objective")
 
     # Search metadata
-    queries_used: List[str] = Field(default_factory=list, description="Adversarial queries executed")
+    queries_used: List[str] = Field(
+        default_factory=list, description="Adversarial queries executed"
+    )
     sources_searched: int = Field(default=0, description="Number of sources examined")
 
     # Results
-    counterarguments: List[Counterargument] = Field(default_factory=list, description="Discovered counterarguments")
-    supporting_weight: float = Field(default=0.0, description="Sum of supporting evidence weights")
-    adversarial_weight: float = Field(default=0.0, description="Sum of adversarial evidence weights")
+    counterarguments: List[Counterargument] = Field(
+        default_factory=list, description="Discovered counterarguments"
+    )
+    supporting_weight: float = Field(
+        default=0.0, description="Sum of supporting evidence weights"
+    )
+    adversarial_weight: float = Field(
+        default=0.0, description="Sum of adversarial evidence weights"
+    )
 
     # Balance calculation (from spec Part 6.3)
     adversarial_balance: float = Field(
-        default=0.5, ge=0.0, le=1.0, description="supporting / (supporting + adversarial)"
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="supporting / (supporting + adversarial)",
     )
 
     # Verdict
-    verdict: str = Field(description="'SUPPORTED', 'CONTESTED', 'CHALLENGED', 'REFUTED'")
+    verdict: str = Field(
+        description="'SUPPORTED', 'CONTESTED', 'CHALLENGED', 'REFUTED'"
+    )
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     explanation: str = Field(default="", description="Overall adversarial assessment")
 
     # Recommendation
     recommendation: str = Field(description="'maintain', 'weaken', 'refute', 'modify'")
-    suggested_modifications: Optional[str] = Field(None, description="Claim modifications if 'modify'")
+    suggested_modifications: Optional[str] = Field(
+        None, description="Claim modifications if 'modify'"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -476,24 +580,32 @@ class AdversarialEvidence(BaseModel):
         # Reconstruct counterarguments
         counterarguments = []
         for ca_meta in meta.get("counterarguments", []):
-            counterarguments.append(Counterargument(
-                counterargument_id=ca_meta.get("counterargument_id", ""),
-                claim_id=ca_meta.get("claim_id", ""),
-                summary=ca_meta.get("summary", ""),
-                source_ref=ca_meta.get("source_ref", ""),
-                source_author=ca_meta.get("source_author"),
-                supporting_evidence=ca_meta.get("supporting_evidence", ""),
-                category=CriticismCategory(ca_meta.get("category", "factual_dispute")),
-                quality=CounterargumentQuality(
-                    relevance=ca_meta.get("quality", {}).get("relevance", 0.0),
-                    specificity=ca_meta.get("quality", {}).get("specificity", 0.0),
-                    evidence_backed=ca_meta.get("quality", {}).get("evidence_backed", 0.0),
-                    source_credibility=ca_meta.get("quality", {}).get("source_credibility", 0.0),
-                    novelty=ca_meta.get("quality", {}).get("novelty", 0.0),
-                ),
-                match_strength=ca_meta.get("match_strength", "none"),
-                weight=ca_meta.get("weight", 0.0),
-            ))
+            counterarguments.append(
+                Counterargument(
+                    counterargument_id=ca_meta.get("counterargument_id", ""),
+                    claim_id=ca_meta.get("claim_id", ""),
+                    summary=ca_meta.get("summary", ""),
+                    source_ref=ca_meta.get("source_ref", ""),
+                    source_author=ca_meta.get("source_author"),
+                    supporting_evidence=ca_meta.get("supporting_evidence", ""),
+                    category=CriticismCategory(
+                        ca_meta.get("category", "factual_dispute")
+                    ),
+                    quality=CounterargumentQuality(
+                        relevance=ca_meta.get("quality", {}).get("relevance", 0.0),
+                        specificity=ca_meta.get("quality", {}).get("specificity", 0.0),
+                        evidence_backed=ca_meta.get("quality", {}).get(
+                            "evidence_backed", 0.0
+                        ),
+                        source_credibility=ca_meta.get("quality", {}).get(
+                            "source_credibility", 0.0
+                        ),
+                        novelty=ca_meta.get("quality", {}).get("novelty", 0.0),
+                    ),
+                    match_strength=ca_meta.get("match_strength", "none"),
+                    weight=ca_meta.get("weight", 0.0),
+                )
+            )
 
         return cls(
             evidence_id=meta.get("evidence_id", ""),
@@ -510,7 +622,9 @@ class AdversarialEvidence(BaseModel):
             explanation=meta.get("explanation", ""),
             recommendation=meta.get("recommendation", "maintain"),
             suggested_modifications=meta.get("suggested_modifications"),
-            created_at=datetime.fromisoformat(meta.get("created_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                meta.get("created_at", datetime.now().isoformat())
+            ),
         )
 
 
@@ -586,9 +700,15 @@ class DomainClassification(BaseModel):
     causal_role: CausalRole = Field(description="What kind of claim is being made?")
 
     # Confidence
-    classification_confidence: float = Field(ge=0.0, le=1.0, description="How sure are we?")
-    classification_method: str = Field(default="automatic", description="'automatic', 'human', or 'hybrid'")
-    classification_notes: str = Field(default="", description="Explanation of classification")
+    classification_confidence: float = Field(
+        ge=0.0, le=1.0, description="How sure are we?"
+    )
+    classification_method: str = Field(
+        default="automatic", description="'automatic', 'human', or 'hybrid'"
+    )
+    classification_notes: str = Field(
+        default="", description="Explanation of classification"
+    )
 
     @property
     def dimension_vector(self) -> Dict[str, str]:
@@ -637,13 +757,19 @@ class DomainCluster(BaseModel):
     """
 
     cluster_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    evidence_ids: List[str] = Field(default_factory=list, description="Evidence in this cluster")
+    evidence_ids: List[str] = Field(
+        default_factory=list, description="Evidence in this cluster"
+    )
     representative_classification: Optional[DomainClassification] = Field(
         None, description="Representative classification for this cluster"
     )
     cluster_size: int = Field(default=0, description="Number of evidence items")
-    average_evidence_quality: float = Field(default=0.0, description="Average quality of evidence in cluster")
-    cluster_label: str = Field(default="", description="Human-readable label for this domain")
+    average_evidence_quality: float = Field(
+        default=0.0, description="Average quality of evidence in cluster"
+    )
+    cluster_label: str = Field(
+        default="", description="Human-readable label for this domain"
+    )
 
     def to_metadata(self) -> Dict[str, Any]:
         """Convert to serializable dict for storage."""
@@ -652,7 +778,8 @@ class DomainCluster(BaseModel):
             "evidence_ids": self.evidence_ids,
             "representative_classification": (
                 self.representative_classification.to_metadata()
-                if self.representative_classification else None
+                if self.representative_classification
+                else None
             ),
             "cluster_size": self.cluster_size,
             "average_evidence_quality": self.average_evidence_quality,
@@ -664,7 +791,9 @@ class DomainCluster(BaseModel):
         """Reconstruct from serialized dict."""
         rep_class = None
         if meta.get("representative_classification"):
-            rep_class = DomainClassification.from_metadata(meta["representative_classification"])
+            rep_class = DomainClassification.from_metadata(
+                meta["representative_classification"]
+            )
 
         return cls(
             cluster_id=meta.get("cluster_id", ""),
@@ -695,34 +824,58 @@ class ConvergentEvidence(BaseModel):
     evidence_classifications: List[DomainClassification] = Field(
         default_factory=list, description="Classifications for each evidence item"
     )
-    total_evidence_count: int = Field(default=0, description="Total evidence items analyzed")
+    total_evidence_count: int = Field(
+        default=0, description="Total evidence items analyzed"
+    )
 
     # Clustering results
-    domain_clusters: List[DomainCluster] = Field(default_factory=list, description="Evidence grouped by domain")
-    num_independent_domains: int = Field(default=0, description="Number of independent domain clusters")
+    domain_clusters: List[DomainCluster] = Field(
+        default_factory=list, description="Evidence grouped by domain"
+    )
+    num_independent_domains: int = Field(
+        default=0, description="Number of independent domain clusters"
+    )
 
     # Distance metrics
-    average_inter_domain_distance: float = Field(default=0.0, description="Average distance between domains")
-    min_inter_domain_distance: float = Field(default=0.0, description="Minimum distance between any two domains")
+    average_inter_domain_distance: float = Field(
+        default=0.0, description="Average distance between domains"
+    )
+    min_inter_domain_distance: float = Field(
+        default=0.0, description="Minimum distance between any two domains"
+    )
 
     # Independence verification
     independence_checks: Dict[str, bool] = Field(
-        default_factory=dict, description="Results of independence checks (citation, author, data, temporal)"
+        default_factory=dict,
+        description="Results of independence checks (citation, author, data, temporal)",
     )
-    independence_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Overall independence score")
+    independence_score: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Overall independence score"
+    )
 
     # Convergence scoring
-    convergence_detected: bool = Field(default=False, description="Was meaningful convergence detected?")
-    convergence_strength: float = Field(default=0.0, ge=0.0, le=1.0, description="Strength of convergence")
-    convergence_justification: str = Field(default="", description="Why convergence is/isn't meaningful")
+    convergence_detected: bool = Field(
+        default=False, description="Was meaningful convergence detected?"
+    )
+    convergence_strength: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Strength of convergence"
+    )
+    convergence_justification: str = Field(
+        default="", description="Why convergence is/isn't meaningful"
+    )
 
     # Verdict
-    verdict: str = Field(default="SINGLE_DOMAIN", description="'CONVERGENT', 'PARTIAL', 'SINGLE_DOMAIN', 'CONFLICTING'")
+    verdict: str = Field(
+        default="SINGLE_DOMAIN",
+        description="'CONVERGENT', 'PARTIAL', 'SINGLE_DOMAIN', 'CONFLICTING'",
+    )
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     explanation: str = Field(default="", description="Human-readable explanation")
 
     # Domain gap analysis
-    missing_domains: List[str] = Field(default_factory=list, description="Suggested domains to expand coverage")
+    missing_domains: List[str] = Field(
+        default_factory=list, description="Suggested domains to expand coverage"
+    )
     strongest_per_domain: Dict[str, str] = Field(
         default_factory=dict, description="Best evidence ID from each domain"
     )
@@ -737,7 +890,9 @@ class ConvergentEvidence(BaseModel):
             "claim_id": self.claim_id,
             "objective_id": self.objective_id,
             # Full data for retrieval
-            "evidence_classifications": [ec.to_metadata() for ec in self.evidence_classifications],
+            "evidence_classifications": [
+                ec.to_metadata() for ec in self.evidence_classifications
+            ],
             "total_evidence_count": self.total_evidence_count,
             "domain_clusters": [dc.to_metadata() for dc in self.domain_clusters],
             "num_independent_domains": self.num_independent_domains,
@@ -779,7 +934,9 @@ class ConvergentEvidence(BaseModel):
             total_evidence_count=meta.get("total_evidence_count", 0),
             domain_clusters=clusters,
             num_independent_domains=meta.get("num_independent_domains", 0),
-            average_inter_domain_distance=meta.get("average_inter_domain_distance", 0.0),
+            average_inter_domain_distance=meta.get(
+                "average_inter_domain_distance", 0.0
+            ),
             min_inter_domain_distance=meta.get("min_inter_domain_distance", 0.0),
             independence_checks=meta.get("independence_checks", {}),
             independence_score=meta.get("independence_score", 0.0),
@@ -791,7 +948,9 @@ class ConvergentEvidence(BaseModel):
             explanation=meta.get("explanation", ""),
             missing_domains=meta.get("missing_domains", []),
             strongest_per_domain=meta.get("strongest_per_domain", {}),
-            created_at=datetime.fromisoformat(meta.get("created_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                meta.get("created_at", datetime.now().isoformat())
+            ),
         )
 
 
@@ -815,27 +974,38 @@ class DeductiveEvidence(BaseModel):
     derived_from_first_principles: bool = Field(
         default=False, description="Can claim be derived from fundamental premises?"
     )
-    is_internally_consistent: bool = Field(default=True, description="Does claim contradict itself?")
+    is_internally_consistent: bool = Field(
+        default=True, description="Does claim contradict itself?"
+    )
     is_physically_plausible: bool = Field(
-        default=True, description="Does claim violate conservation laws, causality, etc.?"
+        default=True,
+        description="Does claim violate conservation laws, causality, etc.?",
     )
 
     # Overall verdict
     deductive_soundness: str = Field(
         default="unknown", description="'sound', 'questionable', 'unsound'"
     )
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in the assessment")
+    confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Confidence in the assessment"
+    )
 
     # Issues found during validation
-    issues_found: List[str] = Field(default_factory=list, description="List of deductive issues found")
+    issues_found: List[str] = Field(
+        default_factory=list, description="List of deductive issues found"
+    )
     issue_types: List[str] = Field(
         default_factory=list,
         description="Types of issues: logical_inconsistency, physical_implausibility, missing_premise, assumption",
     )
 
     # Recommendation
-    recommendation: str = Field(default="hold", description="'promote', 'hold', 'demote'")
-    explanation: str = Field(default="", description="Human-readable explanation of the assessment")
+    recommendation: str = Field(
+        default="hold", description="'promote', 'hold', 'demote'"
+    )
+    explanation: str = Field(
+        default="", description="Human-readable explanation of the assessment"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -875,7 +1045,9 @@ class DeductiveEvidence(BaseModel):
             evidence_id=meta.get("evidence_id", ""),
             claim_id=meta.get("claim_id", ""),
             objective_id=meta.get("objective_id", ""),
-            derived_from_first_principles=meta.get("derived_from_first_principles", False),
+            derived_from_first_principles=meta.get(
+                "derived_from_first_principles", False
+            ),
             is_internally_consistent=meta.get("is_internally_consistent", True),
             is_physically_plausible=meta.get("is_physically_plausible", True),
             deductive_soundness=meta.get("deductive_soundness", "unknown"),
@@ -884,7 +1056,9 @@ class DeductiveEvidence(BaseModel):
             issue_types=meta.get("issue_types", []),
             recommendation=meta.get("recommendation", "hold"),
             explanation=meta.get("explanation", ""),
-            created_at=datetime.fromisoformat(meta.get("created_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                meta.get("created_at", datetime.now().isoformat())
+            ),
         )
 
 
@@ -897,7 +1071,9 @@ class PredictionType(str, Enum):
     Predictions vary in specificity and testability.
     """
 
-    QUANTITATIVE = "quantitative"  # Specific numeric prediction (e.g., "20-30% improvement")
+    QUANTITATIVE = (
+        "quantitative"  # Specific numeric prediction (e.g., "20-30% improvement")
+    )
     QUALITATIVE = "qualitative"  # Directional prediction (e.g., "will improve")
     CONDITIONAL = "conditional"  # If-then prediction (e.g., "if X then Y")
     TEMPORAL = "temporal"  # Time-bound prediction (e.g., "within 6 months")
@@ -940,22 +1116,35 @@ class Prediction(BaseModel):
     prediction_statement: str = Field(description="The specific testable prediction")
     prediction_type: PredictionType = Field(default=PredictionType.QUALITATIVE)
     specificity_score: float = Field(
-        default=0.5, ge=0.0, le=1.0, description="How specific/risky is this prediction? Higher = more testable"
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="How specific/risky is this prediction? Higher = more testable",
     )
 
     # Testability criteria
     success_criteria: str = Field(description="What would confirm this prediction?")
     failure_criteria: str = Field(description="What would refute this prediction?")
-    measurement_method: str = Field(default="", description="How to measure the outcome")
+    measurement_method: str = Field(
+        default="", description="How to measure the outcome"
+    )
 
     # Time bounds
     prediction_made_at: datetime = Field(default_factory=datetime.now)
-    resolution_deadline: Optional[datetime] = Field(default=None, description="When prediction should be resolved by")
-    time_horizon: str = Field(default="unspecified", description="e.g., 'immediate', '1 week', '1 year'")
+    resolution_deadline: Optional[datetime] = Field(
+        default=None, description="When prediction should be resolved by"
+    )
+    time_horizon: str = Field(
+        default="unspecified", description="e.g., 'immediate', '1 week', '1 year'"
+    )
 
     # Context
-    assumptions: List[str] = Field(default_factory=list, description="Conditions assumed for prediction")
-    confounders: List[str] = Field(default_factory=list, description="Factors that could affect outcome")
+    assumptions: List[str] = Field(
+        default_factory=list, description="Conditions assumed for prediction"
+    )
+    confounders: List[str] = Field(
+        default_factory=list, description="Factors that could affect outcome"
+    )
 
     # Status
     status: PredictionStatus = Field(default=PredictionStatus.PENDING)
@@ -988,7 +1177,9 @@ class Prediction(BaseModel):
             "time_horizon": self.time_horizon,
             "status": self.status.value,
             "prediction_made_at": self.prediction_made_at.isoformat(),
-            "resolution_deadline": self.resolution_deadline.isoformat() if self.resolution_deadline else None,
+            "resolution_deadline": self.resolution_deadline.isoformat()
+            if self.resolution_deadline
+            else None,
         }
 
 
@@ -1009,15 +1200,22 @@ class PredictionOutcome(BaseModel):
     # Match assessment
     matches_prediction: bool = Field(description="Did outcome match prediction?")
     match_degree: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="How closely did outcome match? 1.0 = exact match"
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="How closely did outcome match? 1.0 = exact match",
     )
-    match_explanation: str = Field(default="", description="Why outcome does/doesn't match")
+    match_explanation: str = Field(
+        default="", description="Why outcome does/doesn't match"
+    )
 
     # Confounders
     confounders_present: List[str] = Field(
         default_factory=list, description="Any confounding factors observed"
     )
-    assumptions_held: bool = Field(default=True, description="Did the prediction's assumptions hold?")
+    assumptions_held: bool = Field(
+        default=True, description="Did the prediction's assumptions hold?"
+    )
 
 
 class TemporalEvidence(BaseModel):
@@ -1036,9 +1234,13 @@ class TemporalEvidence(BaseModel):
     objective_id: str = Field(description="Parent objective")
 
     # Prediction summary
-    predictions: List[Prediction] = Field(default_factory=list, description="All predictions for this claim")
+    predictions: List[Prediction] = Field(
+        default_factory=list, description="All predictions for this claim"
+    )
     total_predictions: int = Field(default=0, description="Total predictions generated")
-    resolved_predictions: int = Field(default=0, description="Predictions that have been resolved")
+    resolved_predictions: int = Field(
+        default=0, description="Predictions that have been resolved"
+    )
 
     # Resolution summary
     confirmed_count: int = Field(default=0)
@@ -1049,37 +1251,56 @@ class TemporalEvidence(BaseModel):
 
     # Scoring
     confirmation_rate: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Fraction of resolved predictions confirmed"
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of resolved predictions confirmed",
     )
     weighted_confirmation_score: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Confirmation weighted by prediction specificity"
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Confirmation weighted by prediction specificity",
     )
     temporal_independence_score: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Overall temporal independence strength"
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Overall temporal independence strength",
     )
 
     # Verdict
     verdict: str = Field(
         default="PENDING",
-        description="'STRONGLY_CONFIRMED', 'CONFIRMED', 'MIXED', 'REFUTED', 'PENDING', 'INSUFFICIENT'"
+        description="'STRONGLY_CONFIRMED', 'CONFIRMED', 'MIXED', 'REFUTED', 'PENDING', 'INSUFFICIENT'",
     )
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     explanation: str = Field(default="", description="Human-readable explanation")
 
     # Analysis
-    strongest_confirmation: Optional[str] = Field(default=None, description="Most convincing confirmed prediction")
-    strongest_refutation: Optional[str] = Field(default=None, description="Most convincing refuted prediction")
-    recommendations: List[str] = Field(default_factory=list, description="Suggestions for improving predictions")
+    strongest_confirmation: Optional[str] = Field(
+        default=None, description="Most convincing confirmed prediction"
+    )
+    strongest_refutation: Optional[str] = Field(
+        default=None, description="Most convincing refuted prediction"
+    )
+    recommendations: List[str] = Field(
+        default_factory=list, description="Suggestions for improving predictions"
+    )
 
     created_at: datetime = Field(default_factory=datetime.now)
 
     def compute_confirmation_rate(self) -> float:
         """Compute confirmation rate from resolved predictions."""
-        resolved = self.confirmed_count + self.partially_confirmed_count + self.refuted_count
+        resolved = (
+            self.confirmed_count + self.partially_confirmed_count + self.refuted_count
+        )
         if resolved == 0:
             return 0.0
         # Partial confirmations count as 0.5
-        confirmed_equivalent = self.confirmed_count + 0.5 * self.partially_confirmed_count
+        confirmed_equivalent = (
+            self.confirmed_count + 0.5 * self.partially_confirmed_count
+        )
         return confirmed_equivalent / resolved
 
     def compute_temporal_score(self) -> float:
@@ -1098,17 +1319,27 @@ class TemporalEvidence(BaseModel):
         confirmation_score = self.compute_confirmation_rate() * 0.4
 
         # Specificity bonus (average specificity of predictions)
-        avg_specificity = sum(p.specificity_score for p in self.predictions) / len(self.predictions) if self.predictions else 0.5
+        avg_specificity = (
+            sum(p.specificity_score for p in self.predictions) / len(self.predictions)
+            if self.predictions
+            else 0.5
+        )
         specificity_score = avg_specificity * 0.3
 
         # Coverage bonus (diminishing returns after 3 predictions)
         coverage_score = min(1.0, self.total_predictions / 3) * 0.2
 
         # Resolution bonus (predictions that have been tested)
-        resolution_rate = self.resolved_predictions / self.total_predictions if self.total_predictions > 0 else 0
+        resolution_rate = (
+            self.resolved_predictions / self.total_predictions
+            if self.total_predictions > 0
+            else 0
+        )
         resolution_score = resolution_rate * 0.1
 
-        return confirmation_score + specificity_score + coverage_score + resolution_score
+        return (
+            confirmation_score + specificity_score + coverage_score + resolution_score
+        )
 
     def to_metadata(self) -> Dict[str, Any]:
         """Convert to DocumentStore metadata format."""
@@ -1147,13 +1378,18 @@ class PlanArguments(BaseModel):
 
     # Evidence gathering strategy
     evidence_strategy: List[Dict[str, Any]] = Field(
-        default_factory=lambda: [{"provider": "web_search", "config": {"depth": "standard"}}],
+        default_factory=lambda: [
+            {"provider": "web_search", "config": {"depth": "standard"}}
+        ],
         description="List of evidence providers to use with their configs",
     )
 
     # Verification strategy
     verification_strategy: List[Dict[str, Any]] = Field(
-        default_factory=lambda: [{"method": "scrutiny", "config": {}}, {"method": "argument_analysis", "config": {}}],
+        default_factory=lambda: [
+            {"method": "scrutiny", "config": {}},
+            {"method": "argument_analysis", "config": {}},
+        ],
         description="List of verification methods to apply to each claim",
     )
 
@@ -1184,18 +1420,24 @@ class PlanArguments(BaseModel):
             "plan_id": self.plan_id,
             "objective_id": self.objective_id,
             "evidence_providers": [e.get("provider") for e in self.evidence_strategy],
-            "verification_methods": [v.get("method") for v in self.verification_strategy],
+            "verification_methods": [
+                v.get("method") for v in self.verification_strategy
+            ],
             "artefact_type": self.output_strategy.get("artefact_type", "summary"),
             "created_at": self.created_at.isoformat(),
         }
 
     def get_evidence_providers(self) -> List[str]:
         """Get list of evidence provider names."""
-        return [e.get("provider", "") for e in self.evidence_strategy if e.get("provider")]
+        return [
+            e.get("provider", "") for e in self.evidence_strategy if e.get("provider")
+        ]
 
     def get_verification_methods(self) -> List[str]:
         """Get list of verification method names."""
-        return [v.get("method", "") for v in self.verification_strategy if v.get("method")]
+        return [
+            v.get("method", "") for v in self.verification_strategy if v.get("method")
+        ]
 
 
 # --- Workflow Primitives ---
@@ -1216,18 +1458,30 @@ class WorkItem(BaseModel):
     objective_id: str
     operation_type: WorkItemType
     description: str = Field(default="", description="Human-readable description")
-    inputs: Dict[str, Any] = Field(default_factory=dict, description="References to object IDs or data")
-    dependencies: List[str] = Field(default_factory=list, description="WorkItem IDs that must complete first")
-    acceptance_criteria: Dict[str, Any] = Field(default_factory=dict, description="Structured criteria for success")
-    priority: int = Field(default=5, ge=1, le=100, description="1=highest priority, higher=lower priority")
+    inputs: Dict[str, Any] = Field(
+        default_factory=dict, description="References to object IDs or data"
+    )
+    dependencies: List[str] = Field(
+        default_factory=list, description="WorkItem IDs that must complete first"
+    )
+    acceptance_criteria: Dict[str, Any] = Field(
+        default_factory=dict, description="Structured criteria for success"
+    )
+    priority: int = Field(
+        default=5, ge=1, le=100, description="1=highest priority, higher=lower priority"
+    )
     status: WorkItemStatus = Field(default=WorkItemStatus.QUEUED)
-    retry_count: int = Field(default=0, description="Number of times this workitem has been retried")
+    retry_count: int = Field(
+        default=0, description="Number of times this workitem has been retried"
+    )
     created_at: datetime = Field(default_factory=datetime.now)
     created_by: str = Field(default="system")
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
-    output_refs: List[str] = Field(default_factory=list, description="IDs of objects created by this WorkItem")
+    output_refs: List[str] = Field(
+        default_factory=list, description="IDs of objects created by this WorkItem"
+    )
 
     def to_metadata(self) -> Dict[str, Any]:
         """Convert to DocumentStore metadata format."""
@@ -1258,11 +1512,17 @@ class EpistemicEvent(BaseModel):
 
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = Field(default_factory=datetime.now)
-    event_type: str = Field(description="workitem_started, claim_promoted, gate_failed, etc.")
+    event_type: str = Field(
+        description="workitem_started, claim_promoted, gate_failed, etc."
+    )
     actor: str = Field(description="Executor name or human")
     target_id: Optional[str] = Field(None, description="Object ID affected")
-    target_type: Optional[str] = Field(None, description="evidence, claim, workitem, etc.")
-    details: Dict[str, Any] = Field(default_factory=dict, description="Event-specific details")
+    target_type: Optional[str] = Field(
+        None, description="evidence, claim, workitem, etc."
+    )
+    details: Dict[str, Any] = Field(
+        default_factory=dict, description="Event-specific details"
+    )
 
     def to_metadata(self) -> Dict[str, Any]:
         """Convert to DocumentStore metadata format."""

@@ -57,9 +57,9 @@ class ResolveUncertaintyOperation(BaseOperation):
             is_blocking=True,
         )
         siblings = [
-            u for u in all_unresolved
-            if isinstance(u, Uncertainty)
-            and u.entity_id != uncertainty.entity_id
+            u
+            for u in all_unresolved
+            if isinstance(u, Uncertainty) and u.entity_id != uncertainty.entity_id
         ]
 
         if siblings:
@@ -67,8 +67,12 @@ class ResolveUncertaintyOperation(BaseOperation):
             from ..similarity import cosine_similarity
 
             if not self.embedding_model:
-                raise RuntimeError("embedding_model is required for sibling deduplication. Pass embedding_model= to create_operations().")
-            all_descriptions = [uncertainty.description] + [s.description for s in siblings]
+                raise RuntimeError(
+                    "embedding_model is required for sibling deduplication. Pass embedding_model= to create_operations()."
+                )
+            all_descriptions = [uncertainty.description] + [
+                s.description for s in siblings
+            ]
             embeddings = await embed_texts(all_descriptions, model=self.embedding_model)
 
             target_emb = embeddings[0]
@@ -97,7 +101,9 @@ class ResolveUncertaintyOperation(BaseOperation):
                 try:
                     c = await self.repo.get("claim", cid)
                     if isinstance(c, Claim):
-                        affected_claims_text.append(f"- [{c.stage.value}] {c.statement} (scope: {c.scope})")
+                        affected_claims_text.append(
+                            f"- [{c.stage.value}] {c.statement} (scope: {c.scope})"
+                        )
                         # Gather evidence linked to this claim
                         for eid in c.evidence_ids[:5]:  # Limit to 5 per claim
                             try:
@@ -116,8 +122,12 @@ class ResolveUncertaintyOperation(BaseOperation):
                 uncertainty_id=uncertainty.entity_id,
                 uncertainty_type=uncertainty.uncertainty_type.value,
                 description=uncertainty.description,
-                affected_claims="\n".join(affected_claims_text) if affected_claims_text else "[No affected claims]",
-                new_evidence="\n\n".join(evidence_text) if evidence_text else "[No evidence available]",
+                affected_claims="\n".join(affected_claims_text)
+                if affected_claims_text
+                else "[No affected claims]",
+                new_evidence="\n\n".join(evidence_text)
+                if evidence_text
+                else "[No evidence available]",
                 objective_context=objective_description or "[No objective context]",
             )
 
@@ -154,12 +164,14 @@ class ResolveUncertaintyOperation(BaseOperation):
                     obj = await self.repo.get("objective", uncertainty.objective_id)
                     if isinstance(obj, Objective):
                         for concern in result.remaining_concerns:
-                            obj.pending_concerns.append({
-                                "text": str(concern),
-                                "parent_id": uncertainty.entity_id,
-                                "affected_claim_ids": uncertainty.affected_claim_ids,
-                                "depth": depth + 1,
-                            })
+                            obj.pending_concerns.append(
+                                {
+                                    "text": str(concern),
+                                    "parent_id": uncertainty.entity_id,
+                                    "affected_claim_ids": uncertainty.affected_claim_ids,
+                                    "depth": depth + 1,
+                                }
+                            )
                         await self.repo.save(obj)
             else:
                 # Agent assessed this uncertainty and determined it can't be resolved.

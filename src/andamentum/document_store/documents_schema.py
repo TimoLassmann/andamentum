@@ -72,12 +72,24 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
     """)
 
     # Indexes
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(file_path)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(file_hash)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(dc_title)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(file_path)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(file_hash)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(dc_title)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"
+    )
 
     # Migration: add deleted_at column to existing databases
     try:

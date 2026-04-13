@@ -50,13 +50,15 @@ EXAMPLE OUTPUT:
   "relevance_score": 0.85
 }"""
 
-register_agent(AgentDefinition(
-    name="page_summarizer",
-    prompt=PAGE_SUMMARIZER_PROMPT,
-    output_model=PageSummary,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="page_summarizer",
+        prompt=PAGE_SUMMARIZER_PROMPT,
+        output_model=PageSummary,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 # ── Gap Analyzer ────────────────────────────────────────────────────────
 
@@ -110,13 +112,15 @@ You will receive:
   ]
 }"""
 
-register_agent(AgentDefinition(
-    name="gap_analyzer",
-    prompt=GAP_ANALYZER_PROMPT,
-    output_model=GapAnalysis,
-    retries=5,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="gap_analyzer",
+        prompt=GAP_ANALYZER_PROMPT,
+        output_model=GapAnalysis,
+        retries=5,
+        output_retries=5,
+    )
+)
 
 # ── Lead Agent (Research Coordinator) ───────────────────────────────────
 
@@ -143,11 +147,13 @@ Workflow:
 
 Be systematic, thorough, and avoid redundancy."""
 
-register_agent(AgentDefinition(
-    name="lead_agent",
-    prompt=LEAD_AGENT_PROMPT,
-    output_model=EvidenceReport,
-    retries=5,
-    output_retries=5,
-    has_tools=True,
-))
+register_agent(
+    AgentDefinition(
+        name="lead_agent",
+        prompt=LEAD_AGENT_PROMPT,
+        output_model=EvidenceReport,
+        retries=5,
+        output_retries=5,
+        has_tools=True,
+    )
+)

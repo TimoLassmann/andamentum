@@ -14,7 +14,7 @@ Usage:
     config = ResearchConfig.from_args(args)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Literal
 
 # Preset names
@@ -135,7 +135,9 @@ class ResearchConfig:
         elif preset == "comprehensive":
             return cls.comprehensive(**overrides)
         else:
-            raise ValueError(f"Unknown preset: {preset}. Use 'light' or 'comprehensive'.")
+            raise ValueError(
+                f"Unknown preset: {preset}. Use 'light' or 'comprehensive'."
+            )
 
     @classmethod
     def from_args(cls, args) -> "ResearchConfig":
@@ -147,7 +149,9 @@ class ResearchConfig:
         # Start with preset (default: light for speed)
         preset_raw = getattr(args, "preset", "light") or "light"
         # Validate preset name (default to light if invalid)
-        preset: PresetName = "comprehensive" if preset_raw == "comprehensive" else "light"
+        preset: PresetName = (
+            "comprehensive" if preset_raw == "comprehensive" else "light"
+        )
 
         # Collect explicit overrides (non-None values)
         overrides = {}
@@ -187,15 +191,16 @@ class ResearchConfig:
         group = parser.add_argument_group(
             "Research Configuration",
             "Control research depth and speed. Use --preset for quick selection, "
-            "or override individual parameters."
+            "or override individual parameters.",
         )
 
         # Preset selection
         group.add_argument(
-            "--preset", "-p",
+            "--preset",
+            "-p",
             choices=["light", "comprehensive"],
             default="light",
-            help="Research preset: 'light' (~5-10 min, fast) or 'comprehensive' (~30-60 min, thorough). Default: light"
+            help="Research preset: 'light' (~5-10 min, fast) or 'comprehensive' (~30-60 min, thorough). Default: light",
         )
 
         # Deep research params
@@ -203,32 +208,32 @@ class ResearchConfig:
             "--max-iterations",
             type=int,
             metavar="N",
-            help="Research loop iterations per query (light=1, comprehensive=3)"
+            help="Research loop iterations per query (light=1, comprehensive=3)",
         )
         group.add_argument(
             "--max-results",
             type=int,
             metavar="N",
-            help="Search results per query (light=5, comprehensive=10)"
+            help="Search results per query (light=5, comprehensive=10)",
         )
         group.add_argument(
             "--max-pages",
             type=int,
             metavar="N",
-            help="Pages to fetch per iteration (light=3, comprehensive=5)"
+            help="Pages to fetch per iteration (light=3, comprehensive=5)",
         )
         group.add_argument(
             "--relevance-threshold",
             type=float,
             metavar="F",
-            help="Min relevance to keep summaries, 0.0-1.0 (light=0.4, comprehensive=0.25)"
+            help="Min relevance to keep summaries, 0.0-1.0 (light=0.4, comprehensive=0.25)",
         )
 
         # Evidence depth
         group.add_argument(
             "--evidence-depth",
             choices=["quick", "standard", "thorough"],
-            help="Evidence collection depth (light=quick, comprehensive=thorough)"
+            help="Evidence collection depth (light=quick, comprehensive=thorough)",
         )
 
         # Adversarial search params
@@ -236,13 +241,13 @@ class ResearchConfig:
             "--adversarial-queries",
             type=int,
             metavar="N",
-            help="Queries to challenge each claim (light=2, comprehensive=8). Major speed impact!"
+            help="Queries to challenge each claim (light=2, comprehensive=8). Major speed impact!",
         )
         group.add_argument(
             "--adversarial-iterations",
             type=int,
             metavar="N",
-            help="Deep research iterations per adversarial query (default=1)"
+            help="Deep research iterations per adversarial query (default=1)",
         )
 
         # Verification thresholds
@@ -250,19 +255,19 @@ class ResearchConfig:
             "--quote-overlap",
             type=float,
             metavar="F",
-            help="Quote-evidence word overlap ratio, 0.0-1.0 (default=0.6)"
+            help="Quote-evidence word overlap ratio, 0.0-1.0 (default=0.6)",
         )
         group.add_argument(
             "--adversarial-threshold",
             type=float,
             metavar="F",
-            help="Adversarial balance threshold for uncertainty (default=0.3)"
+            help="Adversarial balance threshold for uncertainty (default=0.3)",
         )
         group.add_argument(
             "--convergence-threshold",
             type=float,
             metavar="F",
-            help="Convergence strength threshold for uncertainty (default=0.5)"
+            help="Convergence strength threshold for uncertainty (default=0.5)",
         )
 
     def operation_budgets(self) -> dict[str, int]:
@@ -310,7 +315,9 @@ class ResearchConfig:
         """Rough estimate of time per claim based on settings."""
         # Each adversarial query takes ~2-3 min with full deep research
         base_per_query = 2.0  # minutes
-        adversarial_time = self.adversarial_queries * self.adversarial_iterations * base_per_query
+        adversarial_time = (
+            self.adversarial_queries * self.adversarial_iterations * base_per_query
+        )
 
         # Evidence collection
         evidence_times = {"quick": 2, "standard": 5, "thorough": 10}

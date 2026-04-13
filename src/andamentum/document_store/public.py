@@ -73,20 +73,28 @@ async def _preflight(database: str, model: str, embedding_model: str) -> None:
         agent: Agent[None, str] = Agent(model, output_type=str)
         await agent.run("Reply with exactly: ok")
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
+        raise RuntimeError(
+            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+        )
     except Exception as e:
         raise RuntimeError(f"LLM model '{model}' unavailable. Error: {e}") from e
 
     _preflight_done.add(cache_key)
-    logger.info(f"Preflight passed: database={database}, model={model}, embeddings={embedding_model}")
+    logger.info(
+        f"Preflight passed: database={database}, model={model}, embeddings={embedding_model}"
+    )
 
     # Run repair on first access — fix any incomplete ingestions from previous crashes
     store = await _get_store(database)
     report = await _repair_incomplete(store, model, embedding_model)
     if report.documents_repaired > 0:
-        logger.info(f"Auto-repair: fixed {report.documents_repaired} incomplete documents in '{database}'")
+        logger.info(
+            f"Auto-repair: fixed {report.documents_repaired} incomplete documents in '{database}'"
+        )
     if report.documents_failed > 0:
-        logger.warning(f"Auto-repair: {report.documents_failed} documents could not be repaired in '{database}'")
+        logger.warning(
+            f"Auto-repair: {report.documents_failed} documents could not be repaired in '{database}'"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +183,18 @@ async def ingest(
         doc_meta.title = title
     elif not doc_meta.title:
         first_line = next(
-            (line.strip().lstrip("#").strip() for line in content.split("\n") if line.strip()), "Untitled"
+            (
+                line.strip().lstrip("#").strip()
+                for line in content.split("\n")
+                if line.strip()
+            ),
+            "Untitled",
         )
         doc_meta.title = first_line
 
-    doc_meta_dict = doc_meta.model_dump(mode="json")  # datetime → ISO string for JSON storage
+    doc_meta_dict = doc_meta.model_dump(
+        mode="json"
+    )  # datetime → ISO string for JSON storage
     if metadata:
         doc_meta_dict.update(metadata)
 
@@ -218,7 +233,15 @@ async def _run_phase2(
     # Chunk
     chunks = chunk_markdown(content, max_tokens=500, overlap_tokens=50)
     if not chunks:
-        chunks = [Chunk(text=content, section_path="", chunk_index=0, start_char=0, end_char=len(content))]
+        chunks = [
+            Chunk(
+                text=content,
+                section_path="",
+                chunk_index=0,
+                start_char=0,
+                end_char=len(content),
+            )
+        ]
 
     # Embed and store chunks
     embed_svc = EmbeddingService(model=embedding_model)
@@ -243,10 +266,14 @@ async def _run_phase2(
 
         # Doc-level embedding — attempt on full content, skip gracefully if too large for the model
         try:
-            doc_emb = await embed_svc.embed_text(content, text_type="document", title=title)
+            doc_emb = await embed_svc.embed_text(
+                content, text_type="document", title=title
+            )
             await store.store_doc_embedding(doc_id, doc_emb)
         except Exception:
-            logger.info(f"Doc-level embedding skipped for '{title}' (content too large for embedding model)")
+            logger.info(
+                f"Doc-level embedding skipped for '{title}' (content too large for embedding model)"
+            )
     finally:
         await embed_svc.close()
 
@@ -328,7 +355,9 @@ async def _repair_incomplete(
         logger.info(f"Repairing '{title}' ({doc_uuid}): {incomplete}")
 
         try:
-            await _run_phase2(store, doc_uuid, content, title or "Untitled", model, embedding_model)
+            await _run_phase2(
+                store, doc_uuid, content, title or "Untitled", model, embedding_model
+            )
             report.documents_repaired += 1
             logger.info(f"Repaired '{title}' ({doc_uuid})")
         except Exception as e:
@@ -442,7 +471,9 @@ async def search(
         doc_uuids = await find_doc_uuids_by_filters(str(store.db_path), filter_dicts)
 
         if not doc_uuids:
-            logger.warning(f"Filter produced no results, searching without filter: {plan.filter.model_dump()}")
+            logger.warning(
+                f"Filter produced no results, searching without filter: {plan.filter.model_dump()}"
+            )
             doc_uuids = None
             warning = "Filter produced no results, showing unfiltered results."
 
@@ -453,7 +484,9 @@ async def search(
 
         embed_svc = EmbeddingService(model=embedding_model)
         try:
-            query_embedding = await embed_svc.embed_text(plan.semantic_query, text_type="query")
+            query_embedding = await embed_svc.embed_text(
+                plan.semantic_query, text_type="query"
+            )
         finally:
             await embed_svc.close()
 
@@ -656,10 +689,12 @@ async def update_metadata(
 
             if changed_fields:
                 history = current.get("_history", [])
-                history.append({
-                    "changed_at": datetime.now(timezone.utc).isoformat(),
-                    "old_values": changed_fields,
-                })
+                history.append(
+                    {
+                        "changed_at": datetime.now(timezone.utc).isoformat(),
+                        "old_values": changed_fields,
+                    }
+                )
                 # Cap at 50 entries
                 metadata["_history"] = history[-50:]
 
@@ -793,7 +828,12 @@ async def find_duplicates(
 
         if len(group_indices) > 1:
             grouped.add(i)
-            sims = [float(similarity[a, b]) for a in group_indices for b in group_indices if a < b]
+            sims = [
+                float(similarity[a, b])
+                for a in group_indices
+                for b in group_indices
+                if a < b
+            ]
             avg_sim = sum(sims) / len(sims) if sims else 0.0
 
             groups.append(

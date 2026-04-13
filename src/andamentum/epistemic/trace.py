@@ -24,10 +24,14 @@ class TraceStep:
     """
 
     timestamp: datetime
-    operation: str  # PLAN, COLLECT, EXTRACT, PROPOSE, SCRUTINISE, PROMOTE, FREEZE, COMPILE
+    operation: (
+        str  # PLAN, COLLECT, EXTRACT, PROPOSE, SCRUTINISE, PROMOTE, FREEZE, COMPILE
+    )
     description: str  # Human-readable description of what was done
     inputs: List[str] = field(default_factory=list)  # Brief input summary
-    outputs: List[str] = field(default_factory=list)  # What was produced (IDs, summaries)
+    outputs: List[str] = field(
+        default_factory=list
+    )  # What was produced (IDs, summaries)
     duration_ms: Optional[int] = None  # How long it took
     success: bool = True
     error: Optional[str] = None  # Error message if failed
@@ -97,33 +101,45 @@ class ClaimLineage:
         for eid in claim.evidence_ids:
             if eid in evidence_by_id:
                 e = evidence_by_id[eid]
-                supporting.append({
-                    "evidence_id": e.evidence_id,
-                    "source_type": e.source_type,
-                    "source_ref": e.source_ref,
-                    "extracted_content_preview": e.extracted_content[:200] if e.extracted_content else "",
-                })
+                supporting.append(
+                    {
+                        "evidence_id": e.evidence_id,
+                        "source_type": e.source_type,
+                        "source_ref": e.source_ref,
+                        "extracted_content_preview": e.extracted_content[:200]
+                        if e.extracted_content
+                        else "",
+                    }
+                )
 
         # Filter uncertainties to those affecting this claim
         affecting = []
         for u in uncertainty_list:
             if claim.claim_id in u.affected_claim_ids:
-                affecting.append({
-                    "uncertainty_id": u.uncertainty_id,
-                    "uncertainty_type": u.uncertainty_type.value if hasattr(u.uncertainty_type, 'value') else str(u.uncertainty_type),
-                    "description": u.description,
-                    "is_resolved": u.is_resolved,
-                })
+                affecting.append(
+                    {
+                        "uncertainty_id": u.uncertainty_id,
+                        "uncertainty_type": u.uncertainty_type.value
+                        if hasattr(u.uncertainty_type, "value")
+                        else str(u.uncertainty_type),
+                        "description": u.description,
+                        "is_resolved": u.is_resolved,
+                    }
+                )
 
         return cls(
             claim_id=claim.claim_id,
             statement=claim.statement,
             scope=claim.scope,
-            stage=claim.stage.value if hasattr(claim.stage, 'value') else str(claim.stage),
+            stage=claim.stage.value
+            if hasattr(claim.stage, "value")
+            else str(claim.stage),
             assumptions=list(claim.assumptions),
             supporting_evidence=supporting,
             uncertainties=affecting,
-            promotion_path=list(claim.promotion_history) if claim.promotion_history else [],
+            promotion_path=list(claim.promotion_history)
+            if claim.promotion_history
+            else [],
         )
 
 
@@ -188,8 +204,7 @@ class ReasoningTrace:
 
         # Build claim lineages
         self.claim_lineages = [
-            ClaimLineage.from_claim(c, evidence, uncertainties)
-            for c in claims
+            ClaimLineage.from_claim(c, evidence, uncertainties) for c in claims
         ]
 
         # Set completion time to last step timestamp

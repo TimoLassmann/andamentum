@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .preflight import CheckResult
+    from andamentum.deep_research.models import PageSummary
 
 from .operations import GatheredEvidence, EvidenceGatherer
 
@@ -56,7 +57,9 @@ def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
         return False
 
     # Write minimal settings
-    state_dir = Path(os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng"))
+    state_dir = Path(
+        os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng")
+    )
     state_dir.mkdir(parents=True, exist_ok=True)
     settings_path = state_dir / "settings.yml"
 
@@ -79,11 +82,16 @@ def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
 
     # Start container (--replace handles existing stopped containers)
     cmd = [
-        "podman", "run",
-        "--name", _SEARXNG_CONTAINER,
-        "--replace", "-d",
-        "-p", f"{port}:8080",
-        "-v", f"{settings_path}:/etc/searxng/settings.yml:ro",
+        "podman",
+        "run",
+        "--name",
+        _SEARXNG_CONTAINER,
+        "--replace",
+        "-d",
+        "-p",
+        f"{port}:8080",
+        "-v",
+        f"{settings_path}:/etc/searxng/settings.yml:ro",
         _SEARXNG_IMAGE,
     ]
     logger.info(f"Starting SearXNG: {' '.join(cmd)}")
@@ -125,8 +133,18 @@ class WebSearchGatherer:
         healthy = _searxng_is_healthy(timeout=5.0)
         elapsed = (time.monotonic() - t0) * 1000
         if healthy:
-            return CheckResult(name="WebSearch", status="pass", message=f"SearXNG reachable ({elapsed:.0f}ms)", elapsed_ms=elapsed)
-        return CheckResult(name="WebSearch", status="fail", message=f"SearXNG not reachable at {_SEARXNG_URL}", elapsed_ms=elapsed)
+            return CheckResult(
+                name="WebSearch",
+                status="pass",
+                message=f"SearXNG reachable ({elapsed:.0f}ms)",
+                elapsed_ms=elapsed,
+            )
+        return CheckResult(
+            name="WebSearch",
+            status="fail",
+            message=f"SearXNG not reachable at {_SEARXNG_URL}",
+            elapsed_ms=elapsed,
+        )
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
         """Gather evidence via deep_research web search."""
@@ -164,18 +182,22 @@ class WebSearchGatherer:
                 summary = summary_by_url.get(page.url)
                 if summary is None:
                     continue
-                page_data_list.append(PageData(
-                    url=page.url,
-                    title=page.title,
-                    content=page.content,
-                    key_excerpts=list(summary.key_excerpts),
-                    key_points=list(summary.key_points),
-                    relevance_score=summary.relevance_score,
-                ))
+                page_data_list.append(
+                    PageData(
+                        url=page.url,
+                        title=page.title,
+                        content=page.content,
+                        key_excerpts=list(summary.key_excerpts),
+                        key_points=list(summary.key_points),
+                        relevance_score=summary.relevance_score,
+                    )
+                )
 
             if page_data_list:
                 # Cross-page findings from the synthesiser
-                cross_findings = list(result.output.key_findings) if result.output else []
+                cross_findings = (
+                    list(result.output.key_findings) if result.output else []
+                )
 
                 # Pre-compute chunk embeddings per page
                 chunk_embeddings_by_url: dict[str, list[list[float]]] = {}
@@ -183,7 +205,9 @@ class WebSearchGatherer:
                     chunks = _chunk_text(pd.content)
                     if self.embedding_model:
                         try:
-                            chunk_embeddings_by_url[pd.url] = await _embed_texts(chunks, model=self.embedding_model)
+                            chunk_embeddings_by_url[pd.url] = await _embed_texts(
+                                chunks, model=self.embedding_model
+                            )
                         except RuntimeError:
                             logger.warning("Embedding failed for %s, skipping", pd.url)
 
@@ -191,7 +215,9 @@ class WebSearchGatherer:
                 cross_finding_embs: list[list[float]] | None = None
                 if cross_findings and self.embedding_model:
                     try:
-                        cross_finding_embs = await _embed_texts(cross_findings, model=self.embedding_model)
+                        cross_finding_embs = await _embed_texts(
+                            cross_findings, model=self.embedding_model
+                        )
                     except RuntimeError:
                         logger.warning("Embedding failed for cross-page findings")
 
@@ -205,43 +231,60 @@ class WebSearchGatherer:
                 )
 
                 for passage in passages:
-                    gathered.append(GatheredEvidence(
-                        content=passage.text,
-                        source_ref=passage.page_url,
-                        source_type="web_search",
-                        evidence_kind="web_page",
-                        structured_data={
-                            "annotations": passage.annotations,
-                            "page_title": passage.page_title,
-                        },
-                        limitations=["Web source; passage extracted from larger page"],
-                        quality_score=next(
-                            (pd.relevance_score for pd in page_data_list if pd.url == passage.page_url),
-                            0.5,
-                        ),
-                        quality_metadata={
-                            "title": passage.page_title,
-                            "annotation_count": passage.annotation_count,
-                        },
-                    ))
+                    gathered.append(
+                        GatheredEvidence(
+                            content=passage.text,
+                            source_ref=passage.page_url,
+                            source_type="web_search",
+                            evidence_kind="web_page",
+                            structured_data={
+                                "annotations": passage.annotations,
+                                "page_title": passage.page_title,
+                            },
+                            limitations=[
+                                "Web source; passage extracted from larger page"
+                            ],
+                            quality_score=next(
+                                (
+                                    pd.relevance_score
+                                    for pd in page_data_list
+                                    if pd.url == passage.page_url
+                                ),
+                                0.5,
+                            ),
+                            quality_metadata={
+                                "title": passage.page_title,
+                                "annotation_count": passage.annotation_count,
+                            },
+                        )
+                    )
 
         # Strategy 2: Fall back to page_summaries (backward compat / empty fetched_pages)
         if not gathered and result.page_summaries:
             for ps in result.page_summaries:
                 if ps.relevance_score < 0.2:
                     continue
-                key_points = "\n".join(f"- {p}" for p in ps.key_points) if ps.key_points else ""
+                key_points = (
+                    "\n".join(f"- {p}" for p in ps.key_points) if ps.key_points else ""
+                )
                 content = f"{ps.title}\n\n{ps.summary}"
                 if key_points:
                     content += f"\n\nKey points:\n{key_points}"
-                gathered.append(GatheredEvidence(
-                    content=content,
-                    source_ref=ps.url,
-                    source_type="web_search",
-                    limitations=["AI-summarized content; original source text not available"],
-                    quality_score=ps.relevance_score,
-                    quality_metadata={"relevance_score": ps.relevance_score, "title": ps.title},
-                ))
+                gathered.append(
+                    GatheredEvidence(
+                        content=content,
+                        source_ref=ps.url,
+                        source_type="web_search",
+                        limitations=[
+                            "AI-summarized content; original source text not available"
+                        ],
+                        quality_score=ps.relevance_score,
+                        quality_metadata={
+                            "relevance_score": ps.relevance_score,
+                            "title": ps.title,
+                        },
+                    )
+                )
 
         # Strategy 3: Fall back to synthesized EvidenceReport
         if not gathered:
@@ -251,23 +294,29 @@ class WebSearchGatherer:
                 sources = output.sources or []
                 if summary:
                     source_refs = [str(s) for s in sources] if sources else [query]
-                    gathered.append(GatheredEvidence(
-                        content=summary,
-                        source_ref="; ".join(source_refs[:3]),
-                        source_type="web_search",
-                        limitations=["AI-synthesized summary; no direct source text available"],
-                        quality_score=0.4,
-                    ))
+                    gathered.append(
+                        GatheredEvidence(
+                            content=summary,
+                            source_ref="; ".join(source_refs[:3]),
+                            source_type="web_search",
+                            limitations=[
+                                "AI-synthesized summary; no direct source text available"
+                            ],
+                            quality_score=0.4,
+                        )
+                    )
 
         # Strategy 4: No results
         if not gathered:
-            gathered.append(GatheredEvidence(
-                content=f"Web search for '{query}' returned no usable results.",
-                source_ref=query,
-                source_type="web_search",
-                limitations=["No results found"],
-                quality_score=0.0,
-            ))
+            gathered.append(
+                GatheredEvidence(
+                    content=f"Web search for '{query}' returned no usable results.",
+                    source_ref=query,
+                    source_type="web_search",
+                    limitations=["No results found"],
+                    quality_score=0.0,
+                )
+            )
 
         return gathered
 
@@ -281,7 +330,7 @@ class CompositeGatherer:
 
     def __init__(
         self,
-        web_search: WebSearchGatherer,
+        web_search: Any,  # accepts WebSearchGatherer or any compatible gatherer
         providers: Optional[dict] = None,
     ):
         self._web_search = web_search
@@ -291,7 +340,9 @@ class CompositeGatherer:
         """Gather evidence, routing to the appropriate provider."""
         logger.info(
             "[CompositeGatherer] source_type=%s providers=%s query=%.80s",
-            source_type, list(self._providers.keys()), query,
+            source_type,
+            list(self._providers.keys()),
+            query,
         )
 
         # Try registered provider first
@@ -300,11 +351,17 @@ class CompositeGatherer:
             try:
                 results = await provider.gather(query)
                 if results:
-                    logger.info(f"[CompositeGatherer] Provider '{source_type}' returned {len(results)} results")
+                    logger.info(
+                        f"[CompositeGatherer] Provider '{source_type}' returned {len(results)} results"
+                    )
                     return results
-                logger.info(f"[CompositeGatherer] Provider '{source_type}' returned no results, falling back to web search")
+                logger.info(
+                    f"[CompositeGatherer] Provider '{source_type}' returned no results, falling back to web search"
+                )
             except Exception as e:
-                logger.warning(f"[CompositeGatherer] Provider '{source_type}' failed: {e}, falling back to web search")
+                logger.warning(
+                    f"[CompositeGatherer] Provider '{source_type}' failed: {e}, falling back to web search"
+                )
 
         # Query all providers for "all" source type
         if source_type == "all":
@@ -312,17 +369,27 @@ class CompositeGatherer:
             for name, prov in self._providers.items():
                 try:
                     results = await prov.gather(query)
-                    logger.info(f"[CompositeGatherer] Provider '{name}' returned {len(results)} results")
+                    logger.info(
+                        f"[CompositeGatherer] Provider '{name}' returned {len(results)} results"
+                    )
                     all_results.extend(results)
                 except Exception as e:
-                    logger.warning(f"[CompositeGatherer] Provider '{name}' failed during 'all' gather: {e}")
+                    logger.warning(
+                        f"[CompositeGatherer] Provider '{name}' failed during 'all' gather: {e}"
+                    )
             try:
                 web_results = await self._web_search.gather(source_type, query)
-                logger.info(f"[CompositeGatherer] Web search returned {len(web_results)} results")
+                logger.info(
+                    f"[CompositeGatherer] Web search returned {len(web_results)} results"
+                )
                 all_results.extend(web_results)
             except Exception as e:
-                logger.warning(f"[CompositeGatherer] Web search FAILED during 'all' gather: {e}")
-            logger.info(f"[CompositeGatherer] Total results for 'all': {len(all_results)}")
+                logger.warning(
+                    f"[CompositeGatherer] Web search FAILED during 'all' gather: {e}"
+                )
+            logger.info(
+                f"[CompositeGatherer] Total results for 'all': {len(all_results)}"
+            )
             return all_results
 
         # Default: web search
@@ -350,6 +417,7 @@ def get_default_gatherer(
     """
     try:
         import andamentum.deep_research.orchestrator  # noqa: F401
+
         web = WebSearchGatherer(model=model, embedding_model=embedding_model)
         if providers:
             return CompositeGatherer(web, providers)  # type: ignore[return-value]

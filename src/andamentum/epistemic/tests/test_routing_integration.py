@@ -13,7 +13,6 @@ from ..entities.claim import Claim
 from ..primitives import ClaimStage
 from ..patterns import PatternScheduler, OPERATION_TO_TRACK, WorkItem
 from ..operations import SetRoutingDefaultsOperation, OPERATION_CLASSES
-from ..routing import TrackActivation, get_active_tracks
 
 
 def _make_objective(obj_id: str, **kwargs) -> Objective:
@@ -69,7 +68,12 @@ class TestSetRoutingDefaultsOperation:
     @pytest.mark.asyncio
     async def test_skips_tracks_for_exploratory(self, repo):
         """Exploratory skips adversarial, deductive, computational, argument, contrastive."""
-        obj = _make_objective("obj-1", description="test", phase="claims_proposed", question_type="exploratory")
+        obj = _make_objective(
+            "obj-1",
+            description="test",
+            phase="claims_proposed",
+            question_type="exploratory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -80,7 +84,11 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="set_routing_defaults")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="set_routing_defaults",
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -98,7 +106,12 @@ class TestSetRoutingDefaultsOperation:
     @pytest.mark.asyncio
     async def test_skips_tracks_for_verificatory(self, repo):
         """Verificatory skips contrastive and consistency."""
-        obj = _make_objective("obj-2", description="test", phase="claims_proposed", question_type="verificatory")
+        obj = _make_objective(
+            "obj-2",
+            description="test",
+            phase="claims_proposed",
+            question_type="verificatory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -109,7 +122,11 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="set_routing_defaults")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="set_routing_defaults",
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -138,7 +155,11 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="set_routing_defaults")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="set_routing_defaults",
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -155,7 +176,12 @@ class TestSetRoutingDefaultsOperation:
     @pytest.mark.asyncio
     async def test_idempotent(self, repo):
         """Running twice produces the same result."""
-        obj = _make_objective("obj-4", description="test", phase="claims_proposed", question_type="exploratory")
+        obj = _make_objective(
+            "obj-4",
+            description="test",
+            phase="claims_proposed",
+            question_type="exploratory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -166,7 +192,11 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="set_routing_defaults")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="set_routing_defaults",
+        )
         result1 = await op.execute(work)
         result2 = await op.execute(work)
 
@@ -197,7 +227,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_exploratory_filters_adversarial(self, repo):
         """For exploratory question, adversarial_search should not appear in pending work."""
-        obj = _make_objective("obj-1", description="test", phase="claims_proposed", question_type="exploratory")
+        obj = _make_objective(
+            "obj-1",
+            description="test",
+            phase="claims_proposed",
+            question_type="exploratory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -218,7 +253,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_verificatory_includes_adversarial(self, repo):
         """For verificatory question, adversarial_search should be in pending work."""
-        obj = _make_objective("obj-2", description="test", phase="claims_proposed", question_type="verificatory")
+        obj = _make_objective(
+            "obj-2",
+            description="test",
+            phase="claims_proposed",
+            question_type="verificatory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -263,7 +303,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_explanatory_includes_contrastive(self, repo):
         """Explanatory includes contrastive evaluation (PRIMARY)."""
-        obj = _make_objective("obj-4", description="test", phase="claims_proposed", question_type="explanatory")
+        obj = _make_objective(
+            "obj-4",
+            description="test",
+            phase="claims_proposed",
+            question_type="explanatory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -283,7 +328,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_verificatory_skips_contrastive(self, repo):
         """Verificatory skips contrastive evaluation."""
-        obj = _make_objective("obj-5", description="test", phase="claims_proposed", question_type="verificatory")
+        obj = _make_objective(
+            "obj-5",
+            description="test",
+            phase="claims_proposed",
+            question_type="verificatory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -303,7 +353,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_non_routable_operations_always_included(self, repo):
         """Operations not in OPERATION_TO_TRACK should always appear."""
-        obj = _make_objective("obj-6", description="test", phase="claims_proposed", question_type="exploratory")
+        obj = _make_objective(
+            "obj-6",
+            description="test",
+            phase="claims_proposed",
+            question_type="exploratory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -323,7 +378,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_exploratory_includes_consistency(self, repo):
         """Exploratory includes cross_claim_consistency (PRIMARY)."""
-        obj = _make_objective("obj-7", description="test", phase="claims_proposed", question_type="exploratory")
+        obj = _make_objective(
+            "obj-7",
+            description="test",
+            phase="claims_proposed",
+            question_type="exploratory",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -343,7 +403,12 @@ class TestRoutingFilter:
     @pytest.mark.asyncio
     async def test_predictive_skips_consistency(self, repo):
         """Predictive skips cross_claim_consistency."""
-        obj = _make_objective("obj-8", description="test", phase="claims_proposed", question_type="predictive")
+        obj = _make_objective(
+            "obj-8",
+            description="test",
+            phase="claims_proposed",
+            question_type="predictive",
+        )
         await repo.save(obj)
         claim = Claim(
             statement="test",
@@ -422,14 +487,23 @@ class TestPromotionWithNewFields:
 
         scheduler = PatternScheduler(repo)
         work_items = await scheduler.get_pending_work("obj-2")
-        promote_ops = [w for w in work_items if w.operation == "promote_claim" and w.entity_id == claim.entity_id]
+        promote_ops = [
+            w
+            for w in work_items
+            if w.operation == "promote_claim" and w.entity_id == claim.entity_id
+        ]
 
         assert len(promote_ops) == 1
 
     @pytest.mark.asyncio
     async def test_routing_defaults_enable_promotion(self, repo):
         """SetRoutingDefaultsOperation pre-marks skipped tracks, enabling promotion."""
-        obj = _make_objective("obj-3", description="test", phase="claims_proposed", question_type="verificatory")
+        obj = _make_objective(
+            "obj-3",
+            description="test",
+            phase="claims_proposed",
+            question_type="verificatory",
+        )
         await repo.save(obj)
         # Start with all verification tracks done except contrastive/consistency (skipped by verificatory)
         claim = Claim(
@@ -449,14 +523,22 @@ class TestPromotionWithNewFields:
 
         # Apply routing defaults
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="set_routing_defaults")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="set_routing_defaults",
+        )
         result = await op.execute(work)
         assert result.success
 
         # Now promotion should be possible
         scheduler = PatternScheduler(repo)
         work_items = await scheduler.get_pending_work("obj-3")
-        promote_ops = [w for w in work_items if w.operation == "promote_claim" and w.entity_id == claim.entity_id]
+        promote_ops = [
+            w
+            for w in work_items
+            if w.operation == "promote_claim" and w.entity_id == claim.entity_id
+        ]
 
         assert len(promote_ops) == 1
 
@@ -466,7 +548,7 @@ class TestPromotionWithNewFields:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-from ..gates import validate_promotion
+from ..gates import validate_promotion  # noqa: E402
 
 
 class TestParameterizedGates:
@@ -487,7 +569,12 @@ class TestParameterizedGates:
         await repo.save(obj)
 
         # Create claim with 1 evidence at quality 0.3
-        ev = Evidence(objective_id=obj.entity_id, extracted=True, extracted_content="test", quality_score=0.3)
+        ev = Evidence(
+            objective_id=obj.entity_id,
+            extracted=True,
+            extracted_content="test",
+            quality_score=0.3,
+        )
         await repo.save(ev)
 
         claim = Claim(
@@ -503,7 +590,9 @@ class TestParameterizedGates:
         # With exploratory routing, min_evidence_weighted=0.5 for SUPPORTED
         # We have 1 evidence with quality 0.3 — should pass exploratory but
         # the evidence_count check uses integer count, so 1 >= 0.5 rounds to 1 >= 1 = pass
-        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo, question_type="exploratory")
+        result = await validate_promotion(
+            claim, ClaimStage.SUPPORTED, repo, question_type="exploratory"
+        )
         # Should pass — 1 evidence meets the 0.5 threshold (rounded to 1)
         # The quality sum is 0.3 which meets the default 0.3 min_quality_sum
         assert result.passed, f"Failed with reasons: {result.blocking_reasons}"
@@ -520,7 +609,9 @@ class TestParameterizedGates:
         )
         await repo.save(claim)
 
-        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo, question_type=None)
+        result = await validate_promotion(
+            claim, ClaimStage.SUPPORTED, repo, question_type=None
+        )
         assert not result.passed
         assert any("evidence" in r.lower() for r in result.blocking_reasons)
 
@@ -536,5 +627,7 @@ class TestParameterizedGates:
         )
         await repo.save(claim)
 
-        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo, question_type="nonexistent")
+        result = await validate_promotion(
+            claim, ClaimStage.SUPPORTED, repo, question_type="nonexistent"
+        )
         assert not result.passed  # Same as default — not enough evidence

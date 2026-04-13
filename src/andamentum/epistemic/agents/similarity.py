@@ -40,10 +40,12 @@ Return subgroups as lists of item numbers (1-based). Examples:
 Every item number must appear in exactly one subgroup. Do not drop any items.
 """
 
-VALIDATE_GROUP = register_agent(AgentDefinition(
-    name="epistemic_validate_group",
-    prompt=VALIDATE_GROUP_PROMPT,
-    output_model=ValidateGroupOutput,
-    retries=2,
-    output_retries=3,
-))
+VALIDATE_GROUP = register_agent(
+    AgentDefinition(
+        name="epistemic_validate_group",
+        prompt=VALIDATE_GROUP_PROMPT,
+        output_model=ValidateGroupOutput,
+        retries=2,
+        output_retries=3,
+    )
+)

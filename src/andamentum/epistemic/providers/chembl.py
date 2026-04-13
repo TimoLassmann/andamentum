@@ -41,7 +41,10 @@ class ChEMBLProvider:
         t0 = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{CHEMBL_API}/molecule/search.json", params={"q": "aspirin", "limit": 1})
+                response = await client.get(
+                    f"{CHEMBL_API}/molecule/search.json",
+                    params={"q": "aspirin", "limit": 1},
+                )
                 elapsed = (time.monotonic() - t0) * 1000
                 if response.status_code == 200:
                     return CheckResult(
@@ -51,11 +54,16 @@ class ChEMBLProvider:
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
-                    name="ChEMBLProvider", status="fail", message=f"HTTP {response.status_code}", elapsed_ms=elapsed
+                    name="ChEMBLProvider",
+                    status="fail",
+                    message=f"HTTP {response.status_code}",
+                    elapsed_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="ChEMBLProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="ChEMBLProvider", status="fail", message=str(e), elapsed_ms=elapsed
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search ChEMBL for molecules and their bioactivity data."""
@@ -104,12 +112,25 @@ class ChEMBLProvider:
                     name_str = pref_name or chembl_id
                     content_parts.append(f"{name_str} ({chembl_id})")
                     if max_phase is not None:
-                        phase_labels = {0: "Preclinical", 1: "Phase I", 2: "Phase II", 3: "Phase III", 4: "Approved"}
-                        content_parts.append(f"Max phase: {phase_labels.get(max_phase, str(max_phase))}")
+                        phase_labels = {
+                            0: "Preclinical",
+                            1: "Phase I",
+                            2: "Phase II",
+                            3: "Phase III",
+                            4: "Approved",
+                        }
+                        content_parts.append(
+                            f"Max phase: {phase_labels.get(max_phase, str(max_phase))}"
+                        )
                     if mechanism:
-                        content_parts.append(f"Mechanism: {mechanism.get('description', '')}")
+                        content_parts.append(
+                            f"Mechanism: {mechanism.get('description', '')}"
+                        )
                     if activities:
-                        act_strs = [f"{a['type']} = {a['value']} {a['units']} ({a['target']})" for a in activities[:3]]
+                        act_strs = [
+                            f"{a['type']} = {a['value']} {a['units']} ({a['target']})"
+                            for a in activities[:3]
+                        ]
                         content_parts.append(f"Activity: {'; '.join(act_strs)}")
 
                     # Quality based on data completeness and phase
@@ -137,7 +158,10 @@ class ChEMBLProvider:
                                 "activities": activities,
                             },
                             quality_score=quality,
-                            quality_metadata={"max_phase": max_phase, "activity_count": len(activities)},
+                            quality_metadata={
+                                "max_phase": max_phase,
+                                "activity_count": len(activities),
+                            },
                         )
                     )
 
@@ -146,7 +170,9 @@ class ChEMBLProvider:
 
         return gathered
 
-    async def _get_mechanism(self, client: Any, chembl_id: str) -> dict[str, Any] | None:
+    async def _get_mechanism(
+        self, client: Any, chembl_id: str
+    ) -> dict[str, Any] | None:
         """Get mechanism of action for a molecule."""
         try:
             resp = await client.get(
@@ -170,7 +196,9 @@ class ChEMBLProvider:
             pass
         return None
 
-    async def _get_activities(self, client: Any, chembl_id: str) -> list[dict[str, Any]]:
+    async def _get_activities(
+        self, client: Any, chembl_id: str
+    ) -> list[dict[str, Any]]:
         """Get top bioactivities for a molecule."""
         try:
             resp = await client.get(

@@ -28,7 +28,7 @@ import math
 
 from pydantic import BaseModel, Field
 
-from .entities import Claim, Evidence, Uncertainty
+from .entities import Claim
 from .repository import EpistemicRepository
 
 logger = logging.getLogger(__name__)
@@ -69,8 +69,12 @@ POSTERIOR_ELIGIBLE: set[str] = {"verificatory", "predictive"}
 class CheckResult(BaseModel):
     """Result of a single answer-confidence check."""
 
-    name: str = Field(description="Check identifier, e.g. 'evidence_basis' or 'track:adversarial'")
-    tradition: str = Field(description="Epistemological tradition, e.g. 'kahneman', 'peirce', ''")
+    name: str = Field(
+        description="Check identifier, e.g. 'evidence_basis' or 'track:adversarial'"
+    )
+    tradition: str = Field(
+        description="Epistemological tradition, e.g. 'kahneman', 'peirce', ''"
+    )
     passed: bool = Field(description="Whether the check passed")
     detail: str = Field(description="Human-readable explanation")
 
@@ -83,7 +87,9 @@ class AnswerConfidenceReport(BaseModel):
     """
 
     objective_id: str
-    question_type: str | None = Field(description="Question type from objective, or None if unclassified")
+    question_type: str | None = Field(
+        description="Question type from objective, or None if unclassified"
+    )
     checks: list[CheckResult] = Field(description="All checks that were evaluated")
     passes: int = Field(description="Number of checks that passed")
     failures: int = Field(description="Number of checks that failed")
@@ -106,8 +112,12 @@ class PosteriorReport(BaseModel):
 
     posterior: float = Field(description="P(Y) in [0.0, 1.0]")
     log_odds: int = Field(description="supporting - contradicting")
-    supporting_count: int = Field(description="Total independent supporting evidence across active claims")
-    contradicting_count: int = Field(description="Total independent contradicting evidence across active claims")
+    supporting_count: int = Field(
+        description="Total independent supporting evidence across active claims"
+    )
+    contradicting_count: int = Field(
+        description="Total independent contradicting evidence across active claims"
+    )
     objective_id: str
     question_type: str
     explanation: str
@@ -185,7 +195,8 @@ async def compute_answer_confidence(
     has_evidence_basis = False
     for claim in active_claims:
         claim_evidence = [
-            e for e in evidence
+            e
+            for e in evidence
             if e.entity_id in claim.evidence_ids
             and not e.invalidated
             and e.support_judgment is not None
@@ -194,14 +205,16 @@ async def compute_answer_confidence(
             has_evidence_basis = True
             break
 
-    checks.append(CheckResult(
-        name="evidence_basis",
-        tradition="kahneman",
-        passed=has_evidence_basis,
-        detail="at least one active claim has judged, non-invalidated evidence"
-        if has_evidence_basis
-        else "no active claim has judged, non-invalidated evidence",
-    ))
+    checks.append(
+        CheckResult(
+            name="evidence_basis",
+            tradition="kahneman",
+            passed=has_evidence_basis,
+            detail="at least one active claim has judged, non-invalidated evidence"
+            if has_evidence_basis
+            else "no active claim has judged, non-invalidated evidence",
+        )
+    )
 
     # scrutiny_complete (Peirce): all active claims have scrutiny_verdict
     # in ("pass", "fail"). Requires active claims to exist.
@@ -212,32 +225,35 @@ async def compute_answer_confidence(
     else:
         all_scrutinized = False
 
-    checks.append(CheckResult(
-        name="scrutiny_complete",
-        tradition="peirce",
-        passed=all_scrutinized,
-        detail="all active claims have scrutiny verdict"
-        if all_scrutinized
-        else "not all active claims have scrutiny verdict"
-        if active_claims
-        else "no active claims",
-    ))
+    checks.append(
+        CheckResult(
+            name="scrutiny_complete",
+            tradition="peirce",
+            passed=all_scrutinized,
+            detail="all active claims have scrutiny verdict"
+            if all_scrutinized
+            else "not all active claims have scrutiny verdict"
+            if active_claims
+            else "no active claims",
+        )
+    )
 
     # uncertainties_resolved: no unresolved blocking uncertainties
     unresolved_blocking = [
-        u for u in uncertainties
-        if u.is_blocking and not u.is_resolved
+        u for u in uncertainties if u.is_blocking and not u.is_resolved
     ]
     unc_resolved = len(unresolved_blocking) == 0
 
-    checks.append(CheckResult(
-        name="uncertainties_resolved",
-        tradition="",
-        passed=unc_resolved,
-        detail="no unresolved blocking uncertainties"
-        if unc_resolved
-        else f"{len(unresolved_blocking)} unresolved blocking uncertainties remain",
-    ))
+    checks.append(
+        CheckResult(
+            name="uncertainties_resolved",
+            tradition="",
+            passed=unc_resolved,
+            detail="no unresolved blocking uncertainties"
+            if unc_resolved
+            else f"{len(unresolved_blocking)} unresolved blocking uncertainties remain",
+        )
+    )
 
     # belief_maintenance (Doyle): no active claim has needs_revalidation=True
     # Requires active claims to exist.
@@ -248,16 +264,18 @@ async def compute_answer_confidence(
         belief_ok = False
         needs_reval = []
 
-    checks.append(CheckResult(
-        name="belief_maintenance",
-        tradition="doyle",
-        passed=belief_ok,
-        detail="no active claims need revalidation"
-        if belief_ok
-        else f"{len(needs_reval)} claims need revalidation"
-        if active_claims
-        else "no active claims",
-    ))
+    checks.append(
+        CheckResult(
+            name="belief_maintenance",
+            tradition="doyle",
+            passed=belief_ok,
+            detail="no active claims need revalidation"
+            if belief_ok
+            else f"{len(needs_reval)} claims need revalidation"
+            if active_claims
+            else "no active claims",
+        )
+    )
 
     # ------------------------------------------------------------------
     # 5. Routing-dependent track checks
@@ -294,7 +312,8 @@ async def compute_answer_confidence(
                 # investigation happened.
                 if active_claims:
                     completed = sum(
-                        1 for c in active_claims
+                        1
+                        for c in active_claims
                         if _track_completed(c, track_name, flag, repo)
                     )
                     track_passed = completed == len(active_claims)
@@ -310,12 +329,14 @@ async def compute_answer_confidence(
                     detail = "no active claims"
 
                 tradition = TRACK_TRADITIONS.get(track_name, "")
-                checks.append(CheckResult(
-                    name=f"track:{track_name}",
-                    tradition=tradition,
-                    passed=track_passed,
-                    detail=detail,
-                ))
+                checks.append(
+                    CheckResult(
+                        name=f"track:{track_name}",
+                        tradition=tradition,
+                        passed=track_passed,
+                        detail=detail,
+                    )
+                )
 
     # ------------------------------------------------------------------
     # 6. Aggregate
@@ -404,7 +425,8 @@ async def compute_posterior(
 
     for claim in active_claims:
         claim_evidence = [
-            e for e in evidence
+            e
+            for e in evidence
             if e.entity_id in claim.evidence_ids
             and not e.invalidated
             and e.cluster_status not in ("corroborative", "deferred")

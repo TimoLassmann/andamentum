@@ -28,32 +28,50 @@ class UncertaintyType(str, Enum):
     """
 
     # === BLOCKING UNCERTAINTIES (prevent promotion) ===
-    UNKNOWN = "unknown"                            # Genuinely missing critical information
-    CONTRADICTION = "contradiction"                # Sources genuinely disagree on CORE claim
-    COMPUTATIONAL_DISAGREEMENT = "computational_disagreement"  # Dual execution results disagree
-    STRONG_COUNTEREVIDENCE = "strong_counterevidence"          # Adversarial search found strong counterarguments
-    LOGICAL_INCONSISTENCY = "logical_inconsistency"            # Claim contradicts itself or established facts
-    PHYSICAL_IMPLAUSIBILITY = "physical_implausibility"        # Claim violates conservation laws, causality
-    MISSING_PREMISE = "missing_premise"                        # Claim cannot be derived without unstated assumptions
+    UNKNOWN = "unknown"  # Genuinely missing critical information
+    CONTRADICTION = "contradiction"  # Sources genuinely disagree on CORE claim
+    COMPUTATIONAL_DISAGREEMENT = (
+        "computational_disagreement"  # Dual execution results disagree
+    )
+    STRONG_COUNTEREVIDENCE = (
+        "strong_counterevidence"  # Adversarial search found strong counterarguments
+    )
+    LOGICAL_INCONSISTENCY = (
+        "logical_inconsistency"  # Claim contradicts itself or established facts
+    )
+    PHYSICAL_IMPLAUSIBILITY = (
+        "physical_implausibility"  # Claim violates conservation laws, causality
+    )
+    MISSING_PREMISE = (
+        "missing_premise"  # Claim cannot be derived without unstated assumptions
+    )
 
     # === NON-BLOCKING UNCERTAINTIES (caveats) ===
-    EVIDENCE_GAP = "evidence_gap"                  # Insufficient evidence (not fatal)
-    ASSUMPTION = "assumption"                      # We assume X without proof
-    RISK = "risk"                                  # X could go wrong
-    WEAK_CONVERGENCE = "weak_convergence"          # Evidence sources show weak independence
-    DEFINITIONAL_VARIATION = "definitional_variation"  # Depends on how terms are defined
-    SCOPE_DIFFERENCE = "scope_difference"          # Different sources apply to different contexts
-    METHODOLOGICAL_VARIATION = "methodological_variation"  # Different methods yield different specifics
-    PERSPECTIVAL = "perspectival"                  # Valid different viewpoints on same fact
-    GRANULARITY_DIFFERENCE = "granularity_difference"  # True at one level, nuanced at finer level
+    EVIDENCE_GAP = "evidence_gap"  # Insufficient evidence (not fatal)
+    ASSUMPTION = "assumption"  # We assume X without proof
+    RISK = "risk"  # X could go wrong
+    WEAK_CONVERGENCE = "weak_convergence"  # Evidence sources show weak independence
+    DEFINITIONAL_VARIATION = (
+        "definitional_variation"  # Depends on how terms are defined
+    )
+    SCOPE_DIFFERENCE = (
+        "scope_difference"  # Different sources apply to different contexts
+    )
+    METHODOLOGICAL_VARIATION = (
+        "methodological_variation"  # Different methods yield different specifics
+    )
+    PERSPECTIVAL = "perspectival"  # Valid different viewpoints on same fact
+    GRANULARITY_DIFFERENCE = (
+        "granularity_difference"  # True at one level, nuanced at finer level
+    )
 
 
 class UncertaintyScope(str, Enum):
     """Scope of an uncertainty's impact."""
 
-    CLAIM = "claim"        # Affects specific claims only (most common)
+    CLAIM = "claim"  # Affects specific claims only (most common)
     OBJECTIVE = "objective"  # Affects entire objective
-    GLOBAL = "global"      # Affects entire project (rare)
+    GLOBAL = "global"  # Affects entire project (rare)
 
 
 # Which types block promotion
@@ -79,7 +97,11 @@ class Uncertainty(EpistemicEntity):
     @model_validator(mode="before")
     @classmethod
     def _accept_legacy_id(cls, data: Any) -> Any:
-        if isinstance(data, dict) and "uncertainty_id" in data and "entity_id" not in data:
+        if (
+            isinstance(data, dict)
+            and "uncertainty_id" in data
+            and "entity_id" not in data
+        ):
             data["entity_id"] = data.pop("uncertainty_id")
         return data
 
@@ -87,36 +109,31 @@ class Uncertainty(EpistemicEntity):
 
     # Core fields
     uncertainty_type: UncertaintyType = Field(
-        default=UncertaintyType.UNKNOWN,
-        description="Type of uncertainty"
+        default=UncertaintyType.UNKNOWN, description="Type of uncertainty"
     )
     description: str = Field(description="What is uncertain")
     affected_claim_ids: list[str] = Field(
-        default_factory=list,
-        description="Claims this affects"
+        default_factory=list, description="Claims this affects"
     )
     scope: UncertaintyScope = Field(
-        default=UncertaintyScope.CLAIM,
-        description="Scope of impact"
+        default=UncertaintyScope.CLAIM, description="Scope of impact"
     )
 
     # State fields
     resolution: Optional[str] = Field(
-        default=None,
-        description="How this was resolved, if at all"
+        default=None, description="How this was resolved, if at all"
     )
     resolved_at: Optional[datetime] = Field(default=None)
 
     # Denormalized for pattern matching (set on save)
     is_blocking: bool = Field(
-        default=True,
-        description="Whether this blocks promotion (computed from type)"
+        default=True, description="Whether this blocks promotion (computed from type)"
     )
 
     # Resolution chain tracking
     spawned_from_id: Optional[str] = Field(
         default=None,
-        description="Parent uncertainty ID if created during resolution of another uncertainty"
+        description="Parent uncertainty ID if created during resolution of another uncertainty",
     )
 
     # Provenance
@@ -157,7 +174,9 @@ class Uncertainty(EpistemicEntity):
         return self.entity_id
 
     @classmethod
-    def from_metadata(cls, meta: dict[str, Any], description: str = "") -> "Uncertainty":
+    def from_metadata(
+        cls, meta: dict[str, Any], description: str = ""
+    ) -> "Uncertainty":
         """Reconstruct Uncertainty from metadata dict (legacy API)."""
         return cls._from_metadata(description, meta)
 
@@ -165,12 +184,16 @@ class Uncertainty(EpistemicEntity):
     def _from_metadata(cls, content: str, metadata: dict[str, Any]) -> "Uncertainty":
         """Reconstruct from metadata (legacy support)."""
         resolved_at_str = metadata.get("resolved_at")
-        resolved_at = datetime.fromisoformat(resolved_at_str) if resolved_at_str else None
+        resolved_at = (
+            datetime.fromisoformat(resolved_at_str) if resolved_at_str else None
+        )
 
         return cls(
             entity_id=metadata.get("uncertainty_id", ""),
             objective_id=metadata.get("objective_id", ""),
-            uncertainty_type=UncertaintyType(metadata.get("uncertainty_type", "unknown")),
+            uncertainty_type=UncertaintyType(
+                metadata.get("uncertainty_type", "unknown")
+            ),
             description=content or metadata.get("description", ""),
             affected_claim_ids=metadata.get("affected_claim_ids", []),
             scope=UncertaintyScope(metadata.get("scope", "claim")),
@@ -178,6 +201,10 @@ class Uncertainty(EpistemicEntity):
             resolved_at=resolved_at,
             spawned_from_id=metadata.get("spawned_from_id"),
             created_by=metadata.get("created_by", "system"),
-            created_at=datetime.fromisoformat(metadata.get("created_at", datetime.now().isoformat())),
-            updated_at=datetime.fromisoformat(metadata.get("updated_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                metadata.get("created_at", datetime.now().isoformat())
+            ),
+            updated_at=datetime.fromisoformat(
+                metadata.get("updated_at", datetime.now().isoformat())
+            ),
         )

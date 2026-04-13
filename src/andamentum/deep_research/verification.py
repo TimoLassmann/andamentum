@@ -2,12 +2,14 @@
 
 Simple, deterministic verification that cited sources were actually accessed.
 """
+
 from typing import TypedDict
 from urllib.parse import urlparse
 
 
 class VerificationResult(TypedDict):
     """Results of source verification."""
+
     total_cited: int
     verified_count: int
     verified: list[str]
@@ -50,7 +52,7 @@ def normalize_url(url: str) -> str:
     scheme = "https"
 
     # Remove trailing slashes from path
-    path = parsed.path.rstrip('/')
+    path = parsed.path.rstrip("/")
 
     # Rebuild URL
     normalized = f"{scheme}://{parsed.netloc}{path}"
@@ -63,9 +65,7 @@ def normalize_url(url: str) -> str:
 
 
 def verify_sources(
-    cited_sources: list[str],
-    searched_urls: set[str],
-    fetched_urls: set[str]
+    cited_sources: list[str], searched_urls: set[str], fetched_urls: set[str]
 ) -> VerificationResult:
     """Verify that cited sources were actually accessed during research.
 
@@ -105,5 +105,5 @@ def verify_sources(
         verified=sorted(list(verified)),
         unverified=sorted(list(unverified)),
         accessed_not_cited=sorted(list(accessed_not_cited)),
-        verification_rate=rate
+        verification_rate=rate,
     )

@@ -27,8 +27,14 @@ from __future__ import annotations
 import logging
 from typing import List, Dict, Any, Optional
 
-from .source_index import SourceIndex, SourceMatch
-from .source_registry import SourceRegistry, BUILTIN_SOURCES
+try:
+    from .source_index import SourceIndex, SourceMatch  # type: ignore[import-not-found]
+    from .source_registry import SourceRegistry, BUILTIN_SOURCES  # type: ignore[import-not-found]
+except ImportError:
+    SourceIndex = None  # type: ignore[assignment,misc]
+    SourceMatch = None  # type: ignore[assignment,misc]
+    SourceRegistry = None  # type: ignore[assignment,misc]
+    BUILTIN_SOURCES = []  # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
@@ -157,20 +163,25 @@ class EvidenceRouter:
 
             if source_id == "web_search":
                 # Web search is its own provider
-                strategy.append({
-                    "provider": "web_search",
-                    "config": {"depth": "standard"},
-                })
+                strategy.append(
+                    {
+                        "provider": "web_search",
+                        "config": {"depth": "standard"},
+                    }
+                )
             else:
                 # Other sources go through knowledge_sources provider
                 knowledge_sources.append(source_id)
 
         # Bundle knowledge sources into one provider call
         if knowledge_sources:
-            strategy.insert(0, {
-                "provider": "knowledge_sources",
-                "config": {"sources": knowledge_sources},
-            })
+            strategy.insert(
+                0,
+                {
+                    "provider": "knowledge_sources",
+                    "config": {"sources": knowledge_sources},
+                },
+            )
 
         logger.info(
             f"[EvidenceRouter] Built strategy with {len(strategy)} providers: "

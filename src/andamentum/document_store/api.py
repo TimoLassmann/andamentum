@@ -37,7 +37,13 @@ from .database import (
     update_document_metadata,
 )
 from .lifecycle import get_db_path, init_database_metadata, is_ephemeral_name
-from .models import Document, DocumentMetadata, DocumentType, ReembedResult, UpdateResult
+from .models import (
+    Document,
+    DocumentMetadata,
+    DocumentType,
+    ReembedResult,
+    UpdateResult,
+)
 from .search import search_unified, UnifiedSearchResult
 
 logger = logging.getLogger(__name__)
@@ -172,7 +178,9 @@ class DocumentStore:
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
-                    logger.info(f"Dedup: content already exists as {row[0]}, skipping insert")
+                    logger.info(
+                        f"Dedup: content already exists as {row[0]}, skipping insert"
+                    )
                     return row[0]
 
         doc_id = str(uuid.uuid4())
@@ -321,12 +329,16 @@ class DocumentStore:
         from .database import get_async_connection
 
         async with get_async_connection(str(self.db_path)) as db:
-            async with db.execute("SELECT markdown_content FROM documents WHERE doc_uuid = ? AND deleted_at IS NULL", (doc_id,)) as cursor:
+            async with db.execute(
+                "SELECT markdown_content FROM documents WHERE doc_uuid = ? AND deleted_at IS NULL",
+                (doc_id,),
+            ) as cursor:
                 row = await cursor.fetchone()
                 if row is not None and row[0] is not None:
                     return Document(
                         metadata=doc_metadata,
                         content=row[0],
+                        raw_file_path=None,
                     )
 
         return None
@@ -381,10 +393,14 @@ class DocumentStore:
         metadata_updated = False
 
         if new_content is not None:
-            previous_hash, new_hash = await update_document_content(str(self.db_path), doc_id, new_content)
+            previous_hash, new_hash = await update_document_content(
+                str(self.db_path), doc_id, new_content
+            )
 
         if metadata is not None:
-            await update_document_metadata(str(self.db_path), doc_id, metadata, merge=merge_metadata)
+            await update_document_metadata(
+                str(self.db_path), doc_id, metadata, merge=merge_metadata
+            )
             metadata_updated = True
 
         return UpdateResult(
@@ -498,7 +514,9 @@ class DocumentStore:
     # List / Find / Stats
     # -------------------------------------------------------------------------
 
-    async def list_documents(self, document_type: Optional[DocumentType] = None) -> list[DocumentMetadata]:
+    async def list_documents(
+        self, document_type: Optional[DocumentType] = None
+    ) -> list[DocumentMetadata]:
         """List all documents, optionally filtered by type."""
         return await list_documents_by_type(str(self.db_path), document_type)
 
@@ -579,33 +597,52 @@ class DocumentStore:
                 ORDER BY created_date ASC
                 """
             ) as cursor:
-                docs_to_embed = await cursor.fetchall()
+                docs_to_embed: list[Any] = list(await cursor.fetchall())
 
         async with get_async_connection(str(self.db_path)) as db:
-            async with db.execute("SELECT COUNT(*) FROM documents WHERE doc_embedding IS NOT NULL") as cursor:
+            async with db.execute(
+                "SELECT COUNT(*) FROM documents WHERE doc_embedding IS NOT NULL"
+            ) as cursor:
                 row = await cursor.fetchone()
                 n_skipped = row[0] if row else 0
 
         if not docs_to_embed:
             duration = time.monotonic() - start_time
-            return ReembedResult(n_embedded=0, n_skipped=n_skipped, n_failed=0, duration_seconds=round(duration, 2))
+            return ReembedResult(
+                n_embedded=0,
+                n_skipped=n_skipped,
+                n_failed=0,
+                duration_seconds=round(duration, 2),
+            )
 
-        logger.info(f"Re-embedding {len(docs_to_embed)} documents (skipping {n_skipped} with existing embeddings)")
+        logger.info(
+            f"Re-embedding {len(docs_to_embed)} documents (skipping {n_skipped} with existing embeddings)"
+        )
 
+        if not model:
+            raise ValueError("embedding_model is required for reembed_all")
         embedding_service = EmbeddingService(model=model)
         try:
             for i in range(0, len(docs_to_embed), batch_size):
                 batch = docs_to_embed[i : i + batch_size]
                 for doc_uuid, title, content in batch:
                     try:
-                        doc_embedding = await embedding_service.embed_text(content, text_type="document", title=title)
-                        await store_doc_embedding(str(self.db_path), doc_uuid, doc_embedding)
+                        doc_embedding = await embedding_service.embed_text(
+                            content, text_type="document", title=title
+                        )
+                        await store_doc_embedding(
+                            str(self.db_path), doc_uuid, doc_embedding
+                        )
                         n_embedded += 1
                         if n_embedded % 10 == 0:
-                            logger.info(f"Re-embedded {n_embedded}/{len(docs_to_embed)} documents")
+                            logger.info(
+                                f"Re-embedded {n_embedded}/{len(docs_to_embed)} documents"
+                            )
                     except Exception as e:
                         n_failed += 1
-                        logger.warning(f"Failed to embed document '{title}' ({doc_uuid}): {e}")
+                        logger.warning(
+                            f"Failed to embed document '{title}' ({doc_uuid}): {e}"
+                        )
         finally:
             await embedding_service.close()
 
@@ -614,14 +651,19 @@ class DocumentStore:
             f"Re-embedding complete: {n_embedded} embedded, {n_skipped} skipped, {n_failed} failed in {duration:.1f}s"
         )
         return ReembedResult(
-            n_embedded=n_embedded, n_skipped=n_skipped, n_failed=n_failed, duration_seconds=round(duration, 2)
+            n_embedded=n_embedded,
+            n_skipped=n_skipped,
+            n_failed=n_failed,
+            duration_seconds=round(duration, 2),
         )
 
     # -------------------------------------------------------------------------
     # DHP Temporal Clustering
     # -------------------------------------------------------------------------
 
-    async def recluster(self, config: Optional["DHPConfig"] = None) -> "ReclusterResult":
+    async def recluster(
+        self, config: Optional["DHPConfig"] = None
+    ) -> "ReclusterResult":
         """Run full offline DHP re-clustering on all documents.
 
         Reads stored embeddings and timestamps, runs the complete DHP algorithm
@@ -664,7 +706,10 @@ class DocumentStore:
         if not rows:
             duration = time.monotonic() - start_time
             return ReclusterResult(
-                n_clusters=0, n_documents=0, duration_seconds=round(duration, 2), config=config.to_dict()
+                n_clusters=0,
+                n_documents=0,
+                duration_seconds=round(duration, 2),
+                config=config.to_dict(),
             )
 
         embeddings_and_times: list[tuple[str, np.ndarray, float]] = []
@@ -694,10 +739,19 @@ class DocumentStore:
                     (
                         json.dumps(state_dict["centroid"]),
                         float(np.mean(cstate.kernel_weights)),
-                        json.dumps({"weights": state_dict["kernel_weights"], "doc_times": state_dict["doc_times"]}),
+                        json.dumps(
+                            {
+                                "weights": state_dict["kernel_weights"],
+                                "doc_times": state_dict["doc_times"],
+                            }
+                        ),
                         cstate.doc_count,
-                        datetime.fromtimestamp(cstate.created_at * 3600, tz=timezone.utc).isoformat(),
-                        datetime.fromtimestamp(cstate.last_active_at * 3600, tz=timezone.utc).isoformat(),
+                        datetime.fromtimestamp(
+                            cstate.created_at * 3600, tz=timezone.utc
+                        ).isoformat(),
+                        datetime.fromtimestamp(
+                            cstate.last_active_at * 3600, tz=timezone.utc
+                        ).isoformat(),
                     ),
                 )
                 cluster_id_map[internal_id] = cursor.lastrowid  # type: ignore[assignment]
@@ -731,6 +785,7 @@ class DocumentStore:
 
         # Invalidate cluster cache so next search picks up new clusters
         from .search import _invalidate_cluster_cache
+
         _invalidate_cluster_cache(str(self.db_path))
 
         duration = time.monotonic() - start_time
@@ -745,7 +800,9 @@ class DocumentStore:
             config=config.to_dict(),
         )
 
-    async def list_clusters(self, sort_by: str = "last_active_at", include_docs: bool = False) -> list:
+    async def list_clusters(
+        self, sort_by: str = "last_active_at", include_docs: bool = False
+    ) -> list:
         """List all clusters with summary information."""
         from .cluster_models import ClusterDetail, ClusterInfo
         from .database import get_async_connection
@@ -790,7 +847,9 @@ class DocumentStore:
                 )
         return results
 
-    async def get_cluster(self, cluster_id: int, include_docs: bool = True) -> Optional["ClusterDetail"]:
+    async def get_cluster(
+        self, cluster_id: int, include_docs: bool = True
+    ) -> Optional["ClusterDetail"]:
         """Get detailed information about a specific cluster."""
         from .cluster_models import ClusterDetail
         from .database import get_async_connection
@@ -826,12 +885,21 @@ class DocumentStore:
 
         async with get_async_connection(str(self.db_path)) as db:
             async with db.execute("SELECT COUNT(*) FROM clusters") as c:
-                n_clusters = (await c.fetchone())[0]
-            async with db.execute("SELECT COUNT(*) FROM documents WHERE cluster_id IS NOT NULL") as c:
-                n_clustered = (await c.fetchone())[0]
-            async with db.execute("SELECT COUNT(*) FROM documents WHERE cluster_id IS NULL") as c:
-                n_unclustered = (await c.fetchone())[0]
-            async with db.execute("SELECT config, completed_at FROM cluster_runs ORDER BY id DESC LIMIT 1") as c:
+                _row = await c.fetchone()
+                n_clusters = _row[0] if _row else 0
+            async with db.execute(
+                "SELECT COUNT(*) FROM documents WHERE cluster_id IS NOT NULL"
+            ) as c:
+                _row = await c.fetchone()
+                n_clustered = _row[0] if _row else 0
+            async with db.execute(
+                "SELECT COUNT(*) FROM documents WHERE cluster_id IS NULL"
+            ) as c:
+                _row = await c.fetchone()
+                n_unclustered = _row[0] if _row else 0
+            async with db.execute(
+                "SELECT config, completed_at FROM cluster_runs ORDER BY id DESC LIMIT 1"
+            ) as c:
                 run_row = await c.fetchone()
 
         last_config = json.loads(run_row[0]) if run_row else None

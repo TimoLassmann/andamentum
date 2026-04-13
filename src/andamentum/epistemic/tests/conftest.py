@@ -4,8 +4,8 @@ import pytest
 from types import SimpleNamespace
 from typing import Any
 
-from ..storage import InMemoryStorageBackend
-from ..repository import EpistemicRepository
+from andamentum.epistemic.storage import InMemoryStorageBackend
+from andamentum.epistemic.repository import EpistemicRepository
 
 
 def _to_namespace(obj: Any) -> Any:
@@ -61,19 +61,24 @@ class FailingRepo(EpistemicRepository):
     Used to test error handling when repo operations throw.
     """
 
-    def __init__(self, backend, fail_on: set[str] | None = None, fail_on_query: set[str] | None = None):
+    def __init__(
+        self,
+        backend,
+        fail_on: set[str] | None = None,
+        fail_on_query: set[str] | None = None,
+    ):
         super().__init__(backend)
         self.fail_on = fail_on or set()
         self.fail_on_query = fail_on_query or set()
         self.failure_log: list[str] = []
 
-    async def get(self, entity_type: str, entity_id: str):
+    async def get(self, entity_type: str, entity_id: str) -> Any:  # type: ignore[override]
         if entity_id in self.fail_on:
             self.failure_log.append(f"get:{entity_type}:{entity_id}")
             raise RuntimeError(f"Simulated repo failure for {entity_id}")
         return await super().get(entity_type, entity_id)
 
-    async def query(self, entity_type: str, **filters):
+    async def query(self, entity_type: str, **filters: Any) -> Any:  # type: ignore[override]
         if entity_type in self.fail_on_query:
             self.failure_log.append(f"query:{entity_type}")
             raise RuntimeError(f"Simulated query failure for {entity_type}")
@@ -86,7 +91,9 @@ class PartiallyFailingRunner:
     Used to test error handling when specific agent calls throw.
     """
 
-    def __init__(self, fail_on: set[str], fallback_runner: FakeAgentRunner | None = None):
+    def __init__(
+        self, fail_on: set[str], fallback_runner: FakeAgentRunner | None = None
+    ):
         self.fail_on = fail_on
         self.fallback = fallback_runner or FakeAgentRunner()
         self.calls: list[tuple[str, dict[str, Any]]] = []

@@ -4,7 +4,19 @@ import pytest
 
 from unittest.mock import patch
 
-from ..content_extractor import extract_content, extract_html, extract_pdf, ExtractionError
+try:
+    import reportlab  # type: ignore[import-not-found]  # noqa: F401
+
+    _HAS_REPORTLAB = True
+except ImportError:
+    _HAS_REPORTLAB = False
+
+from ..content_extractor import (
+    extract_content,
+    extract_html,
+    extract_pdf,
+    ExtractionError,
+)
 
 
 class TestExtractHtml:
@@ -67,12 +79,13 @@ class TestExtractHtml:
 
 
 class TestExtractPdf:
+    @pytest.mark.skipif(not _HAS_REPORTLAB, reason="reportlab not installed")
     def test_extracts_markdown_from_pdf_bytes(self):
         """Docling should convert valid PDF bytes to markdown."""
         from io import BytesIO
 
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter  # type: ignore[import-not-found]
+        from reportlab.pdfgen import canvas  # type: ignore[import-not-found]
 
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=letter)
@@ -108,27 +121,41 @@ class TestExtractContent:
             </article>
         </body></html>
         """
-        result = extract_content(html_bytes, "text/html; charset=utf-8", "https://example.com")
+        result = extract_content(
+            html_bytes, "text/html; charset=utf-8", "https://example.com"
+        )
         assert isinstance(result, str)
         assert len(result) > 20
 
     def test_routes_pdf_by_content_type(self):
         """Content-type containing 'pdf' should route to extract_pdf."""
-        with patch("andamentum.deep_research.content_extractor.extract_pdf", return_value="# Mocked PDF output") as mock:
-            result = extract_content(b"%PDF-1.4 data", "application/pdf", "https://example.com/paper.pdf")
+        with patch(
+            "andamentum.deep_research.content_extractor.extract_pdf",
+            return_value="# Mocked PDF output",
+        ) as mock:
+            result = extract_content(
+                b"%PDF-1.4 data", "application/pdf", "https://example.com/paper.pdf"
+            )
             mock.assert_called_once_with(b"%PDF-1.4 data", "paper.pdf")
             assert result == "# Mocked PDF output"
 
     def test_unknown_type_falls_back_to_text(self):
         """Unknown content-types should decode bytes as UTF-8 text."""
         raw = "Plain text content here"
-        result = extract_content(raw.encode("utf-8"), "text/plain", "https://example.com/file.txt")
+        result = extract_content(
+            raw.encode("utf-8"), "text/plain", "https://example.com/file.txt"
+        )
         assert result == raw
 
     def test_extracts_source_name_from_url(self):
         """Should extract filename from URL path for PDF source_name."""
-        with patch("andamentum.deep_research.content_extractor.extract_pdf", return_value="markdown") as mock:
-            extract_content(b"%PDF", "application/pdf", "https://example.com/papers/study-2024.pdf")
+        with patch(
+            "andamentum.deep_research.content_extractor.extract_pdf",
+            return_value="markdown",
+        ) as mock:
+            extract_content(
+                b"%PDF", "application/pdf", "https://example.com/papers/study-2024.pdf"
+            )
             mock.assert_called_once_with(b"%PDF", "study-2024.pdf")
 
     def test_html_charset_respected(self):
@@ -136,5 +163,7 @@ class TestExtractContent:
         text = "Caf\u00e9 au lait"
         html = f"<html><body><article><p>{text} is a popular drink that many researchers enjoy during long experiments in the laboratory.</p></article></body></html>"
         html_bytes = html.encode("latin-1")
-        result = extract_content(html_bytes, "text/html; charset=iso-8859-1", "https://example.com")
+        result = extract_content(
+            html_bytes, "text/html; charset=iso-8859-1", "https://example.com"
+        )
         assert "Caf" in result

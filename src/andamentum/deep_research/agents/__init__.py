@@ -52,7 +52,9 @@ def get_agent(name: str) -> AgentDefinition:
         KeyError: If agent is not registered.
     """
     if name not in AGENT_REGISTRY:
-        raise KeyError(f"Unknown deep-research agent: {name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise KeyError(
+            f"Unknown deep-research agent: {name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
     return AGENT_REGISTRY[name]
 
 

@@ -82,12 +82,22 @@ class TestSignalParallelization:
 
         with (
             patch("andamentum.document_store.search._run_fts5_signal", new=slow_fts5),
-            patch("andamentum.document_store.search._run_chunk_search", new=slow_chunks),
-            patch("andamentum.document_store.search._run_doc_embedding_search", new=slow_doc_embed),
-            patch("andamentum.document_store.search._run_cluster_search", new=slow_clusters),
+            patch(
+                "andamentum.document_store.search._run_chunk_search", new=slow_chunks
+            ),
+            patch(
+                "andamentum.document_store.search._run_doc_embedding_search",
+                new=slow_doc_embed,
+            ),
+            patch(
+                "andamentum.document_store.search._run_cluster_search",
+                new=slow_clusters,
+            ),
         ):
             start = time.monotonic()
-            await search_unified("/fake/path.db", "test query", query_embedding=fake_embedding)
+            await search_unified(
+                "/fake/path.db", "test query", query_embedding=fake_embedding
+            )
             elapsed = time.monotonic() - start
 
         # 4 signals * 0.15s = 0.6s sequential. Parallel should be ~0.15-0.25s.
@@ -99,7 +109,10 @@ class TestSignalParallelization:
 class TestClusterCache:
     def test_cache_returns_same_object_on_second_call(self):
         """Cache hit should return the same cluster_states dict."""
-        from andamentum.document_store.search import _load_cluster_state, _invalidate_cluster_cache
+        from andamentum.document_store.search import (
+            _load_cluster_state,
+            _invalidate_cluster_cache,
+        )
 
         # Start clean
         _invalidate_cluster_cache()
@@ -155,7 +168,10 @@ class TestClusterCache:
 
     def test_invalidate_clears_cache(self):
         """After invalidation, next call should reload from database."""
-        from andamentum.document_store.search import _load_cluster_state, _invalidate_cluster_cache
+        from andamentum.document_store.search import (
+            _load_cluster_state,
+            _invalidate_cluster_cache,
+        )
 
         _invalidate_cluster_cache()
 

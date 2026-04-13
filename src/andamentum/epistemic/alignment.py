@@ -34,7 +34,9 @@ class AlignmentCheck:
 class AlignmentResult(BaseModel):
     """Output from the alignment validator."""
 
-    aligned: bool = Field(description="Whether the output is aligned with the research question")
+    aligned: bool = Field(
+        description="Whether the output is aligned with the research question"
+    )
     issue: str = Field(default="", description="What drifted, if not aligned")
     suggestion: str = Field(default="", description="How to fix it, if not aligned")
 
@@ -108,7 +110,9 @@ def _get_mode_instructions(check_type: str) -> str:
     """Return mode-specific check instructions for the given check type."""
     instructions = _MODE_INSTRUCTIONS.get(check_type)
     if instructions is None:
-        raise ValueError(f"Unknown check_type: {check_type!r}. Must be one of: {sorted(_MODE_INSTRUCTIONS)}")
+        raise ValueError(
+            f"Unknown check_type: {check_type!r}. Must be one of: {sorted(_MODE_INSTRUCTIONS)}"
+        )
     return instructions
 
 

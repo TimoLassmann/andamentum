@@ -25,8 +25,6 @@ from .domain_classifier import (
 from .domain_distance import (
     cluster_by_domain,
     calculate_inter_cluster_distances,
-    find_most_distant_clusters,
-    interpret_distance,
 )
 
 
@@ -65,8 +63,12 @@ def detect_convergence(
     classifications = []
     for item in evidence_items:
         evidence_id = item.get("evidence_id", str(uuid.uuid4()))
-        text = item.get("content", "") or item.get("text", "") or item.get("summary", "")
-        metadata = {k: v for k, v in item.items() if k not in ["evidence_id", "content", "text"]}
+        text = (
+            item.get("content", "") or item.get("text", "") or item.get("summary", "")
+        )
+        metadata = {
+            k: v for k, v in item.items() if k not in ["evidence_id", "content", "text"]
+        }
 
         classification = classify_evidence_domain(
             evidence_id=evidence_id,
@@ -88,7 +90,9 @@ def detect_convergence(
             qualities = [
                 evidence_qualities.get(eid, 0.5) for eid in cluster.evidence_ids
             ]
-            cluster.average_evidence_quality = sum(qualities) / len(qualities) if qualities else 0.5
+            cluster.average_evidence_quality = (
+                sum(qualities) / len(qualities) if qualities else 0.5
+            )
 
     # Step 4: Calculate inter-cluster distances
     avg_distance, min_distance = calculate_inter_cluster_distances(clusters)
@@ -116,7 +120,9 @@ def detect_convergence(
 
     # Step 10: Find missing domains and strongest per domain
     missing_domains = _find_missing_domains(classifications)
-    strongest_per_domain = _find_strongest_per_domain(classifications, evidence_qualities)
+    strongest_per_domain = _find_strongest_per_domain(
+        classifications, evidence_qualities
+    )
 
     return ConvergentEvidence(
         evidence_id=str(uuid.uuid4()),
@@ -132,7 +138,9 @@ def detect_convergence(
         independence_score=independence_score,
         convergence_detected=convergence_detected,
         convergence_strength=strength,
-        convergence_justification=_generate_justification(clusters, independence_checks),
+        convergence_justification=_generate_justification(
+            clusters, independence_checks
+        ),
         verdict=verdict,
         confidence=_calculate_confidence(independence_score, len(clusters)),
         explanation=explanation,
@@ -176,10 +184,14 @@ def _check_independence(
     checks = {}
 
     # Check 1: Multiple clusters exist
-    checks["multiple_clusters"] = len(clusters) >= CONVERGENCE_THRESHOLDS["min_independent_domains"]
+    checks["multiple_clusters"] = (
+        len(clusters) >= CONVERGENCE_THRESHOLDS["min_independent_domains"]
+    )
 
     # Check 2: Minimum distance between clusters
-    checks["sufficient_distance"] = min_distance >= CONVERGENCE_THRESHOLDS["min_inter_domain_distance"]
+    checks["sufficient_distance"] = (
+        min_distance >= CONVERGENCE_THRESHOLDS["min_inter_domain_distance"]
+    )
 
     # Check 3: Method diversity (different method types)
     method_types = set()
@@ -347,8 +359,6 @@ def _find_missing_domains(
     # Track which values are present for each dimension
     present_methods = {c.method_type.value for c in classifications}
     present_sources = {c.data_source.value for c in classifications}
-    present_temporal = {c.temporal.value for c in classifications}
-    present_causal = {c.causal_role.value for c in classifications}
 
     missing = []
 
@@ -443,7 +453,9 @@ def assess_convergence_quality(convergence: ConvergentEvidence) -> Dict[str, Any
 
     if convergence.average_inter_domain_distance < 0.3:
         quality["weaknesses"].append("Domains are closely related (shared error modes)")
-        quality["suggestions"].append("Seek evidence from more methodologically distinct domains")
+        quality["suggestions"].append(
+            "Seek evidence from more methodologically distinct domains"
+        )
 
     if convergence.missing_domains:
         quality["weaknesses"].append(f"Missing domains: {convergence.missing_domains}")

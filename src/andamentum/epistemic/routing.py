@@ -44,7 +44,11 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
         },
         gate_thresholds={
             "supported": {"min_evidence_weighted": 1.0, "min_adversarial_balance": 0.4},
-            "provisional": {"min_evidence_weighted": 2.0, "min_quality_mean": 0.5, "requires_convergence": True},
+            "provisional": {
+                "min_evidence_weighted": 2.0,
+                "min_quality_mean": 0.5,
+                "requires_convergence": True,
+            },
             "robust": {"min_evidence_weighted": 3.0, "min_independent_domains": 2},
         },
     ),
@@ -59,9 +63,19 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             "consistency": TrackActivation.SKIP,
         },
         gate_thresholds={
-            "supported": {"min_evidence_weighted": 1.0, "requires_deductive_validation": True},
-            "provisional": {"min_evidence_weighted": 2.0, "requires_contrastive_superiority": True},
-            "robust": {"min_evidence_weighted": 2.0, "requires_deductive_validation": True, "requires_contrastive_superiority": True},
+            "supported": {
+                "min_evidence_weighted": 1.0,
+                "requires_deductive_validation": True,
+            },
+            "provisional": {
+                "min_evidence_weighted": 2.0,
+                "requires_contrastive_superiority": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 2.0,
+                "requires_deductive_validation": True,
+                "requires_contrastive_superiority": True,
+            },
         },
     ),
     "exploratory": RoutingProfile(
@@ -76,8 +90,15 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
         },
         gate_thresholds={
             "supported": {"min_evidence_weighted": 0.5},
-            "provisional": {"min_evidence_weighted": 1.0, "requires_cross_claim_consistency": True},
-            "robust": {"min_evidence_weighted": 2.0, "requires_cross_claim_consistency": True, "min_independent_domains": 2},
+            "provisional": {
+                "min_evidence_weighted": 1.0,
+                "requires_cross_claim_consistency": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 2.0,
+                "requires_cross_claim_consistency": True,
+                "min_independent_domains": 2,
+            },
         },
     ),
     "comparative": RoutingProfile(
@@ -91,9 +112,19 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             "consistency": TrackActivation.PRIMARY,
         },
         gate_thresholds={
-            "supported": {"min_evidence_weighted": 1.0, "requires_symmetric_scrutiny": True},
-            "provisional": {"min_evidence_weighted": 2.0, "requires_contrastive_evaluation": True},
-            "robust": {"min_evidence_weighted": 2.0, "requires_symmetric_scrutiny": True, "requires_contrastive_evaluation": True},
+            "supported": {
+                "min_evidence_weighted": 1.0,
+                "requires_symmetric_scrutiny": True,
+            },
+            "provisional": {
+                "min_evidence_weighted": 2.0,
+                "requires_contrastive_evaluation": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 2.0,
+                "requires_symmetric_scrutiny": True,
+                "requires_contrastive_evaluation": True,
+            },
         },
     ),
     "predictive": RoutingProfile(
@@ -107,9 +138,19 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             "consistency": TrackActivation.SKIP,
         },
         gate_thresholds={
-            "supported": {"min_evidence_weighted": 1.0, "requires_falsification_criteria": True},
-            "provisional": {"min_evidence_weighted": 2.0, "requires_reference_class": True},
-            "robust": {"min_evidence_weighted": 3.0, "requires_falsification_criteria": True, "requires_reference_class": True},
+            "supported": {
+                "min_evidence_weighted": 1.0,
+                "requires_falsification_criteria": True,
+            },
+            "provisional": {
+                "min_evidence_weighted": 2.0,
+                "requires_reference_class": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 3.0,
+                "requires_falsification_criteria": True,
+                "requires_reference_class": True,
+            },
         },
     ),
     "compositional": RoutingProfile(
@@ -124,8 +165,15 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
         },
         gate_thresholds={
             "supported": {"min_evidence_weighted": 1.0},
-            "provisional": {"min_evidence_weighted": 1.5, "requires_cross_claim_consistency": True, "requires_convergence": True},
-            "robust": {"min_evidence_weighted": 2.0, "requires_independent_decomposition_convergence": True},
+            "provisional": {
+                "min_evidence_weighted": 1.5,
+                "requires_cross_claim_consistency": True,
+                "requires_convergence": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 2.0,
+                "requires_independent_decomposition_convergence": True,
+            },
         },
     ),
     "normative": RoutingProfile(
@@ -139,9 +187,20 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             "consistency": TrackActivation.PRIMARY,
         },
         gate_thresholds={
-            "supported": {"min_evidence_weighted": 1.0, "requires_fact_value_separation": True},
-            "provisional": {"min_evidence_weighted": 2.0, "requires_fact_value_separation": True, "requires_deductive_validation": True},
-            "robust": {"min_evidence_weighted": 2.0, "requires_fact_value_separation": True, "evaluative_claims_flagged": True},
+            "supported": {
+                "min_evidence_weighted": 1.0,
+                "requires_fact_value_separation": True,
+            },
+            "provisional": {
+                "min_evidence_weighted": 2.0,
+                "requires_fact_value_separation": True,
+                "requires_deductive_validation": True,
+            },
+            "robust": {
+                "min_evidence_weighted": 2.0,
+                "requires_fact_value_separation": True,
+                "evaluative_claims_flagged": True,
+            },
         },
     ),
 }

@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 # Import from canonical location
-from ..connection import DEFAULT_DB_PATH, get_connection
+from ..connection import DEFAULT_DB_PATH, get_connection  # noqa: F401
 
 
 def _init_rag_tables(cursor) -> None:
@@ -67,7 +67,9 @@ def _init_rag_tables(cursor) -> None:
     """)
 
     # Indexes for performance
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)"
+    )
 
 
 def _init_modernization_tables(cursor) -> None:
@@ -99,8 +101,12 @@ def _init_modernization_tables(cursor) -> None:
         )
     """)
 
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_actions_timestamp ON agent_actions(timestamp)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_type)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_actions_timestamp ON agent_actions(timestamp)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_type)"
+    )
 
 
 def init_rag_database(db_path: Optional[Path] = None) -> None:
@@ -118,6 +124,7 @@ def init_rag_database(db_path: Optional[Path] = None) -> None:
         db_path: Path to database file (uses default if None)
     """
     from ..schema import init_all_tables
+
     init_all_tables(db_path)
 
 
@@ -134,7 +141,7 @@ def add_document_chunks(
     file_size: Optional[int] = None,
     file_mtime: Optional[float] = None,
     source_file_path: Optional[str] = None,
-    db_path: Optional[Path] = None
+    db_path: Optional[Path] = None,
 ) -> int:
     """Add document and its chunks to the database.
 
@@ -160,7 +167,9 @@ def add_document_chunks(
         ValueError: If chunks and embeddings lengths don't match
     """
     if len(chunks) != len(embeddings):
-        raise ValueError(f"Chunks ({len(chunks)}) and embeddings ({len(embeddings)}) must have same length")
+        raise ValueError(
+            f"Chunks ({len(chunks)}) and embeddings ({len(embeddings)}) must have same length"
+        )
 
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -168,7 +177,8 @@ def add_document_chunks(
         # Insert or update document
         dc_subject_json = json.dumps(dc_subject) if dc_subject else None
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO documents (file_path, source_file_path, dc_title, dc_format, dc_creator, dc_subject,
                                    markdown_content, file_hash, file_size, file_mtime, created_date, updated_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
@@ -183,8 +193,20 @@ def add_document_chunks(
                 file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime,
                 updated_date = datetime('now')
-        """, (file_path, source_file_path, dc_title, dc_format, dc_creator, dc_subject_json,
-              markdown_content, file_hash, file_size, file_mtime))
+        """,
+            (
+                file_path,
+                source_file_path,
+                dc_title,
+                dc_format,
+                dc_creator,
+                dc_subject_json,
+                markdown_content,
+                file_hash,
+                file_size,
+                file_mtime,
+            ),
+        )
 
         document_id = cursor.lastrowid
         if document_id == 0:  # Update case
@@ -200,35 +222,44 @@ def add_document_chunks(
         old_chunk_ids = [row["id"] for row in cursor.fetchall()]
 
         if old_chunk_ids:
-            placeholders = ','.join('?' * len(old_chunk_ids))
-            cursor.execute(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})", old_chunk_ids)
+            placeholders = ",".join("?" * len(old_chunk_ids))
+            cursor.execute(
+                f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})",
+                old_chunk_ids,
+            )
             cursor.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
 
         # Insert chunks
         for chunk_data, embedding in zip(chunks, embeddings):
-            metadata_json = json.dumps(chunk_data.get('metadata', {}))
+            metadata_json = json.dumps(chunk_data.get("metadata", {}))
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO chunks (document_id, chunk_index, content, start_char, end_char, metadata, token_count)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                document_id,
-                chunk_data['index'],
-                chunk_data['content'],
-                chunk_data.get('start_char', 0),
-                chunk_data.get('end_char', len(chunk_data['content'])),
-                metadata_json,
-                chunk_data.get('token_count')
-            ))
+            """,
+                (
+                    document_id,
+                    chunk_data["index"],
+                    chunk_data["content"],
+                    chunk_data.get("start_char", 0),
+                    chunk_data.get("end_char", len(chunk_data["content"])),
+                    metadata_json,
+                    chunk_data.get("token_count"),
+                ),
+            )
 
             chunk_id = cursor.lastrowid
 
             # Insert embedding
             embedding_blob = json.dumps(embedding)
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO chunk_embeddings (chunk_id, embedding)
                 VALUES (?, ?)
-            """, (chunk_id, embedding_blob))
+            """,
+                (chunk_id, embedding_blob),
+            )
 
         conn.commit()
 
@@ -339,7 +370,9 @@ def delete_chunks_for_document(
 
         # Get chunk IDs
         cursor.execute("SELECT id FROM chunks WHERE document_id = ?", (document_id,))
-        chunk_ids = [r["id"] if isinstance(r, dict) else r[0] for r in cursor.fetchall()]
+        chunk_ids = [
+            r["id"] if isinstance(r, dict) else r[0] for r in cursor.fetchall()
+        ]
 
         if not chunk_ids:
             return 0
@@ -359,9 +392,7 @@ def delete_chunks_for_document(
 
 
 def search_chunks(
-    query_embedding: List[float],
-    limit: int = 10,
-    db_path: Optional[Path] = None
+    query_embedding: List[float], limit: int = 10, db_path: Optional[Path] = None
 ) -> List[Dict[str, Any]]:
     """Search for similar chunks using vector similarity.
 
@@ -404,29 +435,33 @@ def search_chunks(
 
         results = []
         for row in cursor.fetchall():
-            metadata = json.loads(row['metadata']) if row['metadata'] else {}
-            dc_subject = json.loads(row['dc_subject']) if row['dc_subject'] else None
+            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+            dc_subject = json.loads(row["dc_subject"]) if row["dc_subject"] else None
 
-            results.append({
-                'chunk_id': row['chunk_id'],
-                'content': row['content'],
-                'start_char': row['start_char'],
-                'end_char': row['end_char'],
-                'token_count': row['token_count'],
-                'doc_id': row['doc_id'],
-                'file_path': row['file_path'],
-                'dc_title': row['dc_title'],
-                'dc_format': row['dc_format'],
-                'dc_creator': row['dc_creator'],
-                'dc_subject': dc_subject,
-                'distance': row['distance'],
-                'metadata': metadata
-            })
+            results.append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "content": row["content"],
+                    "start_char": row["start_char"],
+                    "end_char": row["end_char"],
+                    "token_count": row["token_count"],
+                    "doc_id": row["doc_id"],
+                    "file_path": row["file_path"],
+                    "dc_title": row["dc_title"],
+                    "dc_format": row["dc_format"],
+                    "dc_creator": row["dc_creator"],
+                    "dc_subject": dc_subject,
+                    "distance": row["distance"],
+                    "metadata": metadata,
+                }
+            )
 
         return results
 
 
-def get_document_by_hash(file_hash: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+def get_document_by_hash(
+    file_hash: str, db_path: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     """Check if document with given hash exists.
 
     Args:
@@ -439,11 +474,14 @@ def get_document_by_hash(file_hash: str, db_path: Optional[Path] = None) -> Opti
     """
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, file_path, file_hash, file_size, file_mtime, updated_date
             FROM documents
             WHERE file_hash = ?
-        """, (file_hash,))
+        """,
+            (file_hash,),
+        )
         row = cursor.fetchone()
         if row:
             return dict(row)
@@ -471,15 +509,13 @@ def get_document_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
         chunk_count = cursor.fetchone()["total"]
 
         return {
-            'document_count': document_count,
-            'chunk_count': chunk_count,
+            "document_count": document_count,
+            "chunk_count": chunk_count,
         }
 
 
 def delete_document(
-    file_path: str,
-    db_path: Optional[Path] = None,
-    context_root: Optional[Path] = None
+    file_path: str, db_path: Optional[Path] = None, context_root: Optional[Path] = None
 ) -> dict[str, Any]:
     """Delete document, chunks, embeddings, and associated files.
 
@@ -506,7 +542,7 @@ def delete_document(
         "database_deleted": False,
         "markdown_deleted": False,
         "original_deleted": False,
-        "source_file_path": None
+        "source_file_path": None,
     }
 
     with get_connection(db_path) as conn:
@@ -515,7 +551,7 @@ def delete_document(
         # Get document ID and source file path
         cursor.execute(
             "SELECT id, source_file_path FROM documents WHERE file_path = ?",
-            (file_path,)
+            (file_path,),
         )
         row = cursor.fetchone()
 
@@ -532,10 +568,10 @@ def delete_document(
 
         # Delete embeddings (not cascade-protected, virtual table)
         if chunk_ids:
-            placeholders = ','.join('?' * len(chunk_ids))
+            placeholders = ",".join("?" * len(chunk_ids))
             cursor.execute(
                 f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({placeholders})",
-                chunk_ids
+                chunk_ids,
             )
 
         # Delete chunks (CASCADE will handle, but explicit for clarity)

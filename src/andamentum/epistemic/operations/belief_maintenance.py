@@ -170,9 +170,7 @@ class RevalidateClaimOperation(BaseOperation):
                 continue
             if ev.depends_on_claim_id == claim.entity_id and not ev.invalidated:
                 ev.invalidated = True
-                ev.invalidation_reason = (
-                    f"Dependent claim {claim.entity_id} demoted from {old_stage.value} to {target_stage.value}"
-                )
+                ev.invalidation_reason = f"Dependent claim {claim.entity_id} demoted from {old_stage.value} to {target_stage.value}"
                 ev.invalidation_cascaded = False
                 await self.repo.save(ev)
                 cascaded_evidence_ids.append(ev.entity_id)
@@ -253,5 +251,7 @@ class SetRoutingDefaultsOperation(BaseOperation):
         return OperationResult(
             success=True,
             entity_id=work.entity_id,
-            message=f"[{claim.statement[:60]}] active: {[t for t in tracks if t not in skipped]}" if skipped else f"[{claim.statement[:60]}] all tracks active",
+            message=f"[{claim.statement[:60]}] active: {[t for t in tracks if t not in skipped]}"
+            if skipped
+            else f"[{claim.statement[:60]}] all tracks active",
         )

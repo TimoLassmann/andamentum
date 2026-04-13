@@ -39,7 +39,10 @@ class AdversarialSearchOperation(BaseOperation):
         import asyncio
         import logging
 
-        from ..adversarial_query_generator import generate_adversarial_queries, detect_domain
+        from ..adversarial_query_generator import (
+            generate_adversarial_queries,
+            detect_domain,
+        )
         from ..adversarial_evaluator import create_counterargument
         from ..adversarial_balance import synthesize_adversarial_result
         from ..gates import quality_weighted_evidence_sum
@@ -76,7 +79,11 @@ class AdversarialSearchOperation(BaseOperation):
         # outputs (which would create anchoring per Kahneman's independence principle).
         agent_queries: list[str] = []
         if self.agent_runner:
-            framings = ["contradicting_evidence", "alternative_explanations", "replication_failures"]
+            framings = [
+                "contradicting_evidence",
+                "alternative_explanations",
+                "replication_failures",
+            ]
 
             async def _generate_one(framing: str) -> str | None:
                 try:
@@ -119,14 +126,20 @@ class AdversarialSearchOperation(BaseOperation):
                         logger.debug("Adversarial search query failed: %s", e)
                         return []
 
-            gathered_lists = await asyncio.gather(*[_gather_one(q) for q in queries_to_run])
+            gathered_lists = await asyncio.gather(
+                *[_gather_one(q) for q in queries_to_run]
+            )
             for hits in gathered_lists:
                 search_hits.extend(hits)
 
         # Step 4: Evaluate each search result as a potential counterargument.
         # Evaluations run in parallel (bounded concurrency) to avoid a sequential
         # chain of LLM roundtrips that previously dominated wall time.
-        from ..primitives import Counterargument as CounterargumentModel, CriticismCategory, CounterargumentQuality
+        from ..primitives import (
+            Counterargument as CounterargumentModel,
+            CriticismCategory,
+            CounterargumentQuality,
+        )
 
         proper_counterarguments: list[CounterargumentModel] = []
         _justifications: dict[int, str] = {}  # id(ca) → agent justification
@@ -166,7 +179,9 @@ class AdversarialSearchOperation(BaseOperation):
                         )
                         # Capture the agent's justification — this is the system's
                         # own interpretation of what the counterargument says.
-                        justification = getattr(eval_result, "justification", None) or ""
+                        justification = (
+                            getattr(eval_result, "justification", None) or ""
+                        )
                         proper_ca = create_counterargument(
                             summary=summary,
                             source_ref=source_ref,
@@ -191,7 +206,10 @@ class AdversarialSearchOperation(BaseOperation):
 
             if search_hits:
                 eval_results = await asyncio.gather(
-                    *[_evaluate_one(summary, source_ref) for summary, source_ref in search_hits]
+                    *[
+                        _evaluate_one(summary, source_ref)
+                        for summary, source_ref in search_hits
+                    ]
                 )
                 for proper_ca, justification in eval_results:
                     proper_counterarguments.append(proper_ca)
@@ -225,15 +243,22 @@ class AdversarialSearchOperation(BaseOperation):
                     continue
                 agent_justification = _justifications.get(id(ca), "")
                 if agent_justification:
-                    reasoning = f"Adversarial ({ca.category.value}): {agent_justification}"
+                    reasoning = (
+                        f"Adversarial ({ca.category.value}): {agent_justification}"
+                    )
                 elif ca.supporting_evidence:
-                    reasoning = f"Adversarial ({ca.category.value}): {ca.supporting_evidence}"
+                    reasoning = (
+                        f"Adversarial ({ca.category.value}): {ca.supporting_evidence}"
+                    )
                 else:
                     reasoning = f"Adversarial counterargument ({ca.category.value})"
 
                 ref = ca.source_ref
                 existing = best_per_source.get(ref)
-                if existing is None or ca.quality.combined_score > existing[0].quality.combined_score:
+                if (
+                    existing is None
+                    or ca.quality.combined_score > existing[0].quality.combined_score
+                ):
                     best_per_source[ref] = (ca, reasoning)
 
             for ca, reasoning in best_per_source.values():
@@ -392,10 +417,12 @@ class AssessConvergenceOperation(BaseOperation):
                 )
 
             classifications.append(classification)
-            evidence_items.append({
-                "evidence_id": eid,
-                "content": content,
-            })
+            evidence_items.append(
+                {
+                    "evidence_id": eid,
+                    "content": content,
+                }
+            )
 
         # Step 2: Pairwise independence check for evidence within same domain cluster
         # Only run if we have an agent runner and multiple evidence items
@@ -502,7 +529,9 @@ class ValidateDeductivelyOperation(BaseOperation):
                 try:
                     ev = await self.repo.get("evidence", eid)
                     if isinstance(ev, Evidence) and ev.extracted_content:
-                        context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
+                        context_parts.append(
+                            f"[{ev.source_type}] {ev.extracted_content}"
+                        )
                 except Exception:
                     continue
 
@@ -510,7 +539,9 @@ class ValidateDeductivelyOperation(BaseOperation):
                 "epistemic_deductive_validation",
                 claim_id=claim.entity_id,
                 claim=claim.statement,
-                context="\n".join(context_parts) if context_parts else "[No additional context]",
+                context="\n".join(context_parts)
+                if context_parts
+                else "[No additional context]",
             )
 
             if not result.passes_deductive_validation:
@@ -575,7 +606,9 @@ class VerifyComputationallyOperation(BaseOperation):
                 try:
                     ev = await self.repo.get("evidence", eid)
                     if isinstance(ev, Evidence) and ev.extracted_content:
-                        context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
+                        context_parts.append(
+                            f"[{ev.source_type}] {ev.extracted_content}"
+                        )
                 except Exception:
                     continue
 
@@ -583,7 +616,9 @@ class VerifyComputationallyOperation(BaseOperation):
                 "epistemic_verify_computationally",
                 claim_id=claim.entity_id,
                 claim=claim.statement,
-                context="\n".join(context_parts) if context_parts else "[No additional context]",
+                context="\n".join(context_parts)
+                if context_parts
+                else "[No additional context]",
             )
 
             # Agent generates verification CODE, not execution results.

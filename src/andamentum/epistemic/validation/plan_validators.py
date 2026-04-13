@@ -18,7 +18,9 @@ class PlanValidators:
     discover traceability violations after expensive evidence collection.
     """
 
-    def validate_plan_dependencies(self, workitems: List[Dict[str, Any]]) -> ValidationResult:
+    def validate_plan_dependencies(
+        self, workitems: List[Dict[str, Any]]
+    ) -> ValidationResult:
         """Validate that plan workitems have valid dependency ordering.
 
         Called after PLAN_TASK to catch ordering errors before wasting LLM computation.
@@ -39,7 +41,9 @@ class PlanValidators:
         result = ValidationResult(valid=True)
 
         # Build ID lookup
-        workitem_ids = {wi.get("workitem_id") for wi in workitems if wi.get("workitem_id")}
+        workitem_ids = {
+            wi.get("workitem_id") for wi in workitems if wi.get("workitem_id")
+        }
 
         # Check 1: No dangling dependency references
         for wi in workitems:
@@ -55,7 +59,9 @@ class PlanValidators:
 
         # Check 2: No cycles (topological sort attempt)
         # Build adjacency list: workitem -> list of workitems that depend on it
-        dependents: Dict[str, List[str]] = {wi.get("workitem_id", ""): [] for wi in workitems}
+        dependents: Dict[str, List[str]] = {
+            wi.get("workitem_id", ""): [] for wi in workitems
+        }
         in_degree: Dict[str, int] = {wi.get("workitem_id", ""): 0 for wi in workitems}
 
         for wi in workitems:

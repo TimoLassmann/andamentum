@@ -185,7 +185,11 @@ async def _get_openalex_client() -> Any:
     import httpx
 
     email = os.environ.get("OPENALEX_EMAIL", "")
-    headers = {"User-Agent": f"andamentum-epistemic/0.1 (mailto:{email})" if email else "andamentum-epistemic/0.1"}
+    headers = {
+        "User-Agent": f"andamentum-epistemic/0.1 (mailto:{email})"
+        if email
+        else "andamentum-epistemic/0.1"
+    }
     return httpx.AsyncClient(
         base_url="https://api.openalex.org",
         headers=headers,
@@ -268,8 +272,8 @@ async def search_literature(
                     "search": query,
                     "per_page": max_results,
                     "select": "id,doi,title,display_name,publication_year,cited_by_count,"
-                              "is_retracted,open_access,primary_location,authorships,ids,"
-                              "abstract_inverted_index",
+                    "is_retracted,open_access,primary_location,authorships,ids,"
+                    "abstract_inverted_index",
                 },
             )
 
@@ -285,9 +289,19 @@ async def search_literature(
                 abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
 
                 # Extract DOI and PMID
-                doi = work.get("doi", "").removeprefix("https://doi.org/") if work.get("doi") else None
+                doi = (
+                    work.get("doi", "").removeprefix("https://doi.org/")
+                    if work.get("doi")
+                    else None
+                )
                 ids = work.get("ids", {}) or {}
-                pmid = ids.get("pmid", "").removeprefix("https://pubmed.ncbi.nlm.nih.gov/").rstrip("/") if ids.get("pmid") else None
+                pmid = (
+                    ids.get("pmid", "")
+                    .removeprefix("https://pubmed.ncbi.nlm.nih.gov/")
+                    .rstrip("/")
+                    if ids.get("pmid")
+                    else None
+                )
 
                 # Extract authors
                 authorships = work.get("authorships", []) or []
@@ -301,14 +315,16 @@ async def search_literature(
                 quality = compute_quality_score(work)
 
                 title = work.get("title") or work.get("display_name") or ""
-                results.append(LiteratureResult(
-                    title=title,
-                    abstract=abstract,
-                    doi=doi,
-                    pmid=pmid,
-                    authors=authors,
-                    quality=quality,
-                ))
+                results.append(
+                    LiteratureResult(
+                        title=title,
+                        abstract=abstract,
+                        doi=doi,
+                        pmid=pmid,
+                        authors=authors,
+                        quality=quality,
+                    )
+                )
 
             return results
 

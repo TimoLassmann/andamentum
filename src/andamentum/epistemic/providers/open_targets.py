@@ -59,7 +59,12 @@ class OpenTargetsProvider:
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="OpenTargetsProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="OpenTargetsProvider",
+                status="fail",
+                message=str(e),
+                elapsed_ms=elapsed,
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search Open Targets for disease-target associations."""
@@ -122,7 +127,9 @@ class OpenTargetsProvider:
             logger.debug(f"Open Targets search failed: {e}")
             return []
 
-    async def _get_target_associations(self, client: Any, target_id: str) -> list[GatheredEvidence]:
+    async def _get_target_associations(
+        self, client: Any, target_id: str
+    ) -> list[GatheredEvidence]:
         """Get disease associations for a target."""
         gql = """
         query TargetAssociations($id: String!, $size: Int!) {
@@ -146,9 +153,13 @@ class OpenTargetsProvider:
             }
         }
         """
-        return await self._fetch_associations(client, gql, {"id": target_id, "size": 5}, "target")
+        return await self._fetch_associations(
+            client, gql, {"id": target_id, "size": 5}, "target"
+        )
 
-    async def _get_disease_associations(self, client: Any, disease_id: str) -> list[GatheredEvidence]:
+    async def _get_disease_associations(
+        self, client: Any, disease_id: str
+    ) -> list[GatheredEvidence]:
         """Get target associations for a disease."""
         gql = """
         query DiseaseAssociations($id: String!, $size: Int!) {
@@ -172,7 +183,9 @@ class OpenTargetsProvider:
             }
         }
         """
-        return await self._fetch_associations(client, gql, {"id": disease_id, "size": 5}, "disease")
+        return await self._fetch_associations(
+            client, gql, {"id": disease_id, "size": 5}, "disease"
+        )
 
     async def _fetch_associations(
         self, client: Any, gql: str, variables: dict, query_type: str
@@ -181,7 +194,9 @@ class OpenTargetsProvider:
         gathered: list[GatheredEvidence] = []
 
         try:
-            resp = await client.post(OT_API, json={"query": gql, "variables": variables})
+            resp = await client.post(
+                OT_API, json={"query": gql, "variables": variables}
+            )
             if resp.status_code != 200:
                 return []
 
@@ -196,15 +211,23 @@ class OpenTargetsProvider:
                 for row in rows:
                     disease = row.get("disease", {})
                     score = row.get("score", 0)
-                    ds_scores = {ds["id"]: ds["score"] for ds in row.get("datasourceScores", []) if ds.get("score")}
+                    ds_scores = {
+                        ds["id"]: ds["score"]
+                        for ds in row.get("datasourceScores", [])
+                        if ds.get("score")
+                    }
 
                     disease_name = disease.get("name", "")
                     disease_id = disease.get("id", "")
 
                     content = f"{target_symbol} ({target_name}) is associated with {disease_name} (score: {score:.2f})"
                     if ds_scores:
-                        top_sources = sorted(ds_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-                        sources_str = ", ".join(f"{s[0]}: {s[1]:.2f}" for s in top_sources)
+                        top_sources = sorted(
+                            ds_scores.items(), key=lambda x: x[1], reverse=True
+                        )[:3]
+                        sources_str = ", ".join(
+                            f"{s[0]}: {s[1]:.2f}" for s in top_sources
+                        )
                         content += f". Evidence: {sources_str}"
 
                     gathered.append(
@@ -219,7 +242,10 @@ class OpenTargetsProvider:
                                 "gene_symbol": target_symbol,
                             },
                             structured_data={
-                                "target": {"symbol": target_symbol, "name": target_name},
+                                "target": {
+                                    "symbol": target_symbol,
+                                    "name": target_name,
+                                },
                                 "disease": {"name": disease_name, "id": disease_id},
                                 "association_score": score,
                                 "datasource_scores": ds_scores,
@@ -237,7 +263,11 @@ class OpenTargetsProvider:
                 for row in rows:
                     target = row.get("target", {})
                     score = row.get("score", 0)
-                    ds_scores = {ds["id"]: ds["score"] for ds in row.get("datasourceScores", []) if ds.get("score")}
+                    ds_scores = {
+                        ds["id"]: ds["score"]
+                        for ds in row.get("datasourceScores", [])
+                        if ds.get("score")
+                    }
 
                     target_symbol = target.get("approvedSymbol", "")
                     target_name = target.get("approvedName", "")
@@ -257,8 +287,14 @@ class OpenTargetsProvider:
                                 "gene_symbol": target_symbol,
                             },
                             structured_data={
-                                "target": {"symbol": target_symbol, "name": target_name},
-                                "disease": {"name": disease_name, "id": entity.get("id", "")},
+                                "target": {
+                                    "symbol": target_symbol,
+                                    "name": target_name,
+                                },
+                                "disease": {
+                                    "name": disease_name,
+                                    "id": entity.get("id", ""),
+                                },
                                 "association_score": score,
                                 "datasource_scores": ds_scores,
                             },

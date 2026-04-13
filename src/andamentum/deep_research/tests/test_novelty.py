@@ -3,7 +3,13 @@
 import pytest
 from types import SimpleNamespace
 
-from ..novelty import check_novelty, NoveltyReport, NoveltyAssessment, SimilarWork, Relevance
+from ..novelty import (
+    check_novelty,
+    NoveltyReport,
+    NoveltyAssessment,
+    SimilarWork,
+    Relevance,
+)
 
 
 class TestNoveltyModels:
@@ -13,12 +19,22 @@ class TestNoveltyModels:
         assert Relevance.TANGENTIAL == "tangential"
 
     def test_similar_work_construction(self):
-        sw = SimilarWork(title="Paper", url="https://example.com", relevance=Relevance.DIRECT, summary="Related")
+        sw = SimilarWork(
+            title="Paper",
+            url="https://example.com",
+            relevance=Relevance.DIRECT,
+            summary="Related",
+        )
         assert sw.title == "Paper"
         assert sw.relevance == Relevance.DIRECT
 
     def test_novelty_report_construction(self):
-        report = NoveltyReport(claim="test claim", is_novel=True, confidence=0.8, assessment="Appears novel")
+        report = NoveltyReport(
+            claim="test claim",
+            is_novel=True,
+            confidence=0.8,
+            assessment="Appears novel",
+        )
         assert report.claim == "test claim"
         assert report.is_novel is True
         assert report.similar_work == []
@@ -27,7 +43,9 @@ class TestNoveltyModels:
 
     def test_novelty_report_with_similar_work(self):
         sw = SimilarWork(title="P", url="u", relevance=Relevance.PARTIAL, summary="s")
-        report = NoveltyReport(claim="c", is_novel=False, confidence=0.7, assessment="a", similar_work=[sw])
+        report = NoveltyReport(
+            claim="c", is_novel=False, confidence=0.7, assessment="a", similar_work=[sw]
+        )
         assert len(report.similar_work) == 1
 
     def test_novelty_assessment_pydantic(self):
@@ -35,7 +53,9 @@ class TestNoveltyModels:
             is_novel=False,
             confidence=0.9,
             assessment="Prior work exists",
-            similar_works=[{"title": "P", "url": "u", "relevance": "direct", "summary": "s"}],
+            similar_works=[
+                {"title": "P", "url": "u", "relevance": "direct", "summary": "s"}
+            ],
         )
         assert na.is_novel is False
         assert len(na.similar_works) == 1
@@ -59,7 +79,14 @@ class TestCheckNovelty:
                 is_novel=False,
                 confidence=0.9,
                 assessment="Prior work exists",
-                similar_works=[{"title": "Paper", "url": "https://example.com/paper", "relevance": "direct", "summary": "Same claim"}],
+                similar_works=[
+                    {
+                        "title": "Paper",
+                        "url": "https://example.com/paper",
+                        "relevance": "direct",
+                        "summary": "Same claim",
+                    }
+                ],
             )
 
         report = await check_novelty("test claim", research_fn, assess_fn)
@@ -139,13 +166,17 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_confidence_clamped(self):
         """Confidence values outside [0, 1] get clamped."""
-        output = SimpleNamespace(evidence_summary="s", key_findings=["f"], sources=["u"])
+        output = SimpleNamespace(
+            evidence_summary="s", key_findings=["f"], sources=["u"]
+        )
 
         async def research_fn(**kwargs):
             return {"output": output}
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
-            return NoveltyAssessment(is_novel=True, confidence=1.5, assessment="a", similar_works=[])
+            return NoveltyAssessment(
+                is_novel=True, confidence=1.5, assessment="a", similar_works=[]
+            )
 
         report = await check_novelty("test", research_fn, assess_fn)
         assert report.confidence == 1.0
@@ -153,7 +184,9 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_invalid_relevance_defaults_to_tangential(self):
         """Invalid relevance value in similar_works defaults to TANGENTIAL."""
-        output = SimpleNamespace(evidence_summary="s", key_findings=["f"], sources=["u"])
+        output = SimpleNamespace(
+            evidence_summary="s", key_findings=["f"], sources=["u"]
+        )
 
         async def research_fn(**kwargs):
             return {"output": output}
@@ -163,7 +196,14 @@ class TestCheckNovelty:
                 is_novel=False,
                 confidence=0.8,
                 assessment="a",
-                similar_works=[{"title": "P", "url": "u", "relevance": "invalid_value", "summary": "s"}],
+                similar_works=[
+                    {
+                        "title": "P",
+                        "url": "u",
+                        "relevance": "invalid_value",
+                        "summary": "s",
+                    }
+                ],
             )
 
         report = await check_novelty("test", research_fn, assess_fn)
