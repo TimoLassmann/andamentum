@@ -11,48 +11,19 @@ from typing import List, Literal, Optional
 import httpx
 import numpy as np
 
-from ._defaults import DEFAULT_EMBEDDING_MODEL
-
-# Singleton tokenizer for embeddinggemma (avoids parallelism warning on fork)
-_EMBEDDINGGEMMA_TOKENIZER = None
-
-
-def _get_embeddinggemma_tokenizer():
-    """Get or create the embeddinggemma tokenizer (singleton).
-
-    Disables tokenizer parallelism programmatically to avoid the warning:
-    "The current process just got forked, after parallelism has already been used."
-    """
-    global _EMBEDDINGGEMMA_TOKENIZER
-    if _EMBEDDINGGEMMA_TOKENIZER is None:
-        import os
-
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        from transformers import AutoTokenizer
-
-        _EMBEDDINGGEMMA_TOKENIZER = AutoTokenizer.from_pretrained(
-            "google/embeddinggemma-300m", local_files_only=True
-        )
-    return _EMBEDDINGGEMMA_TOKENIZER
-
-
 class EmbeddingService:
-    """Ollama embedding service for RAG.
-
-    Automatically handles model-specific formatting (e.g., embeddinggemma prefixes).
-    """
+    """Ollama-compatible embedding service for RAG."""
 
     def __init__(
         self,
-        model: str = DEFAULT_EMBEDDING_MODEL,
+        *,
+        model: str,
         base_url: str = "http://localhost:11434",
         max_concurrent: int = 10,
     ):
         self.model = model
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=30.0)
-        self._is_embeddinggemma = "embeddinggemma" in model.lower()
-        self._tokenizer = None  # Lazy load tokenizer for truncation
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
     def _format_text(
@@ -62,36 +33,8 @@ class EmbeddingService:
         title: Optional[str] = None,
         max_tokens: int = 2048,
     ) -> str:
-        """Format text with model-specific prefixes and enforce token limit."""
-        if not self._is_embeddinggemma:
-            return text
-
-        if text_type == "query":
-            prefix = "task: search result | query: "
-            formatted = f"{prefix}{text}"
-        else:
-            title_str = title if title else "none"
-            prefix = f"title: {title_str} | text: "
-            formatted = f"{prefix}{text}"
-
-        # Check token count — raise if too large
-        try:
-            if self._tokenizer is None:
-                self._tokenizer = _get_embeddinggemma_tokenizer()
-
-            tokens = self._tokenizer.encode(formatted)
-
-            if len(tokens) > max_tokens:
-                raise ValueError(
-                    f"Embedding input too large: {len(tokens)} tokens exceeds model limit of {max_tokens}. "
-                    f"Content should be chunked before embedding."
-                )
-        except ValueError:
-            raise  # Propagate token limit errors
-        except Exception:
-            pass  # Tokenizer not available — proceed without checking
-
-        return formatted
+        """Format text for embedding (pass-through — no local model prefixes)."""
+        return text
 
     async def embed_text(
         self,

@@ -4,7 +4,7 @@ import pytest
 from typing import Any
 from unittest.mock import patch, AsyncMock
 
-from epistemic.entities import (
+from ..entities import (
     Claim,
     ClaimStage,
     Evidence,
@@ -13,8 +13,8 @@ from epistemic.entities import (
     Snapshot,
     Artefact,
 )
-from epistemic.entities.uncertainty import UncertaintyType
-from epistemic.operations import (
+from ..entities.uncertainty import UncertaintyType
+from ..operations import (
     BaseOperation,
     ExtractEvidenceOperation,
     OperationResult,
@@ -24,7 +24,7 @@ from epistemic.operations import (
     ProposeClaimsOperation,
     ResolveUncertaintyOperation,
 )
-from epistemic.patterns import WorkItem
+from ..patterns import WorkItem
 
 
 class FakeEvidenceGatherer:
@@ -64,13 +64,13 @@ class TestPreplanningChain:
         obj = Objective(entity_id="obj-1", objective_id="obj-1", description="What is spaced repetition?")
         await repo.save(obj)
 
-        from epistemic.alignment import AlignmentResult
+        from andamentum.epistemic.alignment import AlignmentResult
 
         mock_validation = AsyncMock(return_value=AlignmentResult(aligned=True, issue="", suggestion=""))
 
         ops = create_operations(repo, fake_runner)
         work = WorkItem(entity_id="obj-1", entity_type="objective", operation="clarify_question")
-        with patch("epistemic.alignment.validate_alignment", mock_validation):
+        with patch("andamentum.epistemic.alignment.validate_alignment", mock_validation):
             result = await ops["clarify_question"].execute(work)
 
         assert result.success
@@ -455,7 +455,7 @@ class TestPromotion:
 
 class TestProposeClaims:
     async def test_propose_claims_creates_entities(self, repo, fake_runner):
-        from epistemic.alignment import AlignmentResult
+        from andamentum.epistemic.alignment import AlignmentResult
 
         obj = Objective(
             entity_id="obj-1",
@@ -470,7 +470,7 @@ class TestProposeClaims:
 
         ops = create_operations(repo, fake_runner)
         work = WorkItem(entity_id="obj-1", entity_type="objective", operation="propose_claims")
-        with patch("epistemic.alignment.validate_alignment", mock_validation):
+        with patch("andamentum.epistemic.alignment.validate_alignment", mock_validation):
             result = await ops["propose_claims"].execute(work)
 
         assert result.success
@@ -622,7 +622,7 @@ class TestCaveatDedup:
         async def fake_embed(texts, **kwargs):
             return [emb_map.get(t, [0.5, 0.5, 0.0]) for t in texts]
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
             work = WorkItem(entity_id="obj-1", entity_type="objective", operation="freeze_snapshot")
             result = await ops["freeze_snapshot"].execute(work)
 
@@ -789,7 +789,7 @@ class TestResolveUncertaintySiblingGrouping:
                     result.append(different_emb)
             return result
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
             work = WorkItem(entity_id="u-target", entity_type="uncertainty", operation="resolve_uncertainty")
             result = await ops["resolve_uncertainty"].execute(work)
 
@@ -832,7 +832,7 @@ class TestResolveUncertaintySiblingGrouping:
 
         ops = create_operations(repo, fake_runner)
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=RuntimeError("Ollama unavailable")):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=RuntimeError("Ollama unavailable")):
             work = WorkItem(entity_id="u-target", entity_type="uncertainty", operation="resolve_uncertainty")
             with pytest.raises(RuntimeError, match="Ollama unavailable"):
                 await ops["resolve_uncertainty"].execute(work)
@@ -908,7 +908,7 @@ class TestResolveUncertaintyDedup:
                     result.append([0.5, 0.5, 0.0])
             return result
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
             work = WorkItem(entity_id="u-new", entity_type="uncertainty", operation="resolve_uncertainty")
             result = await ops["resolve_uncertainty"].execute(work)
 
@@ -978,7 +978,7 @@ class TestResolveUncertaintyDedup:
                     result.append([0.0, 1.0, 0.0])  # orthogonal to both
             return result
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts):
             work = WorkItem(entity_id="u-new", entity_type="uncertainty", operation="resolve_uncertainty")
             result = await ops["resolve_uncertainty"].execute(work)
 
@@ -1000,7 +1000,7 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_batch_dedup_collapses_duplicates(self, repo, fake_runner):
         """Near-duplicate buffered concerns collapse to one uncertainty."""
-        from epistemic.operations import DeduplicateConcernsOperation
+        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1034,7 +1034,7 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [emb_map.get(t, [0.5, 0.5, 0.0]) for t in texts]
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
             work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
             result = await ops["deduplicate_concerns"].execute(work)
 
@@ -1051,7 +1051,7 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_filters_against_existing_uncertainties(self, repo, fake_runner):
         """Concerns that match existing uncertainties are dropped entirely."""
-        from epistemic.operations import DeduplicateConcernsOperation
+        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1080,7 +1080,7 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [[1.0, 0.0, 0.0] for _ in texts]
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
             work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
             result = await ops["deduplicate_concerns"].execute(work)
 
@@ -1094,7 +1094,7 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_empty_buffer_noop(self, repo, fake_runner):
         """Empty pending_concerns is a no-op."""
-        from epistemic.operations import DeduplicateConcernsOperation
+        from andamentum.epistemic.operations import DeduplicateConcernsOperation
 
         obj = Objective(
             entity_id="obj-1",
@@ -1114,8 +1114,8 @@ class TestDeduplicateConcerns:
     @pytest.mark.asyncio
     async def test_depth_demotion(self, repo, fake_runner):
         """Concerns at depth >= MAX_UNCERTAINTY_DEPTH become non-blocking."""
-        from epistemic.operations import DeduplicateConcernsOperation
-        from epistemic.operations.base import MAX_UNCERTAINTY_DEPTH
+        from andamentum.epistemic.operations import DeduplicateConcernsOperation
+        from andamentum.epistemic.operations.base import MAX_UNCERTAINTY_DEPTH
 
         obj = Objective(
             entity_id="obj-1",
@@ -1133,7 +1133,7 @@ class TestDeduplicateConcerns:
         async def fake_embed(texts, **kwargs):
             return [[float(i), 0.0, 0.0] for i, _ in enumerate(texts)]
 
-        with patch("epistemic.embeddings.embed_texts", side_effect=fake_embed):
+        with patch("andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed):
             work = WorkItem(entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns")
             result = await ops["deduplicate_concerns"].execute(work)
 
@@ -1195,9 +1195,9 @@ class TestEvidenceRelevanceFiltering:
         op = ProposeClaimsOperation(repo, fake_runner)
         work = WorkItem(entity_id=obj.entity_id, entity_type="objective", operation="propose_claims")
 
-        with patch("epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = [[0.5] * 10]
-            with patch("epistemic.similarity.group_by_similarity") as mock_cluster:
+            with patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster:
                 mock_cluster.return_value = [[0]]
                 result = await op.execute(work)
 
@@ -1242,9 +1242,9 @@ class TestEvidenceRelevanceFiltering:
         op = ProposeClaimsOperation(repo, fake_runner)
         work = WorkItem(entity_id=obj.entity_id, entity_type="objective", operation="propose_claims")
 
-        with patch("epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = [[0.5] * 10]
-            with patch("epistemic.similarity.group_by_similarity") as mock_cluster:
+            with patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster:
                 mock_cluster.return_value = [[0]]
                 result = await op.execute(work)
 

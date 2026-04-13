@@ -6,17 +6,17 @@ Tests compute_answer_confidence() which produces a checklist-style report
 
 import pytest
 
-from epistemic.confidence import (
+from ..confidence import (
     CheckResult,
     AnswerConfidenceReport,
     compute_answer_confidence,
 )
-from epistemic.entities import Claim, Evidence, Uncertainty
-from epistemic.entities.claim import ClaimStage
-from epistemic.entities.objective import Objective
-from epistemic.entities.uncertainty import UncertaintyType
-from epistemic.repository import EpistemicRepository
-from epistemic.storage import InMemoryStorageBackend
+from ..entities import Claim, Evidence, Uncertainty
+from ..entities.claim import ClaimStage
+from ..entities.objective import Objective
+from ..entities.uncertainty import UncertaintyType
+from ..repository import EpistemicRepository
+from ..storage import InMemoryStorageBackend
 
 OBJ_ID = "test-obj-answer"
 

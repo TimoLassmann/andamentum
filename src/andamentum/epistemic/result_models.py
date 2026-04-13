@@ -11,7 +11,7 @@ Per TYPING_CONVENTIONS.md: Never use Dict[str, Any] for data passed between comp
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
-from epistemic.primitives import (
+from .primitives import (
     Claim,
     Evidence,
     Uncertainty,
@@ -23,7 +23,7 @@ from epistemic.primitives import (
     DeductiveEvidence,
     EpistemicEvent,
 )
-from epistemic.trace import ReasoningTrace
+from .trace import ReasoningTrace
 
 
 class BaseResult(BaseModel):

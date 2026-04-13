@@ -1,8 +1,8 @@
 """Tests for EpistemicRepository CRUD and query operations."""
 
 import pytest
-from epistemic.repository import EpistemicRepository, EntityNotFoundError
-from epistemic.entities import (
+from ..repository import EpistemicRepository, EntityNotFoundError
+from ..entities import (
     Claim,
     ClaimStage,
     Evidence,

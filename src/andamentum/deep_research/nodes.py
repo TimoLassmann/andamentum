@@ -4,7 +4,7 @@ These nodes implement the research cycle: plan → search → fetch → summariz
 analyze gaps → (refine | synthesize). They use the SearchBackend protocol for
 search/fetch operations and pydantic-ai agents for LLM decisions.
 
-Requires the [llm] optional extra: ``pip install mosaic-deep-research[llm]``
+Requires the [llm] optional extra: ``pip install andamentum[llm]``
 """
 
 import asyncio

@@ -7,7 +7,7 @@ preflight system discovers and calls these.
 
 Usage::
 
-    from epistemic.preflight import preflight
+    from andamentum.epistemic.preflight import preflight
 
     result = await preflight(model="bedrock:claude-haiku-4-5", providers=providers)
     if not result.ok:
@@ -69,7 +69,8 @@ async def _run_check(component: Any, fallback_name: str) -> CheckResult:
 
 
 async def preflight(
-    model: str = "ollama:gpt-oss:20b",
+    *,
+    model: str,
     providers: dict[str, Any] | None = None,
     verbose: bool = False,
 ) -> PreflightResult:

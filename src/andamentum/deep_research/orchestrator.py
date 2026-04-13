@@ -1,15 +1,15 @@
 """Standalone research orchestrator.
 
-Entry point for running deep research without Mosaic. Uses the package's own
+Standalone deep research entry point. Uses the package's own
 graph, agents, and backends.
 
-Requires the [llm] optional extra: ``pip install mosaic-deep-research[llm]``
+Requires the [llm] optional extra: ``pip install andamentum[llm]``
 
 Usage::
 
-    from deep_research.orchestrator import run_research
+    from andamentum.deep_research.orchestrator import run_research
 
-    result = await run_research("What is quantum computing?")
+    result = await run_research("What is quantum computing?", model="bedrock:claude-haiku-4-5")
     print(result.output.evidence_summary)
 """
 
@@ -18,7 +18,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from . import DEFAULT_MODEL
 from .models import ResearchResult, ResearchErrors
 
 
@@ -26,7 +25,7 @@ async def run_research(
     query: str,
     *,
     max_iterations: int = 3,
-    model: str = DEFAULT_MODEL,
+    model: str,
     searxng_url: str = "http://127.0.0.1:4070",
     max_results: int = 10,
     max_pages: int = 5,

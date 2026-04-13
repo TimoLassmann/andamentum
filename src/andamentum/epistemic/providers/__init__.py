@@ -5,7 +5,7 @@ Registry-based provider discovery. Each provider implements:
 - gather(query) → list[GatheredEvidence]
 
 Usage:
-    from epistemic.providers import get_all_providers, get_provider
+    from andamentum.epistemic.providers import get_all_providers, get_provider
 
     # Get all providers
     providers = get_all_providers()

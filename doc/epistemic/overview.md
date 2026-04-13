@@ -568,8 +568,7 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 
 | Layer | Location | Responsibility |
 |---|---|---|
-| **Layer 1: Library** | `packages/epistemic/src/epistemic/` | Framework-agnostic. Entities, operations, patterns, gates, adapters, agents (Python-native), routing, dedup, confidence, runner. Self-contained package (`pip install mosaic-epistemic[llm]`). |
-| **Layer 4: Application** | `src/mosaic/epistemic/` | CLI integration with Mosaic SDK, display formatting. Thin wrapper that delegates to the package. |
+| **Library** | `src/andamentum/epistemic/` | Framework-agnostic. Entities, operations, patterns, gates, adapters, agents (Python-native), routing, dedup, confidence, runner. Install with `pip install andamentum`. |
 
 ### Agents
 
@@ -630,7 +629,7 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 ### Code Structure
 
 ```
-packages/epistemic/src/epistemic/
+src/andamentum/epistemic/
 ├── entities/                      # Entity models (7 types)
 ├── agents/                        # Python agent definitions + output models
 │   ├── __init__.py                # AGENT_REGISTRY, register_agent()
@@ -689,7 +688,7 @@ packages/epistemic/src/epistemic/
 ├── stats.py                       # Run statistics
 ├── console.py                     # Rich console output
 ├── cli_handlers.py                # Async handlers for CLI commands
-├── cli.py                         # Standalone CLI entry point (mosaic-epistemic)
+├── cli.py                         # Standalone CLI entry point (andamentum-epistemic)
 ├── html_report.py                 # HTML report generation
 ├── report_generator.py            # Report formatting
 └── trace_renderers.py             # Trace visualization
@@ -725,7 +724,7 @@ Misconfiguration (wrong model ID, SearXNG not running, external API down) is not
 **Protocol**:
 
 ```python
-from epistemic.preflight import HealthCheckable, CheckResult
+from andamentum.epistemic.preflight import HealthCheckable, CheckResult
 
 @runtime_checkable
 class HealthCheckable(Protocol):
@@ -745,17 +744,17 @@ class NewDatabaseProvider:
     async def gather(self, query: str) -> list[GatheredEvidence]: ...
 
     async def check_health(self) -> CheckResult:
-        from epistemic.preflight import CheckResult
+        from andamentum.epistemic.preflight import CheckResult
         # Test own API endpoint, return pass/fail
         ...
 ```
 
-**CLI**: `mosaic-epistemic preflight [--model MODEL] [--providers biomedical] [--verbose]`
+**CLI**: `andamentum-epistemic preflight [--model MODEL] [--providers biomedical] [--verbose]`
 
 **Python API**:
 
 ```python
-from epistemic.preflight import preflight
+from andamentum.epistemic.preflight import preflight
 
 result = await preflight(model="bedrock:claude-haiku-4-5", providers=providers)
 if not result.ok:
@@ -815,13 +814,13 @@ Quick start:
 
 ```bash
 # Ask a research question
-uv run mosaic epistemic ask "What is spaced repetition and does it work?"
+andamentum-epistemic ask "What is spaced repetition and does it work?"
 
 # With all trace visualizations
-uv run mosaic epistemic ask "question" --trace all
+andamentum-epistemic ask "question" --trace all
 
 # Generate HTML report
-uv run mosaic epistemic ask "question" --output-path report.html
+andamentum-epistemic ask "question" --output-path report.html
 ```
 
 ---

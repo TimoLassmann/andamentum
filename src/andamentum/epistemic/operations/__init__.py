@@ -8,7 +8,7 @@ Operations are the atomic units of epistemic work. Each operation:
 5. Checks phase transitions
 
 This package splits operations by pipeline phase. All public names are
-re-exported here so that ``from epistemic.operations import X`` continues
+re-exported here so that ``from andamentum.epistemic.operations import X`` continues
 to work for every X that was previously importable from the monolithic
 ``operations.py`` module.
 
@@ -161,6 +161,7 @@ def create_operations(
     quality_scorer: Optional[QualityScorer] = None,
     model: Optional[str] = None,
     providers: Optional[dict] = None,
+    embedding_model: Optional[str] = None,
 ) -> dict[str, BaseOperation]:
     """Create all operation instances.
 
@@ -175,7 +176,8 @@ def create_operations(
         quality_scorer: Optional quality scoring protocol
         model: LLM model string for default evidence gatherer auto-creation
         providers: Optional dict of named evidence providers (e.g., from
-            ``epistemic.providers.get_biomedical_providers()``).
+            ``andamentum.epistemic.providers.get_biomedical_providers()``).
+        embedding_model: Embedding model for similarity/clustering operations.
 
     Returns:
         Dict mapping operation name to instance
@@ -192,6 +194,7 @@ def create_operations(
             agent_runner,
             evidence_gatherer=evidence_gatherer,
             quality_scorer=quality_scorer,
+            embedding_model=embedding_model,
         )
         for name, cls in OPERATION_CLASSES.items()
     }

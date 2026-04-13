@@ -629,7 +629,7 @@ async def synthesize_from_database(
     """Convenience function to synthesize results from repository.
 
     Usage:
-        from epistemic.synthesis import synthesize_from_database
+        from andamentum.epistemic.synthesis import synthesize_from_database
         result = await synthesize_from_database(repo, objective_id)
         print(result.to_markdown())
     """

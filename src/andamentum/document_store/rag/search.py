@@ -3,7 +3,7 @@
 Combines vector similarity search with BM25 keyword scoring.
 
 Usage:
-    from document_store.rag.search import semantic_search, SearchConfig
+    from andamentum.document_store.rag.search import semantic_search, SearchConfig
 
     results = semantic_search(
         query="machine learning",
@@ -493,7 +493,7 @@ def ensemble_search(
         List of SearchResult objects, fused by RRF (and re-ranked if enabled)
 
     Example:
-        >>> from document_store.rag.embeddings import get_embedding
+        >>> from andamentum.document_store.rag.embeddings import get_embedding
         >>> embedding = get_embedding("machine learning transformers")
         >>> # Without re-ranking (default)
         >>> results = ensemble_search(

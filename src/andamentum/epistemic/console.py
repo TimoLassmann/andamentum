@@ -15,7 +15,7 @@ from rich.table import Table
 from rich import box
 from rich.markup import escape as rich_escape
 
-from epistemic.primitives import WorkItemType
+from .primitives import WorkItemType
 
 
 class EpistemicConsole:

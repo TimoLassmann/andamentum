@@ -7,21 +7,21 @@ detection using DomainClassification objects constructed directly.
 
 import pytest
 
-from epistemic.domain_classifier import (
+from ..domain_classifier import (
     classify_evidence_domain,
     get_domain_label,
 )
-from epistemic.domain_distance import (
+from ..domain_distance import (
     calculate_domain_distance,
     compute_pairwise_distances,
     cluster_by_domain,
     interpret_distance,
 )
-from epistemic.convergence_detector import (
+from ..convergence_detector import (
     detect_convergence,
     CONVERGENCE_THRESHOLDS,
 )
-from epistemic.primitives import (
+from ..primitives import (
     MethodType,
     DataSourceType,
     TemporalApproach,

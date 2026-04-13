@@ -3,15 +3,15 @@
 import pytest
 from types import SimpleNamespace
 
-from epistemic.agents import get_agent
-from epistemic.agents.output_models import (
+from ..agents import get_agent
+from ..agents.output_models import (
     GenerateCounterqueryOutput,
     CheckPairwiseIndependenceOutput,
     IdentifyTestableAspectOutput,
     SpecifyPredictionOutput,
     DefineFalsificationOutput,
 )
-from epistemic.adapters import adapt_agent_output
+from ..adapters import adapt_agent_output
 
 
 class TestGenerateCounterqueryAgent:
@@ -58,8 +58,8 @@ class TestCheckPairwiseIndependenceAgent:
 # Select providers (deterministic routing)
 # ──────────────────────────────────────────────────────────────────────────────
 
-from epistemic.routing import select_providers
-from epistemic.agents.output_models import FormulateQueryOutput
+from ..routing import select_providers
+from ..agents.output_models import FormulateQueryOutput
 
 
 class TestSelectProviders:
@@ -190,8 +190,8 @@ class TestDefineFalsificationAgent:
 # Claim proposal decomposition: extract_assertion + cluster + draft_claim
 # ──────────────────────────────────────────────────────────────────────────────
 
-from epistemic.similarity import group_by_similarity as cluster_by_similarity
-from epistemic.agents.output_models import ExtractAssertionOutput, DraftClaimOutput
+from ..similarity import group_by_similarity as cluster_by_similarity
+from ..agents.output_models import ExtractAssertionOutput, DraftClaimOutput
 
 
 class TestEmbeddingsClustering:

@@ -13,8 +13,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from document_store import DocumentStore
-from epistemic.html_report import (
+from andamentum.document_store import DocumentStore
+from .html_report import (
     AdversarialSummary,
     ClaimSummary,
     ConfidenceScores,
@@ -25,8 +25,8 @@ from epistemic.html_report import (
     UncertaintySummary,
     render,
 )
-from epistemic.primitives import UncertaintyType
-from epistemic.repository import EpistemicRepository
+from .primitives import UncertaintyType
+from .repository import EpistemicRepository
 
 logger = logging.getLogger(__name__)
 

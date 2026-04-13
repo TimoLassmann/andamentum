@@ -1,7 +1,7 @@
 """Deep research system — models, agents, and orchestration for web research.
 
-Standalone package: ``pip install mosaic-deep-research`` for core models.
-Add ``[llm]`` extra for agent runner: ``pip install mosaic-deep-research[llm]``.
+Standalone package: ``pip install andamentum`` for core models.
+Add ``[llm]`` extra for agent runner: ``pip install andamentum[llm]``.
 """
 
 from .state import ResearchState
@@ -34,8 +34,6 @@ from .agents import AgentDefinition, AGENT_REGISTRY
 
 __version__ = "0.1.0"
 
-DEFAULT_MODEL = "ollama:gpt-oss:20b"
-
 __all__ = [
     "ResearchState",
     "SearchQuery",
@@ -65,7 +63,6 @@ __all__ = [
     # Agents
     "AgentDefinition",
     "AGENT_REGISTRY",
-    "DEFAULT_MODEL",
     # Content extraction
     "extract_html",
     "extract_pdf",

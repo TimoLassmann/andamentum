@@ -2,7 +2,7 @@
 
 For document management, use DocumentStore:
 
-    from document_store import DocumentStore
+    from andamentum.document_store import DocumentStore
 
     store = DocumentStore.for_database("brain")
     await store.initialize()

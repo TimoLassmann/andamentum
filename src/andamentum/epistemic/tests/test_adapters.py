@@ -9,7 +9,7 @@ AND with edge-case inputs (missing fields, empty lists, unexpected types).
 import pytest
 from types import SimpleNamespace
 
-from epistemic.adapters import (
+from ..adapters import (
     ADAPTERS,
     adapt_write_answer,
     adapt_extract,

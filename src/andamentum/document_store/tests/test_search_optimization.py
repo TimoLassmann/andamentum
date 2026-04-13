@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import pytest
-from document_store.search import search_unified
+from ..search import search_unified
 
 
 class TestProductionSearchConfig:
     def test_reranking_disabled_in_production_config(self):
-        from document_store.search import _get_production_search_config
+        from andamentum.document_store.search import _get_production_search_config
 
         config = _get_production_search_config()
         assert config.enable_reranking is False, (
@@ -19,7 +19,7 @@ class TestProductionSearchConfig:
 
     def test_reranking_top_k_preserved(self):
         """reranking_top_k stays at 50 so re-enabling is a one-line change."""
-        from document_store.search import _get_production_search_config
+        from andamentum.document_store.search import _get_production_search_config
 
         config = _get_production_search_config()
         assert config.reranking_top_k == 50
@@ -32,7 +32,7 @@ class TestOverFetchFactor:
         With limit=10, this means 30 vector candidates instead of 100.
         Reduces BM25 index build cost with minimal quality impact.
         """
-        from document_store.rag.search import SearchConfig
+        from andamentum.document_store.rag.search import SearchConfig
 
         config = SearchConfig(include_bm25=True)
         limit = 10
@@ -41,7 +41,7 @@ class TestOverFetchFactor:
         assert vector_limit == 30
 
     def test_vector_limit_equals_limit_when_bm25_disabled(self):
-        from document_store.rag.search import SearchConfig
+        from andamentum.document_store.rag.search import SearchConfig
 
         config = SearchConfig(include_bm25=False)
         limit = 10
@@ -81,10 +81,10 @@ class TestSignalParallelization:
         fake_embedding = [0.1] * 768
 
         with (
-            patch("document_store.search._run_fts5_signal", new=slow_fts5),
-            patch("document_store.search._run_chunk_search", new=slow_chunks),
-            patch("document_store.search._run_doc_embedding_search", new=slow_doc_embed),
-            patch("document_store.search._run_cluster_search", new=slow_clusters),
+            patch("andamentum.document_store.search._run_fts5_signal", new=slow_fts5),
+            patch("andamentum.document_store.search._run_chunk_search", new=slow_chunks),
+            patch("andamentum.document_store.search._run_doc_embedding_search", new=slow_doc_embed),
+            patch("andamentum.document_store.search._run_cluster_search", new=slow_clusters),
         ):
             start = time.monotonic()
             await search_unified("/fake/path.db", "test query", query_embedding=fake_embedding)
@@ -99,7 +99,7 @@ class TestSignalParallelization:
 class TestClusterCache:
     def test_cache_returns_same_object_on_second_call(self):
         """Cache hit should return the same cluster_states dict."""
-        from document_store.search import _load_cluster_state, _invalidate_cluster_cache
+        from andamentum.document_store.search import _load_cluster_state, _invalidate_cluster_cache
 
         # Start clean
         _invalidate_cluster_cache()
@@ -155,7 +155,7 @@ class TestClusterCache:
 
     def test_invalidate_clears_cache(self):
         """After invalidation, next call should reload from database."""
-        from document_store.search import _load_cluster_state, _invalidate_cluster_cache
+        from andamentum.document_store.search import _load_cluster_state, _invalidate_cluster_cache
 
         _invalidate_cluster_cache()
 

@@ -15,7 +15,7 @@ Document extraction: title, doc_type (5 values), projects, people.
 Chunk extraction: topics (2-3 tags), people, has_decision (bool), has_action_item (bool).
   Boolean questions are much more reliable for local models than multi-way classification.
 
-Requires: pip install mosaic-document-store[llm]  (pydantic-ai)
+Requires: pip install andamentum[llm]  (pydantic-ai)
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ async def extract_document_metadata(
             people=llm_fields.people,
         )
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install mosaic-document-store[llm]")
+        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
     except Exception as first_error:
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
@@ -212,7 +212,7 @@ async def extract_chunk_metadata(
             has_action_item=llm_fields.has_action_item,
         )
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install mosaic-document-store[llm]")
+        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
     except Exception as first_error:
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 

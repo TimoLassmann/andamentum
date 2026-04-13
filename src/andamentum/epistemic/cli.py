@@ -1,11 +1,11 @@
-"""CLI entry point for mosaic-epistemic.
+"""CLI entry point for andamentum-epistemic.
 
 Usage::
 
-    mosaic-epistemic run <agent_name> [key=value ...] [--model MODEL] [--verbose]
-    mosaic-epistemic agents
+    andamentum-epistemic run <agent_name> [key=value ...] [--model MODEL] [--verbose]
+    andamentum-epistemic agents
 
-Requires the [llm] extra: ``pip install mosaic-epistemic[llm]``
+Requires the [llm] extra: ``pip install andamentum[llm]``
 """
 
 import argparse
@@ -17,7 +17,7 @@ import traceback
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mosaic-epistemic",
+        prog="andamentum-epistemic",
         description="Formal epistemology for AI research — evidence-based claims with traceability.",
     )
     sub = parser.add_subparsers(dest="command")
@@ -25,7 +25,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # Subcommand: ask (primary interface)
     ask_parser = sub.add_parser("ask", help="Ask a research question and get validated findings")
     ask_parser.add_argument("question", help="Research question to investigate")
-    ask_parser.add_argument("--model", default=None, help="LLM model (default: $MOSAIC_LLM_MODEL or ollama:gpt-oss:20b)")
+    ask_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
     ask_parser.add_argument("--max-iterations", type=int, default=50, help="Maximum scheduler iterations (default: 50)")
     ask_parser.add_argument("--keep", action="store_true", help="Keep project database after completion")
     ask_parser.add_argument("--name", default=None, help="Project name (auto-generated if not specified)")
@@ -39,7 +39,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser = sub.add_parser("run", help="Run an epistemic agent")
     run_parser.add_argument("agent", help="Agent name (e.g. epistemic_clarify_question)")
     run_parser.add_argument("kwargs", nargs="*", help="Key=value pairs for the agent (e.g. question='What is X?')")
-    run_parser.add_argument("--model", default=None, help="LLM model (default: $MOSAIC_LLM_MODEL or ollama:gpt-oss:20b)")
+    run_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
     run_parser.add_argument("--verbose", action="store_true", help="Print progress messages")
 
     # Subcommand: agents
@@ -47,14 +47,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Subcommand: preflight
     pf_parser = sub.add_parser("preflight", help="Check LLM, SearXNG, and provider connectivity before a run")
-    pf_parser.add_argument("--model", default=None, help="LLM model (default: $MOSAIC_LLM_MODEL or ollama:gpt-oss:20b)")
+    pf_parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
     pf_parser.add_argument("--providers", default=None, help="Provider set: 'biomedical' or omit for none")
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
     # Subcommand: confidence
     conf_parser = sub.add_parser("confidence", help="Compute post-hoc confidence for a completed epistemic run")
     conf_parser.add_argument("--db", required=True, help="Database name")
-    conf_parser.add_argument("--db-dir", default=None, help="Custom database directory (default: ~/.config/mosaic/databases/)")
+    conf_parser.add_argument("--db-dir", default=None, help="Custom database directory (default: ~/.config/andamentum/databases/)")
     conf_parser.add_argument("--objective", default=None, help="Objective ID (auto-detected if only one exists)")
     conf_parser.add_argument("--verbose", action="store_true", help="Show per-claim detail")
 
@@ -64,7 +64,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def _resolve_model(args: argparse.Namespace) -> str:
     import os
 
-    return args.model or os.environ.get("MOSAIC_LLM_MODEL", "ollama:gpt-oss:20b")
+    model = args.model or os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL")
+    if not model:
+        print(
+            "Error: --model is required (or set ANDAMENTUM_MAIN_LLM_MODEL environment variable)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return model
 
 
 def _parse_kwargs(raw: list[str]) -> dict[str, str]:
@@ -160,7 +167,7 @@ async def _ask(args: argparse.Namespace) -> None:
     try:
         from .cli_handlers import handle_ask
     except ImportError:
-        print("Error: pydantic-ai and rich are required. Install with: pip install mosaic-epistemic[llm]", file=sys.stderr)
+        print("Error: pydantic-ai and rich are required. Install with: pip install andamentum[llm]", file=sys.stderr)
         sys.exit(1)
 
     model = _resolve_model(args)
@@ -185,7 +192,7 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         from .runner import DefaultAgentRunner
     except ImportError:
-        print("Error: pydantic-ai is required. Install with: pip install mosaic-epistemic[llm]", file=sys.stderr)
+        print("Error: pydantic-ai is required. Install with: pip install andamentum[llm]", file=sys.stderr)
         sys.exit(1)
 
     model = _resolve_model(args)

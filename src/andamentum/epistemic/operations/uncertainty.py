@@ -66,8 +66,10 @@ class ResolveUncertaintyOperation(BaseOperation):
             from ..embeddings import embed_texts
             from ..similarity import cosine_similarity
 
+            if not self.embedding_model:
+                raise RuntimeError("embedding_model is required for sibling deduplication. Pass embedding_model= to create_operations().")
             all_descriptions = [uncertainty.description] + [s.description for s in siblings]
-            embeddings = await embed_texts(all_descriptions)
+            embeddings = await embed_texts(all_descriptions, model=self.embedding_model)
 
             target_emb = embeddings[0]
             for i, sibling in enumerate(siblings):

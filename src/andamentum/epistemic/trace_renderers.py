@@ -15,7 +15,7 @@ from rich.table import Table
 from rich import box
 from rich.markup import escape as rich_escape
 
-from epistemic.trace import ReasoningTrace, TraceStep, ClaimLineage
+from .trace import ReasoningTrace, TraceStep, ClaimLineage
 
 
 # Color scheme for operations (consistent with EpistemicConsole)

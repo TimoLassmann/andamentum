@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from epistemic.passage_extraction import (
+from ..passage_extraction import (
     LocatedPassage,
     PageData,
     Pointer,
@@ -126,7 +126,7 @@ class TestLocatePointers:
         chunks = ["The quick brown fox", "jumps over the lazy dog"]
         pointers = [Pointer(text="quick brown fox", kind="key_excerpt")]
 
-        with patch("epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
             result = await _locate_pointers(pointers, chunks, chunk_embeddings=[])
             mock_embed.assert_not_called()
 
@@ -144,8 +144,8 @@ class TestLocatePointers:
 
         mock_embed = AsyncMock(return_value=[[0.9, 0.1, 0.0]])  # similar to chunk 0
 
-        with patch("epistemic.passage_extraction.embed_texts", mock_embed):
-            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs)
+        with patch("andamentum.epistemic.passage_extraction.embed_texts", mock_embed):
+            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs, embedding_model="test-model")
 
         mock_embed.assert_called_once()
         assert len(result) == 1
@@ -161,8 +161,8 @@ class TestLocatePointers:
         # Return a very different embedding — near-orthogonal
         mock_embed = AsyncMock(return_value=[[0.0, 0.0, 1.0]])
 
-        with patch("epistemic.passage_extraction.embed_texts", mock_embed):
-            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs, similarity_threshold=0.5)
+        with patch("andamentum.epistemic.passage_extraction.embed_texts", mock_embed):
+            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs, similarity_threshold=0.5, embedding_model="test-model")
 
         assert len(result) == 0
 
@@ -172,7 +172,7 @@ class TestLocatePointers:
         chunks = ["alpha beta gamma"]
         pointers = [Pointer(text="zzz no match zzz", kind="key_point")]
 
-        with patch("epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
             result = await _locate_pointers(pointers, chunks, chunk_embeddings=[])
             mock_embed.assert_not_called()
 
@@ -368,12 +368,13 @@ class TestExtractPassages:
         # fall back to embedding.  Mock embed_texts to return a vector close
         # to the single chunk embedding so the finding lands on chunk 0.
         mock_embed = AsyncMock(return_value=[[0.9, 0.1, 0.0]])
-        with patch("epistemic.passage_extraction.embed_texts", mock_embed):
+        with patch("andamentum.epistemic.passage_extraction.embed_texts", mock_embed):
             results = await extract_passages(
                 [page],
                 cross_page_findings=["Methodology is crucial"],
                 cross_page_finding_embeddings=finding_embs,
                 chunk_embeddings_by_url=chunk_embs_by_url,
+                embedding_model="test-model",
             )
         assert len(results) >= 1
         # Should have both the excerpt and the finding

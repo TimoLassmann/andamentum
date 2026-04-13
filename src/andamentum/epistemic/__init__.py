@@ -7,8 +7,8 @@ Top-level exports cover the essential public API. For specialised
 modules (adversarial search, convergence detection, prediction),
 import from the submodule directly::
 
-    from epistemic.adversarial_query_generator import generate_adversarial_queries
-    from epistemic.convergence_detector import detect_convergence
+    from andamentum.epistemic.adversarial_query_generator import generate_adversarial_queries
+    from andamentum.epistemic.convergence_detector import detect_convergence
 """
 
 __version__ = "0.1.0"
@@ -98,7 +98,7 @@ from .preflight import CheckResult, PreflightResult, HealthCheckable, preflight
 
 # ── Runner (standalone execution, requires [llm] extra) ─────────────────
 # Lazy import to avoid hard dependency on pydantic-ai:
-#   from epistemic.runner import DefaultAgentRunner
+#   from andamentum.epistemic.runner import DefaultAgentRunner
 
 __all__ = [
     # Core Entities

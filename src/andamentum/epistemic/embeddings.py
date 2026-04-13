@@ -1,6 +1,6 @@
 """Embedding client for evidence clustering.
 
-Uses Ollama's embeddinggemma model via HTTP. Long texts are chunked
+Uses an HTTP-compatible embedding endpoint. Long texts are chunked
 before embedding (aligned with document-store's 500-token chunk size).
 
 Architecture: Layer 1 (framework-agnostic, async HTTP only)
@@ -9,12 +9,10 @@ Architecture: Layer 1 (framework-agnostic, async HTTP only)
 from __future__ import annotations
 
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.environ.get("MOSAIC_EMBEDDING_MODEL", "embeddinggemma:latest")
-DEFAULT_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+DEFAULT_BASE_URL = "http://localhost:11434"
 
 # Chunk size aligned with document-store (500 tokens × 4 chars/token).
 _MAX_EMBED_CHARS = 2000
@@ -38,7 +36,8 @@ def _chunk_text(text: str, max_chars: int = _MAX_EMBED_CHARS, overlap: int = _OV
 
 async def embed_texts(
     texts: list[str],
-    model: str = DEFAULT_MODEL,
+    *,
+    model: str,
     base_url: str = DEFAULT_BASE_URL,
 ) -> list[list[float]]:
     """Embed short texts using Ollama (one embedding per text).
@@ -78,7 +77,8 @@ async def embed_texts(
 
 async def embed_documents(
     texts: list[str],
-    model: str = DEFAULT_MODEL,
+    *,
+    model: str,
     base_url: str = DEFAULT_BASE_URL,
 ) -> list[list[list[float]]]:
     """Embed long documents by chunking, returning per-document chunk embeddings.

@@ -1,10 +1,10 @@
 """Tests for adversarial counterargument storage as Evidence entities."""
 
 import pytest
-from epistemic.entities.claim import Claim, ClaimStage
-from epistemic.entities.evidence import Evidence
-from epistemic.operations.verification import AdversarialSearchOperation
-from epistemic.patterns import WorkItem
+from ..entities.claim import Claim, ClaimStage
+from ..entities.evidence import Evidence
+from ..operations.verification import AdversarialSearchOperation
+from ..patterns import WorkItem
 
 
 class TestAdversarialEvidenceStorage:

@@ -68,8 +68,10 @@ class FreezeSnapshotOperation(BaseOperation):
             from ..embeddings import embed_texts
             from ..similarity import group_by_similarity, medoid as find_medoid
 
+            if not self.embedding_model:
+                raise RuntimeError("embedding_model is required for uncertainty deduplication. Pass embedding_model= to create_operations().")
             caveat_texts = [c.description for c in caveats]
-            embeddings = await embed_texts(caveat_texts)
+            embeddings = await embed_texts(caveat_texts, model=self.embedding_model)
             groups = group_by_similarity(embeddings, DEDUP_SIMILARITY_THRESHOLD)
 
             deduped_count = 0

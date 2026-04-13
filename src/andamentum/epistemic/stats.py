@@ -9,8 +9,8 @@ Architecture: Layer 4 (Application)
 import logging
 from typing import Any
 
-from document_store import DocumentStore
-from epistemic.primitives import ClaimStage
+from andamentum.document_store import DocumentStore
+from .primitives import ClaimStage
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ async def get_all_verification_evidence(store: DocumentStore, objective_id: str)
     Returns:
         Dict with keys: adversarial, convergent, computational, temporal, deductive
     """
-    from epistemic.repository import EpistemicRepository
+    from .repository import EpistemicRepository
     from .storage import DocumentStoreAdapter
 
     repo = EpistemicRepository(DocumentStoreAdapter(store))

@@ -4,7 +4,7 @@ Uses SourceIndex to automatically select relevant evidence sources based on
 the research query. Provides a unified interface for the workflow engine.
 
 Usage:
-    from epistemic.evidence_router import EvidenceRouter
+    from andamentum.epistemic.evidence_router import EvidenceRouter
 
     router = await EvidenceRouter.create()
 

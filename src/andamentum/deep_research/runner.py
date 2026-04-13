@@ -3,7 +3,7 @@
 More complex than epistemic's runner because deep-research agents use tools
 (search, fetch). The runner registers tool functions that call SearchBackend.
 
-Requires the [llm] optional extra: ``pip install mosaic-deep-research[llm]``
+Requires the [llm] optional extra: ``pip install andamentum[llm]``
 
 Architecture: Layer 1 (standalone package runner)
 """
@@ -14,20 +14,8 @@ from typing import Any
 def _resolve_model(model: str) -> Any:
     """Resolve model string to a pydantic-ai model object.
 
-    Handles provider-specific setup:
-    - ``ollama:`` — sets default OLLAMA_BASE_URL for localhost
-    - everything else — passed through to pydantic-ai's infer_model
+    Passes model strings through to pydantic-ai's infer_model.
     """
-    import os
-
-    if isinstance(model, str) and model.startswith("ollama:"):
-        from pydantic_ai.models.openai import OpenAIChatModel
-        from pydantic_ai.providers.ollama import OllamaProvider
-
-        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        model_name = model.split(":", 1)[1]
-        return OpenAIChatModel(model_name=model_name, provider=OllamaProvider(base_url=base_url))
-
     return model
 
 
@@ -40,10 +28,10 @@ class DefaultResearchRunner:
 
     Usage::
 
-        from deep_research.runner import DefaultResearchRunner
-        from deep_research.backends import HttpxSearchBackend
+        from andamentum.deep_research.runner import DefaultResearchRunner
+        from andamentum.deep_research.backends import HttpxSearchBackend
 
-        runner = DefaultResearchRunner()  # uses local Ollama by default
+        runner = DefaultResearchRunner(model="bedrock:claude-haiku-4-5")
         result = await runner.run("gap_analyzer", evidence="...", question="...")
     """
 
@@ -57,7 +45,7 @@ class DefaultResearchRunner:
         except ImportError as exc:
             raise ImportError(
                 "pydantic-ai is required for DefaultResearchRunner. "
-                "Install with: pip install mosaic-deep-research[llm]"
+                "Install with: pip install andamentum[llm]"
             ) from exc
 
         self._Agent = Agent

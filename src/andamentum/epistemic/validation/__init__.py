@@ -3,7 +3,7 @@
 Re-exports all validation types and validator classes for backward compatibility.
 
 Usage:
-    from epistemic.validation import (
+    from andamentum.epistemic.validation import (
         ValidationSeverity,
         ValidationError,
         ValidationResult,

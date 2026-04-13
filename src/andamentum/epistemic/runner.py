@@ -1,9 +1,9 @@
 """DefaultAgentRunner — standalone agent execution using pydantic-ai.
 
 This runner implements the AgentRunner protocol defined in operations.py,
-enabling the epistemic package to run agents without the full Mosaic SDK.
+enabling the epistemic package to run agents standalone, without an external SDK.
 
-Requires the [llm] optional extra: ``pip install mosaic-epistemic[llm]``
+Requires the [llm] optional extra: ``pip install andamentum[llm]``
 
 Architecture: Layer 1 (standalone package runner)
 """
@@ -44,21 +44,12 @@ def _resolve_model(model: str) -> Any:
     """Resolve model string to a pydantic-ai model object.
 
     Handles provider-specific setup:
-    - ``ollama:`` — sets default OLLAMA_BASE_URL for localhost
     - ``bedrock:`` — resolves friendly name to full Bedrock model ID,
       adds regional prefix, and creates a BedrockConverseModel with
       proper boto3 session (profile + region from env or defaults)
     - everything else — passed through to pydantic-ai's infer_model
     """
     import os
-
-    if isinstance(model, str) and model.startswith("ollama:"):
-        from pydantic_ai.models.openai import OpenAIChatModel
-        from pydantic_ai.providers.ollama import OllamaProvider
-
-        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        model_name = model.split(":", 1)[1]
-        return OpenAIChatModel(model_name=model_name, provider=OllamaProvider(base_url=base_url))
 
     if isinstance(model, str) and model.startswith("bedrock:"):
         import boto3
@@ -76,9 +67,6 @@ def _resolve_model(model: str) -> Any:
             "claude-haiku-4-5": "anthropic.claude-haiku-4-5-20251001-v1:0",
             "claude-sonnet-4-5": "anthropic.claude-sonnet-4-5-20250929-v1:0",
             "claude-opus-4-5": "anthropic.claude-opus-4-5-20251101-v1:0",
-            # Non-Claude models (no inference profile needed)
-            "gpt-oss-20b": "openai.gpt-oss-20b-1:0",
-            "gpt-oss-120b": "openai.gpt-oss-120b-1:0",
             "qwen3-32b": "qwen.qwen3-32b-v1:0",
             "mistral-7b": "mistral.mistral-7b-instruct-v0:2",
             "ministral-8b": "mistral.ministral-3-8b-instruct",
@@ -123,7 +111,7 @@ class DefaultAgentRunner:
         print(runner.usage.total_tokens)
     """
 
-    def __init__(self, model: str = "ollama:gpt-oss:20b"):
+    def __init__(self, *, model: str):
         # Load .env from CWD so importing repos get their API keys picked up
         try:
             from dotenv import load_dotenv
@@ -136,7 +124,7 @@ class DefaultAgentRunner:
         except ImportError as exc:
             raise ImportError(
                 "pydantic-ai is required for DefaultAgentRunner. "
-                "Install with: pip install mosaic-epistemic[llm]"
+                "Install with: pip install andamentum[llm]"
             ) from exc
 
         self._Agent = Agent

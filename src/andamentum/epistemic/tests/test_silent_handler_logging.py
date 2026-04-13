@@ -11,16 +11,16 @@ import pathlib
 
 import pytest
 
-from epistemic.entities import Claim, ClaimStage, Evidence, Objective
-from epistemic.operations import (
+from ..entities import Claim, ClaimStage, Evidence, Objective
+from ..operations import (
     AdversarialSearchOperation,
     GeneratePredictionOperation,
     GatheredEvidence,
     create_operations,
 )
-from epistemic.patterns import PatternScheduler, WorkItem
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
+from ..patterns import PatternScheduler, WorkItem
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
 
 _test_dir = str(pathlib.Path(__file__).parent)
 if _test_dir not in sys.path:

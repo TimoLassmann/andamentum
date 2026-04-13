@@ -43,6 +43,8 @@ class EvidenceCluster:
 async def deduplicate_evidence(
     texts: list[str],
     min_cluster_size: int = 2,
+    *,
+    embedding_model: str,
 ) -> list[EvidenceCluster]:
     """Cluster documents by semantic similarity using HDBSCAN.
 
@@ -64,7 +66,7 @@ async def deduplicate_evidence(
     # Chunk each document and embed all chunks via Ollama.
     # Long documents (e.g. raw web pages) are split into ~2000-char chunks
     # so that each chunk fits within the embedding model's context window.
-    doc_embeddings = await embed_documents(texts)
+    doc_embeddings = await embed_documents(texts, model=embedding_model)
 
     # Build max-sim distance matrix: for each pair of documents, the distance
     # is 1 - max(cosine_similarity(chunk_a, chunk_b)) over all chunk pairs.

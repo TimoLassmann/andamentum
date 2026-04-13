@@ -90,12 +90,12 @@ class EpistemicRepository:
             name: Database name (e.g., "benchmark_q1_brca1").
                   Creates file at db_dir/{name}.db
             db_dir: Custom directory for the database file.
-                    Defaults to ~/.config/mosaic/databases/
+                    Defaults to ~/.config/andamentum/databases/
 
         Returns:
             Repository ready for use.
         """
-        from document_store import DocumentStore
+        from andamentum.document_store import DocumentStore
 
         from .storage import DocumentStoreAdapter
 

@@ -1,7 +1,7 @@
 """Tests for question type classification."""
 
 import pytest
-from epistemic.primitives import QuestionType
+from ..primitives import QuestionType
 
 
 class TestQuestionTypeEnum:
@@ -20,7 +20,7 @@ class TestQuestionTypeEnum:
         assert isinstance(QuestionType.VERIFICATORY, str)
 
 
-from epistemic.entities.objective import Objective
+from ..entities.objective import Objective
 
 
 class TestObjectiveQuestionType:
@@ -64,8 +64,8 @@ class TestObjectiveQuestionType:
         assert restored.question_type is None
 
 
-from epistemic.agents import get_agent
-from epistemic.agents.output_models import ClassifyQuestionOutput
+from ..agents import get_agent
+from ..agents.output_models import ClassifyQuestionOutput
 
 
 class TestClassifyQuestionAgent:
@@ -93,7 +93,7 @@ class TestClassifyQuestionAgent:
 
 
 from types import SimpleNamespace
-from epistemic.adapters import adapt_agent_output
+from ..adapters import adapt_agent_output
 
 
 class TestClassifyQuestionAdapter:
@@ -123,10 +123,10 @@ class TestClassifyQuestionAdapter:
         assert result.question_type == "explanatory"
 
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
-from epistemic.operations import ClassifyQuestionOperation, OPERATION_CLASSES
-from epistemic.patterns import WorkItem
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
+from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES
+from ..patterns import WorkItem
 
 
 class TestClassifyQuestionOperation:
@@ -246,7 +246,7 @@ class TestClassifyQuestionOperation:
         assert len(mock_runner.calls) == 0  # No agent call
 
 
-from epistemic.patterns import PatternScheduler, WORK_PATTERNS, Pattern
+from ..patterns import PatternScheduler, WORK_PATTERNS, Pattern
 
 
 class TestClassifyQuestionPattern:

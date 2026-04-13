@@ -185,7 +185,7 @@ async def _get_openalex_client() -> Any:
     import httpx
 
     email = os.environ.get("OPENALEX_EMAIL", "")
-    headers = {"User-Agent": f"mosaic-epistemic/0.1 (mailto:{email})" if email else "mosaic-epistemic/0.1"}
+    headers = {"User-Agent": f"andamentum-epistemic/0.1 (mailto:{email})" if email else "andamentum-epistemic/0.1"}
     return httpx.AsyncClient(
         base_url="https://api.openalex.org",
         headers=headers,

@@ -1,11 +1,11 @@
-"""CLI entry point for mosaic-deep-research.
+"""CLI entry point for andamentum-research.
 
 Usage::
 
-    mosaic-research "What is quantum computing?" [--model MODEL] [--max-iterations N] [--verbose]
-    mosaic-research agents
+    andamentum-research "What is quantum computing?" [--model MODEL] [--max-iterations N] [--verbose]
+    andamentum-research agents
 
-Requires the [llm] extra: ``pip install mosaic-deep-research[llm]``
+Requires the [llm] extra: ``pip install andamentum[llm]``
 """
 
 import argparse
@@ -17,11 +17,11 @@ from typing import Any
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mosaic-research",
+        prog="andamentum-research",
         description="Deep research with iterative search, verification, and synthesis.",
     )
     parser.add_argument("query", help="Research question")
-    parser.add_argument("--model", default=None, help="LLM model (default: $MOSAIC_LLM_MODEL or package default)")
+    parser.add_argument("--model", default=None, help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL")
     parser.add_argument("--max-iterations", type=int, default=3, help="Max research iterations (default: 3)")
     parser.add_argument("--searxng-url", default="http://127.0.0.1:4070", help="SearXNG instance URL (default: http://127.0.0.1:4070)")
     parser.add_argument("--max-results", type=int, default=10, help="Max search results per query (default: 10)")
@@ -33,10 +33,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _resolve_model(args: argparse.Namespace) -> str:
     import os
+    import sys
 
-    from . import DEFAULT_MODEL
-
-    return args.model or os.environ.get("MOSAIC_LLM_MODEL", DEFAULT_MODEL)
+    model = args.model or os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL")
+    if not model:
+        print(
+            "Error: --model is required (or set ANDAMENTUM_MAIN_LLM_MODEL environment variable)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return model
 
 
 def _list_agents() -> None:
@@ -94,7 +100,7 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         from .orchestrator import run_research
     except ImportError:
-        print("Error: pydantic-ai is required. Install with: pip install mosaic-deep-research[llm]", file=sys.stderr)
+        print("Error: pydantic-ai is required. Install with: pip install andamentum[llm]", file=sys.stderr)
         sys.exit(1)
 
     model = _resolve_model(args)

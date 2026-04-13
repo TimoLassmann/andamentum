@@ -1,7 +1,7 @@
 """Tests for deep research source verification."""
 
 import pytest
-from deep_research.verification import normalize_url, verify_sources
+from ..verification import normalize_url, verify_sources
 
 
 class TestURLNormalization:

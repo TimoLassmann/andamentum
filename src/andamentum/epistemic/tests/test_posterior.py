@@ -14,9 +14,9 @@ Covers:
 import math
 import pytest
 
-from epistemic.confidence import PosteriorReport, compute_posterior
-from epistemic.entities import Claim, Evidence, Objective
-from epistemic.entities.claim import ClaimStage
+from ..confidence import PosteriorReport, compute_posterior
+from ..entities import Claim, Evidence, Objective
+from ..entities.claim import ClaimStage
 
 
 OBJ_ID = "test-posterior-obj"

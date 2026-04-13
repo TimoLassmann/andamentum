@@ -5,7 +5,7 @@ import math
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from epistemic.similarity import cosine_similarity, group_by_similarity, embed_and_group, validate_groups
+from ..similarity import cosine_similarity, group_by_similarity, embed_and_group, validate_groups
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -117,12 +117,12 @@ class TestGroupBySimilarity:
 class TestEmbedAndGroup:
     @pytest.mark.asyncio
     async def test_empty_input(self):
-        result = await embed_and_group([], threshold=0.8)
+        result = await embed_and_group([], threshold=0.8, embedding_model="test-model")
         assert result == []
 
     @pytest.mark.asyncio
     async def test_single_item(self):
-        result = await embed_and_group(["hello"], threshold=0.8)
+        result = await embed_and_group(["hello"], threshold=0.8, embedding_model="test-model")
         assert result == [[0]]
 
     @pytest.mark.asyncio
@@ -134,10 +134,11 @@ class TestEmbedAndGroup:
         cluster_b = _make_cluster(90, 2, spread=2)
         mock_embeddings = cluster_a + cluster_b
 
-        with patch("epistemic.embeddings.embed_texts", new=AsyncMock(return_value=mock_embeddings)):
+        with patch("andamentum.epistemic.embeddings.embed_texts", new=AsyncMock(return_value=mock_embeddings)):
             groups = await embed_and_group(
                 ["a1", "a2", "a3", "b1", "b2"],
                 threshold=0.9,
+                embedding_model="test-model",
             )
 
         assert len(groups) == 2
@@ -241,18 +242,18 @@ class TestValidateGroups:
 
 class TestMedoid:
     def test_singleton(self):
-        from epistemic.similarity import medoid
+        from andamentum.epistemic.similarity import medoid
 
         assert medoid([[1.0, 0.0]], [0]) == 0
 
     def test_medoid_is_most_central(self):
-        from epistemic.similarity import medoid
+        from andamentum.epistemic.similarity import medoid
 
         embeddings = [_unit_vector(0), _unit_vector(10), _unit_vector(20)]
         assert medoid(embeddings, [0, 1, 2]) == 1
 
     def test_medoid_with_sparse_indices(self):
-        from epistemic.similarity import medoid
+        from andamentum.epistemic.similarity import medoid
 
         embeddings = [_unit_vector(i * 10) for i in range(7)]
         assert medoid(embeddings, [1, 3, 5]) == 3
@@ -263,7 +264,7 @@ class TestMedoid:
 
 class TestAssessClustering:
     def test_well_separated_clusters(self):
-        from epistemic.similarity import assess_clustering
+        from andamentum.epistemic.similarity import assess_clustering
 
         embeddings = (
             _make_cluster(0, 4, spread=3)
@@ -280,21 +281,21 @@ class TestAssessClustering:
         assert len(quality.groups) == 3
 
     def test_edge_case_single_cluster(self):
-        from epistemic.similarity import assess_clustering
+        from andamentum.epistemic.similarity import assess_clustering
 
         embeddings = [_unit_vector(0), _unit_vector(5), _unit_vector(10)]
         quality = assess_clustering(embeddings, [[0, 1, 2]])
         assert not quality.computable
 
     def test_edge_case_all_singletons(self):
-        from epistemic.similarity import assess_clustering
+        from andamentum.epistemic.similarity import assess_clustering
 
         embeddings = [_unit_vector(i * 30) for i in range(5)]
         quality = assess_clustering(embeddings, [[0], [1], [2], [3], [4]])
         assert not quality.computable
 
     def test_per_group_breakdown(self):
-        from epistemic.similarity import assess_clustering
+        from andamentum.epistemic.similarity import assess_clustering
 
         tight = _make_cluster(0, 4, spread=1)
         loose = _make_cluster(90, 4, spread=15)
@@ -313,13 +314,13 @@ class TestAssessClustering:
 
 class TestAgentRegistration:
     def test_validate_group_agent_registered(self):
-        from epistemic.agents import AGENT_REGISTRY
+        from andamentum.epistemic.agents import AGENT_REGISTRY
 
         assert "epistemic_validate_group" in AGENT_REGISTRY
 
     def test_validate_group_output_model(self):
-        from epistemic.agents import AGENT_REGISTRY
-        from epistemic.agents.output_models import ValidateGroupOutput
+        from andamentum.epistemic.agents import AGENT_REGISTRY
+        from andamentum.epistemic.agents.output_models import ValidateGroupOutput
 
         defn = AGENT_REGISTRY["epistemic_validate_group"]
         assert defn.output_model is ValidateGroupOutput

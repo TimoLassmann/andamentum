@@ -1,4 +1,4 @@
-"""mosaic-document-store — Personal knowledge base with 4-signal search.
+"""andamentum.document_store — Personal knowledge base with 4-signal search.
 
 A storage and search library for a personal "second brain." Stores documents
 with automatic chunking, embedding, and LLM metadata extraction. Searches
@@ -7,7 +7,7 @@ doc embeddings, DHP temporal clustering).
 
 Public API (10 functions — all you need):
 
-    from document_store import (
+    from andamentum.document_store import (
         ingest,            # Store content with auto-chunking and metadata extraction
         search,            # Natural language search with LLM query planning
         find_by_metadata,  # Structured query by exact metadata fields
@@ -38,7 +38,7 @@ Architecture:
 
 Requires:
 - Ollama running locally with embeddinggemma:latest (for embeddings)
-- pip install mosaic-document-store[llm] for metadata extraction and query planning
+- pip install andamentum[llm] for metadata extraction and query planning
 """
 
 # Public API

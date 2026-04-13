@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, AsyncMock
 
-from epistemic.dedup import deduplicate_evidence, _build_cluster, EvidenceCluster
+from ..dedup import deduplicate_evidence, _build_cluster, EvidenceCluster
 
 
 def _make_embeddings(n_clusters: int, n_per_cluster: int, dim: int = 10, noise: float = 0.05):
@@ -62,14 +62,14 @@ class TestBuildCluster:
 class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_empty_input(self):
-        result = await deduplicate_evidence([])
+        result = await deduplicate_evidence([], embedding_model="test-model")
         assert result == []
 
     @pytest.mark.asyncio
     async def test_single_document(self):
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = [[[1.0, 0.0, 0.0]]]  # 1 doc, 1 chunk
-            result = await deduplicate_evidence(["single doc"])
+            result = await deduplicate_evidence(["single doc"], embedding_model="test-model")
             assert len(result) == 1
             assert result[0].count == 1
             assert result[0].medoid_index == 0
@@ -77,13 +77,13 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_identical_documents_cluster_together(self):
         """N near-identical documents should produce fewer clusters than documents."""
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             # 5 nearly identical embeddings — each doc has 1 chunk
             base = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
             embeddings = [base + np.random.RandomState(i).randn(5) * 0.01 for i in range(5)]
             mock_embed.return_value = [[e.tolist()] for e in embeddings]
 
-            result = await deduplicate_evidence(["doc"] * 5, min_cluster_size=2)
+            result = await deduplicate_evidence(["doc"] * 5, min_cluster_size=2, embedding_model="test-model")
 
             # All documents must be accounted for
             total_members = sum(c.count for c in result)
@@ -94,12 +94,12 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_distinct_documents_form_separate_clusters(self):
         """Documents about different topics should form different clusters."""
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=3, n_per_cluster=4, dim=10, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
             texts = [f"doc_{i}" for i in range(12)]
-            result = await deduplicate_evidence(texts, min_cluster_size=2)
+            result = await deduplicate_evidence(texts, min_cluster_size=2, embedding_model="test-model")
 
             # Should have ~3 clusters (HDBSCAN may merge very close ones)
             total_members = sum(c.count for c in result)
@@ -111,11 +111,11 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_all_indices_covered(self):
         """Every input index must appear in exactly one cluster."""
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=5, dim=8, noise=0.03)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(10)], min_cluster_size=2)
+            result = await deduplicate_evidence([f"doc_{i}" for i in range(10)], min_cluster_size=2, embedding_model="test-model")
 
             all_indices = []
             for cluster in result:
@@ -124,11 +124,11 @@ class TestDeduplicateEvidence:
 
     @pytest.mark.asyncio
     async def test_representatives_are_subset_of_members(self):
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=6, dim=8, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(12)], min_cluster_size=2)
+            result = await deduplicate_evidence([f"doc_{i}" for i in range(12)], min_cluster_size=2, embedding_model="test-model")
 
             for cluster in result:
                 assert set(cluster.representative_indices).issubset(set(cluster.member_indices))
@@ -136,11 +136,11 @@ class TestDeduplicateEvidence:
 
     @pytest.mark.asyncio
     async def test_corroboration_count_matches_member_count(self):
-        with patch("epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=4, dim=8, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(8)], min_cluster_size=2)
+            result = await deduplicate_evidence([f"doc_{i}" for i in range(8)], min_cluster_size=2, embedding_model="test-model")
 
             for cluster in result:
                 assert cluster.count == len(cluster.member_indices)
@@ -152,14 +152,14 @@ class TestDeduplicateEvidence:
 
 from types import SimpleNamespace
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
-from epistemic.entities.objective import Objective
-from epistemic.entities.evidence import Evidence
-from epistemic.entities.claim import Claim
-from epistemic.primitives import ClaimStage
-from epistemic.operations import ProposeClaimsOperation
-from epistemic.patterns import WorkItem
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
+from ..entities.objective import Objective
+from ..entities.evidence import Evidence
+from ..entities.claim import Claim
+from ..primitives import ClaimStage
+from ..operations import ProposeClaimsOperation
+from ..patterns import WorkItem
 
 
 class TestDedupIntegration:
@@ -217,9 +217,9 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
+            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
+            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
         ):
             # 6 clusters: 2 real clusters + 4 singletons
             # Cluster A (indices 0,1): best quality 0.9
@@ -285,9 +285,9 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
+            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
+            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
         ):
             # 7 clusters: 1 cluster of 2 items + 6 singletons
             # Top-K=5 selects clusters ranked by quality: indices 0,1 (0.9), 2 (0.7), 3 (0.6), 4 (0.5), 5 (0.4)
@@ -348,9 +348,9 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
+            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
+            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
         ):
             # 1 cluster of 5 items: medoid=0, boundary=[1,2], best_quality=3 (not in reps)
             mock_dedup.return_value = [
@@ -391,7 +391,7 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_scrutiny_excludes_corroborative(self, repo):
         """ScrutiniseClaimOperation should not include corroborative evidence in summaries."""
-        from epistemic.operations import ScrutiniseClaimOperation
+        from andamentum.epistemic.operations import ScrutiniseClaimOperation
 
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
@@ -433,7 +433,7 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_deferred_evidence_excluded_from_scrutiny(self, repo):
         """Deferred evidence should not appear in scrutiny summaries."""
-        from epistemic.operations import ScrutiniseClaimOperation
+        from andamentum.epistemic.operations import ScrutiniseClaimOperation
 
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
@@ -473,7 +473,7 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_quality_weighted_sum_excludes_corroborative(self, repo):
         """quality_weighted_evidence_sum should not count corroborative evidence."""
-        from epistemic.gates import quality_weighted_evidence_sum
+        from andamentum.epistemic.gates import quality_weighted_evidence_sum
 
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
@@ -512,7 +512,7 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_quality_weighted_sum_excludes_deferred(self, repo):
         """quality_weighted_evidence_sum should not count deferred evidence."""
-        from epistemic.gates import quality_weighted_evidence_sum
+        from andamentum.epistemic.gates import quality_weighted_evidence_sum
 
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
@@ -551,8 +551,8 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_freeze_snapshot_excludes_corroborative(self, repo):
         """FreezeSnapshotOperation should not include corroborative evidence in snapshot."""
-        from epistemic.operations import FreezeSnapshotOperation
-        from epistemic.patterns import WorkItem
+        from andamentum.epistemic.operations import FreezeSnapshotOperation
+        from andamentum.epistemic.patterns import WorkItem
 
         obj = Objective(entity_id="obj-freeze-1", objective_id="obj-freeze-1", description="test", phase="claims_done")
         await repo.save(obj)
@@ -589,7 +589,7 @@ class TestDownstreamFiltering:
 
         # Load the snapshot and check evidence_ids
         snapshot_id = result.created_entities[0]
-        from epistemic.entities.snapshot import Snapshot
+        from andamentum.epistemic.entities.snapshot import Snapshot
         snapshot = await repo.get("snapshot", snapshot_id)
         assert isinstance(snapshot, Snapshot)
 
@@ -602,7 +602,7 @@ class TestDownstreamFiltering:
     @pytest.mark.asyncio
     async def test_quality_weighted_sum_includes_unclustered(self, repo):
         """Legacy/unclustered evidence (no cluster_status) must still count toward quality sum."""
-        from epistemic.gates import quality_weighted_evidence_sum
+        from andamentum.epistemic.gates import quality_weighted_evidence_sum
 
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)

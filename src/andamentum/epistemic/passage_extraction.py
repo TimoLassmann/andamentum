@@ -110,6 +110,7 @@ async def _locate_pointers(
     chunks: list[str],
     chunk_embeddings: list[list[float]],
     similarity_threshold: float = 0.3,
+    embedding_model: str | None = None,
 ) -> list[tuple[int, Pointer]]:
     """Locate each pointer in the chunks.
 
@@ -133,8 +134,10 @@ async def _locate_pointers(
             need_embedding.append(pointer)
 
     if need_embedding and chunk_embeddings:
+        if not embedding_model:
+            raise RuntimeError("embedding_model is required for pointer embedding. Pass embedding_model= to _locate_pointers().")
         pointer_texts = [p.text for p in need_embedding]
-        pointer_embeddings = await embed_texts(pointer_texts)
+        pointer_embeddings = await embed_texts(pointer_texts, model=embedding_model)
 
         for pointer, p_emb in zip(need_embedding, pointer_embeddings):
             best_idx = -1
@@ -237,6 +240,7 @@ async def extract_passages(
     cross_page_findings: list[str] | None = None,
     cross_page_finding_embeddings: list[list[float]] | None = None,
     chunk_embeddings_by_url: dict[str, list[list[float]]] | None = None,
+    embedding_model: str | None = None,
 ) -> list[LocatedPassage]:
     """Extract located passages from pages using pointer annotations.
 
@@ -281,7 +285,7 @@ async def extract_passages(
         if not page_pointers:
             continue
 
-        located = await _locate_pointers(page_pointers, chunks, chunk_embs)
+        located = await _locate_pointers(page_pointers, chunks, chunk_embs, embedding_model=embedding_model)
         if not located:
             continue
 

@@ -1,7 +1,7 @@
 """Tests for question-type routing configuration."""
 
 import pytest
-from epistemic.routing import (
+from ..routing import (
     TrackActivation,
     RoutingProfile,
     ROUTING_TABLE,

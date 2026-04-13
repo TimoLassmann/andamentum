@@ -248,6 +248,7 @@ class BaseOperation(ABC):
         validator: Optional[OperationValidator] = None,
         evidence_gatherer: Optional[EvidenceGatherer] = None,
         quality_scorer: Optional[QualityScorer] = None,
+        embedding_model: Optional[str] = None,
     ):
         """Initialize operation.
 
@@ -257,12 +258,14 @@ class BaseOperation(ABC):
             validator: Optional validation protocol
             evidence_gatherer: Optional evidence gathering protocol
             quality_scorer: Optional quality scoring protocol
+            embedding_model: Embedding model for similarity/clustering operations.
         """
         self.repo = repo
         self.agent_runner = agent_runner
         self.validator = validator or DefaultValidator()
         self.evidence_gatherer = evidence_gatherer
         self.quality_scorer = quality_scorer
+        self.embedding_model = embedding_model
         self._agent_calls: list[dict[str, Any]] = []
 
     @abstractmethod

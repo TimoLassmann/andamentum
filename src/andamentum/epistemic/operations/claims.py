@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, Ga
 Operates on: Objective, Evidence, Claim entities
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .base import BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD
 
@@ -39,6 +39,7 @@ async def select_top_k_evidence(
     repo: "EpistemicRepository",
     extracted: list[Evidence],
     top_k: int = EVIDENCE_TOP_K,
+    embedding_model: Optional[str] = None,
 ) -> list[Evidence]:
     """Select the most informative evidence subset via cluster-ranked top-K.
 
@@ -79,7 +80,9 @@ async def select_top_k_evidence(
 
     # Step 1: Cluster by semantic similarity
     evidence_texts = [e.extracted_content or "" for e in extracted]
-    clusters = await deduplicate_evidence(evidence_texts, min_cluster_size=2)
+    if not embedding_model:
+        raise RuntimeError("embedding_model is required for evidence deduplication. Pass embedding_model= to create_operations().")
+    clusters = await deduplicate_evidence(evidence_texts, min_cluster_size=2, embedding_model=embedding_model)
 
     _sel_log.warning(
         "[select_top_k_evidence] HDBSCAN produced %d clusters from %d items "
@@ -259,7 +262,7 @@ class ProposeClaimsOperation(BaseOperation):
         # ── Evidence selection: cluster-ranked top-K ────────────────────────
         # Clusters evidence by semantic similarity, ranks clusters by quality,
         # selects top-K clusters, and returns representative evidence only.
-        extracted = await select_top_k_evidence(self.repo, extracted)
+        extracted = await select_top_k_evidence(self.repo, extracted, embedding_model=self.embedding_model)
 
         # ── Step 1: Extract one assertion per evidence ──────────────────────
         # Descriptive-drift defense lives in the extract_assertion agent's own
@@ -296,7 +299,9 @@ class ProposeClaimsOperation(BaseOperation):
 
         from ..similarity import embed_and_group
 
-        clusters = await embed_and_group(assertion_texts, threshold=DEDUP_SIMILARITY_THRESHOLD)
+        if not self.embedding_model:
+            raise RuntimeError("embedding_model is required for assertion clustering. Pass embedding_model= to create_operations().")
+        clusters = await embed_and_group(assertion_texts, threshold=DEDUP_SIMILARITY_THRESHOLD, embedding_model=self.embedding_model)
 
         # ── Step 3: Draft one claim per cluster ─────────────────────────────
         # Falsifiability + aligned-to-question defense lives in the draft_claim

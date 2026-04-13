@@ -9,10 +9,10 @@ This utility provides vector similarity search for document chunks using:
 - Dublin Core metadata integration
 - FTS5 full-text search
 
-Standalone package — no dependencies on the main mosaic codebase.
+Standalone package — no external application framework dependencies.
 
 Usage:
-    from document_store.rag.database import init_rag_database, add_document_chunks, search_chunks
+    from andamentum.document_store.rag.database import init_rag_database, add_document_chunks, search_chunks
 
     # Initialize database
     init_rag_database()

@@ -236,6 +236,8 @@ def medoid(
 async def embed_and_group(
     texts: list[str],
     threshold: float,
+    *,
+    embedding_model: str,
 ) -> list[list[int]]:
     """Embed texts and group by cosine similarity.
 
@@ -258,7 +260,7 @@ async def embed_and_group(
     if len(texts) == 1:
         return [[0]]
 
-    embeddings = await embed_texts(texts)
+    embeddings = await embed_texts(texts, model=embedding_model)
     return group_by_similarity(embeddings, threshold)
 
 

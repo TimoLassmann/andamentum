@@ -6,14 +6,14 @@ question_type, and that SetRoutingDefaultsOperation pre-marks skipped tracks.
 
 import pytest
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
-from epistemic.entities.objective import Objective
-from epistemic.entities.claim import Claim
-from epistemic.primitives import ClaimStage
-from epistemic.patterns import PatternScheduler, OPERATION_TO_TRACK, WorkItem
-from epistemic.operations import SetRoutingDefaultsOperation, OPERATION_CLASSES
-from epistemic.routing import TrackActivation, get_active_tracks
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
+from ..entities.objective import Objective
+from ..entities.claim import Claim
+from ..primitives import ClaimStage
+from ..patterns import PatternScheduler, OPERATION_TO_TRACK, WorkItem
+from ..operations import SetRoutingDefaultsOperation, OPERATION_CLASSES
+from ..routing import TrackActivation, get_active_tracks
 
 
 def _make_objective(obj_id: str, **kwargs) -> Objective:
@@ -466,7 +466,7 @@ class TestPromotionWithNewFields:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-from epistemic.gates import validate_promotion
+from ..gates import validate_promotion
 
 
 class TestParameterizedGates:
@@ -481,7 +481,7 @@ class TestParameterizedGates:
     @pytest.mark.asyncio
     async def test_exploratory_lower_evidence_bar(self, repo):
         """Exploratory supported threshold is 0.5 (lower than default 1)."""
-        from epistemic.entities.evidence import Evidence
+        from andamentum.epistemic.entities.evidence import Evidence
 
         obj = Objective(description="test", question_type="exploratory")
         await repo.save(obj)

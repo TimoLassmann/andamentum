@@ -121,7 +121,7 @@ class OpenAlexProvider:
 class OpenAlexQualityScorer:
     """QualityScorer implementation using OpenAlex.
 
-    Implements the QualityScorer protocol from epistemic.operations.
+    Implements the QualityScorer protocol from andamentum.epistemic.operations.
     Looks up DOI/PMID via OpenAlex API and returns quality score.
     """
 
