@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
-from epistemic.entities import (
+from ..entities import (
     Claim,
     ClaimStage,
     Evidence,
@@ -25,7 +25,7 @@ from epistemic.entities import (
     Uncertainty,
     UncertaintyType,
 )
-from epistemic.operations import (
+from ..operations import (
     create_operations,
     ExtractEvidenceOperation,
     ScrutiniseClaimOperation,
@@ -38,9 +38,9 @@ from epistemic.operations import (
     GatheredEvidence,
     QualityScore,
 )
-from epistemic.patterns import WorkItem
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
+from ..patterns import WorkItem
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
 
 import sys
 import pathlib

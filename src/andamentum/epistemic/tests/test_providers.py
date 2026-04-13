@@ -10,9 +10,9 @@ from typing import Any
 
 import httpx
 
-from epistemic.operations import GatheredEvidence
-from epistemic.providers.monarch import MonarchProvider, MONARCH_API
-from epistemic.providers.openalex import OpenAlexProvider, OpenAlexQualityScorer
+from ..operations import GatheredEvidence
+from ..providers.monarch import MonarchProvider, MONARCH_API
+from ..providers.openalex import OpenAlexProvider, OpenAlexQualityScorer
 
 # Capture real AsyncClient before any patching
 _RealAsyncClient = httpx.AsyncClient
@@ -259,7 +259,7 @@ class TestMonarchExtractEntityIds:
 class TestOpenAlexProvider:
     async def test_gather_parses_results(self, monkeypatch):
         """OpenAlex provider should parse search results into GatheredEvidence."""
-        from epistemic.quality import LiteratureResult, QualityScore
+        from andamentum.epistemic.quality import LiteratureResult, QualityScore
 
         async def mock_search(query, max_results=10):
             return [
@@ -281,7 +281,7 @@ class TestOpenAlexProvider:
                 ),  # Should be skipped (no title or abstract)
             ]
 
-        monkeypatch.setattr("epistemic.providers.openalex.search_literature", mock_search)
+        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search)
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("spaced repetition")
@@ -296,7 +296,7 @@ class TestOpenAlexProvider:
 
     async def test_gather_handles_no_doi(self, monkeypatch):
         """Results without DOI should use title as source_ref."""
-        from epistemic.quality import LiteratureResult, QualityScore
+        from andamentum.epistemic.quality import LiteratureResult, QualityScore
 
         async def mock_search(query, max_results=10):
             return [
@@ -310,7 +310,7 @@ class TestOpenAlexProvider:
                 ),
             ]
 
-        monkeypatch.setattr("epistemic.providers.openalex.search_literature", mock_search)
+        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search)
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test")
@@ -364,7 +364,7 @@ class TestOpenAlexHealthCheck:
 
 class TestGetBiomedicalProviders:
     def test_returns_both_providers(self):
-        from epistemic.providers import get_biomedical_providers
+        from andamentum.epistemic.providers import get_biomedical_providers
 
         providers = get_biomedical_providers()
         assert "openalex" in providers
@@ -373,7 +373,7 @@ class TestGetBiomedicalProviders:
         assert isinstance(providers["monarch"], MonarchProvider)
 
     def test_providers_have_health_check(self):
-        from epistemic.providers import get_biomedical_providers
+        from andamentum.epistemic.providers import get_biomedical_providers
 
         providers = get_biomedical_providers()
         for name, provider in providers.items():
@@ -505,7 +505,7 @@ class TestOpenAlexErrorPaths:
         async def mock_search_raises(query, max_results=10):
             raise RuntimeError("OpenAlex API unreachable")
 
-        monkeypatch.setattr("epistemic.providers.openalex.search_literature", mock_search_raises)
+        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_raises)
 
         provider = OpenAlexProvider(max_results=10)
         # OpenAlex.gather() does NOT catch exceptions — it propagates.
@@ -519,7 +519,7 @@ class TestOpenAlexErrorPaths:
         async def mock_search_empty(query, max_results=10):
             return []
 
-        monkeypatch.setattr("epistemic.providers.openalex.search_literature", mock_search_empty)
+        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_empty)
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test query")
@@ -528,7 +528,7 @@ class TestOpenAlexErrorPaths:
 
     async def test_results_with_missing_quality(self, monkeypatch):
         """Results with quality=None → verify handled (quality_score becomes None)."""
-        from epistemic.quality import LiteratureResult
+        from andamentum.epistemic.quality import LiteratureResult
 
         async def mock_search_no_quality(query, max_results=10):
             return [
@@ -542,7 +542,7 @@ class TestOpenAlexErrorPaths:
                 ),
             ]
 
-        monkeypatch.setattr("epistemic.providers.openalex.search_literature", mock_search_no_quality)
+        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_no_quality)
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test")
@@ -589,7 +589,7 @@ class TestCompositeGathererErrorPaths:
 
     async def test_single_provider_fails_others_succeed(self):
         """One provider throws → verify other results still returned (source_type='all')."""
-        from epistemic.evidence_gathering import CompositeGatherer
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
         good_evidence = GatheredEvidence(
             content="Good result",
@@ -626,7 +626,7 @@ class TestCompositeGathererErrorPaths:
 
     async def test_all_providers_fail(self):
         """All providers throw → verify empty results, no crash (source_type='all')."""
-        from epistemic.evidence_gathering import CompositeGatherer
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
         failing1 = _MockProvider(error=RuntimeError("API 1 down"))
         failing2 = _MockProvider(error=ValueError("API 2 broken"))
@@ -648,7 +648,7 @@ class TestCompositeGathererErrorPaths:
 
     async def test_web_search_gatherer_fails(self):
         """WebSearchGatherer throws → verify graceful handling for unknown source_type."""
-        from epistemic.evidence_gathering import CompositeGatherer
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
         web_search = _MockWebSearch(error=RuntimeError("SearXNG not running"))
 
@@ -664,7 +664,7 @@ class TestCompositeGathererErrorPaths:
 
     async def test_provider_fails_falls_back_to_web_search(self):
         """Registered provider throws → falls back to web search for that source_type."""
-        from epistemic.evidence_gathering import CompositeGatherer
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
         web_evidence = GatheredEvidence(
             content="Web fallback",

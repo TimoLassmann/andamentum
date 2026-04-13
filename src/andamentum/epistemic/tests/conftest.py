@@ -4,8 +4,8 @@ import pytest
 from types import SimpleNamespace
 from typing import Any
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
 
 
 def _to_namespace(obj: Any) -> Any:

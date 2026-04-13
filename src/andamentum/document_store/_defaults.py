@@ -1,10 +1,5 @@
 """Package-level defaults for document-store.
 
-Replaces the mosaic-defaults dependency with inlined constants.
-All values are overridable via environment variables.
+Model names are no longer inlined here. Callers must pass model
+as a required keyword argument — no env-var fallbacks exist.
 """
-
-import os
-
-DEFAULT_EMBEDDING_MODEL = os.environ.get("MOSAIC_EMBEDDING_MODEL", "embeddinggemma:latest")
-DEFAULT_LLM_MODEL = os.environ.get("MOSAIC_LLM_MODEL", "ollama:qwen3.5:27b")

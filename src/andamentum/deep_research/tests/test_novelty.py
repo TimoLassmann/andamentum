@@ -3,7 +3,7 @@
 import pytest
 from types import SimpleNamespace
 
-from deep_research.novelty import check_novelty, NoveltyReport, NoveltyAssessment, SimilarWork, Relevance
+from ..novelty import check_novelty, NoveltyReport, NoveltyAssessment, SimilarWork, Relevance
 
 
 class TestNoveltyModels:

@@ -2,11 +2,11 @@
 
 import pytest
 from types import SimpleNamespace
-from epistemic.entities.claim import Claim
-from epistemic.primitives import ClaimStage
-from epistemic.agents import get_agent
-from epistemic.agents.output_models import ContrastiveEvaluationOutput, CrossClaimConsistencyOutput
-from epistemic.adapters import adapt_agent_output
+from ..entities.claim import Claim
+from ..primitives import ClaimStage
+from ..agents import get_agent
+from ..agents.output_models import ContrastiveEvaluationOutput, CrossClaimConsistencyOutput
+from ..adapters import adapt_agent_output
 
 
 class TestClaimNewFields:
@@ -94,12 +94,12 @@ class TestCrossClaimConsistencyAgent:
         assert result.tension_point == "X contradicts Y"
 
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
-from epistemic.entities.objective import Objective
-from epistemic.entities.uncertainty import Uncertainty
-from epistemic.operations import ContrastiveEvaluationOperation, CrossClaimConsistencyOperation, OPERATION_CLASSES
-from epistemic.patterns import WorkItem
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
+from ..entities.objective import Objective
+from ..entities.uncertainty import Uncertainty
+from ..operations import ContrastiveEvaluationOperation, CrossClaimConsistencyOperation, OPERATION_CLASSES
+from ..patterns import WorkItem
 
 
 class TestContrastiveEvaluationOperation:
@@ -289,7 +289,7 @@ class TestCrossClaimConsistencyOperation:
         assert "cross_claim_consistency" in OPERATION_CLASSES
 
 
-from epistemic.entities.evidence import Evidence as EvidenceEntity
+from ..entities.evidence import Evidence as EvidenceEntity
 
 
 class TestEvidenceClusterFields:

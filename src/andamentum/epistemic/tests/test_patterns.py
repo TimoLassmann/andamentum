@@ -2,8 +2,8 @@
 
 import pytest
 
-from epistemic.entities import Claim, ClaimStage, Evidence, Objective
-from epistemic.patterns import (
+from ..entities import Claim, ClaimStage, Evidence, Objective
+from ..patterns import (
     Pattern,
     WorkItem,
     PatternScheduler,

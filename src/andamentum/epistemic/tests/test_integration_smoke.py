@@ -18,7 +18,7 @@ class TestMonarchAPISmoke:
 
     async def test_search_returns_items(self):
         """Hit real Monarch search endpoint with a known gene query."""
-        from epistemic.providers.monarch import MonarchProvider
+        from andamentum.epistemic.providers.monarch import MonarchProvider
 
         provider = MonarchProvider(max_results=3)
         results = await provider.gather("BRCA1")
@@ -34,7 +34,7 @@ class TestMonarchAPISmoke:
 
     async def test_health_check_passes(self):
         """Monarch health check should pass against live API."""
-        from epistemic.providers.monarch import MonarchProvider
+        from andamentum.epistemic.providers.monarch import MonarchProvider
 
         provider = MonarchProvider()
         result = await provider.check_health()
@@ -45,7 +45,7 @@ class TestMonarchAPISmoke:
         """Verify the production search params don't produce 422 (regression for the comma-separated category bug)."""
         import httpx
 
-        from epistemic.providers.monarch import MONARCH_API
+        from andamentum.epistemic.providers.monarch import MONARCH_API
 
         # Use the exact same params as production
         params = [
@@ -68,7 +68,7 @@ class TestMonarchAPISmoke:
         """Verify the Monarch association endpoint is reachable with production params."""
         import httpx
 
-        from epistemic.providers.monarch import MONARCH_API
+        from andamentum.epistemic.providers.monarch import MONARCH_API
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
@@ -87,7 +87,7 @@ class TestOpenAlexAPISmoke:
 
     async def test_search_returns_results(self):
         """Hit real OpenAlex with a known query."""
-        from epistemic.providers.openalex import OpenAlexProvider
+        from andamentum.epistemic.providers.openalex import OpenAlexProvider
 
         provider = OpenAlexProvider(max_results=3)
         results = await provider.gather("spaced repetition memory")
@@ -100,7 +100,7 @@ class TestOpenAlexAPISmoke:
 
     async def test_health_check_passes(self):
         """OpenAlex health check should pass against live API."""
-        from epistemic.providers.openalex import OpenAlexProvider
+        from andamentum.epistemic.providers.openalex import OpenAlexProvider
 
         provider = OpenAlexProvider()
         result = await provider.check_health()
@@ -115,7 +115,7 @@ class TestOpenAlexAPISmoke:
             resp = await client.get(
                 "https://api.openalex.org/works",
                 params={"search": "BRCA1", "per_page": "2"},
-                headers={"User-Agent": "mosaic-epistemic-test/0.1 (mailto:test@example.com)"},
+                headers={"User-Agent": "andamentum-epistemic-test/0.1 (mailto:test@example.com)"},
             )
             assert resp.status_code == 200, f"OpenAlex returned {resp.status_code}"
             data = resp.json()
@@ -131,7 +131,7 @@ class TestOpenAlexAPISmoke:
 
     async def test_search_literature_returns_quality(self):
         """Verify search_literature returns results with pre-computed quality scores."""
-        from epistemic.quality import search_literature
+        from andamentum.epistemic.quality import search_literature
 
         results = await search_literature("CRISPR gene editing", max_results=3)
 
@@ -150,7 +150,7 @@ class TestOpenAlexQualityScorerSmoke:
 
     async def test_score_known_doi(self):
         """Score a well-known paper by DOI."""
-        from epistemic.quality import score_source
+        from andamentum.epistemic.quality import score_source
 
         # Use a well-cited paper DOI (Nature paper on CRISPR)
         result = await score_source(doi="10.1038/nature12373", source_ref="doi:10.1038/nature12373", source_type="openalex")
@@ -162,7 +162,7 @@ class TestOpenAlexQualityScorerSmoke:
 
     async def test_score_unknown_doi_returns_none(self):
         """Non-existent DOI should return None."""
-        from epistemic.quality import score_source
+        from andamentum.epistemic.quality import score_source
 
         result = await score_source(doi="10.9999/nonexistent-fake-doi-12345", source_ref="fake", source_type="test")
 
@@ -171,7 +171,7 @@ class TestOpenAlexQualityScorerSmoke:
 
     async def test_scorer_class_extracts_doi(self):
         """OpenAlexQualityScorer should extract DOI from source_ref and score it."""
-        from epistemic.providers.openalex import OpenAlexQualityScorer
+        from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
 
         scorer = OpenAlexQualityScorer()
         result = await scorer.score("doi:10.1038/nature12373", "openalex")
@@ -182,7 +182,7 @@ class TestOpenAlexQualityScorerSmoke:
 
     async def test_scorer_class_handles_no_identifier(self):
         """OpenAlexQualityScorer with no DOI/PMID in source_ref should return None."""
-        from epistemic.providers.openalex import OpenAlexQualityScorer
+        from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
 
         scorer = OpenAlexQualityScorer()
         result = await scorer.score("some random text with no doi", "web_search")
@@ -202,7 +202,7 @@ class TestHealthCheckProductionParity:
         """Monarch health check should call the /search endpoint — same as gather()."""
         import inspect
 
-        from epistemic.providers.monarch import MonarchProvider
+        from andamentum.epistemic.providers.monarch import MonarchProvider
 
         health_source = inspect.getsource(MonarchProvider.check_health)
         # Health check must hit the same /search endpoint
@@ -212,7 +212,7 @@ class TestHealthCheckProductionParity:
         """Verify the Monarch provider uses list-of-tuples for category params (not comma-separated)."""
         import inspect
 
-        from epistemic.providers.monarch import MonarchProvider
+        from andamentum.epistemic.providers.monarch import MonarchProvider
 
         source = inspect.getsource(MonarchProvider)
 
@@ -226,7 +226,7 @@ class TestHealthCheckProductionParity:
         """OpenAlex health check should call /works — same endpoint as search_literature()."""
         import inspect
 
-        from epistemic.providers.openalex import OpenAlexProvider
+        from andamentum.epistemic.providers.openalex import OpenAlexProvider
 
         health_source = inspect.getsource(OpenAlexProvider.check_health)
         assert "/works" in health_source, "Health check should use /works endpoint for param parity"

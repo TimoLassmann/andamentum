@@ -80,9 +80,11 @@ class DeduplicateConcernsOperation(BaseOperation):
         from ..embeddings import embed_texts
         from ..similarity import group_by_similarity, medoid as find_medoid, cosine_similarity
 
+        if not self.embedding_model:
+            raise RuntimeError("embedding_model is required for concern deduplication. Pass embedding_model= to create_operations().")
         # Embed pending concerns + existing descriptions together
         all_texts = pending_texts + existing_descriptions
-        embeddings = await embed_texts(all_texts)
+        embeddings = await embed_texts(all_texts, model=self.embedding_model)
 
         pending_embeddings = embeddings[: len(pending_texts)]
         existing_embeddings = embeddings[len(pending_texts) :]

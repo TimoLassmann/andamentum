@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .cluster_models import ClusterDetail, ClusterSummary, ReclusterResult
     from .dhp import DHPConfig
 
-from ._defaults import DEFAULT_EMBEDDING_MODEL
+
 from .database import (
     delete_document_record,
     get_document_metadata,
@@ -75,8 +75,8 @@ class DocumentStore:
     def __init__(
         self,
         database_name: str,
-        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         db_dir: Optional[str | Path] = None,
+        embedding_model: Optional[str] = None,
     ):
         """Initialize DocumentStore for a named database.
 
@@ -212,7 +212,7 @@ class DocumentStore:
         if content is None:
             raise ValueError(
                 "Content must be provided. Document conversion has been moved upstream. "
-                "Use mosaic-convert to convert documents to markdown before calling add()."
+                "Use andamentum-convert to convert documents to markdown before calling add()."
             )
 
         if not title:

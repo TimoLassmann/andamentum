@@ -7,8 +7,8 @@ scores than bi-encoders at the cost of higher computational overhead. Best used 
 re-ranking top-k results after initial retrieval.
 
 Usage:
-    from document_store.rag.reranking import rerank_results
-    from document_store.rag.search import SearchResult
+    from andamentum.document_store.rag.reranking import rerank_results
+    from andamentum.document_store.rag.search import SearchResult
 
     results = [...]  # Initial search results
     reranked = rerank_results(
@@ -124,7 +124,7 @@ def rerank_results(
         Re-ranked list of SearchResult objects (top_k results if specified)
 
     Example:
-        >>> from document_store.rag.search import ensemble_search
+        >>> from andamentum.document_store.rag.search import ensemble_search
         >>> results = ensemble_search("machine learning", embedding, limit=50)
         >>> reranked = rerank_results("machine learning", results, top_k=10)
         >>> # Top 10 results are now re-ranked by cross-encoder

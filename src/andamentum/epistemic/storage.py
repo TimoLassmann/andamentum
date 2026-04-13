@@ -1,8 +1,8 @@
 """Storage backend protocol for epistemic repository.
 
 Defines the interface that storage backends must implement.
-Mosaic provides a rich DocumentStore implementation; standalone users
-can use InMemoryStorageBackend for testing and lightweight use.
+andamentum's document_store subpackage provides a rich DocumentStore implementation;
+standalone users can use InMemoryStorageBackend for testing and lightweight use.
 """
 from typing import Protocol, Any, Optional, runtime_checkable
 from dataclasses import dataclass, field
@@ -33,7 +33,7 @@ class DocumentRef:
 class StorageBackend(Protocol):
     """Protocol for epistemic storage backends.
 
-    Mosaic's DocumentStore satisfies this protocol naturally.
+    andamentum's DocumentStore satisfies this protocol naturally.
     For standalone use, SimpleStorageBackend provides basic persistence.
     """
 
@@ -81,7 +81,7 @@ class InMemoryStorageBackend:
 
     None-filter semantics: when a filter value is None, it matches
     documents where the metadata field is absent OR explicitly None.
-    This mirrors SQL IS NULL behaviour used by Mosaic's DocumentStore.
+    This mirrors SQL IS NULL behaviour used by andamentum's DocumentStore.
     """
 
     def __init__(self) -> None:
@@ -156,14 +156,14 @@ class InMemoryStorageBackend:
 
 
 class DocumentStoreAdapter:
-    """Wraps mosaic-document-store's DocumentStore to satisfy StorageBackend.
+    """Wraps andamentum's DocumentStore to satisfy StorageBackend.
 
     Translates between DocumentStore's return types (Document, DocumentMetadata,
     UpdateResult) and the types expected by EpistemicRepository (StoredDocument,
     DocumentRef, bool).
 
     Usage:
-        from document_store import DocumentStore
+        from andamentum.document_store import DocumentStore
         raw_store = DocumentStore.for_database("epistemic_research")
         await raw_store.initialize()
         adapter = DocumentStoreAdapter(raw_store)

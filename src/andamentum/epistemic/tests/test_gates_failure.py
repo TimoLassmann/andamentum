@@ -12,16 +12,16 @@ when they should block, allowing claims to be promoted without validation.
 
 import pytest
 
-from epistemic.entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
-from epistemic.gates import (
+from ..entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
+from ..gates import (
     validate_promotion,
     validate_current_stage,
     quality_weighted_evidence_sum,
     GateResult,
     STAGE_GATES,
 )
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

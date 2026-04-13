@@ -1,8 +1,7 @@
 """Core novelty checking logic — framework-agnostic.
 
 Accepts callable dependencies (research_fn, assess_fn) instead of importing
-framework code directly. See src/mosaic/novelty/wired.py for the wired
-version that preserves the old calling convention.
+framework code directly.
 """
 
 from typing import Any
@@ -38,13 +37,12 @@ async def check_novelty(
     Check if a claim is novel by searching for prior work.
 
     This is the pure function — it accepts callables for research and assessment
-    instead of importing framework code. For the wired version that preserves
-    the old signature, see src/mosaic/novelty/wired.py.
+    instead of importing framework code.
 
     Args:
         claim: The claim or statement to check for novelty
         research_fn: Async callable that performs web research.
-            Called as: research_fn(query=str, max_iterations=int, model=str, verbose=bool) -> dict
+            Called as: research_fn(query=str, max_iterations=int, verbose=bool) -> dict
         assess_fn: Async callable that assesses novelty from evidence.
             Called as: assess_fn(claim, evidence_summary, key_findings, sources) -> NoveltyAssessment
         search_depth: 1=quick (1 iteration), 2=balanced (2), 3=thorough (3)
@@ -72,7 +70,6 @@ async def check_novelty(
         research_result = await research_fn(
             query=primary_query,
             max_iterations=search_depth,
-            model="unused",  # Wired function handles model selection
             verbose=verbose,
         )
     except Exception as e:

@@ -7,15 +7,15 @@ be marked as saturated to prevent further wasteful investigation cycles.
 
 import pytest
 
-from epistemic.storage import InMemoryStorageBackend
-from epistemic.repository import EpistemicRepository
-from epistemic.entities.objective import Objective
-from epistemic.entities.claim import Claim
-from epistemic.entities.evidence import Evidence
-from epistemic.entities.uncertainty import Uncertainty, UncertaintyType
-from epistemic.primitives import ClaimStage
-from epistemic.operations import ScrutiniseClaimOperation
-from epistemic.patterns import WorkItem, WORK_PATTERNS
+from ..storage import InMemoryStorageBackend
+from ..repository import EpistemicRepository
+from ..entities.objective import Objective
+from ..entities.claim import Claim
+from ..entities.evidence import Evidence
+from ..entities.uncertainty import Uncertainty, UncertaintyType
+from ..primitives import ClaimStage
+from ..operations import ScrutiniseClaimOperation
+from ..patterns import WorkItem, WORK_PATTERNS
 
 
 # ---------------------------------------------------------------------------

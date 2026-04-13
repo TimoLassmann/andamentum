@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 import pytest
 
-from epistemic.alignment import AlignmentCheck, AlignmentResult, _get_mode_instructions
+from ..alignment import AlignmentCheck, AlignmentResult, _get_mode_instructions
 
 
 def test_alignment_result_defaults():

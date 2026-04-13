@@ -3,8 +3,8 @@
 import pytest
 from datetime import datetime, timedelta
 
-from epistemic.entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
-from epistemic.gates import (
+from ..entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
+from ..gates import (
     STAGE_GATES,
     STAGE_HIERARCHY,
     StageGate,

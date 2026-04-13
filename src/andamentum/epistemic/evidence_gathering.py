@@ -25,7 +25,7 @@ from .operations import GatheredEvidence, EvidenceGatherer
 
 logger = logging.getLogger(__name__)
 
-# SearXNG defaults (match deep_research and mosaic conventions)
+# SearXNG defaults (match deep_research conventions)
 _SEARXNG_PORT = int(os.getenv("SEARXNG_PORT", "4070"))
 _SEARXNG_URL = os.getenv("SEARXNG_URL", f"http://127.0.0.1:{_SEARXNG_PORT}")
 _SEARXNG_IMAGE = os.getenv("SEARXNG_IMAGE", "docker.io/searxng/searxng:latest")
@@ -45,7 +45,7 @@ def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
     """Ensure SearXNG is running, starting it via podman if needed.
 
     Returns True if SearXNG is available after this call.
-    Uses the same container name and settings as mosaic's PodmanSearxngManager
+    Uses the same container name and settings as the deep_research PodmanSearxngManager
     for compatibility.
     """
     if _searxng_is_healthy(url):
@@ -109,11 +109,12 @@ class WebSearchGatherer:
     Satisfies the EvidenceGatherer protocol. Uses `deep_research.orchestrator`
     for actual web search via SearXNG + LLM analysis.
 
-    Requires: ``pip install mosaic-deep-research[llm]``
+    Requires: ``pip install andamentum[llm]``
     """
 
-    def __init__(self, model: str = "ollama:gpt-oss:20b"):
+    def __init__(self, *, model: str, embedding_model: str | None = None):
         self.model = model
+        self.embedding_model = embedding_model
         self._searxng_ensured = False
 
     async def check_health(self) -> "CheckResult":
@@ -129,7 +130,7 @@ class WebSearchGatherer:
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
         """Gather evidence via deep_research web search."""
-        from deep_research.orchestrator import run_research
+        from andamentum.deep_research.orchestrator import run_research
 
         # Ensure SearXNG is running on first call
         if not self._searxng_ensured:
@@ -180,16 +181,17 @@ class WebSearchGatherer:
                 chunk_embeddings_by_url: dict[str, list[list[float]]] = {}
                 for pd in page_data_list:
                     chunks = _chunk_text(pd.content)
-                    try:
-                        chunk_embeddings_by_url[pd.url] = await _embed_texts(chunks)
-                    except RuntimeError:
-                        logger.warning("Embedding failed for %s, skipping", pd.url)
+                    if self.embedding_model:
+                        try:
+                            chunk_embeddings_by_url[pd.url] = await _embed_texts(chunks, model=self.embedding_model)
+                        except RuntimeError:
+                            logger.warning("Embedding failed for %s, skipping", pd.url)
 
                 # Pre-compute cross-page finding embeddings
                 cross_finding_embs: list[list[float]] | None = None
-                if cross_findings:
+                if cross_findings and self.embedding_model:
                     try:
-                        cross_finding_embs = await _embed_texts(cross_findings)
+                        cross_finding_embs = await _embed_texts(cross_findings, model=self.embedding_model)
                     except RuntimeError:
                         logger.warning("Embedding failed for cross-page findings")
 
@@ -199,6 +201,7 @@ class WebSearchGatherer:
                     cross_page_findings=cross_findings,
                     cross_page_finding_embeddings=cross_finding_embs,
                     chunk_embeddings_by_url=chunk_embeddings_by_url,
+                    embedding_model=self.embedding_model,
                 )
 
                 for passage in passages:
@@ -327,24 +330,27 @@ class CompositeGatherer:
 
 
 def get_default_gatherer(
-    model: str = "ollama:gpt-oss:20b",
+    *,
+    model: str,
     providers: Optional[dict] = None,
+    embedding_model: Optional[str] = None,
 ) -> Optional[EvidenceGatherer]:
     """Create a default evidence gatherer if deep_research is available.
 
     Args:
         model: LLM model string for web search analysis.
         providers: Optional dict of named providers (e.g., from
-            ``epistemic.providers.get_biomedical_providers()``).
+            ``andamentum.epistemic.providers.get_biomedical_providers()``).
             When provided, returns a CompositeGatherer that routes
             by source_type and falls back to web search.
+        embedding_model: Optional embedding model for passage extraction.
 
     Returns None if deep_research is not installed, allowing callers
     to fall back gracefully.
     """
     try:
-        import deep_research.orchestrator  # noqa: F401
-        web = WebSearchGatherer(model=model)
+        import andamentum.deep_research.orchestrator  # noqa: F401
+        web = WebSearchGatherer(model=model, embedding_model=embedding_model)
         if providers:
             return CompositeGatherer(web, providers)  # type: ignore[return-value]
         return web

@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime
 from pydantic import ValidationError
 
-from deep_research.models import (
+from ..models import (
     SearchQuery,
     SearchResult,
     SearchPlan,

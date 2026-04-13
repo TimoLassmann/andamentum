@@ -2,7 +2,7 @@
 
 import pytest
 
-from epistemic.preflight import CheckResult, PreflightResult, HealthCheckable, preflight
+from ..preflight import CheckResult, PreflightResult, HealthCheckable, preflight
 
 
 class FakeHealthy:

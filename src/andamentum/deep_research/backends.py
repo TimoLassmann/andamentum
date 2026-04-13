@@ -1,6 +1,6 @@
 """Search backend protocol and default implementation.
 
-SearchBackend is the injection point: Layer 4 (Mosaic) can inject a
+SearchBackend is the injection point: application code can inject a
 Playwright-based backend, while standalone users get HttpxSearchBackend.
 """
 

@@ -153,7 +153,7 @@ async def run_test(
     verbose: bool = False,
 ) -> TestResult:
     """Run a single structured output test and capture all details."""
-    from epistemic.runner import _resolve_model
+    from andamentum.epistemic.runner import _resolve_model
 
     # Late import to avoid loading pydantic-ai at module level
     from pydantic_ai import Agent, PromptedOutput, ToolOutput

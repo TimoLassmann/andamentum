@@ -1,6 +1,6 @@
 """Assemble research workflow graph.
 
-Requires the [llm] optional extra: ``pip install mosaic-deep-research[llm]``
+Requires the [llm] optional extra: ``pip install andamentum[llm]``
 """
 
 from pydantic_graph import Graph

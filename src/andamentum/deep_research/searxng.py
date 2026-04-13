@@ -6,7 +6,7 @@ health checks, and graceful shutdown.
 
 Usage::
 
-    from deep_research.searxng import SearxngManager, check_health
+    from andamentum.deep_research.searxng import SearxngManager, check_health
 
     manager = SearxngManager()
     manager.ensure_running()

@@ -10,7 +10,7 @@ These tests verify:
 import pytest
 from typing import Any
 
-from epistemic.entities import (
+from ..entities import (
     Artefact,
     Claim,
     ClaimStage,
@@ -20,8 +20,8 @@ from epistemic.entities import (
     Uncertainty,
     UncertaintyType,
 )
-from epistemic.operations import create_operations, SynthesizeReportOperation
-from epistemic.patterns import WorkItem
+from ..operations import create_operations, SynthesizeReportOperation
+from ..patterns import WorkItem
 
 
 class TestSynthesizeContentBody:

@@ -1,4 +1,4 @@
-"""Quickstart example for mosaic-epistemic.
+"""Quickstart example for andamentum.epistemic.
 
 Demonstrates core mechanics without requiring an LLM:
   - Create a repository with in-memory storage
@@ -7,12 +7,12 @@ Demonstrates core mechanics without requiring an LLM:
   - Use the pattern scheduler to discover pending work
 
 Run:
-    uv run python packages/epistemic/examples/quickstart.py
+    uv run python examples/epistemic/quickstart.py
 """
 
 import asyncio
 
-from epistemic import (
+from andamentum.epistemic import (
     InMemoryStorageBackend,
     EpistemicRepository,
     Objective,

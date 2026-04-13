@@ -4,7 +4,7 @@ import pytest
 
 from unittest.mock import patch
 
-from deep_research.content_extractor import extract_content, extract_html, extract_pdf, ExtractionError
+from ..content_extractor import extract_content, extract_html, extract_pdf, ExtractionError
 
 
 class TestExtractHtml:
@@ -114,7 +114,7 @@ class TestExtractContent:
 
     def test_routes_pdf_by_content_type(self):
         """Content-type containing 'pdf' should route to extract_pdf."""
-        with patch("deep_research.content_extractor.extract_pdf", return_value="# Mocked PDF output") as mock:
+        with patch("andamentum.deep_research.content_extractor.extract_pdf", return_value="# Mocked PDF output") as mock:
             result = extract_content(b"%PDF-1.4 data", "application/pdf", "https://example.com/paper.pdf")
             mock.assert_called_once_with(b"%PDF-1.4 data", "paper.pdf")
             assert result == "# Mocked PDF output"
@@ -127,7 +127,7 @@ class TestExtractContent:
 
     def test_extracts_source_name_from_url(self):
         """Should extract filename from URL path for PDF source_name."""
-        with patch("deep_research.content_extractor.extract_pdf", return_value="markdown") as mock:
+        with patch("andamentum.deep_research.content_extractor.extract_pdf", return_value="markdown") as mock:
             extract_content(b"%PDF", "application/pdf", "https://example.com/papers/study-2024.pdf")
             mock.assert_called_once_with(b"%PDF", "study-2024.pdf")
 

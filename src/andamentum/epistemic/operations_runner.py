@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from .confidence import AnswerConfidenceReport, PosteriorReport
 
-from document_store import DocumentStore
+from andamentum.document_store import DocumentStore
 
 # Type for progress callback: (operation_type, workitem_id, success, message, outputs) -> None
 ProgressCallback = Callable[[str, str, bool, str, dict[str, Any]], None]
@@ -424,7 +424,7 @@ async def run_research_question(
             Overrides the default provider setup when given.
         quality_scorer: Optional QualityScorer instance for evidence quality scoring.
         db_dir: Custom directory for database files. When provided, the database
-            is written here instead of ~/.config/mosaic/databases/.
+            is written here instead of ~/.config/andamentum/databases/.
 
     Returns:
         PatternSchedulerResult with execution summary
@@ -471,7 +471,7 @@ async def run_research_question(
         from .providers import get_biomedical_providers
         providers = get_biomedical_providers()
 
-    evidence_gatherer = get_default_gatherer(model=model or "ollama:gpt-oss:20b", providers=providers)
+    evidence_gatherer = get_default_gatherer(model=model, providers=providers) if model else None
     operations = create_operations(
         repo, agent_runner,
         evidence_gatherer=evidence_gatherer,

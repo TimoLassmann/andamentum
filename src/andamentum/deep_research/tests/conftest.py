@@ -2,7 +2,7 @@
 
 import pytest
 
-from deep_research import ResearchState
+from .. import ResearchState
 
 
 @pytest.fixture

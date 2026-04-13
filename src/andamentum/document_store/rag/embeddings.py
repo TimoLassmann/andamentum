@@ -3,7 +3,7 @@
 Standalone embedding functions for the document-store package.
 
 Usage:
-    from document_store.rag.embeddings import generate_embedding, generate_embeddings
+    from andamentum.document_store.rag.embeddings import generate_embedding, generate_embeddings
 
     # For search queries
     embedding = await generate_embedding("machine learning", text_type="query")
@@ -13,12 +13,12 @@ Usage:
 """
 
 from typing import List, Literal, Optional
-from .._defaults import DEFAULT_EMBEDDING_MODEL
 
 
 async def generate_embedding(
     text: str,
-    model: str = DEFAULT_EMBEDDING_MODEL,
+    *,
+    model: str,
     text_type: Literal["query", "document"] = "query",
     title: Optional[str] = None,
 ) -> List[float]:
@@ -44,7 +44,8 @@ async def generate_embedding(
 
 async def generate_embeddings(
     texts: List[str],
-    model: str = DEFAULT_EMBEDDING_MODEL,
+    *,
+    model: str,
     text_type: Literal["query", "document"] = "document",
     title: Optional[str] = None,
 ) -> List[List[float]]:

@@ -1,7 +1,7 @@
 """Text utilities for deep research — SSRF protection and topic anchoring.
 
 Standalone copies of utilities that were previously in src/utilities/.
-Kept small and independent so the package has no dependency on mosaic.
+Kept small and independent — no external application framework dependencies.
 """
 
 import ipaddress

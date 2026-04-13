@@ -38,16 +38,13 @@ from .result_models import (
     ReportResult,
     VerificationEvidence,
 )
-from epistemic.primitives import ClaimStage, Claim, Evidence, Uncertainty
-from epistemic.trace import ReasoningTrace
-from document_store import DocumentStore
+from .primitives import ClaimStage, Claim, Evidence, Uncertainty
+from .trace import ReasoningTrace
+from andamentum.document_store import DocumentStore
 
 from .storage import DocumentStoreAdapter
-import os
 
-from document_store.lifecycle import delete_database, get_db_path, get_databases_dir
-
-DEFAULT_LLM_MODEL = os.environ.get("MOSAIC_LLM_MODEL", "ollama:gpt-oss:20b")
+from andamentum.document_store.lifecycle import delete_database, get_db_path, get_databases_dir
 
 # Type for trace display mode
 TraceMode = Literal["timeline", "flow", "claims", "debate", "all", "none"]
@@ -208,7 +205,8 @@ async def handle_init(
     name: str,
     objective: str,
     artefact_specs: Optional[List[str]] = None,
-    model: str = DEFAULT_LLM_MODEL,
+    *,
+    model: str,
     verbose: bool = False,
 ) -> InitResult:
     """Initialize a new epistemic project.
@@ -228,7 +226,7 @@ async def handle_init(
     """
     import uuid
     from datetime import datetime
-    from epistemic.primitives import (
+    from .primitives import (
         Objective,
         WorkItemType,
         WorkItemStatus,
@@ -296,7 +294,8 @@ async def handle_run(
     objective_id: Optional[str] = None,
     max_items: Optional[int] = None,
     max_retries: int = 3,
-    model: str = DEFAULT_LLM_MODEL,
+    *,
+    model: str,
     verbose: bool = False,
 ) -> RunResult:
     """Run the epistemic scheduler on an existing project.
@@ -453,7 +452,8 @@ async def handle_debate(
     name: str,
     objective_id: Optional[str] = None,
     output_format: str = "cli",
-    model: str = DEFAULT_LLM_MODEL,
+    *,
+    model: str,
 ) -> DebateResult:
     """View adversarial debate summary for an epistemic project.
 
@@ -485,7 +485,7 @@ async def handle_claims(
     store = DocumentStore.for_database(name)
     await store.initialize()
 
-    from epistemic.repository import EpistemicRepository
+    from .repository import EpistemicRepository
 
     repo = EpistemicRepository(DocumentStoreAdapter(store))
 
@@ -541,7 +541,7 @@ async def handle_evidence(
     store = DocumentStore.for_database(name)
     await store.initialize()
 
-    from epistemic.repository import EpistemicRepository
+    from .repository import EpistemicRepository
     from .stats import get_all_verification_evidence
 
     repo = EpistemicRepository(DocumentStoreAdapter(store))
@@ -620,7 +620,7 @@ async def handle_uncertainties(
     store = DocumentStore.for_database(name)
     await store.initialize()
 
-    from epistemic.repository import EpistemicRepository
+    from .repository import EpistemicRepository
 
     repo = EpistemicRepository(DocumentStoreAdapter(store))
 
@@ -666,7 +666,7 @@ async def handle_decisions(
     store = DocumentStore.for_database(name)
     await store.initialize()
 
-    from epistemic.repository import EpistemicRepository
+    from .repository import EpistemicRepository
 
     repo = EpistemicRepository(DocumentStoreAdapter(store))
 
@@ -800,7 +800,8 @@ async def handle_ask(
     name: Optional[str] = None,
     max_items: int = 50,
     max_retries: int = 3,
-    model: str = DEFAULT_LLM_MODEL,
+    *,
+    model: str,
     keep: bool = False,
     verbose: bool = False,
     trace: TraceMode = "timeline",
@@ -1023,7 +1024,7 @@ async def handle_ask(
                     console.print("[dim]Cleaned up ephemeral project database[/dim]")
         else:
             console.print(f"\n[dim]Project saved: {name}[/dim]")
-            console.print(f"[dim]Inspect with: uv run mosaic epistemic status {name} -v[/dim]")
+            console.print(f"[dim]Inspect with: andamentum-epistemic status {name} -v[/dim]")
 
         # Convert stats dict to typed RunStats model
         typed_stats = RunStats(
@@ -1596,7 +1597,8 @@ async def handle_report(
     name: str,
     output_path: str,
     objective_id: Optional[str] = None,
-    model: str = DEFAULT_LLM_MODEL,
+    *,
+    model: str,
     verbose: bool = False,
 ) -> ReportResult:
     """Generate HTML report from existing epistemic database.

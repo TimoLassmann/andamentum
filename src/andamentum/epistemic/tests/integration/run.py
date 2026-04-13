@@ -227,8 +227,8 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     obj_id = objective[0].get("objective_id") if objective else None
     if obj_id:
         try:
-            from epistemic.confidence import compute_answer_confidence, compute_posterior
-            from epistemic.repository import EpistemicRepository
+            from andamentum.epistemic.confidence import compute_answer_confidence, compute_posterior
+            from andamentum.epistemic.repository import EpistemicRepository
 
             db_dir = str(Path(db_path).parent)
             db_name = Path(db_path).stem
@@ -397,7 +397,7 @@ async def run_single_test(
     db_dir: str | None = None,
 ) -> tuple[bool, list[str], str]:
     """Run a single integration test. Returns (passed, failures, db_path)."""
-    from epistemic.cli_handlers import handle_ask
+    from andamentum.epistemic.cli_handlers import handle_ask
 
     project_name = f"integration_{test.tradition}"
     actual_db_dir = db_dir or tempfile.mkdtemp(prefix="epistemic_integration_")
@@ -423,8 +423,8 @@ async def run_single_test(
 
     # Generate HTML report
     try:
-        from document_store import DocumentStore
-        from epistemic.report_generator import ReportGenerator
+        from andamentum.document_store import DocumentStore
+        from andamentum.epistemic.report_generator import ReportGenerator
 
         store = DocumentStore.for_database(project_name, db_dir=Path(actual_db_dir))
         await store.initialize()

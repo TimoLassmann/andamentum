@@ -4,7 +4,7 @@ import json
 import pytest
 from datetime import datetime
 
-from epistemic.entities import (
+from ..entities import (
     EpistemicEntity,
     ENTITY_CLASSES,
     Objective,

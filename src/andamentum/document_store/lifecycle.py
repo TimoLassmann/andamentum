@@ -33,13 +33,13 @@ def get_databases_dir() -> Path:
     """Get the permanent databases directory path.
 
     Override with DOCUMENT_STORE_DIR env var to write databases elsewhere.
-    Falls back to MOSAIC_DATABASES_DIR for backward compatibility.
+    Falls back to ANDAMENTUM_DATABASES_DIR for backward compatibility.
     Default: ~/.local/share/document-store/
 
     Returns:
         Path to databases directory
     """
-    override = os.environ.get("DOCUMENT_STORE_DIR") or os.environ.get("MOSAIC_DATABASES_DIR")
+    override = os.environ.get("DOCUMENT_STORE_DIR") or os.environ.get("ANDAMENTUM_DATABASES_DIR")
     if override:
         return Path(override)
     return Path.home() / ".local" / "share" / "document-store"

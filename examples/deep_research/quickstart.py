@@ -1,4 +1,4 @@
-"""Quick start examples for mosaic-deep-research.
+"""Quick start examples for andamentum.deep_research.
 
 All examples run without external services (no LLM, no SearXNG).
 """
@@ -6,13 +6,13 @@ All examples run without external services (no LLM, no SearXNG).
 import asyncio
 from types import SimpleNamespace
 
-from deep_research import (
+from andamentum.deep_research import (
     ResearchState,
     CircuitBreaker,
     CircuitOpenError,
     verify_sources,
 )
-from deep_research.novelty import check_novelty, NoveltyAssessment
+from andamentum.deep_research.novelty import check_novelty, NoveltyAssessment
 
 
 def demo_source_verification():

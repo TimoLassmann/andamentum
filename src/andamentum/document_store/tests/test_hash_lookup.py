@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 async def db():
-    from document_store import DocumentStore
+    from andamentum.document_store import DocumentStore
 
     db_name = f"test_hash_{uuid.uuid4().hex[:8]}"
     store = DocumentStore.for_database(db_name)
@@ -20,7 +20,7 @@ async def db():
 class TestExistsByHash:
     @pytest.mark.asyncio
     async def test_returns_false_for_unknown_hash(self, db):
-        from document_store import DocumentStore
+        from andamentum.document_store import DocumentStore
 
         store = DocumentStore.for_database(db)
         assert await store.exists_by_hash("deadbeef" * 8) is False
@@ -29,7 +29,7 @@ class TestExistsByHash:
     async def test_returns_true_for_known_hash(self, db):
         import hashlib
 
-        from document_store import DocumentStore
+        from andamentum.document_store import DocumentStore
 
         store = DocumentStore.for_database(db)
         content = "Test document content for hashing"
@@ -47,7 +47,7 @@ class TestExistsByHash:
     async def test_returns_false_after_delete(self, db):
         import hashlib
 
-        from document_store import DocumentStore
+        from andamentum.document_store import DocumentStore
 
         store = DocumentStore.for_database(db)
         content = "Document to be deleted"

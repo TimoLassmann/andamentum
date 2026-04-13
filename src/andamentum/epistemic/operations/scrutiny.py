@@ -327,7 +327,7 @@ class ScrutiniseClaimOperation(BaseOperation):
                     except Exception:
                         continue
                 if len(all_evidence) >= 2:
-                    await select_top_k_evidence(self.repo, all_evidence)
+                    await select_top_k_evidence(self.repo, all_evidence, embedding_model=self.embedding_model)
 
             evidence_summaries = await self._gather_evidence_summaries(claim)
             verdict = await self._execute_split(claim, evidence_summaries)

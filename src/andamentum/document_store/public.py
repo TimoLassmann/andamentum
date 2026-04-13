@@ -10,7 +10,7 @@ Seven functions:
     find_duplicates(database) → list[DuplicateGroup]
 
 Usage:
-    from document_store import ingest, search, find_by_metadata, update_metadata, delete
+    from andamentum.document_store import ingest, search, find_by_metadata, update_metadata, delete
 
     doc_id = await ingest("brain", "I think MAP-Elites could work for antibody optimization")
     results = await search("brain", "What decisions did I make about GROVE last month?")
@@ -25,7 +25,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ._defaults import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL
+
 from .api import DocumentStore
 from .chunking import chunk_markdown
 from .extraction import extract_chunk_metadata, extract_document_metadata
@@ -73,7 +73,7 @@ async def _preflight(database: str, model: str, embedding_model: str) -> None:
         agent: Agent[None, str] = Agent(model, output_type=str)
         await agent.run("Reply with exactly: ok")
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install mosaic-document-store[llm]")
+        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
     except Exception as e:
         raise RuntimeError(f"LLM model '{model}' unavailable. Error: {e}") from e
 
@@ -138,8 +138,9 @@ async def ingest(
     title: str | None = None,
     source: str = "manual",
     metadata: dict | None = None,
-    model: str | None = None,
-    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    *,
+    model: str,
+    embedding_model: str,
 ) -> str:
     """Add content to the knowledge base. Returns doc_id.
 
@@ -155,8 +156,8 @@ async def ingest(
         title: Optional title. If None, LLM generates one.
         source: Where content came from (manual, slack, claude_code, zotero, voice)
         metadata: Optional dict merged with LLM-extracted metadata. Caller values win.
-        model: LLM model for metadata extraction. Uses DEFAULT_LLM_MODEL if None.
-        embedding_model: Embedding model. Uses DEFAULT_EMBEDDING_MODEL if None.
+        model: LLM model for metadata extraction.
+        embedding_model: Embedding model.
 
     Returns:
         Document ID (UUID string)
@@ -164,7 +165,6 @@ async def ingest(
     Raises:
         RuntimeError: If embedding service or LLM model is unavailable.
     """
-    model = model or DEFAULT_LLM_MODEL
     store = await _get_store(database)
     await _preflight(database, model, embedding_model)
 
@@ -258,8 +258,9 @@ async def _run_phase2(
 
 async def repair(
     database: str,
-    model: str | None = None,
-    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    *,
+    model: str,
+    embedding_model: str,
 ) -> RepairReport:
     """Scan database for incomplete ingestions and re-run phase 2.
 
@@ -288,7 +289,6 @@ async def repair(
     Raises:
         RuntimeError: If embedding service or LLM is unavailable.
     """
-    model = model or DEFAULT_LLM_MODEL
     store = await _get_store(database)
     await _preflight(database, model, embedding_model)
 
@@ -396,8 +396,9 @@ async def search(
     database: str,
     query: str,
     limit: int = 10,
-    model: str | None = None,
-    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    *,
+    model: str,
+    embedding_model: str,
 ) -> list[SearchResult]:
     """Search the knowledge base with natural language.
 
@@ -408,8 +409,8 @@ async def search(
         database: Database name (e.g., "brain")
         query: Natural language query
         limit: Max results
-        model: LLM model for query planning. Uses DEFAULT_LLM_MODEL if None.
-        embedding_model: Embedding model. Uses DEFAULT_EMBEDDING_MODEL if None.
+        model: LLM model for query planning.
+        embedding_model: Embedding model.
 
     Returns:
         List of SearchResult objects sorted by relevance.
@@ -417,7 +418,6 @@ async def search(
     Raises:
         RuntimeError: If LLM or embedding service is unavailable.
     """
-    model = model or DEFAULT_LLM_MODEL
     store = await _get_store(database)
     await _preflight(database, model, embedding_model)
 

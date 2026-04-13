@@ -2,21 +2,21 @@
 
 import pytest
 
-from epistemic.adversarial_query_generator import (
+from ..adversarial_query_generator import (
     generate_adversarial_queries,
     detect_domain,
 )
-from epistemic.adversarial_evaluator import (
+from ..adversarial_evaluator import (
     create_counterargument,
     is_valid_criticism,
     get_category_weight,
 )
-from epistemic.adversarial_balance import (
+from ..adversarial_balance import (
     calculate_adversarial_balance,
     determine_verdict,
     interpret_balance,
 )
-from epistemic.primitives import CriticismCategory, Counterargument, CounterargumentQuality
+from ..primitives import CriticismCategory, Counterargument, CounterargumentQuality
 
 
 class TestAdversarialQueryGeneration:
