@@ -122,7 +122,7 @@ async def extract_document_metadata(
 
     Args:
         content: Full document text.
-        model: PydanticAI model string (e.g., "ollama:qwen3.5:27b").
+        model: PydanticAI model string (e.g., "anthropic:claude-haiku-4-5").
             If None, returns model with defaults only (no LLM extraction).
         max_content_chars: Max characters of content to send to LLM.
 

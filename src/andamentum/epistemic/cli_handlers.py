@@ -831,7 +831,7 @@ async def handle_ask(
         name: Project name (auto-generated if not specified)
         max_items: Maximum scheduler iterations
         max_retries: (Legacy, ignored) Maximum retries per workitem
-        model: LLM model to use (e.g., "openai:gpt-4o-mini", "local:gpt-oss:20b:medium")
+        model: LLM model to use (e.g., "anthropic:claude-haiku-4-5", "openai:gpt-4o-mini")
         keep: Keep project database after completion
         verbose: Print detailed progress
         trace: Trace visualization mode (timeline, flow, claims, all, none)

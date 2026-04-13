@@ -37,7 +37,7 @@ async def run_research(
     Args:
         query: Research question
         max_iterations: Maximum search-analyze cycles (1-5)
-        model: pydantic-ai model string (e.g. "ollama:gpt-oss:20b", "openai:gpt-4o")
+        model: pydantic-ai model string (e.g. "anthropic:claude-haiku-4-5", "openai:gpt-4o")
         searxng_url: SearXNG instance URL for default backend
         max_results: Max search results per query
         max_pages: Max pages to fetch per iteration
