@@ -114,13 +114,15 @@ with reasons why — those reasons ARE the unresolved uncertainty itself.
 
 Now evaluate whether the uncertainty can be resolved."""
 
-register_agent(AgentDefinition(
-    name="epistemic_resolve_uncertainty",
-    prompt=RESOLVE_UNCERTAINTY_PROMPT,
-    output_model=ResolveUncertaintyOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_resolve_uncertainty",
+        prompt=RESOLVE_UNCERTAINTY_PROMPT,
+        output_model=ResolveUncertaintyOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_investigate_claim ──────────────────────────────────────────
@@ -166,10 +168,12 @@ If scrutiny says "contradicting evidence not addressed":
 If scrutiny says "scope too broad for available evidence":
 - Query for evidence specifically within the narrower scope"""
 
-register_agent(AgentDefinition(
-    name="epistemic_investigate_claim",
-    prompt=INVESTIGATE_CLAIM_PROMPT,
-    output_model=InvestigateClaimOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_investigate_claim",
+        prompt=INVESTIGATE_CLAIM_PROMPT,
+        output_model=InvestigateClaimOutput,
+        retries=3,
+        output_retries=5,
+    )
+)

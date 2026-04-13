@@ -60,12 +60,19 @@ class PubMedProvider:
 
         t0 = time.monotonic()
         try:
-            params: dict[str, Any] = {"db": "pubmed", "term": "test", "retmax": "1", "retmode": "json"}
+            params: dict[str, Any] = {
+                "db": "pubmed",
+                "term": "test",
+                "retmax": "1",
+                "retmode": "json",
+            }
             if self.api_key:
                 params["api_key"] = self.api_key
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
+                response = await client.get(
+                    f"{EUTILS_BASE}/esearch.fcgi", params=params
+                )
                 elapsed = (time.monotonic() - t0) * 1000
                 if response.status_code == 200:
                     return CheckResult(
@@ -75,11 +82,16 @@ class PubMedProvider:
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
-                    name="PubMedProvider", status="fail", message=f"HTTP {response.status_code}", elapsed_ms=elapsed
+                    name="PubMedProvider",
+                    status="fail",
+                    message=f"HTTP {response.status_code}",
+                    elapsed_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="PubMedProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="PubMedProvider", status="fail", message=str(e), elapsed_ms=elapsed
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search PubMed and fetch article metadata."""
@@ -100,7 +112,9 @@ class PubMedProvider:
                 if self.api_key:
                     search_params["api_key"] = self.api_key
 
-                search_resp = await client.get(f"{EUTILS_BASE}/esearch.fcgi", params=search_params)
+                search_resp = await client.get(
+                    f"{EUTILS_BASE}/esearch.fcgi", params=search_params
+                )
                 if search_resp.status_code != 200:
                     return []
 
@@ -118,7 +132,9 @@ class PubMedProvider:
                 if self.api_key:
                     fetch_params["api_key"] = self.api_key
 
-                fetch_resp = await client.get(f"{EUTILS_BASE}/efetch.fcgi", params=fetch_params)
+                fetch_resp = await client.get(
+                    f"{EUTILS_BASE}/efetch.fcgi", params=fetch_params
+                )
                 if fetch_resp.status_code != 200:
                     return []
 
@@ -186,7 +202,9 @@ class PubMedProvider:
         journal = journal_el.text if journal_el is not None else ""
 
         # Year
-        year_el = article.find(".//Journal/JournalIssue/PubDate/Year") if article else None
+        year_el = (
+            article.find(".//Journal/JournalIssue/PubDate/Year") if article else None
+        )
         year = year_el.text if year_el is not None else ""
 
         # DOI
@@ -206,7 +224,9 @@ class PubMedProvider:
         # MeSH terms
         mesh_terms = []
         if medline is not None:
-            for mesh_el in medline.findall(".//MeshHeadingList/MeshHeading/DescriptorName"):
+            for mesh_el in medline.findall(
+                ".//MeshHeadingList/MeshHeading/DescriptorName"
+            ):
                 if mesh_el.text:
                     mesh_terms.append(mesh_el.text)
 
@@ -263,5 +283,7 @@ class PubMedProvider:
             },
             quality_score=quality,
             quality_metadata={"publication_types": pub_types, "journal": journal},
-            limitations=["Abstract only; full text may contain more detail"] if not pmcid else [],
+            limitations=["Abstract only; full text may contain more detail"]
+            if not pmcid
+            else [],
         )

@@ -52,7 +52,9 @@ def get_source_catalogue() -> str:
             lines.append(f"- **{name}**: {desc}")
         else:
             lines.append(f"- **{name}**")
-    lines.append("- **web_search**: General-purpose web search with evidence synthesis (always available as fallback)")
+    lines.append(
+        "- **web_search**: General-purpose web search with evidence synthesis (always available as fallback)"
+    )
     return "\n".join(lines)
 
 
@@ -80,13 +82,41 @@ def get_biomedical_providers() -> dict[str, Any]:
 
 # ── Register built-in providers ──────────────────────────────────────────────
 
-register_provider("openalex", OpenAlexProvider, "General academic literature across all disciplines — papers, citations, abstracts")
-register_provider("pubmed", PubMedProvider, "Biomedical and life sciences literature — clinical studies, reviews, trials")
-register_provider("biorxiv", BioRxivProvider, "Biology and medicine preprints — not yet peer-reviewed research")
-register_provider("clinicaltrials", ClinicalTrialsProvider, "Clinical trial registry — trial designs, endpoints, enrollment, results")
-register_provider("chembl", ChEMBLProvider, "Drug compounds and bioactivity data — IC50, mechanisms, drug targets")
-register_provider("monarch", MonarchProvider, "Gene-disease associations — curated links between genes, diseases, phenotypes")
-register_provider("open_targets", OpenTargetsProvider, "Drug target evidence — genetic associations, pathways, known drugs for targets")
+register_provider(
+    "openalex",
+    OpenAlexProvider,
+    "General academic literature across all disciplines — papers, citations, abstracts",
+)
+register_provider(
+    "pubmed",
+    PubMedProvider,
+    "Biomedical and life sciences literature — clinical studies, reviews, trials",
+)
+register_provider(
+    "biorxiv",
+    BioRxivProvider,
+    "Biology and medicine preprints — not yet peer-reviewed research",
+)
+register_provider(
+    "clinicaltrials",
+    ClinicalTrialsProvider,
+    "Clinical trial registry — trial designs, endpoints, enrollment, results",
+)
+register_provider(
+    "chembl",
+    ChEMBLProvider,
+    "Drug compounds and bioactivity data — IC50, mechanisms, drug targets",
+)
+register_provider(
+    "monarch",
+    MonarchProvider,
+    "Gene-disease associations — curated links between genes, diseases, phenotypes",
+)
+register_provider(
+    "open_targets",
+    OpenTargetsProvider,
+    "Drug target evidence — genetic associations, pathways, known drugs for targets",
+)
 
 
 __all__ = [

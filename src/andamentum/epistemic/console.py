@@ -78,7 +78,9 @@ class EpistemicConsole:
         """Generate separator line based on current terminal width."""
         return "├" + "─" * self._box_width + "┤"
 
-    def _wrap_text(self, text: str, prefix: str = "│ ", indent: str = "", suffix: str = "") -> List[str]:
+    def _wrap_text(
+        self, text: str, prefix: str = "│ ", indent: str = "", suffix: str = ""
+    ) -> List[str]:
         """Wrap text to fit within the transaction box, maintaining prefix on each line.
 
         Args:
@@ -98,14 +100,18 @@ class EpistemicConsole:
         available_width = max(30, terminal_width - prefix_len - 5)
 
         # Wrap the text
-        wrapped = textwrap.wrap(text, width=available_width, break_long_words=True, break_on_hyphens=True)
+        wrapped = textwrap.wrap(
+            text, width=available_width, break_long_words=True, break_on_hyphens=True
+        )
 
         # Return lines with prefix, indent, and suffix
         if not wrapped:
             return [f"{prefix}{indent}{suffix}"]
         return [f"{prefix}{indent}{line}{suffix}" for line in wrapped]
 
-    def _print_wrapped(self, text: str, prefix: str = "│ ", indent: str = "", suffix: str = "") -> None:
+    def _print_wrapped(
+        self, text: str, prefix: str = "│ ", indent: str = "", suffix: str = ""
+    ) -> None:
         """Print text wrapped to fit within the transaction box."""
         for line in self._wrap_text(text, prefix, indent, suffix):
             self.console.print(line)
@@ -143,7 +149,9 @@ class EpistemicConsole:
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="white")
 
-        table.add_row("WorkItems Executed", str(stats.get("workitems_executed_this_run", 0)))
+        table.add_row(
+            "WorkItems Executed", str(stats.get("workitems_executed_this_run", 0))
+        )
         table.add_row("Evidence Collected", str(stats.get("evidence_count", 0)))
 
         # Claims by stage
@@ -164,9 +172,13 @@ class EpistemicConsole:
 
         # Status message
         if stats.get("workitems_failed", 0) > 0:
-            self.console.print(f"\n[bold red]⚠ Completed with failures{elapsed}[/bold red]")
+            self.console.print(
+                f"\n[bold red]⚠ Completed with failures{elapsed}[/bold red]"
+            )
         elif stats.get("workitems_queued", 0) > 0:
-            self.console.print(f"\n[bold yellow]⏸ Paused (more work pending){elapsed}[/bold yellow]")
+            self.console.print(
+                f"\n[bold yellow]⏸ Paused (more work pending){elapsed}[/bold yellow]"
+            )
         else:
             self.console.print(f"\n[bold green]✓ Complete{elapsed}[/bold green]")
         self.console.print()
@@ -190,7 +202,9 @@ class EpistemicConsole:
         padding = max(0, self._box_width - 3 - len(op_name))
 
         self.console.print()
-        self.console.print(f"╭─ [bold {color}]{op_name}[/bold {color}] " + "─" * padding + "╮")
+        self.console.print(
+            f"╭─ [bold {color}]{op_name}[/bold {color}] " + "─" * padding + "╮"
+        )
         self._print_wrapped(description)
 
     def show_input(self, input_package: Dict[str, Any]) -> None:
@@ -201,13 +215,19 @@ class EpistemicConsole:
         # Show key inputs (not everything - but no truncation of values)
         # Keys align with orchestrator's _build_input_package output
         important_keys = [
-            "topic", "query", "objective_description", "claim_statement",
-            "source_ref", "evidence_summary", "source_content", "minimum_stage",
+            "topic",
+            "query",
+            "objective_description",
+            "claim_statement",
+            "source_ref",
+            "evidence_summary",
+            "source_content",
+            "minimum_stage",
             # Index-based claim inputs (orchestrator writes these)
-            "claims_for_review",    # FREEZE_SNAPSHOT
-            "available_claims",     # DECIDE
-            "claim_count",          # SYNTHESIZE_REPORT (now uses typed _snapshot_claims)
-            "decision_context",     # DECIDE
+            "claims_for_review",  # FREEZE_SNAPSHOT
+            "available_claims",  # DECIDE
+            "claim_count",  # SYNTHESIZE_REPORT (now uses typed _snapshot_claims)
+            "decision_context",  # DECIDE
         ]
         shown = {}
         for key in important_keys:
@@ -223,9 +243,15 @@ class EpistemicConsole:
                     lines = value.split("\n")
                     self.console.print(f"[dim]│   {key}:[/dim]")
                     for line in lines:
-                        self._print_wrapped(rich_escape(line), prefix="[dim]│     ", suffix="[/dim]")
+                        self._print_wrapped(
+                            rich_escape(line), prefix="[dim]│     ", suffix="[/dim]"
+                        )
                 else:
-                    self._print_wrapped(f"{key}: {rich_escape(str(value))}", prefix="[dim]│   ", suffix="[/dim]")
+                    self._print_wrapped(
+                        f"{key}: {rich_escape(str(value))}",
+                        prefix="[dim]│   ",
+                        suffix="[/dim]",
+                    )
 
     def show_read_section(self, read_data: Dict[str, Any]) -> None:
         """Show what data was READ from state - NO TRUNCATION.
@@ -252,18 +278,30 @@ class EpistemicConsole:
             has_content = True
             for claim in claims:
                 statement = claim.get("statement", "N/A")
-                self._print_wrapped(f"Claim: {rich_escape(str(statement))}", prefix="│   ")
+                self._print_wrapped(
+                    f"Claim: {rich_escape(str(statement))}", prefix="│   "
+                )
                 stage = claim.get("stage", "N/A")
                 evidence_ids = claim.get("evidence_ids", [])
-                self._print_wrapped(f"Stage: {stage} | Evidence: {evidence_ids}", prefix="│     ")
+                self._print_wrapped(
+                    f"Stage: {stage} | Evidence: {evidence_ids}", prefix="│     "
+                )
 
         # Evidence being used
         if evidence := read_data.get("evidence"):
             has_content = True
             for ev in evidence:
-                short_id = ev.get("short_id", ev.get("evidence_id", "N/A")[:8] if ev.get("evidence_id") else "N/A")
+                short_id = ev.get(
+                    "short_id",
+                    ev.get("evidence_id", "N/A")[:8]
+                    if ev.get("evidence_id")
+                    else "N/A",
+                )
                 source_ref = ev.get("source_ref", "N/A")
-                self._print_wrapped(f"Evidence {short_id}: {rich_escape(str(source_ref))}", prefix="│   ")
+                self._print_wrapped(
+                    f"Evidence {short_id}: {rich_escape(str(source_ref))}",
+                    prefix="│   ",
+                )
 
         # Evidence summary (for operations that get summarized evidence)
         if evidence_summary := read_data.get("evidence_summary"):
@@ -278,7 +316,9 @@ class EpistemicConsole:
             has_content = True
             for src in sources:
                 url_or_ref = src.get("url", src.get("source_ref", "N/A"))
-                self._print_wrapped(f"Source: {rich_escape(str(url_or_ref))}", prefix="│   ")
+                self._print_wrapped(
+                    f"Source: {rich_escape(str(url_or_ref))}", prefix="│   "
+                )
 
         # If nothing specific, show generic message
         if not has_content:
@@ -286,7 +326,9 @@ class EpistemicConsole:
 
         self.console.print("│")
 
-    def show_transform_section(self, operation: WorkItemType, agent_name: str, output: Dict[str, Any]) -> None:
+    def show_transform_section(
+        self, operation: WorkItemType, agent_name: str, output: Dict[str, Any]
+    ) -> None:
         """Show the TRANSFORM operation and its output - NO TRUNCATION.
 
         This is the TRANSFORM part of the READ/TRANSFORM/WRITE transaction model.
@@ -298,7 +340,10 @@ class EpistemicConsole:
         self.console.print("│ [bold yellow]🔄 TRANSFORM[/bold yellow]")
         self.console.print(self._separator())
         self._print_wrapped(f"Agent: {agent_name}", prefix="│   ")
-        self._print_wrapped(f"Intent: {self.OPERATION_INTENTS.get(operation, 'Process data')}", prefix="│   ")
+        self._print_wrapped(
+            f"Intent: {self.OPERATION_INTENTS.get(operation, 'Process data')}",
+            prefix="│   ",
+        )
         self.console.print("│")
         self.console.print("│   [bold]Agent Output:[/bold]")
 
@@ -325,11 +370,15 @@ class EpistemicConsole:
         # Evidence created
         if evidence_count := write_summary.get("evidence_created", 0):
             has_changes = True
-            self._print_wrapped(f"• Created {evidence_count} evidence record(s)", prefix="│     ")
+            self._print_wrapped(
+                f"• Created {evidence_count} evidence record(s)", prefix="│     "
+            )
             for ev in write_summary.get("evidence_details", []):
                 short_id = ev.get("short_id", "N/A")
                 source_ref = ev.get("source_ref", "N/A")
-                self._print_wrapped(f"- {short_id}: {rich_escape(str(source_ref))}", prefix="│       ")
+                self._print_wrapped(
+                    f"- {short_id}: {rich_escape(str(source_ref))}", prefix="│       "
+                )
 
         # Claims created
         if claims_created := write_summary.get("claims_created", 0):
@@ -349,12 +398,16 @@ class EpistemicConsole:
         # Uncertainties created
         if uncertainties := write_summary.get("uncertainties_created", 0):
             has_changes = True
-            self._print_wrapped(f"• Created {uncertainties} uncertainty record(s)", prefix="│     ")
+            self._print_wrapped(
+                f"• Created {uncertainties} uncertainty record(s)", prefix="│     "
+            )
 
         # WorkItems queued
         if workitems := write_summary.get("workitems_queued", 0):
             has_changes = True
-            self._print_wrapped(f"• Queued {workitems} new workitem(s)", prefix="│     ")
+            self._print_wrapped(
+                f"• Queued {workitems} new workitem(s)", prefix="│     "
+            )
 
         # Snapshot created
         if write_summary.get("snapshot_created"):
@@ -366,7 +419,10 @@ class EpistemicConsole:
         if write_summary.get("artefact_created"):
             has_changes = True
             artefact_title = write_summary.get("artefact_title", "N/A")
-            self._print_wrapped(f"• Created artefact: {rich_escape(str(artefact_title))}", prefix="│     ")
+            self._print_wrapped(
+                f"• Created artefact: {rich_escape(str(artefact_title))}",
+                prefix="│     ",
+            )
 
         # Decision made
         if write_summary.get("decision_created"):
@@ -379,7 +435,11 @@ class EpistemicConsole:
         self.console.print("│")
 
     def _render_output_content(
-        self, output: Dict[str, Any], operation: WorkItemType, prefix: str = "│     ", suffix: str = ""
+        self,
+        output: Dict[str, Any],
+        operation: WorkItemType,
+        prefix: str = "│     ",
+        suffix: str = "",
     ) -> None:
         """Render operation-specific output content - NO TRUNCATION.
 
@@ -400,7 +460,9 @@ class EpistemicConsole:
             Text is automatically escaped to prevent Rich markup interpretation
             of LLM-generated content (e.g., if output contains '[red]' or '[/red]').
             """
-            self._print_wrapped(rich_escape(text), prefix=prefix, indent=indent, suffix=suffix)
+            self._print_wrapped(
+                rich_escape(text), prefix=prefix, indent=indent, suffix=suffix
+            )
 
         if operation == WorkItemType.PLAN_TASK:
             # New format: evidence_strategy, verification_strategy, focus_areas, planning_rationale
@@ -412,12 +474,16 @@ class EpistemicConsole:
 
                 # Show evidence providers
                 if evidence_strategy:
-                    providers = [e.get("provider", "unknown") for e in evidence_strategy]
+                    providers = [
+                        e.get("provider", "unknown") for e in evidence_strategy
+                    ]
                     p(f"Evidence providers: {', '.join(providers)}")
 
                 # Show verification methods
                 if verification_strategy:
-                    methods = [v.get("method", "unknown") for v in verification_strategy]
+                    methods = [
+                        v.get("method", "unknown") for v in verification_strategy
+                    ]
                     p(f"Verification methods: {', '.join(methods)}")
 
                 # Show focus areas if any
@@ -436,7 +502,7 @@ class EpistemicConsole:
                     task_type = task.get("task_type", "unknown")
                     desc = task.get("description", "")
                     priority = task.get("priority", 5)
-                    p(f"{i+1}. ({task_type}) {desc} - priority {priority}", "  ")
+                    p(f"{i + 1}. ({task_type}) {desc} - priority {priority}", "  ")
 
         elif operation == WorkItemType.COLLECT_EVIDENCE:
             sources = output.get("sources", [])
@@ -445,7 +511,7 @@ class EpistemicConsole:
                 source_type = source.get("source_type", "unknown")
                 url = source.get("url", "")
                 summary = source.get("summary", "")
-                p(f"{i+1}. [{source_type}] {url}", "  ")
+                p(f"{i + 1}. [{source_type}] {url}", "  ")
                 if summary:
                     p(f"Summary: {summary}", "     ")
 
@@ -458,7 +524,7 @@ class EpistemicConsole:
             if quotes:
                 p(f"Quotes ({len(quotes)}):")
                 for i, quote in enumerate(quotes):
-                    p(f'{i+1}. "{quote}"', "  ")
+                    p(f'{i + 1}. "{quote}"', "  ")
             if limitations:
                 p(f"Limitations ({len(limitations)}):")
                 for lim in limitations:
@@ -472,7 +538,7 @@ class EpistemicConsole:
                 for i, claim in enumerate(claims_list):
                     statement = claim.get("statement", "")
                     scope = claim.get("scope", "")
-                    p(f"{i+1}. {statement}", "  ")
+                    p(f"{i + 1}. {statement}", "  ")
                     if scope:
                         p(f"Scope: {scope}", "     ")
             else:
@@ -482,7 +548,7 @@ class EpistemicConsole:
                 p(f"Proposed {len(statements)} claims:")
                 for i, stmt in enumerate(statements):
                     scope = scopes[i] if i < len(scopes) else ""
-                    p(f"{i+1}. {stmt}", "  ")
+                    p(f"{i + 1}. {stmt}", "  ")
                     if scope:
                         p(f"Scope: {scope}", "     ")
 
@@ -497,7 +563,7 @@ class EpistemicConsole:
                 p(f"Issues ({len(issues)}):")
                 for i, issue in enumerate(issues):
                     itype = issue_types[i] if i < len(issue_types) else "unknown"
-                    p(f"{i+1}. [{itype}] {issue}", "  ")
+                    p(f"{i + 1}. [{itype}] {issue}", "  ")
 
         elif operation == WorkItemType.PROMOTE_CLAIM:
             claim_id = output.get("claim_id", "")
@@ -527,7 +593,7 @@ class EpistemicConsole:
             p(f"Title: {title}")
             p(f"Paragraphs ({len(paragraphs)}):")
             for i, para in enumerate(paragraphs):
-                p(f"{i+1}. {para}", "  ")
+                p(f"{i + 1}. {para}", "  ")
 
         elif operation == WorkItemType.DECIDE:
             statement = output.get("statement", "")
@@ -552,7 +618,7 @@ class EpistemicConsole:
                 if isinstance(value, list):
                     p(f"{key} ({len(value)} items):", "  ")
                     for i, item in enumerate(value):
-                        p(f"{i+1}. {item}", "    ")
+                        p(f"{i + 1}. {item}", "    ")
                 else:
                     p(f"{key}: {value}", "  ")
 
@@ -566,9 +632,16 @@ class EpistemicConsole:
             return
 
         self.console.print("[dim]│ Output:[/dim]")
-        self._render_output_content(output, operation, prefix="[dim]│   ", suffix="[/dim]")
+        self._render_output_content(
+            output, operation, prefix="[dim]│   ", suffix="[/dim]"
+        )
 
-    def show_validation(self, valid: bool, errors: Optional[List[str]] = None, warnings: Optional[List[str]] = None) -> None:
+    def show_validation(
+        self,
+        valid: bool,
+        errors: Optional[List[str]] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> None:
         """Show validation result."""
         if not self.enabled:
             return
@@ -577,20 +650,32 @@ class EpistemicConsole:
             self.console.print("[dim]│ Validation: [green]✓ passed[/green][/dim]")
         else:
             self.console.print("[dim]│ Validation: [red]✗ failed[/red][/dim]")
-            for err in (errors or []):
-                self._print_wrapped(f"✗ {rich_escape(err)}", prefix="[red]│   ", suffix="[/red]")
+            for err in errors or []:
+                self._print_wrapped(
+                    f"✗ {rich_escape(err)}", prefix="[red]│   ", suffix="[/red]"
+                )
 
-        for warn in (warnings or []):
-            self._print_wrapped(f"⚠ {rich_escape(warn)}", prefix="[yellow]│   ", suffix="[/yellow]")
+        for warn in warnings or []:
+            self._print_wrapped(
+                f"⚠ {rich_escape(warn)}", prefix="[yellow]│   ", suffix="[/yellow]"
+            )
 
-    def end_workitem(self, success: bool, output_count: int, duration_s: float = 0, error: Optional[str] = None) -> None:
+    def end_workitem(
+        self,
+        success: bool,
+        output_count: int,
+        duration_s: float = 0,
+        error: Optional[str] = None,
+    ) -> None:
         """Close the transaction box."""
         if not self.enabled:
             return
 
         if success:
             duration_str = f" in {duration_s:.1f}s" if duration_s > 0 else ""
-            self._print_wrapped(f"[green]✓ Complete ({output_count} outputs){duration_str}[/green]")
+            self._print_wrapped(
+                f"[green]✓ Complete ({output_count} outputs){duration_str}[/green]"
+            )
         else:
             error_msg = rich_escape(str(error)) if error else "Unknown error"
             self._print_wrapped(f"[red]✗ Failed: {error_msg}[/red]")

@@ -77,7 +77,9 @@ class TestFindPointerInChunks:
             "Completely unrelated content about cooking recipes",
         ]
         # Close but not exact — should fuzzy match to chunk 0
-        result = _find_pointer_in_chunks("The method uses randomized controlled trials for assessment", chunks)
+        result = _find_pointer_in_chunks(
+            "The method uses randomized controlled trials for assessment", chunks
+        )
         assert result == 0
 
     def test_empty_pointer(self):
@@ -126,7 +128,10 @@ class TestLocatePointers:
         chunks = ["The quick brown fox", "jumps over the lazy dog"]
         pointers = [Pointer(text="quick brown fox", kind="key_excerpt")]
 
-        with patch("andamentum.epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.passage_extraction.embed_texts",
+            new_callable=AsyncMock,
+        ) as mock_embed:
             result = await _locate_pointers(pointers, chunks, chunk_embeddings=[])
             mock_embed.assert_not_called()
 
@@ -145,7 +150,12 @@ class TestLocatePointers:
         mock_embed = AsyncMock(return_value=[[0.9, 0.1, 0.0]])  # similar to chunk 0
 
         with patch("andamentum.epistemic.passage_extraction.embed_texts", mock_embed):
-            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs, embedding_model="test-model")
+            result = await _locate_pointers(
+                pointers,
+                chunks,
+                chunk_embeddings=chunk_embs,
+                embedding_model="test-model",
+            )
 
         mock_embed.assert_called_once()
         assert len(result) == 1
@@ -162,7 +172,13 @@ class TestLocatePointers:
         mock_embed = AsyncMock(return_value=[[0.0, 0.0, 1.0]])
 
         with patch("andamentum.epistemic.passage_extraction.embed_texts", mock_embed):
-            result = await _locate_pointers(pointers, chunks, chunk_embeddings=chunk_embs, similarity_threshold=0.5, embedding_model="test-model")
+            result = await _locate_pointers(
+                pointers,
+                chunks,
+                chunk_embeddings=chunk_embs,
+                similarity_threshold=0.5,
+                embedding_model="test-model",
+            )
 
         assert len(result) == 0
 
@@ -172,7 +188,10 @@ class TestLocatePointers:
         chunks = ["alpha beta gamma"]
         pointers = [Pointer(text="zzz no match zzz", kind="key_point")]
 
-        with patch("andamentum.epistemic.passage_extraction.embed_texts", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.passage_extraction.embed_texts",
+            new_callable=AsyncMock,
+        ) as mock_embed:
             result = await _locate_pointers(pointers, chunks, chunk_embeddings=[])
             mock_embed.assert_not_called()
 
@@ -208,9 +227,11 @@ class TestMergeAnnotations:
 
     def test_chain_merging(self):
         """Indices 3, 4, 5 should all merge into one group."""
-        pointers = [(3, Pointer(text="a", kind="key_excerpt")),
-                     (4, Pointer(text="b", kind="key_point")),
-                     (5, Pointer(text="c", kind="key_excerpt"))]
+        pointers = [
+            (3, Pointer(text="a", kind="key_excerpt")),
+            (4, Pointer(text="b", kind="key_point")),
+            (5, Pointer(text="c", kind="key_excerpt")),
+        ]
         groups = _merge_annotations(pointers, adjacency=1)
         assert len(groups) == 1
         assert len(groups[0]) == 3

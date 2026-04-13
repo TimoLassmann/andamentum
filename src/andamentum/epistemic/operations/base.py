@@ -51,7 +51,6 @@ class OperationResult:
     validation_errors: list[str] = field(default_factory=list)
 
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # EVIDENCE GATHERER PROTOCOL
 # ══════════════════════════════════════════════════════════════════════════════
@@ -176,7 +175,9 @@ class OperationValidator(Protocol):
         """Validate before operation runs."""
         ...
 
-    async def validate_post(self, operation: str, entity: Any, result: Any) -> tuple[bool, list[str]]:
+    async def validate_post(
+        self, operation: str, entity: Any, result: Any
+    ) -> tuple[bool, list[str]]:
         """Validate after operation runs."""
         ...
 
@@ -187,7 +188,9 @@ class DefaultValidator:
     async def validate_pre(self, operation: str, entity: Any) -> tuple[bool, list[str]]:
         return True, []
 
-    async def validate_post(self, operation: str, entity: Any, result: Any) -> tuple[bool, list[str]]:
+    async def validate_post(
+        self, operation: str, entity: Any, result: Any
+    ) -> tuple[bool, list[str]]:
         return True, []
 
 

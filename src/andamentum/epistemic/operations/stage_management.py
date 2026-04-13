@@ -65,7 +65,9 @@ class PromoteClaimOperation(BaseOperation):
             pass  # Fall back to default thresholds
 
         # Validate gate requirements
-        gate_result = await validate_promotion(claim, target_stage, self.repo, question_type=question_type)
+        gate_result = await validate_promotion(
+            claim, target_stage, self.repo, question_type=question_type
+        )
 
         if not gate_result.passed:
             await self.log_event(
@@ -79,7 +81,9 @@ class PromoteClaimOperation(BaseOperation):
             return OperationResult(
                 success=False,
                 entity_id=claim.entity_id,
-                message=gate_result.blocking_reasons[0] if gate_result.blocking_reasons else "Gate failed",
+                message=gate_result.blocking_reasons[0]
+                if gate_result.blocking_reasons
+                else "Gate failed",
                 validation_errors=gate_result.blocking_reasons,
             )
 
@@ -161,7 +165,9 @@ class DemoteClaimOperation(BaseOperation):
             )
 
         old_stage = claim.stage
-        claim.record_demotion(target_stage, justification="Scrutiny failure or blocking uncertainty")
+        claim.record_demotion(
+            target_stage, justification="Scrutiny failure or blocking uncertainty"
+        )
 
         await self.repo.save(claim)
 

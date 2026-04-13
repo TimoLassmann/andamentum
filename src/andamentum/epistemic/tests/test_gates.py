@@ -7,14 +7,12 @@ from ..entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
 from ..gates import (
     STAGE_GATES,
     STAGE_HIERARCHY,
-    StageGate,
     GateResult,
     validate_promotion,
     get_next_stage,
     get_previous_stage,
     can_demote,
     check_degeneracy,
-    DegeneracyCodes,
     quality_weighted_evidence_sum,
     compute_confidence_score,
     count_modifications_in_window,
@@ -225,9 +223,7 @@ class TestDegeneracy:
 
     def test_no_burst_for_old_modifications(self):
         old = datetime.now() - timedelta(hours=48)
-        timestamps = [
-            (old - timedelta(hours=i)).isoformat() for i in range(5)
-        ]
+        timestamps = [(old - timedelta(hours=i)).isoformat() for i in range(5)]
         c = Claim(
             statement="X",
             objective_id="o",
@@ -320,16 +316,22 @@ class TestComputeConfidenceScore:
         # No adversarial balance: no penalty
         score_no_balance = compute_confidence_score(ClaimStage.SUPPORTED, 0.8)
         # With good balance: no penalty
-        score_good = compute_confidence_score(ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.8)
+        score_good = compute_confidence_score(
+            ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.8
+        )
         assert score_good == score_no_balance
         # With low balance: penalty applied
-        score_challenged = compute_confidence_score(ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.2)
+        score_challenged = compute_confidence_score(
+            ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.2
+        )
         assert score_challenged < score_no_balance
         # Penalty magnitude: (0.6 - 0.2) * 0.3 = 0.12
         assert score_no_balance - score_challenged == pytest.approx(0.12, abs=0.01)
 
     def test_adversarial_balance_never_below_zero(self):
-        score = compute_confidence_score(ClaimStage.HYPOTHESIS, 0.0, adversarial_balance=0.0)
+        score = compute_confidence_score(
+            ClaimStage.HYPOTHESIS, 0.0, adversarial_balance=0.0
+        )
         assert score >= 0.0
 
 

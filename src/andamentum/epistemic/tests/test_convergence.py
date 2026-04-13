@@ -5,8 +5,6 @@ tests verify domain distance calculations, clustering logic, and convergence
 detection using DomainClassification objects constructed directly.
 """
 
-import pytest
-
 from ..domain_classifier import (
     classify_evidence_domain,
     get_domain_label,
@@ -67,7 +65,9 @@ class TestDomainClassification:
         assert c.classification_method == "default"
 
     def test_domain_label(self):
-        c = _make_classification("e-1", method=MethodType.EXPERIMENTAL, source=DataSourceType.PRIMARY)
+        c = _make_classification(
+            "e-1", method=MethodType.EXPERIMENTAL, source=DataSourceType.PRIMARY
+        )
         label = get_domain_label(c)
         assert "/" in label
         assert "experimental" in label
@@ -82,10 +82,15 @@ class TestDomainDistance:
         assert d < 0.3  # Same domain = low distance
 
     def test_different_domains_high_distance(self):
-        c1 = _make_classification("e-1", method=MethodType.EXPERIMENTAL, source=DataSourceType.PRIMARY)
+        c1 = _make_classification(
+            "e-1", method=MethodType.EXPERIMENTAL, source=DataSourceType.PRIMARY
+        )
         c2 = _make_classification(
-            "e-2", method=MethodType.THEORETICAL, source=DataSourceType.SYNTHETIC,
-            temporal=TemporalApproach.RETROSPECTIVE, causal=CausalRole.MECHANISTIC,
+            "e-2",
+            method=MethodType.THEORETICAL,
+            source=DataSourceType.SYNTHETIC,
+            temporal=TemporalApproach.RETROSPECTIVE,
+            causal=CausalRole.MECHANISTIC,
         )
         d = calculate_domain_distance(c1, c2)
         assert d > 0.3  # Different domains = higher distance
@@ -112,11 +117,16 @@ class TestClustering:
 
     def test_different_domains_separate_clusters(self):
         c1 = _make_classification(
-            "e-1", method=MethodType.EXPERIMENTAL, source=DataSourceType.PRIMARY,
+            "e-1",
+            method=MethodType.EXPERIMENTAL,
+            source=DataSourceType.PRIMARY,
         )
         c2 = _make_classification(
-            "e-2", method=MethodType.THEORETICAL, source=DataSourceType.SYNTHETIC,
-            temporal=TemporalApproach.RETROSPECTIVE, causal=CausalRole.MECHANISTIC,
+            "e-2",
+            method=MethodType.THEORETICAL,
+            source=DataSourceType.SYNTHETIC,
+            temporal=TemporalApproach.RETROSPECTIVE,
+            causal=CausalRole.MECHANISTIC,
         )
         clusters = cluster_by_domain([c1, c2], distance_threshold=0.3)
         assert len(clusters) >= 1
@@ -141,9 +151,18 @@ class TestConvergenceDetection:
 
     def test_multi_domain_convergence(self):
         items = [
-            {"evidence_id": "e-1", "content": "A randomized controlled trial of the intervention in 500 participants"},
-            {"evidence_id": "e-2", "content": "A mathematical proof derived from first principles and axioms"},
-            {"evidence_id": "e-3", "content": "A computational simulation model predicted the outcome"},
+            {
+                "evidence_id": "e-1",
+                "content": "A randomized controlled trial of the intervention in 500 participants",
+            },
+            {
+                "evidence_id": "e-2",
+                "content": "A mathematical proof derived from first principles and axioms",
+            },
+            {
+                "evidence_id": "e-3",
+                "content": "A computational simulation model predicted the outcome",
+            },
         ]
         result = detect_convergence(items, claim_id="c-1", objective_id="o-1")
         assert result.total_evidence_count == 3

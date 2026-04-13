@@ -51,7 +51,10 @@ class ClinicalTrialsProvider:
         t0 = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(CT_API, params={"query.term": "test", "pageSize": 1, "format": "json"})
+                response = await client.get(
+                    CT_API,
+                    params={"query.term": "test", "pageSize": 1, "format": "json"},
+                )
                 elapsed = (time.monotonic() - t0) * 1000
                 if response.status_code == 200:
                     return CheckResult(
@@ -68,7 +71,12 @@ class ClinicalTrialsProvider:
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="ClinicalTrialsProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="ClinicalTrialsProvider",
+                status="fail",
+                message=str(e),
+                elapsed_ms=elapsed,
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search ClinicalTrials.gov for relevant studies."""
@@ -193,5 +201,9 @@ class ClinicalTrialsProvider:
                 "brief_summary": brief_summary[:500],
             },
             quality_score=quality,
-            quality_metadata={"phase": phase, "has_results": has_results, "status": status},
+            quality_metadata={
+                "phase": phase,
+                "has_results": has_results,
+                "status": status,
+            },
         )

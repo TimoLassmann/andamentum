@@ -49,7 +49,7 @@ class TestAdversarialEvidenceStorage:
                 ]
 
         op = AdversarialSearchOperation(repo=repo, agent_runner=fake_runner)
-        op.evidence_gatherer = MockEvidenceGatherer()
+        op.evidence_gatherer = MockEvidenceGatherer()  # type: ignore[assignment]
 
         work = WorkItem(
             entity_id="c-1",
@@ -79,4 +79,6 @@ class TestAdversarialEvidenceStorage:
 
         # Check it's linked to the claim
         claim_after = await repo.get("claim", "c-1")
-        assert any(ae.entity_id in claim_after.evidence_ids for ae in adversarial_evidence)
+        assert any(
+            ae.entity_id in claim_after.evidence_ids for ae in adversarial_evidence
+        )

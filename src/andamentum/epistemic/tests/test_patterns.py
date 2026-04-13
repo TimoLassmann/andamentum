@@ -1,77 +1,103 @@
 """Tests for pattern matching and scheduler."""
 
-import pytest
-
-from ..entities import Claim, ClaimStage, Evidence, Objective
+from ..entities import Claim, ClaimStage, Objective
 from ..patterns import (
     Pattern,
-    WorkItem,
     PatternScheduler,
     WORK_PATTERNS,
     DEFAULT_OPERATION_BUDGETS,
-    SYNTHESIS_OPS,
     MAX_ENTITY_ATTEMPTS,
 )
 
 
 class TestPatternMatching:
     def test_exact_match(self):
-        p = Pattern(entity_type="claim", filters={"stage": "hypothesis"}, operation="scrutinise")
+        p = Pattern(
+            entity_type="claim", filters={"stage": "hypothesis"}, operation="scrutinise"
+        )
         c = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS)
         assert p.matches(c)
 
     def test_exact_mismatch(self):
-        p = Pattern(entity_type="claim", filters={"stage": "supported"}, operation="promote")
+        p = Pattern(
+            entity_type="claim", filters={"stage": "supported"}, operation="promote"
+        )
         c = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS)
         assert not p.matches(c)
 
     def test_none_filter(self):
-        p = Pattern(entity_type="claim", filters={"scrutiny_verdict": None}, operation="scrutinise")
+        p = Pattern(
+            entity_type="claim",
+            filters={"scrutiny_verdict": None},
+            operation="scrutinise",
+        )
         c = Claim(statement="X", objective_id="o")
         assert p.matches(c)
 
     def test_gte_filter(self):
-        p = Pattern(entity_type="claim", filters={"evidence_count__gte": 3}, operation="promote")
+        p = Pattern(
+            entity_type="claim", filters={"evidence_count__gte": 3}, operation="promote"
+        )
         c = Claim(statement="X", objective_id="o", evidence_ids=["e1", "e2", "e3"])
         assert p.matches(c)
 
     def test_gte_filter_fails(self):
-        p = Pattern(entity_type="claim", filters={"evidence_count__gte": 3}, operation="promote")
+        p = Pattern(
+            entity_type="claim", filters={"evidence_count__gte": 3}, operation="promote"
+        )
         c = Claim(statement="X", objective_id="o", evidence_ids=["e1"])
         assert not p.matches(c)
 
     def test_lte_filter(self):
-        p = Pattern(entity_type="claim", filters={"modification_count__lte": 2}, operation="ok")
+        p = Pattern(
+            entity_type="claim", filters={"modification_count__lte": 2}, operation="ok"
+        )
         c = Claim(statement="X", objective_id="o", modification_count=1)
         assert p.matches(c)
 
     def test_gt_filter(self):
-        p = Pattern(entity_type="claim", filters={"evidence_count__gt": 0}, operation="ok")
+        p = Pattern(
+            entity_type="claim", filters={"evidence_count__gt": 0}, operation="ok"
+        )
         c = Claim(statement="X", objective_id="o", evidence_ids=["e1"])
         assert p.matches(c)
 
     def test_lt_filter(self):
-        p = Pattern(entity_type="claim", filters={"modification_count__lt": 3}, operation="ok")
+        p = Pattern(
+            entity_type="claim", filters={"modification_count__lt": 3}, operation="ok"
+        )
         c = Claim(statement="X", objective_id="o", modification_count=2)
         assert p.matches(c)
 
     def test_ne_filter(self):
-        p = Pattern(entity_type="claim", filters={"stage__ne": "hypothesis"}, operation="demote")
+        p = Pattern(
+            entity_type="claim", filters={"stage__ne": "hypothesis"}, operation="demote"
+        )
         c = Claim(statement="X", objective_id="o", stage=ClaimStage.SUPPORTED)
         assert p.matches(c)
 
     def test_ne_filter_fails(self):
-        p = Pattern(entity_type="claim", filters={"stage__ne": "hypothesis"}, operation="demote")
+        p = Pattern(
+            entity_type="claim", filters={"stage__ne": "hypothesis"}, operation="demote"
+        )
         c = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS)
         assert not p.matches(c)
 
     def test_contains_filter(self):
-        p = Pattern(entity_type="claim", filters={"evidence_ids__contains": "e-1"}, operation="ok")
+        p = Pattern(
+            entity_type="claim",
+            filters={"evidence_ids__contains": "e-1"},
+            operation="ok",
+        )
         c = Claim(statement="X", objective_id="o", evidence_ids=["e-1", "e-2"])
         assert p.matches(c)
 
     def test_contains_filter_fails(self):
-        p = Pattern(entity_type="claim", filters={"evidence_ids__contains": "e-99"}, operation="ok")
+        p = Pattern(
+            entity_type="claim",
+            filters={"evidence_ids__contains": "e-99"},
+            operation="ok",
+        )
         c = Claim(statement="X", objective_id="o", evidence_ids=["e-1"])
         assert not p.matches(c)
 
@@ -81,8 +107,18 @@ class TestPatternMatching:
             filters={"stage": "hypothesis", "scrutiny_verdict": "pass"},
             operation="promote",
         )
-        c1 = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS, scrutiny_verdict="pass")
-        c2 = Claim(statement="X", objective_id="o", stage=ClaimStage.HYPOTHESIS, scrutiny_verdict=None)
+        c1 = Claim(
+            statement="X",
+            objective_id="o",
+            stage=ClaimStage.HYPOTHESIS,
+            scrutiny_verdict="pass",
+        )
+        c2 = Claim(
+            statement="X",
+            objective_id="o",
+            stage=ClaimStage.HYPOTHESIS,
+            scrutiny_verdict=None,
+        )
         assert p.matches(c1)
         assert not p.matches(c2)
 
@@ -123,10 +159,17 @@ class TestWorkPatterns:
 
         # Processing ops: must NOT be in default budgets (idempotent via pattern filters)
         processing_ops = [
-            "extract_evidence", "scrutinise_claim", "adversarial_search",
-            "assess_convergence", "validate_deductively", "verify_computationally",
-            "promote_claim", "demote_claim", "analyze_argument",
-            "generate_prediction", "record_decision",
+            "extract_evidence",
+            "scrutinise_claim",
+            "adversarial_search",
+            "assess_convergence",
+            "validate_deductively",
+            "verify_computationally",
+            "promote_claim",
+            "demote_claim",
+            "analyze_argument",
+            "generate_prediction",
+            "record_decision",
         ]
         for op in processing_ops:
             assert op not in DEFAULT_OPERATION_BUDGETS, (
@@ -137,7 +180,9 @@ class TestWorkPatterns:
 
 class TestPatternScheduler:
     async def test_new_objective_generates_clarify_work(self, repo):
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Test Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Test Q", phase="new"
+        )
         await repo.save(o)
         scheduler = PatternScheduler(repo)
         work = await scheduler.get_pending_work(objective_id="obj-1")
@@ -150,7 +195,9 @@ class TestPatternScheduler:
         assert len(work) == 0
 
     async def test_get_next_work_returns_first_pattern_work(self, repo):
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(o)
         scheduler = PatternScheduler(repo)
         item = await scheduler.get_next_work(objective_id="obj-1")
@@ -160,7 +207,9 @@ class TestPatternScheduler:
     async def test_has_pending_work(self, repo):
         scheduler = PatternScheduler(repo)
         assert not await scheduler.has_pending_work()
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(o)
         assert await scheduler.has_pending_work(objective_id="obj-1")
 
@@ -168,7 +217,9 @@ class TestPatternScheduler:
 class TestBudgetExhaustion:
     async def test_budget_limits_operations(self, repo):
         scheduler = PatternScheduler(repo, operation_budgets={"clarify_question": 1})
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(o)
 
         # Before recording, work exists
@@ -199,19 +250,25 @@ class TestEntityAttemptLimits:
     async def test_entity_exhausted_after_max_attempts(self, repo):
         # Use empty operation_budgets so only entity-level limits are tested
         scheduler = PatternScheduler(repo, operation_budgets={})
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(o)
 
         for _ in range(MAX_ENTITY_ATTEMPTS):
             scheduler.record_attempt("obj-1", "clarify_question")
 
         work = await scheduler.get_pending_work(objective_id="obj-1")
-        assert not any(w.operation == "clarify_question" and w.entity_id == "obj-1" for w in work)
+        assert not any(
+            w.operation == "clarify_question" and w.entity_id == "obj-1" for w in work
+        )
 
     async def test_entity_not_exhausted_below_limit(self, repo):
         # Use empty operation_budgets so only entity-level limits are tested
         scheduler = PatternScheduler(repo, operation_budgets={})
-        o = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        o = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(o)
 
         for _ in range(MAX_ENTITY_ATTEMPTS - 1):

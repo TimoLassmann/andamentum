@@ -144,7 +144,9 @@ class TestAllChecksPassing:
 
         # All checks should pass
         for check in report.checks:
-            assert check.passed, f"Check {check.name} should pass but didn't: {check.detail}"
+            assert check.passed, (
+                f"Check {check.name} should pass but didn't: {check.detail}"
+            )
 
         # Should have universal checks + routing checks
         check_names = {c.name for c in report.checks}
@@ -563,7 +565,9 @@ class TestAbandonedClaimsExcluded:
 
         # The abandoned claim should not drag down any checks
         for check in report.checks:
-            assert check.passed, f"Check {check.name} failed but shouldn't (abandoned claim should be ignored)"
+            assert check.passed, (
+                f"Check {check.name} failed but shouldn't (abandoned claim should be ignored)"
+            )
 
     async def test_all_claims_abandoned_fails(self):
         """If all claims are abandoned, checks requiring active claims should fail."""

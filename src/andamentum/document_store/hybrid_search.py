@@ -5,7 +5,12 @@ from typing import List, Optional, Literal
 from pathlib import Path
 
 from .connection import get_connection, DEFAULT_DB_PATH
-from .rag.search import SearchResult, SearchConfig, semantic_search, reciprocal_rank_fusion
+from .rag.search import (
+    SearchResult,
+    SearchConfig,
+    semantic_search,
+    reciprocal_rank_fusion,
+)
 from .fts import fts_search
 import json
 
@@ -70,13 +75,17 @@ def multi_strategy_search(
             # Fall back to keyword if no embedding
             results = fts_search(query, limit * 2, db_path)
         else:
-            results = semantic_search(query, query_embedding, limit * 2, config, db_path)
+            results = semantic_search(
+                query, query_embedding, limit * 2, config, db_path
+            )
 
     elif strategy == "tag":
         if not tag_filter:
             raise ValueError("tag_filter required for tag strategy")
         # Get all documents with matching tags, then rank by relevance
-        results = _tag_based_search(query, query_embedding, tag_filter, limit * 2, db_path)
+        results = _tag_based_search(
+            query, query_embedding, tag_filter, limit * 2, db_path
+        )
 
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
@@ -90,16 +99,15 @@ def multi_strategy_search(
 
 
 def _select_strategy(
-    query: str,
-    query_embedding: Optional[List[float]]
+    query: str, query_embedding: Optional[List[float]]
 ) -> Literal["semantic", "keyword", "hybrid"]:
     """Automatically select best search strategy based on query characteristics."""
     # Check for FTS5-specific syntax
     if '"' in query:  # Phrase search
         return "keyword"
-    if any(op in query.upper() for op in [' AND ', ' OR ', ' NOT ']):  # Boolean
+    if any(op in query.upper() for op in [" AND ", " OR ", " NOT "]):  # Boolean
         return "keyword"
-    if '*' in query:  # Wildcard
+    if "*" in query:  # Wildcard
         return "keyword"
 
     # If no embedding available, use keyword
@@ -122,7 +130,7 @@ def _tag_based_search(
     query_embedding: Optional[List[float]],
     tags: List[str],
     limit: int,
-    db_path: Optional[Path]
+    db_path: Optional[Path],
 ) -> List[SearchResult]:
     """Tag-filtered search using RRF fusion of semantic + keyword strategies."""
     if db_path is None:
@@ -132,14 +140,17 @@ def _tag_based_search(
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
 
-        placeholders = ','.join('?' * len(tags))
-        cursor.execute(f"""
+        placeholders = ",".join("?" * len(tags))
+        cursor.execute(
+            f"""
             SELECT DISTINCT d.id
             FROM documents d
             JOIN document_tags dt ON d.id = dt.document_id
             JOIN tags t ON dt.tag_id = t.id
             WHERE t.name IN ({placeholders})
-        """, tags)
+        """,
+            tags,
+        )
 
         doc_ids = [row[0] for row in cursor.fetchall()]
 
@@ -149,12 +160,13 @@ def _tag_based_search(
     # Stage 2: Run semantic search on tag-filtered chunks
     semantic_results = []
     if query_embedding:
-        doc_placeholders = ','.join('?' * len(doc_ids))
+        doc_placeholders = ",".join("?" * len(doc_ids))
         query_blob = json.dumps(query_embedding)
 
         with get_connection(db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 SELECT
                     c.content, c.start_char, c.end_char,
                     c.metadata, c.token_count,
@@ -167,41 +179,48 @@ def _tag_based_search(
                 WHERE d.id IN ({doc_placeholders})
                 ORDER BY distance ASC
                 LIMIT ?
-            """, (query_blob, *doc_ids, limit * 2))
+            """,
+                (query_blob, *doc_ids, limit * 2),
+            )
 
             rows = cursor.fetchall()
 
             for row in rows:
-                similarity = 1.0 - row['distance']
-                metadata = json.loads(row['metadata']) if row['metadata'] else {}
-                metadata['matched_tags'] = tags
-                dc_subject = json.loads(row['dc_subject']) if row['dc_subject'] else None
+                similarity = 1.0 - row["distance"]
+                metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                metadata["matched_tags"] = tags
+                dc_subject = (
+                    json.loads(row["dc_subject"]) if row["dc_subject"] else None
+                )
 
-                semantic_results.append(SearchResult(
-                    content=row['content'],
-                    file_path=row['file_path'],
-                    doc_id=row['doc_id'],
-                    similarity_score=similarity,
-                    match_type="semantic",
-                    start_char=row['start_char'],
-                    end_char=row['end_char'],
-                    token_count=row['token_count'],
-                    dc_title=row['dc_title'],
-                    dc_format=row['dc_format'],
-                    dc_creator=row['dc_creator'],
-                    dc_subject=dc_subject,
-                    para_type=metadata.get('para_type'),
-                    metadata=metadata
-                ))
+                semantic_results.append(
+                    SearchResult(
+                        content=row["content"],
+                        file_path=row["file_path"],
+                        doc_id=row["doc_id"],
+                        similarity_score=similarity,
+                        match_type="semantic",
+                        start_char=row["start_char"],
+                        end_char=row["end_char"],
+                        token_count=row["token_count"],
+                        dc_title=row["dc_title"],
+                        dc_format=row["dc_format"],
+                        dc_creator=row["dc_creator"],
+                        dc_subject=dc_subject,
+                        para_type=metadata.get("para_type"),
+                        metadata=metadata,
+                    )
+                )
 
     # Stage 3: Run keyword search on tag-filtered chunks
     keyword_results = []
-    doc_placeholders = ','.join('?' * len(doc_ids))
+    doc_placeholders = ",".join("?" * len(doc_ids))
 
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 c.content, c.start_char, c.end_char,
                 c.metadata, c.token_count,
@@ -215,31 +234,35 @@ def _tag_based_search(
               AND d.id IN ({doc_placeholders})
             ORDER BY bm25_score
             LIMIT ?
-        """, (query, *doc_ids, limit * 2))
+        """,
+            (query, *doc_ids, limit * 2),
+        )
 
         rows = cursor.fetchall()
 
         for row in rows:
-            metadata = json.loads(row['metadata']) if row['metadata'] else {}
-            metadata['matched_tags'] = tags
-            dc_subject = json.loads(row['dc_subject']) if row['dc_subject'] else None
+            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+            metadata["matched_tags"] = tags
+            dc_subject = json.loads(row["dc_subject"]) if row["dc_subject"] else None
 
-            keyword_results.append(SearchResult(
-                content=row['content'],
-                file_path=row['file_path'],
-                doc_id=row['doc_id'],
-                similarity_score=abs(row['bm25_score']),
-                match_type="keyword",
-                start_char=row['start_char'],
-                end_char=row['end_char'],
-                token_count=row['token_count'],
-                dc_title=row['dc_title'],
-                dc_format=row['dc_format'],
-                dc_creator=row['dc_creator'],
-                dc_subject=dc_subject,
-                para_type=metadata.get('para_type'),
-                metadata=metadata
-            ))
+            keyword_results.append(
+                SearchResult(
+                    content=row["content"],
+                    file_path=row["file_path"],
+                    doc_id=row["doc_id"],
+                    similarity_score=abs(row["bm25_score"]),
+                    match_type="keyword",
+                    start_char=row["start_char"],
+                    end_char=row["end_char"],
+                    token_count=row["token_count"],
+                    dc_title=row["dc_title"],
+                    dc_format=row["dc_format"],
+                    dc_creator=row["dc_creator"],
+                    dc_subject=dc_subject,
+                    para_type=metadata.get("para_type"),
+                    metadata=metadata,
+                )
+            )
 
     # Stage 4: Fuse with RRF
     if not semantic_results and not keyword_results:
@@ -254,22 +277,19 @@ def _tag_based_search(
         return semantic_results[:limit]
     else:
         fused_results = reciprocal_rank_fusion(
-            result_lists=[semantic_results, keyword_results],
-            k=60
+            result_lists=[semantic_results, keyword_results], k=60
         )
 
         for result in fused_results:
             result.match_type = "tag+rrf_ensemble"
-            if 'matched_tags' not in result.metadata:
-                result.metadata['matched_tags'] = tags
+            if "matched_tags" not in result.metadata:
+                result.metadata["matched_tags"] = tags
 
         return fused_results[:limit]
 
 
 def _filter_by_tags(
-    results: List[SearchResult],
-    tags: List[str],
-    db_path: Optional[Path]
+    results: List[SearchResult], tags: List[str], db_path: Optional[Path]
 ) -> List[SearchResult]:
     """Filter search results to only include documents with matching tags."""
     if db_path is None:
@@ -283,17 +303,20 @@ def _filter_by_tags(
         if not file_paths:
             return []
 
-        placeholders = ','.join('?' * len(tags))
-        file_placeholders = ','.join('?' * len(file_paths))
+        placeholders = ",".join("?" * len(tags))
+        file_placeholders = ",".join("?" * len(file_paths))
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT DISTINCT d.file_path
             FROM documents d
             JOIN document_tags dt ON d.id = dt.document_id
             JOIN tags t ON dt.tag_id = t.id
             WHERE t.name IN ({placeholders})
             AND d.file_path IN ({file_placeholders})
-        """, tags + file_paths)
+        """,
+            tags + file_paths,
+        )
 
         tagged_files = {row[0] for row in cursor.fetchall()}
 

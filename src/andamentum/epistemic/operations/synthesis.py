@@ -60,8 +60,7 @@ class FreezeSnapshotOperation(BaseOperation):
             resolution=None,
         )
         caveats: list[Uncertainty] = [
-            u for u in all_caveats
-            if isinstance(u, Uncertainty) and not u.is_blocking
+            u for u in all_caveats if isinstance(u, Uncertainty) and not u.is_blocking
         ]
 
         if len(caveats) >= 2:
@@ -69,7 +68,9 @@ class FreezeSnapshotOperation(BaseOperation):
             from ..similarity import group_by_similarity, medoid as find_medoid
 
             if not self.embedding_model:
-                raise RuntimeError("embedding_model is required for uncertainty deduplication. Pass embedding_model= to create_operations().")
+                raise RuntimeError(
+                    "embedding_model is required for uncertainty deduplication. Pass embedding_model= to create_operations()."
+                )
             caveat_texts = [c.description for c in caveats]
             embeddings = await embed_texts(caveat_texts, model=self.embedding_model)
             groups = group_by_similarity(embeddings, DEDUP_SIMILARITY_THRESHOLD)
@@ -90,9 +91,12 @@ class FreezeSnapshotOperation(BaseOperation):
 
             if deduped_count > 0:
                 import logging
+
                 logging.getLogger(__name__).info(
                     "freeze_snapshot: deduped %d/%d caveats into %d groups",
-                    deduped_count, len(caveats), len(groups),
+                    deduped_count,
+                    len(caveats),
+                    len(groups),
                 )
 
         # Get claims at or above minimum stage
@@ -100,7 +104,9 @@ class FreezeSnapshotOperation(BaseOperation):
             "claim",
             objective_id=objective.entity_id,
         )
-        claim_ids = [c.entity_id for c in claims if isinstance(c, Claim) and not c.abandoned]
+        claim_ids = [
+            c.entity_id for c in claims if isinstance(c, Claim) and not c.abandoned
+        ]
 
         # Get evidence (exclude invalidated, corroborative, and deferred)
         evidence = await self.repo.query(
@@ -111,7 +117,9 @@ class FreezeSnapshotOperation(BaseOperation):
         evidence_ids = [
             e.entity_id
             for e in evidence
-            if not e.invalidated and getattr(e, "cluster_status", "unclustered") not in ("corroborative", "deferred")
+            if not e.invalidated
+            and getattr(e, "cluster_status", "unclustered")
+            not in ("corroborative", "deferred")
         ]
 
         # Get unresolved uncertainties
@@ -208,7 +216,12 @@ class SynthesizeReportOperation(BaseOperation):
         evidence: list[Evidence] = []
         for eid in snapshot.evidence_ids:
             e = await self.repo.get("evidence", eid)
-            if isinstance(e, Evidence) and not e.invalidated and getattr(e, "cluster_status", "unclustered") not in ("corroborative", "deferred"):
+            if (
+                isinstance(e, Evidence)
+                and not e.invalidated
+                and getattr(e, "cluster_status", "unclustered")
+                not in ("corroborative", "deferred")
+            ):
                 evidence.append(e)
 
         # Load uncertainties
@@ -218,7 +231,11 @@ class SynthesizeReportOperation(BaseOperation):
             if isinstance(u, Uncertainty):
                 uncertainties.append(u)
 
-        question = objective.description if isinstance(objective, Objective) else "Research question"
+        question = (
+            objective.description
+            if isinstance(objective, Objective)
+            else "Research question"
+        )
 
         # Load verification data per claim
         from ..primitives import AdversarialEvidence, ConvergentEvidence
@@ -403,7 +420,11 @@ class SynthesizeReportOperation(BaseOperation):
             verifications = []
             if c.adversarial_checked:
                 balance = c.adversarial_balance
-                verifications.append(f"adversarial (balance: {balance:.2f})" if balance is not None else "adversarial")
+                verifications.append(
+                    f"adversarial (balance: {balance:.2f})"
+                    if balance is not None
+                    else "adversarial"
+                )
             if c.convergence_checked:
                 verifications.append("convergence")
             if c.deductive_checked:
@@ -414,7 +435,11 @@ class SynthesizeReportOperation(BaseOperation):
                 parts.append(f"  Verification: {', '.join(verifications)}")
 
             # Evidence references
-            refs = [str(evidence_index[eid]) for eid in c.evidence_ids if eid in evidence_index]
+            refs = [
+                str(evidence_index[eid])
+                for eid in c.evidence_ids
+                if eid in evidence_index
+            ]
             if refs:
                 parts.append(f"  Evidence: [{', '.join(refs)}]")
 
@@ -440,7 +465,9 @@ class SynthesizeReportOperation(BaseOperation):
         adversarial_summaries = []
         for claim_id, adv in adversarial_by_claim.items():
             # Find claim statement for context
-            claim_stmt = next((c.statement for c in claims if c.entity_id == claim_id), claim_id[:8])
+            claim_stmt = next(
+                (c.statement for c in claims if c.entity_id == claim_id), claim_id[:8]
+            )
             parts = [f'Claim: "{claim_stmt}"']
             parts.append(f"  Balance: {adv.adversarial_balance:.2f} ({adv.verdict})")
             if adv.counterarguments:
@@ -454,9 +481,13 @@ class SynthesizeReportOperation(BaseOperation):
         # Convergence results
         convergence_summaries = []
         for claim_id, conv in convergence_by_claim.items():
-            claim_stmt = next((c.statement for c in claims if c.entity_id == claim_id), claim_id[:8])
+            claim_stmt = next(
+                (c.statement for c in claims if c.entity_id == claim_id), claim_id[:8]
+            )
             parts = [f'Claim: "{claim_stmt}"']
-            parts.append(f"  Verdict: {conv.verdict} ({conv.num_independent_domains} independent domains)")
+            parts.append(
+                f"  Verdict: {conv.verdict} ({conv.num_independent_domains} independent domains)"
+            )
             if conv.convergence_strength > 0:
                 parts.append(f"  Convergence strength: {conv.convergence_strength:.2f}")
             if conv.explanation:
@@ -464,8 +495,16 @@ class SynthesizeReportOperation(BaseOperation):
             convergence_summaries.append("\n".join(parts))
 
         # Uncertainties
-        blocking = [u.description for u in uncertainties if u.is_blocking and u.resolution is None]
-        non_blocking = [u.description for u in uncertainties if not u.is_blocking and u.resolution is None]
+        blocking = [
+            u.description
+            for u in uncertainties
+            if u.is_blocking and u.resolution is None
+        ]
+        non_blocking = [
+            u.description
+            for u in uncertainties
+            if not u.is_blocking and u.resolution is None
+        ]
 
         return {
             "claims": claim_summaries,
@@ -526,7 +565,9 @@ class SynthesizeReportOperation(BaseOperation):
         # Determine confidence level
         source_types = {e.source_type for e in evidence}
         has_external = bool(source_types - {"world_knowledge"})
-        supported_plus = sum(1 for c in non_abandoned if stage_order.get(c.stage, 0) >= 1)
+        supported_plus = sum(
+            1 for c in non_abandoned if stage_order.get(c.stage, 0) >= 1
+        )
 
         if len(evidence) == 0:
             confidence_level = "none"
@@ -545,10 +586,16 @@ class SynthesizeReportOperation(BaseOperation):
             "claims_established": supported_plus,
             "claims_total": len(non_abandoned),
             "claims_abandoned": sum(1 for c in claims if c.abandoned),
-            "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total) if scrutiny_total > 0 else None,
-            "mean_confidence_score": (sum(confidence_scores) / len(confidence_scores)) if confidence_scores else None,
+            "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total)
+            if scrutiny_total > 0
+            else None,
+            "mean_confidence_score": (sum(confidence_scores) / len(confidence_scores))
+            if confidence_scores
+            else None,
             "evidence_count": len(evidence),
-            "mean_evidence_quality": (sum(quality_scores) / len(quality_scores)) if quality_scores else None,
+            "mean_evidence_quality": (sum(quality_scores) / len(quality_scores))
+            if quality_scores
+            else None,
             "unresolved_uncertainties": len(unresolved),
             "blocking_uncertainties": len(blocking),
         }
@@ -616,7 +663,9 @@ class SynthesizeReportOperation(BaseOperation):
         return "\n".join(sections)
 
     @staticmethod
-    def _build_trace(claims: list["Claim"], evidence: list["Evidence"]) -> dict[str, list[str]]:
+    def _build_trace(
+        claims: list["Claim"], evidence: list["Evidence"]
+    ) -> dict[str, list[str]]:
         """Build trace mapping from claim IDs to evidence IDs deterministically."""
         evidence_id_set = {e.entity_id for e in evidence}
         trace: dict[str, list[str]] = {}

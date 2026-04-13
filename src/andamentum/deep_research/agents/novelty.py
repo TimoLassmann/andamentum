@@ -19,13 +19,15 @@ Guidelines:
 
 Be conservative: if prior work exists that addresses the core of the claim, it's NOT novel."""
 
-register_agent(AgentDefinition(
-    name="novelty_assessor",
-    prompt=NOVELTY_ASSESSMENT_PROMPT,
-    output_model=NoveltyAssessment,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="novelty_assessor",
+        prompt=NOVELTY_ASSESSMENT_PROMPT,
+        output_model=NoveltyAssessment,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 def build_assessment_prompt(

@@ -39,7 +39,9 @@ STAGE_ORDER = {
 }
 
 
-def _claim_meets_minimum_stage(claim: "Claim", minimum: ClaimStage = MINIMUM_CLAIM_STAGE_FOR_FINDINGS) -> bool:
+def _claim_meets_minimum_stage(
+    claim: "Claim", minimum: ClaimStage = MINIMUM_CLAIM_STAGE_FOR_FINDINGS
+) -> bool:
     """Check if a claim's stage is at or above the minimum for synthesis."""
     return STAGE_ORDER.get(claim.stage, 0) >= STAGE_ORDER.get(minimum, 1)
 
@@ -108,9 +110,11 @@ class SynthesisResult:
                 sections.append(f"- {finding}")
             sections.append("")
 
-        sections.append(f"**Confidence:** {self.confidence.value.upper()} | "
-                        f"**Evidence:** {self.evidence_count} | "
-                        f"**Claims:** {self.claim_count}")
+        sections.append(
+            f"**Confidence:** {self.confidence.value.upper()} | "
+            f"**Evidence:** {self.evidence_count} | "
+            f"**Claims:** {self.claim_count}"
+        )
         sections.append("")
 
         if self.limitations:
@@ -201,7 +205,9 @@ class EpistemicSynthesizer:
             result = self._synthesize_full_results(evidence, claims, context)
 
         # Always compute quality signals from raw entities
-        result.quality_signals = self._compute_quality_signals(claims, evidence, uncertainties)
+        result.quality_signals = self._compute_quality_signals(
+            claims, evidence, uncertainties
+        )
         return result
 
     def _compute_quality_signals(
@@ -230,7 +236,9 @@ class EpistemicSynthesizer:
         scrutiny_total = 0
 
         for claim in claims:
-            if stage_order.get(claim.stage, 0) > stage_order.get(ClaimStage(max_stage), 0):
+            if stage_order.get(claim.stage, 0) > stage_order.get(
+                ClaimStage(max_stage), 0
+            ):
                 max_stage = claim.stage.value
 
             if claim.confidence_score is not None:
@@ -255,10 +263,16 @@ class EpistemicSynthesizer:
         return {
             "max_stage": max_stage,
             "claims_total": len(claims),
-            "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total) if scrutiny_total > 0 else None,
-            "mean_confidence_score": (sum(confidence_scores) / len(confidence_scores)) if confidence_scores else None,
+            "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total)
+            if scrutiny_total > 0
+            else None,
+            "mean_confidence_score": (sum(confidence_scores) / len(confidence_scores))
+            if confidence_scores
+            else None,
             "evidence_count": len(evidence),
-            "mean_evidence_quality": (sum(quality_scores) / len(quality_scores)) if quality_scores else None,
+            "mean_evidence_quality": (sum(quality_scores) / len(quality_scores))
+            if quality_scores
+            else None,
             "unresolved_uncertainties": len(unresolved),
             "blocking_uncertainties": len(blocking),
         }
@@ -300,7 +314,12 @@ class EpistemicSynthesizer:
         # Calculate claim stage distribution
         promoted_claims = 0
         for claim in claims:
-            if claim.stage.value in ("supported", "provisional", "robust", "actionable"):
+            if claim.stage.value in (
+                "supported",
+                "provisional",
+                "robust",
+                "actionable",
+            ):
                 promoted_claims += 1
 
         # Calculate confidence level - epistemically honest
@@ -426,7 +445,10 @@ class EpistemicSynthesizer:
                 f"All {context['claim_count']} claims remain at HYPOTHESIS stage - pending verification"
             )
         supported_count = context.get("supported_claim_count", 0)
-        if supported_count > 0 and context.get("uncertainty_count", 0) > supported_count * 5:
+        if (
+            supported_count > 0
+            and context.get("uncertainty_count", 0) > supported_count * 5
+        ):
             result.limitations.append(
                 f"High uncertainty ratio: {context['uncertainty_count']} open questions for {supported_count} established claims"
             )
@@ -551,18 +573,24 @@ class EpistemicSynthesizer:
         # Opening based on what we found
         if full:
             if claim_count > 0:
-                parts.append(f"Based on {evidence_count} evidence source(s), {claim_count} finding(s) were established:")
+                parts.append(
+                    f"Based on {evidence_count} evidence source(s), {claim_count} finding(s) were established:"
+                )
             else:
                 parts.append(f"Based on {evidence_count} evidence source(s):")
         else:
-            parts.append(f"Based on partial evidence ({evidence_count} source(s), some operations failed):")
+            parts.append(
+                f"Based on partial evidence ({evidence_count} source(s), some operations failed):"
+            )
 
         # Don't duplicate claims here - they're shown in "Key Findings" section
 
         # If no claims but have evidence, mention that
         if not claims and evidence:
             parts.append("")
-            parts.append("Evidence was collected but no specific claims were established yet.")
+            parts.append(
+                "Evidence was collected but no specific claims were established yet."
+            )
 
         return "\n".join(parts)
 
@@ -580,7 +608,9 @@ class EpistemicSynthesizer:
             limitations.append(f"{failed_ops} operation(s) failed during research")
 
         if context["evidence_count"] < 3:
-            limitations.append(f"Limited evidence sources ({context['evidence_count']} found)")
+            limitations.append(
+                f"Limited evidence sources ({context['evidence_count']} found)"
+            )
 
         if context["claim_count"] == 0 and context["evidence_count"] > 0:
             limitations.append("No claims could be established from available evidence")
@@ -607,7 +637,9 @@ class EpistemicSynthesizer:
             suggestions.append("More comprehensive research would improve reliability")
 
         if not suggestions:
-            suggestions.append("Consider peer review of findings for additional validation")
+            suggestions.append(
+                "Consider peer review of findings for additional validation"
+            )
 
         return suggestions
 

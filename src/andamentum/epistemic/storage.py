@@ -4,6 +4,7 @@ Defines the interface that storage backends must implement.
 andamentum's document_store subpackage provides a rich DocumentStore implementation;
 standalone users can use InMemoryStorageBackend for testing and lightweight use.
 """
+
 from typing import Protocol, Any, Optional, runtime_checkable
 from dataclasses import dataclass, field
 import uuid
@@ -12,12 +13,14 @@ import uuid
 @dataclass
 class DocumentMetadata:
     """Metadata wrapper for stored documents."""
+
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class StoredDocument:
     """A document retrieved from storage."""
+
     doc_id: str
     content: str
     metadata: Optional[DocumentMetadata] = None
@@ -26,6 +29,7 @@ class StoredDocument:
 @dataclass
 class DocumentRef:
     """A reference to a stored document (from find/query results)."""
+
     doc_id: str
 
 
@@ -185,7 +189,9 @@ class DocumentStoreAdapter:
         title: str,
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        return await self._store.add(file_path, content=content, title=title, metadata=metadata)
+        return await self._store.add(
+            file_path, content=content, title=title, metadata=metadata
+        )
 
     async def read(self, doc_id: str) -> Optional[StoredDocument]:
         doc = await self._store.read(doc_id)
@@ -211,7 +217,9 @@ class DocumentStoreAdapter:
         new_content: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> bool:
-        result = await self._store.update(doc_id, new_content=new_content, metadata=metadata)
+        result = await self._store.update(
+            doc_id, new_content=new_content, metadata=metadata
+        )
         return result.success if hasattr(result, "success") else bool(result)
 
     async def delete(self, doc_id: str) -> bool:

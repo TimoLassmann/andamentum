@@ -33,6 +33,7 @@ import numpy as np
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DHPConfig:
     """Configuration for the Dirichlet-Hawkes Process algorithm.
@@ -59,9 +60,9 @@ class DHPConfig:
     """
 
     lambda_0: float = 0.01
-    kernel_bandwidths: list[float] = field(default_factory=lambda: [
-        0.5, 1.0, 8.0, 12.0, 24.0, 48.0, 96.0, 168.0
-    ])  # Hours: 30min, 1h, 8h, 12h, 1d, 2d, 4d, 1wk
+    kernel_bandwidths: list[float] = field(
+        default_factory=lambda: [0.5, 1.0, 8.0, 12.0, 24.0, 48.0, 96.0, 168.0]
+    )  # Hours: 30min, 1h, 8h, 12h, 1d, 2d, 4d, 1wk
     n_particles: int = 8
     max_gibbs_iter: int = 100
     max_metropolis_iter: int = 50
@@ -91,6 +92,7 @@ class DHPConfig:
 # ---------------------------------------------------------------------------
 # Internal state dataclasses
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ClusterState:
@@ -166,6 +168,7 @@ class Particle:
 # Core mathematical functions
 # ---------------------------------------------------------------------------
 
+
 def _gaussian_rbf_kernel(delta: float, bandwidth: float) -> float:
     """Gaussian RBF kernel value.
 
@@ -191,7 +194,9 @@ def _gaussian_rbf_kernel(delta: float, bandwidth: float) -> float:
     return math.exp(exponent) / normalizer
 
 
-def _active_interval_lower_bound(t: float, max_bandwidth: float, epsilon: float) -> float:
+def _active_interval_lower_bound(
+    t: float, max_bandwidth: float, epsilon: float
+) -> float:
     """Compute the active interval lower bound (Eq. 22).
 
     Only documents with timestamps >= t_u need to be considered in the Hawkes
@@ -275,8 +280,8 @@ def hawkes_intensity(cluster: ClusterState, t: float, config: DHPConfig) -> floa
         delta = t - t_i
         # Sum weighted kernel values across all bandwidths
         kernel_sum = 0.0
-        for l in range(n_kernels):
-            kernel_sum += weights[l] * _gaussian_rbf_kernel(delta, bandwidths[l])
+        for k in range(n_kernels):
+            kernel_sum += weights[k] * _gaussian_rbf_kernel(delta, bandwidths[k])
 
         total_intensity += kernel_sum
 
@@ -367,7 +372,9 @@ def compute_assignment_probabilities(
     return cluster_ids, probs
 
 
-def update_cluster_centroid(cluster: ClusterState, new_embedding: np.ndarray, learning_rate: float = 0.1) -> None:
+def update_cluster_centroid(
+    cluster: ClusterState, new_embedding: np.ndarray, learning_rate: float = 0.1
+) -> None:
     """Update cluster centroid with a running weighted average.
 
     centroid_new = (1 - lr) * centroid_old + lr * new_embedding
@@ -385,7 +392,9 @@ def update_cluster_centroid(cluster: ClusterState, new_embedding: np.ndarray, le
         # First document: centroid IS the embedding
         cluster.centroid = new_embedding.copy()
     else:
-        cluster.centroid = (1.0 - learning_rate) * cluster.centroid + learning_rate * new_embedding
+        cluster.centroid = (
+            1.0 - learning_rate
+        ) * cluster.centroid + learning_rate * new_embedding
 
     # Normalize to unit length
     norm = np.linalg.norm(cluster.centroid)
@@ -422,8 +431,10 @@ def update_kernel_params(cluster: ClusterState, config: DHPConfig) -> None:
         if delta <= 0.0:
             continue
 
-        for l in range(n_kernels):
-            empirical_weights[l] += _gaussian_rbf_kernel(delta, config.kernel_bandwidths[l])
+        for k in range(n_kernels):
+            empirical_weights[k] += _gaussian_rbf_kernel(
+                delta, config.kernel_bandwidths[k]
+            )
         n_pairs += 1
 
     if n_pairs > 0 and empirical_weights.sum() > 0:
@@ -433,7 +444,9 @@ def update_kernel_params(cluster: ClusterState, config: DHPConfig) -> None:
         # As we see more data, trust the empirical estimate more
         prior_weight = 1.0 / (1.0 + n_pairs)
         uniform_prior = np.ones(n_kernels) / n_kernels
-        cluster.kernel_weights = prior_weight * uniform_prior + (1.0 - prior_weight) * empirical_weights
+        cluster.kernel_weights = (
+            prior_weight * uniform_prior + (1.0 - prior_weight) * empirical_weights
+        )
     else:
         cluster.kernel_weights = np.ones(n_kernels) / n_kernels
 
@@ -473,7 +486,7 @@ def effective_sample_size(particles: list[Particle]) -> float:
         return 1.0
 
     normalized = weights / total
-    sum_sq = np.sum(normalized ** 2)
+    sum_sq = np.sum(normalized**2)
 
     if sum_sq <= 0.0:
         return float(len(particles))
@@ -481,7 +494,9 @@ def effective_sample_size(particles: list[Particle]) -> float:
     return float(1.0 / sum_sq)
 
 
-def resample_particles(particles: list[Particle], rng: np.random.Generator) -> list[Particle]:
+def resample_particles(
+    particles: list[Particle], rng: np.random.Generator
+) -> list[Particle]:
     """Systematic resampling of particles when ESS drops below threshold.
 
     Systematic resampling is preferred over multinomial because it has lower
@@ -539,6 +554,7 @@ def resample_particles(particles: list[Particle], rng: np.random.Generator) -> l
 # ---------------------------------------------------------------------------
 # Online assignment (Algorithm 1 from paper)
 # ---------------------------------------------------------------------------
+
 
 def _create_new_cluster(
     particle: Particle,
@@ -652,6 +668,7 @@ def assign_document_online(
 # Offline re-clustering
 # ---------------------------------------------------------------------------
 
+
 def recluster(
     embeddings_and_times: list[tuple[str, np.ndarray, float]],
     config: DHPConfig,
@@ -687,12 +704,14 @@ def recluster(
     # Initialize particles
     particles: list[Particle] = []
     for _ in range(config.n_particles):
-        particles.append(Particle(
-            cluster_states={},
-            assignments={},
-            weight=0.0,
-            next_cluster_id=0,
-        ))
+        particles.append(
+            Particle(
+                cluster_states={},
+                assignments={},
+                weight=0.0,
+                next_cluster_id=0,
+            )
+        )
 
     # Process each document in temporal order
     for doc_uuid, embedding, timestamp in embeddings_and_times:
@@ -715,6 +734,7 @@ def recluster(
 # ---------------------------------------------------------------------------
 # Cluster scoring for search
 # ---------------------------------------------------------------------------
+
 
 def score_clusters_for_query(
     query_embedding: np.ndarray,
@@ -767,6 +787,7 @@ def score_clusters_for_query(
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
+
 
 def timestamp_to_hours(unix_timestamp: float) -> float:
     """Convert Unix timestamp (seconds) to hours since epoch.

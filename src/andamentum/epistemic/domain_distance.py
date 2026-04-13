@@ -5,7 +5,7 @@ Calculates domain distance between evidence pairs and clusters evidence by domai
 Architecture: Layer 1 (framework-agnostic, no model calls)
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import uuid
 
 from .primitives import (

@@ -10,7 +10,15 @@ from ..routing import (
 )
 
 
-EXPECTED_TYPES = {"verificatory", "explanatory", "exploratory", "comparative", "predictive", "compositional", "normative"}
+EXPECTED_TYPES = {
+    "verificatory",
+    "explanatory",
+    "exploratory",
+    "comparative",
+    "predictive",
+    "compositional",
+    "normative",
+}
 
 
 class TestRoutingTable:
@@ -27,12 +35,24 @@ class TestRoutingTable:
         valid = set(TrackActivation)
         for qt_name, profile in ROUTING_TABLE.items():
             for track_name, activation in profile.tracks.items():
-                assert activation in valid, f"{qt_name}.{track_name} has invalid activation: {activation}"
+                assert activation in valid, (
+                    f"{qt_name}.{track_name} has invalid activation: {activation}"
+                )
 
     def test_all_profiles_have_seven_tracks(self):
-        expected_tracks = {"adversarial", "convergence", "deductive", "computational", "argument", "contrastive", "consistency"}
+        expected_tracks = {
+            "adversarial",
+            "convergence",
+            "deductive",
+            "computational",
+            "argument",
+            "contrastive",
+            "consistency",
+        }
         for qt_name, profile in ROUTING_TABLE.items():
-            assert set(profile.tracks.keys()) == expected_tracks, f"{qt_name} missing tracks"
+            assert set(profile.tracks.keys()) == expected_tracks, (
+                f"{qt_name} missing tracks"
+            )
 
 
 class TestGetRoutingProfile:
@@ -84,7 +104,9 @@ class TestGateThresholds:
         supported = profile.gate_thresholds.get("supported", {})
         verificatory_profile = get_routing_profile("verificatory")
         v_supported = verificatory_profile.gate_thresholds.get("supported", {})
-        assert supported.get("min_evidence_weighted", 1.0) <= v_supported.get("min_evidence_weighted", 1.0)
+        assert float(supported.get("min_evidence_weighted", 1.0)) <= float(  # type: ignore[arg-type]
+            v_supported.get("min_evidence_weighted", 1.0)  # type: ignore[arg-type]
+        )
 
     def test_predictive_requires_falsification(self):
         profile = get_routing_profile("predictive")

@@ -11,8 +11,8 @@ from typing import Any
 import httpx
 
 from ..operations import GatheredEvidence
-from ..providers.monarch import MonarchProvider, MONARCH_API
-from ..providers.openalex import OpenAlexProvider, OpenAlexQualityScorer
+from ..providers.monarch import MonarchProvider
+from ..providers.openalex import OpenAlexProvider
 
 # Capture real AsyncClient before any patching
 _RealAsyncClient = httpx.AsyncClient
@@ -48,6 +48,7 @@ def _make_patched_client(transport):
     Uses the captured _RealAsyncClient to avoid recursion when httpx.AsyncClient
     is globally patched.
     """
+
     class PatchedClient:
         def __init__(self, **kwargs):
             self._client = _RealAsyncClient(transport=transport, timeout=30.0)
@@ -63,6 +64,7 @@ def _make_patched_client(transport):
 
 def _make_failing_client():
     """Create a client that always fails on connect."""
+
     class FailingClient:
         def __init__(self, **kwargs):
             pass
@@ -91,22 +93,35 @@ class TestMonarchSearchParams:
 
     async def test_search_sends_separate_category_params(self, monkeypatch):
         """Each category must be a separate query parameter, not comma-separated."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [
-                {"name": "BRCA1", "category": "biolink:Gene", "id": "HGNC:1100", "description": "DNA repair"},
-            ]},
-            "/v3/api/association": {"items": []},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [
+                        {
+                            "name": "BRCA1",
+                            "category": "biolink:Gene",
+                            "id": "HGNC:1100",
+                            "description": "DNA repair",
+                        },
+                    ]
+                },
+                "/v3/api/association": {"items": []},
+            }
+        )
 
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
         provider = MonarchProvider(max_results=5)
-        results = await provider.gather("BRCA1 breast cancer")
+        await provider.gather("BRCA1 breast cancer")
 
         assert len(transport.requests) >= 1
 
         search_request = transport.requests[0]
-        raw_query = search_request.url.raw_path.decode("utf-8") if isinstance(search_request.url.raw_path, bytes) else str(search_request.url)
+        raw_query = (
+            search_request.url.raw_path.decode("utf-8")
+            if isinstance(search_request.url.raw_path, bytes)
+            else str(search_request.url)
+        )
 
         # The category parameter must appear TWICE as separate params
         category_count = raw_query.count("category=")
@@ -117,13 +132,27 @@ class TestMonarchSearchParams:
 
     async def test_search_returns_gathered_evidence(self, monkeypatch):
         """Search results should be parsed into GatheredEvidence objects."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [
-                {"name": "BRCA1", "category": "biolink:Gene", "id": "HGNC:1100", "description": "DNA repair gene"},
-                {"name": "Breast Cancer", "category": "biolink:Disease", "id": "MONDO:0007254", "description": "Malignant neoplasm"},
-            ]},
-            "/v3/api/association": {"items": []},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [
+                        {
+                            "name": "BRCA1",
+                            "category": "biolink:Gene",
+                            "id": "HGNC:1100",
+                            "description": "DNA repair gene",
+                        },
+                        {
+                            "name": "Breast Cancer",
+                            "category": "biolink:Disease",
+                            "id": "MONDO:0007254",
+                            "description": "Malignant neoplasm",
+                        },
+                    ]
+                },
+                "/v3/api/association": {"items": []},
+            }
+        )
 
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
@@ -138,13 +167,26 @@ class TestMonarchSearchParams:
 
     async def test_search_skips_items_without_name(self, monkeypatch):
         """Items missing 'name' field should be skipped."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [
-                {"category": "biolink:Gene", "id": "X", "description": "No name"},
-                {"name": "Valid", "category": "biolink:Gene", "id": "Y", "description": "Has name"},
-            ]},
-            "/v3/api/association": {"items": []},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [
+                        {
+                            "category": "biolink:Gene",
+                            "id": "X",
+                            "description": "No name",
+                        },
+                        {
+                            "name": "Valid",
+                            "category": "biolink:Gene",
+                            "id": "Y",
+                            "description": "Has name",
+                        },
+                    ]
+                },
+                "/v3/api/association": {"items": []},
+            }
+        )
 
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
@@ -158,20 +200,31 @@ class TestMonarchSearchParams:
 class TestMonarchAssociations:
     async def test_association_lookup_uses_entity_ids(self, monkeypatch):
         """Entity IDs from search results should be used for association lookups."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [
-                {"name": "BRCA1", "category": "biolink:Gene", "id": "HGNC:1100", "description": ""},
-            ]},
-            "/v3/api/association": {"items": [
-                {
-                    "subject": {"name": "BRCA1", "id": "HGNC:1100"},
-                    "object": {"name": "Breast Cancer", "id": "MONDO:0007254"},
-                    "predicate": "associated_with",
-                    "evidence_types": ["ECO:0000269"],
-                    "publications": ["PMID:12345"],
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [
+                        {
+                            "name": "BRCA1",
+                            "category": "biolink:Gene",
+                            "id": "HGNC:1100",
+                            "description": "",
+                        },
+                    ]
                 },
-            ]},
-        })
+                "/v3/api/association": {
+                    "items": [
+                        {
+                            "subject": {"name": "BRCA1", "id": "HGNC:1100"},
+                            "object": {"name": "Breast Cancer", "id": "MONDO:0007254"},
+                            "predicate": "associated_with",
+                            "evidence_types": ["ECO:0000269"],
+                            "publications": ["PMID:12345"],
+                        },
+                    ]
+                },
+            }
+        )
 
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
@@ -185,9 +238,13 @@ class TestMonarchAssociations:
 class TestMonarchHealthCheck:
     async def test_health_check_uses_same_params_as_production(self, monkeypatch):
         """Health check must use the same parameter format as production searches."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [{"name": "BRCA1", "id": "X", "category": "biolink:Gene"}]},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [{"name": "BRCA1", "id": "X", "category": "biolink:Gene"}]
+                },
+            }
+        )
 
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
@@ -198,7 +255,11 @@ class TestMonarchHealthCheck:
         assert len(transport.requests) == 1
 
         req = transport.requests[0]
-        raw_query = req.url.raw_path.decode("utf-8") if isinstance(req.url.raw_path, bytes) else str(req.url)
+        raw_query = (
+            req.url.raw_path.decode("utf-8")
+            if isinstance(req.url.raw_path, bytes)
+            else str(req.url)
+        )
         category_count = raw_query.count("category=")
         assert category_count == 2, (
             f"Health check must use same params as production. Got {category_count} category params."
@@ -232,9 +293,27 @@ class TestMonarchHealthCheck:
 class TestMonarchExtractEntityIds:
     def test_extracts_ids_from_quality_metadata(self):
         results = [
-            GatheredEvidence(content="A", source_ref="x", source_type="monarch_initiative", quality_score=0.7, quality_metadata={"entity_id": "HGNC:1100"}),
-            GatheredEvidence(content="B", source_ref="y", source_type="monarch_initiative", quality_score=0.7, quality_metadata={"entity_id": "MONDO:007"}),
-            GatheredEvidence(content="C", source_ref="z", source_type="monarch_initiative", quality_score=0.7, quality_metadata={}),
+            GatheredEvidence(
+                content="A",
+                source_ref="x",
+                source_type="monarch_initiative",
+                quality_score=0.7,
+                quality_metadata={"entity_id": "HGNC:1100"},
+            ),
+            GatheredEvidence(
+                content="B",
+                source_ref="y",
+                source_type="monarch_initiative",
+                quality_score=0.7,
+                quality_metadata={"entity_id": "MONDO:007"},
+            ),
+            GatheredEvidence(
+                content="C",
+                source_ref="z",
+                source_type="monarch_initiative",
+                quality_score=0.7,
+                quality_metadata={},
+            ),
         ]
         ids = MonarchProvider._extract_entity_ids(results, "test")
         assert ids == ["HGNC:1100", "MONDO:007"]
@@ -245,7 +324,12 @@ class TestMonarchExtractEntityIds:
 
     def test_no_metadata(self):
         results = [
-            GatheredEvidence(content="A", source_ref="x", source_type="monarch_initiative", quality_score=0.7),
+            GatheredEvidence(
+                content="A",
+                source_ref="x",
+                source_type="monarch_initiative",
+                quality_score=0.7,
+            ),
         ]
         ids = MonarchProvider._extract_entity_ids(results, "test")
         assert ids == []
@@ -281,7 +365,9 @@ class TestOpenAlexProvider:
                 ),  # Should be skipped (no title or abstract)
             ]
 
-        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search)
+        monkeypatch.setattr(
+            "andamentum.epistemic.providers.openalex.search_literature", mock_search
+        )
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("spaced repetition")
@@ -310,7 +396,9 @@ class TestOpenAlexProvider:
                 ),
             ]
 
-        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search)
+        monkeypatch.setattr(
+            "andamentum.epistemic.providers.openalex.search_literature", mock_search
+        )
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test")
@@ -377,7 +465,9 @@ class TestGetBiomedicalProviders:
 
         providers = get_biomedical_providers()
         for name, provider in providers.items():
-            assert hasattr(provider, "check_health"), f"{name} provider missing check_health()"
+            assert hasattr(provider, "check_health"), (
+                f"{name} provider missing check_health()"
+            )
             assert hasattr(provider, "gather"), f"{name} provider missing gather()"
 
 
@@ -430,9 +520,11 @@ class TestMonarchErrorPaths:
 
     async def test_empty_items_response(self, monkeypatch):
         """API returns {"items": []} → verify empty list returned."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": []},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {"items": []},
+            }
+        )
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
         provider = MonarchProvider(max_results=5)
@@ -442,15 +534,28 @@ class TestMonarchErrorPaths:
 
     async def test_partial_items_missing_fields(self, monkeypatch):
         """Items missing 'name'/'id' fields → verify skipped gracefully."""
-        transport = MockTransport(responses={
-            "/v3/api/search": {"items": [
-                {"description": "no name or id"},
-                {"id": "HGNC:999"},  # has id but no name
-                {"name": "", "id": "HGNC:888", "description": "empty name"},  # empty name should be skipped
-                {"name": "ValidGene", "category": "biolink:Gene", "id": "HGNC:100", "description": "Good entry"},
-            ]},
-            "/v3/api/association": {"items": []},
-        })
+        transport = MockTransport(
+            responses={
+                "/v3/api/search": {
+                    "items": [
+                        {"description": "no name or id"},
+                        {"id": "HGNC:999"},  # has id but no name
+                        {
+                            "name": "",
+                            "id": "HGNC:888",
+                            "description": "empty name",
+                        },  # empty name should be skipped
+                        {
+                            "name": "ValidGene",
+                            "category": "biolink:Gene",
+                            "id": "HGNC:100",
+                            "description": "Good entry",
+                        },
+                    ]
+                },
+                "/v3/api/association": {"items": []},
+            }
+        )
         monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
 
         provider = MonarchProvider(max_results=10)
@@ -505,7 +610,10 @@ class TestOpenAlexErrorPaths:
         async def mock_search_raises(query, max_results=10):
             raise RuntimeError("OpenAlex API unreachable")
 
-        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_raises)
+        monkeypatch.setattr(
+            "andamentum.epistemic.providers.openalex.search_literature",
+            mock_search_raises,
+        )
 
         provider = OpenAlexProvider(max_results=10)
         # OpenAlex.gather() does NOT catch exceptions — it propagates.
@@ -519,7 +627,10 @@ class TestOpenAlexErrorPaths:
         async def mock_search_empty(query, max_results=10):
             return []
 
-        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_empty)
+        monkeypatch.setattr(
+            "andamentum.epistemic.providers.openalex.search_literature",
+            mock_search_empty,
+        )
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test query")
@@ -542,7 +653,10 @@ class TestOpenAlexErrorPaths:
                 ),
             ]
 
-        monkeypatch.setattr("andamentum.epistemic.providers.openalex.search_literature", mock_search_no_quality)
+        monkeypatch.setattr(
+            "andamentum.epistemic.providers.openalex.search_literature",
+            mock_search_no_quality,
+        )
 
         provider = OpenAlexProvider(max_results=10)
         results = await provider.gather("test")
@@ -561,7 +675,11 @@ class TestOpenAlexErrorPaths:
 class _MockProvider:
     """Mock provider implementing the same gather(query) interface as Monarch/OpenAlex."""
 
-    def __init__(self, results: list[GatheredEvidence] | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        results: list[GatheredEvidence] | None = None,
+        error: Exception | None = None,
+    ):
         self._results = results or []
         self._error = error
 
@@ -574,7 +692,11 @@ class _MockProvider:
 class _MockWebSearch:
     """Mock WebSearchGatherer implementing gather(source_type, query)."""
 
-    def __init__(self, results: list[GatheredEvidence] | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        results: list[GatheredEvidence] | None = None,
+        error: Exception | None = None,
+    ):
         self._results = results or []
         self._error = error
 

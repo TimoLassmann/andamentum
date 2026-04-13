@@ -64,13 +64,15 @@ You will receive:
 - `reasoning`: One sentence explaining why
 """
 
-JUDGE_EVIDENCE = register_agent(AgentDefinition(
-    name="epistemic_judge_evidence",
-    prompt=JUDGE_EVIDENCE_PROMPT,
-    output_model=EvidenceJudgmentOutput,
-    retries=2,
-    output_retries=3,
-))
+JUDGE_EVIDENCE = register_agent(
+    AgentDefinition(
+        name="epistemic_judge_evidence",
+        prompt=JUDGE_EVIDENCE_PROMPT,
+        output_model=EvidenceJudgmentOutput,
+        retries=2,
+        output_retries=3,
+    )
+)
 
 # ── epistemic_judge_independence ──────────────────────────────────────
 
@@ -113,10 +115,12 @@ You will receive:
 - `reasoning`: One sentence explaining why
 """
 
-JUDGE_INDEPENDENCE = register_agent(AgentDefinition(
-    name="epistemic_judge_independence",
-    prompt=JUDGE_INDEPENDENCE_PROMPT,
-    output_model=IndependenceJudgmentOutput,
-    retries=2,
-    output_retries=3,
-))
+JUDGE_INDEPENDENCE = register_agent(
+    AgentDefinition(
+        name="epistemic_judge_independence",
+        prompt=JUDGE_INDEPENDENCE_PROMPT,
+        output_model=IndependenceJudgmentOutput,
+        retries=2,
+        output_retries=3,
+    )
+)

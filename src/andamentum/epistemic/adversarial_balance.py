@@ -16,7 +16,9 @@ from .primitives import (
 )
 
 
-def calculate_adversarial_balance(supporting_weight: float, adversarial_weight: float) -> float:
+def calculate_adversarial_balance(
+    supporting_weight: float, adversarial_weight: float
+) -> float:
     """Calculate adversarial balance score.
 
     From spec Part 6.3:
@@ -65,7 +67,9 @@ def interpret_balance(balance: float) -> str:
         return "Strongly challenged - substantial counterarguments undermine claim"
 
 
-def determine_verdict(balance: float, counterarguments: List[Counterargument]) -> Tuple[str, str, float]:
+def determine_verdict(
+    balance: float, counterarguments: List[Counterargument]
+) -> Tuple[str, str, float]:
     """Determine verdict and recommendation from adversarial results.
 
     Args:
@@ -82,11 +86,18 @@ def determine_verdict(balance: float, counterarguments: List[Counterargument]) -
     - REFUTED: Overwhelming adversarial evidence
     """
     # Count strong counterarguments
-    strong_counters = sum(1 for c in counterarguments if c.match_strength == "strong" and c.quality.passes_threshold)
+    strong_counters = sum(
+        1
+        for c in counterarguments
+        if c.match_strength == "strong" and c.quality.passes_threshold
+    )
 
     # Check for replication failures (highest impact)
     replication_failures = sum(
-        1 for c in counterarguments if c.category == CriticismCategory.REPLICATION_FAILURE and c.quality.passes_threshold
+        1
+        for c in counterarguments
+        if c.category == CriticismCategory.REPLICATION_FAILURE
+        and c.quality.passes_threshold
     )
 
     # Determine verdict
@@ -120,7 +131,9 @@ def determine_verdict(balance: float, counterarguments: List[Counterargument]) -
         return "REFUTED", "refute", 0.75
 
 
-def calculate_total_adversarial_weight(counterarguments: List[Counterargument]) -> float:
+def calculate_total_adversarial_weight(
+    counterarguments: List[Counterargument],
+) -> float:
     """Calculate total weight of adversarial evidence.
 
     Only counts counterarguments that pass quality threshold.
@@ -131,10 +144,16 @@ def calculate_total_adversarial_weight(counterarguments: List[Counterargument]) 
     Returns:
         Sum of weights for valid counterarguments.
     """
-    return sum(c.weight for c in counterarguments if c.quality.passes_threshold and c.match_strength != "none")
+    return sum(
+        c.weight
+        for c in counterarguments
+        if c.quality.passes_threshold and c.match_strength != "none"
+    )
 
 
-def should_flag_for_review(balance: float, counterarguments: List[Counterargument]) -> Tuple[bool, Optional[str]]:
+def should_flag_for_review(
+    balance: float, counterarguments: List[Counterargument]
+) -> Tuple[bool, Optional[str]]:
     """Determine if results should be flagged for human review.
 
     From spec Part 6.3: Flag suspicious patterns.
@@ -160,15 +179,23 @@ def should_flag_for_review(balance: float, counterarguments: List[Counterargumen
         return True, "Many low-quality counterarguments - may need better sources"
 
     # Ad hominem attacks present (filtered but should note)
-    ad_hominems = sum(1 for c in counterarguments if c.category == CriticismCategory.AD_HOMINEM)
+    ad_hominems = sum(
+        1 for c in counterarguments if c.category == CriticismCategory.AD_HOMINEM
+    )
     if ad_hominems > 0:
-        return True, f"{ad_hominems} ad hominem attacks filtered - topic may be politically charged"
+        return (
+            True,
+            f"{ad_hominems} ad hominem attacks filtered - topic may be politically charged",
+        )
 
     return False, None
 
 
 def generate_explanation(
-    balance: float, counterarguments: List[Counterargument], verdict: str, recommendation: str
+    balance: float,
+    counterarguments: List[Counterargument],
+    verdict: str,
+    recommendation: str,
 ) -> str:
     """Generate human-readable explanation of adversarial search results.
 
@@ -181,7 +208,11 @@ def generate_explanation(
     Returns:
         Explanation text.
     """
-    valid_counters = [c for c in counterarguments if c.quality.passes_threshold and c.match_strength != "none"]
+    valid_counters = [
+        c
+        for c in counterarguments
+        if c.quality.passes_threshold and c.match_strength != "none"
+    ]
     strong_counters = [c for c in valid_counters if c.match_strength == "strong"]
 
     parts = []
@@ -194,7 +225,9 @@ def generate_explanation(
     if not counterarguments:
         parts.append("No counterarguments discovered during adversarial search.")
     else:
-        parts.append(f"Found {len(counterarguments)} potential counterarguments, {len(valid_counters)} meet quality threshold.")
+        parts.append(
+            f"Found {len(counterarguments)} potential counterarguments, {len(valid_counters)} meet quality threshold."
+        )
 
         if strong_counters:
             parts.append(f"Strong challenges: {len(strong_counters)}")
@@ -238,13 +271,17 @@ def synthesize_adversarial_result(
     adversarial_weight = calculate_total_adversarial_weight(counterarguments)
 
     # Calculate balance
-    balance = calculate_adversarial_balance(supporting_evidence_weight, adversarial_weight)
+    balance = calculate_adversarial_balance(
+        supporting_evidence_weight, adversarial_weight
+    )
 
     # Determine verdict
     verdict, recommendation, confidence = determine_verdict(balance, counterarguments)
 
     # Generate explanation
-    explanation = generate_explanation(balance, counterarguments, verdict, recommendation)
+    explanation = generate_explanation(
+        balance, counterarguments, verdict, recommendation
+    )
 
     return AdversarialEvidence(
         evidence_id=str(uuid.uuid4()),

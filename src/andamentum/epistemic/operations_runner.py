@@ -141,7 +141,7 @@ def _build_step_content(
 
     # Agent I/O
     for i, call in enumerate(agent_calls):
-        agent_label = f"Agent Call" if len(agent_calls) == 1 else f"Agent Call {i + 1}"
+        agent_label = "Agent Call" if len(agent_calls) == 1 else f"Agent Call {i + 1}"
         sections.append(f"## {agent_label}: {call.get('agent_name', 'unknown')}\n")
         sections.append("### Input\n```json")
         sections.append(json.dumps(call.get("input", {}), indent=2, default=str))
@@ -177,7 +177,9 @@ async def _record_step(
 ) -> None:
     """Record a single execution step as a document in the epistemic database."""
     state_changes = _compute_state_changes(entity_before, entity_after)
-    content = _build_step_content(agent_calls, entity_before, entity_after, state_changes)
+    content = _build_step_content(
+        agent_calls, entity_before, entity_after, state_changes
+    )
 
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -256,13 +258,16 @@ async def _record_termination(
         # Check claims
         try:
             from .entities import Claim
+
             claims = await repo.query("claim", objective_id=objective_id)
             for c in claims:
                 if not isinstance(c, Claim):
                     continue
                 issues: list[str] = []
                 if c.scrutiny_verdict == "needs_resolution":
-                    issues.append("scrutiny_verdict='needs_resolution' (no pattern handles this)")
+                    issues.append(
+                        "scrutiny_verdict='needs_resolution' (no pattern handles this)"
+                    )
                 if c.scrutiny_verdict is None:
                     issues.append("scrutiny_verdict=None (awaiting scrutiny)")
                 if issues:
@@ -273,7 +278,9 @@ async def _record_termination(
                         "issues": issues,
                     }
                     blocking_entities.append(entity_info)
-                    content_parts.append(f"- **Claim** `{c.entity_id[:12]}` (stage={c.stage.value})")
+                    content_parts.append(
+                        f"- **Claim** `{c.entity_id[:12]}` (stage={c.stage.value})"
+                    )
                     for issue in issues:
                         content_parts.append(f"  - {issue}")
         except Exception as e:
@@ -282,11 +289,14 @@ async def _record_termination(
         # Check objective phase
         try:
             from .entities import Objective
+
             obj = await repo.get("objective", objective_id)
             if isinstance(obj, Objective):
                 content_parts.append(f"\n**Objective phase**: {obj.phase}")
                 if obj.phase == "claims_proposed" and not blocking_entities:
-                    content_parts.append("  Objective stuck at claims_proposed — check claim states above")
+                    content_parts.append(
+                        "  Objective stuck at claims_proposed — check claim states above"
+                    )
         except Exception:
             pass
 
@@ -370,7 +380,7 @@ async def _force_synthesis_if_needed(
         obj.phase = "claims_done"
         obj.snapshot_id = None
         await repo.save(obj)
-        logger.info(f"Force-triggered synthesis: set objective phase to claims_done")
+        logger.info("Force-triggered synthesis: set objective phase to claims_done")
         return True
 
     # Phase is already claims_done but no snapshot yet — scheduler should pick it up
@@ -464,16 +474,26 @@ async def run_research_question(
 
     # Create agent runner, evidence gatherer, and operations
     from .runner import DefaultAgentRunner
+
+    if not model:
+        raise ValueError(
+            "model is required for run_research_question. "
+            "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
+        )
     agent_runner = DefaultAgentRunner(model=model)
 
     # Auto-load providers based on `provider` string when no explicit providers given
     if providers is None and provider == "all":
         from .providers import get_biomedical_providers
+
         providers = get_biomedical_providers()
 
-    evidence_gatherer = get_default_gatherer(model=model, providers=providers) if model else None
+    evidence_gatherer = (
+        get_default_gatherer(model=model, providers=providers) if model else None
+    )
     operations = create_operations(
-        repo, agent_runner,
+        repo,
+        agent_runner,
         evidence_gatherer=evidence_gatherer,
         quality_scorer=quality_scorer,
     )
@@ -510,11 +530,21 @@ async def run_research_question(
             if verbose:
                 logger.info("No more pending work")
             # Record termination
-            termination_reason = "complete" if successful > 0 else "no_matching_patterns"
+            termination_reason = (
+                "complete" if successful > 0 else "no_matching_patterns"
+            )
             await _record_termination(
-                store, repo, run_id, step_number + 1, objective_id,
-                termination_reason, iterations, successful, failed,
-                run_started_at, errors,
+                store,
+                repo,
+                run_id,
+                step_number + 1,
+                objective_id,
+                termination_reason,
+                iterations,
+                successful,
+                failed,
+                run_started_at,
+                errors,
             )
             break
 
@@ -525,7 +555,9 @@ async def run_research_question(
         scheduler.record_attempt(work.entity_id, work.operation)
 
         if verbose:
-            logger.info(f"[{iterations}] {work.operation} on {work.entity_type}:{work.entity_id[:8]}")
+            logger.info(
+                f"[{iterations}] {work.operation} on {work.entity_type}:{work.entity_id[:8]}"
+            )
 
         # Get operation handler
         op = operations.get(work.operation)
@@ -553,17 +585,27 @@ async def run_research_question(
             completed_at = datetime.now(timezone.utc)
 
             # Capture state AFTER execution
-            entity_after = await _snapshot_entity(repo, work.entity_type, work.entity_id)
+            entity_after = await _snapshot_entity(
+                repo, work.entity_type, work.entity_id
+            )
             obj_after = await _snapshot_entity(repo, "objective", objective_id)
             obj_phase_after = obj_after.get("phase") if obj_after else None
 
             # Record execution step
             await _record_step(
-                store, run_id, step_number, work, result,
+                store,
+                run_id,
+                step_number,
+                work,
+                result,
                 op._agent_calls,
-                entity_before, entity_after,
-                obj_phase_before, obj_phase_after,
-                started_at, completed_at, objective_id,
+                entity_before,
+                entity_after,
+                obj_phase_before,
+                obj_phase_after,
+                started_at,
+                completed_at,
+                objective_id,
             )
 
             if result.success:
@@ -603,17 +645,26 @@ async def run_research_question(
 
             # Record failed step (create a minimal OperationResult for the trace)
             from .operations import OperationResult as _OR
+
             error_result = _OR(
                 success=False,
                 entity_id=work.entity_id,
                 message=error_msg,
             )
             await _record_step(
-                store, run_id, step_number, work, error_result,
+                store,
+                run_id,
+                step_number,
+                work,
+                error_result,
                 op._agent_calls,
-                entity_before, None,
-                obj_phase_before, None,
-                started_at, completed_at, objective_id,
+                entity_before,
+                None,
+                obj_phase_before,
+                None,
+                started_at,
+                completed_at,
+                objective_id,
             )
     else:
         # Loop ended due to max_iterations — try to force synthesis before giving up
@@ -621,6 +672,7 @@ async def run_research_question(
         if forced:
             # Execute ONLY synthesis operations (freeze_snapshot + synthesize_report).
             from .patterns import SYNTHESIS_OPS
+
             for _ in range(5):  # enough for freeze_snapshot + synthesize_report
                 all_work = await scheduler.get_pending_work(objective_id)
                 synthesis_work = [w for w in all_work if w.operation in SYNTHESIS_OPS]
@@ -637,15 +689,27 @@ async def run_research_question(
                         successful += 1
                     else:
                         failed += 1
-                        logger.warning(f"Post-budget synthesis {work.operation} failed: {result.message}")
+                        logger.warning(
+                            f"Post-budget synthesis {work.operation} failed: {result.message}"
+                        )
                 except Exception as e:
                     failed += 1
-                    logger.warning(f"Post-budget synthesis {work.operation} exception: {e}")
+                    logger.warning(
+                        f"Post-budget synthesis {work.operation} exception: {e}"
+                    )
 
         await _record_termination(
-            store, repo, run_id, step_number + 1, objective_id,
-            "max_iterations", iterations, successful, failed,
-            run_started_at, errors,
+            store,
+            repo,
+            run_id,
+            step_number + 1,
+            objective_id,
+            "max_iterations",
+            iterations,
+            successful,
+            failed,
+            run_started_at,
+            errors,
         )
 
     # Determine final status
@@ -665,12 +729,16 @@ async def run_research_question(
     if successful > 0:
         try:
             from .confidence import compute_answer_confidence
-            answer_confidence_report = await compute_answer_confidence(repo, objective_id)
+
+            answer_confidence_report = await compute_answer_confidence(
+                repo, objective_id
+            )
         except Exception as e:
             logger.warning(f"Answer confidence computation failed: {e}")
 
         try:
             from .confidence import compute_posterior
+
             posterior_report = await compute_posterior(repo, objective_id)
         except Exception as e:
             logger.warning(f"Posterior computation failed: {e}")
@@ -705,36 +773,47 @@ async def get_research_summary(
 
     # Find objective
     if not objective_id:
-        results = await store.find_by_metadata({
-            "epistemic_type": "objective",
-        }, limit=1)
+        results = await store.find_by_metadata(
+            {
+                "epistemic_type": "objective",
+            },
+            limit=1,
+        )
         if not results:
             return {"error": "No objective found"}
         objective_id = results[0].metadata.get("objective_id")
 
     # Collect claims
-    claims = await store.find_by_metadata({
-        "epistemic_type": "claim",
-        "objective_id": objective_id,
-    })
+    claims = await store.find_by_metadata(
+        {
+            "epistemic_type": "claim",
+            "objective_id": objective_id,
+        }
+    )
 
     # Collect evidence
-    evidence = await store.find_by_metadata({
-        "epistemic_type": "evidence",
-        "objective_id": objective_id,
-    })
+    evidence = await store.find_by_metadata(
+        {
+            "epistemic_type": "evidence",
+            "objective_id": objective_id,
+        }
+    )
 
     # Collect uncertainties
-    uncertainties = await store.find_by_metadata({
-        "epistemic_type": "uncertainty",
-        "objective_id": objective_id,
-    })
+    uncertainties = await store.find_by_metadata(
+        {
+            "epistemic_type": "uncertainty",
+            "objective_id": objective_id,
+        }
+    )
 
     # Collect artefacts
-    artefacts = await store.find_by_metadata({
-        "epistemic_type": "artefact",
-        "objective_id": objective_id,
-    })
+    artefacts = await store.find_by_metadata(
+        {
+            "epistemic_type": "artefact",
+            "objective_id": objective_id,
+        }
+    )
 
     return {
         "objective_id": objective_id,

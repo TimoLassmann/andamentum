@@ -75,7 +75,13 @@ from .metadata_models import (
     DocumentLLMFields,
     DocumentMetadataFields,
 )
-from .models import Document, DocumentMetadata, DocumentType, ReembedResult, UpdateResult
+from .models import (
+    Document,
+    DocumentMetadata,
+    DocumentType,
+    ReembedResult,
+    UpdateResult,
+)
 from .search import (
     MultiDatabaseSearchResult,
     SearchResultMetadata,

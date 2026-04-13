@@ -28,13 +28,17 @@ from pydantic import BaseModel, Field
 
 class SimpleOutput(BaseModel):
     """2 fields — minimal."""
+
     answer: str = Field(description="A short answer")
     confidence: float = Field(description="Confidence between 0.0 and 1.0")
 
 
 class MediumOutput(BaseModel):
     """4 fields — typical epistemic agent."""
-    question_type: str = Field(description="One of: verificatory, explanatory, exploratory, comparative")
+
+    question_type: str = Field(
+        description="One of: verificatory, explanatory, exploratory, comparative"
+    )
     reasoning: str = Field(description="One sentence explaining the classification")
     key_terms: list[str] = Field(description="2-3 key terms from the question")
     confidence: float = Field(description="Confidence between 0.0 and 1.0")
@@ -42,6 +46,7 @@ class MediumOutput(BaseModel):
 
 class ComplexOutput(BaseModel):
     """6+ fields with optional and nested — where small models struggle."""
+
     title: str = Field(description="A concise title")
     verdict: str = Field(default="", description="One sentence bottom line")
     answer: str = Field(description="2-3 paragraph answer")
@@ -52,14 +57,20 @@ class ComplexOutput(BaseModel):
 
 class WriteAnswerOutput(BaseModel):
     """The actual output model that fails in production."""
+
     title: str = Field(description="A concise title for the research report")
-    verdict: str = Field(default="", description="One sentence answering the research question")
+    verdict: str = Field(
+        default="", description="One sentence answering the research question"
+    )
     answer: str = Field(description="A direct answer to the research question")
 
 
 class ClarifyOutput(BaseModel):
     """The clarify_question output model."""
-    clarified_question: str = Field(description="Clarified version of the research question")
+
+    clarified_question: str = Field(
+        description="Clarified version of the research question"
+    )
     key_terms: list[str] = Field(description="Key terms identified")
     reasoning: str = Field(description="Why this clarification improves the question")
 
@@ -190,7 +201,7 @@ async def run_test(
                 "kind": msg.kind,
             }
             if hasattr(msg, "content"):
-                content = msg.content
+                content = getattr(msg, "content")  # type: ignore[union-attr]
                 if isinstance(content, str):
                     msg_dict["content"] = content[:500]
                 elif isinstance(content, list):
@@ -198,12 +209,16 @@ async def run_test(
                     parts_summary = []
                     for part in content:
                         if hasattr(part, "content"):
-                            parts_summary.append(f"{part.part_kind}: {str(part.content)[:200]}")
+                            parts_summary.append(
+                                f"{part.part_kind}: {str(part.content)[:200]}"
+                            )
                         elif hasattr(part, "args"):
-                            parts_summary.append(f"{part.part_kind}: {str(part.args)[:200]}")
+                            parts_summary.append(
+                                f"{part.part_kind}: {str(part.args)[:200]}"
+                            )
                         else:
                             parts_summary.append(str(part)[:200])
-                    msg_dict["parts"] = parts_summary
+                    msg_dict["parts"] = parts_summary  # type: ignore[assignment]
             messages.append(msg_dict)
 
         return TestResult(
@@ -230,8 +245,12 @@ async def run_test(
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Test structured output reliability")
-    parser.add_argument("--model", required=True, help="Model string (e.g. ollama:gemma4:e2b)")
-    parser.add_argument("--verbose", action="store_true", help="Show full message history and errors")
+    parser.add_argument(
+        "--model", required=True, help="Model string (e.g. ollama:gemma4:e2b)"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Show full message history and errors"
+    )
     parser.add_argument("--test", default=None, help="Run only this test (by name)")
     args = parser.parse_args()
 
@@ -249,7 +268,9 @@ async def main() -> None:
 
     results: list[TestResult] = []
     for test in tests:
-        print(f"  {test.name} ({test.output_model.__name__}, {len(test.output_model.model_fields)} fields)...")
+        print(
+            f"  {test.name} ({test.output_model.__name__}, {len(test.output_model.model_fields)} fields)..."
+        )
         result = await run_test(test, args.model, verbose=args.verbose)
         results.append(result)
 

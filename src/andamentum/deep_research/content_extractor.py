@@ -63,7 +63,9 @@ def extract_html(html: str, url: str) -> str:
         )
 
     if not text:
-        raise ExtractionError(f"No extractable article content found in HTML from {url}")
+        raise ExtractionError(
+            f"No extractable article content found in HTML from {url}"
+        )
 
     return text.strip()
 

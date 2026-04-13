@@ -12,7 +12,7 @@ Architecture: Layer 1 (framework-agnostic)
 """
 
 from pathlib import Path
-from typing import Any, Optional, TypeVar, TYPE_CHECKING
+from typing import Any, Literal, Optional, TypeVar, TYPE_CHECKING, overload
 import logging
 
 if TYPE_CHECKING:
@@ -83,7 +83,9 @@ class EpistemicRepository:
         self._entity_classes = ENTITY_CLASSES
 
     @classmethod
-    async def for_database(cls, name: str, db_dir: Path | None = None) -> "EpistemicRepository":
+    async def for_database(
+        cls, name: str, db_dir: Path | None = None
+    ) -> "EpistemicRepository":
         """Create a repository backed by a persistent named database.
 
         Args:
@@ -103,7 +105,47 @@ class EpistemicRepository:
         await store.initialize()
         return cls(DocumentStoreAdapter(store))
 
-    async def get(self, entity_type: str, entity_id: str) -> EpistemicEntity:
+    @overload
+    async def get(
+        self, entity_type: Literal["objective"], entity_id: str
+    ) -> Objective: ...
+    @overload
+    async def get(
+        self, entity_type: Literal["evidence"], entity_id: str
+    ) -> Evidence: ...
+    @overload
+    async def get(self, entity_type: Literal["claim"], entity_id: str) -> Claim: ...
+    @overload
+    async def get(
+        self, entity_type: Literal["uncertainty"], entity_id: str
+    ) -> Uncertainty: ...
+    @overload
+    async def get(
+        self, entity_type: Literal["decision"], entity_id: str
+    ) -> Decision: ...
+    @overload
+    async def get(
+        self, entity_type: Literal["snapshot"], entity_id: str
+    ) -> Snapshot: ...
+    @overload
+    async def get(
+        self, entity_type: Literal["artefact"], entity_id: str
+    ) -> Artefact: ...
+    @overload
+    async def get(self, entity_type: str, entity_id: str) -> EpistemicEntity: ...
+
+    async def get(
+        self, entity_type: str, entity_id: str
+    ) -> (
+        Objective
+        | Evidence
+        | Claim
+        | Uncertainty
+        | Decision
+        | Snapshot
+        | Artefact
+        | EpistemicEntity
+    ):
         """Load a single entity by ID.
 
         Args:
@@ -121,10 +163,13 @@ class EpistemicRepository:
             raise KeyError(f"Unknown entity type: {entity_type}")
 
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata({
-            "epistemic_type": entity_type,
-            id_field: entity_id,
-        }, limit=1)
+        docs = await self.store.find_by_metadata(
+            {
+                "epistemic_type": entity_type,
+                id_field: entity_id,
+            },
+            limit=1,
+        )
 
         if not docs:
             raise EntityNotFoundError(entity_type, entity_id)
@@ -134,13 +179,55 @@ class EpistemicRepository:
             raise EntityNotFoundError(entity_type, entity_id)
 
         cls = self._entity_classes[entity_type]
-        return cls.from_document(doc.content, doc.metadata.metadata if doc.metadata else {})
+        return cls.from_document(
+            doc.content, doc.metadata.metadata if doc.metadata else {}
+        )
+
+    @overload
+    async def query(
+        self, entity_type: Literal["objective"], **filters: Any
+    ) -> list[Objective]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["evidence"], **filters: Any
+    ) -> list[Evidence]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["claim"], **filters: Any
+    ) -> list[Claim]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["uncertainty"], **filters: Any
+    ) -> list[Uncertainty]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["decision"], **filters: Any
+    ) -> list[Decision]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["snapshot"], **filters: Any
+    ) -> list[Snapshot]: ...
+    @overload
+    async def query(
+        self, entity_type: Literal["artefact"], **filters: Any
+    ) -> list[Artefact]: ...
+    @overload
+    async def query(
+        self, entity_type: str, **filters: Any
+    ) -> list[EpistemicEntity]: ...
 
     async def query(
-        self,
-        entity_type: str,
-        **filters: Any
-    ) -> list[EpistemicEntity]:
+        self, entity_type: str, **filters: Any
+    ) -> (
+        list[Objective]
+        | list[Evidence]
+        | list[Claim]
+        | list[Uncertainty]
+        | list[Decision]
+        | list[Snapshot]
+        | list[Artefact]
+        | list[EpistemicEntity]
+    ):
         """Find entities matching filters.
 
         Supports:
@@ -189,7 +276,9 @@ class EpistemicRepository:
             if not doc:
                 continue
 
-            entity = cls.from_document(doc.content, doc.metadata.metadata if doc.metadata else {})
+            entity = cls.from_document(
+                doc.content, doc.metadata.metadata if doc.metadata else {}
+            )
 
             # Apply in-memory filters
             if self._passes_in_memory_filters(entity, in_memory_filters):
@@ -198,9 +287,7 @@ class EpistemicRepository:
         return entities
 
     def _passes_in_memory_filters(
-        self,
-        entity: EpistemicEntity,
-        filters: dict[str, Any]
+        self, entity: EpistemicEntity, filters: dict[str, Any]
     ) -> bool:
         """Check if entity passes all in-memory filters.
 
@@ -264,10 +351,13 @@ class EpistemicRepository:
         id_field = f"{entity.entity_type}_id"
 
         # Check if exists
-        existing = await self.store.find_by_metadata({
-            "epistemic_type": entity.entity_type,
-            id_field: entity.entity_id,
-        }, limit=1)
+        existing = await self.store.find_by_metadata(
+            {
+                "epistemic_type": entity.entity_type,
+                id_field: entity.entity_id,
+            },
+            limit=1,
+        )
 
         if existing:
             # Update existing
@@ -297,10 +387,13 @@ class EpistemicRepository:
             True if deleted, False if not found
         """
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata({
-            "epistemic_type": entity_type,
-            id_field: entity_id,
-        }, limit=1)
+        docs = await self.store.find_by_metadata(
+            {
+                "epistemic_type": entity_type,
+                id_field: entity_id,
+            },
+            limit=1,
+        )
 
         if not docs:
             return False
@@ -319,10 +412,13 @@ class EpistemicRepository:
             True if exists
         """
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata({
-            "epistemic_type": entity_type,
-            id_field: entity_id,
-        }, limit=1)
+        docs = await self.store.find_by_metadata(
+            {
+                "epistemic_type": entity_type,
+                id_field: entity_id,
+            },
+            limit=1,
+        )
         return len(docs) > 0
 
     async def count(self, entity_type: str, **filters: Any) -> int:
@@ -385,35 +481,28 @@ class EpistemicRepository:
     # Query convenience methods
 
     async def get_claims_for_objective(
-        self,
-        objective_id: str,
-        **filters: Any
+        self, objective_id: str, **filters: Any
     ) -> list[Claim]:
         """Get all claims for an objective with optional filters."""
         entities = await self.query("claim", objective_id=objective_id, **filters)
         return [e for e in entities if isinstance(e, Claim)]
 
     async def get_evidence_for_objective(
-        self,
-        objective_id: str,
-        **filters: Any
+        self, objective_id: str, **filters: Any
     ) -> list[Evidence]:
         """Get all evidence for an objective with optional filters."""
         entities = await self.query("evidence", objective_id=objective_id, **filters)
         return [e for e in entities if isinstance(e, Evidence)]
 
     async def get_uncertainties_for_objective(
-        self,
-        objective_id: str,
-        **filters: Any
+        self, objective_id: str, **filters: Any
     ) -> list[Uncertainty]:
         """Get all uncertainties for an objective with optional filters."""
         entities = await self.query("uncertainty", objective_id=objective_id, **filters)
         return [e for e in entities if isinstance(e, Uncertainty)]
 
     async def get_blocking_uncertainties_for_claim(
-        self,
-        claim_id: str
+        self, claim_id: str
     ) -> list[Uncertainty]:
         """Get unresolved blocking uncertainties affecting a claim."""
         # First get all uncertainties that might affect this claim
@@ -425,7 +514,8 @@ class EpistemicRepository:
 
         # Filter to those affecting this claim (in-memory, see plan 14.3)
         return [
-            u for u in all_uncertainties
+            u
+            for u in all_uncertainties
             if isinstance(u, Uncertainty) and claim_id in u.affected_claim_ids
         ]
 
@@ -467,10 +557,13 @@ class EpistemicRepository:
         content = adv.explanation or "Adversarial evidence assessment"
 
         # Upsert: replace if one already exists for this claim
-        existing = await self.store.find_by_metadata({
-            "epistemic_type": "adversarial_evidence",
-            "claim_id": adv.claim_id,
-        }, limit=1)
+        existing = await self.store.find_by_metadata(
+            {
+                "epistemic_type": "adversarial_evidence",
+                "claim_id": adv.claim_id,
+            },
+            limit=1,
+        )
 
         if existing:
             await self.store.update(
@@ -496,10 +589,13 @@ class EpistemicRepository:
         Returns the full AdversarialEvidence reconstructed from stored metadata,
         or None if no adversarial search was performed for this claim.
         """
-        refs = await self.store.find_by_metadata({
-            "epistemic_type": "adversarial_evidence",
-            "claim_id": claim_id,
-        }, limit=1)
+        refs = await self.store.find_by_metadata(
+            {
+                "epistemic_type": "adversarial_evidence",
+                "claim_id": claim_id,
+            },
+            limit=1,
+        )
 
         if not refs:
             return None
@@ -508,8 +604,11 @@ class EpistemicRepository:
         if not doc or not doc.metadata:
             return None
 
-        meta = doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
+        meta = (
+            doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
+        )
         from .primitives import AdversarialEvidence
+
         return AdversarialEvidence.from_metadata(meta)  # type: ignore[arg-type]
 
     async def get_convergent_evidence_for_claim(
@@ -521,10 +620,13 @@ class EpistemicRepository:
         Returns the full ConvergentEvidence reconstructed from stored metadata,
         or None if no convergence assessment was performed for this claim.
         """
-        refs = await self.store.find_by_metadata({
-            "epistemic_type": "convergent_evidence",
-            "claim_id": claim_id,
-        }, limit=1)
+        refs = await self.store.find_by_metadata(
+            {
+                "epistemic_type": "convergent_evidence",
+                "claim_id": claim_id,
+            },
+            limit=1,
+        )
 
         if not refs:
             return None
@@ -533,6 +635,9 @@ class EpistemicRepository:
         if not doc or not doc.metadata:
             return None
 
-        meta = doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
+        meta = (
+            doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
+        )
         from .primitives import ConvergentEvidence
+
         return ConvergentEvidence.from_metadata(meta)  # type: ignore[arg-type]

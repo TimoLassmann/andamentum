@@ -133,7 +133,9 @@ async def register_document(
     )
 
 
-async def get_document_metadata(db_path: str, doc_id: str) -> Optional[DocumentMetadata]:
+async def get_document_metadata(
+    db_path: str, doc_id: str
+) -> Optional[DocumentMetadata]:
     """Retrieve document metadata by UUID.
 
     Args:
@@ -165,7 +167,9 @@ async def get_document_metadata(db_path: str, doc_id: str) -> Optional[DocumentM
                 file_size_bytes=row["file_size"],
                 created_at=datetime.fromisoformat(row["created_date"]),
                 updated_at=datetime.fromisoformat(row["updated_date"]),
-                indexed_at=datetime.fromisoformat(row["indexed_at"]) if row["indexed_at"] else None,
+                indexed_at=datetime.fromisoformat(row["indexed_at"])
+                if row["indexed_at"]
+                else None,
                 metadata=json.loads(row["metadata"]) if row["metadata"] else {},
             )
 
@@ -191,7 +195,9 @@ async def update_document_metadata(
         # Get existing metadata if merging
         if merge:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT metadata FROM documents WHERE doc_uuid = ?", (doc_id,)) as cursor:
+            async with db.execute(
+                "SELECT metadata FROM documents WHERE doc_uuid = ?", (doc_id,)
+            ) as cursor:
                 row = await cursor.fetchone()
                 if row and row["metadata"]:
                     existing = json.loads(row["metadata"])
@@ -208,7 +214,9 @@ async def update_document_metadata(
     return metadata
 
 
-async def update_document_content(db_path: str, doc_id: str, new_content: str) -> tuple[str, str]:
+async def update_document_content(
+    db_path: str, doc_id: str, new_content: str
+) -> tuple[str, str]:
     """Update document content and hash.
 
     Args:
@@ -320,19 +328,25 @@ async def purge_deleted(db_path: str, older_than_days: int = 30) -> int:
         await db.execute("PRAGMA foreign_keys = ON")
 
         # Clean up vec0 tables first (not covered by FK CASCADE)
-        await db.execute("""
+        await db.execute(
+            """
             DELETE FROM chunk_embeddings WHERE chunk_id IN (
                 SELECT c.id FROM chunks c
                 JOIN documents d ON c.document_id = d.id
                 WHERE d.deleted_at IS NOT NULL AND d.deleted_at < ?
             )
-        """, (cutoff,))
-        await db.execute("""
+        """,
+            (cutoff,),
+        )
+        await db.execute(
+            """
             DELETE FROM doc_embeddings WHERE doc_id IN (
                 SELECT id FROM documents
                 WHERE deleted_at IS NOT NULL AND deleted_at < ?
             )
-        """, (cutoff,))
+        """,
+            (cutoff,),
+        )
 
         # Now delete documents (CASCADE handles chunks, FTS triggers handle FTS5)
         cursor = await db.execute(
@@ -343,7 +357,9 @@ async def purge_deleted(db_path: str, older_than_days: int = 30) -> int:
         return cursor.rowcount
 
 
-async def list_deleted_documents(db_path: str, limit: int = 50) -> list[DocumentMetadata]:
+async def list_deleted_documents(
+    db_path: str, limit: int = 50
+) -> list[DocumentMetadata]:
     """List soft-deleted documents.
 
     Args:
@@ -371,7 +387,9 @@ async def list_deleted_documents(db_path: str, limit: int = 50) -> list[Document
                     file_size_bytes=row["file_size"],
                     created_at=datetime.fromisoformat(row["created_date"]),
                     updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"]) if row["indexed_at"] else None,
+                    indexed_at=datetime.fromisoformat(row["indexed_at"])
+                    if row["indexed_at"]
+                    else None,
                     metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 )
                 for row in rows
@@ -403,7 +421,9 @@ async def delete_document_record(db_path: str, doc_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-async def list_documents_by_type(db_path: str, document_type: Optional[DocumentType] = None) -> list[DocumentMetadata]:
+async def list_documents_by_type(
+    db_path: str, document_type: Optional[DocumentType] = None
+) -> list[DocumentMetadata]:
     """List all documents, optionally filtered by tier.
 
     Args:
@@ -437,7 +457,9 @@ async def list_documents_by_type(db_path: str, document_type: Optional[DocumentT
                     file_size_bytes=row["file_size"],
                     created_at=datetime.fromisoformat(row["created_date"]),
                     updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"]) if row["indexed_at"] else None,
+                    indexed_at=datetime.fromisoformat(row["indexed_at"])
+                    if row["indexed_at"]
+                    else None,
                     metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 )
                 for row in rows
@@ -509,7 +531,9 @@ async def find_by_metadata(
                     file_size_bytes=row["file_size"],
                     created_at=datetime.fromisoformat(row["created_date"]),
                     updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"]) if row["indexed_at"] else None,
+                    indexed_at=datetime.fromisoformat(row["indexed_at"])
+                    if row["indexed_at"]
+                    else None,
                     metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 )
                 for row in rows
@@ -568,7 +592,9 @@ async def find_doc_uuids_by_filters(
     async with get_async_connection(db_path) as db:
         if doc_conditions:
             where = " AND ".join(doc_conditions)
-            async with db.execute(f"SELECT doc_uuid FROM documents WHERE {where}", doc_params) as cursor:
+            async with db.execute(
+                f"SELECT doc_uuid FROM documents WHERE {where}", doc_params
+            ) as cursor:
                 rows = await cursor.fetchall()
                 result_uuids = {row[0] for row in rows}
                 got_doc = True
@@ -592,7 +618,9 @@ async def find_doc_uuids_by_filters(
     return result_uuids
 
 
-async def store_doc_embedding(db_path: str, doc_id: str, embedding: list[float]) -> None:
+async def store_doc_embedding(
+    db_path: str, doc_id: str, embedding: list[float]
+) -> None:
     """Store document-level embedding in both doc_embedding column and vec0 table.
 
     The doc_embedding TEXT column is the persistent store (survives re-clustering, portable).

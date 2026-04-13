@@ -24,7 +24,9 @@ class TestMonarchAPISmoke:
         results = await provider.gather("BRCA1")
 
         # We should get at least 1 result for a well-known gene
-        assert len(results) >= 1, "Monarch returned no results for BRCA1 — API may have changed"
+        assert len(results) >= 1, (
+            "Monarch returned no results for BRCA1 — API may have changed"
+        )
 
         # Verify result shape
         for r in results:
@@ -56,13 +58,15 @@ class TestMonarchAPISmoke:
         ]
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{MONARCH_API}/search", params=params)
+            resp = await client.get(f"{MONARCH_API}/search", params=params)  # type: ignore[arg-type]
             assert resp.status_code == 200, (
                 f"Monarch search returned {resp.status_code} — "
                 f"category params may need updating. Response: {resp.text[:200]}"
             )
             data = resp.json()
-            assert "items" in data, f"Response missing 'items' key. Keys: {list(data.keys())}"
+            assert "items" in data, (
+                f"Response missing 'items' key. Keys: {list(data.keys())}"
+            )
 
     async def test_association_endpoint_reachable(self):
         """Verify the Monarch association endpoint is reachable with production params."""
@@ -79,7 +83,9 @@ class TestMonarchAPISmoke:
                 f"Monarch association returned {resp.status_code}. Response: {resp.text[:200]}"
             )
             data = resp.json()
-            assert "items" in data, f"Response missing 'items' key. Keys: {list(data.keys())}"
+            assert "items" in data, (
+                f"Response missing 'items' key. Keys: {list(data.keys())}"
+            )
 
 
 class TestOpenAlexAPISmoke:
@@ -105,7 +111,9 @@ class TestOpenAlexAPISmoke:
         provider = OpenAlexProvider()
         result = await provider.check_health()
 
-        assert result.status == "pass", f"OpenAlex health check failed: {result.message}"
+        assert result.status == "pass", (
+            f"OpenAlex health check failed: {result.message}"
+        )
 
     async def test_works_endpoint_shape(self):
         """Verify the OpenAlex /works endpoint returns expected structure."""
@@ -115,11 +123,15 @@ class TestOpenAlexAPISmoke:
             resp = await client.get(
                 "https://api.openalex.org/works",
                 params={"search": "BRCA1", "per_page": "2"},
-                headers={"User-Agent": "andamentum-epistemic-test/0.1 (mailto:test@example.com)"},
+                headers={
+                    "User-Agent": "andamentum-epistemic-test/0.1 (mailto:test@example.com)"
+                },
             )
             assert resp.status_code == 200, f"OpenAlex returned {resp.status_code}"
             data = resp.json()
-            assert "results" in data, f"Response missing 'results'. Keys: {list(data.keys())}"
+            assert "results" in data, (
+                f"Response missing 'results'. Keys: {list(data.keys())}"
+            )
 
             if data["results"]:
                 work = data["results"][0]
@@ -140,7 +152,9 @@ class TestOpenAlexAPISmoke:
         for r in results:
             assert r.title, "LiteratureResult should have a title"
             if r.quality is not None:
-                assert 0.0 <= r.quality.score <= 1.0, f"Quality score {r.quality.score} out of range"
+                assert 0.0 <= r.quality.score <= 1.0, (
+                    f"Quality score {r.quality.score} out of range"
+                )
                 assert r.quality.cited_by_count >= 0
                 assert r.quality.source == "openalex"
 
@@ -153,7 +167,11 @@ class TestOpenAlexQualityScorerSmoke:
         from andamentum.epistemic.quality import score_source
 
         # Use a well-cited paper DOI (Nature paper on CRISPR)
-        result = await score_source(doi="10.1038/nature12373", source_ref="doi:10.1038/nature12373", source_type="openalex")
+        result = await score_source(
+            doi="10.1038/nature12373",
+            source_ref="doi:10.1038/nature12373",
+            source_type="openalex",
+        )
 
         assert result is not None, "score_source returned None for a known DOI"
         assert 0.0 <= result.score <= 1.0, f"Score {result.score} out of range"
@@ -164,7 +182,11 @@ class TestOpenAlexQualityScorerSmoke:
         """Non-existent DOI should return None."""
         from andamentum.epistemic.quality import score_source
 
-        result = await score_source(doi="10.9999/nonexistent-fake-doi-12345", source_ref="fake", source_type="test")
+        result = await score_source(
+            doi="10.9999/nonexistent-fake-doi-12345",
+            source_ref="fake",
+            source_type="test",
+        )
 
         # Should return None for a DOI that doesn't exist
         assert result is None, f"Unknown DOI should return None, got: {result}"
@@ -187,7 +209,9 @@ class TestOpenAlexQualityScorerSmoke:
         scorer = OpenAlexQualityScorer()
         result = await scorer.score("some random text with no doi", "web_search")
 
-        assert result is None, "Should return None when no DOI/PMID is found in source_ref"
+        assert result is None, (
+            "Should return None when no DOI/PMID is found in source_ref"
+        )
 
 
 class TestHealthCheckProductionParity:
@@ -206,7 +230,9 @@ class TestHealthCheckProductionParity:
 
         health_source = inspect.getsource(MonarchProvider.check_health)
         # Health check must hit the same /search endpoint
-        assert "/search" in health_source, "Health check should use /search endpoint for param parity"
+        assert "/search" in health_source, (
+            "Health check should use /search endpoint for param parity"
+        )
 
     def test_monarch_category_params_are_list_format(self):
         """Verify the Monarch provider uses list-of-tuples for category params (not comma-separated)."""
@@ -229,4 +255,6 @@ class TestHealthCheckProductionParity:
         from andamentum.epistemic.providers.openalex import OpenAlexProvider
 
         health_source = inspect.getsource(OpenAlexProvider.check_health)
-        assert "/works" in health_source, "Health check should use /works endpoint for param parity"
+        assert "/works" in health_source, (
+            "Health check should use /works endpoint for param parity"
+        )

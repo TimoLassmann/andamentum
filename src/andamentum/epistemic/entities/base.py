@@ -11,7 +11,7 @@ Architecture: Layer 1 (framework-agnostic)
 
 from abc import ABC
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 from pydantic import BaseModel, Field
 import uuid
 
@@ -36,7 +36,9 @@ class EpistemicEntity(BaseModel, ABC):
     entity_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     # Use string union type to allow Literal overrides in subclasses
     entity_type: str = Field(default="base")
-    objective_id: str = Field(default="", description="Parent objective this entity belongs to")
+    objective_id: str = Field(
+        default="", description="Parent objective this entity belongs to"
+    )
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
@@ -99,7 +101,7 @@ class EpistemicEntity(BaseModel, ABC):
         return {}
 
     @classmethod
-    def from_document(cls, content: str, metadata: dict[str, Any]) -> "EpistemicEntity":
+    def from_document(cls, content: str, metadata: dict[str, Any]) -> Self:
         """Reconstruct entity from stored document.
 
         Primary method: Parse content as JSON.
@@ -123,7 +125,7 @@ class EpistemicEntity(BaseModel, ABC):
             return cls._from_metadata(content, metadata)
 
     @classmethod
-    def _from_metadata(cls, content: str, metadata: dict[str, Any]) -> "EpistemicEntity":
+    def _from_metadata(cls, content: str, metadata: dict[str, Any]) -> Self:
         """Reconstruct from metadata (fallback for legacy data).
 
         Override in subclasses to handle entity-specific reconstruction.

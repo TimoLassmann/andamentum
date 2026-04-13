@@ -10,7 +10,6 @@ import logging
 from collections import defaultdict
 from typing import Dict, Any, Optional, List, Literal
 
-logger = logging.getLogger(__name__)
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -41,10 +40,14 @@ from .result_models import (
 from .primitives import ClaimStage, Claim, Evidence, Uncertainty
 from .trace import ReasoningTrace
 from andamentum.document_store import DocumentStore
-
 from .storage import DocumentStoreAdapter
+from andamentum.document_store.lifecycle import (
+    delete_database,
+    get_db_path,
+    get_databases_dir,
+)
 
-from andamentum.document_store.lifecycle import delete_database, get_db_path, get_databases_dir
+logger = logging.getLogger(__name__)
 
 # Type for trace display mode
 TraceMode = Literal["timeline", "flow", "claims", "debate", "all", "none"]
@@ -54,9 +57,12 @@ console = Console()
 
 async def _get_objective_id_from_db(store: DocumentStore) -> Optional[str]:
     """Get the first objective ID from the database using metadata query."""
-    results = await store.find_by_metadata({
-        "epistemic_type": "objective",
-    }, limit=1)
+    results = await store.find_by_metadata(
+        {
+            "epistemic_type": "objective",
+        },
+        limit=1,
+    )
     if results:
         return results[0].metadata.get("objective_id")
     return None
@@ -79,10 +85,12 @@ async def _gather_primitives_from_db(
         Tuple of (claims, evidence, uncertainties)
     """
     # Gather claims - statement is stored in metadata
-    claim_docs = await store.find_by_metadata({
-        "epistemic_type": "claim",
-        "objective_id": objective_id,
-    })
+    claim_docs = await store.find_by_metadata(
+        {
+            "epistemic_type": "claim",
+            "objective_id": objective_id,
+        }
+    )
     claims: List[Claim] = []
     for doc_meta in claim_docs:
         meta = doc_meta.metadata  # DocumentMetadata.metadata is the nested dict
@@ -102,10 +110,12 @@ async def _gather_primitives_from_db(
     claims.sort(key=lambda c: stage_priority.get(c.stage, 5))
 
     # Gather evidence - need to read full documents for content
-    evidence_meta_docs = await store.find_by_metadata({
-        "epistemic_type": "evidence",
-        "objective_id": objective_id,
-    })
+    evidence_meta_docs = await store.find_by_metadata(
+        {
+            "epistemic_type": "evidence",
+            "objective_id": objective_id,
+        }
+    )
     evidence: List[Evidence] = []
     for doc_meta in evidence_meta_docs:
         meta = doc_meta.metadata
@@ -116,6 +126,7 @@ async def _gather_primitives_from_db(
         content = ""
         if full_doc and full_doc.content:
             import json
+
             try:
                 entity_data = json.loads(full_doc.content)
                 content = entity_data.get("extracted_content", "")
@@ -125,10 +136,12 @@ async def _gather_primitives_from_db(
         evidence.append(Evidence.from_metadata(meta, content=content))
 
     # Gather uncertainties - need to read full documents for description
-    uncertainty_meta_docs = await store.find_by_metadata({
-        "epistemic_type": "uncertainty",
-        "objective_id": objective_id,
-    })
+    uncertainty_meta_docs = await store.find_by_metadata(
+        {
+            "epistemic_type": "uncertainty",
+            "objective_id": objective_id,
+        }
+    )
     uncertainties: List[Uncertainty] = []
     for doc_meta in uncertainty_meta_docs:
         meta = doc_meta.metadata
@@ -140,6 +153,7 @@ async def _gather_primitives_from_db(
         if full_doc and full_doc.content:
             # Content is JSON — extract the description field
             import json
+
             try:
                 entity_data = json.loads(full_doc.content)
                 description = entity_data.get("description", "")
@@ -167,10 +181,12 @@ async def _get_synthesis_from_artefact(
     Returns:
         Synthesis dict with the full artefact content and extracted confidence
     """
-    artefact_docs = await store.find_by_metadata({
-        "epistemic_type": "artefact",
-        "objective_id": objective_id,
-    })
+    artefact_docs = await store.find_by_metadata(
+        {
+            "epistemic_type": "artefact",
+            "objective_id": objective_id,
+        }
+    )
 
     if not artefact_docs:
         return {}
@@ -182,6 +198,7 @@ async def _get_synthesis_from_artefact(
     if full_doc and full_doc.content:
         # Content is JSON — extract the markdown content field
         import json
+
         try:
             entity_data = json.loads(full_doc.content)
             content = entity_data.get("content", "")
@@ -191,7 +208,10 @@ async def _get_synthesis_from_artefact(
     # Extract confidence from the header line: > **Confidence:** HIGH | ...
     confidence = "medium"
     import re
-    match = re.search(r'\*\*Confidence:\*\*\s+(HIGH|MEDIUM|LOW|NONE)', content, re.IGNORECASE)
+
+    match = re.search(
+        r"\*\*Confidence:\*\*\s+(HIGH|MEDIUM|LOW|NONE)", content, re.IGNORECASE
+    )
     if match:
         confidence = match.group(1).lower()
 
@@ -227,7 +247,6 @@ async def handle_init(
     import uuid
     from datetime import datetime
     from .primitives import (
-        Objective,
         WorkItemType,
         WorkItemStatus,
     )
@@ -268,6 +287,7 @@ async def handle_init(
         "created_at": datetime.now().isoformat(),
     }
     import json
+
     await store.add(
         file_path=f"workitem_{workitem_id[:8]}.json",
         content=json.dumps({"query": objective}, indent=2),
@@ -331,17 +351,25 @@ async def handle_run(
     if not objective_id:
         objective_id = await _get_objective_id_from_db(store)
         if not objective_id:
-            return RunResult(success=False, error="No objectives found. Run 'epistemic init' first.")
+            return RunResult(
+                success=False, error="No objectives found. Run 'epistemic init' first."
+            )
 
     # Get the objective's question
-    objective_docs = await store.find_by_metadata({
-        "epistemic_type": "objective",
-        "objective_id": objective_id,
-    }, limit=1)
-    question = objective_docs[0].metadata.get("description", "") if objective_docs else ""
+    objective_docs = await store.find_by_metadata(
+        {
+            "epistemic_type": "objective",
+            "objective_id": objective_id,
+        },
+        limit=1,
+    )
+    question = (
+        objective_docs[0].metadata.get("description", "") if objective_docs else ""
+    )
 
     # Run the pattern scheduler
     from .providers.openalex import OpenAlexQualityScorer
+
     scheduler_result = await run_research_question(
         question=question or "Research objective",
         database_name=name,
@@ -360,7 +388,9 @@ async def handle_run(
                 console.print(f"  - {err}")
 
     # Gather stats from database
-    claims, evidence, uncertainties = await _gather_primitives_from_db(store, objective_id)
+    claims, evidence, uncertainties = await _gather_primitives_from_db(
+        store, objective_id
+    )
 
     # Build claims_by_stage
     claims_by_stage: Dict[str, int] = {}
@@ -461,8 +491,12 @@ async def handle_debate(
     to view research results including adversarial analysis.
     """
     console.print("[yellow]The 'debate' command has been removed.[/yellow]")
-    console.print("[dim]Use 'status' to view claims and adversarial balance, or 'ask' to run a new research question.[/dim]")
-    return DebateResult(success=False, error="Debate feature removed. Use 'status' or 'ask' instead.")
+    console.print(
+        "[dim]Use 'status' to view claims and adversarial balance, or 'ask' to run a new research question.[/dim]"
+    )
+    return DebateResult(
+        success=False, error="Debate feature removed. Use 'status' or 'ask' instead."
+    )
 
 
 async def handle_claims(
@@ -504,7 +538,9 @@ async def handle_claims(
             return ClaimsResult(success=False, error=f"Invalid stage: {stage}")
 
     if stage_filter:
-        claims = await repo.get_claims_for_objective(objective_id, stage=stage_filter.value)
+        claims = await repo.get_claims_for_objective(
+            objective_id, stage=stage_filter.value
+        )
     else:
         claims = await repo.get_claims_for_objective(objective_id)
 
@@ -563,13 +599,16 @@ async def handle_evidence(
     # Get verification evidence if requested
     verification_evidence_dict: Optional[Dict[str, List[Any]]] = None
     if include_verification:
-        verification_evidence_dict = await get_all_verification_evidence(store, objective_id)
+        verification_evidence_dict = await get_all_verification_evidence(
+            store, objective_id
+        )
         # Filter verification evidence by claim if specified
         if claim_id:
             for key in verification_evidence_dict:
                 verification_evidence_dict[key] = [
-                    e for e in verification_evidence_dict[key]
-                    if hasattr(e, 'claim_id') and e.claim_id == claim_id
+                    e
+                    for e in verification_evidence_dict[key]
+                    if hasattr(e, "claim_id") and e.claim_id == claim_id
                 ]
 
     # Always print for CLI (verbose controls detail level)
@@ -700,9 +739,13 @@ async def handle_log(
     Note: The event log feature is not available in the standalone package.
     Use 'status' to view project information.
     """
-    console.print("[yellow]The 'log' command is not available in the standalone package.[/yellow]")
+    console.print(
+        "[yellow]The 'log' command is not available in the standalone package.[/yellow]"
+    )
     console.print("[dim]Use 'status' to view project information.[/dim]")
-    return LogResult(success=False, error="Log feature not available. Use 'status' instead.")
+    return LogResult(
+        success=False, error="Log feature not available. Use 'status' instead."
+    )
 
 
 async def _print_operation_profile(store: "DocumentStore") -> None:
@@ -712,7 +755,9 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
     and aggregates by operation type. No new recording needed.
     """
     try:
-        steps = await store.find_by_metadata({"epistemic_type": "execution_step"}, limit=500)
+        steps = await store.find_by_metadata(
+            {"epistemic_type": "execution_step"}, limit=500
+        )
     except Exception:
         return  # Silently skip if store doesn't support this query
 
@@ -720,13 +765,19 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
         return
 
     # Aggregate by operation
-    op_stats: dict[str, dict[str, int | float]] = defaultdict(lambda: {"calls": 0, "total_ms": 0, "failures": 0})
+    op_stats: dict[str, dict[str, int | float]] = defaultdict(
+        lambda: {"calls": 0, "total_ms": 0, "failures": 0}
+    )
 
     for step in steps:
-        meta = step.metadata if isinstance(step.metadata, dict) else getattr(step, "metadata", {})
+        meta: dict[str, Any] = (
+            step.metadata
+            if isinstance(step.metadata, dict)
+            else getattr(step, "metadata", {})
+        )
         # DocumentStore returns DocumentMetadata objects with a .metadata dict
         if hasattr(meta, "metadata"):
-            meta = meta.metadata
+            meta = getattr(meta, "metadata")
         op = meta.get("operation", "unknown")
         duration = meta.get("duration_ms", 0)
         success = meta.get("success", True)
@@ -745,7 +796,9 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
     total_time_ms = sum(s["total_ms"] for s in op_stats.values())
     total_calls = sum(s["calls"] for s in op_stats.values())
 
-    table = Table(title="Operation Profile", border_style="dim", show_edge=False, pad_edge=False)
+    table = Table(
+        title="Operation Profile", border_style="dim", show_edge=False, pad_edge=False
+    )
     table.add_column("Operation", style="bold", min_width=28)
     table.add_column("Calls", justify="right", style="cyan", min_width=5)
     table.add_column("Total", justify="right", min_width=8)
@@ -778,7 +831,9 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
 
         # Highlight slow operations
         style = "bold yellow" if pct >= 25 else ""
-        table.add_row(op_name, str(calls), total_str, avg_str, pct_str, fail_str, style=style)
+        table.add_row(
+            op_name, str(calls), total_str, avg_str, pct_str, fail_str, style=style
+        )
 
     # Footer
     if total_time_ms >= 60_000:
@@ -895,13 +950,15 @@ async def handle_ask(
 
     # Always show the question header
     console.print()
-    console.print(Panel(
-        f"[bold]{question}[/bold]",
-        title="[bold cyan]Epistemic Analysis[/bold cyan]",
-        subtitle=f"[dim]project: {name} | max iterations: {max_items}[/dim]",
-        border_style="cyan",
-        padding=(1, 2),
-    ))
+    console.print(
+        Panel(
+            f"[bold]{question}[/bold]",
+            title="[bold cyan]Epistemic Analysis[/bold cyan]",
+            subtitle=f"[dim]project: {name} | max iterations: {max_items}[/dim]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
 
     if force_quick:
         console.print("[dim]Skipping preplanning (starting at PLAN_TASK)[/dim]")
@@ -915,6 +972,7 @@ async def handle_ask(
 
         # Always use progress callback for visibility
         from .providers.openalex import OpenAlexQualityScorer
+
         # Derive operation budgets from research config.
         # When principled budgets are active, max_iterations is only
         # an emergency backstop — the per-operation budgets control scope.
@@ -942,9 +1000,13 @@ async def handle_ask(
 
         console.print()
         if scheduler_result.failed > 0:
-            console.print(f"[yellow]Completed {scheduler_result.successful} operations, {scheduler_result.failed} failed[/yellow]")
+            console.print(
+                f"[yellow]Completed {scheduler_result.successful} operations, {scheduler_result.failed} failed[/yellow]"
+            )
         else:
-            console.print(f"[green]Completed {scheduler_result.successful} operations[/green]")
+            console.print(
+                f"[green]Completed {scheduler_result.successful} operations[/green]"
+            )
 
         # Gather results from the database
         store = DocumentStore.for_database(name, db_dir=db_dir)
@@ -962,10 +1024,16 @@ async def handle_ask(
 
         # Gather primitives
         if verbose:
-            all_claims, evidence, uncertainties = await _gather_primitives_from_db(store, objective_id)
+            all_claims, evidence, uncertainties = await _gather_primitives_from_db(
+                store, objective_id
+            )
         else:
-            with console.status("[bold blue]Gathering findings...[/bold blue]", spinner="dots"):
-                all_claims, evidence, uncertainties = await _gather_primitives_from_db(store, objective_id)
+            with console.status(
+                "[bold blue]Gathering findings...[/bold blue]", spinner="dots"
+            ):
+                all_claims, evidence, uncertainties = await _gather_primitives_from_db(
+                    store, objective_id
+                )
 
         # Get synthesis from artefact
         synthesis = await _get_synthesis_from_artefact(store, objective_id)
@@ -992,11 +1060,20 @@ async def handle_ask(
         # Count claims by stage
         for claim in all_claims:
             stage_str = claim.stage.value
-            stats["claims_by_stage"][stage_str] = stats["claims_by_stage"].get(stage_str, 0) + 1
+            stats["claims_by_stage"][stage_str] = (
+                stats["claims_by_stage"].get(stage_str, 0) + 1
+            )
 
         # Display results (always, not just verbose)
         _print_ask_results(
-            question, all_claims, evidence, uncertainties, stats, verbose, trace, None,
+            question,
+            all_claims,
+            evidence,
+            uncertainties,
+            stats,
+            verbose,
+            trace,
+            None,
             answer_confidence=getattr(scheduler_result, "answer_confidence", None),
             posterior=getattr(scheduler_result, "posterior", None),
         )
@@ -1013,9 +1090,13 @@ async def handle_ask(
                 objective_id=objective_id,
                 model_name=model,
             ):
-                console.print(f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]")
+                console.print(
+                    f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
+                )
             else:
-                console.print(f"\n[yellow]Warning: Failed to generate HTML report[/yellow]")
+                console.print(
+                    "\n[yellow]Warning: Failed to generate HTML report[/yellow]"
+                )
 
         # Clean up if not keeping
         if not keep:
@@ -1024,7 +1105,9 @@ async def handle_ask(
                     console.print("[dim]Cleaned up ephemeral project database[/dim]")
         else:
             console.print(f"\n[dim]Project saved: {name}[/dim]")
-            console.print(f"[dim]Inspect with: andamentum-epistemic status {name} -v[/dim]")
+            console.print(
+                f"[dim]Inspect with: andamentum-epistemic status {name} -v[/dim]"
+            )
 
         # Convert stats dict to typed RunStats model
         typed_stats = RunStats(
@@ -1122,22 +1205,28 @@ def _print_ask_results(
     if synthesis:
         artefact_content = synthesis.get("summary", "")
         title_color = color_map.get(ac_level, "white")
-        confidence_label = f"{ac_level} confidence" if answer_confidence else "no confidence score"
+        confidence_label = (
+            f"{ac_level} confidence" if answer_confidence else "no confidence score"
+        )
 
         if artefact_content:
-            console.print(Panel(
-                Markdown(artefact_content),
-                title=f"[bold {title_color}]Research Report[/bold {title_color}] [dim]({confidence_label})[/dim]",
-                border_style=title_color,
-                padding=(1, 2),
-            ))
+            console.print(
+                Panel(
+                    Markdown(artefact_content),
+                    title=f"[bold {title_color}]Research Report[/bold {title_color}] [dim]({confidence_label})[/dim]",
+                    border_style=title_color,
+                    padding=(1, 2),
+                )
+            )
         else:
-            console.print(Panel(
-                "[dim]No findings synthesized[/dim]",
-                title=f"[bold {title_color}]Research Report[/bold {title_color}]",
-                border_style=title_color,
-                padding=(1, 2),
-            ))
+            console.print(
+                Panel(
+                    "[dim]No findings synthesized[/dim]",
+                    title=f"[bold {title_color}]Research Report[/bold {title_color}]",
+                    border_style=title_color,
+                    padding=(1, 2),
+                )
+            )
 
     # === SCORES: Answer confidence + Posterior ===
     if answer_confidence:
@@ -1177,33 +1266,45 @@ def _print_ask_results(
             console.print()
             console.print("[bold]Key Findings:[/bold]")
             for i, claim in enumerate(claims, 1):
-                stage_icon = "✓" if claim.stage.value in ("robust", "actionable") else "○"
+                stage_icon = (
+                    "✓" if claim.stage.value in ("robust", "actionable") else "○"
+                )
                 console.print(f"  {stage_icon} {claim.statement}")
         else:
-            console.print(Panel(
-                "[yellow]No findings established.[/yellow]\n"
-                "[dim]The research did not produce validated claims.[/dim]",
-                border_style="yellow"
-            ))
+            console.print(
+                Panel(
+                    "[yellow]No findings established.[/yellow]\n"
+                    "[dim]The research did not produce validated claims.[/dim]",
+                    border_style="yellow",
+                )
+            )
 
     # === SECONDARY OUTPUT: Open questions (unresolved uncertainties only) ===
-    unresolved = [u for u in uncertainties if not u.is_resolved] if uncertainties else []
+    unresolved = (
+        [u for u in uncertainties if not u.is_resolved] if uncertainties else []
+    )
     # Separate blocking (genuine open questions) from non-blocking (caveats)
     open_questions = [u for u in unresolved if u.is_blocking]
     caveats = [u for u in unresolved if not u.is_blocking]
 
     if open_questions:
         console.print()
-        console.print(f"[bold yellow]Open Questions ({len(open_questions)})[/bold yellow]")
+        console.print(
+            f"[bold yellow]Open Questions ({len(open_questions)})[/bold yellow]"
+        )
         for i, u in enumerate(open_questions, 1):
-            desc = u.description.split('\n')[0] if '\n' in u.description else u.description
+            desc = (
+                u.description.split("\n")[0] if "\n" in u.description else u.description
+            )
             console.print(f"  [yellow]{i}.[/yellow] {desc}")
 
     if caveats:
         console.print()
         console.print(f"[bold dim]Caveats ({len(caveats)})[/bold dim]")
         for i, u in enumerate(caveats, 1):
-            desc = u.description.split('\n')[0] if '\n' in u.description else u.description
+            desc = (
+                u.description.split("\n")[0] if "\n" in u.description else u.description
+            )
             console.print(f"  [dim]{i}.[/dim] [dim]{desc}[/dim]")
 
     # === DETAILED OUTPUT: Claims table (verbose or trace mode only) ===
@@ -1232,7 +1333,9 @@ def _print_ask_results(
         }
 
         for claim in claims:
-            stage_display = stage_styles.get(claim.stage.value, claim.stage.value.upper())
+            stage_display = stage_styles.get(
+                claim.stage.value, claim.stage.value.upper()
+            )
             scope = claim.scope if claim.scope else "-"
             claims_table.add_row(stage_display, claim.statement, scope)
 
@@ -1258,7 +1361,9 @@ def _print_ask_results(
         console.print()
         # Handle trace modes
         if trace_mode == "debate":
-            console.print("[dim]Debate trace mode has been removed. Use 'timeline', 'flow', 'claims', or 'all'.[/dim]")
+            console.print(
+                "[dim]Debate trace mode has been removed. Use 'timeline', 'flow', 'claims', or 'all'.[/dim]"
+            )
         elif reasoning_trace:
             # Standard trace modes use reasoning_trace
             if trace_mode == "timeline":
@@ -1284,15 +1389,24 @@ def _print_run_stats(stats: Dict[str, Any]) -> None:
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="white")
 
-    table.add_row("WorkItems Executed", str(stats.get("workitems_executed_this_run", 0)))
+    table.add_row(
+        "WorkItems Executed", str(stats.get("workitems_executed_this_run", 0))
+    )
     table.add_row("Total Claims", str(stats.get("total_claims", 0)))
     table.add_row("Total Evidence", str(stats.get("total_evidence", 0)))
-    table.add_row("Unresolved Uncertainties", str(stats.get("uncertainties_unresolved", 0)))
+    table.add_row(
+        "Unresolved Uncertainties", str(stats.get("uncertainties_unresolved", 0))
+    )
 
     console.print(table)
 
 
-def _print_status(stats: Dict[str, Any], show_claims: bool, show_workitems: bool, verbose: bool = False) -> None:
+def _print_status(
+    stats: Dict[str, Any],
+    show_claims: bool,
+    show_workitems: bool,
+    verbose: bool = False,
+) -> None:
     """Print status information."""
     console.print(Panel("[bold cyan]Epistemic Status[/bold cyan]", border_style="cyan"))
 
@@ -1303,7 +1417,9 @@ def _print_status(stats: Dict[str, Any], show_claims: bool, show_workitems: bool
 
     table.add_row("Total Claims", str(stats.get("total_claims", 0)))
     table.add_row("Total Evidence", str(stats.get("total_evidence", 0)))
-    table.add_row("Unresolved Uncertainties", str(stats.get("uncertainties_unresolved", 0)))
+    table.add_row(
+        "Unresolved Uncertainties", str(stats.get("uncertainties_unresolved", 0))
+    )
 
     console.print(table)
 
@@ -1315,10 +1431,14 @@ def _print_status(stats: Dict[str, Any], show_claims: bool, show_workitems: bool
             console.print(f"  {stage}: {bar} ({count})")
 
 
-def _print_claims(claims: list, stage_filter: Optional[str], verbose: bool = False) -> None:
+def _print_claims(
+    claims: list, stage_filter: Optional[str], verbose: bool = False
+) -> None:
     """Print claims list."""
     title = f"Claims ({stage_filter})" if stage_filter else "All Claims"
-    console.print(Panel(f"[bold]{title}[/bold] - {len(claims)} total", border_style="blue"))
+    console.print(
+        Panel(f"[bold]{title}[/bold] - {len(claims)} total", border_style="blue")
+    )
 
     for claim in claims:
         stage_color = {
@@ -1329,15 +1449,21 @@ def _print_claims(claims: list, stage_filter: Optional[str], verbose: bool = Fal
             "actionable": "bold green",
         }.get(claim.stage.value, "white")
 
-        console.print(f"\n[{stage_color}][{claim.stage.value}][/{stage_color}] {claim.claim_id[:12]}...")
+        console.print(
+            f"\n[{stage_color}][{claim.stage.value}][/{stage_color}] {claim.claim_id[:12]}..."
+        )
         console.print(f"  {claim.statement}")
         console.print(f"  [dim]Scope: {claim.scope}[/dim]")
-        console.print(f"  [dim]Evidence: {len(claim.evidence_ids)} | Uncertainties: {len(claim.uncertainty_ids)}[/dim]")
+        console.print(
+            f"  [dim]Evidence: {len(claim.evidence_ids)} | Uncertainties: {len(claim.uncertainty_ids)}[/dim]"
+        )
 
 
 def _print_evidence(evidence: list, verbose: bool = False) -> None:
     """Print evidence list."""
-    console.print(Panel(f"[bold]Evidence[/bold] - {len(evidence)} total", border_style="green"))
+    console.print(
+        Panel(f"[bold]Evidence[/bold] - {len(evidence)} total", border_style="green")
+    )
 
     for ev in evidence:
         console.print(f"\n[cyan][{ev.source_type}][/cyan] {ev.evidence_id[:12]}...")
@@ -1353,31 +1479,50 @@ def _print_verification_evidence(verification: dict, verbose: bool = False) -> N
     if total == 0:
         return
 
-    console.print(Panel(f"[bold]Verification Evidence[/bold] - {total} total", border_style="magenta"))
+    console.print(
+        Panel(
+            f"[bold]Verification Evidence[/bold] - {total} total",
+            border_style="magenta",
+        )
+    )
 
     # Computational evidence
     for ev in verification.get("computational", []):
         verdict_color = (
-            "green" if ev.final_verdict == "SUPPORTED" else
-            "red" if ev.final_verdict == "REFUTED" else
-            "bright_yellow" if ev.final_verdict == "TEST_FAILED" else  # Weaker than REFUTED
-            "yellow"
+            "green"
+            if ev.final_verdict == "SUPPORTED"
+            else "red"
+            if ev.final_verdict == "REFUTED"
+            else "bright_yellow"
+            if ev.final_verdict == "TEST_FAILED"
+            # Weaker than REFUTED
+            else "yellow"
         )
         console.print(f"\n[magenta][COMPUTATIONAL][/magenta] {ev.evidence_id[:12]}...")
         console.print(f"  Claim: {ev.claim_id[:12]}...")
-        console.print(f"  Verdict: [{verdict_color}]{ev.final_verdict}[/{verdict_color}] (confidence: {ev.confidence:.2f})")
+        console.print(
+            f"  Verdict: [{verdict_color}]{ev.final_verdict}[/{verdict_color}] (confidence: {ev.confidence:.2f})"
+        )
         if ev.reproducible:
-            console.print(f"  [green]✓ Reproducible[/green]")
+            console.print("  [green]✓ Reproducible[/green]")
         if ev.explanation:
             # Show ALL explanation - never truncate (per CLAUDE.md "No Output Truncation")
             console.print(f"  [dim]{ev.explanation}[/dim]")
 
     # Adversarial evidence
     for ev in verification.get("adversarial", []):
-        verdict_color = "green" if ev.verdict == "SUPPORTED" else "red" if ev.verdict == "REFUTED" else "yellow"
+        verdict_color = (
+            "green"
+            if ev.verdict == "SUPPORTED"
+            else "red"
+            if ev.verdict == "REFUTED"
+            else "yellow"
+        )
         console.print(f"\n[magenta][ADVERSARIAL][/magenta] {ev.evidence_id[:12]}...")
         console.print(f"  Claim: {ev.claim_id[:12]}...")
-        console.print(f"  Verdict: [{verdict_color}]{ev.verdict}[/{verdict_color}] (balance: {ev.adversarial_balance:.2f})")
+        console.print(
+            f"  Verdict: [{verdict_color}]{ev.verdict}[/{verdict_color}] (balance: {ev.adversarial_balance:.2f})"
+        )
         if ev.counterarguments:
             console.print(f"  Counterarguments: {len(ev.counterarguments)}")
             # Show ALL counterarguments - never truncate (per CLAUDE.md "No Output Truncation")
@@ -1387,10 +1532,18 @@ def _print_verification_evidence(verification: dict, verbose: bool = False) -> N
 
     # Convergent evidence
     for ev in verification.get("convergent", []):
-        verdict_color = "green" if ev.verdict == "CONVERGENT" else "yellow" if ev.verdict == "PARTIAL" else "red"
+        verdict_color = (
+            "green"
+            if ev.verdict == "CONVERGENT"
+            else "yellow"
+            if ev.verdict == "PARTIAL"
+            else "red"
+        )
         console.print(f"\n[magenta][CONVERGENT][/magenta] {ev.evidence_id[:12]}...")
         console.print(f"  Claim: {ev.claim_id[:12]}...")
-        console.print(f"  Verdict: [{verdict_color}]{ev.verdict}[/{verdict_color}] (strength: {ev.convergence_strength:.2f})")
+        console.print(
+            f"  Verdict: [{verdict_color}]{ev.verdict}[/{verdict_color}] (strength: {ev.convergence_strength:.2f})"
+        )
         console.print(f"  Independent domains: {ev.num_independent_domains}")
         if ev.domain_clusters:
             # Show ALL domain clusters - never truncate (per CLAUDE.md "No Output Truncation")
@@ -1400,55 +1553,89 @@ def _print_verification_evidence(verification: dict, verbose: bool = False) -> N
 
     # Temporal evidence
     for ev in verification.get("temporal", []):
-        verdict_color = "green" if ev.verdict == "CONFIRMED" else "red" if ev.verdict == "REFUTED" else "yellow"
+        verdict_color = (
+            "green"
+            if ev.verdict == "CONFIRMED"
+            else "red"
+            if ev.verdict == "REFUTED"
+            else "yellow"
+        )
         console.print(f"\n[magenta][TEMPORAL][/magenta] {ev.evidence_id[:12]}...")
         console.print(f"  Claim: {ev.claim_id[:12]}...")
         console.print(f"  Verdict: [{verdict_color}]{ev.verdict}[/{verdict_color}]")
-        console.print(f"  Predictions: {ev.resolved_predictions}/{ev.total_predictions} resolved")
+        console.print(
+            f"  Predictions: {ev.resolved_predictions}/{ev.total_predictions} resolved"
+        )
         console.print(f"  Confirmed: {ev.confirmed_count}, Refuted: {ev.refuted_count}")
         if ev.confirmation_rate > 0:
             console.print(f"  Confirmation rate: {ev.confirmation_rate:.1%}")
 
 
-def _print_uncertainties(uncertainties: list, blocking_only: bool, verbose: bool = False) -> None:
+def _print_uncertainties(
+    uncertainties: list, blocking_only: bool, verbose: bool = False
+) -> None:
     """Print uncertainties list grouped by blocking/non-blocking and resolution status."""
     title = "Blocking Uncertainties" if blocking_only else "All Uncertainties"
-    console.print(Panel(f"[bold]{title}[/bold] - {len(uncertainties)} total", border_style="yellow"))
+    console.print(
+        Panel(
+            f"[bold]{title}[/bold] - {len(uncertainties)} total", border_style="yellow"
+        )
+    )
 
     # Group uncertainties
-    blocking_unresolved = [u for u in uncertainties if u.is_blocking and not u.resolved_at]
-    non_blocking_unresolved = [u for u in uncertainties if not u.is_blocking and not u.resolved_at]
+    blocking_unresolved = [
+        u for u in uncertainties if u.is_blocking and not u.resolved_at
+    ]
+    non_blocking_unresolved = [
+        u for u in uncertainties if not u.is_blocking and not u.resolved_at
+    ]
     resolved = [u for u in uncertainties if u.resolved_at]
 
     if blocking_unresolved:
         console.print("\n[bold red]Blocking (unresolved)[/bold red]")
         for u in blocking_unresolved:
-            console.print(f"\n[red]✗[/red] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}...")
+            console.print(
+                f"\n[red]✗[/red] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}..."
+            )
             console.print(f"  {u.description}")
             if u.affected_claim_ids:
-                console.print(f"  [dim]Affects: {len(u.affected_claim_ids)} claims[/dim]")
+                console.print(
+                    f"  [dim]Affects: {len(u.affected_claim_ids)} claims[/dim]"
+                )
 
     if non_blocking_unresolved:
         console.print("\n[bold yellow]Non-blocking (caveats)[/bold yellow]")
         for u in non_blocking_unresolved:
-            console.print(f"\n[yellow]~[/yellow] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}...")
+            console.print(
+                f"\n[yellow]~[/yellow] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}..."
+            )
             console.print(f"  {u.description}")
             if u.affected_claim_ids:
-                console.print(f"  [dim]Affects: {len(u.affected_claim_ids)} claims[/dim]")
+                console.print(
+                    f"  [dim]Affects: {len(u.affected_claim_ids)} claims[/dim]"
+                )
 
     if resolved:
         console.print(f"\n[bold green]Resolved ({len(resolved)})[/bold green]")
         for u in resolved:
-            console.print(f"\n[green]✓[/green] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}...")
+            console.print(
+                f"\n[green]✓[/green] [{u.uncertainty_type.value}] {u.uncertainty_id[:12]}..."
+            )
             console.print(f"  {u.description}")
             if u.resolution:
                 console.print(f"  [dim italic]Resolution: {u.resolution}[/dim italic]")
 
 
-def _print_decisions(decisions: list, include_reversed: bool, verbose: bool = False) -> None:
+def _print_decisions(
+    decisions: list, include_reversed: bool, verbose: bool = False
+) -> None:
     """Print decisions list."""
     title = "All Decisions" if include_reversed else "Active Decisions"
-    console.print(Panel(f"[bold]{title}[/bold] - {len(decisions)} total", border_style="bright_cyan"))
+    console.print(
+        Panel(
+            f"[bold]{title}[/bold] - {len(decisions)} total", border_style="bright_cyan"
+        )
+    )
 
     for d in decisions:
         # Status indicator
@@ -1459,19 +1646,27 @@ def _print_decisions(decisions: list, include_reversed: bool, verbose: bool = Fa
             status = "[green]ACTIVE[/green]"
             style = "white"
 
-        reversible = "[cyan]reversible[/cyan]" if d.reversible else "[yellow]irreversible[/yellow]"
+        reversible = (
+            "[cyan]reversible[/cyan]"
+            if d.reversible
+            else "[yellow]irreversible[/yellow]"
+        )
 
         console.print(f"\n{status} {d.decision_id[:12]}... ({reversible})")
         console.print(f"  [{style}]{d.statement}[/{style}]")
         # Show ALL claim IDs - never truncate (per CLAUDE.md "No Output Truncation")
-        console.print(f"  [dim]Based on claims: {', '.join(cid[:8] for cid in d.claim_ids)}[/dim]")
+        console.print(
+            f"  [dim]Based on claims: {', '.join(cid[:8] for cid in d.claim_ids)}[/dim]"
+        )
 
         if d.justification:
             # Show ALL justification - never truncate (per CLAUDE.md "No Output Truncation")
             console.print(f"  [dim italic]{d.justification}[/dim italic]")
 
         if d.reversed_at:
-            console.print(f"  [red]Reversed: {d.reversal_reason or 'No reason given'}[/red]")
+            console.print(
+                f"  [red]Reversed: {d.reversal_reason or 'No reason given'}[/red]"
+            )
 
 
 async def handle_cleanup(
@@ -1493,9 +1688,7 @@ async def handle_cleanup(
     Returns:
         CleanupResult with cleanup statistics
     """
-    import os
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     databases_dir = get_databases_dir()
     if not databases_dir.exists():
@@ -1521,7 +1714,9 @@ async def handle_cleanup(
                 candidates.append((item, mtime, size))
 
     if not candidates:
-        console.print(f"[green]No ephemeral databases older than {older_than_days} days found[/green]")
+        console.print(
+            f"[green]No ephemeral databases older than {older_than_days} days found[/green]"
+        )
         return CleanupResult(success=True, deleted=0, freed_bytes=0, dry_run=dry_run)
 
     # Group by database name (db + raw dir)
@@ -1534,8 +1729,10 @@ async def handle_cleanup(
         db_groups[base_name]["items"].append(item)
         db_groups[base_name]["total_size"] += size
 
-    console.print(f"\n[bold]Epistemic Database Cleanup[/bold]")
-    console.print(f"Found {len(db_groups)} ephemeral projects older than {older_than_days} days\n")
+    console.print("\n[bold]Epistemic Database Cleanup[/bold]")
+    console.print(
+        f"Found {len(db_groups)} ephemeral projects older than {older_than_days} days\n"
+    )
 
     if dry_run:
         console.print("[yellow]DRY RUN - no files will be deleted[/yellow]\n")
@@ -1557,23 +1754,34 @@ async def handle_cleanup(
                 console.print(f"  [red]Failed to delete {base_name}: {e}[/red]")
 
     if dry_run:
-        total_mb = sum(info["total_size"] for info in db_groups.values()) / (1024 * 1024)
-        console.print(f"\n[yellow]Would delete {len(db_groups)} projects, freeing {total_mb:.2f} MB[/yellow]")
+        total_mb = sum(info["total_size"] for info in db_groups.values()) / (
+            1024 * 1024
+        )
+        console.print(
+            f"\n[yellow]Would delete {len(db_groups)} projects, freeing {total_mb:.2f} MB[/yellow]"
+        )
     else:
         freed_mb = freed_bytes / (1024 * 1024)
-        console.print(f"\n[green]Deleted {deleted_count} projects, freed {freed_mb:.2f} MB[/green]")
+        console.print(
+            f"\n[green]Deleted {deleted_count} projects, freed {freed_mb:.2f} MB[/green]"
+        )
 
     # Also clean up orphan _raw directories (where .db was already deleted)
     orphan_count = 0
     orphan_bytes = 0
     for item in databases_dir.iterdir():
-        if item.name.startswith("ask_") and item.name.endswith("_raw") and item.is_dir():
+        if (
+            item.name.startswith("ask_")
+            and item.name.endswith("_raw")
+            and item.is_dir()
+        ):
             base_name = item.name.replace("_raw", "")
             db_file = databases_dir / f"{base_name}.db"
             if not db_file.exists():
                 # Orphan _raw directory - no matching .db
                 if not dry_run:
                     import shutil
+
                     size = sum(f.stat().st_size for f in item.rglob("*") if f.is_file())
                     shutil.rmtree(item)
                     orphan_count += 1
@@ -1583,7 +1791,9 @@ async def handle_cleanup(
 
     if orphan_count > 0:
         orphan_mb = orphan_bytes / (1024 * 1024)
-        console.print(f"[green]Cleaned {orphan_count} orphan directories, freed {orphan_mb:.2f} MB[/green]")
+        console.print(
+            f"[green]Cleaned {orphan_count} orphan directories, freed {orphan_mb:.2f} MB[/green]"
+        )
 
     return CleanupResult(
         success=True,
@@ -1661,8 +1871,12 @@ async def handle_report(
         objective_id=objective_id,
         model_name=model,
     ):
-        console.print(f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]")
-        console.print(f"[dim]Claims: {len(report_data.claims)}, Evidence: {len(report_data.evidence)}, Uncertainties: {len(report_data.uncertainties)}[/dim]")
+        console.print(
+            f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
+        )
+        console.print(
+            f"[dim]Claims: {len(report_data.claims)}, Evidence: {len(report_data.evidence)}, Uncertainties: {len(report_data.uncertainties)}[/dim]"
+        )
 
         return ReportResult(
             success=True,

@@ -153,23 +153,38 @@ def _build_planner_agent(model: str):  # type: ignore[no-untyped-def]
             f = output.filter
             date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-            if f.operator in ("after", "before") and f.value and not date_re.match(f.value):
+            if (
+                f.operator in ("after", "before")
+                and f.value
+                and not date_re.match(f.value)
+            ):
                 issues.append(f"Date filter needs YYYY-MM-DD format, got: '{f.value}'")
 
             if f.operator == "equals" and not f.value:
                 issues.append("'equals' operator requires a non-empty value")
 
             if f.field == "created_at" and f.operator not in ("after", "before"):
-                issues.append(f"created_at only supports 'after' or 'before', got: '{f.operator}'")
+                issues.append(
+                    f"created_at only supports 'after' or 'before', got: '{f.operator}'"
+                )
 
             if f.field in ("doc_type", "source") and f.operator != "equals":
-                issues.append(f"'{f.field}' only supports 'equals' operator, got: '{f.operator}'")
+                issues.append(
+                    f"'{f.field}' only supports 'equals' operator, got: '{f.operator}'"
+                )
 
-            if f.field in ("has_decision", "has_action_item") and f.operator != "is_true":
-                issues.append(f"'{f.field}' only supports 'is_true' operator, got: '{f.operator}'")
+            if (
+                f.field in ("has_decision", "has_action_item")
+                and f.operator != "is_true"
+            ):
+                issues.append(
+                    f"'{f.field}' only supports 'is_true' operator, got: '{f.operator}'"
+                )
 
             if f.operator == "is_true" and f.value:
-                issues.append(f"'is_true' operator should have empty value, got: '{f.value}'")
+                issues.append(
+                    f"'is_true' operator should have empty value, got: '{f.value}'"
+                )
 
         if not output.needs_semantic_search and output.filter is None:
             issues.append("If needs_semantic_search is False, a filter is required")
@@ -206,6 +221,8 @@ async def plan_search(query: str, model: str) -> SearchPlan:
 
         return plan
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
+        raise RuntimeError(
+            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+        )
     except Exception as e:
         raise RuntimeError(f"Query planning failed: {e}") from e

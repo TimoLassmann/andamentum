@@ -19,7 +19,9 @@ _MAX_EMBED_CHARS = 2000
 _OVERLAP_CHARS = 200
 
 
-def _chunk_text(text: str, max_chars: int = _MAX_EMBED_CHARS, overlap: int = _OVERLAP_CHARS) -> list[str]:
+def _chunk_text(
+    text: str, max_chars: int = _MAX_EMBED_CHARS, overlap: int = _OVERLAP_CHARS
+) -> list[str]:
     """Split text into overlapping chunks for embedding."""
     if not text or len(text) <= max_chars:
         return [text or ""]
@@ -104,4 +106,3 @@ async def embed_documents(
         result.append(all_embeddings[idx : idx + len(chunks)])
         idx += len(chunks)
     return result
-

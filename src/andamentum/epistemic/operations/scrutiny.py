@@ -72,7 +72,9 @@ async def _maybe_advance_phase(repo: "EpistemicRepository", objective_id: str) -
             return
 
     # No unresolved blocking uncertainties
-    uncertainties = await repo.query("uncertainty", objective_id=objective_id, resolution=None)
+    uncertainties = await repo.query(
+        "uncertainty", objective_id=objective_id, resolution=None
+    )
     for u in uncertainties:
         if u.is_blocking:
             return
@@ -107,7 +109,9 @@ class ScrutiniseClaimOperation(BaseOperation):
                     # Skip corroborative/deferred evidence — only representatives carry to scrutiny
                     if ev.cluster_status in ("corroborative", "deferred"):
                         continue
-                    quality_str = f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
+                    quality_str = (
+                        f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
+                    )
                     evidence_summaries.append(
                         f"[{ev.source_type}{quality_str}] {ev.source_ref}\n{ev.extracted_content}"
                     )
@@ -118,7 +122,9 @@ class ScrutiniseClaimOperation(BaseOperation):
     # Blocking types that remain blocking even when scrutiny passes.
     # These represent factual contradictions or logical impossibilities that
     # the scrutiny verdict cannot override.
-    _ALWAYS_BLOCKING = frozenset({"contradiction", "logical_inconsistency", "physical_implausibility"})
+    _ALWAYS_BLOCKING = frozenset(
+        {"contradiction", "logical_inconsistency", "physical_implausibility"}
+    )
 
     async def _handle_issues(
         self,
@@ -160,7 +166,11 @@ class ScrutiniseClaimOperation(BaseOperation):
                 for eid in claim.evidence_ids:
                     try:
                         ev = await self.repo.get("evidence", eid)
-                        if isinstance(ev, Evidence) and ev.extracted_content and not ev.invalidated:
+                        if (
+                            isinstance(ev, Evidence)
+                            and ev.extracted_content
+                            and not ev.invalidated
+                        ):
                             ev.invalidated = True
                             ev.invalidation_reason = str(issue)
                             await self.repo.save(ev)
@@ -204,7 +214,11 @@ class ScrutiniseClaimOperation(BaseOperation):
         """
         import asyncio
 
-        evidence_text = "\n\n".join(evidence_summaries) if evidence_summaries else "[No evidence available]"
+        evidence_text = (
+            "\n\n".join(evidence_summaries)
+            if evidence_summaries
+            else "[No evidence available]"
+        )
 
         # Agent A: Assess evidence weight (flat output, 4 fields — reliable)
         # Sees ALL evidence for holistic weight assessment.
@@ -222,7 +236,9 @@ class ScrutiniseClaimOperation(BaseOperation):
         # The contradiction call sees all items but asks only about contradictions.
         found_issues: list[dict[str, object]] = []
 
-        async def _check_single_evidence(evidence_item: str) -> dict[str, object] | None:
+        async def _check_single_evidence(
+            evidence_item: str,
+        ) -> dict[str, object] | None:
             try:
                 result = await self.run_agent(
                     "epistemic_identify_single_issue",
@@ -261,7 +277,7 @@ class ScrutiniseClaimOperation(BaseOperation):
 
         # Build tasks: one per evidence item (capped at MAX_ISSUES) + one contradiction check
         tasks: list[asyncio.Task[dict[str, object] | None]] = []
-        for ev_summary in evidence_summaries[:self.MAX_ISSUES]:
+        for ev_summary in evidence_summaries[: self.MAX_ISSUES]:
             tasks.append(asyncio.ensure_future(_check_single_evidence(ev_summary)))
         if len(evidence_summaries) >= 2:
             tasks.append(asyncio.ensure_future(_check_contradictions(evidence_text)))
@@ -292,7 +308,9 @@ class ScrutiniseClaimOperation(BaseOperation):
         issue_descriptions = [str(iss["description"]) for iss in found_issues]
         issue_type_strs = [str(iss["issue_type"]) for iss in found_issues]
 
-        await self._handle_issues(claim, issue_descriptions, issue_type_strs, verdict=verdict)
+        await self._handle_issues(
+            claim, issue_descriptions, issue_type_strs, verdict=verdict
+        )
 
         return verdict
 
@@ -322,12 +340,19 @@ class ScrutiniseClaimOperation(BaseOperation):
                 for eid in claim.evidence_ids:
                     try:
                         ev = await self.repo.get("evidence", eid)
-                        if isinstance(ev, Evidence) and ev.extracted and ev.extracted_content and not ev.invalidated:
+                        if (
+                            isinstance(ev, Evidence)
+                            and ev.extracted
+                            and ev.extracted_content
+                            and not ev.invalidated
+                        ):
                             all_evidence.append(ev)
                     except Exception:
                         continue
                 if len(all_evidence) >= 2:
-                    await select_top_k_evidence(self.repo, all_evidence, embedding_model=self.embedding_model)
+                    await select_top_k_evidence(
+                        self.repo, all_evidence, embedding_model=self.embedding_model
+                    )
 
             evidence_summaries = await self._gather_evidence_summaries(claim)
             verdict = await self._execute_split(claim, evidence_summaries)
@@ -341,7 +366,10 @@ class ScrutiniseClaimOperation(BaseOperation):
         # and the verdict is still "needs_resolution" but all blocking uncertainties
         # have been resolved (even as "Unresolvable"), then investigation is
         # not producing useful information. Mark as saturated.
-        if claim.investigation_count > 0 and claim.scrutiny_verdict == "needs_resolution":
+        if (
+            claim.investigation_count > 0
+            and claim.scrutiny_verdict == "needs_resolution"
+        ):
             blocking_unresolved = await self.repo.query(
                 "uncertainty",
                 affected_claim_ids__contains=claim.entity_id,

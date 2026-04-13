@@ -38,14 +38,16 @@ EXAMPLE OUTPUT:
   "reasoning": "Cover new models, events, and flagship product"
 }"""
 
-register_agent(AgentDefinition(
-    name="search_planner",
-    prompt=SEARCH_PLANNER_PROMPT,
-    output_model=SearchPlan,
-    retries=5,
-    output_retries=5,
-    has_tools=True,
-))
+register_agent(
+    AgentDefinition(
+        name="search_planner",
+        prompt=SEARCH_PLANNER_PROMPT,
+        output_model=SearchPlan,
+        retries=5,
+        output_retries=5,
+        has_tools=True,
+    )
+)
 
 # ── Page Fetcher ────────────────────────────────────────────────────────
 
@@ -69,11 +71,13 @@ EXAMPLE OUTPUT:
   "reasoning": "Selected official docs (0), recent news (2), and technical blog (5) - skip marketing site (1) and duplicate (3)"
 }"""
 
-register_agent(AgentDefinition(
-    name="page_fetcher",
-    prompt=PAGE_FETCHER_PROMPT,
-    output_model=FetchPlan,
-    retries=5,
-    output_retries=5,
-    has_tools=True,
-))
+register_agent(
+    AgentDefinition(
+        name="page_fetcher",
+        prompt=PAGE_FETCHER_PROMPT,
+        output_model=FetchPlan,
+        retries=5,
+        output_retries=5,
+        has_tools=True,
+    )
+)

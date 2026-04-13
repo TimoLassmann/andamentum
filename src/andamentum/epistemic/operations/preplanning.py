@@ -67,7 +67,9 @@ class ClarifyQuestionOperation(BaseOperation):
                         f"Please try again, staying closer to the original question."
                     )
 
-                result = await self.run_agent("epistemic_clarify_question", **clarify_kwargs)
+                result = await self.run_agent(
+                    "epistemic_clarify_question", **clarify_kwargs
+                )
                 clarified_question = result.clarified_question
                 key_terms = result.key_terms or []
 
@@ -77,7 +79,7 @@ class ClarifyQuestionOperation(BaseOperation):
                     research_question=objective.description,
                     output_to_validate=clarified_question,
                     context=result.reasoning,
-                    model=self.agent_runner.model,
+                    model=getattr(self.agent_runner, "model", None),
                 )
 
                 if validation.aligned:
@@ -89,7 +91,11 @@ class ClarifyQuestionOperation(BaseOperation):
                     break
 
                 # Not aligned — log and retry with feedback
-                prior_feedback = validation.issue or validation.suggestion or "drifted from original intent"
+                prior_feedback = (
+                    validation.issue
+                    or validation.suggestion
+                    or "drifted from original intent"
+                )
                 logger.warning(
                     "Clarification round %d drifted: %s. Retrying.",
                     round_num,
@@ -159,6 +165,7 @@ class ClassifyQuestionOperation(BaseOperation):
 
         # Validate against known types
         from ..primitives import QuestionType
+
         valid_types = {qt.value for qt in QuestionType}
         if question_type not in valid_types:
             return OperationResult(

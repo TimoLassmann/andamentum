@@ -11,6 +11,7 @@ when they should block, allowing claims to be promoted without validation.
 """
 
 import pytest
+from typing import Any
 
 from ..entities import Claim, ClaimStage, Evidence, Uncertainty, UncertaintyType
 from ..gates import (
@@ -40,20 +41,20 @@ class FailingRepo(EpistemicRepository):
         self.fail_on_get = fail_on_get or set()
         self.fail_on_query = fail_on_query or set()
 
-    async def get(self, entity_type: str, entity_id: str):
+    async def get(self, entity_type: str, entity_id: str) -> Any:  # type: ignore[override]
         if entity_id in self.fail_on_get:
             raise RuntimeError(f"Simulated get failure for {entity_id}")
         return await super().get(entity_type, entity_id)
 
-    async def query(self, entity_type: str, **filters):
+    async def query(self, entity_type: str, **filters: Any) -> Any:  # type: ignore[override]
         if entity_type in self.fail_on_query:
             raise RuntimeError(f"Simulated query failure for {entity_type}")
         return await super().query(entity_type, **filters)
 
 
-def _make_claim(**overrides) -> Claim:
+def _make_claim(**overrides: Any) -> Claim:
     """Create a claim with sensible defaults for gate testing."""
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         entity_id="c-test",
         objective_id="obj-test",
         statement="Test claim",
@@ -111,7 +112,12 @@ class TestQualityWeightedEvidenceSumFailure:
         backend = InMemoryStorageBackend()
         repo = EpistemicRepository(backend)
 
-        e1 = Evidence(entity_id="e-1", objective_id="obj-test", quality_score=0.8, invalidated=True)
+        e1 = Evidence(
+            entity_id="e-1",
+            objective_id="obj-test",
+            quality_score=0.8,
+            invalidated=True,
+        )
         e2 = Evidence(entity_id="e-2", objective_id="obj-test", quality_score=0.6)
         await repo.save(e1)
         await repo.save(e2)
@@ -203,7 +209,9 @@ class TestValidatePromotionFailure:
             result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
             # Must block — custom safety check failed
             assert not result.passed
-            assert any("custom gate check" in r.lower() for r in result.blocking_reasons)
+            assert any(
+                "custom gate check" in r.lower() for r in result.blocking_reasons
+            )
         finally:
             gate.custom_check = original
 
@@ -387,8 +395,18 @@ class TestValidateCurrentStageFailure:
         backend = InMemoryStorageBackend()
         repo = EpistemicRepository(backend)
 
-        e1 = Evidence(entity_id="e-1", objective_id="obj-test", quality_score=0.8, invalidated=True)
-        e2 = Evidence(entity_id="e-2", objective_id="obj-test", quality_score=0.7, invalidated=True)
+        e1 = Evidence(
+            entity_id="e-1",
+            objective_id="obj-test",
+            quality_score=0.8,
+            invalidated=True,
+        )
+        e2 = Evidence(
+            entity_id="e-2",
+            objective_id="obj-test",
+            quality_score=0.7,
+            invalidated=True,
+        )
         await repo.save(e1)
         await repo.save(e2)
 

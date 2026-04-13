@@ -99,7 +99,10 @@ def is_valid_criticism(counterargument: Counterargument) -> tuple[bool, str]:
 
     # Must pass quality threshold
     if not counterargument.quality.passes_threshold:
-        return False, f"Quality score {counterargument.quality.combined_score:.2f} below threshold 2.5"
+        return (
+            False,
+            f"Quality score {counterargument.quality.combined_score:.2f} below threshold 2.5",
+        )
 
     # Must have some match to the claim
     if counterargument.match_strength == "none":

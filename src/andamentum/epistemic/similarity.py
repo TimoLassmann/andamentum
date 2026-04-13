@@ -187,12 +187,14 @@ def assess_clustering(
         else:
             mean_intra = 1.0
 
-        group_qualities.append(GroupQuality(
-            group_id=group_id,
-            size=len(group),
-            mean_silhouette=float(np.mean(group_sils)),
-            mean_intra_sim=mean_intra,
-        ))
+        group_qualities.append(
+            GroupQuality(
+                group_id=group_id,
+                size=len(group),
+                mean_silhouette=float(np.mean(group_sils)),
+                mean_intra_sim=mean_intra,
+            )
+        )
 
     return ClusteringQuality(
         silhouette=sil_mean,
@@ -224,7 +226,9 @@ def medoid(
     best_mean_sim = -2.0
 
     for i in group:
-        sims = [cosine_similarity(embeddings[i], embeddings[j]) for j in group if j != i]
+        sims = [
+            cosine_similarity(embeddings[i], embeddings[j]) for j in group if j != i
+        ]
         mean_sim = sum(sims) / len(sims)
         if mean_sim > best_mean_sim:
             best_mean_sim = mean_sim

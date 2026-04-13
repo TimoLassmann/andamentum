@@ -59,7 +59,9 @@ async def check_novelty(
     ]
 
     # Select primary query based on claim
-    primary_query = f"Find prior work, existing research, and publications related to: {claim}"
+    primary_query = (
+        f"Find prior work, existing research, and publications related to: {claim}"
+    )
 
     if verbose:
         print(f"Searching for prior work on: {claim}")
@@ -104,7 +106,9 @@ async def check_novelty(
 
     # Use assessment function to evaluate novelty
     try:
-        assessment_data = await assess_fn(claim, evidence_summary, key_findings, sources)
+        assessment_data = await assess_fn(
+            claim, evidence_summary, key_findings, sources
+        )
     except Exception:
         # If assessment fails, provide a report based on research results
         has_sources = len(sources) > 0

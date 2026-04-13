@@ -66,14 +66,20 @@ def _build_doc_agent(model: str):  # type: ignore[no-untyped-def]
     )
 
     @agent.output_validator
-    async def validate_doc_output(ctx: RunContext[None], output: DocumentLLMFields) -> DocumentLLMFields:
+    async def validate_doc_output(
+        ctx: RunContext[None], output: DocumentLLMFields
+    ) -> DocumentLLMFields:
         issues: list[str] = []
 
         if output.title and len(output.title.split()) > 15:
-            issues.append(f"Title has {len(output.title.split())} words — shorten to max 10 words.")
+            issues.append(
+                f"Title has {len(output.title.split())} words — shorten to max 10 words."
+            )
 
         if not output.title:
-            issues.append("Title is empty — provide a one-line summary of the document.")
+            issues.append(
+                "Title is empty — provide a one-line summary of the document."
+            )
 
         if issues:
             raise ModelRetry("\n".join(issues))
@@ -96,11 +102,15 @@ def _build_chunk_agent(model: str):  # type: ignore[no-untyped-def]
     )
 
     @agent.output_validator
-    async def validate_chunk_output(ctx: RunContext[None], output: ChunkLLMFields) -> ChunkLLMFields:
+    async def validate_chunk_output(
+        ctx: RunContext[None], output: ChunkLLMFields
+    ) -> ChunkLLMFields:
         issues: list[str] = []
 
         if len(output.topics) > 5:
-            issues.append(f"Too many topics ({len(output.topics)}) — provide 2-3 specific tags.")
+            issues.append(
+                f"Too many topics ({len(output.topics)}) — provide 2-3 specific tags."
+            )
 
         if issues:
             raise ModelRetry("\n".join(issues))
@@ -145,7 +155,9 @@ async def extract_document_metadata(
             people=llm_fields.people,
         )
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
+        raise RuntimeError(
+            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+        )
     except Exception as first_error:
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
@@ -153,7 +165,9 @@ async def extract_document_metadata(
             logger.warning(f"Document metadata extraction failed: {first_error}")
             return DocumentMetadataFields()
 
-        logger.info("Document metadata: tool-based output failed, retrying with prompted output")
+        logger.info(
+            "Document metadata: tool-based output failed, retrying with prompted output"
+        )
 
         try:
             from pydantic_ai import Agent, PromptedOutput
@@ -175,7 +189,9 @@ async def extract_document_metadata(
                 people=llm_fields.people,
             )
         except Exception as e:
-            logger.warning(f"Document metadata extraction failed after prompted retry: {e}")
+            logger.warning(
+                f"Document metadata extraction failed after prompted retry: {e}"
+            )
             return DocumentMetadataFields()
 
 
@@ -212,7 +228,9 @@ async def extract_chunk_metadata(
             has_action_item=llm_fields.has_action_item,
         )
     except ImportError:
-        raise RuntimeError("pydantic-ai not installed. Install with: pip install andamentum[llm]")
+        raise RuntimeError(
+            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+        )
     except Exception as first_error:
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
@@ -220,7 +238,9 @@ async def extract_chunk_metadata(
             logger.warning(f"Chunk metadata extraction failed: {first_error}")
             return ChunkMetadataFields()
 
-        logger.info("Chunk metadata: tool-based output failed, retrying with prompted output")
+        logger.info(
+            "Chunk metadata: tool-based output failed, retrying with prompted output"
+        )
 
         try:
             from pydantic_ai import Agent, PromptedOutput
@@ -242,5 +262,7 @@ async def extract_chunk_metadata(
                 has_action_item=llm_fields.has_action_item,
             )
         except Exception as e:
-            logger.warning(f"Chunk metadata extraction failed after prompted retry: {e}")
+            logger.warning(
+                f"Chunk metadata extraction failed after prompted retry: {e}"
+            )
             return ChunkMetadataFields()

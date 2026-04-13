@@ -50,7 +50,7 @@ def migrate_add_hash_columns(db_path: Optional[Path] = None) -> None:
 def backfill_document_hashes(
     db_path: Optional[Path] = None,
     context_root: Optional[Path] = None,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> dict:
     """Backfill hash metadata for existing documents.
 
@@ -109,11 +109,14 @@ def backfill_document_hashes(
                 stat = file_path.stat()
 
                 # Update document
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE documents
                     SET file_hash = ?, file_size = ?, file_mtime = ?
                     WHERE id = ?
-                """, (file_hash, stat.st_size, stat.st_mtime, doc_id))
+                """,
+                    (file_hash, stat.st_size, stat.st_mtime, doc_id),
+                )
 
                 updated_count += 1
                 if verbose:
@@ -129,16 +132,16 @@ def backfill_document_hashes(
         conn.commit()
 
     if verbose:
-        print(f"\nBackfill complete:")
+        print("\nBackfill complete:")
         print(f"  Updated: {updated_count}")
         print(f"  Missing: {missing_count}")
         print(f"  Errors: {error_count}")
 
     return {
-        'updated_count': updated_count,
-        'missing_count': missing_count,
-        'error_count': error_count,
-        'errors': errors
+        "updated_count": updated_count,
+        "missing_count": missing_count,
+        "error_count": error_count,
+        "errors": errors,
     }
 
 
@@ -164,7 +167,7 @@ def migrate_to_unified_schema(db_path: Path) -> None:
         existing_columns = {row[1] for row in cursor.fetchall()}
 
         # Add missing columns (idempotent)
-        if 'doc_uuid' not in existing_columns:
+        if "doc_uuid" not in existing_columns:
             try:
                 # First add column as nullable with default
                 cursor.execute("""
@@ -178,43 +181,51 @@ def migrate_to_unified_schema(db_path: Path) -> None:
                     WHERE doc_uuid IS NULL
                 """)
                 # Create unique index (enforces uniqueness)
-                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)")
+                cursor.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)"
+                )
             except Exception:
                 pass  # Column already exists
 
-        if 'document_tier' not in existing_columns:
+        if "document_tier" not in existing_columns:
             try:
                 cursor.execute("""
                     ALTER TABLE documents
                     ADD COLUMN document_tier TEXT DEFAULT 'working'
                 """)
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)")
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)"
+                )
             except Exception:
                 pass  # Column already exists
 
-        if 'indexed_at' not in existing_columns:
+        if "indexed_at" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN indexed_at TEXT")
             except Exception:
                 pass  # Column already exists
 
-        if 'metadata' not in existing_columns:
+        if "metadata" not in existing_columns:
             try:
-                cursor.execute("ALTER TABLE documents ADD COLUMN metadata TEXT DEFAULT '{}'")
+                cursor.execute(
+                    "ALTER TABLE documents ADD COLUMN metadata TEXT DEFAULT '{}'"
+                )
             except Exception:
                 pass  # Column already exists
 
         # Phase 1: Document-level embeddings (DHP temporal clustering)
-        if 'doc_embedding' not in existing_columns:
+        if "doc_embedding" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN doc_embedding TEXT")
             except Exception:
                 pass  # Column already exists
 
-        if 'cluster_id' not in existing_columns:
+        if "cluster_id" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN cluster_id INTEGER")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)")
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"
+                )
             except Exception:
                 pass  # Column already exists
 
@@ -236,7 +247,7 @@ def migrate_database(
     db_path: Optional[Path] = None,
     context_root: Optional[Path] = None,
     backfill: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> dict:
     """Run all migrations for RAG database.
 
@@ -261,10 +272,10 @@ def migrate_database(
 
     # Step 2: Backfill (optional)
     backfill_result = {
-        'updated_count': 0,
-        'missing_count': 0,
-        'error_count': 0,
-        'errors': []
+        "updated_count": 0,
+        "missing_count": 0,
+        "error_count": 0,
+        "errors": [],
     }
 
     if backfill:
@@ -275,7 +286,4 @@ def migrate_database(
     if verbose:
         print("\n✅ Migration complete!")
 
-    return {
-        'schema_migrated': True,
-        'backfill_result': backfill_result
-    }
+    return {"schema_migrated": True, "backfill_result": backfill_result}

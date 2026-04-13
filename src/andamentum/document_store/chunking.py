@@ -42,7 +42,9 @@ class _Section:
     end_char: int
 
 
-def _build_section_path(heading_stack: list[tuple[int, str]], level: int, heading: str) -> str:
+def _build_section_path(
+    heading_stack: list[tuple[int, str]], level: int, heading: str
+) -> str:
     """Build a heading path like 'Methods > ODE Solver' from a stack."""
     # Pop headings at the same or deeper level
     while heading_stack and heading_stack[-1][0] >= level:
@@ -57,7 +59,16 @@ def _split_into_sections(text: str) -> list[_Section]:
 
     if not matches:
         # No headers — entire text is one section
-        return [_Section(heading="", level=0, path="", text=text, start_char=0, end_char=len(text))]
+        return [
+            _Section(
+                heading="",
+                level=0,
+                path="",
+                text=text,
+                start_char=0,
+                end_char=len(text),
+            )
+        ]
 
     sections: list[_Section] = []
     heading_stack: list[tuple[int, str]] = []
@@ -67,7 +78,14 @@ def _split_into_sections(text: str) -> list[_Section]:
         preamble = text[: matches[0].start()].strip()
         if preamble:
             sections.append(
-                _Section(heading="", level=0, path="", text=preamble, start_char=0, end_char=matches[0].start())
+                _Section(
+                    heading="",
+                    level=0,
+                    path="",
+                    text=preamble,
+                    start_char=0,
+                    end_char=matches[0].start(),
+                )
             )
 
     for i, match in enumerate(matches):
@@ -98,7 +116,9 @@ def _split_into_sections(text: str) -> list[_Section]:
     return sections
 
 
-def _window_split(text: str, max_chars: int, overlap_chars: int, start_offset: int = 0) -> list[tuple[str, int, int]]:
+def _window_split(
+    text: str, max_chars: int, overlap_chars: int, start_offset: int = 0
+) -> list[tuple[str, int, int]]:
     """Split text into overlapping windows. Returns list of (text, start_char, end_char)."""
     if len(text) <= max_chars:
         return [(text, start_offset, start_offset + len(text))]
@@ -163,7 +183,9 @@ def chunk_markdown(
             chunk_index += 1
         else:
             # Section too long — window split
-            windows = _window_split(section.text, max_chars, overlap_chars, section.start_char)
+            windows = _window_split(
+                section.text, max_chars, overlap_chars, section.start_char
+            )
             for window_text, start, end in windows:
                 chunks.append(
                     Chunk(

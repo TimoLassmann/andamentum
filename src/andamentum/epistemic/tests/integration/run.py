@@ -19,7 +19,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from questions import PATHWAY_TESTS, PathwayTest
+# Ensure this script's directory is on the path for the local questions module
+sys.path.insert(0, str(Path(__file__).parent))
+from questions import PATHWAY_TESTS, PathwayTest  # type: ignore[import-not-found]
 
 
 # ── Database inspection ────────────────────────────────────────────────
@@ -68,7 +70,7 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
 
     # ── General run overview ──────────────────────────────────────────
     print(f"\n  {'─' * 56}")
-    print(f"  Run Overview")
+    print("  Run Overview")
     print(f"  {'─' * 56}")
 
     total_ops = len(steps)
@@ -89,13 +91,13 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     for s in steps:
         op = s.get("operation", "?")
         op_counts[op] = op_counts.get(op, 0) + 1
-    print(f"\n  Operation counts:")
+    print("\n  Operation counts:")
     for op, count in sorted(op_counts.items(), key=lambda x: -x[1]):
         print(f"    {op:<35} {count:>3}x")
 
     # ── Claim details ─────────────────────────────────────────────────
     print(f"\n  {'─' * 56}")
-    print(f"  Claims")
+    print("  Claims")
     print(f"  {'─' * 56}")
     for c in claims:
         stmt = c.get("statement", "?")[:65]
@@ -107,12 +109,20 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
         verdict = c.get("scrutiny_verdict", "n/a")
         abandoned = " ABANDONED" if c.get("abandoned") else ""
         print(f"  [{stage:<12}] {stmt}")
-        print(f"    scrutiny={verdict}  {adv_str}  evidence={ev_count}  mods={mod}{abandoned}")
+        print(
+            f"    scrutiny={verdict}  {adv_str}  evidence={ev_count}  mods={mod}{abandoned}"
+        )
 
         # Promotion history (shows demotions)
         for h in c.get("promotion_history", []):
-            direction = "demoted" if _stage_rank(h.get("to", "")) < _stage_rank(h.get("from", "")) else "promoted"
-            print(f"    {direction}: {h.get('from')} -> {h.get('to')}  {h.get('justification', '')[:60]}")
+            direction = (
+                "demoted"
+                if _stage_rank(h.get("to", "")) < _stage_rank(h.get("from", ""))
+                else "promoted"
+            )
+            print(
+                f"    {direction}: {h.get('from')} -> {h.get('to')}  {h.get('justification', '')[:60]}"
+            )
 
         # Predictions
         preds = c.get("predictions", [])
@@ -122,19 +132,27 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
                 has_falsif = "yes" if p.get("failure_criteria") else "NO"
                 spec = p.get("specificity")
                 spec_str = f"spec={spec:.2f}" if spec is not None else ""
-                print(f"      - {p.get('statement', '?')[:55]}  falsif={has_falsif} {spec_str}")
+                print(
+                    f"      - {p.get('statement', '?')[:55]}  falsif={has_falsif} {spec_str}"
+                )
 
     # ── Evidence quality ──────────────────────────────────────────────
     print(f"\n  {'─' * 56}")
-    print(f"  Evidence")
+    print("  Evidence")
     print(f"  {'─' * 56}")
     invalidated = [e for e in evidence if e.get("invalidated")]
     judged = [e for e in evidence if e.get("support_judgment")]
     supports = [e for e in judged if e.get("support_judgment") == "supports"]
     contradicts = [e for e in judged if e.get("support_judgment") == "contradicts"]
-    qualities = [e.get("quality_score") for e in evidence if e.get("quality_score") is not None]
+    qualities: list[float] = [
+        float(e["quality_score"])
+        for e in evidence
+        if e.get("quality_score") is not None
+    ]
 
-    print(f"  Total: {len(evidence)}  Judged: {len(judged)} (supports={len(supports)}, contradicts={len(contradicts)})")
+    print(
+        f"  Total: {len(evidence)}  Judged: {len(judged)} (supports={len(supports)}, contradicts={len(contradicts)})"
+    )
     print(f"  Invalidated: {len(invalidated)}")
     if qualities:
         avg_q = sum(qualities) / len(qualities)
@@ -142,13 +160,15 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
         max_q = max(qualities)
         print(f"  Quality: avg={avg_q:.2f}  min={min_q:.2f}  max={max_q:.2f}")
     for inv in invalidated:
-        print(f"    INVALIDATED: {inv.get('source_ref', '?')[:50]}  reason={inv.get('invalidation_reason', '?')[:40]}")
+        print(
+            f"    INVALIDATED: {inv.get('source_ref', '?')[:50]}  reason={inv.get('invalidation_reason', '?')[:40]}"
+        )
 
     # ── TMS activity (Doyle) ──────────────────────────────────────────
     reval_steps = [s for s in steps if s.get("operation") == "revalidate_claim"]
     if reval_steps:
         print(f"\n  {'─' * 56}")
-        print(f"  TMS Activity (Doyle)")
+        print("  TMS Activity (Doyle)")
         print(f"  {'─' * 56}")
         for s in reval_steps:
             msg = s.get("message", "")
@@ -162,7 +182,7 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     invest_steps = [s for s in steps if s.get("operation") == "investigate_claim"]
     if invest_steps:
         print(f"\n  {'─' * 56}")
-        print(f"  Investigation Cycles (Peirce)")
+        print("  Investigation Cycles (Peirce)")
         print(f"  {'─' * 56}")
         for s in invest_steps:
             created = s.get("created_entities", [])
@@ -172,17 +192,19 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     scrutiny_steps = [s for s in steps if s.get("operation") == "scrutinise_claim"]
     if scrutiny_steps:
         print(f"\n  {'─' * 56}")
-        print(f"  Scrutiny Verdicts")
+        print("  Scrutiny Verdicts")
         print(f"  {'─' * 56}")
         for s in scrutiny_steps:
             msg = s.get("message", "")
             print(f"  {msg}")
 
     # ── Contrastive evaluation (Lipton) ───────────────────────────────
-    contrastive_steps = [s for s in steps if s.get("operation") == "contrastive_evaluation"]
+    contrastive_steps = [
+        s for s in steps if s.get("operation") == "contrastive_evaluation"
+    ]
     if contrastive_steps:
         print(f"\n  {'─' * 56}")
-        print(f"  Contrastive Evaluation (Lipton)")
+        print("  Contrastive Evaluation (Lipton)")
         print(f"  {'─' * 56}")
         for s in contrastive_steps:
             print(f"  {s.get('message', '')}")
@@ -191,7 +213,7 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     adv_steps = [s for s in steps if s.get("operation") == "adversarial_search"]
     if adv_steps:
         print(f"\n  {'─' * 56}")
-        print(f"  Adversarial Search")
+        print("  Adversarial Search")
         print(f"  {'─' * 56}")
         for s in adv_steps:
             print(f"  {s.get('message', '')}")
@@ -212,10 +234,14 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     # ── Uncertainties summary ─────────────────────────────────────────
     blocking = [u for u in uncertainties if u.get("is_blocking")]
     resolved = [u for u in uncertainties if u.get("resolution") is not None]
-    contrastive_uncerts = [u for u in uncertainties if u.get("created_by") == "contrastive_evaluation"]
+    contrastive_uncerts = [
+        u for u in uncertainties if u.get("created_by") == "contrastive_evaluation"
+    ]
     if uncertainties:
         print(f"\n  {'─' * 56}")
-        print(f"  Uncertainties: {len(uncertainties)} total, {len(blocking)} blocking, {len(resolved)} resolved")
+        print(
+            f"  Uncertainties: {len(uncertainties)} total, {len(blocking)} blocking, {len(resolved)} resolved"
+        )
         print(f"  {'─' * 56}")
         if contrastive_uncerts:
             print(f"  Contrastive observations: {len(contrastive_uncerts)}")
@@ -227,7 +253,10 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     obj_id = objective[0].get("objective_id") if objective else None
     if obj_id:
         try:
-            from andamentum.epistemic.confidence import compute_answer_confidence, compute_posterior
+            from andamentum.epistemic.confidence import (
+                compute_answer_confidence,
+                compute_posterior,
+            )
             from andamentum.epistemic.repository import EpistemicRepository
 
             db_dir = str(Path(db_path).parent)
@@ -236,7 +265,7 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
 
             ac = await compute_answer_confidence(repo, obj_id)
             print(f"\n  {'─' * 56}")
-            print(f"  Answer Confidence")
+            print("  Answer Confidence")
             print(f"  {'─' * 56}")
             print(f"  Overall: {ac.confidence:.2f} ({ac.level.upper()})")
             print(f"  Checks: {ac.passes} passed, {ac.failures} failed")
@@ -247,10 +276,12 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
             posterior = await compute_posterior(repo, obj_id)
             if posterior is not None:
                 print(f"\n  {'─' * 56}")
-                print(f"  Posterior P(Y)")
+                print("  Posterior P(Y)")
                 print(f"  {'─' * 56}")
                 print(f"  P(Y): {posterior.posterior:.4f}")
-                print(f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}")
+                print(
+                    f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}"
+                )
                 print(f"  {posterior.explanation}")
         except Exception as e:
             print(f"\n  Confidence calculation failed: {e}")
@@ -260,7 +291,13 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
 
 def _stage_rank(stage: str) -> int:
     """Numeric rank for stage comparison."""
-    return {"hypothesis": 0, "supported": 1, "provisional": 2, "robust": 3, "actionable": 4}.get(stage, -1)
+    return {
+        "hypothesis": 0,
+        "supported": 1,
+        "provisional": 2,
+        "robust": 3,
+        "actionable": 4,
+    }.get(stage, -1)
 
 
 # ── Verification checks ───────────────────────────────────────────────
@@ -318,7 +355,9 @@ def verify_lipton(db_path: str) -> list[str]:
     failures = []
     steps = _get_execution_steps(db_path)
 
-    contrastive_steps = [s for s in steps if s.get("operation") == "contrastive_evaluation"]
+    contrastive_steps = [
+        s for s in steps if s.get("operation") == "contrastive_evaluation"
+    ]
     if not contrastive_steps:
         failures.append("contrastive_evaluation never fired")
 
@@ -337,7 +376,9 @@ def verify_kahneman(db_path: str) -> list[str]:
     # Check that uncertainties were created (evidence of issue identification)
     uncertainties = _get_entities(db_path, "uncertainty")
     if not uncertainties:
-        failures.append("No uncertainties created — scrutiny found no issues in any evidence")
+        failures.append(
+            "No uncertainties created — scrutiny found no issues in any evidence"
+        )
 
     return failures
 
@@ -438,7 +479,11 @@ async def run_single_test(
     # Run verification
     verifier = VERIFIERS.get(test.tradition)
     if not verifier:
-        return True, [f"No verifier for tradition '{test.tradition}' — skipped"], db_path
+        return (
+            True,
+            [f"No verifier for tradition '{test.tradition}' — skipped"],
+            db_path,
+        )
 
     failures = verifier(db_path)
     passed = len(failures) == 0
@@ -458,9 +503,15 @@ async def main() -> None:
         description="Run epistemic integration tests (full pipeline, real LLM calls)"
     )
     parser.add_argument("--model", help="LLM model (e.g., openai:gpt-5.4-mini)")
-    parser.add_argument("--tradition", help="Run only this tradition (e.g., doyle, peirce)")
-    parser.add_argument("--list", action="store_true", help="List available tests and exit")
-    parser.add_argument("--keep", action="store_true", help="Keep databases after tests")
+    parser.add_argument(
+        "--tradition", help="Run only this tradition (e.g., doyle, peirce)"
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="List available tests and exit"
+    )
+    parser.add_argument(
+        "--keep", action="store_true", help="Keep databases after tests"
+    )
     parser.add_argument("--db-dir", help="Directory for test databases (default: temp)")
     args = parser.parse_args()
 
@@ -501,9 +552,9 @@ async def main() -> None:
         results.append((test.tradition, passed, failures, db_path))
 
         if passed:
-            print(f"  RESULT: PASSED")
+            print("  RESULT: PASSED")
         else:
-            print(f"  RESULT: FAILED")
+            print("  RESULT: FAILED")
             for f in failures:
                 print(f"    - {f}")
 

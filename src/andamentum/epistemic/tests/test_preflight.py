@@ -1,7 +1,5 @@
 """Tests for epistemic preflight checks."""
 
-import pytest
-
 from ..preflight import CheckResult, PreflightResult, HealthCheckable, preflight
 
 
@@ -9,14 +7,18 @@ class FakeHealthy:
     """Component that passes health check."""
 
     async def check_health(self) -> CheckResult:
-        return CheckResult(name="FakeHealthy", status="pass", message="ok", elapsed_ms=1.0)
+        return CheckResult(
+            name="FakeHealthy", status="pass", message="ok", elapsed_ms=1.0
+        )
 
 
 class FakeUnhealthy:
     """Component that fails health check."""
 
     async def check_health(self) -> CheckResult:
-        return CheckResult(name="FakeUnhealthy", status="fail", message="down", elapsed_ms=2.0)
+        return CheckResult(
+            name="FakeUnhealthy", status="fail", message="down", elapsed_ms=2.0
+        )
 
 
 class FakeNoHealth:
@@ -37,24 +39,32 @@ class TestCheckResult:
 
 class TestPreflightResult:
     def test_ok_when_all_pass(self):
-        result = PreflightResult(checks=[
-            CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
-            CheckResult(name="b", status="pass", message="ok", elapsed_ms=2.0),
-        ])
+        result = PreflightResult(
+            checks=[
+                CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
+                CheckResult(name="b", status="pass", message="ok", elapsed_ms=2.0),
+            ]
+        )
         assert result.ok is True
 
     def test_not_ok_when_any_fail(self):
-        result = PreflightResult(checks=[
-            CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
-            CheckResult(name="b", status="fail", message="down", elapsed_ms=2.0),
-        ])
+        result = PreflightResult(
+            checks=[
+                CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
+                CheckResult(name="b", status="fail", message="down", elapsed_ms=2.0),
+            ]
+        )
         assert result.ok is False
 
     def test_ok_when_skip(self):
-        result = PreflightResult(checks=[
-            CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
-            CheckResult(name="b", status="skip", message="not applicable", elapsed_ms=0.0),
-        ])
+        result = PreflightResult(
+            checks=[
+                CheckResult(name="a", status="pass", message="ok", elapsed_ms=1.0),
+                CheckResult(
+                    name="b", status="skip", message="not applicable", elapsed_ms=0.0
+                ),
+            ]
+        )
         assert result.ok is True
 
     def test_empty_is_ok(self):

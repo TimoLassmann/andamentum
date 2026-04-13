@@ -1,10 +1,9 @@
 """Tests for EpistemicRepository CRUD and query operations."""
 
 import pytest
-from ..repository import EpistemicRepository, EntityNotFoundError
+from ..repository import EntityNotFoundError
 from ..entities import (
     Claim,
-    ClaimStage,
     Evidence,
     Uncertainty,
     UncertaintyType,
@@ -79,8 +78,18 @@ class TestCRUD:
 
 class TestQuery:
     async def test_query_by_exact_match(self, repo):
-        c1 = Claim(entity_id="c-1", objective_id="obj-1", statement="A", scrutiny_verdict="pass")
-        c2 = Claim(entity_id="c-2", objective_id="obj-1", statement="B", scrutiny_verdict="fail")
+        c1 = Claim(
+            entity_id="c-1",
+            objective_id="obj-1",
+            statement="A",
+            scrutiny_verdict="pass",
+        )
+        c2 = Claim(
+            entity_id="c-2",
+            objective_id="obj-1",
+            statement="B",
+            scrutiny_verdict="fail",
+        )
         await repo.save(c1)
         await repo.save(c2)
         results = await repo.query("claim", scrutiny_verdict="pass")
@@ -89,8 +98,15 @@ class TestQuery:
 
     async def test_query_by_none_filter(self, repo):
         """None filter matches documents where field is absent or None (SQL IS NULL)."""
-        c1 = Claim(entity_id="c-1", objective_id="obj-1", statement="A", scrutiny_verdict=None)
-        c2 = Claim(entity_id="c-2", objective_id="obj-1", statement="B", scrutiny_verdict="pass")
+        c1 = Claim(
+            entity_id="c-1", objective_id="obj-1", statement="A", scrutiny_verdict=None
+        )
+        c2 = Claim(
+            entity_id="c-2",
+            objective_id="obj-1",
+            statement="B",
+            scrutiny_verdict="pass",
+        )
         await repo.save(c1)
         await repo.save(c2)
         results = await repo.query("claim", scrutiny_verdict=None)
@@ -106,7 +122,12 @@ class TestQuery:
         assert len(results) == 1
 
     async def test_contains_filter(self, repo):
-        c = Claim(entity_id="c-1", objective_id="obj-1", statement="A", evidence_ids=["e-1", "e-2"])
+        c = Claim(
+            entity_id="c-1",
+            objective_id="obj-1",
+            statement="A",
+            evidence_ids=["e-1", "e-2"],
+        )
         await repo.save(c)
         results = await repo.query("claim", evidence_ids__contains="e-1")
         assert len(results) == 1
@@ -114,8 +135,15 @@ class TestQuery:
         assert len(results) == 0
 
     async def test_gte_filter(self, repo):
-        c1 = Claim(entity_id="c-1", objective_id="o", statement="A", evidence_ids=["e1"])
-        c2 = Claim(entity_id="c-2", objective_id="o", statement="B", evidence_ids=["e1", "e2", "e3"])
+        c1 = Claim(
+            entity_id="c-1", objective_id="o", statement="A", evidence_ids=["e1"]
+        )
+        c2 = Claim(
+            entity_id="c-2",
+            objective_id="o",
+            statement="B",
+            evidence_ids=["e1", "e2", "e3"],
+        )
         await repo.save(c1)
         await repo.save(c2)
         results = await repo.query("claim", evidence_count__gte=2)
@@ -123,8 +151,15 @@ class TestQuery:
         assert results[0].entity_id == "c-2"
 
     async def test_lte_filter(self, repo):
-        c1 = Claim(entity_id="c-1", objective_id="o", statement="A", evidence_ids=["e1"])
-        c2 = Claim(entity_id="c-2", objective_id="o", statement="B", evidence_ids=["e1", "e2", "e3"])
+        c1 = Claim(
+            entity_id="c-1", objective_id="o", statement="A", evidence_ids=["e1"]
+        )
+        c2 = Claim(
+            entity_id="c-2",
+            objective_id="o",
+            statement="B",
+            evidence_ids=["e1", "e2", "e3"],
+        )
         await repo.save(c1)
         await repo.save(c2)
         results = await repo.query("claim", evidence_count__lte=1)
@@ -140,7 +175,9 @@ class TestQuery:
                 modification_count=i,
             )
             await repo.save(c)
-        results = await repo.query("claim", modification_count__gt=2, modification_count__lt=4)
+        results = await repo.query(
+            "claim", modification_count__gt=2, modification_count__lt=4
+        )
         assert len(results) == 1
         assert results[0].modification_count == 3
 
@@ -181,14 +218,20 @@ class TestConvenienceMethods:
         assert blocking[0].entity_id == "u-1"
 
     async def test_get_decisions_excludes_reversed(self, repo):
-        d1 = Decision(entity_id="d-1", objective_id="o", statement="Go", justification="Why")
-        d2 = Decision(entity_id="d-2", objective_id="o", statement="Stop", justification="Why")
+        d1 = Decision(
+            entity_id="d-1", objective_id="o", statement="Go", justification="Why"
+        )
+        d2 = Decision(
+            entity_id="d-2", objective_id="o", statement="Stop", justification="Why"
+        )
         d2.reverse("Changed mind")
         await repo.save(d1)
         await repo.save(d2)
         active = await repo.get_decisions_for_objective("o")
         assert len(active) == 1
-        all_decisions = await repo.get_decisions_for_objective("o", include_reversed=True)
+        all_decisions = await repo.get_decisions_for_objective(
+            "o", include_reversed=True
+        )
         assert len(all_decisions) == 2
 
     async def test_typed_convenience_methods(self, repo):
@@ -197,7 +240,9 @@ class TestConvenienceMethods:
         loaded = await repo.get_uncertainty("u-1")
         assert isinstance(loaded, Uncertainty)
 
-        d = Decision(entity_id="d-1", objective_id="o", statement="X", justification="Y")
+        d = Decision(
+            entity_id="d-1", objective_id="o", statement="X", justification="Y"
+        )
         await repo.save(d)
         loaded_d = await repo.get_decision("d-1")
         assert isinstance(loaded_d, Decision)

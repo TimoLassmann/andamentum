@@ -5,7 +5,12 @@ import math
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from ..similarity import cosine_similarity, group_by_similarity, embed_and_group, validate_groups
+from ..similarity import (
+    cosine_similarity,
+    group_by_similarity,
+    embed_and_group,
+    validate_groups,
+)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -17,7 +22,9 @@ def _unit_vector(angle_degrees: float) -> list[float]:
     return [math.cos(rad), math.sin(rad)]
 
 
-def _make_cluster(center_angle: float, n: int, spread: float = 2.0) -> list[list[float]]:
+def _make_cluster(
+    center_angle: float, n: int, spread: float = 2.0
+) -> list[list[float]]:
     """Generate n unit vectors clustered around center_angle (degrees)."""
     return [_unit_vector(center_angle + i * spread / n) for i in range(n)]
 
@@ -43,12 +50,16 @@ class TestCosineSimilarity:
     def test_similar_vectors_high_similarity(self):
         a = _unit_vector(0)
         b = _unit_vector(10)
-        assert cosine_similarity(a, b) == pytest.approx(math.cos(math.radians(10)), abs=1e-6)
+        assert cosine_similarity(a, b) == pytest.approx(
+            math.cos(math.radians(10)), abs=1e-6
+        )
 
     def test_dissimilar_vectors_low_similarity(self):
         a = _unit_vector(0)
         b = _unit_vector(80)
-        assert cosine_similarity(a, b) == pytest.approx(math.cos(math.radians(80)), abs=1e-6)
+        assert cosine_similarity(a, b) == pytest.approx(
+            math.cos(math.radians(80)), abs=1e-6
+        )
 
 
 # ── group_by_similarity ────────────────────────────────────────────────
@@ -122,7 +133,9 @@ class TestEmbedAndGroup:
 
     @pytest.mark.asyncio
     async def test_single_item(self):
-        result = await embed_and_group(["hello"], threshold=0.8, embedding_model="test-model")
+        result = await embed_and_group(
+            ["hello"], threshold=0.8, embedding_model="test-model"
+        )
         assert result == [[0]]
 
     @pytest.mark.asyncio
@@ -134,7 +147,10 @@ class TestEmbedAndGroup:
         cluster_b = _make_cluster(90, 2, spread=2)
         mock_embeddings = cluster_a + cluster_b
 
-        with patch("andamentum.epistemic.embeddings.embed_texts", new=AsyncMock(return_value=mock_embeddings)):
+        with patch(
+            "andamentum.epistemic.embeddings.embed_texts",
+            new=AsyncMock(return_value=mock_embeddings),
+        ):
             groups = await embed_and_group(
                 ["a1", "a2", "a3", "b1", "b2"],
                 threshold=0.9,
@@ -157,7 +173,9 @@ class TestValidateGroups:
         runner.run = AsyncMock()
 
         groups = [[0], [1, 2]]
-        result = await validate_groups(texts=["a", "b", "c"], groups=groups, runner=runner, min_group_size=3)
+        result = await validate_groups(
+            texts=["a", "b", "c"], groups=groups, runner=runner, min_group_size=3
+        )
 
         runner.run.assert_not_called()
         assert result == [[0], [1, 2]]
@@ -170,7 +188,9 @@ class TestValidateGroups:
         runner = MagicMock()
         runner.run = AsyncMock(return_value=mock_output)
 
-        result = await validate_groups(texts=["a", "b", "c", "d"], groups=[[0, 1, 2, 3]], runner=runner)
+        result = await validate_groups(
+            texts=["a", "b", "c", "d"], groups=[[0, 1, 2, 3]], runner=runner
+        )
 
         runner.run.assert_called_once()
         assert len(result) == 1
@@ -184,7 +204,9 @@ class TestValidateGroups:
         runner = MagicMock()
         runner.run = AsyncMock(return_value=mock_output)
 
-        result = await validate_groups(texts=[""] * 50, groups=[[10, 20, 30, 40]], runner=runner)
+        result = await validate_groups(
+            texts=[""] * 50, groups=[[10, 20, 30, 40]], runner=runner
+        )
 
         assert len(result) == 2
         assert sorted(result[0]) == [10, 20]
@@ -218,7 +240,9 @@ class TestValidateGroups:
         runner = MagicMock()
         runner.run = AsyncMock(return_value=mock_output)
 
-        result = await validate_groups(texts=[""] * 20, groups=[[5, 10]], runner=runner, min_group_size=2)
+        result = await validate_groups(
+            texts=[""] * 20, groups=[[5, 10]], runner=runner, min_group_size=2
+        )
 
         runner.run.assert_called_once()
         assert len(result) == 2
@@ -231,7 +255,9 @@ class TestValidateGroups:
         runner = MagicMock()
         runner.run = AsyncMock(return_value=mock_output)
 
-        result = await validate_groups(texts=["a", "b", "c"], groups=[[0, 1, 2]], runner=runner)
+        result = await validate_groups(
+            texts=["a", "b", "c"], groups=[[0, 1, 2]], runner=runner
+        )
 
         assert len(result) == 1
         assert sorted(result[0]) == [0, 1]

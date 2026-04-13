@@ -38,27 +38,24 @@ class Artefact(EpistemicEntity):
     snapshot_id: str = Field(description="Snapshot this was compiled from")
     artefact_type: str = Field(
         default="summary",
-        description="Type: grant_rationale, manuscript, slides, memo, summary, report, analysis"
+        description="Type: grant_rationale, manuscript, slides, memo, summary, report, analysis",
     )
-    audience_profile: str = Field(
-        default="general",
-        description="Target audience"
-    )
+    audience_profile: str = Field(default="general", description="Target audience")
     content: str = Field(
         default="",
-        description="The generated content (markdown), including quality signals"
+        description="The generated content (markdown), including quality signals",
     )
     content_body: str = Field(
         default="",
         description="Content without quality signals (confidence headers, methodology stats). "
         "Use this for benchmarking or downstream interpretation where pre-computed "
-        "quality labels would bias the consumer."
+        "quality labels would bias the consumer.",
     )
 
     # Traceability - maps paragraph IDs to claim IDs
     trace: dict[str, list[str]] = Field(
         default_factory=dict,
-        description="paragraph_id -> claim_ids mapping for traceability"
+        description="paragraph_id -> claim_ids mapping for traceability",
     )
 
     @property
@@ -91,6 +88,10 @@ class Artefact(EpistemicEntity):
             content=content,
             content_body=metadata.get("content_body", ""),
             trace=metadata.get("trace", {}),
-            created_at=datetime.fromisoformat(metadata.get("created_at", datetime.now().isoformat())),
-            updated_at=datetime.fromisoformat(metadata.get("updated_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                metadata.get("created_at", datetime.now().isoformat())
+            ),
+            updated_at=datetime.fromisoformat(
+                metadata.get("updated_at", datetime.now().isoformat())
+            ),
         )

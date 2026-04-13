@@ -16,7 +16,6 @@ from ..operations import (
     AdversarialSearchOperation,
     GeneratePredictionOperation,
     GatheredEvidence,
-    create_operations,
 )
 from ..patterns import PatternScheduler, WorkItem
 from ..storage import InMemoryStorageBackend
@@ -26,7 +25,7 @@ _test_dir = str(pathlib.Path(__file__).parent)
 if _test_dir not in sys.path:
     sys.path.insert(0, _test_dir)
 
-from conftest import (  # noqa: E402
+from conftest import (  # noqa: E402  # type: ignore[import-not-found]
     FakeAgentRunner,
     FailingRepo,
     PartiallyFailingRunner,
@@ -41,7 +40,9 @@ async def _make_repo() -> EpistemicRepository:
     return EpistemicRepository(backend)
 
 
-async def _save_objective(repo: EpistemicRepository, description: str = "Test question") -> Objective:
+async def _save_objective(
+    repo: EpistemicRepository, description: str = "Test question"
+) -> Objective:
     obj = Objective(description=description, phase="planned")
     obj.objective_id = obj.entity_id
     await repo.save(obj)
@@ -103,7 +104,9 @@ class TestPatternSchedulerLogsQueryFailure:
         repo = FailingRepo(backend, fail_on_query={"claim"})
 
         # Save an objective so the scheduler has some work to try
-        obj = Objective(entity_id="obj-1", objective_id="obj-1", description="Q", phase="new")
+        obj = Objective(
+            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
+        )
         await repo.save(obj)
 
         scheduler = PatternScheduler(repo)
@@ -112,7 +115,9 @@ class TestPatternSchedulerLogsQueryFailure:
             await scheduler.get_pending_work(objective_id="obj-1")
 
         # At least one pattern targets "claim"; its query should have failed and been logged
-        assert any("Pattern query failed" in record.message for record in caplog.records), (
+        assert any(
+            "Pattern query failed" in record.message for record in caplog.records
+        ), (
             f"Expected 'Pattern query failed' warning, got: {[r.message for r in caplog.records]}"
         )
 
@@ -135,7 +140,11 @@ class TestCounterargEvalLogsOnFailure:
         repo = await _make_repo()
         obj = await _save_objective(repo)
         ev = await _save_evidence(
-            repo, obj.entity_id, extracted=True, content="Evidence text", quality_score=0.7
+            repo,
+            obj.entity_id,
+            extracted=True,
+            content="Evidence text",
+            quality_score=0.7,
         )
         claim = await _save_claim(
             repo,
@@ -146,7 +155,13 @@ class TestCounterargEvalLogsOnFailure:
 
         # Evidence gatherer returns a search result that will be evaluated as a counterargument
         gatherer = _SimpleGatherer(
-            results=[GatheredEvidence(content="This contradicts the claim", source_ref="http://counter.example.com", source_type="web_search")]
+            results=[
+                GatheredEvidence(
+                    content="This contradicts the claim",
+                    source_ref="http://counter.example.com",
+                    source_type="web_search",
+                )
+            ]
         )
 
         # Runner that succeeds on generate_counterquery but fails on evaluate_counterargument
@@ -156,14 +171,23 @@ class TestCounterargEvalLogsOnFailure:
             fallback_runner=runner,
         )
 
-        op = AdversarialSearchOperation(repo, failing_runner, evidence_gatherer=gatherer)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="adversarial_search")
+        op = AdversarialSearchOperation(
+            repo, failing_runner, evidence_gatherer=gatherer
+        )
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="adversarial_search",
+        )
 
         with caplog.at_level(logging.WARNING, logger="epistemic.operations"):
             result = await op.execute(work)
 
         assert result.success
-        assert any("Counterargument evaluation failed" in record.message for record in caplog.records), (
+        assert any(
+            "Counterargument evaluation failed" in record.message
+            for record in caplog.records
+        ), (
             f"Expected 'Counterargument evaluation failed' warning, got: {[r.message for r in caplog.records]}"
         )
 
@@ -176,7 +200,11 @@ class TestPredictionClassificationLogsOnFailure:
         repo = await _make_repo()
         obj = await _save_objective(repo)
         ev = await _save_evidence(
-            repo, obj.entity_id, extracted=True, content="Evidence text", quality_score=0.7
+            repo,
+            obj.entity_id,
+            extracted=True,
+            content="Evidence text",
+            quality_score=0.7,
         )
         claim = await _save_claim(
             repo,
@@ -186,15 +214,24 @@ class TestPredictionClassificationLogsOnFailure:
         )
 
         # Runner that succeeds on identify/specify/define but fails on classify_prediction
-        failing_runner = PartiallyFailingRunner(fail_on={"epistemic_classify_prediction"})
+        failing_runner = PartiallyFailingRunner(
+            fail_on={"epistemic_classify_prediction"}
+        )
 
         op = GeneratePredictionOperation(repo, failing_runner)
-        work = WorkItem(entity_id=claim.entity_id, entity_type="claim", operation="generate_prediction")
+        work = WorkItem(
+            entity_id=claim.entity_id,
+            entity_type="claim",
+            operation="generate_prediction",
+        )
 
         with caplog.at_level(logging.WARNING, logger="epistemic.operations"):
             result = await op.execute(work)
 
         assert result.success
-        assert any("Prediction generation failed" in record.message for record in caplog.records), (
+        assert any(
+            "Prediction generation failed" in record.message
+            for record in caplog.records
+        ), (
             f"Expected 'Prediction generation failed' warning, got: {[r.message for r in caplog.records]}"
         )

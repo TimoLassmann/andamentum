@@ -1,12 +1,14 @@
 """Research state maintained across graph execution."""
+
 from dataclasses import dataclass, field
-from typing import Literal, Any
+from typing import Literal
 from .models import SearchQuery, SearchResult, FetchedPage, EvidenceItem, PageSummary
 
 
 @dataclass
 class ResearchState:
     """Shared state for research workflow."""
+
     # Input (required at start)
     query: str
 
@@ -16,8 +18,12 @@ class ResearchState:
 
     # Search tracking
     search_history: list[SearchQuery] = field(default_factory=list)
-    all_results: dict[str, list[SearchResult]] = field(default_factory=dict)  # query -> results
-    url_map: dict[int, str] = field(default_factory=dict)  # link_id -> URL for tool lookups
+    all_results: dict[str, list[SearchResult]] = field(
+        default_factory=dict
+    )  # query -> results
+    url_map: dict[int, str] = field(
+        default_factory=dict
+    )  # link_id -> URL for tool lookups
 
     # Content tracking
     fetched_pages: list[FetchedPage] = field(default_factory=list)
@@ -30,7 +36,9 @@ class ResearchState:
 
     # Flow control
     iteration_count: int = 0
-    current_phase: Literal["plan", "search", "fetch", "summarize", "analyze", "refine", "synthesize"] = "plan"
+    current_phase: Literal[
+        "plan", "search", "fetch", "summarize", "analyze", "refine", "synthesize"
+    ] = "plan"
 
     # Metrics
     total_searches: int = 0
@@ -41,5 +49,7 @@ class ResearchState:
     fetched_urls: set[str] = field(default_factory=set)
 
     # Error tracking (Phase 2 fix: surface search failures)
-    search_errors: list[dict[str, str]] = field(default_factory=list)  # {query, error, is_retryable}
-    fetch_errors: list[dict[str, str]] = field(default_factory=list)   # {url, error}
+    search_errors: list[dict[str, str]] = field(
+        default_factory=list
+    )  # {query, error, is_retryable}
+    fetch_errors: list[dict[str, str]] = field(default_factory=list)  # {url, error}

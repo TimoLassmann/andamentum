@@ -39,7 +39,9 @@ def get_databases_dir() -> Path:
     Returns:
         Path to databases directory
     """
-    override = os.environ.get("DOCUMENT_STORE_DIR") or os.environ.get("ANDAMENTUM_DATABASES_DIR")
+    override = os.environ.get("DOCUMENT_STORE_DIR") or os.environ.get(
+        "ANDAMENTUM_DATABASES_DIR"
+    )
     if override:
         return Path(override)
     return Path.home() / ".local" / "share" / "document-store"
@@ -190,7 +192,7 @@ def init_database_metadata(db_path: str, database_name: str) -> None:
         for key, value in metadata:
             conn.execute(
                 "INSERT OR REPLACE INTO _database_metadata (key, value) VALUES (?, ?)",
-                (key, value)
+                (key, value),
             )
 
         conn.commit()

@@ -36,10 +36,16 @@ class DocumentMetadata(BaseModel):
     document_type: DocumentType = Field(..., description="Document classification")
     file_path: str = Field(..., description="Path to raw file")
     content_hash: str = Field(..., description="SHA-256 hash of content")
-    file_format: str = Field(..., description="Original file format (pdf, md, docx, etc.)")
+    file_format: str = Field(
+        ..., description="Original file format (pdf, md, docx, etc.)"
+    )
     file_size_bytes: int = Field(..., description="File size in bytes")
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
+    created_at: datetime = Field(
+        default_factory=datetime.now, description="Creation timestamp"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now, description="Last update timestamp"
+    )
     indexed_at: Optional[datetime] = Field(None, description="Last indexing timestamp")
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
 
@@ -67,7 +73,11 @@ class UpdateResult(BaseModel):
 class ReembedResult(BaseModel):
     """Result of a batch re-embedding operation."""
 
-    n_embedded: int = Field(..., description="Number of documents successfully embedded")
-    n_skipped: int = Field(..., description="Number of documents that already had embeddings")
+    n_embedded: int = Field(
+        ..., description="Number of documents successfully embedded"
+    )
+    n_skipped: int = Field(
+        ..., description="Number of documents that already had embeddings"
+    )
     n_failed: int = Field(..., description="Number of documents that failed to embed")
     duration_seconds: float = Field(..., description="Total time taken in seconds")

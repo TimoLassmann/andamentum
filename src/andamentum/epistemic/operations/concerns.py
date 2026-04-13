@@ -17,7 +17,12 @@ Operates on: Objective (reads pending_concerns), creates Uncertainty entities
 
 import logging
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, MAX_UNCERTAINTY_DEPTH, OperationResult
+from .base import (
+    BaseOperation,
+    DEDUP_SIMILARITY_THRESHOLD,
+    MAX_UNCERTAINTY_DEPTH,
+    OperationResult,
+)
 
 from ..entities import (
     Objective,
@@ -71,17 +76,22 @@ class DeduplicateConcernsOperation(BaseOperation):
             objective_id=objective.entity_id,
         )
         existing_descriptions = [
-            u.description for u in existing_entities
-            if isinstance(u, Uncertainty)
+            u.description for u in existing_entities if isinstance(u, Uncertainty)
         ]
 
         pending_texts = [p["text"] for p in pending]
 
         from ..embeddings import embed_texts
-        from ..similarity import group_by_similarity, medoid as find_medoid, cosine_similarity
+        from ..similarity import (
+            group_by_similarity,
+            medoid as find_medoid,
+            cosine_similarity,
+        )
 
         if not self.embedding_model:
-            raise RuntimeError("embedding_model is required for concern deduplication. Pass embedding_model= to create_operations().")
+            raise RuntimeError(
+                "embedding_model is required for concern deduplication. Pass embedding_model= to create_operations()."
+            )
         # Embed pending concerns + existing descriptions together
         all_texts = pending_texts + existing_descriptions
         embeddings = await embed_texts(all_texts, model=self.embedding_model)
@@ -105,7 +115,10 @@ class DeduplicateConcernsOperation(BaseOperation):
             rep_emb = embeddings[rep_idx]
             is_dup = False
             for existing_emb in existing_embeddings:
-                if cosine_similarity(list(rep_emb), list(existing_emb)) >= DEDUP_SIMILARITY_THRESHOLD:
+                if (
+                    cosine_similarity(list(rep_emb), list(existing_emb))
+                    >= DEDUP_SIMILARITY_THRESHOLD
+                ):
                     is_dup = True
                     break
             if not is_dup:

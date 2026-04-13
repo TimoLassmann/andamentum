@@ -32,7 +32,9 @@ class TestAdversarialQueryGeneration:
     def test_detect_domain_returns_none(self):
         """detect_domain is a stub that always returns None (agent should classify)."""
         assert detect_domain("This drug treatment shows clinical efficacy") is None
-        assert detect_domain("The neural network algorithm achieves high accuracy") is None
+        assert (
+            detect_domain("The neural network algorithm achieves high accuracy") is None
+        )
         assert detect_domain("Something very generic") is None
 
     def test_domain_specific_queries_included(self):
@@ -40,7 +42,12 @@ class TestAdversarialQueryGeneration:
             "This drug treatment is effective", claim_domain="biomedical"
         )
         # Should include biomedical-specific queries
-        assert any("clinical" in q.lower() or "side effects" in q.lower() or "retracted" in q.lower() for q in queries)
+        assert any(
+            "clinical" in q.lower()
+            or "side effects" in q.lower()
+            or "retracted" in q.lower()
+            for q in queries
+        )
 
 
 class TestCreateCounterargument:
@@ -57,8 +64,11 @@ class TestCreateCounterargument:
 
     def test_creates_with_pre_evaluated_scores(self):
         quality = CounterargumentQuality(
-            relevance=0.9, specificity=0.8, evidence_backed=0.7,
-            source_credibility=0.6, novelty=0.5,
+            relevance=0.9,
+            specificity=0.8,
+            evidence_backed=0.7,
+            source_credibility=0.6,
+            novelty=0.5,
         )
         ca = create_counterargument(
             summary="Study failed to replicate",
@@ -85,10 +95,14 @@ class TestIsValidCriticism:
             claim_id="c-1",
             summary="The researcher is a fraud",
             source_ref="https://example.com",
+            source_author=None,
             category=CriticismCategory.AD_HOMINEM,
             quality=CounterargumentQuality(
-                relevance=0.5, specificity=0.5, evidence_backed=0.5,
-                source_credibility=0.5, novelty=0.5,
+                relevance=0.5,
+                specificity=0.5,
+                evidence_backed=0.5,
+                source_credibility=0.5,
+                novelty=0.5,
             ),
             match_strength="strong",
         )

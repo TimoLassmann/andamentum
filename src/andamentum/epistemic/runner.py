@@ -91,7 +91,9 @@ def _resolve_model(model: str) -> Any:
 
         session = boto3.Session(profile_name=profile, region_name=region)
         client = session.client("bedrock-runtime", region_name=region)
-        return BedrockConverseModel(model_id, provider=BedrockProvider(bedrock_client=client))
+        return BedrockConverseModel(
+            model_id, provider=BedrockProvider(bedrock_client=client)
+        )
 
     return model
 
@@ -115,6 +117,7 @@ class DefaultAgentRunner:
         # Load .env from CWD so importing repos get their API keys picked up
         try:
             from dotenv import load_dotenv
+
             load_dotenv()
         except ImportError:
             pass
@@ -151,12 +154,19 @@ class DefaultAgentRunner:
                 system_prompt="Reply with exactly: ok",
                 output_type=str,
             )
-            result = await agent.run("health check")
+            await agent.run("health check")
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="LLM", status="pass", message=f"Model responded ({elapsed:.0f}ms)", elapsed_ms=elapsed)
+            return CheckResult(
+                name="LLM",
+                status="pass",
+                message=f"Model responded ({elapsed:.0f}ms)",
+                elapsed_ms=elapsed,
+            )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="LLM", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="LLM", status="fail", message=str(e), elapsed_ms=elapsed
+            )
 
     async def run(self, agent_name: str, **kwargs: Any) -> Any:
         """Run an epistemic agent by name.

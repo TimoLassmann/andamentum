@@ -126,7 +126,11 @@ class TestAdaptWriteAnswer:
 
 class TestAdaptExtract:
     def test_joins_quotes(self):
-        raw = ns(relevant_quotes=["Quote 1", "Quote 2"], limitations=["Small sample"], experimental_context="Lab")
+        raw = ns(
+            relevant_quotes=["Quote 1", "Quote 2"],
+            limitations=["Small sample"],
+            experimental_context="Lab",
+        )
         result = adapt_extract(raw)
         assert isinstance(result, ExtractResult)
         assert "Quote 1" in result.content
@@ -158,7 +162,11 @@ class TestAdaptDeductive:
         assert result.passes_deductive_validation is True
 
     def test_fails(self):
-        raw = ns(passes_deductive_validation=False, issues_found=["Non sequitur"], issue_types=["logical"])
+        raw = ns(
+            passes_deductive_validation=False,
+            issues_found=["Non sequitur"],
+            issue_types=["logical"],
+        )
         result = adapt_deductive(raw)
         assert result.passes_deductive_validation is False
         assert result.issues_found == ["Non sequitur"]
@@ -195,7 +203,9 @@ class TestAdaptComputational:
 
 class TestAdaptClarify:
     def test_basic(self):
-        raw = ns(clarified_question="Refined Q", key_terms=["term1"], reasoning="Because")
+        raw = ns(
+            clarified_question="Refined Q", key_terms=["term1"], reasoning="Because"
+        )
         result = adapt_clarify(raw)
         assert isinstance(result, ClarifyResult)
         assert result.clarified_question == "Refined Q"
@@ -203,7 +213,12 @@ class TestAdaptClarify:
 
 class TestAdaptConceptualAnalysis:
     def test_basic(self):
-        raw = ns(terms=["A"], definitions=["Def A"], assumptions=["Assumed"], context_summary="Context")
+        raw = ns(
+            terms=["A"],
+            definitions=["Def A"],
+            assumptions=["Assumed"],
+            context_summary="Context",
+        )
         result = adapt_conceptual_analysis(raw)
         assert isinstance(result, ConceptualAnalysisResult)
         assert result.terms == ["A"]
@@ -222,7 +237,9 @@ class TestAdaptResolveUncertainty:
         assert result.can_resolve is True
 
     def test_unresolved(self):
-        raw = ns(resolution="Tried", can_resolve=False, remaining_concerns=["Still unclear"])
+        raw = ns(
+            resolution="Tried", can_resolve=False, remaining_concerns=["Still unclear"]
+        )
         result = adapt_resolve_uncertainty(raw)
         assert result.can_resolve is False
         assert result.remaining_concerns == ["Still unclear"]
@@ -243,7 +260,13 @@ class TestAdaptInvestigateClaim:
 
 class TestAdaptAnalyzeArgument:
     def test_basic(self):
-        raw = ns(premises=["P1"], conclusion="C", validity="valid", soundness="sound", fallacies=[])
+        raw = ns(
+            premises=["P1"],
+            conclusion="C",
+            validity="valid",
+            soundness="sound",
+            fallacies=[],
+        )
         result = adapt_analyze_argument(raw)
         assert isinstance(result, AnalyzeArgumentResult)
         assert result.validity == "valid"
@@ -264,7 +287,14 @@ class TestAdaptRecordDecision:
 
 class TestAdaptEvaluateCounterargument:
     def test_basic(self):
-        raw = ns(relevance=0.8, specificity=0.7, evidence_backed=0.6, source_credibility=0.5, category="logical", justification="Strong")
+        raw = ns(
+            relevance=0.8,
+            specificity=0.7,
+            evidence_backed=0.6,
+            source_credibility=0.5,
+            category="logical",
+            justification="Strong",
+        )
         result = adapt_evaluate_counterargument(raw)
         assert isinstance(result, EvaluateCounterargumentResult)
         assert result.relevance == 0.8
@@ -277,7 +307,14 @@ class TestAdaptEvaluateCounterargument:
 
 class TestAdaptClassifyEvidenceDomain:
     def test_basic(self):
-        raw = ns(method_type="experimental", data_source="primary", temporal_approach="longitudinal", causal_role="cause", confidence=0.9, justification="Lab study")
+        raw = ns(
+            method_type="experimental",
+            data_source="primary",
+            temporal_approach="longitudinal",
+            causal_role="cause",
+            confidence=0.9,
+            justification="Lab study",
+        )
         result = adapt_classify_evidence_domain(raw)
         assert isinstance(result, ClassifyEvidenceDomainResult)
         assert result.method_type == "experimental"
@@ -285,7 +322,14 @@ class TestAdaptClassifyEvidenceDomain:
 
 class TestAdaptClassifyPrediction:
     def test_basic(self):
-        raw = ns(prediction_type="empirical", specificity=0.8, success_criteria="Score > 80", failure_criteria="Score < 60", time_horizon="6 months", justification="Testable")
+        raw = ns(
+            prediction_type="empirical",
+            specificity=0.8,
+            success_criteria="Score > 80",
+            failure_criteria="Score < 60",
+            time_horizon="6 months",
+            justification="Testable",
+        )
         result = adapt_classify_prediction(raw)
         assert isinstance(result, ClassifyPredictionResult)
         assert result.prediction_type == "empirical"
@@ -293,7 +337,13 @@ class TestAdaptClassifyPrediction:
 
 class TestAdaptAssessEvidenceQuality:
     def test_basic(self):
-        raw = ns(source_credibility=0.7, relevance=0.8, specificity=0.6, recency_appropriate=0.7, justification="Good")
+        raw = ns(
+            source_credibility=0.7,
+            relevance=0.8,
+            specificity=0.6,
+            recency_appropriate=0.7,
+            justification="Good",
+        )
         result = adapt_assess_evidence_quality(raw)
         assert isinstance(result, AssessEvidenceQualityResult)
         assert result.relevance == 0.8
@@ -317,11 +367,12 @@ class TestFakeDefaultsThroughAdapters:
     def test_all_fake_defaults_through_adapters(self):
         import sys
         import pathlib
+
         # Ensure conftest is importable
         test_dir = str(pathlib.Path(__file__).parent)
         if test_dir not in sys.path:
             sys.path.insert(0, test_dir)
-        from conftest import _FAKE_DEFAULTS, _to_namespace
+        from conftest import _FAKE_DEFAULTS, _to_namespace  # type: ignore[import-not-found]
 
         for agent_name, raw_dict in _FAKE_DEFAULTS.items():
             adapter = get_adapter(agent_name)

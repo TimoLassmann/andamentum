@@ -7,7 +7,9 @@ from unittest.mock import patch, AsyncMock
 from ..dedup import deduplicate_evidence, _build_cluster, EvidenceCluster
 
 
-def _make_embeddings(n_clusters: int, n_per_cluster: int, dim: int = 10, noise: float = 0.05):
+def _make_embeddings(
+    n_clusters: int, n_per_cluster: int, dim: int = 10, noise: float = 0.05
+):
     """Generate synthetic embeddings with known cluster structure.
 
     Each cluster has a random centroid. Members are centroid + small noise.
@@ -67,9 +69,13 @@ class TestDeduplicateEvidence:
 
     @pytest.mark.asyncio
     async def test_single_document(self):
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             mock_embed.return_value = [[[1.0, 0.0, 0.0]]]  # 1 doc, 1 chunk
-            result = await deduplicate_evidence(["single doc"], embedding_model="test-model")
+            result = await deduplicate_evidence(
+                ["single doc"], embedding_model="test-model"
+            )
             assert len(result) == 1
             assert result[0].count == 1
             assert result[0].medoid_index == 0
@@ -77,13 +83,19 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_identical_documents_cluster_together(self):
         """N near-identical documents should produce fewer clusters than documents."""
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             # 5 nearly identical embeddings — each doc has 1 chunk
             base = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
-            embeddings = [base + np.random.RandomState(i).randn(5) * 0.01 for i in range(5)]
+            embeddings = [
+                base + np.random.RandomState(i).randn(5) * 0.01 for i in range(5)
+            ]
             mock_embed.return_value = [[e.tolist()] for e in embeddings]
 
-            result = await deduplicate_evidence(["doc"] * 5, min_cluster_size=2, embedding_model="test-model")
+            result = await deduplicate_evidence(
+                ["doc"] * 5, min_cluster_size=2, embedding_model="test-model"
+            )
 
             # All documents must be accounted for
             total_members = sum(c.count for c in result)
@@ -94,12 +106,16 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_distinct_documents_form_separate_clusters(self):
         """Documents about different topics should form different clusters."""
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=3, n_per_cluster=4, dim=10, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
             texts = [f"doc_{i}" for i in range(12)]
-            result = await deduplicate_evidence(texts, min_cluster_size=2, embedding_model="test-model")
+            result = await deduplicate_evidence(
+                texts, min_cluster_size=2, embedding_model="test-model"
+            )
 
             # Should have ~3 clusters (HDBSCAN may merge very close ones)
             total_members = sum(c.count for c in result)
@@ -111,11 +127,17 @@ class TestDeduplicateEvidence:
     @pytest.mark.asyncio
     async def test_all_indices_covered(self):
         """Every input index must appear in exactly one cluster."""
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=5, dim=8, noise=0.03)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(10)], min_cluster_size=2, embedding_model="test-model")
+            result = await deduplicate_evidence(
+                [f"doc_{i}" for i in range(10)],
+                min_cluster_size=2,
+                embedding_model="test-model",
+            )
 
             all_indices = []
             for cluster in result:
@@ -124,23 +146,37 @@ class TestDeduplicateEvidence:
 
     @pytest.mark.asyncio
     async def test_representatives_are_subset_of_members(self):
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=6, dim=8, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(12)], min_cluster_size=2, embedding_model="test-model")
+            result = await deduplicate_evidence(
+                [f"doc_{i}" for i in range(12)],
+                min_cluster_size=2,
+                embedding_model="test-model",
+            )
 
             for cluster in result:
-                assert set(cluster.representative_indices).issubset(set(cluster.member_indices))
+                assert set(cluster.representative_indices).issubset(
+                    set(cluster.member_indices)
+                )
                 assert cluster.medoid_index in cluster.representative_indices
 
     @pytest.mark.asyncio
     async def test_corroboration_count_matches_member_count(self):
-        with patch("andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "andamentum.epistemic.dedup.embed_documents", new_callable=AsyncMock
+        ) as mock_embed:
             emb, _ = _make_embeddings(n_clusters=2, n_per_cluster=4, dim=8, noise=0.02)
             mock_embed.return_value = [[e] for e in emb.tolist()]
 
-            result = await deduplicate_evidence([f"doc_{i}" for i in range(8)], min_cluster_size=2, embedding_model="test-model")
+            result = await deduplicate_evidence(
+                [f"doc_{i}" for i in range(8)],
+                min_cluster_size=2,
+                embedding_model="test-model",
+            )
 
             for cluster in result:
                 assert cluster.count == len(cluster.member_indices)
@@ -150,16 +186,16 @@ class TestDeduplicateEvidence:
 # INTEGRATION TESTS — dedup wired into operations
 # ══════════════════════════════════════════════════════════════════════════════
 
-from types import SimpleNamespace
+from types import SimpleNamespace  # noqa: E402
 
-from ..storage import InMemoryStorageBackend
-from ..repository import EpistemicRepository
-from ..entities.objective import Objective
-from ..entities.evidence import Evidence
-from ..entities.claim import Claim
-from ..primitives import ClaimStage
-from ..operations import ProposeClaimsOperation
-from ..patterns import WorkItem
+from ..storage import InMemoryStorageBackend  # noqa: E402
+from ..repository import EpistemicRepository  # noqa: E402
+from ..entities.objective import Objective  # noqa: E402
+from ..entities.evidence import Evidence  # noqa: E402
+from ..entities.claim import Claim  # noqa: E402
+from ..primitives import ClaimStage  # noqa: E402
+from ..operations import ProposeClaimsOperation  # noqa: E402
+from ..patterns import WorkItem  # noqa: E402
 
 
 class TestDedupIntegration:
@@ -185,7 +221,9 @@ class TestDedupIntegration:
                     call_count[0] += 1
                     return SimpleNamespace(assertion=f"Assertion {call_count[0]}")
                 elif agent_name == "epistemic_draft_claim":
-                    return SimpleNamespace(statement="Test claim", scope="General", direction="supports")
+                    return SimpleNamespace(
+                        statement="Test claim", scope="General", direction="supports"
+                    )
                 return SimpleNamespace()
 
         return Runner()
@@ -217,9 +255,15 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch(
+                "andamentum.epistemic.operations.claims.deduplicate_evidence"
+            ) as mock_dedup,
+            patch(
+                "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
+            ) as mock_embed,
+            patch(
+                "andamentum.epistemic.similarity.group_by_similarity"
+            ) as mock_cluster,
         ):
             # 6 clusters: 2 real clusters + 4 singletons
             # Cluster A (indices 0,1): best quality 0.9
@@ -229,18 +273,54 @@ class TestDedupIntegration:
             # Singleton E (index 6): quality 0.3
             # Singleton F (index 7): quality 0.2
             mock_dedup.return_value = [
-                EvidenceCluster(medoid_index=0, representative_indices=[0], member_indices=[0, 1], count=2),
-                EvidenceCluster(medoid_index=2, representative_indices=[2], member_indices=[2, 3], count=2),
-                EvidenceCluster(medoid_index=4, representative_indices=[4], member_indices=[4], count=1),
-                EvidenceCluster(medoid_index=5, representative_indices=[5], member_indices=[5], count=1),
-                EvidenceCluster(medoid_index=6, representative_indices=[6], member_indices=[6], count=1),
-                EvidenceCluster(medoid_index=7, representative_indices=[7], member_indices=[7], count=1),
+                EvidenceCluster(
+                    medoid_index=0,
+                    representative_indices=[0],
+                    member_indices=[0, 1],
+                    count=2,
+                ),
+                EvidenceCluster(
+                    medoid_index=2,
+                    representative_indices=[2],
+                    member_indices=[2, 3],
+                    count=2,
+                ),
+                EvidenceCluster(
+                    medoid_index=4,
+                    representative_indices=[4],
+                    member_indices=[4],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=5,
+                    representative_indices=[5],
+                    member_indices=[5],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=6,
+                    representative_indices=[6],
+                    member_indices=[6],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=7,
+                    representative_indices=[7],
+                    member_indices=[7],
+                    count=1,
+                ),
             ]
-            mock_embed.return_value = [[0.1] * 10] * 5  # Enough for assertion clustering
-            mock_cluster.return_value = [[i] for i in range(5)]  # Each assertion its own cluster
+            mock_embed.return_value = [
+                [0.1] * 10
+            ] * 5  # Enough for assertion clustering
+            mock_cluster.return_value = [
+                [i] for i in range(5)
+            ]  # Each assertion its own cluster
 
             op = ProposeClaimsOperation(repo, runner)
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="propose_claims")
+            work = WorkItem(
+                entity_id="obj-1", entity_type="objective", operation="propose_claims"
+            )
             result = await op.execute(work)
 
         assert result.success
@@ -253,7 +333,9 @@ class TestDedupIntegration:
 
         # Top 5 clusters by quality: A(0.9), B(0.7), C(0.5), D(0.4), E(0.3)
         # Cluster F (quality 0.2) should be deferred
-        representative_count = sum(1 for s in statuses.values() if s == "representative")
+        representative_count = sum(
+            1 for s in statuses.values() if s == "representative"
+        )
         deferred_count = sum(1 for s in statuses.values() if s == "deferred")
 
         assert representative_count >= 5  # At least 5 representatives from 5 clusters
@@ -285,28 +367,71 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch(
+                "andamentum.epistemic.operations.claims.deduplicate_evidence"
+            ) as mock_dedup,
+            patch(
+                "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
+            ) as mock_embed,
+            patch(
+                "andamentum.epistemic.similarity.group_by_similarity"
+            ) as mock_cluster,
         ):
             # 7 clusters: 1 cluster of 2 items + 6 singletons
             # Top-K=5 selects clusters ranked by quality: indices 0,1 (0.9), 2 (0.7), 3 (0.6), 4 (0.5), 5 (0.4)
             # Deferred: indices 6 (0.3), 7 (0.2)
             mock_dedup.return_value = [
-                EvidenceCluster(medoid_index=0, representative_indices=[0], member_indices=[0, 1], count=2),
-                EvidenceCluster(medoid_index=2, representative_indices=[2], member_indices=[2], count=1),
-                EvidenceCluster(medoid_index=3, representative_indices=[3], member_indices=[3], count=1),
-                EvidenceCluster(medoid_index=4, representative_indices=[4], member_indices=[4], count=1),
-                EvidenceCluster(medoid_index=5, representative_indices=[5], member_indices=[5], count=1),
-                EvidenceCluster(medoid_index=6, representative_indices=[6], member_indices=[6], count=1),
-                EvidenceCluster(medoid_index=7, representative_indices=[7], member_indices=[7], count=1),
+                EvidenceCluster(
+                    medoid_index=0,
+                    representative_indices=[0],
+                    member_indices=[0, 1],
+                    count=2,
+                ),
+                EvidenceCluster(
+                    medoid_index=2,
+                    representative_indices=[2],
+                    member_indices=[2],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=3,
+                    representative_indices=[3],
+                    member_indices=[3],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=4,
+                    representative_indices=[4],
+                    member_indices=[4],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=5,
+                    representative_indices=[5],
+                    member_indices=[5],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=6,
+                    representative_indices=[6],
+                    member_indices=[6],
+                    count=1,
+                ),
+                EvidenceCluster(
+                    medoid_index=7,
+                    representative_indices=[7],
+                    member_indices=[7],
+                    count=1,
+                ),
             ]
             # Embedding stubs for assertion clustering (5 representatives = 5 assertions)
             mock_embed.return_value = [[0.1] * 10] * 5
             mock_cluster.return_value = [[i] for i in range(5)]
 
             op = ProposeClaimsOperation(repo, runner)
-            work = WorkItem(entity_id="obj-2", entity_type="objective", operation="propose_claims")
+            work = WorkItem(
+                entity_id="obj-2", entity_type="objective", operation="propose_claims"
+            )
             await op.execute(work)
 
         # Extract calls: only representatives (not corroborative or deferred)
@@ -316,7 +441,9 @@ class TestDedupIntegration:
         # Singletons: each is its own rep
         # Total representatives = 1 (from cluster) + 4 (singletons) = 5 reps from top-5 clusters
         # But wait — member index 1 is corroborative in the selected cluster
-        extract_calls = [c for c in runner.calls if c[0] == "epistemic_extract_assertion"]
+        extract_calls = [
+            c for c in runner.calls if c[0] == "epistemic_extract_assertion"
+        ]
         # 5 selected clusters -> their representatives are extracted
         # Deferred items (indices 6, 7) must NOT be extracted
         assert len(extract_calls) == 5
@@ -348,15 +475,25 @@ class TestDedupIntegration:
         runner = self._make_runner()
 
         with (
-            patch("andamentum.epistemic.operations.claims.deduplicate_evidence") as mock_dedup,
-            patch("andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock) as mock_embed,
-            patch("andamentum.epistemic.similarity.group_by_similarity") as mock_cluster,
+            patch(
+                "andamentum.epistemic.operations.claims.deduplicate_evidence"
+            ) as mock_dedup,
+            patch(
+                "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
+            ) as mock_embed,
+            patch(
+                "andamentum.epistemic.similarity.group_by_similarity"
+            ) as mock_cluster,
         ):
             # 1 cluster of 5 items: medoid=0, boundary=[1,2], best_quality=3 (not in reps)
             mock_dedup.return_value = [
                 EvidenceCluster(
                     medoid_index=0,
-                    representative_indices=[0, 1, 2],  # medoid + 2 boundary, missing best quality
+                    representative_indices=[
+                        0,
+                        1,
+                        2,
+                    ],  # medoid + 2 boundary, missing best quality
                     member_indices=[0, 1, 2, 3, 4],
                     count=5,
                 ),
@@ -365,11 +502,15 @@ class TestDedupIntegration:
             mock_cluster.return_value = [[i] for i in range(4)]
 
             op = ProposeClaimsOperation(repo, runner)
-            work = WorkItem(entity_id="obj-1", entity_type="objective", operation="propose_claims")
+            work = WorkItem(
+                entity_id="obj-1", entity_type="objective", operation="propose_claims"
+            )
             await op.execute(work)
 
         all_evidence = await repo.query("evidence", objective_id="obj-1")
-        representatives = [e for e in all_evidence if e.cluster_status == "representative"]
+        representatives = [
+            e for e in all_evidence if e.cluster_status == "representative"
+        ]
 
         # Should have 4 representatives: medoid(0) + boundary(1,2) + best_quality(3)
         assert len(representatives) == 4
@@ -554,7 +695,12 @@ class TestDownstreamFiltering:
         from andamentum.epistemic.operations import FreezeSnapshotOperation
         from andamentum.epistemic.patterns import WorkItem
 
-        obj = Objective(entity_id="obj-freeze-1", objective_id="obj-freeze-1", description="test", phase="claims_done")
+        obj = Objective(
+            entity_id="obj-freeze-1",
+            objective_id="obj-freeze-1",
+            description="test",
+            phase="claims_done",
+        )
         await repo.save(obj)
 
         ev_rep = Evidence(
@@ -582,7 +728,11 @@ class TestDownstreamFiltering:
         await repo.save(ev_legacy)
 
         op = FreezeSnapshotOperation(repo, None)
-        work = WorkItem(entity_id=obj.entity_id, entity_type="objective", operation="freeze_snapshot")
+        work = WorkItem(
+            entity_id=obj.entity_id,
+            entity_type="objective",
+            operation="freeze_snapshot",
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -590,6 +740,7 @@ class TestDownstreamFiltering:
         # Load the snapshot and check evidence_ids
         snapshot_id = result.created_entities[0]
         from andamentum.epistemic.entities.snapshot import Snapshot
+
         snapshot = await repo.get("snapshot", snapshot_id)
         assert isinstance(snapshot, Snapshot)
 

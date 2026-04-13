@@ -64,8 +64,14 @@ class SearxngManager:
         self.host_port = host_port
         self.internal_port = internal_port
         default_bind = "" if sys.platform == "darwin" else "127.0.0.1"
-        self.bind_host = bind_host if bind_host is not None else os.getenv("SEARXNG_BIND_HOST", default_bind)
-        self.state_dir = Path(os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng"))
+        self.bind_host = (
+            bind_host
+            if bind_host is not None
+            else os.getenv("SEARXNG_BIND_HOST", default_bind)
+        )
+        self.state_dir = Path(
+            os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng")
+        )
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.settings_path = self.state_dir / "settings.yml"
 
@@ -73,7 +79,9 @@ class SearxngManager:
 
     def _run(self, cmd: list[str], timeout: int = 60) -> tuple[int, str, str]:
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
         except FileNotFoundError as exc:
             return 127, "", str(exc)
         try:
@@ -91,7 +99,9 @@ class SearxngManager:
         """Check if Podman machine is running (macOS/Windows only)."""
         if sys.platform not in ("darwin", "win32"):
             return True  # Linux runs natively
-        code, out, _ = self._run(["podman", "machine", "list", "--format", "{{.Running}}"])
+        code, out, _ = self._run(
+            ["podman", "machine", "list", "--format", "{{.Running}}"]
+        )
         return code == 0 and "true" in out.lower()
 
     def _start_podman_machine(self) -> None:
@@ -104,9 +114,13 @@ class SearxngManager:
         if code != 0:
             if "no machine" in err.lower() or "no vm" in err.lower():
                 print("   Initializing new Podman machine...")
-                init_code, _, init_err = self._run(["podman", "machine", "init"], timeout=180)
+                init_code, _, init_err = self._run(
+                    ["podman", "machine", "init"], timeout=180
+                )
                 if init_code != 0:
-                    raise RuntimeError(f"Failed to initialize Podman machine: {init_err}")
+                    raise RuntimeError(
+                        f"Failed to initialize Podman machine: {init_err}"
+                    )
                 code, out, err = self._run(["podman", "machine", "start"], timeout=180)
                 if code != 0:
                     raise RuntimeError(f"Failed to start Podman machine: {err or out}")
@@ -173,10 +187,14 @@ class SearxngManager:
             raise RuntimeError("podman is not installed or not in PATH")
         code, out, err = self._run(["podman", "stop", self.container])
         if code != 0 and "no such container" not in (err or "").lower():
-            raise RuntimeError(f"Failed to stop container {self.container}: {err or out}")
+            raise RuntimeError(
+                f"Failed to stop container {self.container}: {err or out}"
+            )
         code, out, err = self._run(["podman", "rm", self.container])
         if code != 0 and "no such container" not in (err or "").lower():
-            raise RuntimeError(f"Failed to remove container {self.container}: {err or out}")
+            raise RuntimeError(
+                f"Failed to remove container {self.container}: {err or out}"
+            )
 
     def is_running(self) -> bool:
         """Check if the SearXNG container is running."""
@@ -185,7 +203,14 @@ class SearxngManager:
         if not self._is_podman_machine_running():
             return False
         code, out, _ = self._run(
-            ["podman", "ps", "--filter", f"name={self.container}", "--format", "{{.Names}}\t{{.Status}}"]
+            [
+                "podman",
+                "ps",
+                "--filter",
+                f"name={self.container}",
+                "--format",
+                "{{.Names}}\t{{.Status}}",
+            ]
         )
         return code == 0 and out.startswith(self.container)
 
@@ -193,9 +218,19 @@ class SearxngManager:
         """Get human-readable status string."""
         if not self._has_podman():
             return "podman not found"
-        machine_status = "running" if self._is_podman_machine_running() else "not running"
+        machine_status = (
+            "running" if self._is_podman_machine_running() else "not running"
+        )
         code, out, err = self._run(
-            ["podman", "ps", "-a", "--filter", f"name={self.container}", "--format", "{{.Names}}\t{{.Status}}"]
+            [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={self.container}",
+                "--format",
+                "{{.Names}}\t{{.Status}}",
+            ]
         )
         container_status = out or err or "not found"
         return f"Podman machine: {machine_status} | Container: {container_status}"
@@ -209,7 +244,9 @@ class SearxngManager:
         """Get container logs."""
         if not self._has_podman():
             return "podman not found"
-        code, out, err = self._run(["podman", "logs", self.container, "--tail", str(tail)])
+        code, out, err = self._run(
+            ["podman", "logs", self.container, "--tail", str(tail)]
+        )
         return out if code == 0 else (err or out or "no logs available")
 
     def health_check(self, timeout: float = 5.0) -> dict[str, Any]:
@@ -276,7 +313,9 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str
         import httpx
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(f"{url}/search", params={"q": "test", "format": "json"})
+            response = await client.get(
+                f"{url}/search", params={"q": "test", "format": "json"}
+            )
             if response.status_code == 200:
                 result["healthy"] = True
                 result["response_time_ms"] = (time.time() - start) * 1000
@@ -285,7 +324,9 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str
     except ImportError:
         # httpx not installed — fall back to urllib
         try:
-            req = urllib.request.Request(f"{url}/search?q=test&format=json", method="GET")
+            req = urllib.request.Request(
+                f"{url}/search?q=test&format=json", method="GET"
+            )
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 if response.status == 200:
                     result["healthy"] = True

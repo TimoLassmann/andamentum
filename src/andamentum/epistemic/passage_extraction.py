@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import difflib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .embeddings import _MAX_EMBED_CHARS, _OVERLAP_CHARS, _chunk_text, embed_texts
+from .similarity import (
+    cosine_similarity as _cosine_similarity,
+)  # Canonical implementation
 
 
 # ── Data Types ────────────────────────────────────────────────────────────
@@ -27,7 +30,9 @@ class Pointer:
     text: str
     kind: str  # "key_excerpt", "key_point", "evidence_item", or "key_finding"
     page_url: str = ""
-    match_method: str = ""  # set during location: "string", "embedding", or "" if unlocated
+    match_method: str = (
+        ""  # set during location: "string", "embedding", or "" if unlocated
+    )
     match_similarity: float = 0.0  # cosine similarity for embedding matches
 
 
@@ -52,8 +57,12 @@ class LocatedPassage:
     page_title: str
     annotations: list[str]  # What the analysis said about this region
     annotation_kinds: list[str]  # Kind of each annotation
-    match_methods: list[str]  # How each annotation was located ("string" or "embedding")
-    match_similarities: list[float]  # Cosine similarity for each (1.0 for string matches)
+    match_methods: list[
+        str
+    ]  # How each annotation was located ("string" or "embedding")
+    match_similarities: list[
+        float
+    ]  # Cosine similarity for each (1.0 for string matches)
     chunk_indices: list[int]  # Which chunks this passage spans
     annotation_count: int = 0  # How many pointers converged here
 
@@ -92,7 +101,9 @@ def _find_pointer_in_chunks(pointer_text: str, chunks: list[str]) -> int | None:
     best_idx: int | None = None
     best_ratio = 0.0
     for i, chunk in enumerate(chunks):
-        ratio = difflib.SequenceMatcher(None, norm_pointer, _normalize_whitespace(chunk).lower()).ratio()
+        ratio = difflib.SequenceMatcher(
+            None, norm_pointer, _normalize_whitespace(chunk).lower()
+        ).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
             best_idx = i
@@ -100,9 +111,6 @@ def _find_pointer_in_chunks(pointer_text: str, chunks: list[str]) -> int | None:
     if best_ratio >= 0.3:
         return best_idx
     return None
-
-
-from .similarity import cosine_similarity as _cosine_similarity  # Canonical implementation
 
 
 async def _locate_pointers(
@@ -135,7 +143,9 @@ async def _locate_pointers(
 
     if need_embedding and chunk_embeddings:
         if not embedding_model:
-            raise RuntimeError("embedding_model is required for pointer embedding. Pass embedding_model= to _locate_pointers().")
+            raise RuntimeError(
+                "embedding_model is required for pointer embedding. Pass embedding_model= to _locate_pointers()."
+            )
         pointer_texts = [p.text for p in need_embedding]
         pointer_embeddings = await embed_texts(pointer_texts, model=embedding_model)
 
@@ -267,25 +277,35 @@ async def extract_passages(
         # Collect pointers from page annotations
         page_pointers: list[Pointer] = []
         for excerpt in page.key_excerpts:
-            page_pointers.append(Pointer(text=excerpt, kind="key_excerpt", page_url=page.url))
+            page_pointers.append(
+                Pointer(text=excerpt, kind="key_excerpt", page_url=page.url)
+            )
         for point in page.key_points:
-            page_pointers.append(Pointer(text=point, kind="key_point", page_url=page.url))
+            page_pointers.append(
+                Pointer(text=point, kind="key_point", page_url=page.url)
+            )
 
         # Cross-page findings: check each finding against this page
         if cross_page_findings and cross_page_finding_embeddings and chunk_embs:
-            for finding, f_emb in zip(cross_page_findings, cross_page_finding_embeddings):
+            for finding, f_emb in zip(
+                cross_page_findings, cross_page_finding_embeddings
+            ):
                 best_sim = 0.0
                 for c_emb in chunk_embs:
                     sim = _cosine_similarity(f_emb, c_emb)
                     if sim > best_sim:
                         best_sim = sim
                 if best_sim >= 0.4:
-                    page_pointers.append(Pointer(text=finding, kind="key_finding", page_url=page.url))
+                    page_pointers.append(
+                        Pointer(text=finding, kind="key_finding", page_url=page.url)
+                    )
 
         if not page_pointers:
             continue
 
-        located = await _locate_pointers(page_pointers, chunks, chunk_embs, embedding_model=embedding_model)
+        located = await _locate_pointers(
+            page_pointers, chunks, chunk_embs, embedding_model=embedding_model
+        )
         if not located:
             continue
 

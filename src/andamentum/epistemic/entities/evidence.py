@@ -33,58 +33,58 @@ class Evidence(EpistemicEntity):
     # Core fields
     source_type: str = Field(
         default="unknown",
-        description="paper, dataset, note, conversation, web, prior_claim"
+        description="paper, dataset, note, conversation, web, prior_claim",
     )
     source_ref: str = Field(
-        default="",
-        description="URL, DOI, file path, or document ID"
+        default="", description="URL, DOI, file path, or document ID"
     )
     extracted_content: str = Field(
-        default="",
-        description="What is relevant from the source"
+        default="", description="What is relevant from the source"
     )
     experimental_context: Optional[str] = Field(
-        default=None,
-        description="Conditions/context of the observation"
+        default=None, description="Conditions/context of the observation"
     )
     limitations: list[str] = Field(
-        default_factory=list,
-        description="Known caveats and limitations"
+        default_factory=list, description="Known caveats and limitations"
     )
 
     # Traceability for prior claims
     depends_on_claim_id: Optional[str] = Field(
         default=None,
-        description="If source_type='prior_claim', the claim ID this derives from"
+        description="If source_type='prior_claim', the claim ID this derives from",
     )
 
     # Quality scoring
     quality_score: Optional[float] = Field(
-        default=None,
-        description="Source quality 0.0-1.0 from OpenAlex or heuristic"
+        default=None, description="Source quality 0.0-1.0 from OpenAlex or heuristic"
     )
     quality_metadata: Optional[dict[str, Any]] = Field(
-        default=None,
-        description="Raw quality assessment data for traceability"
+        default=None, description="Raw quality assessment data for traceability"
     )
 
     # State fields for pattern matching
     extracted: bool = Field(
-        default=False,
-        description="Has content been extracted from source?"
+        default=False, description="Has content been extracted from source?"
     )
     verified: bool = Field(
-        default=False,
-        description="Has source been verified as accessible?"
+        default=False, description="Has source been verified as accessible?"
     )
 
     # TMS: Invalidation tracking
-    invalidated: bool = Field(default=False, description="Whether this evidence has been invalidated")
-    invalidation_reason: Optional[str] = Field(default=None, description="Why invalidated")
-    invalidation_cascaded: bool = Field(default=False, description="Whether cascade processing is complete")
+    invalidated: bool = Field(
+        default=False, description="Whether this evidence has been invalidated"
+    )
+    invalidation_reason: Optional[str] = Field(
+        default=None, description="Why invalidated"
+    )
+    invalidation_cascaded: bool = Field(
+        default=False, description="Whether cascade processing is complete"
+    )
 
     # Provenance
-    created_by: str = Field(default="system", description="Executor or human who registered this")
+    created_by: str = Field(
+        default="system", description="Executor or human who registered this"
+    )
 
     # Evidence-claim judgment (set inline by ProposeClaimsOperation / ExtractEvidenceOperation)
     support_judgment: Optional[str] = Field(
@@ -183,6 +183,10 @@ class Evidence(EpistemicEntity):
             cluster_id=metadata.get("cluster_id"),
             corroboration_count=metadata.get("corroboration_count", 1),
             corroborating_sources=metadata.get("corroborating_sources", []),
-            created_at=datetime.fromisoformat(metadata.get("created_at", datetime.now().isoformat())),
-            updated_at=datetime.fromisoformat(metadata.get("updated_at", datetime.now().isoformat())),
+            created_at=datetime.fromisoformat(
+                metadata.get("created_at", datetime.now().isoformat())
+            ),
+            updated_at=datetime.fromisoformat(
+                metadata.get("updated_at", datetime.now().isoformat())
+            ),
         )

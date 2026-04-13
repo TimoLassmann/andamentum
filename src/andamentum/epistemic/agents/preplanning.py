@@ -112,13 +112,15 @@ clarified_question: "Does aerobic exercise for 30 minutes daily reduce HbA1c in 
 
 Now clarify the given question."""
 
-register_agent(AgentDefinition(
-    name="epistemic_clarify_question",
-    prompt=CLARIFY_QUESTION_PROMPT,
-    output_model=ClarifyQuestionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_clarify_question",
+        prompt=CLARIFY_QUESTION_PROMPT,
+        output_model=ClarifyQuestionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_classify_question ─────────────────────────────────────────
@@ -165,13 +167,15 @@ Classify the question and explain your reasoning in one sentence.
 
 Now classify the given question."""
 
-register_agent(AgentDefinition(
-    name="epistemic_classify_question",
-    prompt=CLASSIFY_QUESTION_PROMPT,
-    output_model=ClassifyQuestionOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_classify_question",
+        prompt=CLASSIFY_QUESTION_PROMPT,
+        output_model=ClassifyQuestionOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_conceptual_analysis ────────────────────────────────────────
@@ -241,13 +245,15 @@ Make it concise but complete.
 
 Now analyze the conceptual foundations."""
 
-register_agent(AgentDefinition(
-    name="epistemic_conceptual_analysis",
-    prompt=CONCEPTUAL_ANALYSIS_PROMPT,
-    output_model=ConceptualAnalysisOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_conceptual_analysis",
+        prompt=CONCEPTUAL_ANALYSIS_PROMPT,
+        output_model=ConceptualAnalysisOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
 
 
 # ── epistemic_formulate_query ───────────────────────────────────────────────
@@ -270,10 +276,12 @@ Given a research question and a provider (with its domain description), write on
 
 Now write a query for the given provider."""
 
-register_agent(AgentDefinition(
-    name="epistemic_formulate_query",
-    prompt=FORMULATE_QUERY_PROMPT,
-    output_model=FormulateQueryOutput,
-    retries=3,
-    output_retries=5,
-))
+register_agent(
+    AgentDefinition(
+        name="epistemic_formulate_query",
+        prompt=FORMULATE_QUERY_PROMPT,
+        output_model=FormulateQueryOutput,
+        retries=3,
+        output_retries=5,
+    )
+)

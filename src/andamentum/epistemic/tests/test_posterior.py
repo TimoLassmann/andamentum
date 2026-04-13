@@ -16,7 +16,6 @@ import pytest
 
 from ..confidence import PosteriorReport, compute_posterior
 from ..entities import Claim, Evidence, Objective
-from ..entities.claim import ClaimStage
 
 
 OBJ_ID = "test-posterior-obj"
@@ -198,10 +197,14 @@ class TestPosteriorEvidenceFiltering:
         await repo.save(obj)
 
         e_rep = _make_evidence(
-            support_judgment="supports", cluster_status="representative", entity_id="e-rep"
+            support_judgment="supports",
+            cluster_status="representative",
+            entity_id="e-rep",
         )
         e_corr = _make_evidence(
-            support_judgment="supports", cluster_status="corroborative", entity_id="e-corr"
+            support_judgment="supports",
+            cluster_status="corroborative",
+            entity_id="e-corr",
         )
         e_def = _make_evidence(
             support_judgment="supports", cluster_status="deferred", entity_id="e-def"

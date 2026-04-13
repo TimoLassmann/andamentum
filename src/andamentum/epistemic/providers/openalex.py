@@ -51,11 +51,19 @@ class OpenAlexProvider:
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
-                    name="OpenAlexProvider", status="fail", message=f"HTTP {response.status_code}", elapsed_ms=elapsed
+                    name="OpenAlexProvider",
+                    status="fail",
+                    message=f"HTTP {response.status_code}",
+                    elapsed_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - t0) * 1000
-            return CheckResult(name="OpenAlexProvider", status="fail", message=str(e), elapsed_ms=elapsed)
+            return CheckResult(
+                name="OpenAlexProvider",
+                status="fail",
+                message=str(e),
+                elapsed_ms=elapsed,
+            )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search OpenAlex for literature matching a query.
@@ -104,7 +112,7 @@ class OpenAlexProvider:
                     structured_data={
                         "title": r.title or "",
                         "authors": r.authors[:10] if r.authors else [],
-                        "year": r.year if hasattr(r, "year") else None,
+                        "year": getattr(r, "year", None),
                         "journal": getattr(r, "journal", None),
                         "citation_count": getattr(r, "citation_count", None),
                         "is_open_access": getattr(r, "is_open_access", None),

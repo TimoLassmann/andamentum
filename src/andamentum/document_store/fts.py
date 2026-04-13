@@ -9,9 +9,7 @@ from .rag.search import SearchResult
 
 
 def fts_search(
-    query: str,
-    limit: int = 10,
-    db_path: Optional[Path] = None
+    query: str, limit: int = 10, db_path: Optional[Path] = None
 ) -> List[SearchResult]:
     """Full-text search using SQLite FTS5.
 
@@ -46,7 +44,8 @@ def fts_search(
         cursor = conn.cursor()
 
         # FTS5 search with BM25 ranking
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 d.doc_uuid,
                 d.file_path,
@@ -61,14 +60,25 @@ def fts_search(
             WHERE documents_fts MATCH ?
             ORDER BY fts.rank
             LIMIT ?
-        """, (query, limit))
+        """,
+            (query, limit),
+        )
 
         rows = cursor.fetchall()
 
         # Convert to SearchResult objects
         results = []
         for row in rows:
-            doc_id, file_path, dc_title, dc_format, dc_creator, dc_subject, markdown_content, rank = row
+            (
+                doc_id,
+                file_path,
+                dc_title,
+                dc_format,
+                dc_creator,
+                dc_subject,
+                markdown_content,
+                rank,
+            ) = row
 
             # Extract snippet around first match
             snippet = _extract_snippet(markdown_content or "", query, max_length=500)
@@ -78,21 +88,23 @@ def fts_search(
             # Normalize to 0-1 range (1 = best match)
             similarity_score = min(1.0, abs(rank) / 10.0)  # Heuristic normalization
 
-            results.append(SearchResult(
-                content=snippet,
-                file_path=file_path,
-                doc_id=doc_id,
-                similarity_score=similarity_score,
-                match_type="keyword",
-                start_char=0,
-                end_char=len(snippet),
-                token_count=None,
-                dc_title=dc_title,
-                dc_format=dc_format,
-                dc_creator=dc_creator,
-                dc_subject=dc_subject.split(',') if dc_subject else None,
-                metadata={"fts_rank": rank}
-            ))
+            results.append(
+                SearchResult(
+                    content=snippet,
+                    file_path=file_path,
+                    doc_id=doc_id,
+                    similarity_score=similarity_score,
+                    match_type="keyword",
+                    start_char=0,
+                    end_char=len(snippet),
+                    token_count=None,
+                    dc_title=dc_title,
+                    dc_format=dc_format,
+                    dc_creator=dc_creator,
+                    dc_subject=dc_subject.split(",") if dc_subject else None,
+                    metadata={"fts_rank": rank},
+                )
+            )
 
         return results
 
@@ -112,7 +124,11 @@ def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
         return ""
 
     # Simple tokenization - split query into terms
-    query_terms = [term.strip('"').lower() for term in query.split() if term.strip('"').lower() not in {'and', 'or', 'not'}]
+    query_terms = [
+        term.strip('"').lower()
+        for term in query.split()
+        if term.strip('"').lower() not in {"and", "or", "not"}
+    ]
 
     if not query_terms:
         # No valid query terms, return beginning
@@ -123,7 +139,7 @@ def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
     first_match_pos = -1
 
     for term in query_terms:
-        pos = content_lower.find(term.rstrip('*'))  # Handle wildcard
+        pos = content_lower.find(term.rstrip("*"))  # Handle wildcard
         if pos != -1 and (first_match_pos == -1 or pos < first_match_pos):
             first_match_pos = pos
 

@@ -10,6 +10,7 @@ States:
 - OPEN: Failing fast, requests rejected immediately
 - HALF_OPEN: Testing if service recovered
 """
+
 import time
 from enum import Enum
 from dataclasses import dataclass, field
@@ -21,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Failing fast
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Failing fast
     HALF_OPEN = "half_open"  # Testing recovery
 
 
@@ -37,10 +39,11 @@ class CircuitBreaker:
     - HALF_OPEN → CLOSED: On successful request
     - HALF_OPEN → OPEN: On failed request
     """
+
     name: str
-    failure_threshold: int = 5        # Consecutive failures to open
-    recovery_timeout: float = 60.0    # Seconds before trying again
-    half_open_max_calls: int = 1      # Test calls in half-open state
+    failure_threshold: int = 5  # Consecutive failures to open
+    recovery_timeout: float = 60.0  # Seconds before trying again
+    half_open_max_calls: int = 1  # Test calls in half-open state
 
     # Internal state (not part of __init__)
     _state: CircuitState = field(default=CircuitState.CLOSED, init=False)
@@ -52,8 +55,10 @@ class CircuitBreaker:
     def state(self) -> CircuitState:
         """Get current state, checking for recovery timeout."""
         if self._state == CircuitState.OPEN:
-            if self._last_failure_time and \
-               time.monotonic() - self._last_failure_time >= self.recovery_timeout:
+            if (
+                self._last_failure_time
+                and time.monotonic() - self._last_failure_time >= self.recovery_timeout
+            ):
                 self._state = CircuitState.HALF_OPEN
                 self._half_open_calls = 0
                 logger.info(f"[{self.name}] Circuit half-open, testing recovery")
@@ -103,6 +108,7 @@ class CircuitBreaker:
 
 class CircuitOpenError(Exception):
     """Raised when circuit is open and request rejected."""
+
     def __init__(self, breaker_name: str):
         super().__init__(f"Circuit breaker '{breaker_name}' is open")
         self.breaker_name = breaker_name
@@ -117,9 +123,7 @@ def get_searxng_breaker() -> CircuitBreaker:
     global _searxng_breaker
     if _searxng_breaker is None:
         _searxng_breaker = CircuitBreaker(
-            name="searxng",
-            failure_threshold=5,
-            recovery_timeout=60.0
+            name="searxng", failure_threshold=5, recovery_timeout=60.0
         )
     return _searxng_breaker
 

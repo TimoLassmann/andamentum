@@ -38,7 +38,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         expected_operations=["revalidate_claim"],
         question_type_hint="verificatory",
     ),
-
     # ── Peirce: Inquiry Cycling ─────────────────────────────────────────
     # Needs: scrutiny returns "needs_resolution" → investigation → re-scrutiny
     # Why this question works: the evidence base for this specific claim is
@@ -56,7 +55,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         expected_operations=["investigate_claim"],
         question_type_hint="verificatory",
     ),
-
     # ── Lipton: Contrastive Evaluation ──────────────────────────────────
     # Needs: explanatory question type → contrastive_evaluation fires
     # Why this question works: classified as "explanatory", which activates
@@ -75,7 +73,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         expected_operations=["contrastive_evaluation"],
         question_type_hint="explanatory",
     ),
-
     # ── Kahneman: Independence of Judgment ──────────────────────────────
     # Needs: multiple evidence items → per-evidence scrutiny produces
     # diverse issues from different evidence items independently.
@@ -95,7 +92,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         expected_operations=["scrutinise_claim"],
         question_type_hint="comparative",
     ),
-
     # ── Tetlock: Predictions and Falsification ──────────────────────────
     # Needs: claim reaches ROBUST → predictions generated
     # Why this question works: strong, well-established evidence base
@@ -117,7 +113,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         question_type_hint="verificatory",
         max_iterations=60,  # More room to reach ROBUST
     ),
-
     # ── AGM: Minimal Change on Demotion ─────────────────────────────────
     # Verified implicitly by the Doyle test — when TMS demotes a claim,
     # evidence links must be preserved and verification flags reset
