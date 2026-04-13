@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epistemic System — How It Works</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'neutral',
+  themeVariables: {
+    primaryColor: '#eae7e0',
+    primaryBorderColor: '#b8b3aa',
+    lineColor: '#999',
+    textColor: '#2b2b2b',
+    fontSize: '15px',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
+  flowchart: {
+    nodeSpacing: 30,
+    rankSpacing: 40,
+    padding: 15,
+    useMaxWidth: true,
+  },
+});
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Source Serif 4', 'Georgia', 'Times New Roman', serif;
+  background: #f9f7f4;
+  color: #2b2b2b;
+  line-height: 1.85;
+  margin: 0;
+  padding: 0;
+  font-size: 19px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.article {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 60px 24px 40px;
+}
+
+/* Typography — Source Serif 4 */
+h1 {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.25;
+  margin: 0 0 12px;
+  letter-spacing: -0.3px;
+}
+
+h2 {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 48px 0 16px;
+}
+
+h3 {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2b2b2b;
+  margin: 32px 0 10px;
+}
+
+p {
+  margin: 0 0 16px;
+}
+
+ul, ol {
+  margin: 0 0 16px 24px;
+}
+
+li {
+  margin-bottom: 8px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #e8e4de;
+  margin: 32px 0;
+}
+
+/* Subtitle — Inter for metadata */
+.subtitle {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  color: #888;
+  margin-bottom: 32px;
+  line-height: 1.6;
+}
+
+/* Legend — Inter */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 16px 0 32px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #888;
+}
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Diagram containers */
+.diagram-container {
+  background: #fff;
+  border: 1px solid #e8e4de;
+  border-radius: 8px;
+  padding: 32px;
+  margin: 16px 0;
+  overflow-x: auto;
+  box-shadow: 0 1px 3px rgba(40,36,32,0.04);
+}
+.diagram-container .mermaid {
+  min-height: 200px;
+}
+
+/* Tables — Inter, smaller */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e8e4de;
+  box-shadow: 0 1px 3px rgba(40,36,32,0.04);
+}
+th {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 2px solid #e8e4de;
+  color: #555;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #faf9f6;
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0ede8;
+  color: #2b2b2b;
+  vertical-align: top;
+  line-height: 1.5;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(0,0,0,0.01); }
+
+/* Routing matrix specifics */
+.routing-matrix th { text-align: center; font-size: 11px; }
+.routing-matrix th:first-child { text-align: left; }
+.routing-matrix td { text-align: center; font-size: 13px; }
+.routing-matrix td:first-child { text-align: left; font-weight: 600; }
+.r-primary { color: #5b7a5e; font-weight: 600; }
+.r-secondary { color: #9a7452; }
+.r-ifapp { color: #8b7530; }
+.r-skip { color: #ccc; }
+
+/* Complexity bars */
+.bar {
+  display: inline-block;
+  height: 8px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.bar-low { background: #8aac8e; }
+.bar-medium { background: #c4a07a; }
+.bar-high { background: #c07060; }
+.bar-very-high { background: #9e4040; }
+
+/* Tags — Inter */
+.phase-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.phase-0 { background: #888; }
+.phase-1 { background: #6d8f70; }
+.phase-2 { background: #7a8da8; }
+.phase-3 { background: #8b7530; }
+.phase-4 { background: #b88a60; }
+.phase-5 { background: #b06050; }
+
+.decomposed-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  background: #eae7e0;
+  color: #888;
+  border: 1px solid #d4d0c8;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Section separator rows in tables */
+.section-separator td {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  background: #faf9f6;
+  border-bottom: 2px solid #e8e4de;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Notes / callouts */
+.note {
+  background: #fff;
+  border: 1px solid #e8e4de;
+  border-left: 4px solid #b8b3aa;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-size: 15px;
+  line-height: 1.7;
+  box-shadow: 0 1px 3px rgba(40,36,32,0.04);
+}
+.note.green {
+  border-left-color: #6d8f70;
+}
+.note.amber {
+  border-left-color: #c4a07a;
+}
+.note strong {
+  color: #1a1a1a;
+}
+.note code {
+  background: #f0ede8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+  color: #555;
+}
+
+/* Deterministic/LLM type indicators */
+.type-det { color: #5b7a5e; font-weight: 600; }
+.type-narrow { color: #666; font-weight: 600; }
+.type-broad { color: #9a7452; font-weight: 600; }
+
+/* Formula blocks */
+.formula {
+  background: #faf9f6;
+  border: 1px solid #e8e4de;
+  border-radius: 6px;
+  padding: 12px 20px;
+  margin: 12px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  color: #2b2b2b;
+  text-align: center;
+}
+
+/* Example scenario */
+.example {
+  background: #fff;
+  border: 1px solid #e8e4de;
+  border-left: 4px solid #8b7530;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-size: 15px;
+  line-height: 1.7;
+  box-shadow: 0 1px 3px rgba(40,36,32,0.04);
+}
+.example strong {
+  color: #1a1a1a;
+}
+</style>
+</head>
+<body>
+<div class="article">
+
+<!-- ======================================================================= -->
+<!-- 1. INTRODUCTION                                                         -->
+<!-- ======================================================================= -->
+
+<h1>Epistemic System</h1>
+<p class="subtitle">A formal research system that takes a question and produces a thoroughly investigated, evidence-based answer with transparent confidence scoring and an HTML report.</p>
+
+<p>The epistemic system works like a careful human researcher. It takes a research question, validates and clarifies it, searches academic databases and the web for evidence, groups findings into testable claims, checks each claim skeptically from multiple angles, and synthesizes the results into a structured HTML report. Every step is transparent: claims can only advance through stages when they pass deterministic evidence gates, and two final scores tell you how complete the investigation was and what the evidence says.</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background: #6d8f70"></div> Deterministic (no LLM)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #888"></div> Narrow LLM judgment (1-4 fields)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #c4a07a"></div> Medium LLM judgment (4-7 fields)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #b06050"></div> Open generation (prose)</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #8b7530"></div> Decomposed (split into narrow steps)</div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- 2. HOW IT WORKS                                                         -->
+<!-- ======================================================================= -->
+
+<h2>1. How It Works</h2>
+<p>The system runs through nine phases. There is no central orchestrator controlling the flow. Instead, declarative <em>patterns</em> match entity state and trigger operations. Work emerges from these patterns: when a claim is in a certain state, the matching operation fires automatically. This makes the pipeline self-organizing and traceable.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart TD
+    subgraph phase0["Phase 0-2: Understand the Question"]
+        direction TB
+        Q[/"Research Question"/]
+        CQ["Clarify what is being asked"]
+        VCQ{"Validate clarification\n(same subject, same breadth,\nno invented constraints)"}
+        CQ --> VCQ
+        VCQ -->|"rejected\n(up to 3 rounds)"| CQ
+        VCQ -->|"approved"| CL
+        CL["Classify question type\n(7 types)"]
+        CA["Analyze key concepts"]
+        SP["Select evidence providers\n(deterministic)"]
+        FQ["Write search queries\n(per provider)"]
+        Q --> CQ
+        CL --> CA --> SP --> FQ
+    end
+
+    subgraph phase3["Phase 3: Gather Evidence"]
+        direction TB
+        EE["Extract evidence\nfrom sources"]
+        QS["Assess source quality"]
+        EE --> QS
+    end
+
+    subgraph phase4["Phase 4: Form Claims"]
+        direction TB
+        SR["Screen relevance\n(per evidence)"]
+        TOPK["Select representatives\n(HDBSCAN clustering)"]
+        EA["Extract one assertion\nper evidence"]
+        CLU["Group similar assertions\n(similarity threshold 0.7)"]
+        DC["Draft one claim\nper cluster"]
+        JE["Judge: does each evidence\nsupport, contradict, or\nhave no bearing on claim?"]
+        SR --> TOPK --> EA --> CLU --> DC --> JE
+    end
+
+    subgraph phase5["Phase 5: Check Claims Skeptically"]
+        direction TB
+        AE["Assess evidence strength"]
+        II["Identify issues and doubts"]
+        AE --> II
+        II -->|"doubt found"| IC["Investigate further\n(up to 3 cycles)"]
+        IC -->|"new evidence"| EE2["Extract + re-scrutinize"]
+    end
+
+    subgraph phase5b["Phase 5b: Set Routing"]
+        SRD["Pre-mark skipped tracks\n(deterministic)"]
+    end
+
+    subgraph phase6["Phase 6: Verify from Multiple Angles"]
+        direction TB
+        GCQ["Adversarial:\nactively seek counter-evidence"]
+        ADVSTORE["Store quality counterarguments\nas contradicting Evidence entities"]
+        CD["Convergence:\ndo independent methods agree?"]
+        DV["Deductive:\nis the logic sound?"]
+        CV["Computational:\ncan we test with code?"]
+        CE["Contrastive:\ncompare competing explanations"]
+        CCC["Consistency:\ndo claims contradict each other?"]
+        GCQ --> ADVSTORE
+    end
+
+    subgraph phase7["Phase 7: Promote or Demote"]
+        direction TB
+        GATE{"Stage Gate\n(deterministic)"}
+        PROMOTE["Promote claim\nto next stage"]
+        DEMOTE["Demote claim\nback down"]
+        GATE -->|"pass"| PROMOTE
+        GATE -->|"fail"| DEMOTE
+    end
+
+    subgraph phase8a["Phase 8: Resolve Uncertainties"]
+        direction TB
+        RU["Resolve blocking\nuncertainties"]
+        BDC["Deduplicate\nremaining concerns"]
+        RU --> BDC
+    end
+
+    subgraph phase9["Phase 9: Synthesize + Report"]
+        direction TB
+        CAVD["Deduplicate caveats"]
+        FS["Freeze snapshot\nof final state"]
+        WA["Write verdict + summary\n(prose only, no structured blocks)"]
+        VA["Validate answer\ncompleteness"]
+        CONF["Compute confidence\nscores (deterministic)"]
+        RPT["Generate HTML report"]
+        CAVD --> FS --> WA --> VA
+        VA -->|"not approved"| WA
+        VA -->|"approved"| CONF --> RPT
+    end
+
+    phase0 --> phase3
+    phase3 --> phase4
+    phase4 --> phase5
+    phase5 --> phase5b
+    phase5b --> phase6
+    phase6 --> phase7
+    phase7 --> phase8a
+    phase8a --> phase9
+    DEMOTE -->|"reset and re-check"| phase5
+</pre>
+</div>
+
+<div class="note green">
+  <strong>Key design decisions:</strong><br/>
+  <strong>Clarify-validate loop:</strong> The question is clarified up to 3 times. Each clarification is validated by a separate agent that checks the subject, breadth, and constraints haven't drifted. If all rounds fail, the original question is used.<br/>
+  <strong>Pattern-driven scheduling:</strong> No orchestrator. Patterns match entity state and trigger operations. This makes the pipeline self-organizing.<br/>
+  <strong>Evidence-claim judgment:</strong> Every evidence-claim pair gets an explicit verdict (supports / contradicts / no bearing) before scoring.<br/>
+  <strong>Adversarial evidence storage:</strong> Counterarguments that pass a quality threshold are stored as Evidence entities with <code>support_judgment="contradicts"</code>, deduplicated by source URL. This means adversarial findings participate in the posterior tally alongside regular evidence.<br/>
+  <strong>Evidence clustering:</strong> HDBSCAN groups similar evidence, selecting one representative per cluster. This avoids counting the same finding multiple times.<br/>
+  <strong>Unified dedup threshold:</strong> 0.7 cosine similarity across assertions, uncertainties, and caveats.<br/>
+  <strong>Deterministic gates:</strong> Promotion requires counted supporting sources, not subjective quality scores.
+</div>
+
+<h3>Clarification Validator</h3>
+<p>The pipeline begins with a clarify-validate loop. A clarification agent refines the research question, and a separate validation agent checks the result. The validator ensures three things: the clarified question covers the same subject, maintains the same breadth (no narrowing or broadening), and does not introduce constraints not present in the original. If validation fails, feedback is sent back to the clarifier for another attempt, up to 3 rounds. If all rounds fail, the original question is used as-is.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    OQ["Original question"] --> C["Clarify agent"]
+    C --> V{"Validate agent\n(same subject?\nsame breadth?\nno invented constraints?)"}
+    V -->|"pass"| CQ["Use clarified question"]
+    V -->|"fail + feedback"| C
+    V -->|"3 rounds exhausted"| FO["Use original question"]
+</pre>
+</div>
+
+<h3>Truth Maintenance System (runs at any point)</h3>
+<p>The Truth Maintenance System (TMS, from Jon Doyle's work) is not part of the linear flow. It fires whenever evidence is invalidated, automatically cascading that change to all claims that depend on the affected evidence.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    TRIGGER["Evidence invalidated\n(any phase)"] --> IE["Mark evidence +\ndependents invalid"] --> RC["Re-check affected\nclaims against gates"] --> OUTCOME{"Claim still\nqualifies for\nits stage?"}
+    OUTCOME -->|"yes"| KEEP["Claim unchanged"]
+    OUTCOME -->|"no"| DEMOTE2["Demote claim\n(triggers Peirce cycling)"]
+</pre>
+</div>
+
+<div class="note">
+  <strong>When TMS fires:</strong> Evidence invalidation cascades to claims. If a claim's adversarial balance drops below 0.3, or contradicting evidence outweighs supporting evidence, the claim is revalidated and demoted if it no longer meets its stage gate. Demotion resets verification flags (this is "Peirce cycling") but persistent results like <code>adversarial_balance</code> are preserved — the investigation happened, the claim just needs to be reconsidered.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 3. QUESTION TYPES                                                       -->
+<!-- ======================================================================= -->
+
+<h2>2. Seven Question Types</h2>
+<p>Early in the pipeline, the system classifies the research question into one of seven types. This classification determines which verification checks run and what evidence standards apply. Different kinds of questions need different kinds of scrutiny.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    Q["Research Question"] --> CL["Classify question type"]
+
+    CL -->|"verificatory"| V["Is P true?\n(adversarial + convergence)"]
+    CL -->|"explanatory"| E["Why P?\n(deductive + argument + contrastive)"]
+    CL -->|"exploratory"| X["What's involved in P?\n(consistency)"]
+    CL -->|"comparative"| C["Is A better than B?\n(contrastive + consistency)"]
+    CL -->|"predictive"| P["What will happen?\n(deductive + computational)"]
+    CL -->|"compositional"| M["What are the parts?\n(convergence + consistency)"]
+    CL -->|"normative"| N["Should we do X?\n(deductive + argument + consistency)"]
+</pre>
+</div>
+
+<table>
+<thead>
+<tr><th>Type</th><th>Question shape</th><th>Example</th><th>Primary checks</th></tr>
+</thead>
+<tbody>
+<tr><td style="font-weight:600">Verificatory</td><td>"Is P true?"</td><td>"Does homeopathy work?"</td><td>Adversarial search, Convergence</td></tr>
+<tr><td style="font-weight:600">Explanatory</td><td>"Why P?"</td><td>"Why do obese heart patients survive better?"</td><td>Deductive, Argument, Contrastive</td></tr>
+<tr><td style="font-weight:600">Exploratory</td><td>"What's involved in P?"</td><td>"What factors affect memory?"</td><td>Cross-claim consistency</td></tr>
+<tr><td style="font-weight:600">Comparative</td><td>"Is A better than B?"</td><td>"Is fasting better than dieting?"</td><td>Contrastive, Consistency</td></tr>
+<tr><td style="font-weight:600">Predictive</td><td>"What will happen if P?"</td><td>"Will exercise prevent diabetes?"</td><td>Deductive, Computational</td></tr>
+<tr><td style="font-weight:600">Compositional</td><td>"What are the parts of X?"</td><td>"What makes up immune response?"</td><td>Convergence, Consistency</td></tr>
+<tr><td style="font-weight:600">Normative</td><td>"Should we do X?"</td><td>"Should we screen for gene Y?"</td><td>Deductive, Argument, Consistency</td></tr>
+</tbody>
+</table>
+
+<!-- ======================================================================= -->
+<!-- 4. VERIFICATION TRACKS                                                  -->
+<!-- ======================================================================= -->
+
+<h2>3. Verification Tracks</h2>
+<p>After a claim passes initial scrutiny, it is checked from multiple angles. Which checks run depends on the question type. Each track asks a different kind of question about the claim.</p>
+
+<table>
+<thead>
+<tr><th>Track</th><th>What it does</th><th>Philosophical basis</th></tr>
+</thead>
+<tbody>
+<tr><td style="font-weight:600">Adversarial search</td><td>Actively look for evidence AGAINST the claim, like a devil's advocate. Generates counter-queries, searches for refutations, and computes an adversarial balance score. Counterarguments that pass a quality threshold are stored as Evidence entities with <code>support_judgment="contradicts"</code>, deduplicated by source URL.</td><td>Popper (falsification)</td></tr>
+<tr><td style="font-weight:600">Convergence</td><td>Check whether evidence from independent methods, fields, or datasets agrees. If multiple independent lines of evidence point to the same conclusion, that's stronger than one line alone.</td><td>Wimsatt (robustness)</td></tr>
+<tr><td style="font-weight:600">Deductive validation</td><td>Check whether the claim's logical structure is sound. Are the premises valid? Does the conclusion follow?</td><td>Hempel (deductive soundness)</td></tr>
+<tr><td style="font-weight:600">Computational</td><td>If the claim can be tested with code (e.g., a statistical claim), run that test.</td><td>Popper (falsification)</td></tr>
+<tr><td style="font-weight:600">Argument analysis</td><td>Examine the argument structure: identify premises, check for gaps, assess whether the argument is complete.</td><td>Toulmin (argument quality)</td></tr>
+<tr><td style="font-weight:600">Contrastive evaluation</td><td>Compare competing explanations side by side. Which claim better explains the evidence? What observation would distinguish them?</td><td>Lipton (inference to best explanation)</td></tr>
+<tr><td style="font-weight:600">Consistency check</td><td>Check whether claims contradict each other. If two claims from the same investigation conflict, flag the inconsistency.</td><td>Kahneman (independent judgment)</td></tr>
+</tbody>
+</table>
+
+<h3>Routing Matrix</h3>
+<p>This table shows which tracks run for each question type. <strong>PRIMARY</strong> tracks always run. <strong>secondary</strong> tracks run only when the evidence is ambiguous or conflicting. <strong>if appl.</strong> tracks run only when the claim is computationally testable. Tracks marked <strong>&mdash;</strong> are skipped entirely, and the system pre-marks them as complete so they don't block claim promotion.</p>
+
+<table class="routing-matrix">
+<thead>
+<tr>
+  <th>Question Type</th>
+  <th>Adversarial</th>
+  <th>Convergence</th>
+  <th>Deductive</th>
+  <th>Computational</th>
+  <th>Argument</th>
+  <th>Contrastive</th>
+  <th>Consistency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Verificatory</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-ifapp">if appl.</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+</tr>
+<tr>
+  <td>Explanatory</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-ifapp">if appl.</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-skip">&mdash;</td>
+</tr>
+<tr>
+  <td>Exploratory</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+</tr>
+<tr>
+  <td>Comparative</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-primary">PRIMARY</td>
+</tr>
+<tr>
+  <td>Predictive</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+</tr>
+<tr>
+  <td>Compositional</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+</tr>
+<tr>
+  <td>Normative</td>
+  <td class="r-secondary">secondary</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+  <td class="r-skip">&mdash;</td>
+  <td class="r-primary">PRIMARY</td>
+</tr>
+</tbody>
+</table>
+
+<div class="note">
+  <strong>How secondary tracks decide whether to fire:</strong> Each secondary track has a deterministic condition checked on the claim's state — no LLM call needed. For example, secondary adversarial search fires only if the claim already has a low adversarial balance (below 0.6). Secondary convergence fires only if a claim has 3 or more evidence items but convergence hasn't been assessed yet. Deductive and argument tracks, being cheap to run, always fire when marked secondary.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 5. CLAIM LIFECYCLE                                                      -->
+<!-- ======================================================================= -->
+
+<h2>4. Claim Lifecycle</h2>
+<p>Claims start as hypotheses and advance through stages when they pass deterministic evidence gates. Each promotion requires meeting specific thresholds. If counter-evidence is found or scrutiny fails, claims are demoted back down. This creates a self-correcting cycle: claims can only reach high stages by surviving repeated scrutiny.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    H["HYPOTHESIS"]
+    S["SUPPORTED"]
+    P["PROVISIONAL"]
+    R["ROBUST"]
+    A["ACTIONABLE"]
+
+    H -->|"1+ evidence\n1+ supporting source\nscrutiny pass\nno blockers"| S
+    S -->|"2+ supporting sources\nall required tracks checked\nadversarial balance >= 0.4"| P
+    P -->|"3+ evidence\n3+ supporting sources\nindependent domains"| R
+    R -->|"3+ evidence\n3+ supporting sources\ndecision criteria defined"| A
+</pre>
+</div>
+
+<h3>Stage gate requirements in detail</h3>
+<table>
+<thead>
+<tr><th>Target Stage</th><th>Evidence Required</th><th>Supporting Sources</th><th>Verification Required</th><th>Other Requirements</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td style="font-weight:600">SUPPORTED</td>
+  <td>1 or more</td>
+  <td>1+</td>
+  <td>Scrutiny pass</td>
+  <td>No blocking uncertainties</td>
+</tr>
+<tr>
+  <td style="font-weight:600">PROVISIONAL</td>
+  <td>2 or more</td>
+  <td>2+</td>
+  <td>All required tracks complete (adversarial, convergence, deductive per routing)</td>
+  <td>Adversarial balance >= 0.4; no blocking uncertainties</td>
+</tr>
+<tr>
+  <td style="font-weight:600">ROBUST</td>
+  <td>3 or more</td>
+  <td>3+</td>
+  <td>All required tracks complete</td>
+  <td>Evidence from 2+ independent domains; no blocking uncertainties; no degeneracy</td>
+</tr>
+<tr>
+  <td style="font-weight:600">ACTIONABLE</td>
+  <td>3 or more</td>
+  <td>3+</td>
+  <td>All required tracks complete</td>
+  <td>Decision criteria defined (assumptions documented); no blocking uncertainties</td>
+</tr>
+</tbody>
+</table>
+
+<div class="note">
+  <strong>Supporting sources</strong> are counted as independent evidence items that have been explicitly judged as "supports" by the evidence-claim judge, are not invalidated, and are not corroborative duplicates. This is the core gate criterion: how many genuinely independent sources actively support this claim?
+</div>
+
+<h3>Demotion, Peirce cycling, and the investigation loop</h3>
+<p>When a claim fails scrutiny or is demoted (by TMS or by new counter-evidence), several things happen automatically:</p>
+<ul>
+  <li><strong>Stage regression:</strong> The claim drops to a lower stage.</li>
+  <li><strong>Verification flags reset:</strong> All track completion flags (adversarial_checked, convergence_checked, etc.) are cleared. The claim must be re-verified at its new stage. This is "Peirce cycling" — doubt triggers re-investigation.</li>
+  <li><strong>Persistent results survive:</strong> Although flags are reset, values like adversarial_balance remain. The investigation happened; the results aren't erased.</li>
+  <li><strong>Modification tracking:</strong> Each demotion increments the modification counter for Lakatos degeneracy detection.</li>
+  <li><strong>Investigation loop:</strong> When scrutiny returns "needs_resolution", the claim enters an investigation cycle. The system generates targeted queries, searches for new evidence, and re-scrutinizes. Maximum 3 cycles before the claim is abandoned.</li>
+</ul>
+
+<div class="note amber">
+  <strong>Degeneracy detection (Lakatos):</strong> If a claim has been modified more than 3 times total, or 3 or more times within 24 hours, it is flagged as potentially degenerative — meaning the theory is being patched rather than genuinely supported. Degeneracy blocks promotion.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 6. CONFIDENCE SCORING                                                   -->
+<!-- ======================================================================= -->
+
+<h2>5. Confidence Scoring</h2>
+<p>After the investigation completes, two deterministic scores are computed from the final state. No LLM calls, no trained weights, no tunable parameters. Both use the logistic function (a smooth S-curve that maps any number to a value between 0 and 1).</p>
+
+<h3>Answer Confidence — "How complete was the investigation?"</h3>
+<p>This is a process completion score. Each required epistemic check is binary: it either passed or it didn't. The score measures whether the system did its job thoroughly — not whether the answer is correct. Zero free parameters.</p>
+
+<table>
+<thead>
+<tr><th>Check</th><th>Applies to</th><th>What it tests</th><th>Tradition</th></tr>
+</thead>
+<tbody>
+<tr class="section-separator"><td colspan="4">Universal checks (every question)</td></tr>
+<tr><td style="font-weight:600">Evidence basis</td><td>All questions</td><td>At least one active claim has judged, non-invalidated evidence</td><td>Kahneman</td></tr>
+<tr><td style="font-weight:600">Scrutiny complete</td><td>All questions</td><td>All active claims have been reviewed skeptically</td><td>Peirce</td></tr>
+<tr><td style="font-weight:600">Uncertainties resolved</td><td>All questions</td><td>No unresolved blocking problems remain</td><td>&mdash;</td></tr>
+<tr><td style="font-weight:600">Belief maintenance</td><td>All questions</td><td>No claims are stuck mid-update (needs_revalidation is clear)</td><td>Doyle</td></tr>
+<tr class="section-separator"><td colspan="4">Routing-dependent checks (vary by question type)</td></tr>
+<tr><td style="font-weight:600">Track: adversarial</td><td>Verificatory, etc.</td><td>All active claims have completed adversarial search</td><td>Popper</td></tr>
+<tr><td style="font-weight:600">Track: convergence</td><td>Verificatory, Compositional</td><td>All active claims have convergence assessment</td><td>Wimsatt</td></tr>
+<tr><td style="font-weight:600">Track: deductive</td><td>Explanatory, Predictive, Normative</td><td>All active claims have deductive validation</td><td>Hempel</td></tr>
+<tr><td style="font-weight:600">Track: computational</td><td>Predictive</td><td>All active claims have computational verification</td><td>Popper</td></tr>
+<tr><td style="font-weight:600">Track: contrastive</td><td>Explanatory, Comparative</td><td>All active claims have contrastive evaluation</td><td>Lipton</td></tr>
+<tr><td style="font-weight:600">Track: consistency</td><td>Exploratory, Comparative, Compositional, Normative</td><td>All active claims have consistency check</td><td>Kahneman</td></tr>
+</tbody>
+</table>
+
+<p style="margin-top:12px">The formula counts passes and failures, then applies the logistic function:</p>
+
+<div class="formula">
+  confidence = 1 / (1 + e<sup>-(passes - failures)</sup>)
+</div>
+
+<div class="note">
+  <strong>Why logistic?</strong> The logistic function smoothly maps the integer difference (passes - failures) to a 0-1 scale. Equal passes and failures gives 0.5. Each additional pass or failure shifts the score predictably. No weights, no thresholds, no parameters to tune.
+</div>
+
+<table>
+<thead><tr><th>Confidence Level</th><th>Score Range</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:600; color:#5b7a5e">High</td><td>>= 0.75</td><td>Investigation was thorough; all or nearly all checks passed</td></tr>
+<tr><td style="font-weight:600; color:#666">Moderate</td><td>0.50 &ndash; 0.74</td><td>Most checks passed but some gaps remain</td></tr>
+<tr><td style="font-weight:600; color:#c4a07a">Low</td><td>0.25 &ndash; 0.49</td><td>Significant gaps in the investigation</td></tr>
+<tr><td style="font-weight:600; color:#b06050">Insufficient</td><td>&lt; 0.25</td><td>Investigation did not complete enough checks to be trustworthy</td></tr>
+</tbody>
+</table>
+
+<hr />
+
+<h3>Posterior P(Y) — "What does the evidence say?"</h3>
+<p>Only computed for yes/no-style questions (verificatory, comparative, predictive). For other question types like "what factors affect memory?" there is no meaningful yes/no answer, so this score is not produced.</p>
+
+<p>The posterior counts independent directional evidence across all active claims:</p>
+<ul>
+  <li>Each independent, non-invalidated, representative evidence item judged as "supports" counts as <strong>+1</strong></li>
+  <li>Each independent, non-invalidated, representative evidence item judged as "contradicts" counts as <strong>-1</strong></li>
+  <li>Evidence judged "no_bearing" or not yet judged is ignored</li>
+  <li>Adversarial counterarguments stored as contradicting Evidence entities count in the tally</li>
+</ul>
+
+<div class="formula">
+  P(Y) = 1 / (1 + e<sup>-(supporting - contradicting)</sup>)
+</div>
+
+<div class="example">
+  <strong>Example — "Does homeopathy work?"</strong><br/><br/>
+  This is a verificatory question. After evidence collection, the system found 9 supporting evidence items (the studies cited by proponents). Adversarial search then found 28 contradicting sources (systematic reviews, meta-analyses showing no effect beyond placebo). These adversarial findings were stored as Evidence entities with <code>support_judgment="contradicts"</code>.<br/><br/>
+  <strong>Posterior:</strong> log-odds = 9 - 28 = -19. P(Y) = 1 / (1 + e<sup>19</sup>) &#8776; 0.000.<br/><br/>
+  This extreme value correctly reflects that the overwhelming weight of independent evidence contradicts the claim. The answer confidence separately tells you whether the investigation process was thorough enough to trust this posterior.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 7. REPORT GENERATION                                                    -->
+<!-- ======================================================================= -->
+
+<h2>6. Report Generation</h2>
+<p>After the investigation completes and confidence scores are computed, the system generates a standalone HTML report. The report is structured to be read like a journal article, with progressive detail.</p>
+
+<h3>Report structure</h3>
+<table>
+<thead>
+<tr><th>Section</th><th>Content</th><th>Source</th></tr>
+</thead>
+<tbody>
+<tr><td style="font-weight:600">Header</td><td>Research question, clarified question, question type, date, model used</td><td>Objective entity metadata</td></tr>
+<tr><td style="font-weight:600">Verdict</td><td>One-sentence bottom-line answer</td><td>LLM-generated from final state</td></tr>
+<tr><td style="font-weight:600">Key Findings Q&A</td><td>Concise question-answer pairs covering the main findings</td><td>LLM-generated from artefact trace</td></tr>
+<tr><td style="font-weight:600">Summary</td><td>Prose narrative synthesizing the investigation. The artefact contains only prose — no structured blocks or tables.</td><td>LLM-generated (write_answer agent)</td></tr>
+<tr><td style="font-weight:600">Confidence Scores</td><td>Answer confidence and posterior P(Y) with visual indicators and check-by-check detail</td><td>Deterministic computation</td></tr>
+<tr><td style="font-weight:600">Findings</td><td>Per-claim detail: statement, stage, evidence references, adversarial balance, verification status. Expandable detail sections.</td><td>Claim + Evidence entities</td></tr>
+<tr><td style="font-weight:600">Sources</td><td>All evidence, sequentially numbered, grouped by judgment (supporting, contradicting, no bearing). Deduplicated — one entry per unique source URL.</td><td>Evidence entities</td></tr>
+<tr><td style="font-weight:600">Limitations and Open Questions</td><td>Unresolved uncertainties and investigative gaps</td><td>Uncertainty entities + LLM-generated open questions</td></tr>
+<tr><td style="font-weight:600">Investigation Process</td><td>Collapsible narrative describing the actual steps taken, in reading order</td><td>Deterministic: built from entity state and timestamps</td></tr>
+</tbody>
+</table>
+
+<div class="note">
+  <strong>Source deduplication:</strong> Evidence from the same source URL is consolidated into a single numbered entry. Each evidence item that references a source points to that sequential number in the report. This means the sources section reads like a reference list, not a dump of raw search results.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 8. EPISTEMIC TRADITIONS                                                 -->
+<!-- ======================================================================= -->
+
+<h2>7. Epistemic Traditions</h2>
+<p>The system implements ideas from seven named philosophical traditions. Each tradition maps to a concrete mechanism in the code. This is not decoration — each tradition solves a specific problem that a naive "search and summarize" system would miss.</p>
+
+<table>
+<thead>
+<tr><th style="width:170px">Tradition</th><th style="width:130px">Philosopher</th><th>What it means</th><th>System mechanism</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td style="font-weight:600">Inquiry cycling</td>
+  <td>C.S. Peirce</td>
+  <td>Genuine doubt triggers investigation. The cycle is: doubt &rarr; investigate &rarr; gather new evidence &rarr; re-evaluate &rarr; either resolve the doubt or repeat.</td>
+  <td>Scrutiny loop with up to 3 investigation cycles per claim. Demotion resets verification flags, forcing re-evaluation.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Falsification</td>
+  <td>Karl Popper</td>
+  <td>You cannot prove a claim true; you can only try to prove it wrong. Claims that survive serious attempts at refutation are stronger.</td>
+  <td>Adversarial search: generates counter-queries, searches for disconfirming evidence, stores quality counterarguments as contradicting Evidence entities, computes a balance score.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Robustness</td>
+  <td>William Wimsatt</td>
+  <td>Results that hold across independent methods, datasets, or fields are more trustworthy than results from a single approach.</td>
+  <td>Cross-domain convergence: classifies evidence by domain, checks pairwise independence, detects whether independent lines agree.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Deductive soundness</td>
+  <td>Carl Hempel</td>
+  <td>Even with strong evidence, a claim is weak if its logical structure is flawed. Check whether the premises support the conclusion.</td>
+  <td>Deductive validation: examines argument structure, identifies logical gaps.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Belief maintenance</td>
+  <td>Jon Doyle</td>
+  <td>When one piece of evidence is invalidated, all beliefs that depended on it must be automatically reconsidered.</td>
+  <td>Truth Maintenance System (TMS): invalidation cascades through the dependency graph. Claims are revalidated against stage gates.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Degeneracy detection</td>
+  <td>Imre Lakatos</td>
+  <td>A theory that keeps getting patched ("ad hoc modifications") without generating genuinely new predictions is degenerative.</td>
+  <td>Modification counter: more than 3 changes total or 3 changes in 24 hours flags the claim as degenerative, blocking promotion.</td>
+</tr>
+<tr>
+  <td style="font-weight:600">Independent judgment</td>
+  <td>Daniel Kahneman</td>
+  <td>Each assessment should be made independently and then combined. Anchoring on a first answer biases later judgments.</td>
+  <td>Each evidence-claim pair is judged independently by narrow agents. Evidence is clustered (HDBSCAN) before counting. Scores combine deterministically, not via LLM.</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ======================================================================= -->
+<!-- 9. AGENT DECOMPOSITION                                                  -->
+<!-- ======================================================================= -->
+
+<h2>8. Agent Decomposition</h2>
+<p>Complex judgments are broken into sequences of narrow steps. Each narrow agent outputs 1-4 fields and makes a single focused judgment. Deterministic combination steps (clustering, counting, scoring) connect them. This prevents the kind of compounding errors that happen when you ask one LLM call to do everything at once.</p>
+
+<h3>Question clarification</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    CQ["Clarify question\n(narrow LLM:\n4 fields)"] --> VQ{"Validate clarification\n(narrow LLM:\n3 fields)"}
+    VQ -->|"rejected"| CQ
+    VQ -->|"approved"| OUT["Clarified question"]
+</pre>
+</div>
+
+<h3>Evidence collection (was: plan_task)</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    SP["Select providers\n(deterministic:\nkeyword matching)"] --> FQ["Write search query\n(narrow LLM:\n2 fields per provider)"]
+</pre>
+</div>
+
+<h3>Claim formation (was: propose_claims)</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    EA["Extract one assertion\n(narrow LLM:\n1 field per evidence)"] --> CL["Cluster similar assertions\n(deterministic:\nembedding similarity)"] --> DC["Draft claim\n(narrow LLM:\n3 fields per cluster)"]
+</pre>
+</div>
+
+<h3>Adversarial search</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    GCQ["Generate counter-query\n(narrow LLM:\n2 fields, 2-3x)"] --> ECR["Evaluate counterargument\n(narrow LLM:\n6 fields)"] --> STORE["Store as Evidence\nwith contradicts judgment\n(dedup by source URL)"] --> SYN["Compute adversarial balance\n(deterministic:\nsupporting / total)"]
+</pre>
+</div>
+
+<h3>Convergence assessment</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    CED["Classify evidence domain\n(narrow LLM:\n6 fields per evidence)"] --> CPI["Check pairwise independence\n(narrow LLM:\n2 fields per pair)"] --> DCC["Detect convergence\n(deterministic:\nclustering + distance)"]
+</pre>
+</div>
+
+<h3>Prediction generation</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    ITA["Identify testable aspect\n(narrow LLM:\n2 fields, 3x)"] --> SPR["Specify prediction\n(narrow LLM:\n4 fields)"] --> DF["Define falsification\ncriteria\n(narrow LLM: 1 field)"] --> CP["Classify prediction\n(narrow LLM:\n6 fields)"]
+</pre>
+</div>
+
+<div class="note green">
+  <strong>Design principle:</strong> The system's reliability comes from narrow judgment tasks combined through deterministic gates. Every agent outputs 1-6 fields and makes one focused judgment per call. The evidence-claim judge and independence judge are the only evaluative judgments feeding the confidence scores — everything else is deterministic combination.
+</div>
+
+<!-- ======================================================================= -->
+<!-- 10. AGENT JUDGMENT TABLE                                                -->
+<!-- ======================================================================= -->
+
+<h2>9. Agent Catalog</h2>
+<p>The system uses 34 registered agents. Each agent produces a structured output with a fixed number of fields. This table shows what each agent does and how complex its judgment is.</p>
+
+<table>
+<thead>
+<tr>
+  <th>Agent</th>
+  <th>Phase</th>
+  <th>Output Fields</th>
+  <th>Judgment Complexity</th>
+</tr>
+</thead>
+<tbody>
+<!-- Narrow agents -->
+<tr class="section-separator"><td colspan="4">Narrow agents (1-4 fields, single focused judgment)</td></tr>
+<tr>
+  <td>clarify_question</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>4</td>
+  <td><span class="bar bar-low" style="width:50px"></span> Low</td>
+</tr>
+<tr>
+  <td>validate_clarification</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>3</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>classify_question</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>formulate_query</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>extract_assertion</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>1</td>
+  <td><span class="bar bar-low" style="width:20px"></span> Low</td>
+</tr>
+<tr>
+  <td>draft_claim</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>3</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>judge_evidence</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>judge_independence</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>validate_group</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>generate_counterquery</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>check_pairwise_independence</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>contrastive_evaluation</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>3</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>cross_claim_consistency</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>identify_testable_aspect</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:30px"></span> Low</td>
+</tr>
+<tr>
+  <td>specify_prediction</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>4</td>
+  <td><span class="bar bar-low" style="width:50px"></span> Low</td>
+</tr>
+<tr>
+  <td>define_falsification</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>1</td>
+  <td><span class="bar bar-low" style="width:20px"></span> Low</td>
+</tr>
+<tr>
+  <td>assess_evidence</td>
+  <td><span class="phase-tag phase-2">Scrutiny</span></td>
+  <td>4</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>identify_issues</td>
+  <td><span class="phase-tag phase-2">Scrutiny</span></td>
+  <td>2 + 3/item</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>evaluate_counterargument</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>6</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>classify_evidence_domain</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>6</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>assess_evidence_quality</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>5</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>validate_answer</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>2</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>resolve_uncertainty</td>
+  <td><span class="phase-tag phase-4">Uncertainty</span></td>
+  <td>4</td>
+  <td><span class="bar bar-low" style="width:40px"></span> Low</td>
+</tr>
+<tr>
+  <td>investigate_claim</td>
+  <td><span class="phase-tag phase-2">Scrutiny</span></td>
+  <td>2 + 2/item</td>
+  <td><span class="bar bar-low" style="width:50px"></span> Low</td>
+</tr>
+<tr>
+  <td>classify_prediction</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>6</td>
+  <td><span class="bar bar-low" style="width:50px"></span> Low</td>
+</tr>
+
+<!-- Medium complexity agents -->
+<tr class="section-separator"><td colspan="4">Medium complexity agents (4-7 fields)</td></tr>
+<tr>
+  <td>extract_evidence</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>5 + lists</td>
+  <td><span class="bar bar-medium" style="width:70px"></span> Medium</td>
+</tr>
+<tr>
+  <td>conceptual_analysis</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>4 + lists</td>
+  <td><span class="bar bar-medium" style="width:70px"></span> Medium</td>
+</tr>
+<tr>
+  <td>deductive_validation</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>7 + lists</td>
+  <td><span class="bar bar-medium" style="width:80px"></span> Medium</td>
+</tr>
+<tr>
+  <td>analyze_argument</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>5 + lists</td>
+  <td><span class="bar bar-medium" style="width:80px"></span> Medium</td>
+</tr>
+<tr>
+  <td>verify_computationally</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>5 + list</td>
+  <td><span class="bar bar-medium" style="width:80px"></span> Medium</td>
+</tr>
+<tr>
+  <td>record_decision</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>5 + list</td>
+  <td><span class="bar bar-medium" style="width:80px"></span> Medium</td>
+</tr>
+
+<!-- Open generation -->
+<tr class="section-separator"><td colspan="4">Open generation (prose output)</td></tr>
+<tr>
+  <td>write_answer</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>open prose</td>
+  <td><span class="bar bar-medium" style="width:80px"></span> Medium (generation)</td>
+</tr>
+
+<!-- Decomposed legacy agents -->
+<tr class="section-separator"><td colspan="4">Decomposed agents (registered for compatibility, replaced by narrow pipelines above)</td></tr>
+<tr>
+  <td>plan_task</td>
+  <td><span class="phase-tag phase-0">Pre-plan</span></td>
+  <td>5 + nested</td>
+  <td><span class="bar bar-high" style="width:100px"></span> High <span class="decomposed-tag">DECOMPOSED</span></td>
+</tr>
+<tr>
+  <td>adversarial_search</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>6 + nested</td>
+  <td><span class="bar bar-high" style="width:110px"></span> High <span class="decomposed-tag">DECOMPOSED</span></td>
+</tr>
+<tr>
+  <td>assess_convergence</td>
+  <td><span class="phase-tag phase-3">Verify</span></td>
+  <td>4 + nested</td>
+  <td><span class="bar bar-high" style="width:110px"></span> High <span class="decomposed-tag">DECOMPOSED</span></td>
+</tr>
+<tr>
+  <td>propose_claims</td>
+  <td><span class="phase-tag phase-1">Evidence</span></td>
+  <td>1 + nested</td>
+  <td><span class="bar bar-very-high" style="width:130px"></span> Very High <span class="decomposed-tag">DECOMPOSED</span></td>
+</tr>
+<tr>
+  <td>generate_prediction</td>
+  <td><span class="phase-tag phase-5">Synthesis</span></td>
+  <td>5 + nested</td>
+  <td><span class="bar bar-very-high" style="width:150px"></span> Very High <span class="decomposed-tag">DECOMPOSED</span></td>
+</tr>
+</tbody>
+</table>
+
+<!-- ======================================================================= -->
+<!-- 11. ARCHITECTURE NOTES                                                  -->
+<!-- ======================================================================= -->
+
+<h2>10. Architecture Notes</h2>
+
+<h3>Seven entity types</h3>
+<p>All knowledge in the system is represented using seven types. Everything the system does creates, reads, or modifies these entities.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+%%{init: {'theme': 'neutral'}}%%
+erDiagram
+    OBJECTIVE ||--o{ EVIDENCE : "scoped to"
+    OBJECTIVE ||--o{ CLAIM : "scoped to"
+    OBJECTIVE ||--o{ UNCERTAINTY : "scoped to"
+    OBJECTIVE ||--o{ DECISION : "scoped to"
+    OBJECTIVE ||--|| SNAPSHOT : "freezes into"
+    SNAPSHOT ||--|| ARTEFACT : "compiled into"
+    CLAIM ||--o{ EVIDENCE : "linked via evidence_ids"
+    CLAIM ||--o{ UNCERTAINTY : "affected by"
+    DECISION }o--|| CLAIM : "based on"
+
+    OBJECTIVE {
+        string description "The research question"
+        string question_type "One of 7 types"
+        string phase "Current pipeline phase"
+    }
+    EVIDENCE {
+        string source_ref "Where it came from"
+        string source_type "PubMed, OpenAlex, web, etc."
+        bool extracted "Has content been fetched?"
+        float quality_score "Source quality 0-1"
+        string support_judgment "supports | contradicts | no_bearing"
+    }
+    CLAIM {
+        string statement "The claim text"
+        string stage "hypothesis through actionable"
+        bool adversarial_checked "Verification track flags"
+        bool convergence_checked ""
+        float adversarial_balance "Survives demotion"
+    }
+    UNCERTAINTY {
+        string type "Type of uncertainty"
+        bool is_blocking "Must resolve before synthesis?"
+        string resolution "How it was resolved"
+    }
+    DECISION {
+        string statement "What was decided"
+        string justification "Why"
+    }
+    SNAPSHOT {
+        list claim_ids "Claims at freeze time"
+        list evidence_ids "Evidence at freeze time"
+        string snapshot_type "final"
+    }
+    ARTEFACT {
+        string content "Prose summary only"
+        dict trace "Provenance data"
+    }
+</pre>
+</div>
+
+<h3>Pattern-driven scheduling</h3>
+<p>There is no central orchestrator that says "first do X, then do Y." Instead, the system defines a set of patterns. Each pattern says: "when an entity is in state X, run operation Y." The scheduler queries entities, matches them against patterns, and executes the resulting work items.</p>
+
+<p>This means the pipeline is self-organizing. If a claim gets demoted, its state changes, which re-matches earlier patterns, which triggers re-investigation. No special "demotion handler" is needed — the patterns already cover it.</p>
+
+<h3>Runner PromptedOutput fallback</h3>
+<p>When structured output validation fails after all retries (in tool-call mode), the runner retries once with PromptedOutput mode. This injects the JSON schema directly into the system prompt instead of relying on the model's tool-calling interface. The fallback exists because small models sometimes ignore tool definitions entirely, but will follow schema instructions embedded in the prompt. Only fires after the normal retry budget is exhausted.</p>
+
+<h3>Deterministic vs LLM</h3>
+<p>The system is careful about what requires LLM judgment and what does not. The table below shows the split.</p>
+
+<table>
+<thead>
+<tr><th>Component</th><th>Type</th><th>Why</th></tr>
+</thead>
+<tbody>
+<tr><td>Stage gates (promote/demote)</td><td class="type-det">Deterministic</td><td>Threshold checks on counted evidence and verification flags</td></tr>
+<tr><td>Pattern scheduler + routing filter</td><td class="type-det">Deterministic</td><td>Matches entity state against declared patterns</td></tr>
+<tr><td>Provider selection</td><td class="type-det">Deterministic</td><td>Keyword matching against a domain-provider map</td></tr>
+<tr><td>Assertion clustering</td><td class="type-det">Deterministic</td><td>Cosine similarity on embeddings, single-linkage at 0.7 threshold</td></tr>
+<tr><td>Adversarial balance</td><td class="type-det">Deterministic</td><td>supporting / (supporting + adversarial)</td></tr>
+<tr><td>Convergence detection</td><td class="type-det">Deterministic</td><td>Clustering on classified dimensions + distance metrics</td></tr>
+<tr><td>Degeneracy detection</td><td class="type-det">Deterministic</td><td>Modification count + timestamps</td></tr>
+<tr><td>Answer confidence score</td><td class="type-det">Deterministic</td><td>Checklist of pass/fail checks, logistic transform</td></tr>
+<tr><td>Posterior P(Y) score</td><td class="type-det">Deterministic</td><td>Count supporting vs contradicting evidence, logistic transform</td></tr>
+<tr><td>Concern dedup (batch)</td><td class="type-det">Deterministic</td><td>Cosine similarity on buffered concerns, medoid selection</td></tr>
+<tr><td>Caveat dedup (pre-snapshot)</td><td class="type-det">Deterministic</td><td>Cosine similarity on non-blocking uncertainties before freeze</td></tr>
+<tr><td>TMS cascade</td><td class="type-det">Deterministic</td><td>Graph traversal: invalidation propagates through dependency links</td></tr>
+<tr><td>Routing defaults</td><td class="type-det">Deterministic</td><td>Pre-marks skipped tracks as complete based on routing table</td></tr>
+<tr><td>HTML report generation</td><td class="type-det">Deterministic</td><td>Template rendering from structured entity data</td></tr>
+<tr><td colspan="3" style="padding:0; border-bottom: 2px solid #e8e4de"></td></tr>
+<tr><td>Question clarification + validation</td><td class="type-narrow">Narrow LLM</td><td>Clarify question (4 fields) + validate clarification (3 fields), up to 3 rounds</td></tr>
+<tr><td>Question classification</td><td class="type-narrow">Narrow LLM</td><td>Outputs 1 enum value — the question type routing decision</td></tr>
+<tr><td>Query formulation</td><td class="type-narrow">Narrow LLM</td><td>1 search query per evidence provider</td></tr>
+<tr><td>Assertion extraction</td><td class="type-narrow">Narrow LLM</td><td>1 sentence per evidence item</td></tr>
+<tr><td>Claim drafting</td><td class="type-narrow">Narrow LLM</td><td>1 structured claim per assertion cluster</td></tr>
+<tr><td>Evidence-claim judgment</td><td class="type-narrow">Narrow LLM</td><td>supports / contradicts / no_bearing per evidence-claim pair</td></tr>
+<tr><td>Independence judgment</td><td class="type-narrow">Narrow LLM</td><td>yes/no + rationale per evidence pair</td></tr>
+<tr><td>Group validation</td><td class="type-narrow">Narrow LLM</td><td>Verify/refine cluster membership</td></tr>
+<tr><td>Counterquery generation</td><td class="type-narrow">Narrow LLM</td><td>1 adversarial search query per framing</td></tr>
+<tr><td>Pairwise independence check</td><td class="type-narrow">Narrow LLM</td><td>yes/no + rationale per evidence pair</td></tr>
+<tr><td>Contrastive evaluation</td><td class="type-narrow">Narrow LLM</td><td>A/B/neither per claim pair</td></tr>
+<tr><td>Consistency check</td><td class="type-narrow">Narrow LLM</td><td>Conflicts? per claim pair</td></tr>
+<tr><td>Testable aspect identification</td><td class="type-narrow">Narrow LLM</td><td>1 dimension per call</td></tr>
+<tr><td>Prediction specification</td><td class="type-narrow">Narrow LLM</td><td>4 fields per testable aspect</td></tr>
+<tr><td>Falsification criteria</td><td class="type-narrow">Narrow LLM</td><td>1 sentence per prediction</td></tr>
+<tr><td>Evidence quality / relevance</td><td class="type-narrow">Narrow LLM</td><td>4-5 scores per evidence item</td></tr>
+<tr><td>Counterargument evaluation</td><td class="type-narrow">Narrow LLM</td><td>4 scores per counterargument</td></tr>
+<tr><td>Domain classification</td><td class="type-narrow">Narrow LLM</td><td>4 enum classifications per evidence item</td></tr>
+<tr><td colspan="3" style="padding:0; border-bottom: 2px solid #e8e4de"></td></tr>
+<tr><td>Answer writing (verdict + summary)</td><td class="type-broad">Broad LLM</td><td>Open prose generation from structured data</td></tr>
+</tbody>
+</table>
+
+<h3>Evidence provider routing</h3>
+<p>Provider selection is deterministic. The conceptual analysis extracts key terms and context. A keyword-matching function maps domain terms (like "gene", "drug", "clinical") to appropriate providers (PubMed, ChEMBL, ClinicalTrials.gov, OpenAlex, etc.). Web search is always included. The formulate_query agent then writes one optimized search query per selected provider.</p>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    Q["Research Question"] --> CA["Conceptual analysis\n(key terms + context)"]
+
+    CA --> SP["Select providers\n(deterministic:\nkeyword matching)"]
+
+    SP -->|"biomedical"| S1["pubmed + monarch +\nopenalex + web_search"]
+    SP -->|"drug/compound"| S2["chembl + pubmed +\nclinicaltrials + web_search"]
+    SP -->|"academic"| S3["openalex + pubmed +\nweb_search"]
+    SP -->|"general"| S4["openalex + web_search"]
+
+    S1 --> FQ["Formulate query\n(narrow LLM, per provider)"]
+    S2 --> FQ
+    S3 --> FQ
+    S4 --> FQ
+    FQ --> EE["Extract evidence"]
+</pre>
+</div>
+
+</div><!-- .article -->
+</body>
+</html>
