@@ -3,8 +3,6 @@
 This runner implements the AgentRunner protocol defined in operations.py,
 enabling the epistemic package to run agents standalone, without an external SDK.
 
-Requires the [llm] optional extra: ``pip install andamentum[llm]``
-
 Architecture: Layer 1 (standalone package runner)
 """
 
@@ -44,12 +42,25 @@ def _resolve_model(model: str) -> Any:
     """Resolve model string to a pydantic-ai model object.
 
     Handles provider-specific setup:
+    - ``ollama:`` — constructs an OllamaProvider with ``OLLAMA_BASE_URL``
+      defaulted to ``http://localhost:11434/v1`` so a local Ollama works
+      out of the box without requiring the env var to be set.
     - ``bedrock:`` — resolves friendly name to full Bedrock model ID,
       adds regional prefix, and creates a BedrockConverseModel with
       proper boto3 session (profile + region from env or defaults)
     - everything else — passed through to pydantic-ai's infer_model
     """
     import os
+
+    if isinstance(model, str) and model.startswith("ollama:"):
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.ollama import OllamaProvider
+
+        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        model_name = model.split(":", 1)[1]
+        return OpenAIChatModel(
+            model_name=model_name, provider=OllamaProvider(base_url=base_url)
+        )
 
     if isinstance(model, str) and model.startswith("bedrock:"):
         import boto3
@@ -127,7 +138,7 @@ class DefaultAgentRunner:
         except ImportError as exc:
             raise ImportError(
                 "pydantic-ai is required for DefaultAgentRunner. "
-                "Install with: pip install andamentum[llm]"
+                "Install with: pip install andamentum"
             ) from exc
 
         self._Agent = Agent

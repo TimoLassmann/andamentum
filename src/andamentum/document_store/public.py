@@ -74,7 +74,7 @@ async def _preflight(database: str, model: str, embedding_model: str) -> None:
         await agent.run("Reply with exactly: ok")
     except ImportError:
         raise RuntimeError(
-            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+            "pydantic-ai not installed. Install with: pip install andamentum"
         )
     except Exception as e:
         raise RuntimeError(f"LLM model '{model}' unavailable. Error: {e}") from e

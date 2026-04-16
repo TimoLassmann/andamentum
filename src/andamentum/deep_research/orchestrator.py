@@ -3,8 +3,6 @@
 Standalone deep research entry point. Uses the package's own
 graph, agents, and backends.
 
-Requires the [llm] optional extra: ``pip install andamentum[llm]``
-
 Usage::
 
     from andamentum.deep_research.orchestrator import run_research

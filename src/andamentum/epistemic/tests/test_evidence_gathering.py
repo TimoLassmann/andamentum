@@ -136,7 +136,7 @@ class TestWebSearchGathererRawContent:
         summary = _make_page_summary(
             summary="The AI summary.",
             key_points=["Point 1", "Point 2"],
-            key_excerpts=['"A direct quote"'],
+            key_excerpts=['"raw page content"'],
         )
 
         result = _make_research_result(fetched_pages=[page], page_summaries=[summary])

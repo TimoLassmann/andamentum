@@ -1,7 +1,4 @@
-"""Assemble research workflow graph.
-
-Requires the [llm] optional extra: ``pip install andamentum[llm]``
-"""
+"""Assemble research workflow graph."""
 
 from pydantic_graph import Graph
 

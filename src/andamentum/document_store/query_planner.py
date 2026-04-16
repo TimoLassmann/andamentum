@@ -13,7 +13,7 @@ Filterable fields (closed-set only — LLM knows all valid values):
 Open-ended fields (people, projects, topics, methods) are NOT filterable —
 semantic search handles them. The LLM can't know what values exist in the database.
 
-Requires: pip install andamentum[llm]  (pydantic-ai)
+Requires: pydantic-ai (installed as part of andamentum).
 """
 
 from __future__ import annotations
@@ -222,7 +222,7 @@ async def plan_search(query: str, model: str) -> SearchPlan:
         return plan
     except ImportError:
         raise RuntimeError(
-            "pydantic-ai not installed. Install with: pip install andamentum[llm]"
+            "pydantic-ai not installed. Install with: pip install andamentum"
         )
     except Exception as e:
         raise RuntimeError(f"Query planning failed: {e}") from e

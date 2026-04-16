@@ -1,8 +1,4 @@
-"""Deep research system — models, agents, and orchestration for web research.
-
-Standalone package: ``pip install andamentum`` for core models.
-Add ``[llm]`` extra for agent runner: ``pip install andamentum[llm]``.
-"""
+"""Deep research system — models, agents, and orchestration for web research."""
 
 from .state import ResearchState
 from .models import (

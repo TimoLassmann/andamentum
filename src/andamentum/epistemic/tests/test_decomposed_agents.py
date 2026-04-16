@@ -55,43 +55,7 @@ class TestCheckPairwiseIndependenceAgent:
         assert result.independent is False
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Select providers (deterministic routing)
-# ──────────────────────────────────────────────────────────────────────────────
-
-from ..routing import select_providers  # noqa: E402
 from ..agents.output_models import FormulateQueryOutput  # noqa: E402
-
-
-class TestSelectProviders:
-    def test_always_includes_web_search(self):
-        providers = select_providers("verificatory")
-        assert "web_search" in providers
-
-    def test_biomedical_keywords(self):
-        providers = select_providers(
-            "verificatory", key_terms=["gene", "disease", "BRCA1"]
-        )
-        assert "pubmed" in providers
-        assert "monarch" in providers
-
-    def test_drug_keywords(self):
-        providers = select_providers("verificatory", key_terms=["drug", "compound"])
-        assert "chembl" in providers
-
-    def test_no_keywords_defaults_to_openalex(self):
-        providers = select_providers("verificatory", key_terms=[])
-        assert "openalex" in providers
-
-    def test_deduplicates(self):
-        providers = select_providers("verificatory", key_terms=["gene", "disease"])
-        assert len(providers) == len(set(providers))
-
-    def test_context_summary_used(self):
-        providers = select_providers(
-            "verificatory", context_summary="this is about clinical trials"
-        )
-        assert "clinicaltrials" in providers
 
 
 class TestFormulateQueryAgent:

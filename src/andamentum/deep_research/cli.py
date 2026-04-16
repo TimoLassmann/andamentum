@@ -4,8 +4,6 @@ Usage::
 
     andamentum-research "What is quantum computing?" [--model MODEL] [--max-iterations N] [--verbose]
     andamentum-research agents
-
-Requires the [llm] extra: ``pip install andamentum[llm]``
 """
 
 import argparse
@@ -132,7 +130,7 @@ async def _run(args: argparse.Namespace) -> None:
         from .orchestrator import run_research
     except ImportError:
         print(
-            "Error: pydantic-ai is required. Install with: pip install andamentum[llm]",
+            "Error: pydantic-ai is required. Install with: pip install andamentum",
             file=sys.stderr,
         )
         sys.exit(1)

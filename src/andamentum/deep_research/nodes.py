@@ -3,8 +3,6 @@
 These nodes implement the research cycle: plan → search → fetch → summarize →
 analyze gaps → (refine | synthesize). They use the SearchBackend protocol for
 search/fetch operations and pydantic-ai agents for LLM decisions.
-
-Requires the [llm] optional extra: ``pip install andamentum[llm]``
 """
 
 import asyncio

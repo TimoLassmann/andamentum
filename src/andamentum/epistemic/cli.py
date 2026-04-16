@@ -4,8 +4,6 @@ Usage::
 
     andamentum-epistemic run <agent_name> [key=value ...] [--model MODEL] [--verbose]
     andamentum-epistemic agents
-
-Requires the [llm] extra: ``pip install andamentum[llm]``
 """
 
 import argparse
@@ -31,6 +29,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    ask_parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help=(
+            "Ollama embedding model for semantic provider routing and passage "
+            "extraction (default: embeddinggemma:latest, or set "
+            "$ANDAMENTUM_EMBEDDING_MODEL)"
+        ),
     )
     ask_parser.add_argument(
         "--max-iterations",
@@ -237,17 +244,23 @@ async def _ask(args: argparse.Namespace) -> None:
         from .cli_handlers import handle_ask
     except ImportError:
         print(
-            "Error: pydantic-ai and rich are required. Install with: pip install andamentum[llm]",
+            "Error: pydantic-ai and rich are required. Install with: pip install andamentum",
             file=sys.stderr,
         )
         sys.exit(1)
 
+    import os
+
     model = _resolve_model(args)
+    embedding_model = args.embedding_model or os.environ.get(
+        "ANDAMENTUM_EMBEDDING_MODEL", "embeddinggemma:latest"
+    )
     result = await handle_ask(
         question=args.question,
         name=args.name,
         max_items=args.max_iterations,
         model=model,
+        embedding_model=embedding_model,
         keep=args.keep,
         verbose=args.verbose,
         trace=args.trace,
@@ -265,7 +278,7 @@ async def _run(args: argparse.Namespace) -> None:
         from .runner import DefaultAgentRunner
     except ImportError:
         print(
-            "Error: pydantic-ai is required. Install with: pip install andamentum[llm]",
+            "Error: pydantic-ai is required. Install with: pip install andamentum",
             file=sys.stderr,
         )
         sys.exit(1)
