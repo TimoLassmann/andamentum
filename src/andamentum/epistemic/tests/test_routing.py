@@ -108,10 +108,17 @@ class TestGateThresholds:
             v_supported.get("min_evidence_weighted", 1.0)  # type: ignore[arg-type]
         )
 
-    def test_predictive_requires_falsification(self):
+    def test_predictive_requires_falsification_at_robust_not_supported(self):
+        """Falsification is checked at ROBUST→ACTIONABLE, not at SUPPORTED.
+
+        Predictions are generated at the ROBUST stage (Lakatos). Requiring
+        them earlier creates a deadlock where claims can never advance.
+        """
         profile = get_routing_profile("predictive")
         supported = profile.gate_thresholds.get("supported", {})
-        assert supported.get("requires_falsification_criteria") is True
+        robust = profile.gate_thresholds.get("robust", {})
+        assert "requires_falsification_criteria" not in supported
+        assert robust.get("requires_falsification_criteria") is True
 
     def test_normative_requires_fact_value_separation(self):
         profile = get_routing_profile("normative")
