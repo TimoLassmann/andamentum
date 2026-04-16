@@ -17,6 +17,7 @@ dependencies = [
     # Cross-package deps collapsed (one distribution). Stricter version wins.
     "pydantic>=2.0.0",           # epistemic, deep-research, document-store
     "aiosqlite>=0.19.0",         # document-store
+    "sqlite-vec>=0.1.6",         # document-store (vec0 virtual tables for embeddings)
     "numpy>=1.24.0",             # document-store
     "scipy>=1.10.0",             # document-store
     "rank-bm25>=0.2.2",          # document-store, epistemic[search]
@@ -28,6 +29,7 @@ dependencies = [
     "pydantic-graph>=0.1.0",     # deep-research[llm]
     "python-dotenv>=1.0.0",      # epistemic[llm], deep-research[llm]
     "rich>=13.0.0",              # epistemic[llm]
+    "markdown>=3.5.0",           # typeset
 ]
 
 [project.scripts]
@@ -58,10 +60,16 @@ include = [
 [tool.pyright]
 include = ["src"]
 pythonVersion = "3.13"
-ignore = [
-    "src/andamentum/epistemic/evidence_router.py",  # references unimplemented source_index/source_registry modules
-]
 
 [tool.pytest.ini_options]
 testpaths = ["src/andamentum"]
 asyncio_mode = "auto"
+# Gated markers: tests tagged with these are NOT run by default.
+# Invoke explicitly: `uv run pytest -m benchmark` or `uv run pytest -m ollama`.
+markers = [
+    "ollama: test requires a live Ollama embedding backend",
+    "benchmark: long-running accuracy or performance benchmark",
+]
+# Exclude gated tests from default runs. Explicitly selecting a marker
+# overrides this.
+addopts = "-m 'not ollama and not benchmark'"
