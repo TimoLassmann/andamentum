@@ -9,6 +9,7 @@ render_pdf(document, output, *, style, custom_css, title) -> Path
 
 from __future__ import annotations
 
+import itertools
 import logging
 import re
 from collections.abc import Mapping, Sequence
@@ -101,6 +102,137 @@ def _render_prose(atom: dict[str, object]) -> str:
     return "\n".join(parts)
 
 
+def _render_callout(atom: dict[str, object]) -> str:
+    """Render a *callout* atom to an HTML ``<aside>`` block."""
+    tone = atom.get("tone")
+    if tone is not None:
+        cls = f"typeset-callout tone-{tone}"
+    else:
+        cls = "typeset-callout"
+    content = _md(str(atom["content"]))
+    return f'<aside class="{cls}">\n{content}\n</aside>'
+
+
+def _render_items(atom: dict[str, object]) -> str:
+    """Render an *items* atom to a labelled-entries block."""
+    parts: list[str] = []
+
+    heading = atom.get("heading")
+    if heading is not None:
+        parts.append(f"<h2>{heading}</h2>")
+
+    variant = atom.get("variant", "pairs")
+    parts.append(f'<div class="typeset-items variant-{variant}">')
+
+    raw_entries = atom.get("entries") or []
+    entries = raw_entries if isinstance(raw_entries, list) else []
+    for entry in entries:
+        assert isinstance(entry, dict)
+        label = entry.get("label", "")
+        body = _md(str(entry.get("body", "")))
+        parts.append('  <div class="typeset-item">')
+        parts.append(f'    <div class="typeset-item-label">{label}</div>')
+        parts.append(f'    <div class="typeset-item-body">{body}</div>')
+        parts.append("  </div>")
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+def _render_aside(atom: dict[str, object]) -> str:
+    """Render an *aside* atom — either a sidebar metadata grid or a simple aside."""
+    groups = atom.get("groups")
+    if groups is not None:
+        assert isinstance(groups, dict)
+        parts: list[str] = ['<aside class="typeset-aside typeset-sidebar">']
+        for group_name, entries in groups.items():
+            parts.append('  <div class="typeset-sidebar-group">')
+            parts.append(f'    <div class="typeset-sidebar-title">{group_name}</div>')
+            assert isinstance(entries, dict)
+            for key, value in entries.items():
+                parts.append('    <div class="typeset-sidebar-row">')
+                parts.append(f'      <span class="typeset-sidebar-label">{key}</span>')
+                parts.append(f'      <span class="typeset-sidebar-value">{value}</span>')
+                parts.append("    </div>")
+            parts.append("  </div>")
+        parts.append("</aside>")
+        return "\n".join(parts)
+
+    content = atom.get("content")
+    if content is not None:
+        return f'<aside class="typeset-aside">{_md(str(content))}</aside>'
+
+    return '<aside class="typeset-aside"></aside>'
+
+
+def _render_card(atom: dict[str, object]) -> str:
+    """Render a *card* atom."""
+    parts: list[str] = ['<div class="typeset-card">']
+    parts.append('  <div class="typeset-card-body">')
+    parts.append(f'    {_md(str(atom.get("content", "")))}')
+
+    badge = atom.get("badge")
+    if badge is not None:
+        parts.append(f'    <span class="typeset-badge">{badge}</span>')
+
+    refs = atom.get("refs")
+    if refs is not None:
+        assert isinstance(refs, list)
+        refs_text = ", ".join(str(r) for r in refs)
+        parts.append(f'    <sup class="typeset-refs">{refs_text}</sup>')
+
+    parts.append("  </div>")
+
+    source = atom.get("source")
+    if source is not None:
+        parts.append(f'  <div class="typeset-card-source"><a href="{source}">{source}</a></div>')
+
+    details = atom.get("details")
+    if details is not None:
+        parts.append('  <details class="typeset-card-details">')
+        parts.append("    <summary>Details</summary>")
+        parts.append(f"    {_md(str(details))}")
+        parts.append("  </details>")
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+def _render_reference(atom: dict[str, object]) -> str:
+    """Render a single *reference* atom."""
+    parts: list[str] = ['<div class="typeset-reference">']
+
+    number = atom.get("number")
+    if number is not None:
+        parts.append(f'  <div class="typeset-ref-number">{number}</div>')
+
+    parts.append('  <div class="typeset-ref-body">')
+    parts.append(f'    {_md(str(atom.get("content", "")))}')
+
+    badge = atom.get("badge")
+    if badge is not None:
+        parts.append(f'    <span class="typeset-badge">{badge}</span>')
+
+    parts.append("  </div>")
+
+    source = atom.get("source")
+    if source is not None:
+        parts.append(f'  <div class="typeset-ref-source"><a href="{source}">{source}</a></div>')
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+def _render_reference_group(group_label: str, refs: list[dict[str, object]]) -> str:
+    """Wrap a list of reference atoms in a group container."""
+    parts: list[str] = ['<div class="typeset-reference-group">']
+    parts.append(f'  <div class="typeset-ref-group-label">{group_label}</div>')
+    for ref in refs:
+        parts.append(_render_reference(ref))
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table
 # ---------------------------------------------------------------------------
@@ -108,6 +240,11 @@ def _render_prose(atom: dict[str, object]) -> str:
 _RENDERERS: dict[str, object] = {
     "heading": _render_heading,
     "prose": _render_prose,
+    "callout": _render_callout,
+    "items": _render_items,
+    "aside": _render_aside,
+    "card": _render_card,
+    "reference": _render_reference,
 }
 
 
@@ -198,7 +335,34 @@ def render(
 
     css = custom_css if custom_css is not None else get_style(style)
 
-    body = "\n\n".join(_render_atom(atom) for atom in validated)
+    # Assemble body, clustering consecutive reference atoms by group.
+    rendered_parts: list[str] = []
+    idx = 0
+    while idx < len(validated):
+        atom = validated[idx]
+        if atom.get("kind") == "reference":
+            # Collect all consecutive reference atoms.
+            ref_run: list[dict[str, object]] = []
+            while idx < len(validated) and validated[idx].get("kind") == "reference":
+                ref_run.append(validated[idx])
+                idx += 1
+            # Sub-group by their `group` field (None if absent).
+            for group_label, group_iter in itertools.groupby(
+                ref_run, key=lambda a: a.get("group")
+            ):
+                group_refs = list(group_iter)
+                if group_label is not None:
+                    rendered_parts.append(
+                        _render_reference_group(str(group_label), group_refs)
+                    )
+                else:
+                    for ref in group_refs:
+                        rendered_parts.append(_render_reference(ref))
+        else:
+            rendered_parts.append(_render_atom(atom))
+            idx += 1
+
+    body = "\n\n".join(rendered_parts)
 
     return _HTML_TEMPLATE.format(title=title, css=css, body=body)
 
