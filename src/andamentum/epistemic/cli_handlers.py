@@ -1268,7 +1268,7 @@ def _print_ask_results(
     if posterior:
         po = posterior
         console.print(
-            f"[bold]Posterior P(Y):[/bold] {po.posterior:.4f}"
+            f"[bold]Posterior confidence:[/bold] {po.posterior:.2%}"
             f"  [dim]({po.supporting_count} supporting, {po.contradicting_count} contradicting)[/dim]"
         )
 

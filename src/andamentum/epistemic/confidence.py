@@ -5,8 +5,9 @@ Reads a completed epistemic database and computes two scores:
 1. **Answer confidence** (process completion): checklist of pass/fail checks,
    logistic(passes - failures). Measures how thoroughly the inquiry was conducted.
 
-2. **Posterior P(Y)** (evidential direction): for yes/no-style questions,
-   logistic(supporting - contradicting). Measures evidence direction.
+2. **Posterior confidence** (evidential direction): logistic(supporting -
+   contradicting). Measures how strongly the evidence supports the
+   established claims. Higher = more claims supported, fewer contradicted.
 
 No LLM calls. No trained weights. Domain-independent by construction.
 
@@ -20,7 +21,7 @@ Usage::
 
     posterior = await compute_posterior(repo, objective_id="...")
     if posterior:
-        print(f"P(Y): {posterior.posterior:.2f}")
+        print(f"Posterior confidence: {posterior.posterior:.2%}")
 """
 
 import logging

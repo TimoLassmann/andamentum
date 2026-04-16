@@ -1151,14 +1151,14 @@ def _render_sidebar(data: ReportData) -> str:
         if scores.posterior is not None:
             total = scores.posterior_supporting + scores.posterior_contradicting
             if total > 0:
-                evidence_line = f"{scores.posterior_supporting} supporting / {scores.posterior_contradicting} contradicting"
+                evidence_line = f"{scores.posterior_supporting} claims supported / {scores.posterior_contradicting} contradicted"
             else:
                 evidence_line = "No directional evidence"
 
             sections.append(f"""
             <div class="sidebar-section">
                 <div class="sidebar-title">Posterior</div>
-                <div class="sidebar-value">P(Y) = {scores.posterior:.4f}</div>
+                <div class="sidebar-value">{scores.posterior:.2%} confident</div>
                 <div class="sidebar-label">{_escape(evidence_line)}</div>
             </div>""")
         elif scores.posterior_question_type and scores.posterior_question_type not in (
@@ -1265,7 +1265,7 @@ def _build_key_findings_qa(data: ReportData) -> str:
             f"{sc.answer_confidence_level.capitalize()} ({sc.answer_confidence:.2f})"
         )
         if sc.posterior is not None:
-            confidence_str += f". Posterior P(Y) = {sc.posterior:.4f}"
+            confidence_str += f". Posterior confidence: {sc.posterior:.2%}"
 
     # How thorough was the investigation?
     checks_total = data.confidence_scores.checks_total if data.confidence_scores else 0

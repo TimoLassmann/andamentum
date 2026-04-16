@@ -223,13 +223,13 @@ async def _confidence(args: argparse.Namespace) -> None:
         status = "PASS" if check.passed else "FAIL"
         print(f"  [{status}] {check.name}: {check.detail}")
 
-    # Posterior P(Y) (evidential direction, only for eligible question types)
+    # Posterior confidence (evidential direction, only for eligible question types)
     posterior = await compute_posterior(repo, objective_id)
     if posterior is not None:
         print()
-        print(f"Posterior P(Y): {posterior.posterior:.4f}")
+        print(f"Posterior confidence: {posterior.posterior:.2%}")
         print(
-            f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting"
+            f"  {posterior.supporting_count} claims supported, {posterior.contradicting_count} contradicted"
         )
         print(f"  {posterior.explanation}")
 

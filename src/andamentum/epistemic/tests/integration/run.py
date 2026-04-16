@@ -276,11 +276,11 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
             posterior = await compute_posterior(repo, obj_id)
             if posterior is not None:
                 print(f"\n  {'─' * 56}")
-                print("  Posterior P(Y)")
+                print("  Posterior confidence")
                 print(f"  {'─' * 56}")
-                print(f"  P(Y): {posterior.posterior:.4f}")
+                print(f"  Confidence: {posterior.posterior:.2%}")
                 print(
-                    f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}"
+                    f"  Claims supported: {posterior.supporting_count}  Contradicted: {posterior.contradicting_count}"
                 )
                 print(f"  {posterior.explanation}")
         except Exception as e:
