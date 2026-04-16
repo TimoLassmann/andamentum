@@ -2,32 +2,62 @@
 
 A document typesetting system with 7 visual atoms, 3 named styles, and HTML + PDF output.
 
-A document is a list of dicts. Each dict has a `kind` field that tells the renderer what visual pattern to use. Content is written in markdown. The renderer handles typography, layout, and styling — the author focuses on what to say and which atom to put it in.
-
 ## Quick start
 
-```python
-from andamentum.typeset import render, render_to_file, render_pdf
+Three ways to build a document, from easiest to most flexible:
 
-# Build a document as a list of atom dicts
-doc = [
+### Report builder (recommended)
+
+```python
+from andamentum.typeset import Report
+
+r = Report(style="article")
+r.heading("My Report", meta={"date": "2026-04-16"})
+r.callout("The key finding of this research.")
+r.prose("## Summary\n\nThe evidence shows...")
+r.save("report.html")
+r.save_pdf("report.pdf", footer="Draft — April 2026")
+```
+
+Each atom type is a method. Call `.save()` or `.save_pdf()` when done. Methods return `self` so you can chain if you like.
+
+### Builder functions
+
+```python
+from andamentum.typeset import render, heading, prose, callout
+
+html = render([
+    heading("My Report", meta={"date": "2026-04-16"}),
+    callout("The key finding of this research."),
+    prose("## Summary\n\nThe evidence shows..."),
+])
+```
+
+Each function returns a plain dict. Compose them into a list and pass to `render()`.
+
+### Raw dicts
+
+```python
+from andamentum.typeset import render
+
+html = render([
     {"kind": "heading", "content": "My Report", "meta": {"date": "2026-04-16"}},
     {"kind": "callout", "content": "The key finding of this research."},
     {"kind": "prose", "content": "## Summary\n\nThe evidence shows..."},
-]
+])
+```
 
-# Render to HTML string
-html = render(doc)
+Most flexible — best for AI agents that produce dicts programmatically.
 
-# Render to HTML file
-render_to_file(doc, "report.html")
+### Plain markdown
 
-# Render to PDF (requires weasyprint — see PDF section below)
-render_pdf(doc, "report.pdf", footer="Draft — April 2026")
+```python
+from andamentum.typeset import render
 
-# Plain markdown also works (treated as a single prose atom)
 html = render("# Hello\n\nWorld.")
 ```
+
+A plain string is treated as a single `prose` atom. Simplest possible usage.
 
 ## The 7 atoms
 
@@ -260,69 +290,80 @@ render_pdf(doc, "cv.pdf", style="cv", footer="April 2026")
 
 ## Document patterns
 
-Common document structures built from atoms.
+Common document structures using the Report builder.
 
 ### Research report
 
 ```python
-doc = [
-    {"kind": "heading", "content": "Research question?", "meta": {...}},
-    {"kind": "callout", "content": "The verdict in one sentence."},
-    {"kind": "items", "entries": [...]},          # Key findings Q&A
-    {"kind": "prose", "heading": "Summary", "content": "..."},
-    {"kind": "card", "content": "Claim 1.", "badge": "supported", ...},
-    {"kind": "card", "content": "Claim 2.", "badge": "challenged", ...},
-    {"kind": "reference", "number": 1, "content": "...", "badge": "supports"},
-    {"kind": "reference", "number": 2, "content": "...", "badge": "contradicts"},
-    {"kind": "aside", "groups": {...}},           # Sidebar metadata
-]
+from andamentum.typeset import Report
+
+r = Report(style="article")
+r.heading("Research question?", meta={"date": "2026-04-15", "model": "gemma4:26b"})
+r.callout("The verdict in one sentence.")
+r.items(entries=[
+    {"label": "What was studied?", "body": "..."},
+    {"label": "What did we find?", "body": "..."},
+])
+r.prose("The detailed summary...", heading="Summary")
+r.card("Claim 1.", badge="supported", refs=["1", "2"])
+r.card("Claim 2.", badge="challenged", details="Scope: ...")
+r.reference("Source 1.", number=1, source="https://...", badge="supports")
+r.reference("Source 2.", number=2, source="https://...", badge="contradicts")
+r.aside(groups={"Stats": {"Evidence": "37", "Claims": "2"}})
+r.save("report.html")
 ```
 
 ### Academic CV
 
 ```python
-doc = [
-    {"kind": "heading", "content": "Your Name", "subtitle": "Institution", "meta": "h-index: 32"},
-    {"kind": "prose", "heading": "Education", "content": ""},
-    {"kind": "items", "variant": "right", "entries": [
-        {"label": "2006", "body": "*PhD, Field*\nUniversity"},
-    ]},
-    {"kind": "prose", "heading": "Publications", "content": ""},
-    {"kind": "reference", "number": 1, "group": "2025", "content": "**You**, et al. Title. *Journal*."},
-    {"kind": "prose", "heading": "Grants", "content": "| Grant | Year | Amount |\n|---|---|---|\n| ... |"},
-    {"kind": "prose", "heading": "Teaching", "content": ""},
-    {"kind": "items", "variant": "left", "entries": [
-        {"label": "2024", "body": "Course name. Institution."},
-    ]},
-]
+from andamentum.typeset import Report
+
+cv = Report(style="cv")
+cv.heading("Your Name", subtitle="Institution | City", meta="Publications: 85 | h-index: 32")
+cv.prose("", heading="Education")
+cv.items(entries=[
+    {"label": "2006", "body": "*PhD, Field*\nUniversity, Country"},
+], variant="right")
+cv.prose("", heading="Publications")
+cv.reference("**You**, et al. Title. *Journal*.", number=1, group="2025")
+cv.prose("| Grant | Year | Amount |\n|---|---|---|\n| ... |", heading="Grants")
+cv.prose("", heading="Teaching")
+cv.items(entries=[
+    {"label": "2024", "body": "Course. Institution."},
+], variant="left")
+cv.save_pdf("cv.pdf", footer="April 2026")
 ```
 
 ### Status update
 
 ```python
-doc = [
-    {"kind": "heading", "content": "Weekly Status", "meta": {"date": "2026-04-16"}},
-    {"kind": "callout", "content": "Shipped semantic routing.", "tone": "success"},
-    {"kind": "items", "entries": [
-        {"label": "Done", "body": "Routing benchmark at 97.5%."},
-        {"label": "Next", "body": "Provider query formulation."},
-        {"label": "Blocked", "body": "Nothing."},
-    ]},
-    {"kind": "prose", "content": "## Commentary\n\nDetails here..."},
-]
+from andamentum.typeset import Report
+
+r = Report()
+r.heading("Weekly Status", meta={"date": "2026-04-16"})
+r.callout("Shipped semantic routing.", tone="success")
+r.items(entries=[
+    {"label": "Done", "body": "Routing benchmark at 97.5%."},
+    {"label": "Next", "body": "Provider query formulation."},
+    {"label": "Blocked", "body": "Nothing."},
+])
+r.prose("## Commentary\n\nDetails here...")
+r.save("status.html")
 ```
 
 ### Technical benchmark report
 
 ```python
-doc = [
-    {"kind": "heading", "content": "Benchmark Results", "meta": {...}},
-    {"kind": "callout", "content": "97.5% top-3 recall.", "tone": "success"},
-    {"kind": "prose", "heading": "Results", "content": "| Metric | Value |\n|---|---|\n| ... |"},
-    {"kind": "card", "content": "Key conclusion.", "badge": "approved", "details": "Method: ..."},
-    {"kind": "callout", "content": "Next steps: ...", "tone": "warning"},
-    {"kind": "aside", "groups": {"Config": {"model": "...", "threshold": "0.15"}}},
-]
+from andamentum.typeset import Report
+
+r = Report(style="report")
+r.heading("Benchmark Results", meta={"date": "2026-04-15", "version": "v1.0"})
+r.callout("97.5% top-3 recall.", tone="success")
+r.prose("| Metric | Value |\n|---|---|\n| Top-3 | 97.5% |", heading="Results")
+r.card("Key conclusion.", badge="approved", details="Method: 200 queries...")
+r.callout("Next steps: query formulation tuning.", tone="warning")
+r.aside(groups={"Config": {"model": "embeddinggemma", "threshold": "0.15"}})
+r.save("benchmark.html")
 ```
 
 ## Choosing the right atom
@@ -366,15 +407,35 @@ Output is written to `/tmp/typeset_showcase/` — six files (article.html, artic
 
 ## API reference
 
+### `Report(style="article", **kwargs)`
+
+Fluent document builder. Each atom type is a method:
+
+- `r.heading(content, **kw)` — append a heading atom
+- `r.prose(content, **kw)` — append a prose atom
+- `r.callout(content, **kw)` — append a callout atom
+- `r.items(entries, **kw)` — append an items atom
+- `r.aside(**kw)` — append an aside atom
+- `r.card(content, **kw)` — append a card atom
+- `r.reference(content, **kw)` — append a reference atom
+
+All methods return `self` for optional chaining. Output methods:
+
+- `r.render() -> str` — render to HTML string
+- `r.save(path) -> Path` — write HTML file
+- `r.save_pdf(path, **kw) -> Path` — write PDF (requires WeasyPrint)
+- `r.atoms -> list[dict]` — get the accumulated atom list (read-only copy)
+- `len(r)` — number of atoms
+
+### Builder functions
+
+`heading(content, **kw)`, `prose(content, **kw)`, `callout(content, **kw)`, `items(entries, **kw)`, `aside(**kw)`, `card(content, **kw)`, `reference(content, **kw)`
+
+Each returns a plain dict. Compose into a list and pass to `render()`.
+
 ### `render(document, *, style="article", custom_css=None, title=None, footer="") -> str`
 
-Render a document to an HTML string.
-
-- `document`: a list of atom dicts, or a plain markdown string (treated as one `prose` atom).
-- `style`: `"article"`, `"cv"`, or `"report"`.
-- `custom_css`: raw CSS string; replaces the named style entirely.
-- `title`: HTML `<title>` content. Auto-detected from the first heading atom if omitted.
-- `footer`: text for the running page footer (used by `{footer_label}` in the CSS). Relevant mainly for PDF output.
+Render a document (list of atom dicts, or a plain markdown string) to an HTML string.
 
 ### `render_to_file(document, output, **kwargs) -> Path`
 
