@@ -38,7 +38,7 @@ Architecture:
 
 Requires:
 - Ollama running locally with embeddinggemma:latest (for embeddings)
-- pip install andamentum[llm] for metadata extraction and query planning
+- pydantic-ai for metadata extraction and query planning (installed as part of andamentum)
 """
 
 # Public API

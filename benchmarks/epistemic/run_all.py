@@ -152,9 +152,6 @@ def _print_history(limit: int = 20) -> None:
     print(f"\n{'Run ID':<22} {'Model':<40} {'Pass Rate':>10} {'Agents':>8}")
     print("-" * 82)
     for run in runs:
-        agents_summary = ", ".join(
-            f"{a['name']}:{a['pass_rate']}%" for a in run["agents"]
-        )
         print(
             f"{run['run_id']:<22} "
             f"{run['model'][:39]:<40} "

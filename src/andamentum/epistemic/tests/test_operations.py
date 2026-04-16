@@ -50,7 +50,7 @@ class TestOperationRegistry:
         assert "promote_claim" in OPERATION_CLASSES
 
     def test_create_operations(self, repo, fake_runner):
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         assert "clarify_question" in ops
         assert "scrutinise_claim" in ops
 
@@ -70,7 +70,7 @@ class TestPreplanningChain:
             return_value=AlignmentResult(aligned=True, issue="", suggestion="")
         )
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="clarify_question"
         )
@@ -92,7 +92,7 @@ class TestPreplanningChain:
         )
         await repo.save(obj)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="conceptual_analysis"
         )
@@ -111,11 +111,26 @@ class TestPreplanningChain:
         )
         await repo.save(obj)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="plan_task"
         )
-        result = await ops["plan_task"].execute(work)
+
+        # PlanTaskOperation now uses semantic routing. Mock embed_texts so
+        # the test does not require a live Ollama backend.
+        from andamentum.epistemic import provider_routing
+
+        provider_routing._clear_cache()
+        fake_vec = [1.0, 0.0, 0.0]
+
+        async def _fake_embed(texts, *, model):
+            return [fake_vec] * len(texts)
+
+        with patch(
+            "andamentum.epistemic.provider_routing.embed_texts",
+            side_effect=_fake_embed,
+        ):
+            result = await ops["plan_task"].execute(work)
 
         assert result.success
         loaded = await repo.get_objective("obj-1")
@@ -579,7 +594,7 @@ class TestScrutiny:
         c = Claim(entity_id="c-1", objective_id="obj-1", statement="X causes Y")
         await repo.save(c)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
         )
@@ -625,7 +640,7 @@ class TestScrutiny:
         )
         await repo.save(c)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
         )
@@ -656,7 +671,7 @@ class TestPromotion:
         )
         await repo.save(c)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(entity_id="c-1", entity_type="claim", operation="promote_claim")
         result = await ops["promote_claim"].execute(work)
 
@@ -682,7 +697,7 @@ class TestProposeClaims:
             return_value=AlignmentResult(aligned=True, issue="", suggestion="")
         )
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="propose_claims"
         )
@@ -716,7 +731,7 @@ class TestFreezeSnapshot:
         )
         await repo.save(c)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
@@ -755,7 +770,7 @@ class TestFreezeSnapshot:
         await repo.save(h)
         await repo.save(s)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
@@ -787,7 +802,7 @@ class TestFreezeSnapshot:
         )
         await repo.save(a)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
@@ -836,7 +851,7 @@ class TestCaveatDedup:
             )
             await repo.save(u)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         emb_map = {
             "Evidence is about radiologists not comp bio": dup_emb,
@@ -891,7 +906,7 @@ class TestCaveatDedup:
         )
         await repo.save(u)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
@@ -923,7 +938,7 @@ class TestCaveatDedup:
             )
             await repo.save(u)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
@@ -947,7 +962,7 @@ class TestSynthesizeReport:
         snap = Snapshot(entity_id="snap-1", objective_id="obj-1", snapshot_type="final")
         await repo.save(snap)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="snap-1", entity_type="snapshot", operation="synthesize_report"
         )
@@ -1006,7 +1021,7 @@ class TestResolveUncertaintySiblingGrouping:
         await repo.save(u_different)
 
         # fake_runner default: can_resolve=True, resolution="Resolved through additional evidence"
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         # Embeddings: target + similar have cosine > 0.8; target + different have cosine < 0.8
         # target=emb[0], similar=emb[1], different=emb[2]
@@ -1083,7 +1098,7 @@ class TestResolveUncertaintySiblingGrouping:
         await repo.save(u_target)
         await repo.save(u_sibling)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         with patch(
             "andamentum.epistemic.embeddings.embed_texts",
@@ -1157,7 +1172,7 @@ class TestResolveUncertaintyDedup:
             }
         )
 
-        ops = create_operations(repo, runner)
+        ops = create_operations(repo, runner, embedding_model="test-model")
 
         existing_emb = [1.0, 0.0, 0.0]
         concern_emb = [0.95, 0.05, 0.0]  # cosine ≈ 0.998 — near-duplicate
@@ -1240,7 +1255,7 @@ class TestResolveUncertaintyDedup:
             }
         )
 
-        ops = create_operations(repo, runner)
+        ops = create_operations(repo, runner, embedding_model="test-model")
 
         existing_emb = [1.0, 0.0, 0.0]
         concern_emb = [0.0, 0.0, 1.0]  # cosine = 0.0 to all others
@@ -1319,7 +1334,7 @@ class TestDeduplicateConcerns:
         )
         await repo.save(obj)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         # Embeddings: first 3 are near-duplicates, 4th is distinct
         dup_emb = [1.0, 0.0, 0.0]
@@ -1387,7 +1402,7 @@ class TestDeduplicateConcerns:
         )
         await repo.save(existing)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         # Both texts get very similar embeddings
         async def fake_embed(texts, **kwargs):
@@ -1422,7 +1437,7 @@ class TestDeduplicateConcerns:
         )
         await repo.save(obj)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns"
         )
@@ -1452,7 +1467,7 @@ class TestDeduplicateConcerns:
         )
         await repo.save(obj)
 
-        ops = create_operations(repo, fake_runner)
+        ops = create_operations(repo, fake_runner, embedding_model="test-model")
 
         async def fake_embed(texts, **kwargs):
             return [[float(i), 0.0, 0.0] for i, _ in enumerate(texts)]
@@ -1526,7 +1541,7 @@ class TestEvidenceRelevanceFiltering:
 
         fake_runner.run = tracking_run
 
-        op = ProposeClaimsOperation(repo, fake_runner)
+        op = ProposeClaimsOperation(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
         )
@@ -1579,7 +1594,7 @@ class TestEvidenceRelevanceFiltering:
 
         fake_runner.run = failing_screen
 
-        op = ProposeClaimsOperation(repo, fake_runner)
+        op = ProposeClaimsOperation(repo, fake_runner, embedding_model="test-model")
         work = WorkItem(
             entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
         )

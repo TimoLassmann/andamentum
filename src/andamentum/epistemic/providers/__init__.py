@@ -85,37 +85,111 @@ def get_biomedical_providers() -> dict[str, Any]:
 register_provider(
     "openalex",
     OpenAlexProvider,
-    "General academic literature across all disciplines — papers, citations, abstracts",
+    (
+        "The default general-purpose academic literature search for any scholarly "
+        "question that does not specifically concern human medicine, drug compounds, "
+        "or clinical trials. Use this provider whenever the question is about "
+        "scientific research, scholarly work, or academic publications in general. "
+        "Good default choice for any research question, especially broad or "
+        "cross-disciplinary ones. Example queries: 'what do we know about the "
+        "Permian-Triassic mass extinction', 'research on transformer attention "
+        "mechanisms', 'academic papers about the origin of the Indo-European "
+        "languages', 'scholarly work on population genetics and genetic drift'."
+    ),
 )
 register_provider(
     "pubmed",
     PubMedProvider,
-    "Biomedical and life sciences literature — clinical studies, reviews, trials",
+    (
+        "Peer-reviewed biomedical and life sciences literature from NCBI's MEDLINE. "
+        "The default provider for any question about biomedical research, medicine, "
+        "biology, disease mechanisms, molecular pathways, genetics, pharmacology, "
+        "immunology, neuroscience, epidemiology, public health, or clinical outcomes "
+        "as documented in the published peer-reviewed record. Use PubMed whenever a "
+        "question is about what biomedical research has established or published, "
+        "even if the question also touches on specific drugs, targets, or trials — "
+        "other biomedical providers cover those more narrowly. Example queries: "
+        "'role of interleukin-6 in rheumatoid arthritis pathogenesis', 'mechanisms "
+        "of amyloid beta accumulation in Alzheimer's disease', 'epidemiology of "
+        "tuberculosis in sub-Saharan Africa', 'published evidence on ketogenic diet "
+        "for refractory epilepsy', 'neurobiology of opioid addiction'."
+    ),
 )
 register_provider(
     "biorxiv",
     BioRxivProvider,
-    "Biology and medicine preprints — not yet peer-reviewed research",
+    (
+        "Preprint server for unpublished, pre-peer-review biology and medicine "
+        "manuscripts. Use this provider ONLY when the question explicitly asks "
+        "about preprints, unpublished research, work that has not yet been peer "
+        "reviewed, cutting-edge results that have not yet appeared in journals, "
+        "or the very latest findings. If the question does not mention preprints "
+        "or unpublished work, prefer pubmed or openalex instead. Example queries: "
+        "'recent preprints on protein language models', 'unpublished findings on "
+        "AlphaFold3 accuracy', 'latest preprint results about CRISPR prime "
+        "editing efficiency', 'not-yet-published research on long COVID biomarkers'."
+    ),
 )
 register_provider(
     "clinicaltrials",
     ClinicalTrialsProvider,
-    "Clinical trial registry — trial designs, endpoints, enrollment, results",
+    (
+        "Registry of FDA-regulated and international clinical trials from "
+        "ClinicalTrials.gov. Contains trial protocols, eligibility criteria, primary "
+        "and secondary endpoints, enrollment numbers, phase (I/II/III/IV), sponsor "
+        "information, recruitment status, and posted results. Best for questions about "
+        "ongoing or completed clinical studies in humans, trial design, patient "
+        "eligibility, endpoint selection, recruitment, and comparative trial data. "
+        "Example queries: 'ongoing phase III trials for semaglutide in heart failure', "
+        "'eligibility criteria for CAR-T cell therapy trials in lymphoma', 'primary "
+        "endpoints of EMPA-REG OUTCOME study', 'recruiting clinical trials for "
+        "pancreatic cancer immunotherapy'."
+    ),
 )
 register_provider(
     "chembl",
     ChEMBLProvider,
-    "Drug compounds and bioactivity data — IC50, mechanisms, drug targets",
+    (
+        "Curated database of bioactive drug-like small molecules from EMBL-EBI, with "
+        "quantitative bioactivity data, drug mechanisms, ADMET properties, and "
+        "compound-target interactions. Contains IC50, EC50, Ki, Kd values, SMILES "
+        "structures, ChEMBL IDs, binding assays, and approved drug indications. Best "
+        "for questions about specific chemical compounds, drug potency, medicinal "
+        "chemistry, quantitative pharmacology, and structure-activity relationships. "
+        "Example queries: 'IC50 of imatinib against BCR-ABL kinase', 'mechanism of "
+        "action of pembrolizumab', 'SMILES structure and bioactivity of remdesivir', "
+        "'EC50 values for ACE inhibitors on angiotensin converting enzyme'."
+    ),
 )
 register_provider(
     "monarch",
     MonarchProvider,
-    "Gene-disease associations — curated links between genes, diseases, phenotypes",
+    (
+        "Curated gene–disease and gene–phenotype associations aggregated from "
+        "OMIM, HPO (Human Phenotype Ontology), Orphanet, ClinVar, and model organism "
+        "databases by the Monarch Initiative. Best for questions about which genes "
+        "are linked to which diseases, phenotype-driven rare disease diagnosis, "
+        "variant–disease significance, and cross-species orthology of disease genes. "
+        "Example queries: 'genes associated with hypertrophic cardiomyopathy', "
+        "'phenotypes caused by COL1A1 mutations', 'rare diseases linked to mitochondrial "
+        "complex I deficiency', 'clinical significance of BRCA1 c.5266dupC variant'."
+    ),
 )
 register_provider(
     "open_targets",
     OpenTargetsProvider,
-    "Drug target evidence — genetic associations, pathways, known drugs for targets",
+    (
+        "Integrated drug target evidence from the Open Targets Platform, combining "
+        "genetic associations (GWAS), somatic mutations (cancer), literature co-mentions, "
+        "pathway membership, drug-target interactions, tractability, and "
+        "target-disease association scores. Best for questions about which proteins "
+        "or genes are therapeutic targets for a given disease, drug repurposing "
+        "opportunities, pathway-level target evaluation, and druggability assessment. "
+        "Example queries: 'therapeutic targets for Alzheimer's disease with genetic "
+        "support', 'druggable targets in KRAS-mutant colorectal cancer', 'pathway "
+        "evidence linking TNF signaling to rheumatoid arthritis', 'target tractability "
+        "for PCSK9 in cardiovascular disease'."
+    ),
 )
 
 

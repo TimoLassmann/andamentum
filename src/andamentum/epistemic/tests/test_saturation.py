@@ -38,7 +38,7 @@ def _make_runner(verdict: str = "needs_resolution"):
     else:
         weight = "weak"
 
-    from tests.conftest import FakeAgentRunner  # type: ignore[import-not-found]
+    from .conftest import FakeAgentRunner
 
     return FakeAgentRunner(
         overrides={

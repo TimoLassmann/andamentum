@@ -96,8 +96,15 @@ from .confidence import (
 # ── Preflight ─────────────────────────────────────────────────────────────
 from .preflight import CheckResult, PreflightResult, HealthCheckable, preflight
 
-# ── Runner (standalone execution, requires [llm] extra) ─────────────────
-# Lazy import to avoid hard dependency on pydantic-ai:
+# ── Provider routing (semantic similarity) ───────────────────────────────
+from .provider_routing import (
+    ProviderScore,
+    rank_providers,
+    select_providers,
+)
+
+# ── Runner (standalone execution) ────────────────────────────────────────
+# Lazy import to keep pydantic-ai off the critical import path:
 #   from andamentum.epistemic.runner import DefaultAgentRunner
 
 __all__ = [
@@ -166,4 +173,8 @@ __all__ = [
     "PreflightResult",
     "HealthCheckable",
     "preflight",
+    # Provider routing
+    "ProviderScore",
+    "rank_providers",
+    "select_providers",
 ]

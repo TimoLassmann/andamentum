@@ -317,7 +317,7 @@ class TestDedupIntegration:
                 [i] for i in range(5)
             ]  # Each assertion its own cluster
 
-            op = ProposeClaimsOperation(repo, runner)
+            op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
             work = WorkItem(
                 entity_id="obj-1", entity_type="objective", operation="propose_claims"
             )
@@ -428,7 +428,7 @@ class TestDedupIntegration:
             mock_embed.return_value = [[0.1] * 10] * 5
             mock_cluster.return_value = [[i] for i in range(5)]
 
-            op = ProposeClaimsOperation(repo, runner)
+            op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
             work = WorkItem(
                 entity_id="obj-2", entity_type="objective", operation="propose_claims"
             )
@@ -501,7 +501,7 @@ class TestDedupIntegration:
             mock_embed.return_value = [[0.1] * 10] * 4  # For assertion clustering
             mock_cluster.return_value = [[i] for i in range(4)]
 
-            op = ProposeClaimsOperation(repo, runner)
+            op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
             work = WorkItem(
                 entity_id="obj-1", entity_type="objective", operation="propose_claims"
             )

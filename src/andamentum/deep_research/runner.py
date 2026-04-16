@@ -3,7 +3,7 @@
 More complex than epistemic's runner because deep-research agents use tools
 (search, fetch). The runner registers tool functions that call SearchBackend.
 
-Requires the [llm] optional extra: ``pip install andamentum[llm]``
+Requires pydantic-ai (installed as part of andamentum).
 
 Architecture: Layer 1 (standalone package runner)
 """
@@ -14,8 +14,23 @@ from typing import Any
 def _resolve_model(model: str) -> Any:
     """Resolve model string to a pydantic-ai model object.
 
-    Passes model strings through to pydantic-ai's infer_model.
+    pydantic-ai's ``ollama:`` prefix requires ``OLLAMA_BASE_URL``. We
+    default it to ``http://localhost:11434/v1`` so a local Ollama works
+    out of the box. Other prefixes are passed through to pydantic-ai's
+    infer_model.
     """
+    import os
+
+    if isinstance(model, str) and model.startswith("ollama:"):
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.ollama import OllamaProvider
+
+        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        model_name = model.split(":", 1)[1]
+        return OpenAIChatModel(
+            model_name=model_name, provider=OllamaProvider(base_url=base_url)
+        )
+
     return model
 
 
@@ -45,7 +60,7 @@ class DefaultResearchRunner:
         except ImportError as exc:
             raise ImportError(
                 "pydantic-ai is required for DefaultResearchRunner. "
-                "Install with: pip install andamentum[llm]"
+                "Install with: pip install andamentum"
             ) from exc
 
         self._Agent = Agent

@@ -116,8 +116,6 @@ class WebSearchGatherer:
 
     Satisfies the EvidenceGatherer protocol. Uses `deep_research.orchestrator`
     for actual web search via SearXNG + LLM analysis.
-
-    Requires: ``pip install andamentum[llm]``
     """
 
     def __init__(self, *, model: str, embedding_model: str | None = None):

@@ -46,14 +46,20 @@ def get_connection(db_path: Optional[Path] = None):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")  # 5 second timeout for locked database
 
-    # Load sqlite-vec extension
+    # Load sqlite-vec extension. Required — document_store cannot operate
+    # without vec0 virtual tables. Fail fast with a clear message rather than
+    # letting the caller hit an obscure "no such module: vec0" later.
     conn.enable_load_extension(True)
     try:
         import sqlite_vec  # type: ignore[import-not-found]
-
-        sqlite_vec.load(conn)
-    except Exception as e:
-        print(f"Warning: Could not load sqlite-vec extension: {e}")
+    except ImportError as e:
+        conn.close()
+        raise RuntimeError(
+            "sqlite-vec is required by andamentum.document_store but is not "
+            "installed. Install with: pip install sqlite-vec  (or reinstall "
+            "andamentum, which declares it as a hard dependency)."
+        ) from e
+    sqlite_vec.load(conn)
 
     try:
         yield conn

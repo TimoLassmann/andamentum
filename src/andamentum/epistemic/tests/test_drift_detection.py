@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 # Root of epistemic source
-_SRC = Path(__file__).parent.parent / "src" / "epistemic"
+_SRC = Path(__file__).parent.parent
 
 
 def _extract_section(
@@ -154,15 +154,15 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 4-path fallback chain": "f3ec28a8c833c39f",
-    "Scrutiny evidence loading try/except loop": "d54f427f98477a1e",
-    "Counterargument evaluation fallback": "29f1a3266cf13f3e",
+    "Evidence scoring 4-path fallback chain": "22f3340e91e9dd5f",
+    "Scrutiny evidence loading try/except loop": "a9f3aef6d1b1351d",
+    "Counterargument evaluation fallback": "69cd986c22d846e6",
     "Writer-validator loop": "3c3f161d6f5b27cf",
     "Prediction generation per-aspect error handling": "b6987e0d7bae1cea",
-    "Gate validate_promotion logic": "38958789b003f75f",
+    "Gate validate_promotion logic": "4c56f05b8695aa3f",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
-    "Pattern scheduler query error handling": "cb3d8d378ce9491d",
-    "CompositeGatherer provider error handling": "c128e1c700848e01",
+    "Pattern scheduler query error handling": "7e92ac2ecc5a025c",
+    "CompositeGatherer provider error handling": "a5b200c49da5b67b",
     "Adapter registry (agent name → adapter function mapping)": "daf01c8fcc1b5232",
 }
 

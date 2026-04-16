@@ -402,6 +402,7 @@ async def run_research_question(
     verbose: bool = False,
     skip_preplanning: bool = False,
     model: Optional[str] = None,
+    embedding_model: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
     provider: str = "all",
     providers: Optional[dict[str, Any]] = None,
@@ -480,6 +481,12 @@ async def run_research_question(
             "model is required for run_research_question. "
             "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
         )
+    if not embedding_model:
+        import os as _os
+
+        embedding_model = _os.environ.get(
+            "ANDAMENTUM_EMBEDDING_MODEL", "embeddinggemma:latest"
+        )
     agent_runner = DefaultAgentRunner(model=model)
 
     # Auto-load providers based on `provider` string when no explicit providers given
@@ -489,13 +496,18 @@ async def run_research_question(
         providers = get_biomedical_providers()
 
     evidence_gatherer = (
-        get_default_gatherer(model=model, providers=providers) if model else None
+        get_default_gatherer(
+            model=model, providers=providers, embedding_model=embedding_model
+        )
+        if model
+        else None
     )
     operations = create_operations(
         repo,
         agent_runner,
         evidence_gatherer=evidence_gatherer,
         quality_scorer=quality_scorer,
+        embedding_model=embedding_model,
     )
 
     # Create pattern scheduler with operation budgets

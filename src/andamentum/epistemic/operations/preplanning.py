@@ -258,14 +258,24 @@ class PlanTaskOperation(BaseOperation):
                 message=f"Phase {objective.phase} is not 'analyzed'",
             )
 
-        # Step 1: Deterministic provider selection
-        from ..routing import select_providers
+        # Step 1: Semantic provider selection via embedding similarity.
+        from ..provider_routing import select_providers
 
         clarified = objective.clarified_question or objective.description
-        providers = select_providers(
-            question_type=objective.question_type,
-            key_terms=objective.key_terms or None,
-            context_summary=clarified,
+
+        if not self.embedding_model:
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message=(
+                    "Semantic provider routing requires an embedding_model. "
+                    "Pass embedding_model= to create_operations()."
+                ),
+            )
+
+        providers = await select_providers(
+            question=clarified,
+            embedding_model=self.embedding_model,
         )
 
         # Step 2: Formulate queries — one narrow agent call per provider
