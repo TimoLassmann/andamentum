@@ -29,7 +29,7 @@ class TestStyles:
             "typeset-sidebar-row", "typeset-sidebar-label",
             "typeset-sidebar-value", "typeset-card", "typeset-card-body",
             "typeset-badge", "typeset-reference", "typeset-ref-number",
-            "typeset-ref-body", "typeset-ref-source",
+            "typeset-ref-content", "typeset-ref-body", "typeset-ref-source",
             "typeset-reference-group", "typeset-ref-group-label",
         ]
         for style_name in STYLES:

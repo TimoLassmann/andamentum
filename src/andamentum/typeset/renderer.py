@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import itertools
 import logging
+import os
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -129,8 +131,9 @@ def _render_items(atom: dict[str, object]) -> str:
     for entry in entries:
         assert isinstance(entry, dict)
         label = entry.get("label", "")
-        body = _md(str(entry.get("body", "")))
-        parts.append('  <div class="typeset-item">')
+        body = _strip_p(_md(str(entry.get("body", ""))))
+        item_cls = f"typeset-item item-{variant}"
+        parts.append(f'  <div class="{item_cls}">')
         parts.append(f'    <div class="typeset-item-label">{label}</div>')
         parts.append(f'    <div class="typeset-item-body">{body}</div>')
         parts.append("  </div>")
@@ -173,7 +176,7 @@ def _render_card(atom: dict[str, object]) -> str:
 
     badge = atom.get("badge")
     if badge is not None:
-        parts.append(f'    <span class="typeset-badge">{badge}</span>')
+        parts.append(f'    <span class="typeset-badge" data-value="{str(badge).lower()}">{badge}</span>')
 
     refs = atom.get("refs")
     if refs is not None:
@@ -204,20 +207,20 @@ def _render_reference(atom: dict[str, object]) -> str:
 
     number = atom.get("number")
     if number is not None:
-        parts.append(f'  <div class="typeset-ref-number">{number}</div>')
+        parts.append(f'  <div class="typeset-ref-number">{number}.</div>')
 
-    parts.append('  <div class="typeset-ref-body">')
-    parts.append(f'    {_md(str(atom.get("content", "")))}')
+    parts.append('  <div class="typeset-ref-content">')
+    parts.append(f'    <div class="typeset-ref-body">{_strip_p(_md(str(atom.get("content", ""))))}</div>')
 
     badge = atom.get("badge")
     if badge is not None:
-        parts.append(f'    <span class="typeset-badge">{badge}</span>')
-
-    parts.append("  </div>")
+        parts.append(f'    <span class="typeset-badge" data-value="{str(badge).lower()}">{badge}</span>')
 
     source = atom.get("source")
     if source is not None:
-        parts.append(f'  <div class="typeset-ref-source"><a href="{source}">{source}</a></div>')
+        parts.append(f'    <div class="typeset-ref-source"><a href="{source}">{source}</a></div>')
+
+    parts.append("  </div>")
 
     parts.append("</div>")
     return "\n".join(parts)
@@ -291,6 +294,7 @@ def render(
     style: str = "article",
     custom_css: str | None = None,
     title: str | None = None,
+    footer: str = "",
 ) -> str:
     """Render *document* to a complete HTML string.
 
@@ -334,6 +338,7 @@ def render(
             title = "Document"
 
     css = custom_css if custom_css is not None else get_style(style)
+    css = css.replace("{footer_label}", footer)
 
     # Assemble body, clustering consecutive reference atoms by group.
     rendered_parts: list[str] = []
@@ -401,6 +406,7 @@ def render_pdf(
     style: str = "article",
     custom_css: str | None = None,
     title: str | None = None,
+    footer: str = "",
 ) -> Path:
     """Render *document* to a PDF file using WeasyPrint.
 
@@ -431,15 +437,28 @@ def render_pdf(
     ImportError
         If WeasyPrint is not installed.
     """
+    # Ensure Homebrew libs are findable on Apple Silicon (pango, gobject).
+    if sys.platform == "darwin":
+        brew_lib = "/opt/homebrew/lib"
+        if os.path.isdir(brew_lib):
+            cur = os.environ.get("DYLD_LIBRARY_PATH", "")
+            if brew_lib not in cur.split(os.pathsep):
+                os.environ["DYLD_LIBRARY_PATH"] = (
+                    f"{brew_lib}{os.pathsep}{cur}" if cur else brew_lib
+                )
+
     try:
         import weasyprint  # type: ignore[import-untyped]
     except ImportError as exc:
         raise ImportError(
             "WeasyPrint is required for PDF rendering.  "
-            "Install it with: pip install weasyprint"
+            "Install it with: pip install weasyprint  "
+            "On macOS: brew install pango libffi"
         ) from exc
 
-    html = render(document, style=style, custom_css=custom_css, title=title)
+    html = render(
+        document, style=style, custom_css=custom_css, title=title, footer=footer
+    )
     path = Path(output)
     weasyprint.HTML(string=html).write_pdf(str(path))
     return path.resolve()
