@@ -79,7 +79,7 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
             f"{cs.answer_confidence_level.capitalize()} ({cs.answer_confidence:.2f})"
         )
         if cs.posterior is not None:
-            conf_body += f". Posterior P(Y) = {cs.posterior:.4f}"
+            conf_body += f". Posterior confidence: {cs.posterior:.2%}"
         qa_entries.append({"label": "How confident are we?", "body": conf_body})
 
         qa_entries.append({
@@ -290,9 +290,9 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
             f"{cs.checks_passed}/{cs.checks_total} checks passed": "",
         }
         if cs.posterior is not None:
-            sidebar_groups["Confidence"]["Posterior P(Y)"] = f"{cs.posterior:.4f}"
-            sidebar_groups["Confidence"]["Supporting"] = str(cs.posterior_supporting)
-            sidebar_groups["Confidence"]["Contradicting"] = str(cs.posterior_contradicting)
+            sidebar_groups["Confidence"]["Posterior"] = f"{cs.posterior:.2%}"
+            sidebar_groups["Confidence"]["Claims supported"] = str(cs.posterior_supporting)
+            sidebar_groups["Confidence"]["Claims contradicted"] = str(cs.posterior_contradicting)
 
     sidebar_groups["Model"] = {"LLM": data.model_used}
 
