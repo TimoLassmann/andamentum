@@ -23,6 +23,12 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
     box-sizing: border-box;
 }
 
+body {
+    background: #f9f7f4;
+    margin: 0;
+    padding: 0;
+}
+
 /* ── Document wrapper ───────────────────────────────────────────────── */
 
 .typeset-document {
@@ -204,41 +210,66 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
 }
 
 /* ── Callout ────────────────────────────────────────────────────────── */
+/* Default (no tone): reads as a natural opening paragraph, not a box. */
+/* Matches the epistemic report's verdict styling exactly.              */
 
 .typeset-callout {
-    font-family: 'Inter', system-ui, sans-serif;
-    margin: 0 0 32px;
-    padding: 20px 24px;
-    background: #f4f1ec;
-    border-radius: 6px;
-    font-size: 16px;
+    font-size: 20px;
+    font-weight: 400;
     line-height: 1.65;
+    margin: 0 0 32px;
     color: #1a1a1a;
 }
 
+.typeset-callout p {
+    margin: 0;
+}
+
+/* Tone variants: subtle box with thin left accent.                    */
+
 .typeset-callout.tone-info {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
     background: #eef3fa;
-    border-left: 4px solid #5b8dbf;
+    border-left: 3px solid #9bbad4;
+    border-radius: 4px;
+    line-height: 1.6;
 }
 
 .typeset-callout.tone-warning {
-    background: #fdf5e6;
-    border-left: 4px solid #c9a836;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
+    background: #fdf8ef;
+    border-left: 3px solid #d4bf7a;
+    border-radius: 4px;
+    line-height: 1.6;
 }
 
 .typeset-callout.tone-success {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
     background: #eef7f0;
-    border-left: 4px solid #5a9e6f;
+    border-left: 3px solid #7ab890;
+    border-radius: 4px;
+    line-height: 1.6;
 }
 
 .typeset-callout.tone-note {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
     background: #f4f1ec;
-    border-left: 4px solid #b5a990;
+    border-left: 3px solid #c4b99a;
+    border-radius: 4px;
+    line-height: 1.6;
 }
 
 .typeset-callout.tone-quote {
-    background: #f9f7f4;
-    border-left: 4px solid #d4d0c8;
+    padding: 0 0 0 20px;
+    border-left: 2px solid #d4d0c8;
     font-family: 'Source Serif 4', Georgia, serif;
     font-style: italic;
     color: #555;
@@ -279,19 +310,24 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
     color: #555;
 }
 
+.typeset-items .typeset-item-body p {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 4px 0 0 0;
+}
+
 /* variant-right: body left, label right-aligned */
-.typeset-items.variant-right .typeset-item {
+.item-right {
     display: flex;
     align-items: baseline;
 }
 
-.typeset-items.variant-right .typeset-item-body {
+.item-right .typeset-item-body {
     flex: 1;
     font-size: 16px;
     color: #2b2b2b;
 }
 
-.typeset-items.variant-right .typeset-item-label {
+.item-right .typeset-item-label {
     width: 100px;
     text-align: right;
     flex-shrink: 0;
@@ -300,19 +336,19 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
 }
 
 /* variant-left: label left, body right */
-.typeset-items.variant-left .typeset-item {
+.item-left {
     display: flex;
     align-items: baseline;
 }
 
-.typeset-items.variant-left .typeset-item-label {
+.item-left .typeset-item-label {
     width: 100px;
     flex-shrink: 0;
     font-size: 13px;
     color: #999;
 }
 
-.typeset-items.variant-left .typeset-item-body {
+.item-left .typeset-item-body {
     flex: 1;
     font-size: 16px;
     color: #2b2b2b;
@@ -405,6 +441,23 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
     color: #888;
 }
 
+.typeset-badge[data-value="supports"],
+.typeset-badge[data-value="supported"],
+.typeset-badge[data-value="pass"],
+.typeset-badge[data-value="approved"] {
+    color: #1a7a3a;
+    background: #eef7f0;
+}
+
+.typeset-badge[data-value="contradicts"],
+.typeset-badge[data-value="contradicted"],
+.typeset-badge[data-value="challenged"],
+.typeset-badge[data-value="fail"],
+.typeset-badge[data-value="rejected"] {
+    color: #b91c1c;
+    background: #fef2f2;
+}
+
 .typeset-refs {
     font-family: 'Inter', system-ui, sans-serif;
     font-size: 12px;
@@ -461,11 +514,11 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
 /* ── Reference ──────────────────────────────────────────────────────── */
 
 .typeset-reference {
+    display: flex;
     font-size: 17px;
     margin: 12px 0;
-    padding: 12px 0 12px 40px;
+    padding: 12px 0;
     border-bottom: 1px solid #ebe7e0;
-    position: relative;
 }
 
 .typeset-reference:last-child {
@@ -473,17 +526,21 @@ family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;\
 }
 
 .typeset-ref-number {
-    position: absolute;
-    left: 0;
-    top: 12px;
+    width: 36px;
+    flex-shrink: 0;
     font-size: 15px;
     font-weight: 600;
     color: #999;
     font-family: 'Inter', system-ui, sans-serif;
+    text-align: right;
+    padding-right: 10px;
+}
+
+.typeset-ref-content {
+    flex: 1;
 }
 
 .typeset-ref-body {
-    margin: 6px 0;
     line-height: 1.75;
     color: #333;
     font-size: 17px;
@@ -805,17 +862,18 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 /* variant-right: body left, label right-aligned (CV entry layout) */
-.typeset-items.variant-right .typeset-item {
+.item-right {
     display: flex;
 }
 
-.typeset-items.variant-right .typeset-item-body {
+.item-right .typeset-item-body {
     flex: 1;
     color: #333;
+    padding-left: 12px;
 }
 
-.typeset-items.variant-right .typeset-item-label {
-    width: 85px;
+.item-right .typeset-item-label {
+    width: 90px;
     text-align: right;
     flex-shrink: 0;
     color: #555;
@@ -824,21 +882,22 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 /* variant-left: label left, body right (year-left layout) */
-.typeset-items.variant-left .typeset-item {
+.item-left {
     display: flex;
 }
 
-.typeset-items.variant-left .typeset-item-label {
-    width: 50px;
+.item-left .typeset-item-label {
+    width: 55px;
     flex-shrink: 0;
     font-size: 9pt;
     color: #555;
 }
 
-.typeset-items.variant-left .typeset-item-body {
+.item-left .typeset-item-body {
     flex: 1;
     font-size: 9pt;
     color: #333;
+    padding-left: 10px;
 }
 
 /* ── Aside (content mode) ───────────────────────────────────────────── */
@@ -985,8 +1044,11 @@ family=Inter:wght@300;400;500;600;700\
     padding-top: 0.5px;
 }
 
-.typeset-ref-body {
+.typeset-ref-content {
     flex: 1;
+}
+
+.typeset-ref-body {
     color: #333;
     font-size: 9pt;
     line-height: 1.35;
@@ -1012,33 +1074,42 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 .typeset-ref-group-label {
-    float: left;
-    width: 42px;
     font-weight: 700;
     color: #1a1a1a;
-    padding-top: 1px;
     font-size: 9pt;
+    margin-bottom: 2pt;
+    margin-top: 8pt;
 }
 
-/* ── Print ──────────────────────────────────────────────────────────── */
+/* ── Print / PDF ────────────────────────────────────────────────────── */
 
 @page {
     size: A4;
-    margin: 18mm 20mm;
+    margin: 20mm 20mm 18mm 20mm;
+    @bottom-left {
+        content: "{footer_label}";
+        font-family: 'Inter', sans-serif;
+        font-size: 7pt;
+        color: #999;
+    }
+    @bottom-right {
+        content: "Page " counter(page);
+        font-family: 'Inter', sans-serif;
+        font-size: 7pt;
+        color: #999;
+    }
 }
 
 @page :first {
-    margin-top: 15mm;
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
 }
 
-@media print {
-    .typeset-document { font-size: 9pt; }
-    h1, h2, h3 { page-break-after: avoid; }
-    .typeset-reference,
-    .typeset-card,
-    .typeset-item { page-break-inside: avoid; }
-    p { orphans: 3; widows: 3; }
-}
+h1, h2, h3 { page-break-after: avoid; }
+.typeset-reference,
+.typeset-card,
+.typeset-item { page-break-inside: avoid; }
+p { orphans: 3; widows: 3; }
 """
 
 
@@ -1327,17 +1398,17 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 /* variant-right: body left, label right */
-.typeset-items.variant-right .typeset-item {
+.item-right {
     display: flex;
     align-items: baseline;
 }
 
-.typeset-items.variant-right .typeset-item-body {
+.item-right .typeset-item-body {
     flex: 1;
     color: #212529;
 }
 
-.typeset-items.variant-right .typeset-item-label {
+.item-right .typeset-item-label {
     width: 100px;
     text-align: right;
     flex-shrink: 0;
@@ -1346,19 +1417,19 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 /* variant-left: label left, body right */
-.typeset-items.variant-left .typeset-item {
+.item-left {
     display: flex;
     align-items: baseline;
 }
 
-.typeset-items.variant-left .typeset-item-label {
+.item-left .typeset-item-label {
     width: 80px;
     flex-shrink: 0;
     font-size: 8.5pt;
     color: #6c757d;
 }
 
-.typeset-items.variant-left .typeset-item-body {
+.item-left .typeset-item-body {
     flex: 1;
     color: #212529;
 }
@@ -1499,14 +1570,13 @@ family=Inter:wght@300;400;500;600;700\
 /* ── Reference ──────────────────────────────────────────────────────── */
 
 .typeset-reference {
+    display: flex;
     margin: 8px 0;
     padding: 8px 12px;
     background: #f8f9fa;
     border-radius: 4px;
     font-size: 9pt;
     line-height: 1.5;
-    position: relative;
-    padding-left: 36px;
 }
 
 .typeset-reference:last-child {
@@ -1514,12 +1584,17 @@ family=Inter:wght@300;400;500;600;700\
 }
 
 .typeset-ref-number {
-    position: absolute;
-    left: 12px;
-    top: 8px;
+    width: 28px;
+    flex-shrink: 0;
     font-size: 8.5pt;
     font-weight: 600;
     color: #0d6efd;
+    text-align: right;
+    padding-right: 8px;
+}
+
+.typeset-ref-content {
+    flex: 1;
 }
 
 .typeset-ref-body {

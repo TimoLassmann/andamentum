@@ -9,7 +9,7 @@ from andamentum.typeset import render
 
 SAMPLE_DOC = [
     {"kind": "heading", "content": "Sample Report", "subtitle": "Typeset visual test", "meta": {"date": "2026-04-16", "author": "Test"}},
-    {"kind": "callout", "content": "This is the key finding of the research.", "tone": "note"},
+    {"kind": "callout", "content": "The evidence is mixed, showing reduced mortality in some populations but no significant effect on major cardiovascular events in others."},
     {"kind": "items", "heading": "Key Facts", "entries": [
         {"label": "What was studied?", "body": "The effect of **metformin** on cardiovascular mortality."},
         {"label": "What did we find?", "body": "Mixed evidence across populations."},
