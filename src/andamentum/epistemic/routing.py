@@ -140,16 +140,13 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
         gate_thresholds={
             "supported": {
                 "min_evidence_weighted": 1.0,
-                "requires_falsification_criteria": True,
             },
             "provisional": {
                 "min_evidence_weighted": 2.0,
-                "requires_reference_class": True,
             },
             "robust": {
                 "min_evidence_weighted": 3.0,
                 "requires_falsification_criteria": True,
-                "requires_reference_class": True,
             },
         },
     ),
@@ -172,7 +169,6 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             },
             "robust": {
                 "min_evidence_weighted": 2.0,
-                "requires_independent_decomposition_convergence": True,
             },
         },
     ),
