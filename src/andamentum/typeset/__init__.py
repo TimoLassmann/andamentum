@@ -1,53 +1,69 @@
-"""andamentum.typeset — a 7-atom document typesetting system.
+"""andamentum.typeset — beautiful documents from 7 atoms.
 
-The typeset package converts structured documents (lists of *atom* dicts) into
-styled HTML, and optionally PDF.  A document is a flat list where every item
-has a ``kind`` drawn from one of the seven atom types:
+Three ways to build a document:
 
-``heading``
-    A section heading with a ``content`` string and optional ``level`` (1–6).
-``prose``
-    Flowing paragraph text in ``content``.
-``callout``
-    A highlighted block (``content``) with an optional ``tone`` (``"info"``,
-    ``"warning"``, ``"success"``, ``"note"``, ``"quote"``).
-``items``
-    A list of entries — bullet, numbered, or key/value pairs depending on
-    ``variant`` (``"pairs"``, ``"right"``, ``"left"``).
-``aside``
-    A sidebar / tangential block; accepts ``content`` or ``groups``.
-``card``
-    A self-contained panel with ``content`` and optional metadata.
-``reference``
-    A bibliographic or citation block with ``content``.
+**Report builder** (easiest)::
 
-Quick-start example::
+    from andamentum.typeset import Report
 
-    from andamentum.typeset import render, get_style
+    r = Report(style="article")
+    r.heading("My Report", meta={"date": "2026-04-16"})
+    r.callout("Key finding.")
+    r.prose("## Summary\\n\\nBody text...")
+    r.save("report.html")
 
-    doc = [
-        {"kind": "heading", "content": "Hello, typeset!", "level": 1},
-        {"kind": "prose", "content": "This is the first paragraph."},
-        {"kind": "callout", "content": "Important note.", "tone": "info"},
-    ]
+**Builder functions** (composable)::
 
-    html = render(doc, style="article", title="My Document")
+    from andamentum.typeset import render, heading, prose, callout
+
+    html = render([heading("My Report"), prose("Body.")])
+
+**Raw dicts** (most flexible)::
+
+    from andamentum.typeset import render
+
+    html = render([{"kind": "heading", "content": "My Report"}])
+
+Seven atoms: ``heading``, ``prose``, ``callout``, ``items``, ``aside``,
+``card``, ``reference``. Three styles: ``article``, ``cv``, ``report``.
 """
 
 from __future__ import annotations
 
+from .builders import (
+    Report,
+    aside,
+    callout,
+    card,
+    heading,
+    items,
+    prose,
+    reference,
+)
 from .renderer import render, render_to_file
 from .styles import STYLES, get_style
 
 __all__ = [
+    # Report builder
+    "Report",
+    # Builder functions
+    "heading",
+    "prose",
+    "callout",
+    "items",
+    "aside",
+    "card",
+    "reference",
+    # Core renderer
     "render",
     "render_to_file",
     "render_pdf",
+    # Styles
     "STYLES",
     "get_style",
 ]
 
 try:
     from .renderer import render_pdf
-except ImportError:  # weasyprint not installed
-    pass  # render_pdf remains absent from the namespace
+except ImportError:
+    pass
