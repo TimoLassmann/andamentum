@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from andamentum.typeset.renderer import render
+from andamentum.typeset import render, render_to_file
 
 
 class TestProse:
@@ -66,10 +66,12 @@ class TestCallout:
         html = render([{"kind": "callout", "content": "Watch out!", "tone": "warning"}])
         assert "tone-warning" in html
 
-    def test_callout_default_no_tone_class(self) -> None:
+    def test_callout_default_no_tone_on_element(self) -> None:
         html = render([{"kind": "callout", "content": "Note."}])
         assert "typeset-callout" in html
-        assert "tone-" not in html
+        # The callout element itself should not have a tone class.
+        # (CSS may contain .tone-* rules but the element shouldn't.)
+        assert 'class="typeset-callout"' in html
 
 
 class TestItems:
@@ -222,3 +224,53 @@ class TestRenderShell:
             [{"kind": "prose", "content": "X."}], custom_css="body { color: red; }"
         )
         assert "color: red" in html
+
+
+class TestEndToEnd:
+    def test_full_document_renders_all_atoms(self) -> None:
+        doc = [
+            {"kind": "heading", "content": "Test Report", "subtitle": "A subtitle", "meta": {"date": "2026-04-16"}},
+            {"kind": "callout", "content": "Key finding here.", "tone": "note"},
+            {"kind": "items", "heading": "Key Facts", "entries": [
+                {"label": "Q1", "body": "Answer 1."},
+                {"label": "Q2", "body": "Answer 2."},
+            ]},
+            {"kind": "prose", "content": "## Summary\n\nThe evidence shows..."},
+            {"kind": "card", "content": "Claim statement.", "badge": "supported", "refs": ["e1"]},
+            {"kind": "reference", "content": "Source description.", "number": 1, "source": "https://example.com", "badge": "supports"},
+            {"kind": "aside", "groups": {"Stats": {"Items": 42}}},
+        ]
+        html = render(doc, style="article")
+
+        assert "<!DOCTYPE html>" in html
+        assert "Test Report" in html
+        assert "Key finding" in html
+        assert "Q1" in html
+        assert "Claim statement" in html
+        assert "https://example.com" in html
+        assert "42" in html
+
+    def test_renders_with_each_style(self) -> None:
+        doc: list[dict[str, object]] = [{"kind": "prose", "content": "Hello."}]
+        for style in ["article", "cv", "report"]:
+            html = render(doc, style=style)
+            assert "Hello" in html
+
+    def test_custom_css_overrides_style(self) -> None:
+        doc: list[dict[str, object]] = [{"kind": "prose", "content": "X."}]
+        html = render(doc, custom_css="body { color: red; }")
+        assert "color: red" in html
+
+    def test_plain_markdown_string_input(self) -> None:
+        html = render("# Title\n\nParagraph.")
+        assert "Title" in html
+        assert "Paragraph" in html
+
+    def test_render_to_file(self, tmp_path: object) -> None:
+        from pathlib import Path
+        assert isinstance(tmp_path, Path)
+        doc: list[dict[str, object]] = [{"kind": "prose", "content": "File test."}]
+        path = render_to_file(doc, tmp_path / "out.html")
+        assert path.exists()
+        content = path.read_text()
+        assert "File test" in content
