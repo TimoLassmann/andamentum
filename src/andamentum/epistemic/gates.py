@@ -552,18 +552,45 @@ async def validate_promotion(
     if gate.requires_scrutiny and claim.scrutiny_verdict != "pass":
         reasons.append(f"Scrutiny not passed (verdict: {claim.scrutiny_verdict})")
 
-    # Verification tracks
-    if gate.requires_adversarial and not claim.adversarial_checked:
-        reasons.append("Adversarial search not complete")
-    if gate.requires_convergence and not claim.convergence_checked:
-        reasons.append("Convergence check not complete")
-    if gate.requires_deductive and not claim.deductive_checked:
-        reasons.append("Deductive validation not complete")
-    if gate.requires_computational and not claim.computational_checked:
-        # Only block if claim is computationally verifiable
-        # NOTE: Claim has no "computationally_verifiable" field — computational
-        # verification is always optional. Skip this check.
-        pass
+    # Verification tracks — routing-aware.
+    # Only require tracks that are PRIMARY or SECONDARY for this question type.
+    # SKIP and IF_APPLICABLE tracks are not required for promotion.
+    _TRACK_TO_GATE_FLAG = {
+        "adversarial": (gate.requires_adversarial, "adversarial_checked"),
+        "convergence": (gate.requires_convergence, "convergence_checked"),
+        "deductive": (gate.requires_deductive, "deductive_checked"),
+        "computational": (gate.requires_computational, "computational_checked"),
+    }
+    _TRACK_TO_LABEL = {
+        "adversarial": "Adversarial search not complete",
+        "convergence": "Convergence check not complete",
+        "deductive": "Deductive validation not complete",
+        "computational": "Computational verification not complete",
+    }
+
+    if question_type:
+        try:
+            from .routing import get_routing_profile, TrackActivation
+
+            routing = get_routing_profile(question_type)
+            for track_name, (gate_required, claim_field) in _TRACK_TO_GATE_FLAG.items():
+                if not gate_required:
+                    continue
+                activation = routing.tracks.get(track_name, TrackActivation.SKIP)
+                if activation in (TrackActivation.PRIMARY, TrackActivation.SECONDARY):
+                    if not getattr(claim, claim_field, False):
+                        reasons.append(_TRACK_TO_LABEL[track_name])
+                # SKIP and IF_APPLICABLE: do not require for promotion
+        except (KeyError, ImportError):
+            # Fallback: use hardcoded gate requirements (backward compat)
+            for track_name, (gate_required, claim_field) in _TRACK_TO_GATE_FLAG.items():
+                if gate_required and not getattr(claim, claim_field, False):
+                    reasons.append(_TRACK_TO_LABEL[track_name])
+    else:
+        # No question_type: fall back to hardcoded gate requirements
+        for track_name, (gate_required, claim_field) in _TRACK_TO_GATE_FLAG.items():
+            if gate_required and not getattr(claim, claim_field, False):
+                reasons.append(_TRACK_TO_LABEL[track_name])
 
     # Adversarial balance threshold — use override if available
     balance_threshold = float(  # type: ignore[arg-type]
