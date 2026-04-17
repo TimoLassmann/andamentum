@@ -211,7 +211,7 @@ These run **inline** inside existing operations, not as separate operations:
 - **`ProposeClaimsOperation`**: after each claim is created, all linked evidence is judged for support/contradict/no_bearing.
 - **`ExtractEvidenceOperation`**: after extraction, if the evidence is already linked to a claim, it is judged immediately.
 
-Judge verdicts feed into the posterior P(Y) score (see Confidence Scoring below) and the `min_supporting_sources` stage gate. The judge makes no domain-specific quality judgments — it evaluates only the relationship between a piece of evidence and a claim.
+Judge verdicts feed into the posterior confidence score (see Confidence Scoring below) and the `min_supporting_sources` stage gate. The judge makes no domain-specific quality judgments — it evaluates only the relationship between a piece of evidence and a claim.
 
 ### What Must NOT Be Keyword-Based
 
@@ -235,9 +235,9 @@ The following are properly deterministic and should NOT use agent calls:
 - Degeneracy detection (modification counts and timestamps)
 - Bibliometric quality scoring (citation counts, journal status)
 - Answer confidence scoring (checklist pass/fail, logistic transform)
-- Posterior P(Y) scoring (count supports - count contradicts, logistic transform)
+- Posterior confidence scoring (count claims supported - count contradicted, logistic transform)
 - Question-type routing (lookup table from question type to track activation levels)
-- Provider selection (keyword matching against domain provider map)
+- Provider selection (semantic similarity: embed question + provider descriptions, rank by cosine, select top-K)
 - Evidence deduplication (HDBSCAN clustering on embedding distances)
 - Evidence dedup via shared similarity module (single-linkage clustering, Union-Find)
 - Caveat dedup (group non-blocking uncertainties by embedding, keep medoid)
@@ -538,7 +538,8 @@ A pattern is a rule: "when an entity of type X is in state Y, perform operation 
 | Evidence | 3 | evidence | extracted=False | `extract_evidence` |
 | Investigation | 4 | claim | verdict=needs_resolution, investigation_count<3, saturated=False | `investigate_claim` |
 | | 4 | claim | verdict=fail, stage=hypothesis, investigation_count<3, saturated=False | `investigate_claim` |
-| Claim Proposal | 4 | objective | phase=planned, claims_proposed=False | `propose_claims` |
+| Claim Seed (verification mode) | 4 | objective | phase=planned, claims_proposed=False, claim_to_verify!=None | `seed_claim` |
+| Claim Proposal (research mode) | 4 | objective | phase=planned, claims_proposed=False, claim_to_verify=None | `propose_claims` |
 | Routing | 4 | claim | stage=supported, scrutiny_verdict=pass, routing_applied=False | `set_routing_defaults` |
 | Scrutiny | 5 | claim | scrutiny_verdict=None | `scrutinise_claim` |
 | Verification | 5 | claim | stage=supported, adversarial_checked=False | `adversarial_search` |
@@ -658,13 +659,15 @@ src/andamentum/epistemic/
 │   ├── belief_maintenance.py      #   invalidate, revalidate, routing defaults
 │   └── concerns.py                #   batch dedup of remaining concerns
 ├── patterns.py                    # 30 pattern definitions + PatternScheduler with routing filter
-├── gates.py                       # StageGate definitions + validate_promotion() + TMS validate_current_stage()
-├── routing.py                     # Question-type routing table, provider selection
+├── gates.py                       # StageGate definitions + validate_promotion() (routing-aware) + TMS validate_current_stage()
+├── routing.py                     # Question-type routing table (verification tracks, gate overrides)
+├── provider_routing.py            # Semantic provider selection (embed question + rank providers by cosine similarity)
 ├── judge.py                       # Central judge module: judge_evidence(), judge_independence()
 ├── similarity.py                  # Shared embed-compare-group utility (cosine, Union-Find, medoid, validation)
 ├── dedup.py                       # HDBSCAN evidence deduplication
-├── embeddings.py                  # Ollama embedding client for dedup clustering
-├── confidence.py                  # Answer confidence (checklist) + posterior P(Y) scoring
+├── embeddings.py                  # Ollama embedding client for dedup clustering + provider routing
+├── confidence.py                  # Answer confidence (checklist) + posterior confidence scoring
+├── typeset_report.py              # Adapter: convert ReportData to typeset atom list
 ├── adapters.py                    # Agent output normalization
 ├── repository.py                  # Entity CRUD interface
 ├── storage.py                     # StorageBackend protocol
@@ -703,7 +706,7 @@ src/andamentum/epistemic/
 | **Monarch** | Biomedical | Database authority (deterministic) + content assessment |
 | **Knowledge Sources** | Biomedical DBs | Database authority (deterministic) |
 
-Provider selection is deterministic: `select_providers()` in `routing.py` matches domain keywords from the question's key terms against a `DOMAIN_PROVIDER_MAP` (e.g., "gene" → pubmed + monarch + open_targets, "study" → openalex + pubmed). Web search is always included. Investigation stubs default to web_search. No LLM call is involved in provider selection.
+Provider selection uses **semantic similarity**: `select_providers()` in `provider_routing.py` embeds the clarified question and all provider descriptions using Ollama, ranks providers by cosine similarity, and selects the top-K whose score exceeds a calibrated threshold (`min_score=0.15`). Web search is always appended as a universal fallback. Provider description embeddings are cached per model at module level. No LLM call is involved — only embedding distance. This replaced a previous keyword-matching approach (`DOMAIN_PROVIDER_MAP`) which was brittle and could not handle queries outside its hardcoded vocabulary. A 200-query benchmark validates routing accuracy (97.5% top-3 recall).
 
 ### Extension Guide
 
@@ -788,11 +791,11 @@ Two scores run after the scheduler completes. Both are pure computations — no 
 
 Each check contributes +1 (pass) or -1 (fail) to log-odds. The logistic transform converts to a probability: `confidence = 1 / (1 + exp(-log_odds))`. Classified as high (>=0.75), moderate (>=0.50), low (>=0.25), or insufficient (<0.25).
 
-#### Posterior P(Y) (evidential direction)
+#### Posterior confidence (evidential direction)
 
-`compute_posterior()` produces a `PosteriorReport` for yes/no-style research questions (verificatory, comparative, predictive). Returns None for other question types where a directional answer is not meaningful.
+`compute_posterior()` produces a `PosteriorReport` for yes/no-style research questions (verificatory, comparative, predictive). Returns None for other question types where a directional answer is not meaningful. Works on claims at any stage (including HYPOTHESIS) so the metric is meaningful even when claims have not been promoted.
 
-Aggregates evidence direction across all active claims: `log_odds = supporting_count - contradicting_count`, then `P(Y) = 1 / (1 + exp(-log_odds))`. Only representative (not corroborative/deferred), non-invalidated evidence with a directional judgment counts.
+Aggregates evidence direction across all active claims: `log_odds = claims_supported - claims_contradicted`, then `posterior_confidence = 1 / (1 + exp(-log_odds))`. Only representative (not corroborative/deferred), non-invalidated evidence with a directional judgment counts.
 
 ### Diagnostic Logging
 

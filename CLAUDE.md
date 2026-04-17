@@ -69,19 +69,23 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
 **Epistemic core abstractions** (understand these before touching `epistemic/`):
-- `entities/` — `Objective`, `Evidence`, `Claim`, `Uncertainty`, `Decision`, `Snapshot`, `Artefact` (all `EpistemicEntity` subclasses)
-- `gates.py` — `STAGE_GATES` + `validate_promotion`: deterministic checks that must pass before a `Claim` advances stages. Gates are a novel contribution of this package; don't bypass them.
-- `patterns.py` — `PatternScheduler` + `WORK_PATTERNS`: pattern-driven work scheduling with per-operation budgets
-- `operations/` — `BaseOperation` subclasses that agents dispatch to; registered via `OPERATION_CLASSES` / `create_operations`
+- `entities/` — `Objective`, `Evidence`, `Claim`, `Uncertainty`, `Decision`, `Snapshot`, `Artefact` (all `EpistemicEntity` subclasses). `Objective.claim_to_verify` enables seed-claim verification mode.
+- `gates.py` — `STAGE_GATES` + `validate_promotion`: deterministic, routing-aware checks that must pass before a `Claim` advances stages. Gates query the question type's routing profile and only require tracks that are PRIMARY or SECONDARY — not SKIP.
+- `patterns.py` — `PatternScheduler` + `WORK_PATTERNS`: pattern-driven work scheduling with per-operation budgets. Phase 4 has two mutually exclusive claim creation modes: `seed_claim` (verification mode when `claim_to_verify` is set) and `propose_claims` (research mode when it's None).
+- `provider_routing.py` — semantic provider selection via embedding cosine similarity. Replaces the old keyword-based `DOMAIN_PROVIDER_MAP`. Benchmarked at 97.5% top-3 recall across 200 queries.
+- `operations/` — `BaseOperation` subclasses that agents dispatch to; registered via `OPERATION_CLASSES` / `create_operations`. Includes `SeedClaimOperation` for verification mode.
 - `repository.py` — `EpistemicRepository` wraps a `StorageBackend` (in-memory backend ships in `storage.py`)
-- `runner.py` — `DefaultAgentRunner` is lazy-imported to keep `pydantic-ai` off the critical import path
+- `runner.py` — `DefaultAgentRunner` is lazy-imported to keep `pydantic-ai` off the critical import path. Handles `ollama:` prefix by constructing `OllamaProvider` with default `OLLAMA_BASE_URL`.
 
 **Deep research pipeline** is a `pydantic-graph` state machine. `state.py` holds `ResearchState`; `graph.py` / `nodes.py` define the nodes; `orchestrator.py` / `runner.py` drive execution. `searxng.py` manages the local SearxNG instance and `circuit_breaker.py` wraps it. Content extraction (`content_extractor.py`) uses `trafilatura` for HTML and `docling` for PDF.
 
 **Document store** is SQLite-first. Databases live in `~/.local/share/document-store/{name}.db` (override with `DOCUMENT_STORE_DIR`; legacy `ANDAMENTUM_DATABASES_DIR` is also honoured). Ingestion is two-phase: document registered immediately (FTS5-searchable), chunks + embeddings written in a background pass that `repair()` can resume after a crash. Search fuses four signals via RRF: FTS5 keyword, chunk embeddings, doc embeddings, and DHP (temporal clustering, see `dhp.py`). Requires Ollama running locally with `embeddinggemma:latest` for embeddings.
 
+**Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`) for side-by-side comparison with the legacy `html_report.py` renderer. See `src/andamentum/typeset/USAGE.md` for the full API reference.
+
 ## Known quirks
 
-- `src/andamentum/epistemic/evidence_router.py` is excluded from pyright (see `[tool.pyright]` ignore list) because it references unimplemented `source_index` / `source_registry` modules. If you touch it, expect to either complete those modules or leave it excluded.
 - `pytest.ini_options.testpaths = ["src/andamentum"]` — tests live next to the code they test, not in a top-level `tests/` directory.
 - `asyncio_mode = "auto"` — async tests don't need `@pytest.mark.asyncio`.
+- Tests marked `@pytest.mark.ollama` or `@pytest.mark.benchmark` are deselected by default (`addopts = "-m 'not ollama and not benchmark'"`). Run explicitly with `uv run pytest -m benchmark`.
+- WeasyPrint's flex layout breaks when `<p>` tags are inside flex children. The typeset renderer strips `<p>` wrapping from item and reference bodies as a workaround.
