@@ -209,14 +209,32 @@ WORK_PATTERNS: list[Pattern] = [
         description="Investigate failed hypothesis before abandoning",
     ),
     # ══════════════════════════════════════════════════════════════════
-    # PHASE 4: CLAIM PROPOSAL
-    # Triggered after plan_task when objective is in "planned" phase
+    # PHASE 4: CLAIM CREATION
+    # Two mutually exclusive modes:
+    #   a) Verification mode: claim_to_verify is set → seed the exact
+    #      claim (no LLM, no clustering, no assertion extraction).
+    #   b) Research mode: claim_to_verify is None → explore evidence and
+    #      propose novel claims via the full extraction pipeline.
     # ══════════════════════════════════════════════════════════════════
     Pattern(
         entity_type="objective",
-        filters={"phase": "planned", "claims_proposed": False},
+        filters={
+            "phase": "planned",
+            "claims_proposed": False,
+            "claim_to_verify__ne": None,
+        },
+        operation="seed_claim",
+        description="Create claim from claim_to_verify (verification mode)",
+    ),
+    Pattern(
+        entity_type="objective",
+        filters={
+            "phase": "planned",
+            "claims_proposed": False,
+            "claim_to_verify": None,
+        },
         operation="propose_claims",
-        description="Propose claims from evidence",
+        description="Propose claims from evidence (research mode)",
     ),
     # ══════════════════════════════════════════════════════════════════
     # PHASE 5: INITIAL SCRUTINY
@@ -445,6 +463,7 @@ DEFAULT_OPERATION_BUDGETS: dict[str, int] = {
     "conceptual_analysis": 2,
     "plan_task": 2,
     "propose_claims": 2,
+    "seed_claim": 2,
     # Investigation cycling — capped here AND by pattern filter (investigation_count < 3)
     "investigate_claim": 20,
 }
