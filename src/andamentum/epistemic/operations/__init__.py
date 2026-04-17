@@ -97,6 +97,7 @@ from .investigation import (
     InvestigateClaimOperation,
     RecordDecisionOperation,
 )
+from .seed_claim import SeedClaimOperation
 
 # ── Belief maintenance (TMS) ────────────────────────────────────────────
 from .belief_maintenance import (
@@ -119,6 +120,7 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "conceptual_analysis": ConceptualAnalysisOperation,
     "plan_task": PlanTaskOperation,
     "propose_claims": ProposeClaimsOperation,
+    "seed_claim": SeedClaimOperation,
     # Evidence
     "extract_evidence": ExtractEvidenceOperation,
     # Scrutiny, investigation, and verification

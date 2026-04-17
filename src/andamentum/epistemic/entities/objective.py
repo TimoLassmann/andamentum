@@ -55,6 +55,15 @@ class Objective(EpistemicEntity):
     #   "claims_proposed" -> "claims_done" -> "complete"
     phase: str = Field(default="new", description="Current workflow phase")
 
+    # Claim verification mode. When set, the pipeline skips propose_claims
+    # and creates a single Claim entity from this exact statement. Used for
+    # benchmarks (e.g. SciFact) where the claim is known and the task is to
+    # verify it, not to discover new claims from evidence.
+    claim_to_verify: Optional[str] = Field(
+        default=None,
+        description="Seed claim for verification mode (skips propose_claims)",
+    )
+
     # State fields for pattern matching
     claims_proposed: bool = Field(
         default=False, description="Whether claims have been proposed"
