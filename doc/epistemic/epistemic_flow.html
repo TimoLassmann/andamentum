@@ -661,14 +661,14 @@ flowchart LR
   <td style="font-weight:600">PROVISIONAL</td>
   <td>2 or more</td>
   <td>2+</td>
-  <td>All required tracks complete (adversarial, convergence, deductive per routing)</td>
+  <td>All PRIMARY/SECONDARY tracks complete for this question type (routing-aware &mdash; SKIP tracks are not required)</td>
   <td>Adversarial balance >= 0.4; no blocking uncertainties</td>
 </tr>
 <tr>
   <td style="font-weight:600">ROBUST</td>
   <td>3 or more</td>
   <td>3+</td>
-  <td>All required tracks complete</td>
+  <td>All PRIMARY/SECONDARY tracks complete for this question type</td>
   <td>Evidence from 2+ independent domains; no blocking uncertainties; no degeneracy</td>
 </tr>
 <tr>
@@ -751,10 +751,10 @@ flowchart LR
 
 <hr />
 
-<h3>Posterior P(Y) — "What does the evidence say?"</h3>
-<p>Only computed for yes/no-style questions (verificatory, comparative, predictive). For other question types like "what factors affect memory?" there is no meaningful yes/no answer, so this score is not produced.</p>
+<h3>Posterior confidence — "What does the evidence say?"</h3>
+<p>Only computed for yes/no-style questions (verificatory, comparative, predictive). For other question types like "what factors affect memory?" there is no meaningful directional answer, so this score is not produced.</p>
 
-<p>The posterior counts independent directional evidence across all active claims:</p>
+<p>The posterior counts independent directional evidence across all active claims (including claims at HYPOTHESIS stage, so the metric is meaningful even when claims have not been promoted):</p>
 <ul>
   <li>Each independent, non-invalidated, representative evidence item judged as "supports" counts as <strong>+1</strong></li>
   <li>Each independent, non-invalidated, representative evidence item judged as "contradicts" counts as <strong>-1</strong></li>
@@ -763,13 +763,15 @@ flowchart LR
 </ul>
 
 <div class="formula">
-  P(Y) = 1 / (1 + e<sup>-(supporting - contradicting)</sup>)
+  posterior confidence = 1 / (1 + e<sup>-(claims supported - claims contradicted)</sup>)
 </div>
+
+<p><strong>Terminology note:</strong> This metric was previously labelled &ldquo;P(Y)&rdquo; in early versions of the system. That notation was misleading for questions answered with &ldquo;No&rdquo; &mdash; e.g. &ldquo;Will AI take all jobs?&rdquo; answered &ldquo;No&rdquo; with high confidence would show P(Y)&nbsp;=&nbsp;0.9997, which reads as &ldquo;99.97% probability of Yes.&rdquo; The metric is now labelled &ldquo;posterior confidence&rdquo; to make clear it measures confidence in the established claims, not the probability of a &ldquo;Yes&rdquo; answer.</p>
 
 <div class="example">
   <strong>Example — "Does homeopathy work?"</strong><br/><br/>
   This is a verificatory question. After evidence collection, the system found 9 supporting evidence items (the studies cited by proponents). Adversarial search then found 28 contradicting sources (systematic reviews, meta-analyses showing no effect beyond placebo). These adversarial findings were stored as Evidence entities with <code>support_judgment="contradicts"</code>.<br/><br/>
-  <strong>Posterior:</strong> log-odds = 9 - 28 = -19. P(Y) = 1 / (1 + e<sup>19</sup>) &#8776; 0.000.<br/><br/>
+  <strong>Posterior confidence:</strong> log-odds = 9 - 28 = -19. Confidence = 1 / (1 + e<sup>19</sup>) &#8776; 0.00%.<br/><br/>
   This extreme value correctly reflects that the overwhelming weight of independent evidence contradicts the claim. The answer confidence separately tells you whether the investigation process was thorough enough to trust this posterior.
 </div>
 
@@ -790,7 +792,7 @@ flowchart LR
 <tr><td style="font-weight:600">Verdict</td><td>One-sentence bottom-line answer</td><td>LLM-generated from final state</td></tr>
 <tr><td style="font-weight:600">Key Findings Q&A</td><td>Concise question-answer pairs covering the main findings</td><td>LLM-generated from artefact trace</td></tr>
 <tr><td style="font-weight:600">Summary</td><td>Prose narrative synthesizing the investigation. The artefact contains only prose — no structured blocks or tables.</td><td>LLM-generated (write_answer agent)</td></tr>
-<tr><td style="font-weight:600">Confidence Scores</td><td>Answer confidence and posterior P(Y) with visual indicators and check-by-check detail</td><td>Deterministic computation</td></tr>
+<tr><td style="font-weight:600">Confidence Scores</td><td>Answer confidence and posterior confidence with visual indicators and check-by-check detail</td><td>Deterministic computation</td></tr>
 <tr><td style="font-weight:600">Findings</td><td>Per-claim detail: statement, stage, evidence references, adversarial balance, verification status. Expandable detail sections.</td><td>Claim + Evidence entities</td></tr>
 <tr><td style="font-weight:600">Sources</td><td>All evidence, sequentially numbered, grouped by judgment (supporting, contradicting, no bearing). Deduplicated — one entry per unique source URL.</td><td>Evidence entities</td></tr>
 <tr><td style="font-weight:600">Limitations and Open Questions</td><td>Unresolved uncertainties and investigative gaps</td><td>Uncertainty entities + LLM-generated open questions</td></tr>
@@ -1260,7 +1262,7 @@ erDiagram
 <tr><td>Convergence detection</td><td class="type-det">Deterministic</td><td>Clustering on classified dimensions + distance metrics</td></tr>
 <tr><td>Degeneracy detection</td><td class="type-det">Deterministic</td><td>Modification count + timestamps</td></tr>
 <tr><td>Answer confidence score</td><td class="type-det">Deterministic</td><td>Checklist of pass/fail checks, logistic transform</td></tr>
-<tr><td>Posterior P(Y) score</td><td class="type-det">Deterministic</td><td>Count supporting vs contradicting evidence, logistic transform</td></tr>
+<tr><td>Posterior confidence score</td><td class="type-det">Deterministic</td><td>Count claims supported vs contradicted, logistic transform</td></tr>
 <tr><td>Concern dedup (batch)</td><td class="type-det">Deterministic</td><td>Cosine similarity on buffered concerns, medoid selection</td></tr>
 <tr><td>Caveat dedup (pre-snapshot)</td><td class="type-det">Deterministic</td><td>Cosine similarity on non-blocking uncertainties before freeze</td></tr>
 <tr><td>TMS cascade</td><td class="type-det">Deterministic</td><td>Graph traversal: invalidation propagates through dependency links</td></tr>
@@ -1291,27 +1293,40 @@ erDiagram
 </table>
 
 <h3>Evidence provider routing</h3>
-<p>Provider selection is deterministic. The conceptual analysis extracts key terms and context. A keyword-matching function maps domain terms (like "gene", "drug", "clinical") to appropriate providers (PubMed, ChEMBL, ClinicalTrials.gov, OpenAlex, etc.). Web search is always included. The formulate_query agent then writes one optimized search query per selected provider.</p>
+<p>Provider selection uses <strong>semantic similarity</strong> between the research question and enriched provider descriptions. Each of the seven registered providers (OpenAlex, PubMed, bioRxiv, ClinicalTrials, ChEMBL, Monarch, OpenTargets) has a 2&ndash;3 sentence description with domain signals and example queries. The router embeds the clarified question and all provider descriptions using the same Ollama embedding backend used elsewhere in the pipeline, ranks providers by cosine similarity, and selects the top-K whose score exceeds a calibrated threshold (<code>min_score=0.15</code>). Web search is always appended as a universal fallback. The <code>formulate_query</code> agent then writes one optimized search query per selected provider.</p>
+
+<p>Provider description embeddings are cached at module level (keyed by embedding model + provider name), so only the query embedding is computed per routing call.</p>
+
+<p>This replaced a previous keyword-matching approach (<code>DOMAIN_PROVIDER_MAP</code>) which was brittle and could not handle queries outside its hardcoded vocabulary. The semantic router achieves 97.5% top-3 recall on a 200-query benchmark across all seven providers.</p>
 
 <div class="diagram-container">
 <pre class="mermaid">
 flowchart LR
-    Q["Research Question"] --> CA["Conceptual analysis\n(key terms + context)"]
+    Q["Clarified question"] --> EMB["Embed question\n(Ollama)"]
 
-    CA --> SP["Select providers\n(deterministic:\nkeyword matching)"]
+    EMB --> RANK["Rank providers\n(cosine similarity\nvs cached descriptions)"]
 
-    SP -->|"biomedical"| S1["pubmed + monarch +\nopenalex + web_search"]
-    SP -->|"drug/compound"| S2["chembl + pubmed +\nclinicaltrials + web_search"]
-    SP -->|"academic"| S3["openalex + pubmed +\nweb_search"]
-    SP -->|"general"| S4["openalex + web_search"]
+    RANK --> GATE["Top-K above\nmin_score threshold"]
 
-    S1 --> FQ["Formulate query\n(narrow LLM, per provider)"]
-    S2 --> FQ
-    S3 --> FQ
-    S4 --> FQ
+    GATE --> SEL["Selected providers\n(e.g. pubmed, monarch,\nopen_targets)"]
+
+    WS["web_search\n(always appended)"] --> PROVIDERS
+
+    SEL --> PROVIDERS["Provider list"]
+
+    PROVIDERS --> FQ["Formulate query\n(narrow LLM, per provider)"]
     FQ --> EE["Extract evidence"]
 </pre>
 </div>
+
+<h3>Claim creation modes</h3>
+<p>The system has two mutually exclusive modes for creating claims from evidence, selected by the <code>claim_to_verify</code> field on the Objective entity:</p>
+
+<p><strong>Research mode</strong> (default, <code>claim_to_verify=None</code>): The system explores evidence broadly and proposes novel claims via a 3-step decomposition pipeline &mdash; extract assertions from each evidence item, cluster assertions by semantic similarity (HDBSCAN), and draft one claim per cluster. This is the normal path for open-ended research questions like &ldquo;What does the literature say about metformin and cardiovascular mortality?&rdquo;</p>
+
+<p><strong>Verification mode</strong> (<code>claim_to_verify</code> set): The system creates a single Claim entity whose statement is the verbatim user-provided claim, linked to all gathered evidence. No LLM call, no clustering, no assertion extraction. The existing scrutiny, verification tracks, and promotion machinery then run on this exact claim. This mode is used for claim verification benchmarks (e.g., SciFact) where the task is to verify a specific pre-stated scientific claim, not to discover new claims.</p>
+
+<p>In verification mode, if <code>question_type</code> is not already set, it defaults to &ldquo;verificatory&rdquo; so that the correct routing profile and posterior computation are applied.</p>
 
 </div><!-- .article -->
 </body>
