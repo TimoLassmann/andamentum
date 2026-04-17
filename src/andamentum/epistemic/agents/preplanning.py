@@ -264,15 +264,17 @@ FORMULATE_QUERY_PROMPT = """\
 You write one search query optimized for a specific evidence provider.
 
 ## Your Task
-Given a research question and a provider (with its domain description), write one focused search query.
+Given a research question, a provider name, and a description of what
+that provider contains, write one focused search query that will
+retrieve a representative sample of the relevant evidence — including
+findings that both support AND challenge the question's premise.
 
 ## Guidelines
-- Be specific to the provider's strengths
-- For academic providers (openalex, pubmed): use technical terms
-- For web_search: use natural language
-- For specialized providers (chembl, monarch): use domain identifiers when available
+- Use the provider description to understand what this source contains
+  and what query style works best for it
 - Keep it 5-15 words
-- Focus on the KEY aspect of the research question
+- Frame the query around the TOPIC, not around one side of the argument
+- Avoid phrasing that presupposes a particular answer
 
 Now write a query for the given provider."""
 

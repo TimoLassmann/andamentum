@@ -278,7 +278,11 @@ class PlanTaskOperation(BaseOperation):
             embedding_model=self.embedding_model,
         )
 
-        # Step 2: Formulate queries — one narrow agent call per provider
+        # Step 2: Formulate queries — one narrow agent call per provider.
+        # Each call receives the provider's enriched description so the
+        # agent can tailor the query to the provider's strengths.
+        from ..providers import PROVIDER_DESCRIPTIONS
+
         created_evidence: list[str] = []
 
         for provider in providers:
@@ -290,6 +294,7 @@ class PlanTaskOperation(BaseOperation):
                         "epistemic_formulate_query",
                         question=clarified,
                         provider=provider,
+                        provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
                     )
                     query = result.query
                 except Exception:
