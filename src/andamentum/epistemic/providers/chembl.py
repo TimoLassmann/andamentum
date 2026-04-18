@@ -104,8 +104,13 @@ class ChEMBLProvider:
                     # Get mechanism of action if available
                     mechanism = await self._get_mechanism(client, chembl_id)
 
-                    # Get top bioactivities
+                    # Get top bioactivities sorted by pchembl_value
                     activities = await self._get_activities(client, chembl_id)
+
+                    # Get molecule details (SMILES + ADMET properties)
+                    mol_details = await self._get_molecule_details(client, chembl_id)
+                    smiles = mol_details.get("smiles")
+                    admet = mol_details.get("admet", {})
 
                     # Build content
                     content_parts = []
@@ -122,18 +127,36 @@ class ChEMBLProvider:
                         content_parts.append(
                             f"Max phase: {phase_labels.get(max_phase, str(max_phase))}"
                         )
+                    if admet:
+                        admet_parts = []
+                        if admet.get("mw_freebase") is not None:
+                            admet_parts.append(f"MW: {admet['mw_freebase']}")
+                        if admet.get("alogp") is not None:
+                            admet_parts.append(f"LogP: {admet['alogp']}")
+                        if admet.get("ro5_violations") is not None:
+                            admet_parts.append(
+                                f"Lipinski violations: {admet['ro5_violations']}"
+                            )
+                        if admet_parts:
+                            content_parts.append(", ".join(admet_parts))
                     if mechanism:
                         content_parts.append(
                             f"Mechanism: {mechanism.get('description', '')}"
                         )
                     if activities:
                         act_strs = [
-                            f"{a['type']} = {a['value']} {a['units']} ({a['target']})"
+                            (
+                                f"{a['type']} = {a['value']} {a['units']}"
+                                f" (pChEMBL: {a['pchembl_value']})"
+                                f" [{a['target']} / {a['target_chembl_id']}]"
+                            )
                             for a in activities[:3]
                         ]
                         content_parts.append(f"Activity: {'; '.join(act_strs)}")
 
                     identifiers: dict[str, str] = {"chembl_id": chembl_id}
+                    if smiles:
+                        identifiers["smiles"] = smiles
 
                     gathered.append(
                         GatheredEvidence(
@@ -147,6 +170,8 @@ class ChEMBLProvider:
                                 "molecule_type": molecule_type,
                                 "max_phase": max_phase,
                                 "first_approval": first_approval,
+                                "smiles": smiles,
+                                "admet": admet,
                                 "mechanism": mechanism,
                                 "activities": activities,
                             },
@@ -192,13 +217,13 @@ class ChEMBLProvider:
     async def _get_activities(
         self, client: Any, chembl_id: str
     ) -> list[dict[str, Any]]:
-        """Get top bioactivities for a molecule."""
+        """Get top bioactivities for a molecule, sorted by pchembl_value descending."""
         try:
             resp = await client.get(
                 f"{CHEMBL_API}/activity.json",
                 params={
                     "molecule_chembl_id": chembl_id,
-                    "limit": 5,
+                    "limit": 25,
                     "pchembl_value__isnull": "false",
                 },
             )
@@ -206,16 +231,53 @@ class ChEMBLProvider:
                 data = resp.json()
                 activities = []
                 for act in data.get("activities", []):
+                    raw_pchembl = act.get("pchembl_value")
+                    try:
+                        pchembl = float(raw_pchembl) if raw_pchembl is not None else None
+                    except (ValueError, TypeError):
+                        pchembl = None
+                    if pchembl is None:
+                        continue
                     activities.append(
                         {
                             "type": act.get("standard_type", ""),
                             "value": act.get("standard_value"),
                             "units": act.get("standard_units", ""),
+                            "pchembl_value": pchembl,
                             "target": act.get("target_pref_name", ""),
                             "target_chembl_id": act.get("target_chembl_id", ""),
                         }
                     )
-                return activities
+                activities.sort(key=lambda a: a["pchembl_value"], reverse=True)
+                return activities[:5]
         except Exception:
             pass
         return []
+
+    async def _get_molecule_details(
+        self, client: Any, chembl_id: str
+    ) -> dict[str, Any]:
+        """Get molecule SMILES and ADMET-related properties."""
+        try:
+            resp = await client.get(f"{CHEMBL_API}/molecule/{chembl_id}.json")
+            if resp.status_code == 200:
+                data = resp.json()
+                smiles = None
+                structs = data.get("molecule_structures") or {}
+                if structs:
+                    smiles = structs.get("canonical_smiles")
+
+                admet: dict[str, Any] = {}
+                props = data.get("molecule_properties") or {}
+                for key in ("alogp", "hba", "hbd", "psa", "ro5_violations", "mw_freebase"):
+                    val = props.get(key)
+                    if val is not None:
+                        try:
+                            admet[key] = float(val) if "." in str(val) else int(val)
+                        except (ValueError, TypeError):
+                            admet[key] = val
+
+                return {"smiles": smiles, "admet": admet}
+        except Exception:
+            pass
+        return {"smiles": None, "admet": {}}
