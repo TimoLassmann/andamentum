@@ -9,9 +9,13 @@ Sub-modules (epistemic, deep_research, document_store) import from here
 instead of maintaining independent implementations.
 """
 
+from .agents import AgentDefinition, AgentRunner, run_agent_with_fallback
 from .models import resolve_model, resolve_model_from_args
 
 __all__ = [
+    "AgentDefinition",
+    "AgentRunner",
     "resolve_model",
     "resolve_model_from_args",
+    "run_agent_with_fallback",
 ]
