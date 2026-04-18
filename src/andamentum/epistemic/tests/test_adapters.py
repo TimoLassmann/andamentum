@@ -84,6 +84,7 @@ class TestAdapterRegistry:
             "epistemic_extract_assertion",
             "epistemic_draft_claim",
             "epistemic_identify_single_issue",
+            "epistemic_select_provider",
         }
         assert set(ADAPTERS.keys()) == expected
 

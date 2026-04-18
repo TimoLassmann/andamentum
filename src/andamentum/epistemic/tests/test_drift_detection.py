@@ -163,7 +163,7 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     "Pattern scheduler query error handling": "7e92ac2ecc5a025c",
     "CompositeGatherer provider error handling": "a5b200c49da5b67b",
-    "Adapter registry (agent name → adapter function mapping)": "daf01c8fcc1b5232",
+    "Adapter registry (agent name → adapter function mapping)": "e780e336e9788f27",
 }
 
 
