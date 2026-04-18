@@ -40,12 +40,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ask_parser.add_argument(
-        "--max-iterations",
-        type=int,
-        default=50,
-        help="Maximum scheduler iterations (default: 50)",
-    )
-    ask_parser.add_argument(
         "--keep", action="store_true", help="Keep project database after completion"
     )
     ask_parser.add_argument(
@@ -258,7 +252,6 @@ async def _ask(args: argparse.Namespace) -> None:
     result = await handle_ask(
         question=args.question,
         name=args.name,
-        max_items=args.max_iterations,
         model=model,
         embedding_model=embedding_model,
         keep=args.keep,

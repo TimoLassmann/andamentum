@@ -447,7 +447,6 @@ async def run_single_test(
         await handle_ask(
             question=test.question,
             name=project_name,
-            max_items=test.max_iterations,
             model=model,
             keep=True,  # Always keep during test — we need to inspect
             verbose=False,

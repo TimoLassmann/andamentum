@@ -398,7 +398,6 @@ async def _force_synthesis_if_needed(
 async def run_research_question(
     question: str,
     database_name: str = "epistemic_research",
-    max_iterations: Optional[int] = 50,
     verbose: bool = False,
     skip_preplanning: bool = False,
     model: Optional[str] = None,
@@ -424,7 +423,6 @@ async def run_research_question(
     Args:
         question: The research question to investigate
         database_name: Name of the database to use
-        max_iterations: Maximum scheduler iterations (None for unlimited)
         verbose: Print detailed output
         skip_preplanning: Skip CLARIFY_QUESTION and CONCEPTUAL_ANALYSIS
         model: Optional LLM model to use (e.g., "openai:gpt-4o-mini")
@@ -525,7 +523,7 @@ async def run_research_question(
     errors: list[str] = []
     synthesis_forced = False  # Guard against infinite force-trigger loops
 
-    while max_iterations is None or iterations < max_iterations:
+    while True:
         # Get next work item
         work = await scheduler.get_next_work(objective_id)
 
@@ -678,57 +676,9 @@ async def run_research_question(
                 completed_at,
                 objective_id,
             )
-    else:
-        # Loop ended due to max_iterations — try to force synthesis before giving up
-        forced = await _force_synthesis_if_needed(repo, objective_id, scheduler)
-        if forced:
-            # Execute ONLY synthesis operations (freeze_snapshot + synthesize_report).
-            from .patterns import SYNTHESIS_OPS
-
-            for _ in range(5):  # enough for freeze_snapshot + synthesize_report
-                all_work = await scheduler.get_pending_work(objective_id)
-                synthesis_work = [w for w in all_work if w.operation in SYNTHESIS_OPS]
-                if not synthesis_work:
-                    break
-                work = synthesis_work[0]
-                op = operations.get(work.operation)
-                if not op:
-                    break
-                scheduler.record_attempt(work.entity_id, work.operation)
-                try:
-                    result = await op.execute(work)
-                    if result.success:
-                        successful += 1
-                    else:
-                        failed += 1
-                        logger.warning(
-                            f"Post-budget synthesis {work.operation} failed: {result.message}"
-                        )
-                except Exception as e:
-                    failed += 1
-                    logger.warning(
-                        f"Post-budget synthesis {work.operation} exception: {e}"
-                    )
-
-        await _record_termination(
-            store,
-            repo,
-            run_id,
-            step_number + 1,
-            objective_id,
-            "max_iterations",
-            iterations,
-            successful,
-            failed,
-            run_started_at,
-            errors,
-        )
-
     # Determine final status
     if failed == 0 and iterations > 0:
         status = "complete"
-    elif iterations >= (max_iterations or 0) and max_iterations is not None:
-        status = "max_iterations"
     else:
         status = "partial"
 

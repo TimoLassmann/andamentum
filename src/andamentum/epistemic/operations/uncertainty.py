@@ -188,6 +188,23 @@ class ResolveUncertaintyOperation(BaseOperation):
 
         await self.repo.save(uncertainty)
 
+        # Peirce cycling: when a blocking uncertainty is resolved, the
+        # epistemic landscape has changed. Reset scrutiny on affected claims
+        # so they re-enter the investigation→scrutiny loop with updated
+        # information. Loop safety is guaranteed by three independent caps:
+        #   - investigation_count (monotonic, max 3) — never reset
+        #   - MAX_ENTITY_ATTEMPTS (per entity-op pair, max 3) — per run
+        #   - MAX_UNCERTAINTY_DEPTH (chain depth, max 3) — per chain
+        if uncertainty.resolution is not None and uncertainty.is_blocking:
+            for cid in uncertainty.affected_claim_ids:
+                try:
+                    claim = await self.repo.get("claim", cid)
+                    if isinstance(claim, Claim) and not claim.abandoned:
+                        claim.scrutiny_verdict = None
+                        await self.repo.save(claim)
+                except Exception:
+                    continue
+
         # Check if objective can advance to claims_done
         if uncertainty.resolution is not None:
             await _maybe_advance_phase(self.repo, uncertainty.objective_id)
