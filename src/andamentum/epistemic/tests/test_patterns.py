@@ -276,3 +276,37 @@ class TestEntityAttemptLimits:
 
         work = await scheduler.get_pending_work(objective_id="obj-1")
         assert any(w.operation == "clarify_question" for w in work)
+
+
+class TestResetEntityAttempts:
+    async def test_reset_specific_operation(self, repo):
+        """Reset a specific operation's attempt counter."""
+        scheduler = PatternScheduler(repo)
+        for _ in range(MAX_ENTITY_ATTEMPTS):
+            scheduler.record_attempt("e1", "promote_claim")
+        assert scheduler._is_entity_exhausted("e1", "promote_claim")
+
+        scheduler.reset_entity_attempts("e1", "promote_claim")
+        assert not scheduler._is_entity_exhausted("e1", "promote_claim")
+
+    async def test_reset_all_operations(self, repo):
+        """Reset all operation counters for an entity."""
+        scheduler = PatternScheduler(repo)
+        for _ in range(MAX_ENTITY_ATTEMPTS):
+            scheduler.record_attempt("e1", "promote_claim")
+            scheduler.record_attempt("e1", "scrutinise_claim")
+
+        scheduler.reset_entity_attempts("e1")
+        assert not scheduler._is_entity_exhausted("e1", "promote_claim")
+        assert not scheduler._is_entity_exhausted("e1", "scrutinise_claim")
+
+    async def test_reset_does_not_affect_other_entities(self, repo):
+        """Reset only affects the specified entity."""
+        scheduler = PatternScheduler(repo)
+        for _ in range(MAX_ENTITY_ATTEMPTS):
+            scheduler.record_attempt("e1", "promote_claim")
+            scheduler.record_attempt("e2", "promote_claim")
+
+        scheduler.reset_entity_attempts("e1", "promote_claim")
+        assert not scheduler._is_entity_exhausted("e1", "promote_claim")
+        assert scheduler._is_entity_exhausted("e2", "promote_claim")
