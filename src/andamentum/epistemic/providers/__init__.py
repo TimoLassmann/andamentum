@@ -193,6 +193,80 @@ register_provider(
 )
 
 
+# ── Example queries for semantic routing ─────────────────────────────────────
+# Each provider has 6-8 short example queries at the same granularity as
+# typical user inputs. The semantic router embeds these individually and
+# scores each provider by its BEST-matching example (max-sim), solving the
+# short-vs-long embedding mismatch that occurs when comparing a terse claim
+# against a 200-word description.
+#
+# When adding a new provider, include 6-8 diverse examples covering the
+# provider's core strengths and edge-case subdomains.
+
+PROVIDER_EXAMPLES: dict[str, list[str]] = {
+    "openalex": [
+        "what do we know about the Permian-Triassic mass extinction",
+        "research on transformer attention mechanisms",
+        "academic papers about the origin of the Indo-European languages",
+        "scholarly work on population genetics and genetic drift",
+        "economic effects of monetary policy on inflation",
+        "quantum entanglement experiments in superconducting qubits",
+        "evidence for dark matter from galaxy rotation curves",
+        "sociological research on income inequality and social mobility",
+    ],
+    "pubmed": [
+        "role of interleukin-6 in rheumatoid arthritis pathogenesis",
+        "mechanisms of amyloid beta accumulation in Alzheimer's disease",
+        "epidemiology of tuberculosis in sub-Saharan Africa",
+        "published evidence on ketogenic diet for refractory epilepsy",
+        "neurobiology of opioid addiction",
+        "cell migration and motility in tissue injury response",
+        "molecular mechanisms of apoptosis in cancer cells",
+        "renal physiology and glomerular filtration regulation",
+    ],
+    "biorxiv": [
+        "recent preprints on protein language models",
+        "unpublished findings on AlphaFold3 accuracy",
+        "latest preprint results about CRISPR prime editing efficiency",
+        "not-yet-published research on long COVID biomarkers",
+        "new preprint data on single-cell RNA sequencing methods",
+        "cutting-edge unpublished work on organoid disease models",
+    ],
+    "clinicaltrials": [
+        "ongoing phase III trials for semaglutide in heart failure",
+        "eligibility criteria for CAR-T cell therapy trials in lymphoma",
+        "primary endpoints of EMPA-REG OUTCOME study",
+        "recruiting clinical trials for pancreatic cancer immunotherapy",
+        "trial design for GLP-1 receptor agonists in obesity",
+        "phase II dose-escalation study results for antibody-drug conjugates",
+    ],
+    "chembl": [
+        "IC50 of imatinib against BCR-ABL kinase",
+        "mechanism of action of pembrolizumab",
+        "SMILES structure and bioactivity of remdesivir",
+        "EC50 values for ACE inhibitors on angiotensin converting enzyme",
+        "binding affinity of selective serotonin reuptake inhibitors",
+        "structure-activity relationships of benzodiazepine derivatives",
+    ],
+    "monarch": [
+        "genes associated with hypertrophic cardiomyopathy",
+        "phenotypes caused by COL1A1 mutations",
+        "rare diseases linked to mitochondrial complex I deficiency",
+        "clinical significance of BRCA1 c.5266dupC variant",
+        "gene-disease associations for hereditary spastic paraplegia",
+        "cross-species orthology of Fragile X syndrome gene FMR1",
+    ],
+    "open_targets": [
+        "therapeutic targets for Alzheimer's disease with genetic support",
+        "druggable targets in KRAS-mutant colorectal cancer",
+        "pathway evidence linking TNF signaling to rheumatoid arthritis",
+        "target tractability for PCSK9 in cardiovascular disease",
+        "GWAS-supported targets for schizophrenia",
+        "drug repurposing candidates for idiopathic pulmonary fibrosis",
+    ],
+}
+
+
 __all__ = [
     # Provider classes
     "OpenAlexProvider",
@@ -206,6 +280,7 @@ __all__ = [
     # Registry
     "PROVIDER_REGISTRY",
     "PROVIDER_DESCRIPTIONS",
+    "PROVIDER_EXAMPLES",
     "register_provider",
     "get_provider",
     "get_all_providers",

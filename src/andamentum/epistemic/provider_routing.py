@@ -1,40 +1,23 @@
-"""Semantic evidence-provider routing.
+"""Semantic evidence-provider routing via example-query matching.
 
-Ranks registered evidence providers by embedding cosine similarity between
-the research question and each provider's description. Replaces the
-deprecated keyword-based ``DOMAIN_PROVIDER_MAP`` in ``routing.py``.
-
-The router reads provider metadata at call time from
-``andamentum.epistemic.providers.PROVIDER_REGISTRY`` and
-``PROVIDER_DESCRIPTIONS`` — no network, no external config, no runtime
-discovery. Providers are known at import time because they are Python
-classes inside this package.
+Ranks registered evidence providers by comparing the research question
+against each provider's EXAMPLE QUERIES using embedding cosine similarity.
+Each provider is scored by its best-matching example (max-sim), which
+solves the short-vs-long embedding mismatch that occurs when comparing
+a terse 10-word claim against a 200-word provider description.
 
 Public surface
 --------------
-- :class:`ProviderScore` — per-provider ranking result (name, score, description).
+- :class:`ProviderScore` — per-provider ranking result (name, score, matched example).
 - :func:`rank_providers` — return all registered providers ranked by similarity.
-- :func:`select_providers` — return a top-K shortlist with web_search appended
-  as the universal fallback.
+- :func:`select_providers` — return a top-K shortlist with web_search appended.
 
 Caching
 -------
-Provider description embeddings are cached at module level keyed by
-``(embedding_model, provider_name)``. Descriptions are static during a process
-lifetime, so each provider is embedded at most once per embedding model.
+Example-query embeddings are cached at module level keyed by
+``(embedding_model, provider_name, example_index)``. Examples are static
+during a process lifetime, so each is embedded at most once per model.
 Only the query embedding is computed per call.
-
-Usage
------
-.. code-block:: python
-
-    from andamentum.epistemic.provider_routing import select_providers
-
-    providers = await select_providers(
-        question="What is the clinical significance of BRCA1 c.5266dupC?",
-        embedding_model="embeddinggemma:latest",
-    )
-    # ['pubmed', 'monarch', 'open_targets', 'web_search']
 """
 
 from __future__ import annotations
@@ -43,7 +26,7 @@ import logging
 from dataclasses import dataclass
 
 from .embeddings import embed_texts
-from .providers import PROVIDER_DESCRIPTIONS, PROVIDER_REGISTRY
+from .providers import PROVIDER_DESCRIPTIONS, PROVIDER_EXAMPLES, PROVIDER_REGISTRY
 from .similarity import cosine_similarity
 
 logger = logging.getLogger(__name__)
@@ -61,79 +44,78 @@ class ProviderScore:
     Attributes:
         name: Provider identifier (matches keys in ``PROVIDER_REGISTRY``).
         score: Cosine similarity between the query embedding and the
-            provider-description embedding. Range ``[-1.0, 1.0]`` in theory;
-            in practice Ollama embeddings are non-negative so ``[0.0, 1.0]``.
-        description: The provider description that was embedded.
+            best-matching example query for this provider.
+        description: The provider description (for display/logging).
+        matched_example: The specific example query that produced the
+            best match (for debugging/transparency).
     """
 
     name: str
     score: float
     description: str
+    matched_example: str = ""
 
 
-# Module-level cache of provider description embeddings.
-# Key: (embedding_model, provider_name). Value: embedding vector.
-_PROVIDER_EMBEDDING_CACHE: dict[tuple[str, str], list[float]] = {}
+# Module-level cache of example-query embeddings.
+# Key: (embedding_model, provider_name, example_index). Value: embedding vector.
+_EXAMPLE_EMBEDDING_CACHE: dict[tuple[str, str, int], list[float]] = {}
 
 
-def _get_provider_catalogue() -> list[tuple[str, str]]:
-    """Snapshot the registered providers and their descriptions.
+def _get_provider_examples() -> dict[str, list[str]]:
+    """Return example queries for each registered provider.
 
-    Reads the current state of ``PROVIDER_REGISTRY`` and
-    ``PROVIDER_DESCRIPTIONS``. Providers registered at import time via
-    ``register_provider()`` show up automatically. A provider without a
-    description is skipped with a warning — an undescribed provider cannot
-    be routed to semantically.
-
-    Returns:
-        List of ``(provider_name, description)`` pairs sorted by name for
-        deterministic ordering.
+    Providers without examples or without a registry entry are skipped.
     """
-    catalogue: list[tuple[str, str]] = []
+    result: dict[str, list[str]] = {}
     for name in sorted(PROVIDER_REGISTRY):
-        description = PROVIDER_DESCRIPTIONS.get(name, "")
-        if not description:
+        examples = PROVIDER_EXAMPLES.get(name, [])
+        if not examples:
             logger.warning(
-                "Provider %r has no description in PROVIDER_DESCRIPTIONS; "
+                "Provider %r has no example queries in PROVIDER_EXAMPLES; "
                 "excluding from semantic routing",
                 name,
             )
             continue
-        catalogue.append((name, description))
-    return catalogue
+        result[name] = examples
+    return result
 
 
-async def _embed_providers_cached(
+async def _embed_examples_cached(
     embedding_model: str,
-) -> list[tuple[str, list[float]]]:
-    """Return provider embeddings, computing and caching any missing entries.
+) -> dict[str, list[list[float]]]:
+    """Return per-provider example embeddings, computing and caching missing ones.
 
-    Only providers whose ``(embedding_model, name)`` key is not yet in the
-    cache are embedded. On subsequent calls with the same model, this is a
-    pure cache read — zero network cost.
+    Returns a dict mapping provider name to a list of embedding vectors,
+    one per example query.
     """
-    catalogue = _get_provider_catalogue()
+    provider_examples = _get_provider_examples()
 
-    missing: list[tuple[str, str]] = []
-    for name, description in catalogue:
-        if (embedding_model, name) not in _PROVIDER_EMBEDDING_CACHE:
-            missing.append((name, description))
+    # Collect all missing (provider, index) pairs
+    missing: list[tuple[str, int, str]] = []  # (provider, index, text)
+    for name, examples in provider_examples.items():
+        for i, example in enumerate(examples):
+            if (embedding_model, name, i) not in _EXAMPLE_EMBEDDING_CACHE:
+                missing.append((name, i, example))
 
     if missing:
         logger.debug(
-            "Embedding %d provider descriptions with model %r",
+            "Embedding %d provider example queries with model %r",
             len(missing),
             embedding_model,
         )
-        missing_texts = [desc for _, desc in missing]
+        missing_texts = [text for _, _, text in missing]
         new_embeddings = await embed_texts(missing_texts, model=embedding_model)
-        for (name, _), vector in zip(missing, new_embeddings):
-            _PROVIDER_EMBEDDING_CACHE[(embedding_model, name)] = vector
+        for (name, idx, _), vector in zip(missing, new_embeddings):
+            _EXAMPLE_EMBEDDING_CACHE[(embedding_model, name, idx)] = vector
 
-    return [
-        (name, _PROVIDER_EMBEDDING_CACHE[(embedding_model, name)])
-        for name, _ in catalogue
-    ]
+    # Assemble result
+    result: dict[str, list[list[float]]] = {}
+    for name, examples in provider_examples.items():
+        result[name] = [
+            _EXAMPLE_EMBEDDING_CACHE[(embedding_model, name, i)]
+            for i in range(len(examples))
+        ]
+    return result
 
 
 async def rank_providers(
@@ -143,38 +125,46 @@ async def rank_providers(
 ) -> list[ProviderScore]:
     """Rank all registered providers by semantic similarity to ``question``.
 
+    For each provider, computes cosine similarity between the question
+    and EACH of the provider's example queries, then scores the provider
+    by its best match (max-sim). This handles short inputs well because
+    example queries are at the same granularity as typical user inputs.
+
     Args:
-        question: Research question or clarified query text.
-        embedding_model: Ollama embedding model name (e.g.
-            ``"embeddinggemma:latest"``). Must match the model used elsewhere
-            in the pipeline for consistency.
+        question: Research question or claim text.
+        embedding_model: Ollama embedding model name.
 
     Returns:
-        All registered providers sorted by descending cosine similarity. The
-        caller is responsible for applying any top-K or score-gate policy.
-
-    Raises:
-        RuntimeError: If the embedding backend is unreachable. The router
-            intentionally does not silently fall back to keyword matching —
-            semantic routing is a hard requirement, not a degradable feature.
+        All registered providers sorted by descending best-match score.
     """
-    catalogue = _get_provider_catalogue()
-    if not catalogue:
-        logger.warning("No registered providers with descriptions; rank_providers returning empty list")
+    provider_examples = _get_provider_examples()
+    if not provider_examples:
+        logger.warning("No providers with example queries; rank_providers returning empty list")
         return []
 
-    provider_embeddings = await _embed_providers_cached(embedding_model)
+    example_embeddings = await _embed_examples_cached(embedding_model)
     query_embedding = (await embed_texts([question], model=embedding_model))[0]
 
-    description_by_name = dict(catalogue)
     scores: list[ProviderScore] = []
-    for name, vector in provider_embeddings:
-        score = cosine_similarity(query_embedding, vector)
+    for name, example_vecs in example_embeddings.items():
+        examples = provider_examples[name]
+        description = PROVIDER_DESCRIPTIONS.get(name, "")
+
+        # Score by best-matching example (max-sim)
+        best_score = -1.0
+        best_example = ""
+        for example_text, example_vec in zip(examples, example_vecs):
+            sim = cosine_similarity(query_embedding, example_vec)
+            if sim > best_score:
+                best_score = sim
+                best_example = example_text
+
         scores.append(
             ProviderScore(
                 name=name,
-                score=score,
-                description=description_by_name[name],
+                score=best_score,
+                description=description,
+                matched_example=best_example,
             )
         )
 
@@ -193,27 +183,18 @@ async def select_providers(
 
     Semantics:
 
-    1. Rank all registered providers by cosine similarity to ``question``.
+    1. Rank all registered providers by max-sim against example queries.
     2. Keep providers whose score is at or above ``min_score``.
     3. Take at most the top ``top_k`` of those.
-    4. Append ``web_search`` as the universal fallback (always present,
-       even when semantic matches pass the gate).
+    4. Append ``web_search`` as the universal fallback.
     5. Deduplicate while preserving order.
 
-    If no provider clears the score gate, the result is
-    ``["web_search"]`` — a sensible fallback for off-domain questions.
-
     Args:
-        question: Clarified research question.
-        embedding_model: Ollama embedding model name. Required. No default.
-        top_k: Maximum number of semantically matched providers to include,
-            excluding the always-appended ``web_search``.
-        min_score: Minimum cosine similarity for a provider to be
-            considered a match. Defaults to ``0.15``, calibrated from the
-            200-query benchmark: general-academic queries against OpenAlex
-            cluster around μ=0.19 σ=0.05 under embeddinggemma, so 0.15 sits
-            just below μ−σ and lets general queries clear the gate while
-            still filtering genuinely off-topic matches.
+        question: Clarified research question or claim text.
+        embedding_model: Ollama embedding model name.
+        top_k: Maximum semantic matches (excluding web_search fallback).
+        min_score: Minimum cosine similarity for a provider to be selected.
+            Defaults to ``0.15``, calibrated from the 200-query benchmark.
 
     Returns:
         Ordered list of provider names. Always ends with ``"web_search"``.
@@ -225,15 +206,14 @@ async def select_providers(
 
     logger.info(
         "Semantic routing for query %.80r selected %s (top_k=%d, min_score=%.2f, "
-        "raw_scores=%s)",
+        "best_matches=%s)",
         question,
         selected,
         top_k,
         min_score,
-        [f"{s.name}={s.score:.3f}" for s in ranked],
+        [f"{s.name}={s.score:.3f}({s.matched_example[:40]})" for s in ranked],
     )
 
-    # Always include web_search as universal fallback, appended last.
     if WEB_SEARCH_FALLBACK not in selected:
         selected.append(WEB_SEARCH_FALLBACK)
 
@@ -241,8 +221,8 @@ async def select_providers(
 
 
 def _clear_cache() -> None:
-    """Clear the provider-embedding cache. Test helper."""
-    _PROVIDER_EMBEDDING_CACHE.clear()
+    """Clear the example-embedding cache. Test helper."""
+    _EXAMPLE_EMBEDDING_CACHE.clear()
 
 
 __all__ = [
