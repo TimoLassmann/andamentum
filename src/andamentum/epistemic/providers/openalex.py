@@ -117,7 +117,7 @@ class OpenAlexProvider:
                         "citation_count": getattr(r, "citation_count", None),
                         "is_open_access": getattr(r, "is_open_access", None),
                     },
-                    quality_score=r.quality.score if r.quality else None,
+                    quality_score=None,
                     quality_metadata=asdict(r.quality) if r.quality else {},
                     limitations=["Abstract only; full text may contain more detail"],
                 )

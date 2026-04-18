@@ -281,7 +281,7 @@ class PubMedProvider:
                 "mesh_terms": mesh_terms,
                 "publication_types": pub_types,
             },
-            quality_score=quality,
+            quality_score=None,
             quality_metadata={"publication_types": pub_types, "journal": journal},
             limitations=["Abstract only; full text may contain more detail"]
             if not pmcid

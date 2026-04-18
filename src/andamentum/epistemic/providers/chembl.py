@@ -133,13 +133,6 @@ class ChEMBLProvider:
                         ]
                         content_parts.append(f"Activity: {'; '.join(act_strs)}")
 
-                    # Quality based on data completeness and phase
-                    quality = 0.6
-                    if max_phase and max_phase >= 4:
-                        quality = 0.8
-                    elif max_phase and max_phase >= 2:
-                        quality = 0.7
-
                     identifiers: dict[str, str] = {"chembl_id": chembl_id}
 
                     gathered.append(
@@ -157,7 +150,7 @@ class ChEMBLProvider:
                                 "mechanism": mechanism,
                                 "activities": activities,
                             },
-                            quality_score=quality,
+                            quality_score=None,
                             quality_metadata={
                                 "max_phase": max_phase,
                                 "activity_count": len(activities),
