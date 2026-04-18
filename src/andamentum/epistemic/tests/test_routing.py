@@ -108,7 +108,7 @@ class TestGateThresholds:
             v_supported.get("min_evidence_weighted", 1.0)  # type: ignore[arg-type]
         )
 
-    def test_predictive_requires_falsification_at_robust_not_supported(self):
+    def test_predictive_requires_falsification_at_actionable_not_supported(self):
         """Falsification is checked at ROBUST→ACTIONABLE, not at SUPPORTED.
 
         Predictions are generated at the ROBUST stage (Lakatos). Requiring
@@ -116,11 +116,23 @@ class TestGateThresholds:
         """
         profile = get_routing_profile("predictive")
         supported = profile.gate_thresholds.get("supported", {})
-        robust = profile.gate_thresholds.get("robust", {})
         assert "requires_falsification_criteria" not in supported
-        assert robust.get("requires_falsification_criteria") is True
 
     def test_normative_requires_fact_value_separation(self):
         profile = get_routing_profile("normative")
         supported = profile.gate_thresholds.get("supported", {})
         assert supported.get("requires_fact_value_separation") is True
+
+
+class TestPredictiveGateThresholds:
+    def test_no_falsification_requirement_at_robust(self):
+        """Predictive questions must not require falsification for PROVISIONAL->ROBUST."""
+        profile = get_routing_profile("predictive")
+        robust_thresholds = profile.gate_thresholds.get("robust", {})
+        assert "requires_falsification_criteria" not in robust_thresholds
+
+    def test_falsification_required_at_actionable(self):
+        """Predictive questions should require falsification for ROBUST->ACTIONABLE."""
+        profile = get_routing_profile("predictive")
+        actionable_thresholds = profile.gate_thresholds.get("actionable", {})
+        assert actionable_thresholds.get("requires_falsification_criteria") is True

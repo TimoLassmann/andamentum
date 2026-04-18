@@ -146,6 +146,8 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
             },
             "robust": {
                 "min_evidence_weighted": 3.0,
+            },
+            "actionable": {
                 "requires_falsification_criteria": True,
             },
         },
