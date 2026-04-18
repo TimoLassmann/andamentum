@@ -151,6 +151,82 @@ class TestSeedClaimOperation:
         claims = await repo.get_claims_for_objective("obj-1")
         assert len(claims) == 1  # not duplicated
 
+    async def test_judges_evidence_against_seed_claim(self, repo):
+        """With an agent_runner, evidence items get support_judgment set."""
+        from types import SimpleNamespace
+
+        obj = Objective(
+            entity_id="obj-1",
+            objective_id="obj-1",
+            description="Is X true?",
+            claim_to_verify="X is true.",
+            phase="planned",
+        )
+        await repo.save(obj)
+
+        # Add evidence with content
+        for i in range(3):
+            ev = Evidence(
+                objective_id="obj-1",
+                source_type="pubmed",
+                source_ref=f"https://example.com/{i}",
+                extracted=True,
+                extracted_content=f"Study {i} shows X is true.",
+            )
+            await repo.save(ev)
+
+        # Fake agent runner that returns "supports" for everything
+        class FakeRunner:
+            async def run(self, agent_name, **kwargs):
+                return SimpleNamespace(
+                    verdict="supports",
+                    reasoning="Evidence directly supports the claim.",
+                )
+
+        op = SeedClaimOperation(repo, agent_runner=FakeRunner())
+        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        result = await op.execute(work)
+
+        assert result.success
+        assert "3 evidence items judged" in result.message
+
+        # Verify support_judgment was set on all evidence
+        all_ev = await repo.query("evidence", objective_id="obj-1")
+        for ev in all_ev:
+            assert ev.support_judgment == "supports"
+            assert ev.judgment_reasoning == "Evidence directly supports the claim."
+
+    async def test_skips_judging_without_agent_runner(self, repo):
+        """Without an agent_runner, evidence is linked but not judged."""
+        obj = Objective(
+            entity_id="obj-1",
+            objective_id="obj-1",
+            description="Is X true?",
+            claim_to_verify="X is true.",
+            phase="planned",
+        )
+        await repo.save(obj)
+
+        ev = Evidence(
+            objective_id="obj-1",
+            source_type="pubmed",
+            source_ref="https://example.com/1",
+            extracted=True,
+            extracted_content="Some content.",
+        )
+        await repo.save(ev)
+
+        op = SeedClaimOperation(repo, agent_runner=None)
+        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        result = await op.execute(work)
+
+        assert result.success
+        # Evidence linked but not judged (no agent_runner)
+        claims = await repo.get_claims_for_objective("obj-1")
+        assert len(claims[0].evidence_ids) == 1
+        all_ev = await repo.query("evidence", objective_id="obj-1")
+        assert all_ev[0].support_judgment is None
+
     async def test_fails_without_claim_to_verify(self, repo):
         """If claim_to_verify is None, the operation fails cleanly."""
         obj = Objective(

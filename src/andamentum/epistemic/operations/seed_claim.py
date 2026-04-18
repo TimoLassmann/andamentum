@@ -2,9 +2,8 @@
 
 Used in claim-verification mode when ``Objective.claim_to_verify`` is set.
 Skips the normal explore→propose path and creates a single Claim entity
-whose statement is the verbatim user-provided claim.
-
-No LLM call — just copies a string into an entity.
+whose statement is the verbatim user-provided claim, then judges each
+linked evidence item against the claim (same judge used by ProposeClaimsOperation).
 
 Architecture: Layer 1 (standalone package)
 """
@@ -76,6 +75,38 @@ class SeedClaimOperation(BaseOperation):
         )
         await self.repo.save(claim)
 
+        # Judge each evidence item against the seed claim.
+        # Same judge call that ProposeClaimsOperation uses (claims.py:369-388).
+        # Sets support_judgment = supports / contradicts / no_bearing on each
+        # evidence item, which compute_posterior reads for the directional score.
+        judged = 0
+        if self.agent_runner:
+            from ..judge import judge_evidence as _judge
+
+            for eid in evidence_ids:
+                ev = await self.repo.get("evidence", eid)
+                if ev.support_judgment is not None:
+                    continue
+                if not ev.extracted_content:
+                    continue
+                try:
+                    judgment = await _judge(
+                        claim_statement=claim.statement,
+                        claim_scope=claim.scope,
+                        evidence_content=ev.extracted_content,
+                        evidence_source=f"{ev.source_type}: {ev.source_ref}",
+                        runner=self.agent_runner,
+                    )
+                    verdict = judgment.verdict.lower().strip()
+                    if verdict not in ("supports", "contradicts", "no_bearing"):
+                        verdict = "no_bearing"
+                    ev.support_judgment = verdict
+                    ev.judgment_reasoning = judgment.reasoning
+                    await self.repo.save(ev)
+                    judged += 1
+                except Exception:
+                    pass  # Best effort, same as ProposeClaimsOperation
+
         # Mark objective as having claims proposed (same contract as
         # ProposeClaimsOperation) so the pipeline advances.
         objective.claims_proposed = True
@@ -85,6 +116,6 @@ class SeedClaimOperation(BaseOperation):
         return OperationResult(
             success=True,
             entity_id=objective.entity_id,
-            message=f"Seed claim created: {claim.statement[:80]}",
+            message=f"Seed claim created: {claim.statement[:80]} ({judged} evidence items judged)",
             created_entities=[claim.entity_id],
         )
