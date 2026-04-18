@@ -105,14 +105,15 @@ class ClinicalTrialsProvider:
                     if not protocol:
                         continue
 
-                    gathered.append(self._parse_study(protocol))
+                    has_results = study.get("hasResults", False)
+                    gathered.append(self._parse_study(protocol, has_results=has_results))
 
         except Exception as e:
             logger.warning(f"ClinicalTrials.gov query failed for '{query}': {e}")
 
         return gathered
 
-    def _parse_study(self, protocol: dict[str, Any]) -> GatheredEvidence:
+    def _parse_study(self, protocol: dict[str, Any], *, has_results: bool = False) -> GatheredEvidence:
         """Parse a single study protocol section."""
         id_module = protocol.get("identificationModule", {})
         status_module = protocol.get("statusModule", {})
@@ -130,6 +131,7 @@ class ClinicalTrialsProvider:
         phase = phases[0] if phases else "NA"
         enrollment_info = design_module.get("enrollmentInfo", {})
         enrollment = enrollment_info.get("count")
+        enrollment_type = enrollment_info.get("type", "")
         brief_summary = description_module.get("briefSummary", "")
         conditions = conditions_module.get("conditions", [])
 
@@ -153,12 +155,29 @@ class ClinicalTrialsProvider:
                 }
             )
 
+        # Secondary outcomes
+        secondary_endpoints = []
+        for outcome in outcomes_module.get("secondaryOutcomes", []):
+            secondary_endpoints.append(
+                {
+                    "measure": outcome.get("measure", ""),
+                    "time_frame": outcome.get("timeFrame", ""),
+                }
+            )
+
+        # Other outcomes
+        other_endpoints = []
+        for outcome in outcomes_module.get("otherOutcomes", []):
+            other_endpoints.append(
+                {
+                    "measure": outcome.get("measure", ""),
+                    "time_frame": outcome.get("timeFrame", ""),
+                }
+            )
+
         # Sponsor
         lead_sponsor = sponsor_module.get("leadSponsor", {})
         sponsor = lead_sponsor.get("name", "")
-
-        # Has results?
-        has_results = protocol.get("hasResults", False)
 
         # Build human-readable content
         content_parts = [title]
@@ -173,7 +192,7 @@ class ClinicalTrialsProvider:
         if enrollment:
             content_parts.append(f"Enrollment: {enrollment}")
         if brief_summary:
-            content_parts.append(f"\n{brief_summary[:400]}")
+            content_parts.append(f"\n{brief_summary}")
 
         # Quality scoring
         quality = _PHASE_QUALITY.get(phase, 0.50)
@@ -193,12 +212,15 @@ class ClinicalTrialsProvider:
                 "phase": phase,
                 "status": status,
                 "enrollment": enrollment,
+                "enrollment_type": enrollment_type,
                 "conditions": conditions,
                 "interventions": interventions,
                 "primary_endpoints": primary_endpoints,
+                "secondary_endpoints": secondary_endpoints,
+                "other_endpoints": other_endpoints,
                 "sponsor": sponsor,
                 "has_results": has_results,
-                "brief_summary": brief_summary[:500],
+                "brief_summary": brief_summary,
             },
             quality_score=None,
             quality_metadata={
