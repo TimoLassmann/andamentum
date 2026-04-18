@@ -215,7 +215,7 @@ class BioRxivProvider:
                 if authors:
                     content_parts.append(f"Authors: {authors}")
                 if abstract:
-                    content_parts.append(f"\n{abstract[:500]}")
+                    content_parts.append(f"\n{abstract}")
 
                 identifiers: dict[str, str] = {}
                 if doi:
