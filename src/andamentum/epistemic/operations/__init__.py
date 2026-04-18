@@ -99,6 +99,9 @@ from .investigation import (
 )
 from .seed_claim import SeedClaimOperation
 
+# ── Cleanup ─────────────────────────────────────────────────────────────
+from .cleanup import AbandonStaleClaimOperation
+
 # ── Belief maintenance (TMS) ────────────────────────────────────────────
 from .belief_maintenance import (
     InvalidateEvidenceOperation,
@@ -147,6 +150,8 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "generate_prediction": GeneratePredictionOperation,
     # Decision
     "record_decision": RecordDecisionOperation,
+    # Cleanup
+    "abandon_stale_claim": AbandonStaleClaimOperation,
     # TMS: Belief maintenance
     "invalidate_evidence": InvalidateEvidenceOperation,
     "revalidate_claim": RevalidateClaimOperation,
@@ -248,6 +253,7 @@ __all__ = [
     "InvalidateEvidenceOperation",
     "RevalidateClaimOperation",
     "SetRoutingDefaultsOperation",
+    "AbandonStaleClaimOperation",
     # Registry
     "OPERATION_CLASSES",
     "create_operations",
