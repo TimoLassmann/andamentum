@@ -312,8 +312,6 @@ async def handle_init(
 async def handle_run(
     name: str,
     objective_id: Optional[str] = None,
-    max_items: Optional[int] = None,
-    max_retries: int = 3,
     *,
     model: str,
     verbose: bool = False,
@@ -329,9 +327,7 @@ async def handle_run(
     Args:
         name: Project/database name
         objective_id: Specific objective to run (optional, uses first if not specified)
-        max_items: Maximum scheduler iterations
-        max_retries: (Legacy, ignored) Maximum retries
-        model: (Legacy, ignored) Model to use
+        model: LLM model to use
         verbose: Print detailed output
 
     Returns:
@@ -373,7 +369,6 @@ async def handle_run(
     scheduler_result = await run_research_question(
         question=question or "Research objective",
         database_name=name,
-        max_iterations=max_items or 50,
         verbose=verbose,
         quality_scorer=OpenAlexQualityScorer(),
     )
@@ -853,8 +848,6 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
 async def handle_ask(
     question: str,
     name: Optional[str] = None,
-    max_items: int = 50,
-    max_retries: int = 3,
     *,
     model: str,
     embedding_model: Optional[str] = None,
@@ -885,8 +878,6 @@ async def handle_ask(
     Args:
         question: Research question to investigate
         name: Project name (auto-generated if not specified)
-        max_items: Maximum scheduler iterations
-        max_retries: (Legacy, ignored) Maximum retries per workitem
         model: LLM model to use (e.g., "anthropic:claude-haiku-4-5", "openai:gpt-4o-mini")
         keep: Keep project database after completion
         verbose: Print detailed progress
@@ -955,7 +946,7 @@ async def handle_ask(
         Panel(
             f"[bold]{question}[/bold]",
             title="[bold cyan]Epistemic Analysis[/bold cyan]",
-            subtitle=f"[dim]project: {name} | max iterations: {max_items}[/dim]",
+            subtitle=f"[dim]project: {name}[/dim]",
             border_style="cyan",
             padding=(1, 2),
         )
@@ -975,20 +966,13 @@ async def handle_ask(
         from .providers.openalex import OpenAlexQualityScorer
 
         # Derive operation budgets from research config.
-        # When principled budgets are active, max_iterations is only
-        # an emergency backstop — the per-operation budgets control scope.
         if research_config is None:
             research_config = ResearchConfig.light()
         op_budgets = research_config.operation_budgets()
 
-        # Only apply max_items if the user explicitly set it on the CLI.
-        # Otherwise let the per-operation budgets be the sole scope control.
-        iterations_limit = max_items if max_items != 50 else 500
-
         scheduler_result = await run_research_question(
             question=question,
             database_name=name,
-            max_iterations=iterations_limit,
             verbose=verbose,
             skip_preplanning=force_quick,
             model=model,

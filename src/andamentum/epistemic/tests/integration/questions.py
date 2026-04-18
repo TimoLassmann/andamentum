@@ -16,7 +16,6 @@ class PathwayTest:
     question: str
     rationale: str
     expected_operations: list[str]
-    max_iterations: int = 50
     question_type_hint: str | None = None  # Expected classification
 
 
@@ -111,7 +110,6 @@ PATHWAY_TESTS: list[PathwayTest] = [
         ),
         expected_operations=["generate_prediction"],
         question_type_hint="verificatory",
-        max_iterations=60,  # More room to reach ROBUST
     ),
     # ── AGM: Minimal Change on Demotion ─────────────────────────────────
     # Verified implicitly by the Doyle test — when TMS demotes a claim,

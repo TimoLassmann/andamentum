@@ -13,7 +13,6 @@ import pytest
 
 from andamentum.epistemic import provider_routing
 from andamentum.epistemic.provider_routing import (
-    ProviderScore,
     _clear_cache,
     rank_providers,
     select_providers,
