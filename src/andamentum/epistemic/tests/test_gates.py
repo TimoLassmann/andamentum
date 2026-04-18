@@ -404,3 +404,89 @@ class TestAdversarialBalanceGate:
         await repo.save(c)
         result = await validate_promotion(c, ClaimStage.PROVISIONAL, repo)
         assert result.passed
+
+
+class TestAdversarialSurvivalGate:
+    """Popper: surviving severe adversarial testing satisfies supporting sources."""
+
+    async def test_high_balance_satisfies_supporting_sources(self, repo):
+        """High adversarial balance with 0 direct supports should pass gate."""
+        ev = Evidence(entity_id="ev-1", objective_id="o", quality_score=0.5)
+        ev.support_judgment = "no_bearing"
+        await repo.save(ev)
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="o",
+            statement="Test",
+            evidence_ids=["ev-1"],
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.8,
+        )
+        await repo.save(claim)
+
+        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
+        # Should not fail on supporting sources
+        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        assert len(supporting_reasons) == 0
+
+    async def test_low_balance_does_not_satisfy(self, repo):
+        """Low adversarial balance should NOT substitute for supporting sources."""
+        ev = Evidence(entity_id="ev-1", objective_id="o", quality_score=0.5)
+        ev.support_judgment = "no_bearing"
+        await repo.save(ev)
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="o",
+            statement="Test",
+            evidence_ids=["ev-1"],
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.3,
+        )
+        await repo.save(claim)
+
+        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
+        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        assert len(supporting_reasons) > 0
+
+    async def test_adversarial_not_run_does_not_satisfy(self, repo):
+        """If adversarial search hasn't run, can't claim survival."""
+        ev = Evidence(entity_id="ev-1", objective_id="o", quality_score=0.5)
+        ev.support_judgment = "no_bearing"
+        await repo.save(ev)
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="o",
+            statement="Test",
+            evidence_ids=["ev-1"],
+            scrutiny_verdict="pass",
+            adversarial_checked=False,
+        )
+        await repo.save(claim)
+
+        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
+        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        assert len(supporting_reasons) > 0
+
+    async def test_direct_support_still_works(self, repo):
+        """Direct supporting evidence still satisfies gate without adversarial."""
+        ev = Evidence(entity_id="ev-1", objective_id="o", quality_score=0.5)
+        ev.support_judgment = "supports"
+        await repo.save(ev)
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="o",
+            statement="Test",
+            evidence_ids=["ev-1"],
+            scrutiny_verdict="pass",
+        )
+        await repo.save(claim)
+
+        result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
+        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        assert len(supporting_reasons) == 0

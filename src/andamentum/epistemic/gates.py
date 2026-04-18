@@ -533,15 +533,22 @@ async def validate_promotion(
         except Exception as e:
             warnings.append(f"Could not compute quality sum: {e}")
 
-    # Supporting sources count (log-odds gate: independent clusters judged "supports")
-    # Only enforced when evidence has been judged. If the judge operation hasn't
-    # run yet (support_judgment is None on all evidence), this gate is skipped
-    # to avoid blocking promotion during the transition to judgment-based scoring.
+    # Supporting sources OR adversarial survival (Popper corroboration).
+    # Direct supporting evidence is the primary path. But when adversarial
+    # search has actively looked for counterevidence and found none
+    # (high adversarial balance), that survival counts as corroboration.
     if gate.min_supporting_sources > 0:
         try:
             supporting = await count_supporting_sources(claim, repo)
             any_judged = await _any_evidence_judged(claim, repo)
-            if any_judged and supporting < gate.min_supporting_sources:
+
+            adversarial_survived = (
+                claim.adversarial_checked
+                and claim.adversarial_balance is not None
+                and claim.adversarial_balance >= 0.7
+            )
+
+            if any_judged and supporting < gate.min_supporting_sources and not adversarial_survived:
                 reasons.append(
                     f"Need {gate.min_supporting_sources} supporting sources, have {supporting}"
                 )
