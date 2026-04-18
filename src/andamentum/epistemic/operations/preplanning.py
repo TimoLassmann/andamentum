@@ -258,31 +258,40 @@ class PlanTaskOperation(BaseOperation):
                 message=f"Phase {objective.phase} is not 'analyzed'",
             )
 
-        # Step 1: Semantic provider selection via embedding similarity.
-        from ..provider_routing import select_providers
+        # Step 1: LLM-based provider selection.
+        # For each registered provider, a focused agent decides whether it
+        # is relevant to this question. This is a narrow binary judgment
+        # (yes/no), run once per provider. The agent sees the provider's
+        # full description so it can reason about domain coverage.
+        from ..providers import PROVIDER_DESCRIPTIONS, PROVIDER_REGISTRY
 
         clarified = objective.clarified_question or objective.description
 
-        if not self.embedding_model:
-            return OperationResult(
-                success=False,
-                entity_id=work.entity_id,
-                message=(
-                    "Semantic provider routing requires an embedding_model. "
-                    "Pass embedding_model= to create_operations()."
-                ),
-            )
+        providers: list[str] = []
+        if self.agent_runner:
+            for provider_name in sorted(PROVIDER_REGISTRY):
+                description = PROVIDER_DESCRIPTIONS.get(provider_name, "")
+                if not description:
+                    continue
+                try:
+                    result = await self.run_agent(
+                        "epistemic_select_provider",
+                        question=clarified,
+                        provider=provider_name,
+                        provider_description=description,
+                    )
+                    if result.relevant:
+                        providers.append(provider_name)
+                except Exception:
+                    pass  # On failure, skip this provider
 
-        providers = await select_providers(
-            question=clarified,
-            embedding_model=self.embedding_model,
-        )
+        # Always include web_search as universal fallback.
+        if "web_search" not in providers:
+            providers.append("web_search")
 
         # Step 2: Formulate queries — one narrow agent call per provider.
         # Each call receives the provider's enriched description so the
         # agent can tailor the query to the provider's strengths.
-        from ..providers import PROVIDER_DESCRIPTIONS
-
         created_evidence: list[str] = []
 
         for provider in providers:

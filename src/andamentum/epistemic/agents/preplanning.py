@@ -1,10 +1,11 @@
-"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, formulate_query."""
+"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, select_provider, formulate_query."""
 
 from .output_models import (
     ClarifyQuestionOutput,
     ClassifyQuestionOutput,
     ConceptualAnalysisOutput,
     FormulateQueryOutput,
+    SelectProviderOutput,
 )
 from . import AgentDefinition, register_agent
 
@@ -252,6 +253,38 @@ register_agent(
         output_model=ConceptualAnalysisOutput,
         retries=3,
         output_retries=5,
+    )
+)
+
+
+# ── epistemic_select_provider ──────────────────────────────────────────────
+
+SELECT_PROVIDER_PROMPT = """\
+# Evidence Provider Selector
+
+You decide whether a specific evidence provider is relevant to a research question.
+
+## Your Task
+You will see a research question and a description of one evidence provider.
+Decide: is this provider likely to have relevant evidence for this question?
+
+## Guidelines
+- Read the provider description carefully — it tells you what this source contains
+- A provider is relevant if the question's topic falls within the provider's domain
+- When in doubt, err toward relevant (it is better to check a source and find
+  nothing than to skip a source that had the answer)
+- Do not consider whether the provider will SUPPORT or CONTRADICT the claim —
+  only whether it covers the right topic
+
+Answer with a clear yes or no and a brief reason."""
+
+register_agent(
+    AgentDefinition(
+        name="epistemic_select_provider",
+        prompt=SELECT_PROVIDER_PROMPT,
+        output_model=SelectProviderOutput,
+        retries=2,
+        output_retries=3,
     )
 )
 

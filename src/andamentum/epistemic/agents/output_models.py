@@ -446,6 +446,20 @@ class CrossClaimConsistencyOutput(BaseModel):
     )
 
 
+class SelectProviderOutput(BaseModel):
+    """Output from epistemic_select_provider agent.
+
+    Narrow binary judgment: is this provider relevant to this question?
+    """
+
+    relevant: bool = Field(
+        description="True if this provider is likely to have relevant evidence for the question"
+    )
+    reasoning: str = Field(
+        description="One sentence explaining why this provider is or is not relevant"
+    )
+
+
 class FormulateQueryOutput(BaseModel):
     """Output from epistemic_formulate_query agent.
 

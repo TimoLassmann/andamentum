@@ -262,7 +262,8 @@ class TestFailureModes:
 
 
 class TestPlanTaskOperationContract:
-    async def test_missing_embedding_model_in_operation(self):
+    async def test_plan_without_agent_runner_uses_web_search_fallback(self):
+        """Without an agent_runner, LLM routing can't run, so only web_search is selected."""
         from andamentum.epistemic.entities.objective import Objective
         from andamentum.epistemic.operations.preplanning import PlanTaskOperation
         from andamentum.epistemic.patterns import WorkItem
@@ -279,11 +280,11 @@ class TestPlanTaskOperationContract:
         )
         await repo.save(obj)
 
-        op = PlanTaskOperation(repo, agent_runner=None, embedding_model=None)
+        op = PlanTaskOperation(repo, agent_runner=None)
         work = WorkItem(
             entity_id="obj-1", entity_type="objective", operation="plan_task"
         )
         result = await op.execute(work)
 
-        assert result.success is False
-        assert "embedding_model" in result.message
+        assert result.success is True
+        assert "web_search" in result.message
