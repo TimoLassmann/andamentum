@@ -1060,7 +1060,6 @@ async def handle_ask(
             verbose,
             trace,
             None,
-            answer_confidence=getattr(scheduler_result, "answer_confidence", None),
             posterior=getattr(scheduler_result, "posterior", None),
         )
 
@@ -1169,14 +1168,13 @@ def _print_ask_results(
     verbose: bool = False,
     trace_mode: TraceMode = "timeline",
     reasoning_trace: Optional[ReasoningTrace] = None,
-    answer_confidence: Optional[Any] = None,
     posterior: Optional[Any] = None,
 ) -> None:
     """Print results from an ask query in a nice format.
 
     Display priority:
     1. ANSWER - The synthesized findings (always shown prominently)
-    2. Evidence sources summary
+    2. Posterior confidence score
     3. Open questions (if any)
     4. Detailed claims table (verbose or trace mode)
     5. Execution stats (verbose only)
@@ -1198,30 +1196,16 @@ def _print_ask_results(
     # Check if we have synthesis results (artefact content)
     synthesis = stats.get("synthesis", {})
 
-    # Color code by answer confidence level
-    ac_level = answer_confidence.level if answer_confidence else "none"
-    color_map = {
-        "high": "green",
-        "moderate": "cyan",
-        "low": "yellow",
-        "insufficient": "red",
-        "none": "red",
-    }
-
     # === PRIMARY OUTPUT: THE ARTEFACT ===
     if synthesis:
         artefact_content = synthesis.get("summary", "")
-        title_color = color_map.get(ac_level, "white")
-        confidence_label = (
-            f"{ac_level} confidence" if answer_confidence else "no confidence score"
-        )
 
         if artefact_content:
             console.print(
                 Panel(
                     Markdown(artefact_content),
-                    title=f"[bold {title_color}]Research Report[/bold {title_color}] [dim]({confidence_label})[/dim]",
-                    border_style=title_color,
+                    title="[bold green]Research Report[/bold green]",
+                    border_style="green",
                     padding=(1, 2),
                 )
             )
@@ -1229,26 +1213,13 @@ def _print_ask_results(
             console.print(
                 Panel(
                     "[dim]No findings synthesized[/dim]",
-                    title=f"[bold {title_color}]Research Report[/bold {title_color}]",
-                    border_style=title_color,
+                    title="[bold green]Research Report[/bold green]",
+                    border_style="green",
                     padding=(1, 2),
                 )
             )
 
-    # === SCORES: Answer confidence + Posterior ===
-    if answer_confidence:
-        ac = answer_confidence
-        ac_color = color_map.get(ac.level, "white")
-        console.print()
-        console.print(
-            f"[bold]Answer confidence:[/bold] [{ac_color}]{ac.confidence:.2f} ({ac.level.upper()})[/{ac_color}]"
-            f"  [dim]{ac.passes}/{ac.passes + ac.failures} checks passed[/dim]"
-        )
-        for check in ac.checks:
-            status = "[green]✓[/green]" if check.passed else "[red]✗[/red]"
-            tradition = f" [dim][{check.tradition}][/dim]" if check.tradition else ""
-            console.print(f"  {status} {check.name}{tradition}")
-
+    # === SCORE: Posterior confidence ===
     if posterior:
         po = posterior
         console.print(

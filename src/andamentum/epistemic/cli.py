@@ -194,7 +194,7 @@ async def _preflight(args: argparse.Namespace) -> None:
 async def _confidence(args: argparse.Namespace) -> None:
     from pathlib import Path
 
-    from .confidence import compute_answer_confidence, compute_posterior
+    from .confidence import compute_posterior
     from .repository import EpistemicRepository
 
     db_dir = Path(args.db_dir) if args.db_dir else None
@@ -208,29 +208,22 @@ async def _confidence(args: argparse.Namespace) -> None:
             sys.exit(1)
         objective_id = objectives[0].entity_id
 
-    # Answer confidence (process completion)
-    report = await compute_answer_confidence(repo, objective_id)
-    print(f"Answer confidence: {report.confidence:.2f} ({report.level.upper()})")
-    print(f"  {report.passes} of {len(report.checks)} checks passed")
-    print()
-    for check in report.checks:
-        status = "PASS" if check.passed else "FAIL"
-        print(f"  [{status}] {check.name}: {check.detail}")
-
-    # Posterior confidence (evidential direction, only for eligible question types)
+    # Posterior confidence (evidential direction)
     posterior = await compute_posterior(repo, objective_id)
     if posterior is not None:
-        print()
         print(f"Posterior confidence: {posterior.posterior:.2%}")
         print(
-            f"  {posterior.supporting_count} claims supported, {posterior.contradicting_count} contradicted"
+            f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting"
         )
         print(f"  {posterior.explanation}")
+    else:
+        objective = await repo.get("objective", objective_id)
+        qt = getattr(objective, "question_type", None) or "unclassified"
+        print(f"Posterior not computed (question type: {qt})")
 
     if args.verbose:
         print()
-        print(f"Objective: {report.objective_id}")
-        print(f"Question type: {report.question_type or 'unclassified'}")
+        print(f"Objective: {objective_id}")
 
 
 async def _ask(args: argparse.Namespace) -> None:

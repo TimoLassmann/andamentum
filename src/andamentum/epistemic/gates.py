@@ -435,7 +435,7 @@ async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") 
 
 # Per-claim stage-based confidence used by PromoteClaimOperation.
 # This is a pipeline-internal score for gate decisions, separate from
-# the post-hoc answer-level confidence (confidence.py:compute_answer_confidence).
+# the post-hoc posterior confidence (confidence.py:compute_posterior).
 _STAGE_CONFIDENCE: dict["ClaimStage", tuple[float, float]] = {
     ClaimStage.HYPOTHESIS: (0.1, 0.0),
     ClaimStage.SUPPORTED: (0.3, 0.1),

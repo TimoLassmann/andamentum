@@ -76,18 +76,13 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
     if data.confidence_scores:
         cs = data.confidence_scores
         conf_body = (
-            f"{cs.answer_confidence_level.capitalize()} ({cs.answer_confidence:.2f})"
+            f"Posterior: {cs.posterior:.2%}" if cs.posterior is not None else "No posterior computed"
         )
-        if cs.posterior is not None:
-            conf_body += f". Posterior confidence: {cs.posterior:.2%}"
         qa_entries.append({"label": "How confident are we?", "body": conf_body})
 
         qa_entries.append({
             "label": "How thorough was the investigation?",
-            "body": (
-                f"{data.stats.total_evidence} evidence sources examined, "
-                f"{cs.checks_passed}/{cs.checks_total} verification checks passed"
-            ),
+            "body": f"{data.stats.total_evidence} evidence sources examined",
         })
 
     r.items(entries=qa_entries)
@@ -285,14 +280,14 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
     if data.confidence_scores:
         cs = data.confidence_scores
-        sidebar_groups["Confidence"] = {
-            "Score": f"{cs.answer_confidence:.2f} {cs.answer_confidence_level.upper()}",
-            f"{cs.checks_passed}/{cs.checks_total} checks passed": "",
-        }
+        confidence_data: dict[str, str] = {}
         if cs.posterior is not None:
-            sidebar_groups["Confidence"]["Posterior"] = f"{cs.posterior:.2%}"
-            sidebar_groups["Confidence"]["Claims supported"] = str(cs.posterior_supporting)
-            sidebar_groups["Confidence"]["Claims contradicted"] = str(cs.posterior_contradicting)
+            confidence_data["Posterior"] = f"{cs.posterior:.2%}"
+            confidence_data["Claims supported"] = str(cs.posterior_supporting)
+            confidence_data["Claims contradicted"] = str(cs.posterior_contradicting)
+        else:
+            confidence_data["Posterior"] = "N/A"
+        sidebar_groups["Confidence"] = confidence_data
 
     sidebar_groups["Model"] = {"LLM": data.model_used}
 

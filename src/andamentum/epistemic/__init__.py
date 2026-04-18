@@ -87,8 +87,6 @@ from .agents import AgentDefinition, AGENT_REGISTRY
 
 # ── Confidence ────────────────────────────────────────────────────────────
 from .confidence import (
-    compute_answer_confidence,
-    AnswerConfidenceReport,
     compute_posterior,
     PosteriorReport,
 )
@@ -166,8 +164,6 @@ __all__ = [
     "AgentDefinition",
     "AGENT_REGISTRY",
     # Confidence
-    "compute_answer_confidence",
-    "AnswerConfidenceReport",
     "compute_posterior",
     "PosteriorReport",
     # Preflight
