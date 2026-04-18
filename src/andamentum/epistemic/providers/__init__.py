@@ -26,6 +26,9 @@ from .biorxiv import BioRxivProvider
 from .clinicaltrials import ClinicalTrialsProvider
 from .chembl import ChEMBLProvider
 from .open_targets import OpenTargetsProvider
+from .europepmc import EuropePMCProvider
+from .cochrane import CochraneProvider
+from .arxiv import ArXivProvider
 
 # ── Provider Registry ────────────────────────────────────────────────────────
 
@@ -191,6 +194,46 @@ register_provider(
         "for PCSK9 in cardiovascular disease'."
     ),
 )
+register_provider(
+    "europepmc",
+    EuropePMCProvider,
+    (
+        "Comprehensive biomedical and life sciences literature from Europe PMC, "
+        "covering PubMed, PMC full-text, preprints, and patents. Returns full "
+        "abstracts for all results. Use for any biomedical literature search, "
+        "especially when full abstracts are needed or when searching across "
+        "preprints and published articles simultaneously. Example queries: "
+        "'CRISPR-Cas9 gene editing efficiency in vivo', 'single-cell RNA "
+        "sequencing methods comparison', 'gut microbiome and immune response'."
+    ),
+)
+register_provider(
+    "cochrane",
+    CochraneProvider,
+    (
+        "Cochrane systematic reviews and meta-analyses — the highest level of "
+        "clinical evidence. Each review synthesizes findings from multiple "
+        "randomized controlled trials on a specific clinical question. Use for "
+        "any claim about clinical interventions, treatment effectiveness, drug "
+        "safety, or public health interventions where a systematic review may "
+        "exist. Example queries: 'exercise interventions for preventing falls "
+        "in older adults', 'statins for primary prevention of cardiovascular "
+        "disease', 'antibiotics for acute otitis media in children'."
+    ),
+)
+register_provider(
+    "arxiv",
+    ArXivProvider,
+    (
+        "Preprint server for physics, mathematics, computer science, "
+        "quantitative biology, quantitative finance, statistics, electrical "
+        "engineering, and economics. Use for any non-biomedical scientific "
+        "claim, especially in physics, AI/ML, mathematics, or computer "
+        "science. Also covers quantitative biology preprints not on bioRxiv. "
+        "Example queries: 'transformer attention mechanisms', 'quantum error "
+        "correction surface codes', 'reinforcement learning from human feedback'."
+    ),
+)
 
 
 # ── Example queries for semantic routing ─────────────────────────────────────
@@ -264,6 +307,30 @@ PROVIDER_EXAMPLES: dict[str, list[str]] = {
         "GWAS-supported targets for schizophrenia",
         "drug repurposing candidates for idiopathic pulmonary fibrosis",
     ],
+    "europepmc": [
+        "CRISPR-Cas9 gene editing efficiency in vivo",
+        "single-cell RNA sequencing methods comparison",
+        "gut microbiome and immune response",
+        "amyloid beta oligomers in Alzheimer's pathology",
+        "mRNA vaccine lipid nanoparticle delivery",
+        "tumor microenvironment immunotherapy resistance",
+    ],
+    "cochrane": [
+        "exercise interventions for preventing falls in older adults",
+        "statins for primary prevention of cardiovascular disease",
+        "antibiotics for acute otitis media in children",
+        "cognitive behavioral therapy for depression",
+        "corticosteroids for preterm birth lung maturation",
+        "anticoagulation for atrial fibrillation stroke prevention",
+    ],
+    "arxiv": [
+        "transformer attention mechanisms",
+        "quantum error correction surface codes",
+        "reinforcement learning from human feedback",
+        "neural scaling laws and emergent abilities",
+        "gravitational wave detection methods",
+        "topological insulators band structure",
+    ],
 }
 
 
@@ -277,6 +344,9 @@ __all__ = [
     "ClinicalTrialsProvider",
     "ChEMBLProvider",
     "OpenTargetsProvider",
+    "EuropePMCProvider",
+    "CochraneProvider",
+    "ArXivProvider",
     # Registry
     "PROVIDER_REGISTRY",
     "PROVIDER_DESCRIPTIONS",

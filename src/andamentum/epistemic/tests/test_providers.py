@@ -668,6 +668,154 @@ class TestOpenAlexErrorPaths:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Europe PMC Provider
+# ──────────────────────────────────────────────────────────────────────────────
+
+_EUROPEPMC_RESULT = {
+    "id": "38437170",
+    "source": "MED",
+    "pmid": "38437170",
+    "doi": "10.1038/s41586-024-07487-w",
+    "title": "Test article title",
+    "authorString": "Smith J, Jones A",
+    "journalTitle": "Nature",
+    "pubYear": "2024",
+    "abstractText": "This is the abstract text.",
+    "isOpenAccess": "Y",
+    "citedByCount": 42,
+    "pubTypeList": {"pubType": ["research-article"]},
+    "pmcid": "PMC11234567",
+    "firstPublicationDate": "2024-03-01",
+}
+
+
+class TestEuropePMCProvider:
+    async def test_gather_returns_gathered_evidence(self, monkeypatch):
+        """Mock successful response, verify GatheredEvidence fields."""
+        transport = MockTransport(
+            responses={
+                "/europepmc/webservices/rest/search": {
+                    "resultList": {"result": [_EUROPEPMC_RESULT]},
+                    "hitCount": 1,
+                },
+            }
+        )
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.europepmc import EuropePMCProvider
+
+        provider = EuropePMCProvider(max_results=5)
+        results = await provider.gather("test query")
+
+        assert len(results) == 1
+        r = results[0]
+        assert isinstance(r, GatheredEvidence)
+        assert r.source_type == "europepmc"
+        assert r.quality_score is None
+        assert r.evidence_kind == "literature"
+        assert r.source_ref == "doi:10.1038/s41586-024-07487-w"
+        assert "Test article title" in r.content
+        assert "Smith J, Jones A" in r.content
+        assert "This is the abstract text." in r.content
+        assert r.identifiers["pmid"] == "38437170"
+        assert r.identifiers["doi"] == "10.1038/s41586-024-07487-w"
+        assert r.identifiers["pmcid"] == "PMC11234567"
+        assert r.structured_data["journal"] == "Nature"
+        assert r.structured_data["cited_by_count"] == 42
+        assert r.structured_data["pub_types"] == ["research-article"]
+        assert r.limitations == []
+
+    async def test_health_check_pass(self, monkeypatch):
+        """Mock 200 response, verify CheckResult."""
+        transport = MockTransport(
+            responses={
+                "/europepmc/webservices/rest/search": {
+                    "resultList": {"result": []},
+                    "hitCount": 0,
+                },
+            }
+        )
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.europepmc import EuropePMCProvider
+
+        provider = EuropePMCProvider()
+        result = await provider.check_health()
+
+        assert result.status == "pass"
+        assert "reachable" in result.message
+        assert result.name == "EuropePMCProvider"
+
+    async def test_gather_error_returns_empty(self, monkeypatch):
+        """Mock 500 response, verify empty list."""
+        transport = MockTransport(status_code=500)
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.europepmc import EuropePMCProvider
+
+        provider = EuropePMCProvider(max_results=5)
+        results = await provider.gather("test query")
+
+        assert results == []
+
+    async def test_preprint_evidence_kind(self, monkeypatch):
+        """Mock response with source PPR, verify evidence_kind and limitations."""
+        preprint_result = dict(_EUROPEPMC_RESULT)
+        preprint_result["source"] = "PPR"
+        preprint_result["pmid"] = ""
+        preprint_result["pmcid"] = ""
+
+        transport = MockTransport(
+            responses={
+                "/europepmc/webservices/rest/search": {
+                    "resultList": {"result": [preprint_result]},
+                    "hitCount": 1,
+                },
+            }
+        )
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.europepmc import EuropePMCProvider
+
+        provider = EuropePMCProvider(max_results=5)
+        results = await provider.gather("preprint query")
+
+        assert len(results) == 1
+        r = results[0]
+        assert r.evidence_kind == "preprint"
+        assert "Preprint" in r.limitations[0]
+        assert "not peer-reviewed" in r.limitations[0]
+
+    async def test_html_stripped_from_abstract(self, monkeypatch):
+        """Verify HTML tags are stripped from abstractText."""
+        html_result = dict(_EUROPEPMC_RESULT)
+        html_result["abstractText"] = (
+            "<h4>Background</h4>Some background text. "
+            "<h4>Methods</h4>Some methods text."
+        )
+
+        transport = MockTransport(
+            responses={
+                "/europepmc/webservices/rest/search": {
+                    "resultList": {"result": [html_result]},
+                    "hitCount": 1,
+                },
+            }
+        )
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.europepmc import EuropePMCProvider
+
+        provider = EuropePMCProvider(max_results=5)
+        results = await provider.gather("test")
+
+        assert len(results) == 1
+        assert "<h4>" not in results[0].content
+        assert "Background" in results[0].content
+        assert "Some methods text." in results[0].content
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CompositeGatherer — error path tests
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -808,3 +956,294 @@ class TestCompositeGathererErrorPaths:
 
         assert len(results) == 1
         assert results[0].content == "Web fallback"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cochrane Provider
+# ──────────────────────────────────────────────────────────────────────────────
+
+_COCHRANE_EFETCH_XML = '''<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>12345678</PMID>
+      <Article>
+        <ArticleTitle>Interventions for preventing falls in older people</ArticleTitle>
+        <AuthorList>
+          <Author><LastName>Gillespie</LastName><Initials>LD</Initials></Author>
+        </AuthorList>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">Falls are common in older people.</AbstractText>
+          <AbstractText Label="MAIN RESULTS">Exercise reduces fall rate by 23%.</AbstractText>
+          <AbstractText Label="AUTHORS' CONCLUSIONS">Exercise programmes reduce falls.</AbstractText>
+        </Abstract>
+        <ArticleIdList>
+          <ArticleId IdType="doi">10.1002/14651858.CD007146.pub4</ArticleId>
+        </ArticleIdList>
+      </Article>
+      <MedlineJournalInfo>
+        <MedlineTA>Cochrane Database Syst Rev</MedlineTA>
+      </MedlineJournalInfo>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>'''
+
+
+class CochraneMockTransport(httpx.AsyncBaseTransport):
+    """Returns JSON for esearch, XML for efetch."""
+
+    def __init__(self, status_code: int = 200):
+        self.requests: list[httpx.Request] = []
+        self._status_code = status_code
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._status_code != 200:
+            return httpx.Response(self._status_code, request=request)
+        if "esearch" in request.url.path:
+            return httpx.Response(
+                200,
+                json={
+                    "esearchresult": {"idlist": ["12345678"], "count": "1"},
+                },
+                request=request,
+            )
+        elif "efetch" in request.url.path:
+            return httpx.Response(
+                200,
+                text=_COCHRANE_EFETCH_XML,
+                request=request,
+                headers={"content-type": "text/xml"},
+            )
+        return httpx.Response(404, request=request)
+
+
+class TestCochraneProvider:
+    async def test_gather_returns_gathered_evidence(self, monkeypatch):
+        """Mock successful response, verify GatheredEvidence fields."""
+        transport = CochraneMockTransport()
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.cochrane import CochraneProvider
+
+        provider = CochraneProvider(max_results=5)
+        results = await provider.gather("falls prevention")
+
+        assert len(results) == 1
+        r = results[0]
+        assert isinstance(r, GatheredEvidence)
+        assert r.source_type == "cochrane"
+        assert r.evidence_kind == "systematic_review"
+        assert r.quality_score is None
+        assert "Interventions for preventing falls" in r.content
+        assert "Gillespie LD" in r.content
+        assert r.source_ref == "doi:10.1002/14651858.CD007146.pub4"
+        assert r.identifiers["pmid"] == "12345678"
+        assert r.identifiers["doi"] == "10.1002/14651858.CD007146.pub4"
+        assert r.quality_metadata is not None
+        assert r.quality_metadata["journal"] == "Cochrane Database Syst Rev"
+        assert "Systematic Review" in r.quality_metadata["publication_types"]
+        assert r.limitations == []
+
+    async def test_health_check_pass(self, monkeypatch):
+        """Mock 200 response with count > 0, verify CheckResult."""
+        transport = CochraneMockTransport()
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.cochrane import CochraneProvider
+
+        provider = CochraneProvider()
+        result = await provider.check_health()
+
+        assert result.status == "pass"
+        assert "reachable" in result.message
+        assert result.name == "CochraneProvider"
+
+    async def test_gather_error_returns_empty(self, monkeypatch):
+        """Mock 500 response, verify empty list."""
+        transport = CochraneMockTransport(status_code=500)
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.cochrane import CochraneProvider
+
+        provider = CochraneProvider(max_results=5)
+        results = await provider.gather("test query")
+
+        assert results == []
+
+    async def test_structured_abstract_sections(self, monkeypatch):
+        """Verify abstract_sections dict in structured_data."""
+        transport = CochraneMockTransport()
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.cochrane import CochraneProvider
+
+        provider = CochraneProvider(max_results=5)
+        results = await provider.gather("falls prevention")
+
+        assert len(results) == 1
+        r = results[0]
+        sections = r.structured_data["abstract_sections"]
+        assert sections["BACKGROUND"] == "Falls are common in older people."
+        assert sections["MAIN RESULTS"] == "Exercise reduces fall rate by 23%."
+        assert sections["AUTHORS' CONCLUSIONS"] == "Exercise programmes reduce falls."
+
+        # Verify content includes labeled sections
+        assert "BACKGROUND: Falls are common in older people." in r.content
+        assert "MAIN RESULTS: Exercise reduces fall rate by 23%." in r.content
+        assert "AUTHORS' CONCLUSIONS: Exercise programmes reduce falls." in r.content
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# arXiv Provider
+# ──────────────────────────────────────────────────────────────────────────────
+
+_ARXIV_XML_WITH_JOURNAL = '''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/2301.00001v1</id>
+    <title>Attention Is All You Need: A Revisit</title>
+    <summary>We revisit the transformer architecture and propose improvements.</summary>
+    <published>2023-01-01T00:00:00Z</published>
+    <updated>2023-01-02T00:00:00Z</updated>
+    <author><name>Smith J</name></author>
+    <author><name>Jones A</name></author>
+    <category term="cs.CL"/>
+    <category term="cs.AI"/>
+    <arxiv:primary_category term="cs.CL"/>
+    <arxiv:doi>10.1234/test.2023</arxiv:doi>
+    <arxiv:journal_ref>Nature 2023</arxiv:journal_ref>
+    <arxiv:comment>10 pages, 3 figures</arxiv:comment>
+    <link title="pdf" href="http://arxiv.org/pdf/2301.00001v1" rel="related"/>
+  </entry>
+</feed>'''
+
+_ARXIV_XML_NO_JOURNAL = '''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v2</id>
+    <title>Scaling Laws for
+Neural Language Models</title>
+    <summary>We study scaling laws for neural language model performance.</summary>
+    <published>2024-01-15T00:00:00Z</published>
+    <updated>2024-02-01T00:00:00Z</updated>
+    <author><name>Doe B</name></author>
+    <category term="cs.LG"/>
+    <arxiv:primary_category term="cs.LG"/>
+  </entry>
+</feed>'''
+
+
+class ArXivMockTransport(httpx.AsyncBaseTransport):
+    """Returns Atom XML for arXiv API queries."""
+
+    def __init__(self, status_code: int = 200, xml: str = _ARXIV_XML_WITH_JOURNAL):
+        self.requests: list[httpx.Request] = []
+        self._status_code = status_code
+        self._xml = xml
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._status_code != 200:
+            return httpx.Response(self._status_code, text="Error", request=request)
+        return httpx.Response(
+            200,
+            text=self._xml,
+            request=request,
+            headers={"content-type": "application/atom+xml"},
+        )
+
+
+class TestArXivProvider:
+    async def test_gather_returns_gathered_evidence(self, monkeypatch):
+        """Mock successful response, verify GatheredEvidence fields."""
+        transport = ArXivMockTransport()
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.arxiv import ArXivProvider
+
+        provider = ArXivProvider(max_results=10)
+        results = await provider.gather("transformer attention")
+
+        assert len(results) == 1
+        r = results[0]
+        assert isinstance(r, GatheredEvidence)
+        assert r.source_type == "arxiv"
+        assert r.evidence_kind == "preprint"
+        assert r.quality_score is None
+        assert r.source_ref == "arXiv:2301.00001v1"
+        assert "Attention Is All You Need: A Revisit" in r.content
+        assert "Smith J" in r.content
+        assert "We revisit the transformer architecture" in r.content
+        assert r.identifiers["arxiv_id"] == "2301.00001v1"
+        assert r.identifiers["doi"] == "10.1234/test.2023"
+        assert r.structured_data["title"] == "Attention Is All You Need: A Revisit"
+        assert r.structured_data["authors"] == ["Smith J", "Jones A"]
+        assert r.structured_data["categories"] == ["cs.CL", "cs.AI"]
+        assert r.structured_data["primary_category"] == "cs.CL"
+        assert r.structured_data["published"] == "2023-01-01T00:00:00Z"
+        assert r.structured_data["updated"] == "2023-01-02T00:00:00Z"
+        assert r.structured_data["journal_ref"] == "Nature 2023"
+        assert r.structured_data["doi"] == "10.1234/test.2023"
+        assert r.structured_data["comment"] == "10 pages, 3 figures"
+        assert r.quality_metadata is not None
+        assert r.quality_metadata["primary_category"] == "cs.CL"
+        assert r.quality_metadata["has_journal_ref"] is True
+        # Has journal_ref → no limitations
+        assert r.limitations == []
+
+    async def test_health_check_pass(self, monkeypatch):
+        """Mock 200 response with entry, verify CheckResult."""
+        transport = ArXivMockTransport()
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.arxiv import ArXivProvider
+
+        provider = ArXivProvider()
+        result = await provider.check_health()
+
+        assert result.status == "pass"
+        assert "reachable" in result.message
+        assert result.name == "ArXivProvider"
+
+    async def test_gather_error_returns_empty(self, monkeypatch):
+        """Mock 500 response, verify empty list."""
+        transport = ArXivMockTransport(status_code=500)
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.arxiv import ArXivProvider
+
+        provider = ArXivProvider(max_results=5)
+        results = await provider.gather("test query")
+
+        assert results == []
+
+    async def test_preprint_without_journal_ref(self, monkeypatch):
+        """Entry without journal_ref → limitations includes preprint caveat."""
+        transport = ArXivMockTransport(xml=_ARXIV_XML_NO_JOURNAL)
+        monkeypatch.setattr("httpx.AsyncClient", _make_patched_client(transport))
+
+        from ..providers.arxiv import ArXivProvider
+
+        provider = ArXivProvider(max_results=10)
+        results = await provider.gather("scaling laws")
+
+        assert len(results) == 1
+        r = results[0]
+        assert r.source_ref == "arXiv:2401.12345v2"
+        assert r.limitations == ["Preprint — not peer-reviewed"]
+        assert r.quality_metadata is not None
+        assert r.quality_metadata["has_journal_ref"] is False
+        # Title newlines should be stripped
+        assert "\n" not in r.structured_data["title"]
+        assert "Scaling Laws for Neural Language Models" == r.structured_data["title"]
+        # No DOI in identifiers when missing
+        assert "doi" not in r.identifiers
+        assert r.structured_data["doi"] is None
+        assert r.structured_data["journal_ref"] is None
