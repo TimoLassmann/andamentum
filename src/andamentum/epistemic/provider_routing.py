@@ -1,23 +1,29 @@
-"""Semantic evidence-provider routing via example-query matching.
+"""DEPRECATED — Embedding-based provider routing (replaced by LLM routing).
 
-Ranks registered evidence providers by comparing the research question
-against each provider's EXAMPLE QUERIES using embedding cosine similarity.
-Each provider is scored by its best-matching example (max-sim), which
-solves the short-vs-long embedding mismatch that occurs when comparing
-a terse 10-word claim against a 200-word provider description.
+.. deprecated::
+    This module is no longer used by the live pipeline. Provider selection
+    is now handled by the ``epistemic_select_provider`` focused agent in
+    ``PlanTaskOperation``, which makes a binary relevance judgment per
+    provider using the LLM. This is philosophically aligned with the
+    system's design principle: "if a component requires understanding
+    natural language, it is a judgment and must go through a focused agent."
 
-Public surface
---------------
-- :class:`ProviderScore` — per-provider ranking result (name, score, matched example).
-- :func:`rank_providers` — return all registered providers ranked by similarity.
-- :func:`select_providers` — return a top-K shortlist with web_search appended.
+    This module remains available as an optional fast path for batch runs
+    where LLM cost is a concern, but it is NOT the primary routing
+    mechanism and may be removed in a future version.
+
+    To use it directly::
+
+        from andamentum.epistemic.provider_routing import select_providers
+        providers = await select_providers(question, embedding_model="embeddinggemma:latest")
+
+Original design: ranks providers by comparing the research question against
+each provider's EXAMPLE QUERIES using embedding cosine similarity (max-sim).
 
 Caching
 -------
 Example-query embeddings are cached at module level keyed by
-``(embedding_model, provider_name, example_index)``. Examples are static
-during a process lifetime, so each is embedded at most once per model.
-Only the query embedding is computed per call.
+``(embedding_model, provider_name, example_index)``.
 """
 
 from __future__ import annotations
