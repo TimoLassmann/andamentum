@@ -616,6 +616,26 @@ async def run_research_question(
             if result.success:
                 successful += 1
                 scheduler.record_success(work.operation)
+                # Reset promote attempts when evidence landscape changes.
+                # When extraction judges supporting evidence, earlier promote
+                # failures may no longer be predictive.
+                if work.operation == "extract_evidence":
+                    try:
+                        ev = await repo.get("evidence", work.entity_id)
+                        if getattr(ev, "support_judgment", None) == "supports":
+                            claims = await repo.query(
+                                "claim", objective_id=ev.objective_id
+                            )
+                            for c in claims:
+                                if (
+                                    hasattr(c, "evidence_ids")
+                                    and ev.entity_id in c.evidence_ids
+                                ):
+                                    scheduler.reset_entity_attempts(
+                                        c.entity_id, "promote_claim"
+                                    )
+                    except Exception:
+                        pass  # Best effort — don't crash the runner
                 if progress_callback:
                     progress_callback(
                         work.operation,

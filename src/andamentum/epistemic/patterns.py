@@ -584,6 +584,24 @@ class PatternScheduler:
             self._entity_attempts.get((entity_id, operation), 0) >= MAX_ENTITY_ATTEMPTS
         )
 
+    def reset_entity_attempts(self, entity_id: str, operation: str | None = None) -> None:
+        """Reset attempt counters for an entity after epistemic state changes.
+
+        Called when new evidence is judged — earlier promote failures
+        may no longer be predictive because the gate inputs changed.
+
+        Args:
+            entity_id: Entity to reset
+            operation: If given, reset only this operation's counter.
+                       If None, reset ALL operation counters for this entity.
+        """
+        if operation is not None:
+            self._entity_attempts.pop((entity_id, operation), None)
+        else:
+            keys_to_remove = [k for k in self._entity_attempts if k[0] == entity_id]
+            for k in keys_to_remove:
+                del self._entity_attempts[k]
+
     async def get_pending_work(
         self, objective_id: Optional[str] = None
     ) -> list[WorkItem]:
