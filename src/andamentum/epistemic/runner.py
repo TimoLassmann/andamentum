@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from andamentum.core.models import resolve_model as _resolve_model
+
 if TYPE_CHECKING:
     from .preflight import CheckResult
 
@@ -37,76 +39,6 @@ class UsageSummary:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
-
-def _resolve_model(model: str) -> Any:
-    """Resolve model string to a pydantic-ai model object.
-
-    Handles provider-specific setup:
-    - ``ollama:`` — constructs an OllamaProvider with ``OLLAMA_BASE_URL``
-      defaulted to ``http://localhost:11434/v1`` so a local Ollama works
-      out of the box without requiring the env var to be set.
-    - ``bedrock:`` — resolves friendly name to full Bedrock model ID,
-      adds regional prefix, and creates a BedrockConverseModel with
-      proper boto3 session (profile + region from env or defaults)
-    - everything else — passed through to pydantic-ai's infer_model
-    """
-    import os
-
-    if isinstance(model, str) and model.startswith("ollama:"):
-        from pydantic_ai.models.openai import OpenAIChatModel
-        from pydantic_ai.providers.ollama import OllamaProvider
-
-        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        model_name = model.split(":", 1)[1]
-        return OpenAIChatModel(
-            model_name=model_name, provider=OllamaProvider(base_url=base_url)
-        )
-
-    if isinstance(model, str) and model.startswith("bedrock:"):
-        import boto3
-        from pydantic_ai.models.bedrock import BedrockConverseModel
-        from pydantic_ai.providers.bedrock import BedrockProvider
-
-        friendly_name = model.split(":", 1)[1]
-        profile = os.environ.get("AWS_PROFILE")  # None → boto3 default chain
-        region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION")
-
-        # Friendly name → full Bedrock model ID
-        bedrock_model_map = {
-            "claude-haiku-3-5": "anthropic.claude-3-haiku-20240307-v1:0",
-            "claude-sonnet-3-5": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "claude-haiku-4-5": "anthropic.claude-haiku-4-5-20251001-v1:0",
-            "claude-sonnet-4-5": "anthropic.claude-sonnet-4-5-20250929-v1:0",
-            "claude-opus-4-5": "anthropic.claude-opus-4-5-20251101-v1:0",
-            "qwen3-32b": "qwen.qwen3-32b-v1:0",
-            "mistral-7b": "mistral.mistral-7b-instruct-v0:2",
-            "ministral-8b": "mistral.ministral-3-8b-instruct",
-            "gemma-3-12b": "google.gemma-3-12b-it",
-        }
-        # Regional inference profile prefix for non-US regions
-        region_prefix_map = {
-            "ap-southeast-2": "au",
-            "eu-west-1": "eu",
-            "eu-central-1": "eu",
-            "ap-northeast-1": "ap",
-        }
-
-        mapped = bedrock_model_map.get(friendly_name)
-        if mapped:
-            # Known Claude model — apply regional inference profile prefix if needed
-            prefix = region_prefix_map.get(region, "") if region else ""
-            model_id = f"{prefix}.{mapped}" if prefix else mapped
-        else:
-            # Not in map — treat friendly_name as a raw Bedrock model ID (no prefix)
-            model_id = friendly_name
-
-        session = boto3.Session(profile_name=profile, region_name=region)
-        client = session.client("bedrock-runtime", region_name=region)
-        return BedrockConverseModel(
-            model_id, provider=BedrockProvider(bedrock_client=client)
-        )
-
-    return model
 
 
 class DefaultAgentRunner:

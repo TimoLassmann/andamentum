@@ -11,27 +11,7 @@ Architecture: Layer 1 (standalone package runner)
 from typing import Any
 
 
-def _resolve_model(model: str) -> Any:
-    """Resolve model string to a pydantic-ai model object.
-
-    pydantic-ai's ``ollama:`` prefix requires ``OLLAMA_BASE_URL``. We
-    default it to ``http://localhost:11434/v1`` so a local Ollama works
-    out of the box. Other prefixes are passed through to pydantic-ai's
-    infer_model.
-    """
-    import os
-
-    if isinstance(model, str) and model.startswith("ollama:"):
-        from pydantic_ai.models.openai import OpenAIChatModel
-        from pydantic_ai.providers.ollama import OllamaProvider
-
-        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        model_name = model.split(":", 1)[1]
-        return OpenAIChatModel(
-            model_name=model_name, provider=OllamaProvider(base_url=base_url)
-        )
-
-    return model
+from andamentum.core.models import resolve_model as _resolve_model
 
 
 class DefaultResearchRunner:

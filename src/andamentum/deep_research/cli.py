@@ -57,17 +57,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_model(args: argparse.Namespace) -> str:
-    import os
-    import sys
+    from andamentum.core.models import resolve_model_from_args
 
-    model = args.model or os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL")
-    if not model:
-        print(
-            "Error: --model is required (or set ANDAMENTUM_MAIN_LLM_MODEL environment variable)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return model
+    return resolve_model_from_args(args.model)
 
 
 def _list_agents() -> None:
