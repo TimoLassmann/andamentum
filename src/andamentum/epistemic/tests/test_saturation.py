@@ -1,75 +1,34 @@
-"""Tests for the investigation saturation check.
+"""Tests for investigation cycle limiting.
 
-When investigation cycles stop producing useful information (all blocking
-uncertainties resolved but verdict still needs_resolution), the claim should
-be marked as saturated to prevent further wasteful investigation cycles.
+Investigation cycles are capped by MAX_INVESTIGATION_ATTEMPTS=3 in
+InvestigateClaimOperation. After 3 cycles, the claim is abandoned.
+No other mechanism (saturation, etc.) limits investigation.
 """
 
 import pytest
 
-from ..storage import InMemoryStorageBackend
-from ..repository import EpistemicRepository
-from ..entities.objective import Objective
 from ..entities.claim import Claim
-from ..entities.evidence import Evidence
-from ..entities.uncertainty import Uncertainty, UncertaintyType
+from ..entities.objective import Objective
 from ..primitives import ClaimStage
-from ..operations import ScrutiniseClaimOperation
+from ..operations.investigation import InvestigateClaimOperation
+from ..operations.base import MAX_INVESTIGATION_ATTEMPTS
 from ..patterns import WorkItem, WORK_PATTERNS
 
 
-# ---------------------------------------------------------------------------
-# Helper: build a FakeAgentRunner that forces a specific scrutiny verdict
-# ---------------------------------------------------------------------------
-
-
-def _make_runner(verdict: str = "needs_resolution"):
-    """Build a FakeAgentRunner override dict that produces the given verdict.
-
-    The split-scrutiny path computes the verdict deterministically:
-      - evidence_weight in (strong, moderate) -> pass
-      - evidence_weight == conflicting          -> fail
-      - anything else                           -> needs_resolution
-    """
-    if verdict == "pass":
-        weight = "moderate"
-    elif verdict == "fail":
-        weight = "conflicting"
-    else:
-        weight = "weak"
-
-    from .conftest import FakeAgentRunner
-
-    return FakeAgentRunner(
-        overrides={
-            "epistemic_assess_evidence": {
-                "claim_id": "c-1",
-                "evidence_weight": weight,
-                "confidence_estimate": 0.3,
-                "justification": "test",
-            },
-        }
-    )
-
-
-# ---------------------------------------------------------------------------
-# Saturation logic tests
-# ---------------------------------------------------------------------------
-
-
-class TestSaturationCheck:
+class TestInvestigationCap:
     @pytest.fixture
     def backend(self):
+        from ..storage import InMemoryStorageBackend
         return InMemoryStorageBackend()
 
     @pytest.fixture
     def repo(self, backend):
+        from ..repository import EpistemicRepository
         return EpistemicRepository(backend)
 
     @pytest.mark.asyncio
-    async def test_saturated_when_no_unresolved_blocking(self, repo):
-        """Claim should be saturated when investigation_count >= 2,
-        verdict=needs_resolution, and all blocking uncertainties are resolved."""
+    async def test_investigation_exhausted_abandons_claim(self, repo):
+        """After MAX_INVESTIGATION_ATTEMPTS, claim is abandoned."""
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
 
@@ -77,47 +36,26 @@ class TestSaturationCheck:
             statement="test claim",
             objective_id=obj.entity_id,
             stage=ClaimStage.HYPOTHESIS,
-            investigation_count=2,
+            scrutiny_verdict="needs_resolution",
+            investigation_count=MAX_INVESTIGATION_ATTEMPTS,
         )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
         await repo.save(claim)
 
-        # Create a resolved blocking uncertainty
-        unc = Uncertainty(
-            objective_id=obj.entity_id,
-            uncertainty_type=UncertaintyType.UNKNOWN,
-            description="Missing data",
-            affected_claim_ids=[claim.entity_id],
-            is_blocking=True,
-        )
-        unc.resolve("Unresolvable: acknowledged limitation")
-        await repo.save(unc)
-
-        runner = _make_runner(verdict="needs_resolution")
-        op = ScrutiniseClaimOperation(repo, runner)
+        op = InvestigateClaimOperation(repo=repo, agent_runner=None)
         work = WorkItem(
             entity_id=claim.entity_id,
             entity_type="claim",
-            operation="scrutinise_claim",
+            operation="investigate_claim",
         )
-        await op.execute(work)
+        result = await op.execute(work)
 
+        assert result.success
         updated = await repo.get("claim", claim.entity_id)
-        assert updated.saturated is True
+        assert updated.abandoned is True
 
     @pytest.mark.asyncio
-    async def test_not_saturated_at_investigation_count_1(self, repo):
-        """Claim should NOT be saturated after only 1 investigation cycle —
-        one cycle may not find the right evidence, the system deserves
-        a second chance."""
+    async def test_investigation_below_cap_continues(self, repo):
+        """Below MAX_INVESTIGATION_ATTEMPTS, investigation proceeds."""
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
 
@@ -125,223 +63,50 @@ class TestSaturationCheck:
             statement="test claim",
             objective_id=obj.entity_id,
             stage=ClaimStage.HYPOTHESIS,
+            scrutiny_verdict="needs_resolution",
             investigation_count=1,
         )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
         await repo.save(claim)
 
-        # All blocking uncertainties resolved — but investigation_count is only 1
-        unc = Uncertainty(
-            objective_id=obj.entity_id,
-            uncertainty_type=UncertaintyType.UNKNOWN,
-            description="Missing data",
-            affected_claim_ids=[claim.entity_id],
-            is_blocking=True,
-        )
-        unc.resolve("Resolved")
-        await repo.save(unc)
-
-        runner = _make_runner(verdict="needs_resolution")
-        op = ScrutiniseClaimOperation(repo, runner)
+        # With no agent_runner, investigation creates no stubs but still
+        # increments count and resets scrutiny
+        op = InvestigateClaimOperation(repo=repo, agent_runner=None)
         work = WorkItem(
             entity_id=claim.entity_id,
             entity_type="claim",
-            operation="scrutinise_claim",
+            operation="investigate_claim",
         )
-        await op.execute(work)
+        result = await op.execute(work)
 
+        assert result.success
         updated = await repo.get("claim", claim.entity_id)
-        assert updated.saturated is False
-
-    @pytest.mark.asyncio
-    async def test_not_saturated_when_blocking_unresolved(self, repo):
-        """Claim should NOT be saturated if there are still unresolved
-        blocking uncertainties (even at investigation_count >= 2)."""
-        obj = Objective(description="test", phase="claims_proposed")
-        await repo.save(obj)
-
-        claim = Claim(
-            statement="test claim",
-            objective_id=obj.entity_id,
-            stage=ClaimStage.HYPOTHESIS,
-            investigation_count=2,
-        )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
-        await repo.save(claim)
-
-        # Create an UNRESOLVED blocking uncertainty
-        unc = Uncertainty(
-            objective_id=obj.entity_id,
-            uncertainty_type=UncertaintyType.UNKNOWN,
-            description="Missing data",
-            affected_claim_ids=[claim.entity_id],
-            is_blocking=True,
-        )
-        await repo.save(unc)
-
-        runner = _make_runner(verdict="needs_resolution")
-        op = ScrutiniseClaimOperation(repo, runner)
-        work = WorkItem(
-            entity_id=claim.entity_id,
-            entity_type="claim",
-            operation="scrutinise_claim",
-        )
-        await op.execute(work)
-
-        updated = await repo.get("claim", claim.entity_id)
-        assert updated.saturated is False
-
-    @pytest.mark.asyncio
-    async def test_not_saturated_on_first_scrutiny(self, repo):
-        """First-time scrutiny (investigation_count=0) should never set saturated."""
-        obj = Objective(description="test", phase="claims_proposed")
-        await repo.save(obj)
-
-        claim = Claim(
-            statement="test claim",
-            objective_id=obj.entity_id,
-            stage=ClaimStage.HYPOTHESIS,
-            investigation_count=0,
-        )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
-        await repo.save(claim)
-
-        runner = _make_runner(verdict="needs_resolution")
-        op = ScrutiniseClaimOperation(repo, runner)
-        work = WorkItem(
-            entity_id=claim.entity_id,
-            entity_type="claim",
-            operation="scrutinise_claim",
-        )
-        await op.execute(work)
-
-        updated = await repo.get("claim", claim.entity_id)
-        assert updated.saturated is False
-
-    @pytest.mark.asyncio
-    async def test_not_saturated_when_verdict_passes(self, repo):
-        """If scrutiny passes, saturation check doesn't trigger."""
-        obj = Objective(description="test", phase="claims_proposed")
-        await repo.save(obj)
-
-        claim = Claim(
-            statement="test claim",
-            objective_id=obj.entity_id,
-            stage=ClaimStage.HYPOTHESIS,
-            investigation_count=1,
-        )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
-        await repo.save(claim)
-
-        runner = _make_runner(verdict="pass")
-        op = ScrutiniseClaimOperation(repo, runner)
-        work = WorkItem(
-            entity_id=claim.entity_id,
-            entity_type="claim",
-            operation="scrutinise_claim",
-        )
-        await op.execute(work)
-
-        updated = await repo.get("claim", claim.entity_id)
-        assert updated.saturated is False
-
-    @pytest.mark.asyncio
-    async def test_not_saturated_with_only_nonblocking_unresolved(self, repo):
-        """Non-blocking uncertainties (even if unresolved) should not prevent saturation."""
-        obj = Objective(description="test", phase="claims_proposed")
-        await repo.save(obj)
-
-        claim = Claim(
-            statement="test claim",
-            objective_id=obj.entity_id,
-            stage=ClaimStage.HYPOTHESIS,
-            investigation_count=2,
-        )
-        ev = Evidence(
-            objective_id=obj.entity_id,
-            extracted=True,
-            extracted_content="test evidence",
-            quality_score=0.5,
-        )
-        await repo.save(ev)
-        claim.evidence_ids = [ev.entity_id]
-        claim.evidence_count = 1
-        await repo.save(claim)
-
-        # Create an unresolved NON-BLOCKING uncertainty
-        unc = Uncertainty(
-            objective_id=obj.entity_id,
-            uncertainty_type=UncertaintyType.EVIDENCE_GAP,  # Non-blocking type
-            description="Could use more evidence",
-            affected_claim_ids=[claim.entity_id],
-        )
-        await repo.save(unc)
-
-        runner = _make_runner(verdict="needs_resolution")
-        op = ScrutiniseClaimOperation(repo, runner)
-        work = WorkItem(
-            entity_id=claim.entity_id,
-            entity_type="claim",
-            operation="scrutinise_claim",
-        )
-        await op.execute(work)
-
-        updated = await repo.get("claim", claim.entity_id)
-        # Non-blocking uncertainties don't count — claim should be saturated
-        assert updated.saturated is True
+        assert updated.abandoned is False
+        assert updated.investigation_count == 2
+        assert updated.scrutiny_verdict is None
 
 
-# ---------------------------------------------------------------------------
-# Pattern filter tests
-# ---------------------------------------------------------------------------
-
-
-class TestSaturationPatternFilter:
-    def test_investigation_pattern_excludes_saturated(self):
-        """Investigation patterns should have saturated=False filter."""
+class TestInvestigationPatternFilters:
+    def test_investigation_pattern_has_no_saturation_filter(self):
+        """Investigation patterns should NOT have a saturated filter."""
         investigate_patterns = [
             p for p in WORK_PATTERNS if p.operation == "investigate_claim"
         ]
         assert len(investigate_patterns) >= 1
         for p in investigate_patterns:
-            assert p.filters.get("saturated") is False, (
-                f"Pattern '{p.description}' missing saturated=False filter"
+            assert "saturated" not in p.filters, (
+                f"Pattern '{p.description}' has saturated filter — should be removed"
             )
 
-    def test_saturated_claim_does_not_match_investigation(self):
-        """A saturated claim should not match investigation patterns."""
+    def test_investigation_pattern_has_count_limit(self):
+        """Investigation patterns must have investigation_count__lt filter."""
+        investigate_patterns = [
+            p for p in WORK_PATTERNS if p.operation == "investigate_claim"
+        ]
+        for p in investigate_patterns:
+            assert "investigation_count__lt" in p.filters
+
+    def test_exhausted_claim_does_not_match_investigation(self):
+        """A claim with investigation_count >= 3 should not match investigation patterns."""
         investigate_patterns = [
             p for p in WORK_PATTERNS if p.operation == "investigate_claim"
         ]
@@ -350,19 +115,15 @@ class TestSaturationPatternFilter:
             objective_id="obj-1",
             stage=ClaimStage.HYPOTHESIS,
             scrutiny_verdict="needs_resolution",
-            investigation_count=2,
-            saturated=True,
+            investigation_count=3,
         )
         for pattern in investigate_patterns:
-            assert not pattern.matches(claim), (
-                f"Saturated claim should not match pattern: {pattern.description}"
-            )
+            assert not pattern.matches(claim)
 
-    def test_unsaturated_claim_matches_investigation(self):
-        """A non-saturated claim should still match investigation patterns."""
+    def test_below_cap_matches_investigation(self):
+        """A claim with investigation_count < 3 should match investigation patterns."""
         needs_resolution_patterns = [
-            p
-            for p in WORK_PATTERNS
+            p for p in WORK_PATTERNS
             if p.operation == "investigate_claim"
             and p.filters.get("scrutiny_verdict") == "needs_resolution"
         ]
@@ -373,9 +134,6 @@ class TestSaturationPatternFilter:
             stage=ClaimStage.HYPOTHESIS,
             scrutiny_verdict="needs_resolution",
             investigation_count=1,
-            saturated=False,
         )
         for pattern in needs_resolution_patterns:
-            assert pattern.matches(claim), (
-                f"Non-saturated claim should match pattern: {pattern.description}"
-            )
+            assert pattern.matches(claim)

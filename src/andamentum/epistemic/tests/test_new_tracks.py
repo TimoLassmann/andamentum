@@ -419,15 +419,3 @@ class TestEvidenceClusterFields:
         assert restored.cluster_id == "cluster-abc"
         assert restored.corroboration_count == 5
         assert restored.corroborating_sources == ["url1", "url2"]
-
-
-class TestClaimSaturatedField:
-    def test_saturated_defaults_false(self):
-        claim = Claim(statement="test", objective_id="obj-1")
-        assert claim.saturated is False
-
-    def test_saturated_roundtrip(self):
-        claim = Claim(statement="test", objective_id="obj-1", saturated=True)
-        content, metadata = claim.to_document()
-        restored = Claim.from_document(content, metadata)
-        assert restored.saturated is True

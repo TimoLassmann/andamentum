@@ -183,19 +183,18 @@ WORK_PATTERNS: list[Pattern] = [
     # PHASE 3b: INVESTIGATION (Peirce inquiry cycling)
     # When scrutiny produces doubt, investigate evidence gaps
     # ══════════════════════════════════════════════════════════════════
-    # needs_resolution at any stage → investigate (unless saturated)
+    # needs_resolution at any stage → investigate
     Pattern(
         entity_type="claim",
         filters={
             "scrutiny_verdict": "needs_resolution",
             "investigation_count__lt": 3,
             "abandoned": False,
-            "saturated": False,
         },
         operation="investigate_claim",
         description="Investigate evidence gaps after ambiguous scrutiny",
     ),
-    # fail at HYPOTHESIS → investigate (can't demote below HYPOTHESIS, unless saturated)
+    # fail at HYPOTHESIS → investigate (can't demote below HYPOTHESIS)
     Pattern(
         entity_type="claim",
         filters={
@@ -203,7 +202,6 @@ WORK_PATTERNS: list[Pattern] = [
             "stage": ClaimStage.HYPOTHESIS.value,
             "investigation_count__lt": 3,
             "abandoned": False,
-            "saturated": False,
         },
         operation="investigate_claim",
         description="Investigate failed hypothesis before abandoning",

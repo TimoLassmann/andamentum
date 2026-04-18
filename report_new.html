@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Will AI take all jobs?</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background: #f9f7f4;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Document wrapper ───────────────────────────────────────────────── */
+
+.typeset-document {
+    font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    background: #f9f7f4;
+    color: #2b2b2b;
+    line-height: 1.85;
+    font-size: 19px;
+    -webkit-font-smoothing: antialiased;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 40px;
+}
+
+/* ── Heading block ──────────────────────────────────────────────────── */
+
+.typeset-heading {
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e8e4de;
+}
+
+.typeset-heading h1 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.25;
+    margin: 0 0 12px;
+    letter-spacing: -0.3px;
+}
+
+.typeset-subtitle {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 20px;
+    color: #555;
+    margin: 0 0 8px;
+    line-height: 1.5;
+    font-weight: 400;
+}
+
+.typeset-meta {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    color: #999;
+    margin: 8px 0 0;
+}
+
+/* ── Prose (markdown body) ──────────────────────────────────────────── */
+
+.typeset-prose {
+    margin: 0 0 32px;
+}
+
+.typeset-prose h2 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 48px 0 16px;
+}
+
+.typeset-prose h3 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: #2b2b2b;
+    margin: 32px 0 10px;
+}
+
+.typeset-prose p {
+    margin: 0 0 16px;
+}
+
+.typeset-prose ul,
+.typeset-prose ol {
+    margin: 0.5em 0;
+    padding-left: 1.6em;
+}
+
+.typeset-prose li {
+    margin-bottom: 0.25em;
+}
+
+.typeset-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 15px;
+}
+
+.typeset-prose thead {
+    display: table-header-group;
+}
+
+.typeset-prose th {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 2px solid #d4d0c8;
+    font-weight: 600;
+    color: #1a1a1a;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.typeset-prose td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #ebe7e0;
+    vertical-align: top;
+}
+
+.typeset-prose tr:nth-child(even) {
+    background: #f4f1ec;
+}
+
+.typeset-prose code {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 0.875em;
+    background: #f0ede8;
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.typeset-prose pre {
+    background: #f0ede8;
+    padding: 14px 18px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.typeset-prose pre code {
+    background: none;
+    padding: 0;
+}
+
+.typeset-prose blockquote {
+    margin: 20px 0;
+    padding: 0 0 0 20px;
+    border-left: 2px solid #d4d0c8;
+    color: #555;
+    font-style: italic;
+}
+
+.typeset-prose a {
+    color: #7c6a4f;
+    text-decoration: none;
+    border-bottom: 1px solid #d4d0c8;
+}
+
+.typeset-prose a:hover {
+    color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+}
+
+.typeset-prose strong {
+    font-weight: 700;
+}
+
+.typeset-prose em {
+    font-style: italic;
+}
+
+.typeset-prose hr {
+    border: none;
+    border-top: 1px solid #e8e4de;
+    margin: 2em 0;
+}
+
+.typeset-prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1.5em auto;
+    border-radius: 4px;
+}
+
+/* ── Callout ────────────────────────────────────────────────────────── */
+/* Default (no tone): reads as a natural opening paragraph, not a box. */
+/* Matches the epistemic report's verdict styling exactly.              */
+
+.typeset-callout {
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.65;
+    margin: 0 0 32px;
+    color: #1a1a1a;
+}
+
+.typeset-callout p {
+    margin: 0;
+}
+
+/* Tone variants: subtle box with thin left accent.                    */
+
+.typeset-callout.tone-info {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
+    background: #eef3fa;
+    border-left: 3px solid #9bbad4;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.typeset-callout.tone-warning {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
+    background: #fdf8ef;
+    border-left: 3px solid #d4bf7a;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.typeset-callout.tone-success {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
+    background: #eef7f0;
+    border-left: 3px solid #7ab890;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.typeset-callout.tone-note {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px 20px;
+    background: #f4f1ec;
+    border-left: 3px solid #c4b99a;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.typeset-callout.tone-quote {
+    padding: 0 0 0 20px;
+    border-left: 2px solid #d4d0c8;
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-style: italic;
+    color: #555;
+}
+
+/* ── Items ──────────────────────────────────────────────────────────── */
+
+.typeset-items {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 0 0 40px;
+    padding: 20px 24px;
+    background: #f4f1ec;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.typeset-item {
+    margin-bottom: 12px;
+}
+
+.typeset-item:last-child {
+    margin-bottom: 0;
+}
+
+/* variant-pairs: label above, value below */
+.typeset-items.variant-pairs .typeset-item-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+}
+
+.typeset-items.variant-pairs .typeset-item-body {
+    font-size: 16px;
+    color: #555;
+}
+
+.typeset-items .typeset-item-body p {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 4px 0 0 0;
+}
+
+/* variant-right: body left, label right-aligned */
+.item-right {
+    display: flex;
+    align-items: baseline;
+}
+
+.item-right .typeset-item-body {
+    flex: 1;
+    font-size: 16px;
+    color: #2b2b2b;
+}
+
+.item-right .typeset-item-label {
+    width: 100px;
+    text-align: right;
+    flex-shrink: 0;
+    color: #999;
+    font-size: 13px;
+}
+
+/* variant-left: label left, body right */
+.item-left {
+    display: flex;
+    align-items: baseline;
+}
+
+.item-left .typeset-item-label {
+    width: 100px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: #999;
+}
+
+.item-left .typeset-item-body {
+    flex: 1;
+    font-size: 16px;
+    color: #2b2b2b;
+}
+
+/* ── Aside (content mode) ───────────────────────────────────────────── */
+
+.typeset-aside {
+    margin: 24px 0;
+    padding: 16px 20px;
+    background: #f4f1ec;
+    border-radius: 6px;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #555;
+}
+
+/* ── Sidebar (groups / grid mode) ───────────────────────────────────── */
+
+.typeset-sidebar {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid #e8e4de;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #bbb;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+}
+
+.typeset-sidebar-group {
+    margin-bottom: 0;
+}
+
+.typeset-sidebar-title {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #ccc;
+    margin: 0 0 4px;
+}
+
+.typeset-sidebar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 11px;
+}
+
+.typeset-sidebar-label {
+    color: #bbb;
+}
+
+.typeset-sidebar-value {
+    font-weight: 500;
+    color: #999;
+}
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+
+.typeset-card {
+    margin: 16px 0;
+    padding: 0 0 16px;
+    border-bottom: 1px solid #ebe7e0;
+}
+
+.typeset-card:last-child {
+    border-bottom: none;
+}
+
+.typeset-card-body {
+    line-height: 1.75;
+    color: #2b2b2b;
+}
+
+.typeset-badge {
+    display: inline-block;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: #f0ede8;
+    color: #888;
+}
+
+.typeset-badge[data-value="supports"],
+.typeset-badge[data-value="supported"],
+.typeset-badge[data-value="pass"],
+.typeset-badge[data-value="approved"] {
+    color: #1a7a3a;
+    background: #eef7f0;
+}
+
+.typeset-badge[data-value="contradicts"],
+.typeset-badge[data-value="contradicted"],
+.typeset-badge[data-value="challenged"],
+.typeset-badge[data-value="fail"],
+.typeset-badge[data-value="rejected"] {
+    color: #b91c1c;
+    background: #fef2f2;
+}
+
+.typeset-refs {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 12px;
+    color: #999;
+}
+
+.typeset-refs a {
+    color: #999;
+    text-decoration: none;
+}
+
+.typeset-refs a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+.typeset-card-source {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 12px;
+    color: #888;
+    word-break: break-all;
+    margin-top: 4px;
+}
+
+.typeset-card-source a {
+    color: #888;
+    text-decoration: none;
+}
+
+.typeset-card-source a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+.typeset-card-details {
+    margin-top: 8px;
+}
+
+.typeset-card-details summary {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    color: #999;
+    cursor: pointer;
+}
+
+.typeset-card-details summary:hover {
+    color: #555;
+}
+
+.typeset-card-details[open] summary {
+    margin-bottom: 8px;
+}
+
+/* ── Reference ──────────────────────────────────────────────────────── */
+
+.typeset-reference {
+    display: flex;
+    font-size: 17px;
+    margin: 12px 0;
+    padding: 12px 0;
+    border-bottom: 1px solid #ebe7e0;
+}
+
+.typeset-reference:last-child {
+    border-bottom: none;
+}
+
+.typeset-ref-number {
+    width: 36px;
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #999;
+    font-family: 'Inter', system-ui, sans-serif;
+    text-align: right;
+    padding-right: 10px;
+}
+
+.typeset-ref-content {
+    flex: 1;
+}
+
+.typeset-ref-body {
+    line-height: 1.75;
+    color: #333;
+    font-size: 17px;
+}
+
+.typeset-ref-source {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+    word-break: break-all;
+}
+
+.typeset-ref-source a {
+    color: #666;
+    text-decoration: none;
+}
+
+.typeset-ref-source a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+/* ── Reference group ────────────────────────────────────────────────── */
+
+.typeset-reference-group {
+    margin: 16px 0;
+}
+
+.typeset-ref-group-label {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 8px;
+}
+
+/* ── Print ──────────────────────────────────────────────────────────── */
+
+@media print {
+    .typeset-document {
+        padding: 0;
+        background: #fff;
+        font-size: 11pt;
+    }
+    .typeset-sidebar { display: none; }
+    h1, h2, h3 { page-break-after: avoid; }
+    .typeset-reference,
+    .typeset-card { page-break-inside: avoid; }
+    p { orphans: 3; widows: 3; }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .typeset-document { padding: 32px 16px; }
+    .typeset-heading h1 { font-size: 26px; }
+    .typeset-sidebar { grid-template-columns: 1fr; }
+}
+
+</style>
+</head>
+<body>
+<article class="typeset-document">
+<header class="typeset-heading">
+<h1>Will AI take all jobs?</h1>
+<p class="typeset-meta">2026-04-18 12:40 &middot; openai:gpt-5.4-mini &middot; ask_c750fdeb</p>
+</header>
+
+<aside class="typeset-callout">
+<p>No. The evidence supports uneven AI exposure and displacement risk for some workers, not the elimination of all jobs.</p>
+</aside>
+
+<aside class="typeset-callout tone-note">
+<p>This is a prediction or forecast</p>
+</aside>
+
+<div class="typeset-items variant-pairs">
+  <div class="typeset-item item-pairs">
+    <div class="typeset-item-label">What was studied?</div>
+    <div class="typeset-item-body">Will AI take all jobs?</div>
+  </div>
+  <div class="typeset-item item-pairs">
+    <div class="typeset-item-label">What did we find?</div>
+    <div class="typeset-item-body">No. The evidence supports uneven AI exposure and displacement risk for some workers, not the elimination of all jobs.</div>
+  </div>
+  <div class="typeset-item item-pairs">
+    <div class="typeset-item-label">How confident are we?</div>
+    <div class="typeset-item-body">High (1.00). Posterior confidence: 99.97%</div>
+  </div>
+  <div class="typeset-item item-pairs">
+    <div class="typeset-item-label">How thorough was the investigation?</div>
+    <div class="typeset-item-body">24 evidence sources examined, 6/6 verification checks passed</div>
+  </div>
+</div>
+
+<h2>Summary</h2>
+<section class="typeset-prose">
+<p><strong>Research Question:</strong> <em>Will AI take all jobs?</em></p>
+<p><strong>Evidence Sources:</strong> 24 | <strong>Claims Established:</strong> 8 of 8</p>
+<blockquote>
+<p><strong>Research Question:</strong> Will AI take all jobs?
+<strong>Evidence Sources:</strong> 9 | <strong>Claims Established:</strong> 8 of 8</p>
+</blockquote>
+<p>No. The evidence supports uneven AI exposure and elevated displacement risk for specific workers, but it does not support the claim that AI will take all jobs.</p>
+<p>Across the strongest findings, AI risk is concentrated in particular occupations and worker groups. Low-paid workers are modeled as far more likely to lose jobs to AI than higher-paid workers, IT professionals in OECD countries show much higher exposure than cleaners and helpers, and workers in AI-exposed establishments are hiring more for AI-related vacancies while cutting non-AI hiring. Together, those results point to task reallocation, occupational reshuffling, and selective displacement, not universal job elimination.</p>
+<p>The broader labor-market evidence points in the same direction. Automation can raise productivity while lowering labor demand and labor’s share of value added, and one estimate identifies millions of workers who face both high LLM exposure and low adaptive capacity. That signals meaningful risk for some roles, but it still falls short of showing that AI will remove work across the economy.</p>
+<p>One caveat remains unresolved. The finding that workers aged 15 to 29 are concentrated in the least AI-exposed occupations does not establish that they are less likely than older workers to face near-term displacement. Exposure is not the same as job loss, so that inference stays open. The practical bottom line is simple: AI is likely to transform some jobs and put some workers at risk, but the claim that it will take all jobs is not supported.</p>
+</section>
+
+<h2>Findings</h2>
+<section class="typeset-prose">
+<p>The investigation produced 8 distinct findings, each traced to specific evidence sources. Findings are ordered by strength of support.</p>
+</section>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>In the modeled scenario, AI job loss risk is highly unequal across occupations, with low-paid workers about 14 times more likely than higher-paid workers to lose their jobs to AI.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+    <sup class="typeset-refs">1</sup>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Within the specific model described, comparing low-paid versus higher-paid workers' exposure to AI-driven job displacement</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>In OECD countries in 2022, IT technology professionals faced substantially higher AI exposure than cleaners and helpers, indicating that AI risk is unevenly distributed across occupations rather than uniformly threatening all jobs.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Across the 22 OECD countries in 2022, comparing occupational AI exposure scores for IT technology professionals and cleaners/helpers.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>Among workers aged 15–29, employment is disproportionately concentrated in occupations least exposed to AI rather than in occupations most exposed to AI, suggesting younger workers are less likely to be immediately affected by AI-driven job displacement than older workers in this labor market segment.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Applies to occupations classified by relative AI exposure and to workers aged 15–29 years in the studied labor market context.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>Workers in the most AI-exposed occupations have, on average, greater adaptive capacity to transition to new jobs and limit post-displacement earnings losses than workers in less AI-exposed occupations.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+    <sup class="typeset-refs">2</sup>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Across occupations with the highest exposure to AI, relative to the rest of the workforce, and specifically for job-transition and post-displacement earnings outcomes.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>A substantial number of workers—about 6.1 million—are highly exposed to LLM-driven job change while also having low adaptive capacity to transition into other roles, indicating elevated displacement risk rather than universal job elimination.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Across the current workforce, focusing on occupations with high exposure to large language models and low capacity for occupational adaptation or transition</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>In labor markets, automation can raise productivity while reducing the labor share of value added and overall labor demand.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+    <sup class="typeset-refs">3</sup>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Across occupations and industries where tasks are susceptible to automation, holding other labor market conditions constant.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>As establishments adopt AI, they increase hiring for AI-related vacancies while reducing hiring for non-AI positions, indicating task reallocation rather than full job replacement from 2010 to 2018.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+    <sup class="typeset-refs">4</sup>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> AI-exposed establishments in the 2010-2018 period, comparing AI-related versus non-AI vacancies and hiring patterns.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<div class="typeset-card">
+  <div class="typeset-card-body">
+    <p>Advances in technology, including AI, are likely to cause significant worker dislocation rather than preserve current employment patterns across occupations.</p>
+    <span class="typeset-badge" data-value="supported">supported</span>
+    <sup class="typeset-refs">5</sup>
+  </div>
+  <details class="typeset-card-details">
+    <summary>Details</summary>
+    <p><strong>Scope:</strong> Across the labor market overall, especially in occupations exposed to technological substitution.</p>
+<p><strong>Verification:</strong> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</p>
+  </details>
+</div>
+
+<h2>Sources</h2>
+<section class="typeset-prose">
+
+</section>
+
+<section class="typeset-prose">
+<h4 id="supporting">Supporting</h4>
+</section>
+
+<div class="typeset-reference">
+  <div class="typeset-ref-number">1.</div>
+  <div class="typeset-ref-content">
+    <div class="typeset-ref-body">web_search  quality: 0.74</p>
+<p>The evidence directly states that within the model low-paid workers were around 14 times more likely than higher-paid workers to lose their jobs due to AI, which matches the claim exactly.</p>
+<p><em>Web source; passage extracted from larger page</em></div>
+    <span class="typeset-badge" data-value="supports">supports</span>
+    <div class="typeset-ref-source"><a href="https://www.aph.gov.au/About_Parliament/Parliamentary_departments/Parliamentary_Library/Research/Issues_and_Insights/48th_Parliament/potentialimpactofArtificialIntelligence">https://www.aph.gov.au/About_Parliament/Parliamentary_departments/Parliamentary_Library/Research/Issues_and_Insights/48th_Parliament/potentialimpactofArtificialIntelligence</a></div>
+  </div>
+</div>
+
+<div class="typeset-reference">
+  <div class="typeset-ref-number">2.</div>
+  <div class="typeset-ref-content">
+    <div class="typeset-ref-body">web_search  quality: 0.82</p>
+<p>The Brookings/NBER evidence explicitly says that workers with the highest AI exposure have higher capacity to navigate job transitions successfully and minimize earnings losses after displacement, matching the claim.</p>
+<p><em>Web source; passage extracted from larger page</em></div>
+    <span class="typeset-badge" data-value="supports">supports</span>
+    <div class="typeset-ref-source"><a href="https://www.brookings.edu/articles/measuring-us-workers-capacity-to-adapt-to-ai-driven-job-displacement/">https://www.brookings.edu/articles/measuring-us-workers-capacity-to-adapt-to-ai-driven-job-displacement/</a></div>
+  </div>
+</div>
+
+<div class="typeset-reference">
+  <div class="typeset-ref-number">3.</div>
+  <div class="typeset-ref-content">
+    <div class="typeset-ref-body">openalex  quality: 0.62</p>
+<p>The evidence explicitly states that automation raises productivity while reducing the labor share in value added and may reduce labor demand, directly matching the claim.</p>
+<p><em>Abstract only; full text may contain more detail</em></div>
+    <span class="typeset-badge" data-value="supports">supports</span>
+    <div class="typeset-ref-source"><a href="doi:10.1257/jep.33.2.3">doi:10.1257/jep.33.2.3</a></div>
+  </div>
+</div>
+
+<div class="typeset-reference">
+  <div class="typeset-ref-number">4.</div>
+  <div class="typeset-ref-content">
+    <div class="typeset-ref-body">openalex  quality: 0.60</p>
+<p>The evidence explicitly says AI-exposed establishments saw rapid growth in AI-related vacancies while simultaneously reducing hiring in non-AI positions from 2010–18, matching the claim's task-reallocation pattern.</p>
+<p><em>Abstract only; full text may contain more detail</em></div>
+    <span class="typeset-badge" data-value="supports">supports</span>
+    <div class="typeset-ref-source"><a href="doi:10.1086/718327">doi:10.1086/718327</a></div>
+  </div>
+</div>
+
+<div class="typeset-reference">
+  <div class="typeset-ref-number">5.</div>
+  <div class="typeset-ref-content">
+    <div class="typeset-ref-body">openalex  quality: 0.55</p>
+<p>The evidence explicitly says emerging technologies will have disruptive effects and lead to significant worker dislocation, which aligns with the claim that advances in technology, including AI, are likely to displace workers rather than preserve current employment patterns.</p>
+<p><em>Abstract only; full text may contain more detail</em></div>
+    <span class="typeset-badge" data-value="supports">supports</span>
+    <div class="typeset-ref-source"><a href="doi:10.1146/annurev-orgpsych-041015-062352">doi:10.1146/annurev-orgpsych-041015-062352</a></div>
+  </div>
+</div>
+
+<h2>Open Questions</h2>
+<section class="typeset-prose">
+<ol>
+<li>
+<blockquote>
+<p><strong>Research Question:</strong> Will AI take all jobs?</p>
+</blockquote>
+</li>
+</ol>
+</section>
+
+<h2>Investigation Process</h2>
+<section class="typeset-prose">
+<p>This predictive question (what will happen) was investigated using 2 evidence providers (web_search (14), openalex (10)), collecting 24 evidence items. 
+8 claims were proposed from evidence clusters. All 8 claims passed skeptical review (scrutiny). 
+1 uncertainties were identified during the investigation. 0 were resolved through additional evidence gathering and analysis.</p>
+</section>
+
+<aside class="typeset-aside typeset-sidebar">
+  <div class="typeset-sidebar-group">
+    <div class="typeset-sidebar-title">Investigation</div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Evidence</span>
+      <span class="typeset-sidebar-value">24</span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Claims</span>
+      <span class="typeset-sidebar-value">8</span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Uncertainties</span>
+      <span class="typeset-sidebar-value">1</span>
+    </div>
+  </div>
+  <div class="typeset-sidebar-group">
+    <div class="typeset-sidebar-title">Confidence</div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Score</span>
+      <span class="typeset-sidebar-value">1.00 HIGH</span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">6/6 checks passed</span>
+      <span class="typeset-sidebar-value"></span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Posterior</span>
+      <span class="typeset-sidebar-value">99.97%</span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Claims supported</span>
+      <span class="typeset-sidebar-value">8</span>
+    </div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">Claims contradicted</span>
+      <span class="typeset-sidebar-value">0</span>
+    </div>
+  </div>
+  <div class="typeset-sidebar-group">
+    <div class="typeset-sidebar-title">Model</div>
+    <div class="typeset-sidebar-row">
+      <span class="typeset-sidebar-label">LLM</span>
+      <span class="typeset-sidebar-value">openai:gpt-5.4-mini</span>
+    </div>
+  </div>
+</aside>
+</article>
+</body>
+</html>

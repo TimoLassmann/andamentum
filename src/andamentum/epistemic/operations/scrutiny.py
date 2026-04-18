@@ -361,26 +361,6 @@ class ScrutiniseClaimOperation(BaseOperation):
             # No agent runner - pass by default
             claim.scrutiny_verdict = "pass"
 
-        # Saturation check: detect uninformative investigation cycles.
-        # After at least 2 investigation cycles, if scrutiny still returns
-        # "needs_resolution" but all blocking uncertainties have been resolved,
-        # investigation is not producing useful information. Mark as saturated.
-        # Threshold is >= 2 (not > 0) to give the system a fair chance —
-        # one cycle may not find the right evidence, two confirms the pattern.
-        if (
-            claim.investigation_count >= 2
-            and claim.scrutiny_verdict == "needs_resolution"
-        ):
-            blocking_unresolved = await self.repo.query(
-                "uncertainty",
-                affected_claim_ids__contains=claim.entity_id,
-                resolution=None,
-            )
-            blocking_unresolved = [u for u in blocking_unresolved if u.is_blocking]
-
-            if not blocking_unresolved:
-                claim.saturated = True
-
         await self.repo.save(claim)
 
         return OperationResult(

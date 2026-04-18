@@ -123,11 +123,6 @@ class Claim(EpistemicEntity):
         default=False,
         description="Whether routing defaults have been applied for this claim",
     )
-    saturated: bool = Field(
-        default=False,
-        description="Whether investigation has stopped producing new information",
-    )
-
     # Denormalized for pattern matching (updated on save via model_post_init)
     evidence_count: int = Field(
         default=0, description="Count of evidence_ids for pattern filtering"
@@ -236,7 +231,6 @@ class Claim(EpistemicEntity):
             self.contrastive_checked = False
             self.consistency_checked = False
             self.routing_applied = False
-            self.saturated = False
 
     def _extra_metadata(self) -> dict[str, Any]:
         """Add claim-specific metadata for filtering."""
@@ -257,7 +251,6 @@ class Claim(EpistemicEntity):
             "contrastive_checked": self.contrastive_checked,
             "consistency_checked": self.consistency_checked,
             "routing_applied": self.routing_applied,
-            "saturated": self.saturated,
             "argument_analyzed": self.argument_analyzed,
             "predictions_generated": self.predictions_generated,
             "decision_recorded": self.decision_recorded,
@@ -320,7 +313,6 @@ class Claim(EpistemicEntity):
             contrastive_checked=metadata.get("contrastive_checked", False),
             consistency_checked=metadata.get("consistency_checked", False),
             routing_applied=metadata.get("routing_applied", False),
-            saturated=metadata.get("saturated", False),
             confidence_score=metadata.get("confidence_score"),
             adversarial_balance=metadata.get("adversarial_balance"),
             argument_analyzed=metadata.get("argument_analyzed", False),
