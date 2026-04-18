@@ -44,17 +44,6 @@ _DATATYPE_TO_KIND: dict[str, str] = {
     "genetic_literature": "curated_genetic",
 }
 
-# Map confidence strings to quality score multipliers.
-_CONFIDENCE_MULTIPLIER: dict[str, float] = {
-    "high": 1.0,
-    "green": 1.0,
-    "medium": 0.8,
-    "amber": 0.8,
-    "low": 0.6,
-    "red": 0.5,
-}
-
-
 class OpenTargetsProvider:
     """Evidence provider using Open Targets Platform GraphQL API.
 
@@ -379,10 +368,6 @@ class OpenTargetsProvider:
                 f"{row.get('id', '')}"
             )
 
-        # Quality score: evidence score × confidence multiplier
-        conf_mult = _CONFIDENCE_MULTIPLIER.get(confidence.lower(), 0.7)
-        quality = min(score * conf_mult, 1.0)
-
         # Evidence kind from datatype
         evidence_kind = _DATATYPE_TO_KIND.get(datatype, "database_record")
 
@@ -414,7 +399,7 @@ class OpenTargetsProvider:
                 "drug": row.get("drugFromSource"),
                 "clinical_stage": row.get("clinicalStage"),
             },
-            quality_score=quality if quality > 0 else None,
+            quality_score=None,
             quality_metadata={
                 "evidence_score": score,
                 "confidence": confidence,

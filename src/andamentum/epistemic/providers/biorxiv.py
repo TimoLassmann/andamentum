@@ -165,7 +165,7 @@ class BioRxivProvider:
                                 "pubdate": pubdate,
                                 "server": self.server,
                             },
-                            quality_score=0.5,  # Preprint: not peer-reviewed
+                            quality_score=None,
                             quality_metadata={
                                 "peer_reviewed": False,
                                 "server": self.server,
@@ -237,7 +237,7 @@ class BioRxivProvider:
                             "published_doi": published or None,
                             "server": self.server,
                         },
-                        quality_score=0.55 if published else 0.5,
+                        quality_score=None,
                         quality_metadata={
                             "peer_reviewed": bool(published),
                             "version": version,

@@ -114,7 +114,7 @@ class MonarchProvider:
                         content=f"Monarch Initiative search failed: {e}",
                         source_ref=query,
                         source_type="monarch_initiative",
-                        quality_score=0.0,
+                        quality_score=None,
                         limitations=[f"API error: {e}"],
                     )
                 ]
@@ -171,7 +171,7 @@ class MonarchProvider:
                             "category": category,
                             "description": description,
                         },
-                        quality_score=0.7,
+                        quality_score=None,
                         quality_metadata={
                             "source": "monarch_initiative",
                             "entity_id": item_id,
@@ -265,7 +265,7 @@ class MonarchProvider:
                             "predicate": predicate,
                             "evidence_types": evidence_types,
                         },
-                        quality_score=0.7,
+                        quality_score=None,
                         quality_metadata={
                             "source": "monarch_initiative",
                             "subject_id": subject_id,

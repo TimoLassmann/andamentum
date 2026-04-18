@@ -163,7 +163,7 @@ class TestMonarchSearchParams:
         for r in results:
             assert isinstance(r, GatheredEvidence)
             assert r.source_type == "monarch_initiative"
-            assert r.quality_score == 0.7
+            assert r.quality_score is None  # providers don't pre-compute quality
 
     async def test_search_skips_items_without_name(self, monkeypatch):
         """Items missing 'name' field should be skipped."""
@@ -376,7 +376,7 @@ class TestOpenAlexProvider:
         assert results[0].source_type == "openalex"
         assert "Spaced Repetition Study" in results[0].content
         assert "Smith J" in results[0].content
-        assert results[0].quality_score == 0.75
+        assert results[0].quality_score is None  # providers don't pre-compute quality
         assert "doi:10.1234/test" in results[0].source_ref
         assert "PMID:12345" in results[0].source_ref
 

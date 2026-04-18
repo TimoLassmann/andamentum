@@ -200,7 +200,7 @@ class ClinicalTrialsProvider:
                 "has_results": has_results,
                 "brief_summary": brief_summary[:500],
             },
-            quality_score=quality,
+            quality_score=None,
             quality_metadata={
                 "phase": phase,
                 "has_results": has_results,
