@@ -257,6 +257,11 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "conflicts": False,
         "tension_point": "",
     },
+    "epistemic_integrate_evidence": {
+        "verdict": "supports",
+        "confidence": 0.75,
+        "reasoning": "Evidence collectively supports the claim through convergent indirect evidence",
+    },
     "epistemic_formulate_query": {
         "query": "spaced repetition effectiveness long-term memory",
         "rationale": "Query optimized for this provider's domain",
