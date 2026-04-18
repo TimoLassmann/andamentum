@@ -562,3 +562,21 @@ class ValidateGroupOutput(BaseModel):
         "If all items belong together, return a single subgroup containing all item numbers. "
         "If items should be separated, return multiple subgroups."
     )
+
+
+# ── Integration ─────────────────────────────────────────────────────────
+
+
+class IntegrationAssessment(BaseModel):
+    """Output of abductive integration: holistic evidence assessment."""
+
+    verdict: str = Field(
+        description="'supports', 'contradicts', or 'insufficient'. "
+        "Based on collective evidence weight, not individual counts."
+    )
+    confidence: float = Field(
+        description="0.0-1.0 confidence in the verdict"
+    )
+    reasoning: str = Field(
+        description="The evidential chain explaining the verdict"
+    )

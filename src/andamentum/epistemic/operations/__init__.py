@@ -84,6 +84,9 @@ from .synthesis import (
     SynthesizeReportOperation,
 )
 
+# ── Integration (Phase 6.5) ─────────────────────────────────────────────
+from .integration import AbductiveIntegrationOperation
+
 # ── Analysis ─────────────────────────────────────────────────────────────
 from .analysis import (
     AnalyzeArgumentOperation,
@@ -133,6 +136,8 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "assess_convergence": AssessConvergenceOperation,
     "validate_deductively": ValidateDeductivelyOperation,
     "verify_computationally": VerifyComputationallyOperation,
+    # Integration
+    "integrate_evidence": AbductiveIntegrationOperation,
     # Argument analysis
     "analyze_argument": AnalyzeArgumentOperation,
     # Pairwise claim operations
@@ -254,6 +259,7 @@ __all__ = [
     "RevalidateClaimOperation",
     "SetRoutingDefaultsOperation",
     "AbandonStaleClaimOperation",
+    "AbductiveIntegrationOperation",
     # Registry
     "OPERATION_CLASSES",
     "create_operations",

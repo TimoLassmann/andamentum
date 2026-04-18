@@ -166,6 +166,20 @@ class Claim(EpistemicEntity):
         description="Generated testable predictions: [{statement, type, time_horizon, specificity}]",
     )
 
+    # Abductive integration (Peirce + Kahneman)
+    integrated_assessment: Optional[str] = Field(
+        default=None,
+        description="Holistic evidence verdict: 'supports', 'contradicts', 'insufficient'",
+    )
+    integrated_confidence: Optional[float] = Field(
+        default=None,
+        description="Confidence from abductive integration 0.0-1.0",
+    )
+    integrated_reasoning: Optional[str] = Field(
+        default=None,
+        description="Reasoning chain from integration assessment",
+    )
+
     def model_post_init(self, __context: Any) -> None:
         """Update denormalized fields after initialization."""
         self.evidence_count = len(self.evidence_ids)
@@ -231,6 +245,9 @@ class Claim(EpistemicEntity):
             self.contrastive_checked = False
             self.consistency_checked = False
             self.routing_applied = False
+            self.integrated_assessment = None
+            self.integrated_confidence = None
+            self.integrated_reasoning = None
 
     def _extra_metadata(self) -> dict[str, Any]:
         """Add claim-specific metadata for filtering."""
@@ -261,6 +278,8 @@ class Claim(EpistemicEntity):
             "investigation_count": self.investigation_count,
             "abandoned": self.abandoned,
             "needs_revalidation": self.needs_revalidation,
+            "integrated_assessment": self.integrated_assessment,
+            "integrated_confidence": self.integrated_confidence,
         }
         if self.confidence_score is not None:
             meta["confidence_score"] = self.confidence_score
@@ -319,6 +338,9 @@ class Claim(EpistemicEntity):
             predictions_generated=metadata.get("predictions_generated", False),
             decision_recorded=metadata.get("decision_recorded", False),
             predictions=metadata.get("predictions", []),
+            integrated_assessment=metadata.get("integrated_assessment"),
+            integrated_confidence=metadata.get("integrated_confidence"),
+            integrated_reasoning=metadata.get("integrated_reasoning"),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

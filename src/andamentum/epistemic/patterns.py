@@ -332,6 +332,20 @@ WORK_PATTERNS: list[Pattern] = [
         description="Check cross-claim consistency",
     ),
     # ══════════════════════════════════════════════════════════════════
+    # PHASE 6.5: ABDUCTIVE INTEGRATION
+    # After adversarial search, holistically assess all evidence
+    # ══════════════════════════════════════════════════════════════════
+    Pattern(
+        entity_type="claim",
+        filters={
+            "stage": ClaimStage.SUPPORTED.value,
+            "adversarial_checked": True,
+            "integrated_assessment": None,
+        },
+        operation="integrate_evidence",
+        description="Holistic evidence integration (Peirce abduction)",
+    ),
+    # ══════════════════════════════════════════════════════════════════
     # PHASE 7: STAGE PROMOTION
     # Claims advance through stages when gates pass
     # ══════════════════════════════════════════════════════════════════
