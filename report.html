@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epistemic Report: Will AI take all jobs?</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+
+    <style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Source Serif 4', 'Georgia', 'Times New Roman', serif;
+    background: #f9f7f4;
+    color: #2b2b2b;
+    line-height: 1.85;
+    margin: 0;
+    padding: 0;
+    font-size: 19px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Centered article column */
+.report-layout {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 40px;
+}
+
+.main-content {
+    max-width: none;
+}
+
+/* Typography */
+h1 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.25;
+    margin: 0 0 12px;
+    letter-spacing: -0.3px;
+}
+
+h2 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 48px 0 16px;
+}
+
+h3 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: #2b2b2b;
+    margin: 32px 0 10px;
+}
+
+p {
+    margin: 0 0 16px;
+}
+
+blockquote {
+    margin: 20px 0;
+    padding: 0 0 0 20px;
+    border-left: 2px solid #d4d0c8;
+    color: #555;
+    font-style: italic;
+}
+
+/* Report header */
+.report-header {
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e8e4de;
+}
+
+.report-meta {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    color: #999;
+    margin-top: 8px;
+}
+
+.clarified-question {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    color: #666;
+    margin-top: 10px;
+}
+
+.question-type {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* Verdict — reads as the natural opening, not a banner */
+.verdict {
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.65;
+    margin: 0 0 32px;
+    color: #1a1a1a;
+}
+
+/* Key Findings Q&A */
+.key-findings-qa {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin: 0 0 40px;
+    padding: 20px 24px;
+    background: #f4f1ec;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.key-findings-qa dl {
+    margin: 0;
+}
+
+.key-findings-qa dt {
+    font-weight: 600;
+    font-size: 13px;
+    color: #555;
+    margin-top: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.key-findings-qa dt:first-child {
+    margin-top: 0;
+}
+
+.key-findings-qa dd {
+    margin: 4px 0 0 0;
+    font-size: 16px;
+    color: #555;
+}
+
+/* Sections */
+section + section {
+    margin-top: 24px;
+}
+
+/* Executive summary */
+.summary-content p {
+    line-height: 1.85;
+}
+
+/* Claims: clean text blocks */
+.claim {
+    margin: 16px 0;
+    padding: 0 0 16px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.claim:last-child {
+    border-bottom: none;
+}
+
+.claim-statement {
+    line-height: 1.75;
+}
+
+.claim-stage-label {
+    font-size: 15px;
+    color: #999;
+    margin: 8px 0;
+}
+
+.claim-details {
+    margin-top: 8px;
+}
+
+.claim-details summary {
+    font-size: 14px;
+    color: #999;
+    cursor: pointer;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.claim-details summary:hover {
+    color: #555;
+}
+
+.claim-details[open] summary {
+    margin-bottom: 8px;
+}
+
+.claim-detail {
+    font-size: 16px;
+    color: #555;
+    margin-top: 6px;
+    line-height: 1.7;
+}
+
+.claim-detail-label {
+    font-weight: 600;
+    color: #777;
+}
+
+.claim-citations {
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.cite-link {
+    color: #999;
+    text-decoration: none;
+}
+
+.cite-link:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+.cite-link sup {
+    font-size: 12px;
+}
+
+.section-intro {
+    color: #777;
+    font-size: 17px;
+    margin-bottom: 24px;
+}
+
+.claim-assumptions {
+    margin-top: 8px;
+    padding-left: 16px;
+    border-left: 2px solid #eee;
+    font-size: 13px;
+    color: #666;
+}
+
+.claim-assumptions ul {
+    margin: 4px 0 0;
+    padding-left: 16px;
+}
+
+.claim-assumptions li {
+    margin-bottom: 2px;
+}
+
+/* Counterarguments inside claim details */
+.claim-counterarguments {
+    margin-top: 10px;
+    padding-left: 14px;
+    border-left: 2px solid #e0dbd4;
+}
+
+.counterargument-item {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0ede8;
+}
+
+.counterargument-item:last-child {
+    border-bottom: none;
+}
+
+.counterargument-text {
+    font-size: 15px;
+    color: #555;
+    line-height: 1.65;
+}
+
+.counterargument-meta {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 11px;
+    color: #999;
+    margin-top: 3px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.counterargument-strength {
+    font-weight: 500;
+}
+
+a.counterargument-source {
+    color: #999;
+    text-decoration: none;
+}
+
+a.counterargument-source:hover {
+    color: #555;
+    text-decoration: underline;
+}
+
+/* Evidence: compact */
+.evidence-item {
+    font-size: 17px;
+    margin: 12px 0;
+    padding: 12px 0 12px 40px;
+    border-bottom: 1px solid #ebe7e0;
+    position: relative;
+}
+
+.evidence-item:last-child {
+    border-bottom: none;
+}
+
+.evidence-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.evidence-judgment {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+
+.judgment-supports { color: #1a7a3a; background: #eef7f0; }
+.judgment-contradicts { color: #b91c1c; background: #fef2f2; }
+.judgment-neutral { color: #666; background: #f5f5f5; }
+
+.evidence-quality {
+    font-size: 11px;
+    color: #999;
+}
+
+.evidence-reasoning {
+    margin: 6px 0;
+    line-height: 1.75;
+    color: #333;
+    font-size: 17px;
+}
+
+.evidence-source {
+    font-size: 12px;
+    color: #888;
+    word-break: break-all;
+}
+
+a.evidence-source {
+    color: #666;
+    text-decoration: none;
+}
+
+a.evidence-source:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+.evidence-limitations {
+    font-size: 12px;
+    color: #999;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+.evidence-expand {
+    margin-top: 4px;
+}
+.evidence-expand summary {
+    cursor: pointer;
+    color: #888;
+    font-size: 12px;
+}
+.evidence-expand summary:hover {
+    color: #333;
+}
+.evidence-expand div {
+    white-space: pre-wrap;
+    margin-top: 8px;
+}
+
+.evidence-source {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+    word-break: break-all;
+}
+
+.evidence-index {
+    position: absolute;
+    left: 0;
+    top: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #999;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.evidence-type-tag {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.evidence-limitations {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #999;
+    font-style: italic;
+}
+
+/* Uncertainties: compact text */
+.uncertainty-item {
+    padding: 8px 0;
+    line-height: 1.75;
+    border-bottom: 1px solid #ebe7e0;
+}
+
+.uncertainty-item:last-child {
+    border-bottom: none;
+}
+
+.uncertainty-description {
+    color: #2b2b2b;
+}
+
+.uncertainty-meta {
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+}
+
+/* Open questions: numbered list */
+.open-questions-list {
+    padding-left: 20px;
+    margin: 8px 0 0;
+}
+
+.open-questions-list li {
+    line-height: 1.75;
+    margin-bottom: 10px;
+    padding-left: 4px;
+}
+
+/* Collapsible sections */
+details {
+    margin-top: 8px;
+}
+
+details summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: #666;
+    padding: 4px 0;
+}
+
+details summary:hover {
+    color: #1a1a1a;
+}
+
+/* Trace links */
+.trace-link {
+    font-size: 14px;
+    color: #999;
+    text-decoration: none;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.trace-link:hover {
+    color: #1a1a1a;
+    text-decoration: underline;
+}
+
+/* Code and pre blocks */
+code {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 0.875em;
+    background: #f5f5f5;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+pre {
+    background: #f5f5f5;
+    padding: 12px 16px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+pre code {
+    background: none;
+    padding: 0;
+}
+
+/* Footer */
+.report-footer {
+    max-width: 960px;
+    margin: 48px auto 0;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    font-size: 12px;
+    color: #999;
+}
+
+/* Metadata section — small, unobtrusive, at the bottom */
+.sidebar {
+    font-family: 'Inter', system-ui, sans-serif;
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid #e8e4de;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #bbb;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+}
+
+.sidebar-section { margin-bottom: 0; }
+
+.sidebar-title {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #ccc;
+    margin: 0 0 4px;
+}
+
+.sidebar-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #999;
+}
+
+.sidebar-label {
+    font-size: 11px;
+    color: #bbb;
+}
+
+.sidebar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 11px;
+}
+
+.sidebar-row-label { color: #bbb; }
+.sidebar-row-value { font-weight: 500; color: #999; }
+
+.check-list {
+    list-style: none;
+    padding: 0;
+    margin: 3px 0 0;
+}
+
+.check-list li {
+    font-size: 10px;
+    padding: 1px 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: #bbb;
+}
+
+.check-pass { color: #bbb; }
+.check-fail { color: #c4a0a0; }
+
+.check-icon {
+    flex-shrink: 0;
+    width: 10px;
+    text-align: center;
+    font-size: 9px;
+}
+
+/* Print */
+@media print {
+    body { padding: 0; font-size: 11pt; background: #fff; }
+    .report-layout { padding: 0; }
+    .sidebar { display: none; }
+    section { page-break-inside: avoid; }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .report-layout { padding: 32px 16px; }
+    h1 { font-size: 26px; }
+    .sidebar { grid-template-columns: 1fr; }
+}
+
+    </style>
+</head>
+<body>
+    <div class="report-layout">
+        <div class="main-content">
+            <header class="report-header">
+                <h1>Will AI take all jobs?</h1>
+                <div class="report-meta">2026-04-18 12:40 &middot; openai:gpt-5.4-mini &middot; ask_c750fdeb</div>
+                <div class="question-type">This is a predictive question (what will happen)</div>
+            </header>
+
+            <main>
+                <div class="verdict">No. The evidence supports uneven AI exposure and displacement risk for some workers, not the elimination of all jobs.</div>
+                
+            <section class="key-findings-qa">
+                <dl>
+                    <dt>What was studied?</dt><dd>Will AI take all jobs?</dd>
+                    <dt>What did we find?</dt><dd>No. The evidence supports uneven AI exposure and displacement risk for some workers, not the elimination of all jobs.</dd>
+                    <dt>How confident are we?</dt><dd>High (1.00). Posterior confidence: 99.97%</dd>
+                    <dt>How thorough was the investigation?</dt><dd>24 evidence sources examined, 6/6 verification checks passed</dd>
+                </dl>
+            </section>
+                
+            <section id="summary">
+                <h2>Summary</h2>
+                <div class="summary-content"><blockquote><strong>Research Question:</strong> Will AI take all jobs?</blockquote>
+<blockquote><strong>Evidence Sources:</strong> 9 | <strong>Claims Established:</strong> 8 of 8</blockquote>
+<p>No. The evidence supports uneven AI exposure and elevated displacement risk for specific workers, but it does not support the claim that AI will take all jobs.</p>
+<p>Across the strongest findings, AI risk is concentrated in particular occupations and worker groups. Low-paid workers are modeled as far more likely to lose jobs to AI than higher-paid workers, IT professionals in OECD countries show much higher exposure than cleaners and helpers, and workers in AI-exposed establishments are hiring more for AI-related vacancies while cutting non-AI hiring. Together, those results point to task reallocation, occupational reshuffling, and selective displacement, not universal job elimination.</p>
+<p>The broader labor-market evidence points in the same direction. Automation can raise productivity while lowering labor demand and labor’s share of value added, and one estimate identifies millions of workers who face both high LLM exposure and low adaptive capacity. That signals meaningful risk for some roles, but it still falls short of showing that AI will remove work across the economy.</p>
+<p>One caveat remains unresolved. The finding that workers aged 15 to 29 are concentrated in the least AI-exposed occupations does not establish that they are less likely than older workers to face near-term displacement. Exposure is not the same as job loss, so that inference stays open. The practical bottom line is simple: AI is likely to transform some jobs and put some workers at risk, but the claim that it will take all jobs is not supported.</p></div>
+            </section>
+                
+        <section id="claims">
+            <h2>Findings</h2>
+            <p class="section-intro">The investigation produced 8 distinct findings, each traced to specific evidence sources. Findings are ordered by strength of support.</p>
+            
+        <div class="claim" id="claim-6991bd2d-ea32-41e7-82be-fe9e40b156c1">
+            <div class="claim-statement">In the modeled scenario, AI job loss risk is highly unequal across occupations, with low-paid workers about 14 times more likely than higher-paid workers to lose their jobs to AI<sup class="claim-citations"><a href="#evidence-1" class="cite-link">1</a></sup>.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Within the specific model described, comparing low-paid versus higher-paid workers&#x27; exposure to AI-driven job displacement</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-cc97e9e1-1100-4cbe-9840-c6b811114e42">
+            <div class="claim-statement">In OECD countries in 2022, IT technology professionals faced substantially higher AI exposure than cleaners and helpers, indicating that AI risk is unevenly distributed across occupations rather than uniformly threatening all jobs.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Across the 22 OECD countries in 2022, comparing occupational AI exposure scores for IT technology professionals and cleaners/helpers.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-0eac3182-1135-45f3-a7cb-b125be43da33">
+            <div class="claim-statement">Among workers aged 15–29, employment is disproportionately concentrated in occupations least exposed to AI rather than in occupations most exposed to AI, suggesting younger workers are less likely to be immediately affected by AI-driven job displacement than older workers in this labor market segment.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Applies to occupations classified by relative AI exposure and to workers aged 15–29 years in the studied labor market context.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-3638c6ea-3333-4814-a4af-fe285cc898d1">
+            <div class="claim-statement">Workers in the most AI-exposed occupations have, on average, greater adaptive capacity to transition to new jobs and limit post-displacement earnings losses than workers in less AI-exposed occupations<sup class="claim-citations"><a href="#evidence-2" class="cite-link">2</a></sup>.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Across occupations with the highest exposure to AI, relative to the rest of the workforce, and specifically for job-transition and post-displacement earnings outcomes.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-92d12b7b-e295-4447-8991-73547e358dba">
+            <div class="claim-statement">A substantial number of workers—about 6.1 million—are highly exposed to LLM-driven job change while also having low adaptive capacity to transition into other roles, indicating elevated displacement risk rather than universal job elimination.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Across the current workforce, focusing on occupations with high exposure to large language models and low capacity for occupational adaptation or transition</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-10ca650e-e318-4765-b59b-6f5097ef00bc">
+            <div class="claim-statement">In labor markets, automation can raise productivity while reducing the labor share of value added and overall labor demand<sup class="claim-citations"><a href="#evidence-3" class="cite-link">3</a></sup>.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Across occupations and industries where tasks are susceptible to automation, holding other labor market conditions constant.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-813b590d-5770-4d57-b92a-cd4d2fbb73e8">
+            <div class="claim-statement">As establishments adopt AI, they increase hiring for AI-related vacancies while reducing hiring for non-AI positions, indicating task reallocation rather than full job replacement from 2010 to 2018<sup class="claim-citations"><a href="#evidence-4" class="cite-link">4</a></sup>.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> AI-exposed establishments in the 2010-2018 period, comparing AI-related versus non-AI vacancies and hiring patterns.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        <div class="claim" id="claim-51da4b20-bba3-40b1-9933-d19fec01642d">
+            <div class="claim-statement">Advances in technology, including AI, are likely to cause significant worker dislocation rather than preserve current employment patterns across occupations<sup class="claim-citations"><a href="#evidence-5" class="cite-link">5</a></sup>.</div>
+            <div class="claim-stage-label">Supported by evidence</div>
+            
+            <details class="claim-details">
+                <summary>Details</summary>
+                <div class="claim-detail"><span class="claim-detail-label">Scope:</span> Across the labor market overall, especially in occupations exposed to technological substitution.</div><div class="claim-detail"><span class="claim-detail-label">Verification:</span> Scrutiny: pass. Convergence: assessed. Deductive validation: passed. Computational verification: completed.</div>
+            </details>
+        </div>
+        </section>
+                
+        <section id="evidence">
+            <h2>Sources</h2>
+            <h3>Supporting</h3>
+
+        <div class="evidence-item" id="evidence-1">
+            <div class="evidence-header">
+                <span class="evidence-index">1.</span>
+                <span class="evidence-type-tag">web_search</span>
+                <span class="evidence-judgment judgment-supports">supports</span>
+                <span class="evidence-quality">quality: 0.74</span>
+            </div>
+            <div class="evidence-reasoning">The evidence directly states that within the model low-paid workers were around 14 times more likely than higher-paid workers to lose their jobs due to AI, which matches the claim exactly.</div>
+            <a href="https://www.aph.gov.au/About_Parliament/Parliamentary_departments/Parliamentary_Library/Research/Issues_and_Insights/48th_Parliament/potentialimpactofArtificialIntelligence" class="evidence-source">https://www.aph.gov.au/About_Parliament/Parliamentary_departments/Parliamentary_Library/Research/Issues_and_Insights/48th_Parliament/potentialimpactofArtificialIntelligence</a>
+            <div class="evidence-limitations">Web source; passage extracted from larger page</div>
+        </div>
+
+        <div class="evidence-item" id="evidence-2">
+            <div class="evidence-header">
+                <span class="evidence-index">2.</span>
+                <span class="evidence-type-tag">web_search</span>
+                <span class="evidence-judgment judgment-supports">supports</span>
+                <span class="evidence-quality">quality: 0.82</span>
+            </div>
+            <div class="evidence-reasoning">The Brookings/NBER evidence explicitly says that workers with the highest AI exposure have higher capacity to navigate job transitions successfully and minimize earnings losses after displacement, matching the claim.</div>
+            <a href="https://www.brookings.edu/articles/measuring-us-workers-capacity-to-adapt-to-ai-driven-job-displacement/" class="evidence-source">https://www.brookings.edu/articles/measuring-us-workers-capacity-to-adapt-to-ai-driven-job-displacement/</a>
+            <div class="evidence-limitations">Web source; passage extracted from larger page</div>
+        </div>
+
+        <div class="evidence-item" id="evidence-3">
+            <div class="evidence-header">
+                <span class="evidence-index">3.</span>
+                <span class="evidence-type-tag">openalex</span>
+                <span class="evidence-judgment judgment-supports">supports</span>
+                <span class="evidence-quality">quality: 0.62</span>
+            </div>
+            <div class="evidence-reasoning">The evidence explicitly states that automation raises productivity while reducing the labor share in value added and may reduce labor demand, directly matching the claim.</div>
+            <span class="evidence-source">doi:10.1257/jep.33.2.3</span>
+            <div class="evidence-limitations">Abstract only; full text may contain more detail</div>
+        </div>
+
+        <div class="evidence-item" id="evidence-4">
+            <div class="evidence-header">
+                <span class="evidence-index">4.</span>
+                <span class="evidence-type-tag">openalex</span>
+                <span class="evidence-judgment judgment-supports">supports</span>
+                <span class="evidence-quality">quality: 0.60</span>
+            </div>
+            <div class="evidence-reasoning">The evidence explicitly says AI-exposed establishments saw rapid growth in AI-related vacancies while simultaneously reducing hiring in non-AI positions from 2010–18, matching the claim&#x27;s task-reallocation pattern.</div>
+            <span class="evidence-source">doi:10.1086/718327</span>
+            <div class="evidence-limitations">Abstract only; full text may contain more detail</div>
+        </div>
+
+        <div class="evidence-item" id="evidence-5">
+            <div class="evidence-header">
+                <span class="evidence-index">5.</span>
+                <span class="evidence-type-tag">openalex</span>
+                <span class="evidence-judgment judgment-supports">supports</span>
+                <span class="evidence-quality">quality: 0.55</span>
+            </div>
+            <div class="evidence-reasoning">The evidence explicitly says emerging technologies will have disruptive effects and lead to significant worker dislocation, which aligns with the claim that advances in technology, including AI, are likely to displace workers rather than preserve current employment patterns.</div>
+            <span class="evidence-source">doi:10.1146/annurev-orgpsych-041015-062352</span>
+            <div class="evidence-limitations">Abstract only; full text may contain more detail</div>
+        </div>
+        </section>
+                
+        <section id="limitations">
+            <h2>Limitations</h2>
+            <h3>Caveats</h3>
+        <div class="uncertainty-item">
+            <div class="uncertainty-description">The evidence shows that workers aged 15–29 have a much higher share in the least AI-exposed occupations, but it does not establish the stronger conclusion that they are therefore less likely than older workers to be immediately affected by AI-driven job displacement. The displacement claim depends on the unstated assumption that AI exposure directly predicts near-term job loss and that younger workers in low-exposure roles would be less affected overall.</div>
+        </div>
+        </section>
+                
+                
+        <details>
+            <summary><h2 style="display:inline">Investigation Process</h2></summary>
+            <div class="details-content">
+                <p>This predictive question (what will happen) was investigated using 2 evidence providers (web_search (14), openalex (10)), collecting 24 evidence items.</p>
+<p>8 claims were proposed from evidence clusters. All 8 claims passed skeptical review (scrutiny).</p>
+<p>1 uncertainties were identified during the investigation. 0 were resolved through additional evidence gathering and analysis.</p>
+            </div>
+        </details>
+            </main>
+        </div>
+
+        
+        <aside class="sidebar">
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Answer Confidence</div>
+                <div class="sidebar-value">1.00</div>
+                <div class="sidebar-label">HIGH</div>
+                <div class="sidebar-label" style="margin-top: 8px;">6/6 checks passed</div>
+                <ul class="check-list">
+                    <li class="check-pass"><span class="check-icon">&#10003;</span>Evidence gathered</li>
+<li class="check-pass"><span class="check-icon">&#10003;</span>All claims reviewed</li>
+<li class="check-pass"><span class="check-icon">&#10003;</span>Problems resolved</li>
+<li class="check-pass"><span class="check-icon">&#10003;</span>Beliefs consistent</li>
+<li class="check-pass"><span class="check-icon">&#10003;</span>Logic validated</li>
+<li class="check-pass"><span class="check-icon">&#10003;</span>Computationally verified</li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Posterior</div>
+                <div class="sidebar-value">99.97% confident</div>
+                <div class="sidebar-label">8 claims supported / 0 contradicted</div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Investigation</div>
+                <div class="sidebar-row"><span class="sidebar-row-label">Type</span><span class="sidebar-row-value">predictive question (what will happen)</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label">Evidence</span><span class="sidebar-row-value">24</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label">Claims</span><span class="sidebar-row-value">8</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label" style="padding-left: 8px;">supported</span><span class="sidebar-row-value">0</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label" style="padding-left: 8px;">hypothesis</span><span class="sidebar-row-value">0</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label">Uncertainties</span><span class="sidebar-row-value">1</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label" style="padding-left: 8px;">blocking</span><span class="sidebar-row-value">0</span></div>
+                <div class="sidebar-row"><span class="sidebar-row-label" style="padding-left: 8px;">resolved</span><span class="sidebar-row-value">0</span></div>
+            </div>
+        </aside>
+    </div>
+
+    <footer class="report-footer">
+        <p>Generated by andamentum.epistemic</p>
+    </footer>
+</body>
+</html>
