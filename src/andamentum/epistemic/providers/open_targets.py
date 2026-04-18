@@ -1,7 +1,16 @@
 """Open Targets Evidence Provider.
 
-Queries the Open Targets Platform GraphQL API for disease-target associations,
-integrating genetic, somatic, literature, and drug evidence.
+Queries the Open Targets Platform GraphQL API for individual evidence
+items linking targets to diseases. Returns per-evidence data with
+literature references, extracted text, confidence levels, and data
+source attribution — not just aggregate association scores.
+
+Data sources integrated (as of Platform release 26.03):
+  europepmc (literature mining), eva (ClinVar genetic), eva_somatic,
+  intogen (cancer drivers), cancer_gene_census, cancer_biomarkers,
+  genomics_england (GEL panels), gene2phenotype, clingen,
+  orphanet, uniprot_variants, uniprot_literature, impc (mouse models),
+  clinical_precedence (drug evidence).
 
 API docs: https://platform-docs.opentargets.org/data-access/graphql-api
 No authentication required.
@@ -23,9 +32,35 @@ logger = logging.getLogger(__name__)
 
 OT_API = "https://api.platform.opentargets.org/api/v4/graphql"
 
+# Map Open Targets datatypeId to evidence_kind values used by the
+# epistemic system. These align with the GatheredEvidence.evidence_kind
+# vocabulary documented in operations/base.py.
+_DATATYPE_TO_KIND: dict[str, str] = {
+    "literature": "literature_mining",
+    "genetic_association": "genetic_evidence",
+    "somatic_mutation": "somatic_evidence",
+    "animal_model": "animal_model",
+    "clinical": "clinical_evidence",
+    "genetic_literature": "curated_genetic",
+}
+
+# Map confidence strings to quality score multipliers.
+_CONFIDENCE_MULTIPLIER: dict[str, float] = {
+    "high": 1.0,
+    "green": 1.0,
+    "medium": 0.8,
+    "amber": 0.8,
+    "low": 0.6,
+    "red": 0.5,
+}
+
 
 class OpenTargetsProvider:
-    """Evidence provider using Open Targets Platform GraphQL API."""
+    """Evidence provider using Open Targets Platform GraphQL API.
+
+    Queries individual evidence items (not just aggregate scores) so the
+    epistemic system can judge each piece of evidence independently.
+    """
 
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
@@ -45,10 +80,13 @@ class OpenTargetsProvider:
                 response = await client.post(OT_API, json={"query": query})
                 elapsed = (time.monotonic() - t0) * 1000
                 if response.status_code == 200:
+                    data = response.json().get("data", {})
+                    version = data.get("meta", {}).get("dataVersion", {})
+                    ver_str = f"{version.get('year', '?')}.{version.get('month', '?')}"
                     return CheckResult(
                         name="OpenTargetsProvider",
                         status="pass",
-                        message=f"API reachable ({elapsed:.0f}ms)",
+                        message=f"API reachable, data v{ver_str} ({elapsed:.0f}ms)",
                         elapsed_ms=elapsed,
                     )
                 return CheckResult(
@@ -67,36 +105,48 @@ class OpenTargetsProvider:
             )
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
-        """Search Open Targets for disease-target associations."""
+        """Search Open Targets and fetch individual evidence items."""
         import httpx
 
         gathered: list[GatheredEvidence] = []
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Step 1: Search for entities (targets or diseases)
+                # Step 1: Search for entities (targets and diseases)
                 search_results = await self._search_entities(client, query)
 
-                # Step 2: For each target-disease pair, get association data
-                for entity in search_results[: self.max_results]:
-                    entity_id = entity.get("id", "")
-                    entity_type = entity.get("entity", "")
+                targets = [h for h in search_results if h.get("entity") == "target"]
+                diseases = [h for h in search_results if h.get("entity") == "disease"]
 
-                    if entity_type == "target":
-                        assocs = await self._get_target_associations(client, entity_id)
-                    elif entity_type == "disease":
-                        assocs = await self._get_disease_associations(client, entity_id)
-                    else:
-                        continue
+                # Step 2: For target hits, get evidence across their top diseases
+                for target in targets[: self.max_results]:
+                    target_id = target.get("id", "")
+                    # Get top associated disease IDs for this target
+                    disease_ids = await self._get_top_disease_ids(client, target_id)
+                    if disease_ids:
+                        items = await self._get_evidence_items(
+                            client, target_id, disease_ids
+                        )
+                        gathered.extend(items)
 
-                    gathered.extend(assocs)
+                # Step 3: For disease hits, get evidence across their top targets
+                for disease in diseases[: self.max_results]:
+                    disease_id = disease.get("id", "")
+                    target_ids = await self._get_top_target_ids(client, disease_id)
+                    for tid in target_ids[:3]:
+                        items = await self._get_evidence_items(
+                            client, tid, [disease_id]
+                        )
+                        gathered.extend(items)
 
         except Exception as e:
             logger.warning(f"Open Targets query failed for '{query}': {e}")
 
         return gathered[: self.max_results]
 
-    async def _search_entities(self, client: Any, query: str) -> list[dict[str, Any]]:
+    async def _search_entities(
+        self, client: Any, query: str
+    ) -> list[dict[str, Any]]:
         """Search Open Targets for targets or diseases matching query."""
         gql = """
         query Search($q: String!, $size: Int!) {
@@ -120,190 +170,259 @@ class OpenTargetsProvider:
             )
             if resp.status_code != 200:
                 return []
-
             data = resp.json()
             return data.get("data", {}).get("search", {}).get("hits", [])
         except Exception as e:
             logger.debug(f"Open Targets search failed: {e}")
             return []
 
-    async def _get_target_associations(
-        self, client: Any, target_id: str
-    ) -> list[GatheredEvidence]:
-        """Get disease associations for a target."""
+    async def _get_top_disease_ids(
+        self, client: Any, target_id: str, n: int = 5
+    ) -> list[str]:
+        """Get top-N associated disease IDs for a target."""
         gql = """
-        query TargetAssociations($id: String!, $size: Int!) {
+        query TopDiseases($id: String!, $size: Int!) {
             target(ensemblId: $id) {
-                id
+                associatedDiseases(page: {size: $size, index: 0}) {
+                    rows { disease { id } }
+                }
+            }
+        }
+        """
+        try:
+            resp = await client.post(
+                OT_API,
+                json={"query": gql, "variables": {"id": target_id, "size": n}},
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            rows = (
+                data.get("data", {})
+                .get("target", {})
+                .get("associatedDiseases", {})
+                .get("rows", [])
+            )
+            return [r["disease"]["id"] for r in rows if r.get("disease", {}).get("id")]
+        except Exception:
+            return []
+
+    async def _get_top_target_ids(
+        self, client: Any, disease_id: str, n: int = 3
+    ) -> list[str]:
+        """Get top-N associated target IDs for a disease."""
+        gql = """
+        query TopTargets($id: String!, $size: Int!) {
+            disease(efoId: $id) {
+                associatedTargets(page: {size: $size, index: 0}) {
+                    rows { target { id } }
+                }
+            }
+        }
+        """
+        try:
+            resp = await client.post(
+                OT_API,
+                json={"query": gql, "variables": {"id": disease_id, "size": n}},
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            rows = (
+                data.get("data", {})
+                .get("disease", {})
+                .get("associatedTargets", {})
+                .get("rows", [])
+            )
+            return [r["target"]["id"] for r in rows if r.get("target", {}).get("id")]
+        except Exception:
+            return []
+
+    async def _get_evidence_items(
+        self,
+        client: Any,
+        target_id: str,
+        disease_ids: list[str],
+    ) -> list[GatheredEvidence]:
+        """Fetch individual evidence items for a target-disease pair."""
+        gql = """
+        query Evidence($ensemblId: String!, $efoIds: [String!]!, $size: Int!) {
+            target(ensemblId: $ensemblId) {
                 approvedSymbol
                 approvedName
-                associatedDiseases(page: {size: $size, index: 0}) {
+                evidences(efoIds: $efoIds, size: $size) {
                     rows {
-                        disease {
-                            id
-                            name
-                        }
+                        id
+                        datasourceId
+                        datatypeId
                         score
-                        datasourceScores {
-                            id
-                            score
+                        diseaseFromSource
+                        targetFromSource
+                        literature
+                        publicationYear
+                        publicationFirstAuthor
+                        confidence
+                        textMiningSentences {
+                            text
+                            section
                         }
+                        urls {
+                            url
+                            niceName
+                        }
+                        variantRsId
+                        studyId
+                        clinicalStage
+                        drugFromSource
                     }
                 }
             }
         }
         """
-        return await self._fetch_associations(
-            client, gql, {"id": target_id, "size": 5}, "target"
-        )
-
-    async def _get_disease_associations(
-        self, client: Any, disease_id: str
-    ) -> list[GatheredEvidence]:
-        """Get target associations for a disease."""
-        gql = """
-        query DiseaseAssociations($id: String!, $size: Int!) {
-            disease(efoId: $id) {
-                id
-                name
-                associatedTargets(page: {size: $size, index: 0}) {
-                    rows {
-                        target {
-                            id
-                            approvedSymbol
-                            approvedName
-                        }
-                        score
-                        datasourceScores {
-                            id
-                            score
-                        }
-                    }
-                }
-            }
-        }
-        """
-        return await self._fetch_associations(
-            client, gql, {"id": disease_id, "size": 5}, "disease"
-        )
-
-    async def _fetch_associations(
-        self, client: Any, gql: str, variables: dict, query_type: str
-    ) -> list[GatheredEvidence]:
-        """Execute a GraphQL query and parse association results."""
         gathered: list[GatheredEvidence] = []
 
         try:
             resp = await client.post(
-                OT_API, json={"query": gql, "variables": variables}
+                OT_API,
+                json={
+                    "query": gql,
+                    "variables": {
+                        "ensemblId": target_id,
+                        "efoIds": disease_ids,
+                        "size": self.max_results * 3,
+                    },
+                },
             )
             if resp.status_code != 200:
                 return []
 
-            data = resp.json().get("data", {})
+            data = resp.json()
+            target = data.get("data", {}).get("target")
+            if not target:
+                return []
 
-            if query_type == "target":
-                entity = data.get("target", {})
-                target_symbol = entity.get("approvedSymbol", "")
-                target_name = entity.get("approvedName", "")
-                rows = entity.get("associatedDiseases", {}).get("rows", [])
+            target_symbol = target.get("approvedSymbol", "")
+            target_name = target.get("approvedName", "")
+            rows = target.get("evidences", {}).get("rows", [])
 
-                for row in rows:
-                    disease = row.get("disease", {})
-                    score = row.get("score", 0)
-                    ds_scores = {
-                        ds["id"]: ds["score"]
-                        for ds in row.get("datasourceScores", [])
-                        if ds.get("score")
-                    }
-
-                    disease_name = disease.get("name", "")
-                    disease_id = disease.get("id", "")
-
-                    content = f"{target_symbol} ({target_name}) is associated with {disease_name} (score: {score:.2f})"
-                    if ds_scores:
-                        top_sources = sorted(
-                            ds_scores.items(), key=lambda x: x[1], reverse=True
-                        )[:3]
-                        sources_str = ", ".join(
-                            f"{s[0]}: {s[1]:.2f}" for s in top_sources
-                        )
-                        content += f". Evidence: {sources_str}"
-
-                    gathered.append(
-                        GatheredEvidence(
-                            content=content,
-                            source_ref=f"{entity.get('id', '')}-{disease_id}",
-                            source_type="open_targets",
-                            evidence_kind="genetic_association",
-                            identifiers={
-                                "ensembl_id": entity.get("id", ""),
-                                "disease_id": disease_id,
-                                "gene_symbol": target_symbol,
-                            },
-                            structured_data={
-                                "target": {
-                                    "symbol": target_symbol,
-                                    "name": target_name,
-                                },
-                                "disease": {"name": disease_name, "id": disease_id},
-                                "association_score": score,
-                                "datasource_scores": ds_scores,
-                            },
-                            quality_score=min(0.5 + score * 0.4, 0.9),
-                            quality_metadata={"association_score": score},
-                        )
-                    )
-
-            elif query_type == "disease":
-                entity = data.get("disease", {})
-                disease_name = entity.get("name", "")
-                rows = entity.get("associatedTargets", {}).get("rows", [])
-
-                for row in rows:
-                    target = row.get("target", {})
-                    score = row.get("score", 0)
-                    ds_scores = {
-                        ds["id"]: ds["score"]
-                        for ds in row.get("datasourceScores", [])
-                        if ds.get("score")
-                    }
-
-                    target_symbol = target.get("approvedSymbol", "")
-                    target_name = target.get("approvedName", "")
-                    target_id = target.get("id", "")
-
-                    content = f"{target_symbol} ({target_name}) is associated with {disease_name} (score: {score:.2f})"
-
-                    gathered.append(
-                        GatheredEvidence(
-                            content=content,
-                            source_ref=f"{target_id}-{entity.get('id', '')}",
-                            source_type="open_targets",
-                            evidence_kind="genetic_association",
-                            identifiers={
-                                "ensembl_id": target_id,
-                                "disease_id": entity.get("id", ""),
-                                "gene_symbol": target_symbol,
-                            },
-                            structured_data={
-                                "target": {
-                                    "symbol": target_symbol,
-                                    "name": target_name,
-                                },
-                                "disease": {
-                                    "name": disease_name,
-                                    "id": entity.get("id", ""),
-                                },
-                                "association_score": score,
-                                "datasource_scores": ds_scores,
-                            },
-                            quality_score=min(0.5 + score * 0.4, 0.9),
-                            quality_metadata={"association_score": score},
-                        )
-                    )
+            for row in rows:
+                evidence = self._parse_evidence_row(
+                    row, target_symbol, target_name
+                )
+                if evidence:
+                    gathered.append(evidence)
 
         except Exception as e:
-            logger.debug(f"Open Targets association query failed: {e}")
+            logger.debug(f"Open Targets evidence query failed: {e}")
 
         return gathered
+
+    def _parse_evidence_row(
+        self,
+        row: dict[str, Any],
+        target_symbol: str,
+        target_name: str,
+    ) -> GatheredEvidence | None:
+        """Parse a single evidence row into a GatheredEvidence item."""
+        datasource = row.get("datasourceId", "")
+        datatype = row.get("datatypeId", "")
+        score = row.get("score", 0) or 0
+        disease = row.get("diseaseFromSource", "") or ""
+        literature = row.get("literature") or []
+        confidence = row.get("confidence") or ""
+        sentences = row.get("textMiningSentences") or []
+        urls = row.get("urls") or []
+
+        # Build human-readable content
+        content_parts: list[str] = []
+
+        # Header: what target-disease pair, from which source
+        content_parts.append(
+            f"{target_symbol} ({target_name}) — {disease} "
+            f"[{datasource}, {datatype}]"
+        )
+
+        # Text mining sentences are the richest content
+        if sentences:
+            for s in sentences[:5]:
+                section = s.get("section", "")
+                text = s.get("text", "")
+                if text:
+                    prefix = f"[{section}] " if section else ""
+                    content_parts.append(f"{prefix}{text}")
+
+        # For non-literature evidence, add available context
+        if not sentences:
+            if row.get("variantRsId"):
+                content_parts.append(f"Variant: {row['variantRsId']}")
+            if row.get("clinicalStage"):
+                content_parts.append(f"Clinical stage: {row['clinicalStage']}")
+            if row.get("drugFromSource"):
+                content_parts.append(f"Drug: {row['drugFromSource']}")
+            if row.get("studyId"):
+                content_parts.append(f"Study: {row['studyId']}")
+
+        content = "\n".join(content_parts)
+        if not content.strip():
+            return None
+
+        # Source reference: prefer PubMed URL, fall back to OT URLs
+        source_ref = ""
+        pmids = [lit for lit in literature if lit and lit.strip()]
+        if pmids:
+            source_ref = f"https://pubmed.ncbi.nlm.nih.gov/{pmids[0]}/"
+        elif urls:
+            source_ref = urls[0].get("url", "")
+        if not source_ref:
+            source_ref = (
+                f"https://platform.opentargets.org/evidence/"
+                f"{row.get('id', '')}"
+            )
+
+        # Quality score: evidence score × confidence multiplier
+        conf_mult = _CONFIDENCE_MULTIPLIER.get(confidence.lower(), 0.7)
+        quality = min(score * conf_mult, 1.0)
+
+        # Evidence kind from datatype
+        evidence_kind = _DATATYPE_TO_KIND.get(datatype, "database_record")
+
+        # Identifiers for dedup and cross-referencing
+        identifiers: dict[str, str] = {}
+        if pmids:
+            identifiers["pmid"] = pmids[0]
+        identifiers["ot_evidence_id"] = row.get("id", "")
+        identifiers["ensembl_id"] = ""  # filled by caller context
+        identifiers["datasource"] = datasource
+
+        return GatheredEvidence(
+            content=content,
+            source_ref=source_ref,
+            source_type="open_targets",
+            evidence_kind=evidence_kind,
+            identifiers=identifiers,
+            structured_data={
+                "datasource": datasource,
+                "datatype": datatype,
+                "target_symbol": target_symbol,
+                "target_name": target_name,
+                "disease": disease,
+                "evidence_score": score,
+                "confidence": confidence,
+                "publication_year": row.get("publicationYear"),
+                "first_author": row.get("publicationFirstAuthor"),
+                "variant": row.get("variantRsId"),
+                "drug": row.get("drugFromSource"),
+                "clinical_stage": row.get("clinicalStage"),
+            },
+            quality_score=quality if quality > 0 else None,
+            quality_metadata={
+                "evidence_score": score,
+                "confidence": confidence,
+                "datasource": datasource,
+            },
+            limitations=(
+                ["Text-mined from literature; not manually curated"]
+                if datasource == "europepmc"
+                else []
+            ),
+        )
