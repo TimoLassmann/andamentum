@@ -207,6 +207,32 @@ WORK_PATTERNS: list[Pattern] = [
         description="Investigate failed hypothesis before abandoning",
     ),
     # ══════════════════════════════════════════════════════════════════
+    # PHASE 3c: ABANDONMENT SAFETY NET
+    # Catches HYPOTHESIS claims that exhausted investigation attempts
+    # ══════════════════════════════════════════════════════════════════
+    Pattern(
+        entity_type="claim",
+        filters={
+            "stage": ClaimStage.HYPOTHESIS.value,
+            "scrutiny_verdict": "fail",
+            "investigation_count__gte": 3,
+            "abandoned": False,
+        },
+        operation="abandon_stale_claim",
+        description="Abandon failed hypothesis after exhausting investigation",
+    ),
+    Pattern(
+        entity_type="claim",
+        filters={
+            "stage": ClaimStage.HYPOTHESIS.value,
+            "scrutiny_verdict": "needs_resolution",
+            "investigation_count__gte": 3,
+            "abandoned": False,
+        },
+        operation="abandon_stale_claim",
+        description="Abandon unresolved hypothesis after exhausting investigation",
+    ),
+    # ══════════════════════════════════════════════════════════════════
     # PHASE 4: CLAIM CREATION
     # Two mutually exclusive modes:
     #   a) Verification mode: claim_to_verify is set → seed the exact
