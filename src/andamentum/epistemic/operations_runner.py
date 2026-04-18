@@ -561,9 +561,6 @@ async def run_research_question(
         iterations += 1
         step_number += 1
 
-        # Record attempt BEFORE execution (permanent tracking)
-        scheduler.record_attempt(work.entity_id, work.operation)
-
         if verbose:
             logger.info(
                 f"[{iterations}] {work.operation} on {work.entity_type}:{work.entity_id[:8]}"
@@ -631,6 +628,11 @@ async def run_research_question(
                     )
             else:
                 failed += 1
+                # Record failed attempt — only failures count toward
+                # MAX_ENTITY_ATTEMPTS. Successful operations (even if the
+                # entity needs re-processing after Peirce cycling) should
+                # not burn attempt slots.
+                scheduler.record_attempt(work.entity_id, work.operation)
                 errors.append(result.message)
                 if progress_callback:
                     progress_callback(
@@ -648,6 +650,7 @@ async def run_research_question(
         except Exception as e:
             completed_at = datetime.now(timezone.utc)
             failed += 1
+            scheduler.record_attempt(work.entity_id, work.operation)
             error_msg = f"{work.operation} failed: {str(e)}"
             errors.append(error_msg)
             if verbose:

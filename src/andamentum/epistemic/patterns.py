@@ -522,11 +522,16 @@ class PatternScheduler:
         self._entity_attempts: dict[tuple[str, str], int] = {}
 
     def record_attempt(self, entity_id: str, operation: str) -> None:
-        """Record an operation attempt on an entity (called before execution).
+        """Record a failed operation attempt on an entity.
 
-        Tracks per-(entity, operation) attempts to prevent infinite retries
-        on broken entities (capped at MAX_ENTITY_ATTEMPTS). Does NOT consume
-        operation budget — only record_success does that.
+        Called ONLY on failure (result.success=False or exception). Successful
+        operations do not count against the attempt limit because Peirce cycling
+        legitimately re-invokes operations (scrutiny, promote) after the
+        epistemic state has changed. Only persistent failures indicate a
+        broken entity that should be excluded.
+
+        Capped at MAX_ENTITY_ATTEMPTS. Does NOT consume operation budget —
+        only record_success does that.
         """
         key = (entity_id, operation)
         self._entity_attempts[key] = self._entity_attempts.get(key, 0) + 1

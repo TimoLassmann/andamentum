@@ -362,12 +362,13 @@ class ScrutiniseClaimOperation(BaseOperation):
             claim.scrutiny_verdict = "pass"
 
         # Saturation check: detect uninformative investigation cycles.
-        # If this is a re-scrutiny after investigation (investigation_count > 0)
-        # and the verdict is still "needs_resolution" but all blocking uncertainties
-        # have been resolved (even as "Unresolvable"), then investigation is
-        # not producing useful information. Mark as saturated.
+        # After at least 2 investigation cycles, if scrutiny still returns
+        # "needs_resolution" but all blocking uncertainties have been resolved,
+        # investigation is not producing useful information. Mark as saturated.
+        # Threshold is >= 2 (not > 0) to give the system a fair chance —
+        # one cycle may not find the right evidence, two confirms the pattern.
         if (
-            claim.investigation_count > 0
+            claim.investigation_count >= 2
             and claim.scrutiny_verdict == "needs_resolution"
         ):
             blocking_unresolved = await self.repo.query(
