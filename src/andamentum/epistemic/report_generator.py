@@ -400,25 +400,15 @@ class ReportGenerator:
         # Compute confidence scores
         confidence_scores: ConfidenceScores | None = None
         try:
-            from .confidence import compute_answer_confidence, compute_posterior
+            from .confidence import compute_posterior
 
-            ac = await compute_answer_confidence(self.repo, obj_id)
             po = await compute_posterior(self.repo, obj_id)
 
             confidence_scores = ConfidenceScores(
-                answer_confidence=ac.confidence,
-                answer_confidence_level=ac.level,
-                checks_passed=ac.passes,
-                checks_total=ac.passes + ac.failures,
-                checks=[(c.name, c.tradition, c.passed) for c in ac.checks],
                 posterior=po.posterior if po else None,
                 posterior_supporting=po.supporting_count if po else 0,
                 posterior_contradicting=po.contradicting_count if po else 0,
-                posterior_question_type=(
-                    po.question_type
-                    if po
-                    else (ac.question_type if ac.question_type else None)
-                ),
+                posterior_question_type=po.question_type if po else None,
             )
         except Exception as e:
             logger.warning(f"Failed to compute confidence scores: {e}")

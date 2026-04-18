@@ -20,7 +20,7 @@ Use `uv run` for everything Python-related (not plain `python`).
 # Install dev deps
 uv sync --extra dev
 
-# Run the full test suite (872 tests default, asyncio_mode=auto)
+# Run the full test suite (847 tests default, asyncio_mode=auto)
 # The `ollama` and `benchmark` markers are deselected by default.
 uv run pytest
 
@@ -47,7 +47,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 0 errors, ruff clean, pytest 872 passing (1 benchmark deselected)**. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 0 errors, ruff clean, pytest 847 passing (1 benchmark deselected)**. Don't claim completion until you've run these three and seen that state.
 
 ## CLIs
 

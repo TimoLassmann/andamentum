@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
-    from .confidence import AnswerConfidenceReport, PosteriorReport
+    from .confidence import PosteriorReport
 
 from andamentum.document_store import DocumentStore
 
@@ -51,7 +51,6 @@ class PatternSchedulerResult:
         failed: int,
         status: str,
         errors: Optional[list[str]] = None,
-        answer_confidence: Optional["AnswerConfidenceReport"] = None,
         posterior: Optional["PosteriorReport"] = None,
     ):
         self.objective_id = objective_id
@@ -60,7 +59,6 @@ class PatternSchedulerResult:
         self.failed = failed
         self.status = status
         self.errors = errors or []
-        self.answer_confidence = answer_confidence
         self.posterior = posterior
 
     @property
@@ -688,19 +686,9 @@ async def run_research_question(
     if verbose:
         logger.info(f"Scheduler complete: {successful} successful, {failed} failed")
 
-    # Compute post-hoc confidence from structural signals (deterministic, no LLM)
-    answer_confidence_report = None
+    # Compute posterior confidence from evidence direction (deterministic, no LLM)
     posterior_report = None
     if successful > 0:
-        try:
-            from .confidence import compute_answer_confidence
-
-            answer_confidence_report = await compute_answer_confidence(
-                repo, objective_id
-            )
-        except Exception as e:
-            logger.warning(f"Answer confidence computation failed: {e}")
-
         try:
             from .confidence import compute_posterior
 
@@ -715,7 +703,6 @@ async def run_research_question(
         failed=failed,
         status=status,
         errors=errors,
-        answer_confidence=answer_confidence_report,
         posterior=posterior_report,
     )
 

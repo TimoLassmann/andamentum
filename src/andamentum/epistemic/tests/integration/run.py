@@ -253,25 +253,12 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
     obj_id = objective[0].get("objective_id") if objective else None
     if obj_id:
         try:
-            from andamentum.epistemic.confidence import (
-                compute_answer_confidence,
-                compute_posterior,
-            )
+            from andamentum.epistemic.confidence import compute_posterior
             from andamentum.epistemic.repository import EpistemicRepository
 
             db_dir = str(Path(db_path).parent)
             db_name = Path(db_path).stem
             repo = await EpistemicRepository.for_database(db_name, db_dir=Path(db_dir))
-
-            ac = await compute_answer_confidence(repo, obj_id)
-            print(f"\n  {'─' * 56}")
-            print("  Answer Confidence")
-            print(f"  {'─' * 56}")
-            print(f"  Overall: {ac.confidence:.2f} ({ac.level.upper()})")
-            print(f"  Checks: {ac.passes} passed, {ac.failures} failed")
-            for check in ac.checks:
-                status = "PASS" if check.passed else "FAIL"
-                print(f"    [{status}] {check.name}: {check.detail}")
 
             posterior = await compute_posterior(repo, obj_id)
             if posterior is not None:
@@ -280,9 +267,11 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
                 print(f"  {'─' * 56}")
                 print(f"  Confidence: {posterior.posterior:.2%}")
                 print(
-                    f"  Claims supported: {posterior.supporting_count}  Contradicted: {posterior.contradicting_count}"
+                    f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}"
                 )
                 print(f"  {posterior.explanation}")
+            else:
+                print("\n  Posterior: not computed (question type not eligible)")
         except Exception as e:
             print(f"\n  Confidence calculation failed: {e}")
 

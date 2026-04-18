@@ -102,15 +102,6 @@ class ConfidenceScores:
     Decoupled from confidence.py models to keep html_report at Layer 1.
     """
 
-    # Answer confidence
-    answer_confidence: float = 0.5
-    answer_confidence_level: str = "moderate"
-    checks_passed: int = 0
-    checks_total: int = 0
-    checks: list[tuple[str, str, bool]] = field(
-        default_factory=list
-    )  # (name, tradition, passed)
-
     # Posterior (None if not applicable)
     posterior: Optional[float] = None
     posterior_supporting: int = 0
@@ -895,19 +886,6 @@ QUESTION_TYPE_LABELS = {
     "normative": "normative question (should we)",
 }
 
-CHECK_LABELS = {
-    "evidence_basis": "Evidence gathered",
-    "scrutiny_complete": "All claims reviewed",
-    "uncertainties_resolved": "Problems resolved",
-    "belief_maintenance": "Beliefs consistent",
-    "track:adversarial": "Counter-evidence searched",
-    "track:convergence": "Cross-domain agreement",
-    "track:deductive": "Logic validated",
-    "track:computational": "Computationally verified",
-    "track:contrastive": "Alternatives compared",
-    "track:consistency": "Claims cross-checked",
-}
-
 
 def _claim_status_label(stage: str, adversarial_balance: Optional[float]) -> str:
     """Get plain-English claim status label."""
@@ -1115,39 +1093,10 @@ def _render_sidebar(data: ReportData) -> str:
     """Render the floating metadata sidebar."""
     sections: list[str] = []
 
-    # 1. Answer Confidence
+    # 1. Posterior Confidence
     if data.confidence_scores is not None:
         scores = data.confidence_scores
-        level = scores.answer_confidence_level.upper()
 
-        # Check list with plain-English labels
-        check_items: list[str] = []
-        for name, _tradition, passed in scores.checks:
-            icon = "&#10003;" if passed else "&#10007;"
-            css_class = "check-pass" if passed else "check-fail"
-            display_name = _escape(
-                CHECK_LABELS.get(name, name.replace("_", " ").replace("track:", ""))
-            )
-            check_items.append(
-                f'<li class="{css_class}">'
-                f'<span class="check-icon">{icon}</span>'
-                f"{display_name}"
-                f"</li>"
-            )
-        checklist_html = "\n".join(check_items)
-
-        sections.append(f"""
-            <div class="sidebar-section">
-                <div class="sidebar-title">Answer Confidence</div>
-                <div class="sidebar-value">{scores.answer_confidence:.2f}</div>
-                <div class="sidebar-label">{_escape(level)}</div>
-                <div class="sidebar-label" style="margin-top: 8px;">{scores.checks_passed}/{scores.checks_total} checks passed</div>
-                <ul class="check-list">
-                    {checklist_html}
-                </ul>
-            </div>""")
-
-        # 2. Posterior
         if scores.posterior is not None:
             total = scores.posterior_supporting + scores.posterior_contradicting
             if total > 0:
@@ -1157,7 +1106,7 @@ def _render_sidebar(data: ReportData) -> str:
 
             sections.append(f"""
             <div class="sidebar-section">
-                <div class="sidebar-title">Posterior</div>
+                <div class="sidebar-title">Posterior Confidence</div>
                 <div class="sidebar-value">{scores.posterior:.2%} confident</div>
                 <div class="sidebar-label">{_escape(evidence_line)}</div>
             </div>""")
@@ -1168,11 +1117,11 @@ def _render_sidebar(data: ReportData) -> str:
         ):
             sections.append(f"""
             <div class="sidebar-section">
-                <div class="sidebar-title">Posterior</div>
+                <div class="sidebar-title">Posterior Confidence</div>
                 <div class="sidebar-label">N/A ({_escape(scores.posterior_question_type)} question)</div>
             </div>""")
 
-    # 3. Investigation Stats
+    # 2. Investigation Stats
     stats = data.stats
     supported = (
         stats.claims_by_stage.get("SUPPORTED", 0)
@@ -1262,17 +1211,11 @@ def _build_key_findings_qa(data: ReportData) -> str:
     if data.confidence_scores is not None:
         sc = data.confidence_scores
         confidence_str = (
-            f"{sc.answer_confidence_level.capitalize()} ({sc.answer_confidence:.2f})"
+            f"Posterior: {sc.posterior:.2%}" if sc.posterior is not None else "No posterior computed"
         )
-        if sc.posterior is not None:
-            confidence_str += f". Posterior confidence: {sc.posterior:.2%}"
 
     # How thorough was the investigation?
-    checks_total = data.confidence_scores.checks_total if data.confidence_scores else 0
-    checks_passed = (
-        data.confidence_scores.checks_passed if data.confidence_scores else 0
-    )
-    thoroughness = f"{stats.total_evidence} evidence sources examined, {checks_passed}/{checks_total} verification checks passed"
+    thoroughness = f"{stats.total_evidence} evidence sources examined"
 
     return f"""
             <section class="key-findings-qa">
