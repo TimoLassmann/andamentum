@@ -93,24 +93,41 @@ async def compute_posterior(
     # 4. Filter to active claims
     active_claims = [c for c in claims if not c.abandoned]
 
-    # 5. Count supporting / contradicting evidence across all active claims
+    # 5. Compute directional signal.
+    # Prefer integration assessment when available — it considers ALL
+    # evidence holistically (including no_bearing items and adversarial
+    # outcome). Fall back to per-item counting when integration hasn't run.
     supporting = 0
     contradicting = 0
 
-    for claim in active_claims:
-        claim_evidence = [
-            e
-            for e in evidence
-            if e.entity_id in claim.evidence_ids
-            and not e.invalidated
-            and e.cluster_status not in ("corroborative", "deferred")
-        ]
-        for e in claim_evidence:
-            if e.support_judgment == "supports":
+    integrated_claims = [
+        c for c in active_claims if c.integrated_assessment is not None
+    ]
+
+    if integrated_claims:
+        # Integration-informed: use holistic verdict per claim
+        for claim in integrated_claims:
+            if claim.integrated_assessment == "supports":
                 supporting += 1
-            elif e.support_judgment == "contradicts":
+            elif claim.integrated_assessment == "contradicts":
                 contradicting += 1
-            # "no_bearing" or None → ignored
+            # "insufficient" → neither, stays at prior
+    else:
+        # Fallback: count per-item judgments (original behavior)
+        for claim in active_claims:
+            claim_evidence = [
+                e
+                for e in evidence
+                if e.entity_id in claim.evidence_ids
+                and not e.invalidated
+                and e.cluster_status not in ("corroborative", "deferred")
+            ]
+            for e in claim_evidence:
+                if e.support_judgment == "supports":
+                    supporting += 1
+                elif e.support_judgment == "contradicts":
+                    contradicting += 1
+                # "no_bearing" or None → ignored
 
     # 6. Compute log-odds and posterior
     log_odds = supporting - contradicting
@@ -122,6 +139,7 @@ async def compute_posterior(
 
     # 7. Build explanation
     total = supporting + contradicting
+    mode = "integration" if integrated_claims else "per-item counting"
     if total == 0:
         explanation = (
             f"Posterior {posterior:.2f} for {question_type} question. "
@@ -131,7 +149,7 @@ async def compute_posterior(
         explanation = (
             f"Posterior {posterior:.2f} for {question_type} question. "
             f"{supporting} supporting vs {contradicting} contradicting "
-            f"evidence (log-odds {log_odds:+d})."
+            f"(log-odds {log_odds:+d}, via {mode})."
         )
 
     return PosteriorReport(
