@@ -650,7 +650,12 @@ async def run_research_question(
                 # MAX_ENTITY_ATTEMPTS. Successful operations (even if the
                 # entity needs re-processing after Peirce cycling) should
                 # not burn attempt slots.
-                scheduler.record_attempt(work.entity_id, work.operation)
+                #
+                # Exception: promote_claim failures are gate checks ("not
+                # ready yet"), not broken operations. Don't count them —
+                # the gate will pass once prerequisites are met.
+                if work.operation != "promote_claim":
+                    scheduler.record_attempt(work.entity_id, work.operation)
                 errors.append(result.message)
                 if progress_callback:
                     progress_callback(
