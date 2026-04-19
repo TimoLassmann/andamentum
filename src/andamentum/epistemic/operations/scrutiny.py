@@ -71,6 +71,17 @@ async def _maybe_advance_phase(repo: "EpistemicRepository", objective_id: str) -
         ):
             return
 
+    # No non-abandoned SUPPORTED claims still undergoing verification.
+    # Claims at SUPPORTED need verification tracks + integration before
+    # the objective can be considered done.
+    for c in claims:
+        if (
+            isinstance(c, Claim)
+            and not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+        ):
+            return
+
     # No unresolved blocking uncertainties
     uncertainties = await repo.query(
         "uncertainty", objective_id=objective_id, resolution=None
