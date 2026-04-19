@@ -56,8 +56,27 @@ async def _run_op(
     """Instantiate an operation, execute it, log the result, and return it."""
     op = _make_op(op_class, deps)
     work = _work(entity_id, entity_type, operation)
-    result = await op.execute(work)
+    try:
+        result = await op.execute(work)
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "%s on %s failed with exception: %s", operation, entity_id[:12], e
+        )
+        from ..operations.base import OperationResult
+
+        result = OperationResult(
+            success=False, entity_id=entity_id, message=f"{operation} error: {e}"
+        )
     state.log_operation(operation, entity_id, result.success, result.message)
+    if deps.progress_callback:
+        extras = {"created_entities": getattr(result, "created_entities", [])}
+        if not result.success:
+            extras["validation_errors"] = getattr(result, "validation_errors", [])
+        deps.progress_callback(
+            operation, entity_id, result.success, result.message, extras
+        )
     return result
 
 
