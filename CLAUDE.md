@@ -20,7 +20,7 @@ Use `uv run` for everything Python-related (not plain `python`).
 # Install dev deps
 uv sync --extra dev
 
-# Run the full test suite (870 tests default, asyncio_mode=auto)
+# Run the full test suite (889 tests default, asyncio_mode=auto)
 # The `ollama` and `benchmark` markers are deselected by default.
 uv run pytest
 
@@ -47,7 +47,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 0 errors, ruff clean, pytest 870 passing (1 benchmark deselected)**. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 0 errors, ruff clean, pytest 889 passing (1 benchmark deselected)**. Don't claim completion until you've run these three and seen that state.
 
 ## CLIs
 
@@ -64,7 +64,7 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 
 **Explicit model argument, no hidden defaults.** Every public function that calls an LLM takes `model=` as a keyword-only argument. There is no shared config module, no silent fallback, no ambient default. When adding new LLM-calling code, match this pattern — don't reach for a global config.
 
-**Sub-modules are independent within one package.** `epistemic`, `deep_research`, and `document_store` do not import from each other. Treat them as three libraries that happen to share a distribution. When something would need to cross the boundary, stop and ask.
+**Core module** (`andamentum.core`) — shared infrastructure for model resolution, agent execution, and (future) embeddings. All sub-modules import from core instead of maintaining independent implementations. When adding LLM-calling code, use `core.agents.AgentRunner` or `core.agents.run_agent_with_fallback()` — they provide model resolution (ollama, bedrock, passthrough) and PromptedOutput fallback for free. Sub-modules (`epistemic`, `deep_research`, `document_store`) do not import from each other — only from `core`.
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
