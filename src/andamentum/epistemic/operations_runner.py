@@ -409,14 +409,15 @@ async def run_research_question(
 ) -> PatternSchedulerResult:
     """Run a research question through the epistemic pipeline.
 
-    Uses the pattern-driven scheduler where workflow emerges from
-    entity state + pattern matching. No central workflow logic.
+    Delegates to the pydantic-graph DAG scheduler. The graph makes
+    operation dependencies explicit and type-checked, replacing the
+    pattern-based scheduler.
 
     Full pipeline:
-        CLARIFY_QUESTION → CONCEPTUAL_ANALYSIS → PLAN_TASK →
-        EXTRACT_EVIDENCE → PROPOSE_CLAIMS → SCRUTINISE_CLAIM →
-        [verification tracks] → PROMOTE_CLAIM → FREEZE_SNAPSHOT →
-        SYNTHESIZE_REPORT
+        PrepareObjective → PlanEvidence → ExtractEvidence →
+        CreateClaims → Scrutinize → [investigation cycle] →
+        PromoteToSupported → RunVerification → ResolveUncertainties →
+        IntegrateEvidence → PromoteSupported → Synthesize
 
     Args:
         question: The research question to investigate
@@ -435,6 +436,41 @@ async def run_research_question(
 
     Returns:
         PatternSchedulerResult with execution summary
+    """
+    from .graph import run_epistemic_graph
+
+    return await run_epistemic_graph(
+        question=question,
+        database_name=database_name,
+        verbose=verbose,
+        skip_preplanning=skip_preplanning,
+        model=model,
+        embedding_model=embedding_model,
+        progress_callback=progress_callback,
+        provider=provider,
+        providers=providers,
+        quality_scorer=quality_scorer,
+        db_dir=db_dir,
+    )
+
+
+async def _run_research_question_pattern_scheduler(
+    question: str,
+    database_name: str = "epistemic_research",
+    verbose: bool = False,
+    skip_preplanning: bool = False,
+    model: Optional[str] = None,
+    embedding_model: Optional[str] = None,
+    progress_callback: Optional[ProgressCallback] = None,
+    provider: str = "all",
+    providers: Optional[dict[str, Any]] = None,
+    quality_scorer: Optional[Any] = None,
+    db_dir: Optional[str] = None,
+    operation_budgets: Optional[dict[str, int]] = None,
+) -> PatternSchedulerResult:
+    """DEPRECATED: Old pattern-based scheduler. Kept for rollback.
+
+    Use run_research_question() which delegates to the graph scheduler.
     """
     from .repository import EpistemicRepository
     from .patterns import PatternScheduler
