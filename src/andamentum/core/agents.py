@@ -5,10 +5,13 @@ Provides:
 - AgentRunner: executes agents with caching and PromptedOutput fallback
 - run_agent_with_fallback: one-shot agent execution with fallback
 
-The PromptedOutput fallback catches UnexpectedModelBehavior (model
-ignores tool definitions) and retries by injecting the JSON schema
-directly into the system prompt. Essential for small models (Ollama
-locals, nano-tier APIs) that don't support tool-based structured output.
+The PromptedOutput fallback catches both UnexpectedModelBehavior (model
+ignores tool definitions) and ModelHTTPError (model returns invalid
+responses that cause HTTP errors on retry, e.g. Ollama/Gemma4 sending
+content:null after reasoning-only responses). It retries by injecting
+the JSON schema directly into the system prompt. Essential for small
+models (Ollama locals, nano-tier APIs) that don't reliably support
+tool-based structured output.
 
 Architecture: shared infrastructure, lazy pydantic-ai imports
 """
@@ -72,7 +75,7 @@ class AgentRunner:
             The agent's structured output (instance of defn.output_model)
         """
         from pydantic_ai import Agent
-        from pydantic_ai.exceptions import UnexpectedModelBehavior
+        from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
         user_message = "\n".join(f"{k}: {v}" for k, v in kwargs.items())
 
@@ -92,7 +95,7 @@ class AgentRunner:
         try:
             result = await self._cache[defn.name].run(user_message)
             return result.output
-        except UnexpectedModelBehavior:
+        except (UnexpectedModelBehavior, ModelHTTPError):
             logger.info(
                 "Agent %s: tool-based output failed, falling back to PromptedOutput",
                 defn.name,
@@ -159,7 +162,7 @@ async def run_agent_with_fallback(
         Instance of output_type
     """
     from pydantic_ai import Agent
-    from pydantic_ai.exceptions import UnexpectedModelBehavior
+    from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
     from pydantic_ai.output import PromptedOutput
 
     from .models import resolve_model
@@ -180,7 +183,7 @@ async def run_agent_with_fallback(
     try:
         result = await agent.run(user_message)
         return result.output
-    except UnexpectedModelBehavior:
+    except (UnexpectedModelBehavior, ModelHTTPError):
         logger.info("One-shot agent: falling back to PromptedOutput")
         fallback = Agent(
             resolved,
