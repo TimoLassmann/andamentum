@@ -763,14 +763,14 @@ class PatternScheduler:
             True if the track should fire, False if it should be skipped
         """
         if track_name == "adversarial":
-            # Fire only if adversarial has run before and the balance was poor,
-            # OR if there's an existing low balance from a prior cycle.
-            # On first pass (balance is None), don't fire — adversarial is
-            # expensive and SECONDARY means "only when needed."
+            # Fire on first pass (balance is None — hasn't been tested yet)
+            # or if a prior adversarial run showed poor balance (< 0.6).
+            # The only case where we skip: adversarial already ran AND the
+            # balance was healthy (>= 0.6), meaning the claim survived.
             balance = getattr(claim, "adversarial_balance", None)
-            if balance is not None and balance < 0.6:
-                return True
-            return False
+            if balance is not None and balance >= 0.6:
+                return False  # Already tested, survived — skip re-run
+            return True
 
         if track_name == "convergence":
             # Fire if the claim has 3+ evidence items but convergence hasn't
