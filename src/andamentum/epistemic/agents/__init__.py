@@ -4,31 +4,12 @@ Agent knowledge is Python code: prompts are string constants, output models
 are BaseModel classes, and definitions are frozen dataclasses.  All are
 importable, testable, and IDE-navigable.
 
+AgentDefinition is imported from andamentum.core — shared across all modules.
+
 Architecture: Layer 1 (framework-agnostic, pure Pydantic)
 """
 
-from dataclasses import dataclass
-
-from pydantic import BaseModel
-
-
-@dataclass(frozen=True)
-class AgentDefinition:
-    """Immutable definition of an epistemic agent.
-
-    Attributes:
-        name: Agent identifier (e.g. "epistemic_clarify_question")
-        prompt: System prompt (markdown body)
-        output_model: Pydantic BaseModel class for structured output
-        retries: Number of LLM retries on failure
-        output_retries: Number of retries for output parsing
-    """
-
-    name: str
-    prompt: str
-    output_model: type[BaseModel]
-    retries: int = 3
-    output_retries: int = 5
+from andamentum.core.agents import AgentDefinition
 
 
 # Global registry populated by domain modules at import time
