@@ -1,30 +1,22 @@
-"""DefaultResearchRunner — standalone agent execution using pydantic-ai.
+"""DefaultResearchRunner — deep research agent execution via core.AgentRunner.
 
-More complex than epistemic's runner because deep-research agents use tools
-(search, fetch). The runner registers tool functions that call SearchBackend.
-
-Requires pydantic-ai (installed as part of andamentum).
+Wraps andamentum.core.agents.AgentRunner with name-based agent lookup
+from the deep research agent registry. Gains PromptedOutput fallback
+and bedrock support from core.
 
 Architecture: Layer 1 (standalone package runner)
 """
 
 from typing import Any
 
-
-from andamentum.core.models import resolve_model as _resolve_model
+# Re-export so orchestrator.py can continue `from .runner import _resolve_model`
+from andamentum.core.models import resolve_model as _resolve_model  # noqa: F401
 
 
 class DefaultResearchRunner:
-    """Run deep-research agents using pydantic-ai directly.
-
-    Tool-using agents (search_planner, page_fetcher, lead_agent) get tools
-    registered that call the SearchBackend. Pure-output agents (page_summarizer,
-    gap_analyzer, novelty_assessor) work like epistemic's runner.
+    """Run deep-research agents using core.AgentRunner with name-based lookup.
 
     Usage::
-
-        from andamentum.deep_research.runner import DefaultResearchRunner
-        from andamentum.deep_research.backends import HttpxSearchBackend
 
         runner = DefaultResearchRunner(model="bedrock:claude-haiku-4-5")
         result = await runner.run("gap_analyzer", evidence="...", question="...")
@@ -35,18 +27,11 @@ class DefaultResearchRunner:
         model: str,
         backend: Any = None,  # SearchBackend — typed loosely to avoid importing backends
     ):
-        try:
-            from pydantic_ai import Agent
-        except ImportError as exc:
-            raise ImportError(
-                "pydantic-ai is required for DefaultResearchRunner. "
-                "Install with: pip install andamentum"
-            ) from exc
+        from andamentum.core.agents import AgentRunner
 
-        self._Agent = Agent
-        self.model = _resolve_model(model)
+        self._runner = AgentRunner(model=model)
+        self.model = model
         self._backend = backend
-        self._cache: dict[str, Any] = {}
 
     async def run(self, agent_name: str, **kwargs: Any) -> Any:
         """Run an agent by name.
@@ -58,24 +43,7 @@ class DefaultResearchRunner:
         Returns:
             Pydantic model instance matching the agent's output_model
         """
-        from .agents import AGENT_REGISTRY
+        from .agents import get_agent
 
-        defn = AGENT_REGISTRY.get(agent_name)
-        if defn is None:
-            raise ValueError(
-                f"Unknown deep-research agent: {agent_name}. "
-                f"Available: {sorted(AGENT_REGISTRY)}"
-            )
-
-        if agent_name not in self._cache:
-            agent = self._Agent(
-                self.model,
-                instructions=defn.prompt,
-                output_type=defn.output_model,
-                retries=defn.retries,
-            )
-            self._cache[agent_name] = agent
-
-        user_message = "\n".join(f"{k}: {v}" for k, v in kwargs.items())
-        result = await self._cache[agent_name].run(user_message)
-        return result.output
+        defn = get_agent(agent_name)
+        return await self._runner.run(defn, **kwargs)  # type: ignore[arg-type]
