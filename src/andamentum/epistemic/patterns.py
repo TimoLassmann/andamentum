@@ -232,6 +232,19 @@ WORK_PATTERNS: list[Pattern] = [
         operation="abandon_stale_claim",
         description="Abandon unresolved hypothesis after exhausting investigation",
     ),
+    # Demotion: SUPPORTED+ claims with exhausted investigation get demoted
+    # (not abandoned — they have real evidence, just can't resolve scrutiny issues)
+    Pattern(
+        entity_type="claim",
+        filters={
+            "stage__ne": ClaimStage.HYPOTHESIS.value,
+            "scrutiny_verdict": "needs_resolution",
+            "investigation_count__gte": 3,
+            "abandoned": False,
+        },
+        operation="demote_claim",
+        description="Demote non-hypothesis claim after exhausting investigation",
+    ),
     # ══════════════════════════════════════════════════════════════════
     # PHASE 4: CLAIM CREATION
     # Two mutually exclusive modes:

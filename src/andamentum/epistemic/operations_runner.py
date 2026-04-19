@@ -616,13 +616,29 @@ async def run_research_question(
             if result.success:
                 successful += 1
                 scheduler.record_success(work.operation)
-                # Reset promote attempts when evidence landscape changes.
-                # When extraction judges supporting evidence, earlier promote
-                # failures may no longer be predictive.
-                if work.operation == "extract_evidence":
+                # Reset promote attempts when gate inputs change.
+                # These operations change fields that the promote gate checks,
+                # so earlier promote failures may no longer be predictive.
+                _PROMOTE_RESET_OPS = {
+                    "extract_evidence",       # may judge new supporting evidence
+                    "adversarial_search",     # sets adversarial_checked + balance
+                    "assess_convergence",     # sets convergence_checked
+                    "integrate_evidence",     # sets integrated_assessment
+                    "validate_deductively",   # sets deductive_checked
+                    "verify_computationally", # sets computational_checked
+                    "resolve_uncertainty",    # resolves blocking uncertainties
+                    "investigate_claim",      # creates new evidence, resets scrutiny
+                    "set_routing_defaults",   # sets *_checked for SKIP tracks
+                }
+                if work.operation in _PROMOTE_RESET_OPS:
                     try:
-                        ev = await repo.get("evidence", work.entity_id)
-                        if getattr(ev, "support_judgment", None) == "supports":
+                        # Find the claim this operation affected
+                        if work.entity_type == "claim":
+                            scheduler.reset_entity_attempts(
+                                work.entity_id, "promote_claim"
+                            )
+                        elif work.entity_type == "evidence":
+                            ev = await repo.get("evidence", work.entity_id)
                             claims = await repo.query(
                                 "claim", objective_id=ev.objective_id
                             )
@@ -634,6 +650,12 @@ async def run_research_question(
                                     scheduler.reset_entity_attempts(
                                         c.entity_id, "promote_claim"
                                     )
+                        elif work.entity_type == "uncertainty":
+                            u = await repo.get("uncertainty", work.entity_id)
+                            for cid in getattr(u, "affected_claim_ids", []):
+                                scheduler.reset_entity_attempts(
+                                    cid, "promote_claim"
+                                )
                     except Exception:
                         pass  # Best effort — don't crash the runner
                 if progress_callback:
@@ -650,12 +672,7 @@ async def run_research_question(
                 # MAX_ENTITY_ATTEMPTS. Successful operations (even if the
                 # entity needs re-processing after Peirce cycling) should
                 # not burn attempt slots.
-                #
-                # Exception: promote_claim failures are gate checks ("not
-                # ready yet"), not broken operations. Don't count them —
-                # the gate will pass once prerequisites are met.
-                if work.operation != "promote_claim":
-                    scheduler.record_attempt(work.entity_id, work.operation)
+                scheduler.record_attempt(work.entity_id, work.operation)
                 errors.append(result.message)
                 if progress_callback:
                     progress_callback(
