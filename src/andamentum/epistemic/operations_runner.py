@@ -616,29 +616,37 @@ async def run_research_question(
             if result.success:
                 successful += 1
                 scheduler.record_success(work.operation)
-                # Reset promote attempts when gate inputs change.
-                # These operations change fields that the promote gate checks,
-                # so earlier promote failures may no longer be predictive.
+                # Reset promote attempts when key gate inputs change.
+                # Only operations that change fields central to the promote
+                # gate decision — not every verification track. This prevents
+                # excessive promote retries (246 failures in one run when
+                # reset was too broad).
                 _PROMOTE_RESET_OPS = {
-                    "extract_evidence",       # may judge new supporting evidence
-                    "adversarial_search",     # sets adversarial_checked + balance
-                    "assess_convergence",     # sets convergence_checked
-                    "integrate_evidence",     # sets integrated_assessment
-                    "validate_deductively",   # sets deductive_checked
-                    "verify_computationally", # sets computational_checked
-                    "resolve_uncertainty",    # resolves blocking uncertainties
+                    "adversarial_search",     # sets adversarial_checked + balance (gate checks both)
+                    "integrate_evidence",     # sets integrated_assessment (posterior input)
+                    "resolve_uncertainty",    # resolves blocking uncertainties (gate checks)
                     "investigate_claim",      # creates new evidence, resets scrutiny
-                    "set_routing_defaults",   # sets *_checked for SKIP tracks
                 }
                 if work.operation in _PROMOTE_RESET_OPS:
                     try:
-                        # Find the claim this operation affected
                         if work.entity_type == "claim":
                             scheduler.reset_entity_attempts(
                                 work.entity_id, "promote_claim"
                             )
-                        elif work.entity_type == "evidence":
-                            ev = await repo.get("evidence", work.entity_id)
+                        elif work.entity_type == "uncertainty":
+                            u = await repo.get("uncertainty", work.entity_id)
+                            for cid in getattr(u, "affected_claim_ids", []):
+                                scheduler.reset_entity_attempts(
+                                    cid, "promote_claim"
+                                )
+                    except Exception:
+                        pass
+                # Extract evidence: only reset promote when new "supports"
+                # judgment is recorded (not on every extraction).
+                if work.operation == "extract_evidence":
+                    try:
+                        ev = await repo.get("evidence", work.entity_id)
+                        if getattr(ev, "support_judgment", None) == "supports":
                             claims = await repo.query(
                                 "claim", objective_id=ev.objective_id
                             )
@@ -650,14 +658,8 @@ async def run_research_question(
                                     scheduler.reset_entity_attempts(
                                         c.entity_id, "promote_claim"
                                     )
-                        elif work.entity_type == "uncertainty":
-                            u = await repo.get("uncertainty", work.entity_id)
-                            for cid in getattr(u, "affected_claim_ids", []):
-                                scheduler.reset_entity_attempts(
-                                    cid, "promote_claim"
-                                )
                     except Exception:
-                        pass  # Best effort — don't crash the runner
+                        pass
                 if progress_callback:
                     progress_callback(
                         work.operation,
