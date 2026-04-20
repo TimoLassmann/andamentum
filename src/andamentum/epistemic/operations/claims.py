@@ -10,7 +10,7 @@ Operates on: Objective, Evidence, Claim entities
 
 from typing import TYPE_CHECKING, Optional
 
-from .base import BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, WorkItem
+from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
 
 from ..dedup import deduplicate_evidence
 from ..entities import (
@@ -182,7 +182,7 @@ class ProposeClaimsOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):

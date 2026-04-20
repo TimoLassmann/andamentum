@@ -9,7 +9,7 @@ Verifies that AbductiveIntegrationOperation:
 
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations.integration import AbductiveIntegrationOperation
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 
 
 def _make_objective(obj_id: str = "obj-1") -> Objective:
@@ -41,7 +41,7 @@ class TestAbductiveIntegration:
         op = AbductiveIntegrationOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test",
         )
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
+        work = OperationInput(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
         result = await op.execute(work)
 
         assert result.success
@@ -65,7 +65,7 @@ class TestAbductiveIntegration:
         op = AbductiveIntegrationOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test",
         )
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
+        work = OperationInput(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
         result = await op.execute(work)
 
         assert result.success
@@ -84,7 +84,7 @@ class TestAbductiveIntegration:
         op = AbductiveIntegrationOperation(
             repo=repo, agent_runner=None, embedding_model="test",
         )
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
+        work = OperationInput(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
         result = await op.execute(work)
 
         assert result.success
@@ -103,7 +103,7 @@ class TestAbductiveIntegration:
         op = AbductiveIntegrationOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test",
         )
-        work = WorkItem(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
+        work = OperationInput(entity_id="cl-1", entity_type="claim", operation="integrate_evidence")
         result = await op.execute(work)
 
         assert result.success

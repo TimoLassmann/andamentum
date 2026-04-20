@@ -35,7 +35,7 @@ from ..operations import (
     GatheredEvidence,
     QualityScore,
 )
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 from ..storage import InMemoryStorageBackend
 from ..repository import EpistemicRepository
 
@@ -207,7 +207,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -242,7 +242,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -283,7 +283,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -322,7 +322,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=scorer
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -361,7 +361,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=None
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -388,7 +388,7 @@ class TestEvidenceScoringFallbackChain:
         op = ExtractEvidenceOperation(
             repo, runner, evidence_gatherer=gatherer, quality_scorer=None
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
         result = await op.execute(work)
@@ -428,7 +428,7 @@ class TestScrutinyOperationFailure:
 
         runner = FakeAgentRunner()
         op = ScrutiniseClaimOperation(failing_repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim"
         )
         result = await op.execute(work)
@@ -452,7 +452,7 @@ class TestScrutinyOperationFailure:
 
         runner = PartiallyFailingRunner(fail_on={"epistemic_assess_evidence"})
         op = ScrutiniseClaimOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim"
         )
 
@@ -467,7 +467,7 @@ class TestScrutinyOperationFailure:
         claim = await _save_claim(repo, obj.entity_id)
 
         op = ScrutiniseClaimOperation(repo, agent_runner=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim"
         )
         result = await op.execute(work)
@@ -523,7 +523,7 @@ class TestAdversarialSearchFailure:
         )
 
         op = AdversarialSearchOperation(repo, failing_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="adversarial_search",
@@ -560,7 +560,7 @@ class TestAdversarialSearchFailure:
         runner = FakeAgentRunner()
 
         op = AdversarialSearchOperation(repo, runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="adversarial_search",
@@ -582,7 +582,7 @@ class TestAdversarialSearchFailure:
 
         runner = FakeAgentRunner()
         op = AdversarialSearchOperation(repo, runner, evidence_gatherer=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="adversarial_search",
@@ -601,7 +601,7 @@ class TestWriterValidatorLoop:
     async def _setup_synthesis(
         self,
         runner: Any,
-    ) -> tuple[EpistemicRepository, Snapshot, WorkItem]:
+    ) -> tuple[EpistemicRepository, Snapshot, OperationInput]:
         """Create the full entity chain needed for SynthesizeReportOperation."""
         repo = await _make_repo()
         obj = await _save_objective(repo, description="What is spaced repetition?")
@@ -634,7 +634,7 @@ class TestWriterValidatorLoop:
         )
         await repo.save(snapshot)
 
-        work = WorkItem(
+        work = OperationInput(
             entity_id=snapshot.entity_id,
             entity_type="snapshot",
             operation="synthesize_report",
@@ -793,7 +793,7 @@ class TestPredictionClassificationFailure:
 
         runner = PartiallyFailingRunner(fail_on={"epistemic_classify_prediction"})
         op = GeneratePredictionOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="generate_prediction",
@@ -822,7 +822,7 @@ class TestPredictionClassificationFailure:
 
         runner = FakeAgentRunner()
         op = GeneratePredictionOperation(failing_repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="generate_prediction",
@@ -856,7 +856,7 @@ class TestInvestigateClaimFailure:
 
         runner = FakeAgentRunner()
         op = InvestigateClaimOperation(failing_repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="investigate_claim",
@@ -883,7 +883,7 @@ class TestInvestigateClaimFailure:
 
         runner = FakeAgentRunner()
         op = InvestigateClaimOperation(failing_repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="investigate_claim",
@@ -908,7 +908,7 @@ class TestInvestigateClaimFailure:
 
         runner = FakeAgentRunner()
         op = InvestigateClaimOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="investigate_claim",
@@ -951,7 +951,7 @@ class TestResolveUncertaintyFailure:
 
         runner = FakeAgentRunner()
         op = ResolveUncertaintyOperation(failing_repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=u.entity_id,
             entity_type="uncertainty",
             operation="resolve_uncertainty",
@@ -978,7 +978,7 @@ class TestResolveUncertaintyFailure:
             }
         )
         op = ResolveUncertaintyOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=u.entity_id,
             entity_type="uncertainty",
             operation="resolve_uncertainty",

@@ -17,7 +17,7 @@ from ..operations import (
     GeneratePredictionOperation,
     GatheredEvidence,
 )
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 from ..storage import InMemoryStorageBackend
 from ..repository import EpistemicRepository
 
@@ -145,7 +145,7 @@ class TestCounterargEvalLogsOnFailure:
         op = AdversarialSearchOperation(
             repo, failing_runner, evidence_gatherer=gatherer
         )
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="adversarial_search",
@@ -190,7 +190,7 @@ class TestPredictionClassificationLogsOnFailure:
         )
 
         op = GeneratePredictionOperation(repo, failing_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="generate_prediction",

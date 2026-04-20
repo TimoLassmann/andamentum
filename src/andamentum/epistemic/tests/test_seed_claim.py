@@ -8,7 +8,7 @@ from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.evidence import Evidence
 from andamentum.epistemic.entities.objective import Objective
 from andamentum.epistemic.operations.seed_claim import SeedClaimOperation
-from andamentum.epistemic.patterns import WorkItem
+from andamentum.epistemic.patterns import OperationInput
 from andamentum.epistemic.repository import EpistemicRepository
 from andamentum.epistemic.storage import InMemoryStorageBackend
 
@@ -31,7 +31,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         result = await op.execute(work)
 
         assert result.success
@@ -66,7 +66,7 @@ class TestSeedClaimOperation:
             await repo.save(ev)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         result = await op.execute(work)
 
         assert result.success
@@ -85,7 +85,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -105,7 +105,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -124,7 +124,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -142,7 +142,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         await op.execute(work)
         result2 = await op.execute(work)
 
@@ -184,7 +184,7 @@ class TestSeedClaimOperation:
                 )
 
         op = SeedClaimOperation(repo, agent_runner=FakeRunner())
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         result = await op.execute(work)
 
         assert result.success
@@ -217,7 +217,7 @@ class TestSeedClaimOperation:
         await repo.save(ev)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         result = await op.execute(work)
 
         assert result.success
@@ -238,7 +238,7 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = WorkItem(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
         result = await op.execute(work)
 
         assert not result.success

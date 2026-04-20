@@ -11,7 +11,7 @@ Operates on: Claim entities
 
 from datetime import datetime
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import Claim
 
@@ -25,7 +25,7 @@ class PromoteClaimOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         from ..gates import validate_promotion, get_next_stage
 
         claim = await self.repo.get("claim", work.entity_id)
@@ -131,7 +131,7 @@ class DemoteClaimOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         from ..gates import get_previous_stage
 
         claim = await self.repo.get("claim", work.entity_id)

@@ -9,7 +9,7 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Objective, Evidence entities
 """
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
     Evidence,
@@ -26,7 +26,7 @@ class ClarifyQuestionOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):
@@ -133,7 +133,7 @@ class ClassifyQuestionOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         # Idempotent: skip if already classified
@@ -191,7 +191,7 @@ class ConceptualAnalysisOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):
@@ -240,7 +240,7 @@ class PlanTaskOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):

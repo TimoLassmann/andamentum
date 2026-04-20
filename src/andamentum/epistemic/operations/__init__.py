@@ -27,6 +27,7 @@ from .base import (
     DefaultValidator,
     EvidenceGatherer,
     GatheredEvidence,
+    OperationInput,
     OperationResult,
     OperationValidator,
     QualityScore,
@@ -224,7 +225,8 @@ __all__ = [
     "DEDUP_SIMILARITY_THRESHOLD",
     "MAX_INVESTIGATION_ATTEMPTS",
     "MAX_UNCERTAINTY_DEPTH",
-    "WorkItem",
+    "OperationInput",
+    "WorkItem",  # backward compat alias
     "_truncate_for_trace",
     # Claims
     "EVIDENCE_TOP_K",

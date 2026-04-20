@@ -9,7 +9,7 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim, Evidence, Uncertainty entities
 """
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -30,7 +30,7 @@ class AnalyzeArgumentOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):
@@ -87,7 +87,7 @@ class ContrastiveEvaluationOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if claim.contrastive_checked:
@@ -198,7 +198,7 @@ class CrossClaimConsistencyOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if claim.consistency_checked:

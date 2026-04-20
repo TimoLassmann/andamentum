@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, MA
 Operates on: Uncertainty, Claim, Evidence, Objective entities
 """
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult, WorkItem
+from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -23,7 +23,7 @@ class ResolveUncertaintyOperation(BaseOperation):
 
     entity_type = "uncertainty"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         uncertainty = await self.repo.get("uncertainty", work.entity_id)
 
         if not isinstance(uncertainty, Uncertainty):

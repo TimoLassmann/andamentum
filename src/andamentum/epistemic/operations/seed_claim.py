@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from ..entities.claim import Claim, ClaimStage
 from ..entities.objective import Objective
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 
 class SeedClaimOperation(BaseOperation):
@@ -25,7 +25,7 @@ class SeedClaimOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):

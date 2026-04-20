@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult), claims (select_top_k_evidence
 Operates on: Claim, Evidence, Uncertainty, Objective entities
 """
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 from .claims import select_top_k_evidence
 
 from ..entities import (
@@ -250,7 +250,7 @@ class ScrutiniseClaimOperation(BaseOperation):
 
         return verdict
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):

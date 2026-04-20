@@ -20,7 +20,7 @@ from ..operations import (
     create_operations,
     ProposeClaimsOperation,
 )
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 
 
 class FakeEvidenceGatherer:
@@ -71,7 +71,7 @@ class TestPreplanningChain:
         )
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="clarify_question"
         )
         with patch(
@@ -93,7 +93,7 @@ class TestPreplanningChain:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="conceptual_analysis"
         )
         result = await ops["conceptual_analysis"].execute(work)
@@ -112,7 +112,7 @@ class TestPreplanningChain:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="plan_task"
         )
 
@@ -156,7 +156,7 @@ class TestEvidenceExtraction:
 
         gatherer = FakeEvidenceGatherer()
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-1", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -207,7 +207,7 @@ class TestEvidenceExtraction:
             ]
         )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-m", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -253,7 +253,7 @@ class TestEvidenceExtraction:
             ]
         )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-ext", entity_type="evidence", operation="extract_evidence"
         )
         await ops["extract_evidence"].execute(work)
@@ -295,7 +295,7 @@ class TestEvidenceExtraction:
             ]
         )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-inh", entity_type="evidence", operation="extract_evidence"
         )
         await ops["extract_evidence"].execute(work)
@@ -333,7 +333,7 @@ class TestEvidenceExtraction:
             ]
         )
         ops = create_operations(repo, fake_runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-qs", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -437,7 +437,7 @@ class TestAgentOnlyExtraction:
 
         # Create operations WITHOUT evidence_gatherer (model=None skips auto-creation)
         ops = create_operations(repo, fake_runner, evidence_gatherer=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-ao", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -470,7 +470,7 @@ class TestAgentOnlyExtraction:
 
         # Create operations with NO runner and NO gatherer (testing mode)
         ops = create_operations(repo, agent_runner=None, evidence_gatherer=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-df", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -507,7 +507,7 @@ class TestAgentOnlyExtraction:
         await repo.save(e)
 
         ops = create_operations(repo, fake_runner, evidence_gatherer=FailingGatherer())
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-gf", entity_type="evidence", operation="extract_evidence"
         )
         result = await ops["extract_evidence"].execute(work)
@@ -564,7 +564,7 @@ class TestAgentOnlyExtraction:
         )
 
         ops = create_operations(repo, runner, evidence_gatherer=gatherer)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="e-fb", entity_type="evidence", operation="extract_evidence"
         )
         e = Evidence(
@@ -595,7 +595,7 @@ class TestScrutiny:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
         )
         result = await ops["scrutinise_claim"].execute(work)
@@ -641,7 +641,7 @@ class TestScrutiny:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
         )
         result = await ops["scrutinise_claim"].execute(work)
@@ -672,7 +672,7 @@ class TestPromotion:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(entity_id="c-1", entity_type="claim", operation="promote_claim")
+        work = OperationInput(entity_id="c-1", entity_type="claim", operation="promote_claim")
         result = await ops["promote_claim"].execute(work)
 
         assert result.success
@@ -698,7 +698,7 @@ class TestProposeClaims:
         )
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="propose_claims"
         )
         with patch(
@@ -732,7 +732,7 @@ class TestFreezeSnapshot:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)
@@ -771,7 +771,7 @@ class TestFreezeSnapshot:
         await repo.save(s)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)
@@ -803,7 +803,7 @@ class TestFreezeSnapshot:
         await repo.save(a)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)
@@ -866,7 +866,7 @@ class TestCaveatDedup:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
             )
             result = await ops["freeze_snapshot"].execute(work)
@@ -907,7 +907,7 @@ class TestCaveatDedup:
         await repo.save(u)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)
@@ -939,7 +939,7 @@ class TestCaveatDedup:
             await repo.save(u)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)
@@ -963,7 +963,7 @@ class TestSynthesizeReport:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-1", entity_type="snapshot", operation="synthesize_report"
         )
         result = await ops["synthesize_report"].execute(work)
@@ -1050,7 +1050,7 @@ class TestResolveUncertaintySiblingGrouping:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="u-target",
                 entity_type="uncertainty",
                 operation="resolve_uncertainty",
@@ -1104,7 +1104,7 @@ class TestResolveUncertaintySiblingGrouping:
             "andamentum.epistemic.embeddings.embed_texts",
             side_effect=RuntimeError("Ollama unavailable"),
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="u-target",
                 entity_type="uncertainty",
                 operation="resolve_uncertainty",
@@ -1192,7 +1192,7 @@ class TestResolveUncertaintyDedup:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="u-new",
                 entity_type="uncertainty",
                 operation="resolve_uncertainty",
@@ -1274,7 +1274,7 @@ class TestResolveUncertaintyDedup:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed_texts
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="u-new",
                 entity_type="uncertainty",
                 operation="resolve_uncertainty",
@@ -1355,7 +1355,7 @@ class TestDeduplicateConcerns:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1",
                 entity_type="objective",
                 operation="deduplicate_concerns",
@@ -1411,7 +1411,7 @@ class TestDeduplicateConcerns:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1",
                 entity_type="objective",
                 operation="deduplicate_concerns",
@@ -1438,7 +1438,7 @@ class TestDeduplicateConcerns:
         await repo.save(obj)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="deduplicate_concerns"
         )
         result = await ops["deduplicate_concerns"].execute(work)
@@ -1475,7 +1475,7 @@ class TestDeduplicateConcerns:
         with patch(
             "andamentum.epistemic.embeddings.embed_texts", side_effect=fake_embed
         ):
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1",
                 entity_type="objective",
                 operation="deduplicate_concerns",
@@ -1542,7 +1542,7 @@ class TestEvidenceRelevanceFiltering:
         fake_runner.run = tracking_run
 
         op = ProposeClaimsOperation(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
         )
 
@@ -1595,7 +1595,7 @@ class TestEvidenceRelevanceFiltering:
         fake_runner.run = failing_screen
 
         op = ProposeClaimsOperation(repo, fake_runner, embedding_model="test-model")
-        work = WorkItem(
+        work = OperationInput(
             entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
         )
 

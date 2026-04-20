@@ -9,7 +9,7 @@ Depends on: base (BaseOperation, OperationResult, MAX_INVESTIGATION_ATTEMPTS)
 Operates on: Claim, Evidence, Decision, Objective entities
 """
 
-from .base import BaseOperation, MAX_INVESTIGATION_ATTEMPTS, OperationResult, WorkItem
+from .base import BaseOperation, MAX_INVESTIGATION_ATTEMPTS, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -36,7 +36,7 @@ class GeneratePredictionOperation(BaseOperation):
     entity_type = "claim"
     NUM_ASPECTS = 3  # Number of testable aspects to generate per claim
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):
@@ -154,7 +154,7 @@ class RecordDecisionOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):
@@ -253,7 +253,7 @@ class InvestigateClaimOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):

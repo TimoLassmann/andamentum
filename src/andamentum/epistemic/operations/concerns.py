@@ -21,8 +21,8 @@ from .base import (
     BaseOperation,
     DEDUP_SIMILARITY_THRESHOLD,
     MAX_UNCERTAINTY_DEPTH,
+    OperationInput,
     OperationResult,
-    WorkItem,
 )
 
 from ..entities import (
@@ -52,7 +52,7 @@ class DeduplicateConcernsOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):

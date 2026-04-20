@@ -11,7 +11,7 @@ from ..repository import EpistemicRepository
 from ..entities.objective import Objective
 from ..entities.claim import Claim
 from ..primitives import ClaimStage
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 from ..operations import SetRoutingDefaultsOperation, OPERATION_CLASSES
 
 
@@ -53,7 +53,7 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="set_routing_defaults",
@@ -91,7 +91,7 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="set_routing_defaults",
@@ -124,7 +124,7 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="set_routing_defaults",
@@ -161,7 +161,7 @@ class TestSetRoutingDefaultsOperation:
         await repo.save(claim)
 
         op = SetRoutingDefaultsOperation(repo, None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="set_routing_defaults",
