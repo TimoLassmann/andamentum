@@ -147,10 +147,14 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 and not claim.abandoned
                 and claim.stage != ClaimStage.HYPOTHESIS
             ):
-                await _run_op(
+                result = await _run_op(
                     RevalidateClaimOperation, deps, state,
                     claim.entity_id, "claim", "revalidate_claim",
                 )
+                # If TMS demoted the claim, remove from verification_done
+                # so PromoteToSupported re-routes it through verification
+                if result.success and "demoted" in (result.message or "").lower():
+                    state.verification_done.discard(claim.entity_id)
 
     # Step 3: Process claims flagged for TMS by graph nodes
     for cid in list(state.claims_needing_tms):
@@ -513,7 +517,17 @@ class AbandonOrDemote(
 class PromoteToSupported(
     BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
 ):
-    """Try promoting HYPOTHESIS claims with passing scrutiny to SUPPORTED."""
+    """Promote HYPOTHESIS claims and route SUPPORTED claims to verification.
+
+    This is a routing hub that checks actual claim state:
+    1. HYPOTHESIS with pass → promote to SUPPORTED, set routing defaults
+    2. SUPPORTED without verification done → route to ClusterEvidence
+    3. Everything at PROVISIONAL+ or abandoned → CheckCompletion
+
+    This correctly handles re-entry after uncertainty resolution:
+    a claim at SUPPORTED that was re-scrutinized goes through
+    verification again instead of being skipped.
+    """
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -526,8 +540,8 @@ class PromoteToSupported(
         deps = ctx.deps
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        promoted_any = False
 
+        # Step 1: Promote any HYPOTHESIS claims with passing scrutiny
         for claim in all_claims:
             if claim.abandoned:
                 continue
@@ -537,17 +551,25 @@ class PromoteToSupported(
                     claim.entity_id, "claim", "promote_claim",
                 )
                 if result.success:
-                    promoted_any = True
-                    # Set routing defaults for the newly promoted claim
                     await _run_op(
                         SetRoutingDefaultsOperation, deps, state,
                         claim.entity_id, "claim", "set_routing_defaults",
                     )
 
-        if promoted_any:
+        # Step 2: Check if any SUPPORTED claims need verification
+        # Re-read after promotions
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+        needs_verification = any(
+            not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.entity_id not in state.verification_done
+            for c in all_claims
+        )
+
+        if needs_verification:
             return ClusterEvidence()
 
-        # No claims could be promoted to SUPPORTED
+        # All claims are at PROVISIONAL+ or abandoned or verified
         return CheckCompletion()
 
 
