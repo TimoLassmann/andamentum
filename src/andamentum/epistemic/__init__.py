@@ -73,8 +73,6 @@ from .operations import (
     GatheredEvidence,
     EvidenceGatherer,
     QualityScorer,
-    OPERATION_CLASSES,
-    create_operations,
 )
 
 # ── Agents (Python-native definitions) ───────────────────────────────────
@@ -150,8 +148,6 @@ __all__ = [
     "GatheredEvidence",
     "EvidenceGatherer",
     "QualityScorer",
-    "OPERATION_CLASSES",
-    "create_operations",
     # Agents
     "AgentDefinition",
     "AGENT_REGISTRY",
