@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult, GatheredEvidence)
 Operates on: Evidence, Objective entities
 """
 
-from .base import BaseOperation, GatheredEvidence, OperationResult
+from .base import BaseOperation, GatheredEvidence, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
@@ -16,7 +16,6 @@ from ..entities import (
     Evidence,
     Objective,
 )
-from ..patterns import WorkItem
 
 
 class ExtractEvidenceOperation(BaseOperation):

@@ -1,18 +1,19 @@
-"""Work Patterns - Declarative rules for epistemic work scheduling.
+"""Pattern-based scheduler (DEPRECATED).
 
-Patterns define what work needs to be done based on entity state.
-The scheduler queries for entities matching patterns and executes work.
-
-Key concept: The workflow emerges from patterns + entity state.
-No central workflow logic - just pattern matching.
-
-Architecture: Layer 1 (framework-agnostic)
+The pattern scheduler has been replaced by the pydantic-graph DAG
+in ``andamentum.epistemic.graph``. This module is kept for backward
+compatibility (WorkItem re-export) and reference. The Pattern class,
+PatternScheduler, and WORK_PATTERNS are no longer used by the main
+pipeline.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional, TYPE_CHECKING
 
 from .entities import EpistemicEntity, ClaimStage
+
+# WorkItem moved to operations.base — re-export for backward compatibility
+from .operations.base import WorkItem  # noqa: F401
 
 if TYPE_CHECKING:
     from .repository import EpistemicRepository
@@ -101,23 +102,6 @@ class Pattern:
                     return False
 
         return True
-
-
-@dataclass
-class WorkItem:
-    """Unit of epistemic work to be executed.
-
-    Attributes:
-        entity_id: ID of the entity this work targets
-        entity_type: Type of entity
-        operation: Name of operation to execute
-        metadata: Additional context for the operation
-    """
-
-    entity_id: str
-    entity_type: str
-    operation: str
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

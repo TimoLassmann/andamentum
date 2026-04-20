@@ -9,7 +9,7 @@ Depends on: base (BaseOperation, OperationResult, MAX_INVESTIGATION_ATTEMPTS)
 Operates on: Claim, Evidence, Decision, Objective entities
 """
 
-from .base import BaseOperation, MAX_INVESTIGATION_ATTEMPTS, OperationResult
+from .base import BaseOperation, MAX_INVESTIGATION_ATTEMPTS, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
@@ -18,7 +18,6 @@ from ..entities import (
     Evidence,
     Objective,
 )
-from ..patterns import WorkItem
 
 
 class GeneratePredictionOperation(BaseOperation):

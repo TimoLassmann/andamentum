@@ -10,7 +10,7 @@ Operates on: Objective, Evidence, Claim entities
 
 from typing import TYPE_CHECKING, Optional
 
-from .base import BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD
+from .base import BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, WorkItem
 
 from ..dedup import deduplicate_evidence
 from ..entities import (
@@ -19,7 +19,6 @@ from ..entities import (
     Evidence,
     Objective,
 )
-from ..patterns import WorkItem
 
 if TYPE_CHECKING:
     from ..repository import EpistemicRepository

@@ -31,6 +31,7 @@ from .base import (
     OperationValidator,
     QualityScore,
     QualityScorer,
+    WorkItem,
     _truncate_for_trace,
 )
 
@@ -53,10 +54,7 @@ from .claims import (
 from .evidence import ExtractEvidenceOperation
 
 # ── Scrutiny (Phase 5) ──────────────────────────────────────────────────
-from .scrutiny import (
-    ScrutiniseClaimOperation,
-    _maybe_advance_phase,
-)
+from .scrutiny import ScrutiniseClaimOperation
 
 # ── Stage management (Phase 7) ──────────────────────────────────────────
 from .stage_management import (
@@ -226,12 +224,11 @@ __all__ = [
     "DEDUP_SIMILARITY_THRESHOLD",
     "MAX_INVESTIGATION_ATTEMPTS",
     "MAX_UNCERTAINTY_DEPTH",
+    "WorkItem",
     "_truncate_for_trace",
     # Claims
     "EVIDENCE_TOP_K",
     "select_top_k_evidence",
-    # Scrutiny helpers
-    "_maybe_advance_phase",
     # Operations
     "ClarifyQuestionOperation",
     "ClassifyQuestionOperation",

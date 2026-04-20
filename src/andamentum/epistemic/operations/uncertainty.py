@@ -4,13 +4,11 @@ Resolves blocking uncertainties with sibling grouping (cosine dedup)
 and concern dedup. When resolution succeeds, applies the same answer
 to semantically similar siblings.
 
-Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, MAX_UNCERTAINTY_DEPTH),
-            scrutiny (_maybe_advance_phase)
+Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, MAX_UNCERTAINTY_DEPTH)
 Operates on: Uncertainty, Claim, Evidence, Objective entities
 """
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult
-from .scrutiny import _maybe_advance_phase
+from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
@@ -18,7 +16,6 @@ from ..entities import (
     Objective,
     Uncertainty,
 )
-from ..patterns import WorkItem
 
 
 class ResolveUncertaintyOperation(BaseOperation):
@@ -204,10 +201,6 @@ class ResolveUncertaintyOperation(BaseOperation):
                         await self.repo.save(claim)
                 except Exception:
                     continue
-
-        # Check if objective can advance to claims_done
-        if uncertainty.resolution is not None:
-            await _maybe_advance_phase(self.repo, uncertainty.objective_id)
 
         return OperationResult(
             success=True,

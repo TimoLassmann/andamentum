@@ -9,14 +9,13 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim, Evidence, Uncertainty entities
 """
 
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
     Uncertainty,
     UncertaintyType,
 )
-from ..patterns import WorkItem
 
 
 class AnalyzeArgumentOperation(BaseOperation):
