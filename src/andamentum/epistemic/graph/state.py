@@ -47,6 +47,16 @@ class EpistemicGraphState:
     # Claims that have been abandoned or reached terminal stage
     terminal_claims: set[str] = field(default_factory=set)
 
+    # ── Flow control (graph-managed, not on entities) ───────────
+    # Claims needing re-scrutiny after uncertainty resolution or
+    # investigation. Scrutinize node checks this IN ADDITION to
+    # claims with scrutiny_verdict=None.
+    claims_needing_rescrutiny: set[str] = field(default_factory=set)
+
+    # Claims needing TMS revalidation after evidence changes.
+    # Populated by graph nodes, consumed by _run_tms_sweep.
+    claims_needing_tms: set[str] = field(default_factory=set)
+
     # ── Operation trace ─────────────────────────────────────────
     # Lightweight log for the progress callback and final stats
     operations_log: list[dict[str, Any]] = field(default_factory=list)
