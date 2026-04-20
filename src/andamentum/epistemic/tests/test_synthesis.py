@@ -18,7 +18,7 @@ from ..entities import (
     UncertaintyType,
 )
 from ..operations import create_operations, SynthesizeReportOperation
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 
 
 class TestSynthesizeContentBody:
@@ -63,7 +63,7 @@ class TestSynthesizeContentBody:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-1", entity_type="snapshot", operation="synthesize_report"
         )
         result = await ops["synthesize_report"].execute(work)
@@ -119,7 +119,7 @@ class TestSynthesizeContentBody:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-2", entity_type="snapshot", operation="synthesize_report"
         )
         result = await ops["synthesize_report"].execute(work)
@@ -168,7 +168,7 @@ class TestSynthesizeContentBody:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-3", entity_type="snapshot", operation="synthesize_report"
         )
         await ops["synthesize_report"].execute(work)
@@ -227,7 +227,7 @@ class TestSynthesizeContentBody:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-4", entity_type="snapshot", operation="synthesize_report"
         )
         await ops["synthesize_report"].execute(work)
@@ -404,7 +404,7 @@ class TestTraceMapping:
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="snap-tr", entity_type="snapshot", operation="synthesize_report"
         )
         result = await ops["synthesize_report"].execute(work)
@@ -463,7 +463,7 @@ class TestFreezeSnapshotCollectsAllEntities:
         await repo.save(u)
 
         ops = create_operations(repo, fake_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-fs", entity_type="objective", operation="freeze_snapshot"
         )
         result = await ops["freeze_snapshot"].execute(work)

@@ -4,7 +4,7 @@ import pytest
 from ..entities.claim import Claim, ClaimStage
 from ..entities.evidence import Evidence
 from ..operations.verification import AdversarialSearchOperation
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 
 
 class TestAdversarialEvidenceStorage:
@@ -51,7 +51,7 @@ class TestAdversarialEvidenceStorage:
         op = AdversarialSearchOperation(repo=repo, agent_runner=fake_runner)
         op.evidence_gatherer = MockEvidenceGatherer()  # type: ignore[assignment]
 
-        work = WorkItem(
+        work = OperationInput(
             entity_id="c-1",
             entity_type="claim",
             operation="adversarial_search",

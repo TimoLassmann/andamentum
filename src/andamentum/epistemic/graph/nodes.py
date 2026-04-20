@@ -38,11 +38,11 @@ def _make_op(op_class: type, deps: EpistemicDeps) -> Any:
     )
 
 
-def _work(entity_id: str, entity_type: str, operation: str) -> Any:
-    """Create a WorkItem for operation execution."""
-    from ..operations.base import WorkItem
+def _op_input(entity_id: str, entity_type: str, operation: str) -> Any:
+    """Create an OperationInput for operation execution."""
+    from ..operations.base import OperationInput
 
-    return WorkItem(entity_id=entity_id, entity_type=entity_type, operation=operation)
+    return OperationInput(entity_id=entity_id, entity_type=entity_type, operation=operation)
 
 
 async def _run_op(
@@ -55,7 +55,7 @@ async def _run_op(
 ) -> Any:
     """Instantiate an operation, execute it, log the result, and return it."""
     op = _make_op(op_class, deps)
-    work = _work(entity_id, entity_type, operation)
+    work = _op_input(entity_id, entity_type, operation)
     try:
         result = await op.execute(work)
     except Exception as e:

@@ -12,7 +12,7 @@ Operates on: Objective, Snapshot, Artefact, Claim, Evidence, Uncertainty entitie
 
 from typing import Any
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult, WorkItem
+from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
 
 from ..entities import (
     Artefact,
@@ -30,7 +30,7 @@ class FreezeSnapshotOperation(BaseOperation):
 
     entity_type = "objective"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         objective = await self.repo.get("objective", work.entity_id)
 
         if not isinstance(objective, Objective):
@@ -176,7 +176,7 @@ class SynthesizeReportOperation(BaseOperation):
 
     MAX_VALIDATION_ROUNDS = 10
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         snapshot = await self.repo.get("snapshot", work.entity_id)
 
         if not isinstance(snapshot, Snapshot):

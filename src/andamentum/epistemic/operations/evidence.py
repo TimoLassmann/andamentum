@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult, GatheredEvidence)
 Operates on: Evidence, Objective entities
 """
 
-from .base import BaseOperation, GatheredEvidence, OperationResult, WorkItem
+from .base import BaseOperation, GatheredEvidence, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -31,7 +31,7 @@ class ExtractEvidenceOperation(BaseOperation):
 
     entity_type = "evidence"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         evidence = await self.repo.get("evidence", work.entity_id)
 
         if not isinstance(evidence, Evidence):

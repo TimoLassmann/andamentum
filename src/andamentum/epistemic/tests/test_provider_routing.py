@@ -265,7 +265,7 @@ class TestPlanTaskOperationContract:
         """Without an agent_runner, LLM routing can't run, so only web_search is selected."""
         from andamentum.epistemic.entities.objective import Objective
         from andamentum.epistemic.operations.preplanning import PlanTaskOperation
-        from andamentum.epistemic.patterns import WorkItem
+        from andamentum.epistemic.patterns import OperationInput
         from andamentum.epistemic.repository import EpistemicRepository
         from andamentum.epistemic.storage import InMemoryStorageBackend
 
@@ -280,7 +280,7 @@ class TestPlanTaskOperationContract:
         await repo.save(obj)
 
         op = PlanTaskOperation(repo, agent_runner=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-1", entity_type="objective", operation="plan_task"
         )
         result = await op.execute(work)

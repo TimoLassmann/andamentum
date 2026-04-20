@@ -10,7 +10,7 @@ Operates on: Claim, Evidence, Uncertainty entities
 
 from typing import Any
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -33,7 +33,7 @@ class AdversarialSearchOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         import asyncio
         import logging
 
@@ -325,7 +325,7 @@ class AssessConvergenceOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         from ..convergence_detector import detect_convergence
         from ..domain_classifier import classify_evidence_domain as default_classify
         from ..primitives import (
@@ -487,7 +487,7 @@ class ValidateDeductivelyOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):
@@ -562,7 +562,7 @@ class VerifyComputationallyOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):

@@ -131,7 +131,7 @@ class TestClassifyQuestionAdapter:
 from ..storage import InMemoryStorageBackend  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES  # noqa: E402
-from ..patterns import WorkItem  # noqa: E402
+from ..patterns import OperationInput  # noqa: E402
 
 
 class TestClassifyQuestionOperation:
@@ -170,7 +170,7 @@ class TestClassifyQuestionOperation:
         await repo.save(obj)
 
         op = ClassifyQuestionOperation(repo, mock_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-cls-1",
             entity_type="objective",
             operation="classify_question",
@@ -192,7 +192,7 @@ class TestClassifyQuestionOperation:
         await repo.save(obj)
 
         op = ClassifyQuestionOperation(repo, mock_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-cls-2",
             entity_type="objective",
             operation="classify_question",
@@ -214,7 +214,7 @@ class TestClassifyQuestionOperation:
         await repo.save(obj)
 
         op = ClassifyQuestionOperation(repo, mock_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-cls-3",
             entity_type="objective",
             operation="classify_question",
@@ -242,7 +242,7 @@ class TestClassifyQuestionOperation:
         await repo.save(obj)
 
         op = ClassifyQuestionOperation(repo, mock_runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id="obj-cls-4",
             entity_type="objective",
             operation="classify_question",

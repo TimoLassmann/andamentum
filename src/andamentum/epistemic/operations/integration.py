@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim entities
 """
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 from ..entities import Claim, Evidence, Uncertainty
 
 
@@ -17,7 +17,7 @@ class AbductiveIntegrationOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         if not isinstance(claim, Claim):

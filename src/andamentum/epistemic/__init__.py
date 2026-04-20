@@ -60,7 +60,7 @@ from .gates import (
 )
 
 # ── Patterns ──────────────────────────────────────────────────────────────
-from .patterns import WorkItem
+from .patterns import OperationInput, WorkItem  # WorkItem is backward compat alias
 
 # ── Pipeline result ──────────────────────────────────────────────────────
 from .operations_runner import PipelineResult
@@ -139,7 +139,8 @@ __all__ = [
     "quality_weighted_evidence_sum",
     "compute_confidence_score",
     # Patterns
-    "WorkItem",
+    "OperationInput",
+    "WorkItem",  # backward compat alias
     # Pipeline result
     "PipelineResult",
     # Operations

@@ -19,18 +19,25 @@ if TYPE_CHECKING:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WORK ITEM
+# OPERATION INPUT
 # ══════════════════════════════════════════════════════════════════════════════
 
 
 @dataclass
-class WorkItem:
-    """Unit of epistemic work to be executed."""
+class OperationInput:
+    """Input for an epistemic operation.
+
+    Specifies which entity to process and which operation to run.
+    """
 
     entity_id: str
     entity_type: str
     operation: str
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# Backward compatibility alias
+WorkItem = OperationInput
 
 # Cosine similarity threshold for deduplication across all sites.
 # The embedding model (embeddinggemma) produces within-group similarities
@@ -286,11 +293,11 @@ class BaseOperation(ABC):
         self._agent_calls: list[dict[str, Any]] = []
 
     @abstractmethod
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         """Execute the operation.
 
         Args:
-            work: Work item describing what to do
+            work: Operation input describing what to do
 
         Returns:
             OperationResult with success/failure status

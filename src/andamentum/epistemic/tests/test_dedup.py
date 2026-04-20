@@ -195,7 +195,7 @@ from ..entities.evidence import Evidence  # noqa: E402
 from ..entities.claim import Claim  # noqa: E402
 from ..primitives import ClaimStage  # noqa: E402
 from ..operations import ProposeClaimsOperation  # noqa: E402
-from ..patterns import WorkItem  # noqa: E402
+from ..patterns import OperationInput  # noqa: E402
 
 
 class TestDedupIntegration:
@@ -318,7 +318,7 @@ class TestDedupIntegration:
             ]  # Each assertion its own cluster
 
             op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1", entity_type="objective", operation="propose_claims"
             )
             result = await op.execute(work)
@@ -429,7 +429,7 @@ class TestDedupIntegration:
             mock_cluster.return_value = [[i] for i in range(5)]
 
             op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-2", entity_type="objective", operation="propose_claims"
             )
             await op.execute(work)
@@ -502,7 +502,7 @@ class TestDedupIntegration:
             mock_cluster.return_value = [[i] for i in range(4)]
 
             op = ProposeClaimsOperation(repo, runner, embedding_model="test-model")
-            work = WorkItem(
+            work = OperationInput(
                 entity_id="obj-1", entity_type="objective", operation="propose_claims"
             )
             await op.execute(work)
@@ -693,7 +693,7 @@ class TestDownstreamFiltering:
     async def test_freeze_snapshot_excludes_corroborative(self, repo):
         """FreezeSnapshotOperation should not include corroborative evidence in snapshot."""
         from andamentum.epistemic.operations import FreezeSnapshotOperation
-        from andamentum.epistemic.patterns import WorkItem
+        from andamentum.epistemic.patterns import OperationInput
 
         obj = Objective(
             entity_id="obj-freeze-1",
@@ -728,7 +728,7 @@ class TestDownstreamFiltering:
         await repo.save(ev_legacy)
 
         op = FreezeSnapshotOperation(repo, None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=obj.entity_id,
             entity_type="objective",
             operation="freeze_snapshot",

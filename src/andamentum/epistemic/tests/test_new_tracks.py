@@ -119,7 +119,7 @@ from ..operations import (  # noqa: E402
     CrossClaimConsistencyOperation,
     OPERATION_CLASSES,
 )
-from ..patterns import WorkItem  # noqa: E402
+from ..patterns import OperationInput  # noqa: E402
 
 
 class TestContrastiveEvaluationOperation:
@@ -158,7 +158,7 @@ class TestContrastiveEvaluationOperation:
 
         runner = self._make_runner()
         op = ContrastiveEvaluationOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="contrastive_evaluation",
@@ -189,7 +189,7 @@ class TestContrastiveEvaluationOperation:
         # Agent says B is better — so claim_a (the target) is inferior
         runner = self._make_runner(better_claim="B", confidence=0.8)
         op = ContrastiveEvaluationOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim_a.entity_id,
             entity_type="claim",
             operation="contrastive_evaluation",
@@ -219,7 +219,7 @@ class TestContrastiveEvaluationOperation:
         # Agent says A is better — so claim_a (the target) is superior, no uncertainty
         runner = self._make_runner(better_claim="A", confidence=0.8)
         op = ContrastiveEvaluationOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim_a.entity_id,
             entity_type="claim",
             operation="contrastive_evaluation",
@@ -243,7 +243,7 @@ class TestContrastiveEvaluationOperation:
 
         runner = self._make_runner()
         op = ContrastiveEvaluationOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="contrastive_evaluation",
@@ -293,7 +293,7 @@ class TestCrossClaimConsistencyOperation:
 
         runner = self._make_runner()
         op = CrossClaimConsistencyOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="cross_claim_consistency",
@@ -325,7 +325,7 @@ class TestCrossClaimConsistencyOperation:
             conflicts=True, tension_point="Direct contradiction about direction"
         )
         op = CrossClaimConsistencyOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim_a.entity_id,
             entity_type="claim",
             operation="cross_claim_consistency",
@@ -354,7 +354,7 @@ class TestCrossClaimConsistencyOperation:
 
         runner = self._make_runner(conflicts=False)
         op = CrossClaimConsistencyOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim_a.entity_id,
             entity_type="claim",
             operation="cross_claim_consistency",
@@ -378,7 +378,7 @@ class TestCrossClaimConsistencyOperation:
 
         runner = self._make_runner()
         op = CrossClaimConsistencyOperation(repo, runner)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="cross_claim_consistency",

@@ -12,7 +12,7 @@ from ..entities.objective import Objective
 from ..primitives import ClaimStage
 from ..operations.investigation import InvestigateClaimOperation
 from ..operations.base import MAX_INVESTIGATION_ATTEMPTS
-from ..patterns import WorkItem
+from ..patterns import OperationInput
 
 
 class TestInvestigationCap:
@@ -42,7 +42,7 @@ class TestInvestigationCap:
         await repo.save(claim)
 
         op = InvestigateClaimOperation(repo=repo, agent_runner=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="investigate_claim",
@@ -71,7 +71,7 @@ class TestInvestigationCap:
         # With no agent_runner, investigation creates no stubs but still
         # increments count. Scrutiny reset moved to graph node.
         op = InvestigateClaimOperation(repo=repo, agent_runner=None)
-        work = WorkItem(
+        work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="investigate_claim",

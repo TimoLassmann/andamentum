@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Evidence, Claim entities
 """
 
-from .base import BaseOperation, OperationResult, WorkItem
+from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
@@ -30,7 +30,7 @@ class InvalidateEvidenceOperation(BaseOperation):
 
     entity_type = "evidence"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         evidence = await self.repo.get("evidence", work.entity_id)
 
         if not isinstance(evidence, Evidence):
@@ -105,7 +105,7 @@ class RevalidateClaimOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         from ..gates import validate_current_stage, get_previous_stage
 
         claim = await self.repo.get("claim", work.entity_id)
@@ -205,7 +205,7 @@ class SetRoutingDefaultsOperation(BaseOperation):
         "consistency": "consistency_checked",
     }
 
-    async def execute(self, work: WorkItem) -> OperationResult:
+    async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
         # Get objective's question_type
