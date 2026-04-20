@@ -308,7 +308,7 @@ class Scrutinize(
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["PromoteToSupported", "Investigate", "AbandonOrDemote"]:
+    ) -> Union["ResolveUncertainties", "Investigate", "AbandonOrDemote"]:
         from ..operations.scrutiny import ScrutiniseClaimOperation
 
         state = ctx.state
@@ -366,8 +366,8 @@ class Scrutinize(
         if needs_investigation:
             return Investigate()
 
-        # All claims pass or are terminal
-        return PromoteToSupported()
+        # All claims pass or are terminal — resolve uncertainties before promoting
+        return ResolveUncertainties(next_on_clear="promote")
 
 
 @dataclass
@@ -607,13 +607,23 @@ class RunVerification(
 class ResolveUncertainties(
     BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
 ):
-    """Resolve blocking uncertainties, then deduplicate concerns."""
+    """Resolve blocking uncertainties, then deduplicate concerns.
+
+    Appears in TWO places in the graph:
+    1. After Scrutinize (next_on_clear="promote") — resolve before first promote
+    2. After RunVerification (next_on_clear="integrate") — resolve before integration
+
+    This matches the old pattern scheduler where resolve_uncertainty had
+    higher priority than promote and ran first whenever blocking
+    uncertainties existed.
+    """
 
     depth: int = 0
+    next_on_clear: str = "integrate"  # "promote" or "integrate"
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["IntegrateEvidence", "Scrutinize", "ResolveUncertainties"]:
+    ) -> Union["IntegrateEvidence", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"]:
         from ..operations.uncertainty import ResolveUncertaintyOperation
         from ..operations.concerns import DeduplicateConcernsOperation
 
@@ -629,6 +639,8 @@ class ResolveUncertainties(
         blocking = [u for u in all_uncertainties if u.is_blocking]
 
         if not blocking:
+            if self.next_on_clear == "promote":
+                return PromoteToSupported()
             return IntegrateEvidence()
 
         for unc in blocking:
@@ -661,13 +673,23 @@ class ResolveUncertainties(
         new_blocking = [u for u in remaining if u.is_blocking]
 
         if new_blocking and self.depth < 3:
-            return ResolveUncertainties(depth=self.depth + 1)
+            return ResolveUncertainties(
+                depth=self.depth + 1,
+                next_on_clear=self.next_on_clear,
+            )
 
         if new_blocking:
             # Max depth reached but still have blocking uncertainties.
             # Re-enter scrutiny so claims can be re-evaluated.
             return Scrutinize()
 
+        # If claims were marked for re-scrutiny during resolution,
+        # go back to scrutiny before proceeding.
+        if state.claims_needing_rescrutiny:
+            return Scrutinize()
+
+        if self.next_on_clear == "promote":
+            return PromoteToSupported()
         return IntegrateEvidence()
 
 
