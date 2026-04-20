@@ -70,6 +70,10 @@ async def _run_op(
             success=False, entity_id=entity_id, message=f"{operation} error: {e}"
         )
     state.log_operation(operation, entity_id, result.success, result.message)
+    # TODO: Restore execution trace recording to DocumentStore for replay/debugging.
+    # Each step should be persisted with step_number, operation, entity_id,
+    # entity_type, success, message, and created_entities. Requires adding a
+    # `store` field to EpistemicDeps that holds the raw DocumentStore instance.
     if deps.progress_callback:
         extras = {"created_entities": getattr(result, "created_entities", [])}
         if not result.success:
@@ -586,6 +590,19 @@ class RunVerification(
                 if activation == TrackActivation.SKIP:
                     continue
 
+                if activation == TrackActivation.SECONDARY:
+                    # SECONDARY tracks only fire when a condition is met
+                    if track_name == "adversarial":
+                        # Fire on first pass (balance is None) or if prior balance was poor
+                        balance = claim.adversarial_balance
+                        if balance is not None and balance >= 0.6:
+                            continue  # Already tested, survived — skip
+                    elif track_name == "convergence":
+                        # Only fire if claim has 3+ evidence items
+                        if claim.evidence_count < 3:
+                            continue
+                    # Other SECONDARY tracks: fire unconditionally
+
                 # Skip if already done
                 if getattr(claim, checked_field, False):
                     continue
@@ -804,14 +821,16 @@ class CheckCompletion(
             return Synthesize()
 
         # All claims abandoned or no claims exist
+        reason = "partial" if all_claims else "no_claims"
         return End(
             EpistemicResult(
                 objective_id=state.objective_id,
-                status="partial" if all_claims else "no_claims",
+                status=reason,
                 successful=state.successful,
                 failed=state.failed,
                 errors=state.errors,
                 operations_log=state.operations_log,
+                termination_reason=reason,
             )
         )
 
@@ -862,6 +881,7 @@ class Synthesize(
                 failed=state.failed,
                 errors=state.errors,
                 operations_log=state.operations_log,
+                termination_reason="complete",
             )
         )
 
