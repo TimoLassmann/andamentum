@@ -23,5 +23,8 @@ class EpistemicResult:
     errors: list[str] = field(default_factory=list)
     operations_log: list[dict[str, Any]] = field(default_factory=list)
 
+    # Termination reason: "complete", "no_claims", "partial"
+    termination_reason: str = ""
+
     # Posterior (computed after graph completes, before returning)
     posterior: Optional[Any] = None  # PosteriorReport

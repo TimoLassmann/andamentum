@@ -362,6 +362,8 @@ class AssessConvergenceOperation(BaseOperation):
                 ev = await self.repo.get("evidence", eid)
                 if not isinstance(ev, Evidence) or not ev.extracted_content:
                     continue
+                if ev.cluster_status in ("corroborative", "deferred"):
+                    continue
             except Exception:
                 continue
 
@@ -511,7 +513,17 @@ class ValidateDeductivelyOperation(BaseOperation):
                 context_parts.append(f"Scope: {claim.scope}")
             if claim.assumptions:
                 context_parts.append(f"Assumptions: {'; '.join(claim.assumptions)}")
-            for eid in claim.evidence_ids[:5]:
+            representative_ids = []
+            for eid in claim.evidence_ids:
+                try:
+                    ev = await self.repo.get("evidence", eid)
+                    if isinstance(ev, Evidence) and ev.extracted_content:
+                        if ev.cluster_status not in ("corroborative", "deferred"):
+                            representative_ids.append(eid)
+                except Exception:
+                    continue
+
+            for eid in representative_ids[:5]:
                 try:
                     ev = await self.repo.get("evidence", eid)
                     if isinstance(ev, Evidence) and ev.extracted_content:
@@ -588,7 +600,17 @@ class VerifyComputationallyOperation(BaseOperation):
             context_parts: list[str] = []
             if claim.scope:
                 context_parts.append(f"Scope: {claim.scope}")
-            for eid in claim.evidence_ids[:3]:
+            representative_ids = []
+            for eid in claim.evidence_ids:
+                try:
+                    ev = await self.repo.get("evidence", eid)
+                    if isinstance(ev, Evidence) and ev.extracted_content:
+                        if ev.cluster_status not in ("corroborative", "deferred"):
+                            representative_ids.append(eid)
+                except Exception:
+                    continue
+
+            for eid in representative_ids[:3]:
                 try:
                     ev = await self.repo.get("evidence", eid)
                     if isinstance(ev, Evidence) and ev.extracted_content:

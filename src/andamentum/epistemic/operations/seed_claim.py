@@ -88,6 +88,8 @@ class SeedClaimOperation(BaseOperation):
                     continue
                 if not ev.extracted_content:
                     continue
+                if ev.cluster_status in ("corroborative", "deferred"):
+                    continue
                 try:
                     judgment = await _judge(
                         claim_statement=claim.statement,
