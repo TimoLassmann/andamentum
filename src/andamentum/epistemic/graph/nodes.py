@@ -577,6 +577,30 @@ class RunVerification(
         state = ctx.state
         deps = ctx.deps
 
+        # Cluster evidence before verification to reduce evidence volume.
+        # Without this, operations like convergence would process 100+
+        # unclustered items. select_top_k_evidence labels items as
+        # representative/corroborative/deferred.
+        from ..operations.claims import select_top_k_evidence
+        from ..entities import Evidence
+
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+        for claim in all_claims:
+            if claim.abandoned or claim.stage != ClaimStage.SUPPORTED:
+                continue
+            all_ev = []
+            for eid in claim.evidence_ids:
+                try:
+                    ev = await deps.repo.get("evidence", eid)
+                    if isinstance(ev, Evidence) and ev.extracted and ev.extracted_content and not ev.invalidated:
+                        all_ev.append(ev)
+                except Exception:
+                    continue
+            if len(all_ev) >= 2:
+                await select_top_k_evidence(
+                    deps.repo, all_ev, embedding_model=deps.embedding_model
+                )
+
         question_type = state.question_type or "verificatory"
 
         try:
