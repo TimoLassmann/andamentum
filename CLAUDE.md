@@ -47,7 +47,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1 benchmark deselected)**. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1 benchmark deselected)**. Test count reflects removal of 75 pattern-scheduler tests after graph migration. Don't claim completion until you've run these three and seen that state.
 
 ## CLIs
 
@@ -70,15 +70,21 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 
 **Evidence providers** follow a strict specification documented in `src/andamentum/epistemic/providers/CONTRIBUTING.md`. Read it before adding or modifying any provider. Key rules: providers retrieve and structure evidence, never assess quality (`quality_score=None` always), never truncate content, and return `list[GatheredEvidence]` (empty list on error, never raise).
 
+**Epistemic architecture principles** (enforced across the module):
+- **P1: Operations are pure transforms.** An operation reads entities, does work (LLM calls, computations), and writes the result back. It NEVER manipulates fields on other entities to signal what should happen next.
+- **P2: The graph is the sole flow controller.** Only graph nodes (in `graph/nodes.py`) decide what runs next, based on operation results, entity state, and graph state.
+- **P3: Entity fields are data, not signals.** Every field on Claim, Evidence, Objective represents something real — a verdict, a score, a stage. No field exists solely to tell the scheduler what to do.
+- **P4: Graph state tracks pipeline progress.** `EpistemicGraphState` (in `graph/state.py`) tracks what work has been done and what needs doing — not entity fields.
+- **P5: Operations don't reach across entity boundaries.** An operation on an Uncertainty does not modify Claims. Cross-entity effects are the graph's job.
+
 **Epistemic core abstractions** (understand these before touching `epistemic/`):
 - `entities/` — `Objective`, `Evidence`, `Claim`, `Uncertainty`, `Decision`, `Snapshot`, `Artefact` (all `EpistemicEntity` subclasses). `Objective.claim_to_verify` enables seed-claim verification mode.
 - `gates.py` — `STAGE_GATES` + `validate_promotion`: deterministic, routing-aware checks that must pass before a `Claim` advances stages. Gates query the question type's routing profile and only require tracks that are PRIMARY or SECONDARY — not SKIP.
-- `graph/` — pydantic-graph DAG scheduler. 15 nodes with typed return edges replace the old pattern scheduler. Operations execute in explicit dependency order — no implicit state matching.
-- `patterns.py` — DEPRECATED. `WorkItem` re-exported from `operations/base.py`. Pattern scheduler kept for reference only.
-- `provider_routing.py` — semantic provider selection via embedding cosine similarity. Replaces the old keyword-based `DOMAIN_PROVIDER_MAP`. Benchmarked at 97.5% top-3 recall across 200 queries.
-- `operations/` — `BaseOperation` subclasses that agents dispatch to; registered via `OPERATION_CLASSES` / `create_operations`. Includes `SeedClaimOperation` for verification mode.
+- `graph/` — pydantic-graph DAG scheduler. 15 nodes with typed return edges. Operations execute in explicit dependency order. Entry point: `run_epistemic_graph()` in `graph/__init__.py`.
+- `operations/` — pure `BaseOperation` subclasses. Each takes an `OperationInput`, does work, returns `OperationResult`. They do NOT control flow — the graph does.
 - `repository.py` — `EpistemicRepository` wraps a `StorageBackend` (in-memory backend ships in `storage.py`)
-- `runner.py` — `DefaultAgentRunner` is lazy-imported to keep `pydantic-ai` off the critical import path. Handles `ollama:` prefix by constructing `OllamaProvider` with default `OLLAMA_BASE_URL`.
+- `runner.py` — `DefaultAgentRunner` wraps `core.AgentRunner` with epistemic agent registry lookup.
+- `patterns.py` — DEPRECATED. Only re-exports `OperationInput` (aliased as `WorkItem`) for backward compatibility.
 
 **Deep research pipeline** is a `pydantic-graph` state machine. `state.py` holds `ResearchState`; `graph.py` / `nodes.py` define the nodes; `orchestrator.py` / `runner.py` drive execution. `searxng.py` manages the local SearxNG instance and `circuit_breaker.py` wraps it. Content extraction (`content_extractor.py`) uses `trafilatura` for HTML and `docling` for PDF.
 
