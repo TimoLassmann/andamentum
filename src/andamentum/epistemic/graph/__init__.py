@@ -43,7 +43,7 @@ async def run_epistemic_graph(
     pydantic-graph DAG instead of the pattern scheduler.
 
     Returns:
-        PatternSchedulerResult (backward compatible)
+        PipelineResult (backward compatible)
     """
     from andamentum.document_store import DocumentStore
 
@@ -155,9 +155,9 @@ async def run_epistemic_graph(
             logger.warning(f"Posterior computation failed: {e}")
 
     # Return backward-compatible result
-    from ..operations_runner import PatternSchedulerResult
+    from ..operations_runner import PipelineResult
 
-    return PatternSchedulerResult(
+    return PipelineResult(
         objective_id=objective_id,
         iterations=len(state.operations_log),
         successful=result.successful,

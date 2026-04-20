@@ -59,16 +59,11 @@ from .gates import (
     compute_confidence_score,
 )
 
-# ── Patterns (novel contribution) ─────────────────────────────────────────
-from .patterns import (
-    Pattern,
-    WorkItem,
-    PatternScheduler,
-    WORK_PATTERNS,
-    DEFAULT_OPERATION_BUDGETS,
-    SYNTHESIS_OPS,
-    MAX_ENTITY_ATTEMPTS,
-)
+# ── Patterns ──────────────────────────────────────────────────────────────
+from .patterns import WorkItem
+
+# ── Pipeline result ──────────────────────────────────────────────────────
+from .operations_runner import PipelineResult
 
 # ── Operations ────────────────────────────────────────────────────────────
 from .operations import (
@@ -144,13 +139,9 @@ __all__ = [
     "quality_weighted_evidence_sum",
     "compute_confidence_score",
     # Patterns
-    "Pattern",
     "WorkItem",
-    "PatternScheduler",
-    "WORK_PATTERNS",
-    "DEFAULT_OPERATION_BUDGETS",
-    "SYNTHESIS_OPS",
-    "MAX_ENTITY_ATTEMPTS",
+    # Pipeline result
+    "PipelineResult",
     # Operations
     "BaseOperation",
     "OperationResult",

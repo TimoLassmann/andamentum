@@ -10,13 +10,12 @@ Architecture: Layer 1 (framework-agnostic, pure dataclass)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from ..repository import EpistemicRepository
 
-# Progress callback: (operation, entity_id, success, message, extras) -> None
-ProgressCallback = Callable[[str, str, bool, str, dict[str, Any]], None]
+from ..operations_runner import ProgressCallback
 
 
 @dataclass(frozen=True)

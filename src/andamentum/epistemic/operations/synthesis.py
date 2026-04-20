@@ -1,4 +1,4 @@
-"""Synthesis operations (Phase 9).
+"""Synthesis operations.
 
 Freeze snapshot of the epistemic state and generate the final research
 report. FreezeSnapshotOperation deduplicates caveats before creating an

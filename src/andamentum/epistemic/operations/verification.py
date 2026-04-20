@@ -1,4 +1,4 @@
-"""Verification operations (Phase 6).
+"""Verification operations.
 
 Multiple independent verification tracks: adversarial search for
 disconfirming evidence, cross-domain convergence assessment, deductive

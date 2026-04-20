@@ -1,4 +1,4 @@
-"""Claim proposal operations (Phase 4).
+"""Claim proposal operations.
 
 Clusters evidence, extracts assertions, and drafts claims. Contains the
 shared ``select_top_k_evidence`` function used by both ProposeClaimsOperation
