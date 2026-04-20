@@ -123,14 +123,6 @@ TRACKED_SECTIONS = [
         "description": "Gate validate_current_stage (TMS) logic",
         "test_file": "test_gates_failure.py::TestValidateCurrentStageFailure",
     },
-    # patterns.py: get_pending_work query error handling
-    {
-        "file": _SRC / "patterns.py",
-        "start": "async def get_pending_work",
-        "end": "return work_items",
-        "description": "Pattern scheduler query error handling",
-        "test_file": "test_silent_handler_logging.py::test_pattern_scheduler_logs_query_failure",
-    },
     # evidence_gathering.py: CompositeGatherer error handling
     {
         "file": _SRC / "evidence_gathering.py",
@@ -161,7 +153,6 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     "Prediction generation per-aspect error handling": "b6987e0d7bae1cea",
     "Gate validate_promotion logic": "42b2f8500930928a",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
-    "Pattern scheduler query error handling": "b5d05f292e428106",
     "CompositeGatherer provider error handling": "a5b200c49da5b67b",
     "Adapter registry (agent name → adapter function mapping)": "e780e336e9788f27",
 }

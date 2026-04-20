@@ -1,4 +1,4 @@
-"""Uncertainty resolution operations (Phase 8).
+"""Uncertainty resolution operations.
 
 Resolves blocking uncertainties with sibling grouping (cosine dedup)
 and concern dedup. When resolution succeeds, applies the same answer

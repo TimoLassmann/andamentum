@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class PatternSchedulerResult:
+class PipelineResult:
     """Result from an epistemic pipeline run.
 
     Provides both graph-scheduler native fields and compatibility
@@ -78,8 +78,7 @@ async def run_research_question(
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
-    operation_budgets: Optional[dict[str, int]] = None,
-) -> PatternSchedulerResult:
+) -> PipelineResult:
     """Run a research question through the epistemic pipeline.
 
     Delegates to the pydantic-graph DAG scheduler. The graph makes
@@ -108,7 +107,7 @@ async def run_research_question(
             is written here instead of ~/.config/andamentum/databases/.
 
     Returns:
-        PatternSchedulerResult with execution summary
+        PipelineResult with execution summary
     """
     from .graph import run_epistemic_graph
 

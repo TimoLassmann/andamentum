@@ -17,7 +17,7 @@ from ..operations import (
     GeneratePredictionOperation,
     GatheredEvidence,
 )
-from ..patterns import PatternScheduler, WorkItem
+from ..patterns import WorkItem
 from ..storage import InMemoryStorageBackend
 from ..repository import EpistemicRepository
 
@@ -27,7 +27,6 @@ if _test_dir not in sys.path:
 
 from conftest import (  # noqa: E402  # type: ignore[import-not-found]
     FakeAgentRunner,
-    FailingRepo,
     PartiallyFailingRunner,
 )
 
@@ -92,34 +91,6 @@ async def _save_claim(
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────
-
-
-class TestPatternSchedulerLogsQueryFailure:
-    """PatternScheduler.get_pending_work() should log when a pattern query fails."""
-
-    @pytest.mark.asyncio
-    async def test_pattern_scheduler_logs_query_failure(self, caplog):
-        backend = InMemoryStorageBackend()
-        # FailingRepo raises on query for "claim" entity type
-        repo = FailingRepo(backend, fail_on_query={"claim"})
-
-        # Save an objective so the scheduler has some work to try
-        obj = Objective(
-            entity_id="obj-1", objective_id="obj-1", description="Q", phase="new"
-        )
-        await repo.save(obj)
-
-        scheduler = PatternScheduler(repo)
-
-        with caplog.at_level(logging.WARNING, logger="epistemic.patterns"):
-            await scheduler.get_pending_work(objective_id="obj-1")
-
-        # At least one pattern targets "claim"; its query should have failed and been logged
-        assert any(
-            "Pattern query failed" in record.message for record in caplog.records
-        ), (
-            f"Expected 'Pattern query failed' warning, got: {[r.message for r in caplog.records]}"
-        )
 
 
 class _SimpleGatherer:

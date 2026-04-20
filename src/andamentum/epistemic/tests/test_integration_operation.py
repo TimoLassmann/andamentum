@@ -9,7 +9,7 @@ Verifies that AbductiveIntegrationOperation:
 
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations.integration import AbductiveIntegrationOperation
-from ..patterns import WorkItem, WORK_PATTERNS
+from ..patterns import WorkItem
 
 
 def _make_objective(obj_id: str = "obj-1") -> Objective:
@@ -123,54 +123,3 @@ class TestAbductiveIntegration:
         assert claim.integrated_assessment is None
         assert claim.integrated_confidence is None
         assert claim.integrated_reasoning is None
-
-
-class TestIntegrationPattern:
-    def test_pattern_exists(self):
-        """Integration pattern must be in WORK_PATTERNS."""
-        patterns = [p for p in WORK_PATTERNS if p.operation == "integrate_evidence"]
-        assert len(patterns) == 1
-
-    def test_matches_supported_with_adversarial(self):
-        """Pattern matches SUPPORTED + adversarial_checked + no integration yet."""
-        patterns = [p for p in WORK_PATTERNS if p.operation == "integrate_evidence"]
-        claim = Claim(
-            statement="test", objective_id="obj-1",
-            stage=ClaimStage.SUPPORTED,
-            adversarial_checked=True,
-            integrated_assessment=None,
-        )
-        assert patterns[0].matches(claim)
-
-    def test_does_not_match_before_adversarial(self):
-        """Pattern should NOT match before adversarial search."""
-        patterns = [p for p in WORK_PATTERNS if p.operation == "integrate_evidence"]
-        claim = Claim(
-            statement="test", objective_id="obj-1",
-            stage=ClaimStage.SUPPORTED,
-            adversarial_checked=False,
-            integrated_assessment=None,
-        )
-        assert not patterns[0].matches(claim)
-
-    def test_does_not_match_already_integrated(self):
-        """Pattern should NOT match if already integrated."""
-        patterns = [p for p in WORK_PATTERNS if p.operation == "integrate_evidence"]
-        claim = Claim(
-            statement="test", objective_id="obj-1",
-            stage=ClaimStage.SUPPORTED,
-            adversarial_checked=True,
-            integrated_assessment="supports",
-        )
-        assert not patterns[0].matches(claim)
-
-    def test_does_not_match_hypothesis(self):
-        """Pattern should NOT match at HYPOTHESIS stage."""
-        patterns = [p for p in WORK_PATTERNS if p.operation == "integrate_evidence"]
-        claim = Claim(
-            statement="test", objective_id="obj-1",
-            stage=ClaimStage.HYPOTHESIS,
-            adversarial_checked=True,
-            integrated_assessment=None,
-        )
-        assert not patterns[0].matches(claim)

@@ -1,4 +1,4 @@
-"""Batch deduplication of buffered remaining concerns (Phase 8b).
+"""Batch deduplication of buffered remaining concerns.
 
 After all blocking uncertainties are resolved in a round, any remaining
 concerns they generated are buffered on the objective (pending_concerns).

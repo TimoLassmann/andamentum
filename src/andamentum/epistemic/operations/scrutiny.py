@@ -1,4 +1,4 @@
-"""Scrutiny operations (Phase 5).
+"""Scrutiny operations.
 
 Skeptic review of claims using a split-agent architecture: evidence
 assessment + one-issue-at-a-time identification + deterministic

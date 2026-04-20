@@ -366,7 +366,7 @@ async def handle_run(
     # Run the pattern scheduler
     from .providers.openalex import OpenAlexQualityScorer
 
-    scheduler_result = await run_research_question(
+    run_result = await run_research_question(
         question=question or "Research objective",
         database_name=name,
         verbose=verbose,
@@ -374,12 +374,12 @@ async def handle_run(
     )
 
     if verbose:
-        console.print(f"  Iterations: {scheduler_result.iterations}")
-        console.print(f"  Successful: {scheduler_result.successful}")
-        console.print(f"  Failed: {scheduler_result.failed}")
-        if scheduler_result.errors:
+        console.print(f"  Iterations: {run_result.iterations}")
+        console.print(f"  Successful: {run_result.successful}")
+        console.print(f"  Failed: {run_result.failed}")
+        if run_result.errors:
             console.print("[yellow]Errors:[/yellow]")
-            for err in scheduler_result.errors[:5]:
+            for err in run_result.errors[:5]:
                 console.print(f"  - {err}")
 
     # Gather stats from database
@@ -395,11 +395,11 @@ async def handle_run(
 
     # Convert to typed RunStats model
     stats = RunStats(
-        workitems_executed_this_run=scheduler_result.iterations,
-        total_workitems=scheduler_result.iterations,
+        workitems_executed_this_run=run_result.iterations,
+        total_workitems=run_result.iterations,
         workitems_by_status={
-            "completed": scheduler_result.successful,
-            "failed": scheduler_result.failed,
+            "completed": run_result.successful,
+            "failed": run_result.failed,
         },
         claims_by_stage=claims_by_stage,
         evidence_count=len(evidence),
@@ -409,7 +409,7 @@ async def handle_run(
     )
 
     return RunResult(
-        success=scheduler_result.success,
+        success=run_result.success,
         objective_id=objective_id,
         stats=stats,
     )
@@ -965,12 +965,7 @@ async def handle_ask(
         # Always use progress callback for visibility
         from .providers.openalex import OpenAlexQualityScorer
 
-        # Derive operation budgets from research config.
-        if research_config is None:
-            research_config = ResearchConfig.light()
-        op_budgets = research_config.operation_budgets()
-
-        scheduler_result = await run_research_question(
+        run_result = await run_research_question(
             question=question,
             database_name=name,
             verbose=verbose,
@@ -981,17 +976,16 @@ async def handle_ask(
             provider=provider,
             db_dir=db_dir,
             quality_scorer=OpenAlexQualityScorer(),
-            operation_budgets=op_budgets,
         )
 
         console.print()
-        if scheduler_result.failed > 0:
+        if run_result.failed > 0:
             console.print(
-                f"[yellow]Completed {scheduler_result.successful} operations, {scheduler_result.failed} failed[/yellow]"
+                f"[yellow]Completed {run_result.successful} operations, {run_result.failed} failed[/yellow]"
             )
         else:
             console.print(
-                f"[green]Completed {scheduler_result.successful} operations[/green]"
+                f"[green]Completed {run_result.successful} operations[/green]"
             )
 
         # Gather results from the database
@@ -1029,13 +1023,13 @@ async def handle_ask(
 
         # Build stats dict for display compatibility
         stats: Dict[str, Any] = {
-            "workitems_executed_this_run": scheduler_result.iterations,
-            "total_workitems": scheduler_result.iterations,
-            "operations_successful": scheduler_result.successful,
-            "operations_failed": scheduler_result.failed,
+            "workitems_executed_this_run": run_result.iterations,
+            "total_workitems": run_result.iterations,
+            "operations_successful": run_result.successful,
+            "operations_failed": run_result.failed,
             "workitems_by_status": {
-                "completed": scheduler_result.successful,
-                "failed": scheduler_result.failed,
+                "completed": run_result.successful,
+                "failed": run_result.failed,
             },
             "claims_by_stage": {},
             "evidence_count": len(evidence),
@@ -1060,7 +1054,7 @@ async def handle_ask(
             verbose,
             trace,
             None,
-            posterior=getattr(scheduler_result, "posterior", None),
+            posterior=getattr(run_result, "posterior", None),
         )
 
         # Generate HTML report if output path specified
@@ -1117,8 +1111,8 @@ async def handle_ask(
 
         # Convert stats dict to typed RunStats model
         typed_stats = RunStats(
-            workitems_executed_this_run=scheduler_result.iterations,
-            total_workitems=scheduler_result.iterations,
+            workitems_executed_this_run=run_result.iterations,
+            total_workitems=run_result.iterations,
             workitems_by_status=stats["workitems_by_status"],
             claims_by_stage=stats["claims_by_stage"],
             evidence_count=len(evidence),
@@ -1128,7 +1122,7 @@ async def handle_ask(
         )
 
         return AskResult(
-            success=scheduler_result.success,
+            success=run_result.success,
             question=question,
             project_name=name,
             claims=all_claims,

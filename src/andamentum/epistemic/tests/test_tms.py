@@ -11,9 +11,7 @@ from ..gates import validate_current_stage
 from ..operations import (
     InvalidateEvidenceOperation,
     RevalidateClaimOperation,
-    OPERATION_CLASSES,
 )
-from ..patterns import WORK_PATTERNS, DEFAULT_OPERATION_BUDGETS
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -497,70 +495,6 @@ class TestTransitiveCascade:
         r2 = await op.execute(work)
         assert r2.success
         assert "already" in r2.message.lower()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TestTMSPatterns
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-class TestTMSPatterns:
-    """Test pattern matching and registration."""
-
-    def test_operations_registered(self):
-        """Both TMS operations are in OPERATION_CLASSES."""
-        assert "invalidate_evidence" in OPERATION_CLASSES
-        assert "revalidate_claim" in OPERATION_CLASSES
-
-    def test_patterns_in_work_patterns(self):
-        """Both TMS patterns exist in WORK_PATTERNS."""
-        tms_patterns = [
-            p
-            for p in WORK_PATTERNS
-            if p.operation in ("invalidate_evidence", "revalidate_claim")
-        ]
-        assert len(tms_patterns) == 2
-
-    def test_budgets_not_capped(self):
-        """TMS operations must not be budget-capped.
-
-        TMS ops (invalidate_evidence, revalidate_claim) are idempotent via
-        pattern filters: invalidate_evidence fires only for
-        invalidated=True, invalidation_cascaded=False; revalidate_claim fires
-        only for needs_revalidation=True. Each entity is processed at most once.
-        Capping them could leave the belief state inconsistent if many entities
-        need cascading simultaneously.
-        """
-        assert "invalidate_evidence" not in DEFAULT_OPERATION_BUDGETS
-        assert "revalidate_claim" not in DEFAULT_OPERATION_BUDGETS
-
-    def test_invalidate_evidence_pattern_matches(self):
-        """Pattern matches invalidated, uncascaded evidence."""
-        pattern = next(p for p in WORK_PATTERNS if p.operation == "invalidate_evidence")
-        ev_match = _make_evidence(invalidated=True, invalidation_cascaded=False)
-        ev_no_match = _make_evidence(invalidated=False, invalidation_cascaded=False)
-        ev_already = _make_evidence(invalidated=True, invalidation_cascaded=True)
-
-        assert pattern.matches(ev_match)
-        assert not pattern.matches(ev_no_match)
-        assert not pattern.matches(ev_already)
-
-    def test_revalidate_claim_pattern_matches(self):
-        """Pattern matches claims needing revalidation."""
-        pattern = next(p for p in WORK_PATTERNS if p.operation == "revalidate_claim")
-        cl_match = _make_claim(needs_revalidation=True)
-        cl_no_match = _make_claim(needs_revalidation=False)
-
-        assert pattern.matches(cl_match)
-        assert not pattern.matches(cl_no_match)
-
-    def test_revalidate_claim_pattern_excludes_abandoned(self):
-        """Pattern does not match abandoned claims."""
-        pattern = next(p for p in WORK_PATTERNS if p.operation == "revalidate_claim")
-        claim = _make_claim(needs_revalidation=True)
-        claim.abandoned = True
-
-        assert not pattern.matches(claim)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

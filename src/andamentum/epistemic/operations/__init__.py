@@ -43,26 +43,26 @@ from .preplanning import (
     PlanTaskOperation,
 )
 
-# ── Claims (Phase 4) ────────────────────────────────────────────────────
+# ── Claims ──────────────────────────────────────────────────────────────
 from .claims import (
     EVIDENCE_TOP_K,
     ProposeClaimsOperation,
     select_top_k_evidence,
 )
 
-# ── Evidence (Phase 3) ──────────────────────────────────────────────────
+# ── Evidence ────────────────────────────────────────────────────────────
 from .evidence import ExtractEvidenceOperation
 
-# ── Scrutiny (Phase 5) ──────────────────────────────────────────────────
+# ── Scrutiny ────────────────────────────────────────────────────────────
 from .scrutiny import ScrutiniseClaimOperation
 
-# ── Stage management (Phase 7) ──────────────────────────────────────────
+# ── Stage management ────────────────────────────────────────────────────
 from .stage_management import (
     DemoteClaimOperation,
     PromoteClaimOperation,
 )
 
-# ── Verification (Phase 6) ──────────────────────────────────────────────
+# ── Verification ────────────────────────────────────────────────────────
 from .verification import (
     AdversarialSearchOperation,
     AssessConvergenceOperation,
@@ -70,19 +70,19 @@ from .verification import (
     VerifyComputationallyOperation,
 )
 
-# ── Uncertainty (Phase 8) ───────────────────────────────────────────────
+# ── Uncertainty ─────────────────────────────────────────────────────────
 from .uncertainty import ResolveUncertaintyOperation
 
-# ── Concern dedup (Phase 8b) ───────────────────────────────────────────
+# ── Concern dedup ──────────────────────────────────────────────────────
 from .concerns import DeduplicateConcernsOperation
 
-# ── Synthesis (Phase 9) ─────────────────────────────────────────────────
+# ── Synthesis ──────────────────────────────────────────────────────────
 from .synthesis import (
     FreezeSnapshotOperation,
     SynthesizeReportOperation,
 )
 
-# ── Integration (Phase 6.5) ─────────────────────────────────────────────
+# ── Integration ─────────────────────────────────────────────────────────
 from .integration import AbductiveIntegrationOperation
 
 # ── Analysis ─────────────────────────────────────────────────────────────

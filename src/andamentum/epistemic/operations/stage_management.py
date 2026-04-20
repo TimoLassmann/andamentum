@@ -1,4 +1,4 @@
-"""Stage management operations (Phase 7).
+"""Stage management operations.
 
 Gate-based claim promotion and demotion. PromoteClaimOperation validates
 gate requirements before allowing a claim to advance to the next stage.

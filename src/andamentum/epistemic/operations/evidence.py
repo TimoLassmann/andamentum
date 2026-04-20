@@ -1,4 +1,4 @@
-"""Evidence extraction operations (Phase 3).
+"""Evidence extraction operations.
 
 Fetches raw evidence from external sources (via EvidenceGatherer protocol)
 or agent-based extraction, and scores source quality via OpenAlex lookup
