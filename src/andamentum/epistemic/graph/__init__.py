@@ -119,6 +119,7 @@ async def run_epistemic_graph(
     deps = EpistemicDeps(
         repo=repo,
         agent_runner=agent_runner,
+        store=store,
         evidence_gatherer=evidence_gatherer,
         quality_scorer=quality_scorer,
         embedding_model=embedding_model,

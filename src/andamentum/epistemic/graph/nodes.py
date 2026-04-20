@@ -70,10 +70,25 @@ async def _run_op(
             success=False, entity_id=entity_id, message=f"{operation} error: {e}"
         )
     state.log_operation(operation, entity_id, result.success, result.message)
-    # TODO: Restore execution trace recording to DocumentStore for replay/debugging.
-    # Each step should be persisted with step_number, operation, entity_id,
-    # entity_type, success, message, and created_entities. Requires adding a
-    # `store` field to EpistemicDeps that holds the raw DocumentStore instance.
+    # Persist execution trace to DocumentStore for replay/debugging
+    if deps.store:
+        try:
+            step_number = len(state.operations_log)
+            await deps.store.add_document(
+                content=result.message or "",
+                metadata={
+                    "epistemic_type": "execution_step",
+                    "step_number": step_number,
+                    "operation": operation,
+                    "entity_id": entity_id,
+                    "entity_type": entity_type,
+                    "success": result.success,
+                    "message": result.message or "",
+                    "created_entities": getattr(result, "created_entities", []),
+                },
+            )
+        except Exception:
+            pass  # Best effort — don't crash the pipeline for trace failures
     if deps.progress_callback:
         extras = {"created_entities": getattr(result, "created_entities", [])}
         if not result.success:
