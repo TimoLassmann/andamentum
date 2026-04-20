@@ -80,6 +80,53 @@ async def _run_op(
     return result
 
 
+async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> None:
+    """Run TMS (Truth Maintenance System) sweep: cascade evidence invalidation
+    and revalidate claims whose evidence foundation changed.
+
+    This is a reactive correctness check, not a graph node. It runs after
+    operations that can invalidate evidence (adversarial search, investigation,
+    evidence extraction).
+
+    No LLM calls — purely structural graph maintenance.
+    """
+    from ..entities import Evidence, Claim
+    from ..operations.belief_maintenance import (
+        InvalidateEvidenceOperation,
+        RevalidateClaimOperation,
+    )
+
+    # Step 1: Cascade invalidated evidence → affected claims
+    all_evidence = await deps.repo.query(
+        "evidence", objective_id=state.objective_id
+    )
+    for ev in all_evidence:
+        if (
+            isinstance(ev, Evidence)
+            and ev.invalidated
+            and not ev.invalidation_cascaded
+        ):
+            await _run_op(
+                InvalidateEvidenceOperation, deps, state,
+                ev.entity_id, "evidence", "invalidate_evidence",
+            )
+
+    # Step 2: Revalidate claims flagged by the cascade
+    all_claims = await deps.repo.query(
+        "claim", objective_id=state.objective_id
+    )
+    for claim in all_claims:
+        if (
+            isinstance(claim, Claim)
+            and claim.needs_revalidation
+            and not claim.abandoned
+        ):
+            await _run_op(
+                RevalidateClaimOperation, deps, state,
+                claim.entity_id, "claim", "revalidate_claim",
+            )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # NODES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -351,6 +398,9 @@ class ExtractNewEvidence(
                 ev.entity_id, "evidence", "extract_evidence",
             )
 
+        # TMS sweep: new evidence may trigger revalidation of claims
+        await _run_tms_sweep(deps, state)
+
         return Scrutinize()
 
 
@@ -507,6 +557,11 @@ class RunVerification(
                     op_class, deps, state,
                     claim.entity_id, "claim", op_name,
                 )
+
+        # TMS sweep: adversarial search may have created contradicting
+        # evidence that invalidates existing evidence or triggers claim
+        # revalidation.
+        await _run_tms_sweep(deps, state)
 
         return ResolveUncertainties()
 
