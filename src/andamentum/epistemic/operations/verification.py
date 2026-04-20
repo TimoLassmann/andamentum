@@ -14,7 +14,6 @@ from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
-    ClaimStage,
     Evidence,
     Uncertainty,
     UncertaintyType,
@@ -293,18 +292,6 @@ class AdversarialSearchOperation(BaseOperation):
             # NOTE: Do NOT touch scrutiny_verdict here. Adversarial search and
             # scrutiny are independent verification tracks. The adversarial balance
             # score is checked by stage gates directly.
-
-            # TMS trigger: if claim is already promoted and adversarial search found
-            # severe refutation, the claim's current stage must be re-validated.
-            # validate_current_stage now checks adversarial_balance.
-            if balance_score < 0.3 and claim.stage != ClaimStage.HYPOTHESIS:
-                claim.needs_revalidation = True
-                logger.info(
-                    "TMS: adversarial refutation (balance=%.2f) triggers revalidation for %s at %s",
-                    balance_score,
-                    claim.entity_id,
-                    claim.stage.value,
-                )
 
         claim.adversarial_checked = True
         await self.repo.save(claim)

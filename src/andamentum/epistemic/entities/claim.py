@@ -119,10 +119,6 @@ class Claim(EpistemicEntity):
     consistency_checked: bool = Field(
         default=False, description="Cross-claim consistency checked"
     )
-    routing_applied: bool = Field(
-        default=False,
-        description="Whether routing defaults have been applied for this claim",
-    )
     # Denormalized for pattern matching (updated on save via model_post_init)
     evidence_count: int = Field(
         default=0, description="Count of evidence_ids for pattern filtering"
@@ -142,11 +138,6 @@ class Claim(EpistemicEntity):
     abandoned: bool = Field(
         default=False,
         description="Claim abandoned after exhausting investigation attempts",
-    )
-
-    # TMS: Revalidation flag
-    needs_revalidation: bool = Field(
-        default=False, description="Re-check current stage gate after evidence change"
     )
 
     # Operation completion flags
@@ -244,7 +235,6 @@ class Claim(EpistemicEntity):
             self.computational_checked = False
             self.contrastive_checked = False
             self.consistency_checked = False
-            self.routing_applied = False
             self.integrated_assessment = None
             self.integrated_confidence = None
             self.integrated_reasoning = None
@@ -267,7 +257,6 @@ class Claim(EpistemicEntity):
             "computational_checked": self.computational_checked,
             "contrastive_checked": self.contrastive_checked,
             "consistency_checked": self.consistency_checked,
-            "routing_applied": self.routing_applied,
             "argument_analyzed": self.argument_analyzed,
             "predictions_generated": self.predictions_generated,
             "decision_recorded": self.decision_recorded,
@@ -277,7 +266,6 @@ class Claim(EpistemicEntity):
             "modification_count": self.modification_count,
             "investigation_count": self.investigation_count,
             "abandoned": self.abandoned,
-            "needs_revalidation": self.needs_revalidation,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
         }
@@ -323,7 +311,6 @@ class Claim(EpistemicEntity):
             modification_timestamps=metadata.get("modification_timestamps", []),
             investigation_count=metadata.get("investigation_count", 0),
             abandoned=metadata.get("abandoned", False),
-            needs_revalidation=metadata.get("needs_revalidation", False),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             adversarial_checked=metadata.get("adversarial_checked", False),
             convergence_checked=metadata.get("convergence_checked", False),
@@ -331,7 +318,6 @@ class Claim(EpistemicEntity):
             computational_checked=metadata.get("computational_checked", False),
             contrastive_checked=metadata.get("contrastive_checked", False),
             consistency_checked=metadata.get("consistency_checked", False),
-            routing_applied=metadata.get("routing_applied", False),
             confidence_score=metadata.get("confidence_score"),
             adversarial_balance=metadata.get("adversarial_balance"),
             argument_analyzed=metadata.get("argument_analyzed", False),
