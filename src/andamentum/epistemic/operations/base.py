@@ -13,10 +13,24 @@ import json as _json
 from typing import Any, Optional, Protocol, TYPE_CHECKING
 
 from ..adapters import ADAPTERS
-from ..patterns import WorkItem
 
 if TYPE_CHECKING:
     from ..repository import EpistemicRepository
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WORK ITEM
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class WorkItem:
+    """Unit of epistemic work to be executed."""
+
+    entity_id: str
+    entity_type: str
+    operation: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 # Cosine similarity threshold for deduplication across all sites.
 # The embedding model (embeddinggemma) produces within-group similarities

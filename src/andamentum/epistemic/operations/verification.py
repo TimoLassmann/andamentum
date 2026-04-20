@@ -10,7 +10,7 @@ Operates on: Claim, Evidence, Uncertainty entities
 
 from typing import Any
 
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
@@ -19,7 +19,6 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
-from ..patterns import WorkItem
 
 
 class AdversarialSearchOperation(BaseOperation):

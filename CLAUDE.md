@@ -73,7 +73,8 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 **Epistemic core abstractions** (understand these before touching `epistemic/`):
 - `entities/` — `Objective`, `Evidence`, `Claim`, `Uncertainty`, `Decision`, `Snapshot`, `Artefact` (all `EpistemicEntity` subclasses). `Objective.claim_to_verify` enables seed-claim verification mode.
 - `gates.py` — `STAGE_GATES` + `validate_promotion`: deterministic, routing-aware checks that must pass before a `Claim` advances stages. Gates query the question type's routing profile and only require tracks that are PRIMARY or SECONDARY — not SKIP.
-- `patterns.py` — `PatternScheduler` + `WORK_PATTERNS`: pattern-driven work scheduling with per-operation budgets. Phase 4 has two mutually exclusive claim creation modes: `seed_claim` (verification mode when `claim_to_verify` is set) and `propose_claims` (research mode when it's None).
+- `graph/` — pydantic-graph DAG scheduler. 15 nodes with typed return edges replace the old pattern scheduler. Operations execute in explicit dependency order — no implicit state matching.
+- `patterns.py` — DEPRECATED. `WorkItem` re-exported from `operations/base.py`. Pattern scheduler kept for reference only.
 - `provider_routing.py` — semantic provider selection via embedding cosine similarity. Replaces the old keyword-based `DOMAIN_PROVIDER_MAP`. Benchmarked at 97.5% top-3 recall across 200 queries.
 - `operations/` — `BaseOperation` subclasses that agents dispatch to; registered via `OPERATION_CLASSES` / `create_operations`. Includes `SeedClaimOperation` for verification mode.
 - `repository.py` — `EpistemicRepository` wraps a `StorageBackend` (in-memory backend ships in `storage.py`)

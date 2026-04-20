@@ -22,6 +22,7 @@ from .base import (
     DEDUP_SIMILARITY_THRESHOLD,
     MAX_UNCERTAINTY_DEPTH,
     OperationResult,
+    WorkItem,
 )
 
 from ..entities import (
@@ -29,7 +30,6 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
-from ..patterns import WorkItem
 
 logger = logging.getLogger(__name__)
 

@@ -9,13 +9,12 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Objective, Evidence entities
 """
 
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import (
     Evidence,
     Objective,
 )
-from ..patterns import WorkItem
 
 
 class ClarifyQuestionOperation(BaseOperation):

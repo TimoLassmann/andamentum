@@ -8,13 +8,12 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Evidence, Claim entities
 """
 
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
     Evidence,
 )
-from ..patterns import WorkItem
 
 
 class InvalidateEvidenceOperation(BaseOperation):

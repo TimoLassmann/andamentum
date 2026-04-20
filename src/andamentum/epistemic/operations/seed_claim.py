@@ -12,8 +12,7 @@ from __future__ import annotations
 
 from ..entities.claim import Claim, ClaimStage
 from ..entities.objective import Objective
-from ..patterns import WorkItem
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 
 
 class SeedClaimOperation(BaseOperation):

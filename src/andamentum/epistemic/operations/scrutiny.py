@@ -4,94 +4,19 @@ Skeptic review of claims using a split-agent architecture: evidence
 assessment + one-issue-at-a-time identification + deterministic
 verdict combination. Creates Uncertainty entities for issues found.
 
-Also contains ``_maybe_advance_phase``, which is shared by scrutiny,
-stage_management, and uncertainty modules.
-
 Depends on: base (BaseOperation, OperationResult), claims (select_top_k_evidence)
 Operates on: Claim, Evidence, Uncertainty, Objective entities
 """
 
-from typing import TYPE_CHECKING
-
-from .base import BaseOperation, OperationResult
+from .base import BaseOperation, OperationResult, WorkItem
 from .claims import select_top_k_evidence
 
 from ..entities import (
     Claim,
-    ClaimStage,
     Evidence,
-    Objective,
     Uncertainty,
     UncertaintyType,
 )
-from ..patterns import WorkItem
-
-if TYPE_CHECKING:
-    from ..repository import EpistemicRepository
-
-
-async def _maybe_advance_phase(repo: "EpistemicRepository", objective_id: str) -> None:
-    """Advance objective from claims_proposed to claims_done when ready.
-
-    Ready condition (all must be true):
-    1. Objective is at phase "claims_proposed"
-    2. All claims have been scrutinized (scrutiny_verdict is not None)
-    3. No HYPOTHESIS claims with passing scrutiny (should have been promoted)
-    4. No unresolved blocking uncertainties
-
-    This is deterministic and idempotent.
-    """
-    objective = await repo.get("objective", objective_id)
-    if not isinstance(objective, Objective) or objective.phase != "claims_proposed":
-        return
-
-    claims = await repo.query("claim", objective_id=objective_id)
-    if not claims:
-        return
-
-    # All non-abandoned claims must have terminal scrutiny verdicts
-    # Only "pass" and "fail" are terminal. None means not yet scrutinized;
-    # "needs_resolution" means under investigation.
-    for c in claims:
-        if not isinstance(c, Claim):
-            continue
-        if c.abandoned:
-            continue
-        if c.scrutiny_verdict not in ("pass", "fail"):
-            return  # Not ready — still under scrutiny or investigation
-
-    # No non-abandoned HYPOTHESIS claims with passing scrutiny
-    # (they should have been promoted already)
-    for c in claims:
-        if (
-            isinstance(c, Claim)
-            and not c.abandoned
-            and c.stage == ClaimStage.HYPOTHESIS
-            and c.scrutiny_verdict == "pass"
-        ):
-            return
-
-    # No non-abandoned SUPPORTED claims still undergoing verification.
-    # Claims at SUPPORTED need verification tracks + integration before
-    # the objective can be considered done.
-    for c in claims:
-        if (
-            isinstance(c, Claim)
-            and not c.abandoned
-            and c.stage == ClaimStage.SUPPORTED
-        ):
-            return
-
-    # No unresolved blocking uncertainties
-    uncertainties = await repo.query(
-        "uncertainty", objective_id=objective_id, resolution=None
-    )
-    for u in uncertainties:
-        if u.is_blocking:
-            return
-
-    objective.phase = "claims_done"
-    await repo.save(objective)
 
 
 class ScrutiniseClaimOperation(BaseOperation):

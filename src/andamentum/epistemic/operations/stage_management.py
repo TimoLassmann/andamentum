@@ -5,17 +5,15 @@ gate requirements before allowing a claim to advance to the next stage.
 DemoteClaimOperation handles regression when scrutiny fails or new
 blocking uncertainties appear.
 
-Depends on: base (BaseOperation, OperationResult), scrutiny (_maybe_advance_phase)
+Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim entities
 """
 
 from datetime import datetime
 
-from .base import BaseOperation, OperationResult
-from .scrutiny import _maybe_advance_phase
+from .base import BaseOperation, OperationResult, WorkItem
 
 from ..entities import Claim
-from ..patterns import WorkItem
 
 
 class PromoteClaimOperation(BaseOperation):
@@ -119,9 +117,6 @@ class PromoteClaimOperation(BaseOperation):
                 "to": target_stage.value,
             },
         )
-
-        # Check if objective can advance to claims_done
-        await _maybe_advance_phase(self.repo, claim.objective_id)
 
         return OperationResult(
             success=True,

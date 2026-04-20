@@ -12,7 +12,7 @@ Operates on: Objective, Snapshot, Artefact, Claim, Evidence, Uncertainty entitie
 
 from typing import Any
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult
+from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationResult, WorkItem
 
 from ..entities import (
     Artefact,
@@ -23,7 +23,6 @@ from ..entities import (
     Snapshot,
     Uncertainty,
 )
-from ..patterns import WorkItem
 
 
 class FreezeSnapshotOperation(BaseOperation):
