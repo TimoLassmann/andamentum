@@ -22,9 +22,9 @@ class InvalidateEvidenceOperation(BaseOperation):
     When evidence is marked invalidated=True, this operation:
     1. Finds all claims referencing this evidence
     2. Removes the evidence from their evidence_ids
-    3. Sets needs_revalidation=True on affected claims
-    4. Marks invalidation_cascaded=True on the evidence
+    3. Marks invalidation_cascaded=True on the evidence
 
+    The graph's TMS sweep handles revalidation of affected claims.
     No LLM calls — purely structural graph maintenance.
     """
 
@@ -67,7 +67,6 @@ class InvalidateEvidenceOperation(BaseOperation):
             if evidence.entity_id in claim.evidence_ids:
                 claim.evidence_ids.remove(evidence.entity_id)
                 claim.evidence_count = len(claim.evidence_ids)
-                claim.needs_revalidation = True
                 await self.repo.save(claim)
                 affected_claim_ids.append(claim.entity_id)
 
@@ -94,9 +93,10 @@ class InvalidateEvidenceOperation(BaseOperation):
 class RevalidateClaimOperation(BaseOperation):
     """Re-validate a claim's current stage gate after evidence changes.
 
-    When a claim has needs_revalidation=True, this operation:
+    Called by the graph's TMS sweep when a claim's evidence foundation
+    has changed. This operation:
     1. Checks if the claim still meets its current stage gate
-    2. If yes: clears the flag
+    2. If yes: no action needed
     3. If no: demotes one stage, resets verification flags (Peirce cycling),
        and invalidates any evidence derived from this claim (cascade)
 
@@ -117,18 +117,9 @@ class RevalidateClaimOperation(BaseOperation):
                 message="Entity is not Claim",
             )
 
-        if not claim.needs_revalidation:
-            return OperationResult(
-                success=True,
-                entity_id=claim.entity_id,
-                message="No revalidation needed",
-            )
-
         gate_result = await validate_current_stage(claim, self.repo)
 
         if gate_result.passed:
-            claim.needs_revalidation = False
-            await self.repo.save(claim)
             return OperationResult(
                 success=True,
                 entity_id=claim.entity_id,
@@ -140,9 +131,7 @@ class RevalidateClaimOperation(BaseOperation):
         target_stage = get_previous_stage(claim.stage)
 
         if not target_stage:
-            # At HYPOTHESIS — can't demote further, just clear flag
-            claim.needs_revalidation = False
-            await self.repo.save(claim)
+            # At HYPOTHESIS — can't demote further
             return OperationResult(
                 success=True,
                 entity_id=claim.entity_id,
@@ -155,7 +144,6 @@ class RevalidateClaimOperation(BaseOperation):
             justification=f"TMS demotion: {gate_result.reason or 'stage gate failed after evidence invalidation'}",
         )
 
-        claim.needs_revalidation = False
         await self.repo.save(claim)
 
         # Cascade: invalidate evidence derived from this claim
@@ -244,7 +232,6 @@ class SetRoutingDefaultsOperation(BaseOperation):
                     setattr(claim, field_name, True)
                     skipped.append(track_name)
 
-        claim.routing_applied = True
         await self.repo.save(claim)
 
         return OperationResult(

@@ -60,7 +60,6 @@ def _make_claim(
     cid: str = "cl-1",
     stage: ClaimStage = ClaimStage.SUPPORTED,
     evidence_ids: list[str] | None = None,
-    needs_revalidation: bool = False,
 ) -> Claim:
     eids = evidence_ids or []
     return Claim(
@@ -71,7 +70,6 @@ def _make_claim(
         evidence_count=len(eids),
         stage=stage,
         scrutiny_verdict="pass",
-        needs_revalidation=needs_revalidation,
     )
 
 
@@ -105,7 +103,6 @@ class TestInvalidateEvidenceOperation:
         # Reload claim
         updated_claim = await repo.get("claim", "cl-1")
         assert "ev-1" not in updated_claim.evidence_ids
-        assert updated_claim.needs_revalidation is True
         assert updated_claim.evidence_count == 0
 
         # Evidence marked as cascaded
@@ -150,9 +147,9 @@ class TestInvalidateEvidenceOperation:
         assert result.success
         assert "0 claims" in result.message
 
-        # Claim untouched
+        # Claim untouched — evidence_ids unchanged
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.needs_revalidation is False
+        assert updated_claim.evidence_ids == ["ev-other"]
 
     @pytest.mark.asyncio
     async def test_multiple_claims_affected(self, repo):
@@ -178,8 +175,6 @@ class TestInvalidateEvidenceOperation:
 
         cl1 = await repo.get("claim", "cl-1")
         cl2 = await repo.get("claim", "cl-2")
-        assert cl1.needs_revalidation is True
-        assert cl2.needs_revalidation is True
         assert "ev-1" not in cl1.evidence_ids
         assert "ev-1" not in cl2.evidence_ids
 
@@ -204,7 +199,6 @@ class TestRevalidateClaimOperation:
         claim = _make_claim(
             evidence_ids=["ev-1", "ev-2"],
             stage=ClaimStage.SUPPORTED,
-            needs_revalidation=True,
         )
         await repo.save(claim)
 
@@ -221,7 +215,6 @@ class TestRevalidateClaimOperation:
 
         updated = await repo.get("claim", "cl-1")
         assert updated.stage == ClaimStage.SUPPORTED
-        assert updated.needs_revalidation is False
 
     @pytest.mark.asyncio
     async def test_claim_fails_gate_demoted(self, repo):
@@ -231,7 +224,6 @@ class TestRevalidateClaimOperation:
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.SUPPORTED,
-            needs_revalidation=True,
         )
         await repo.save(claim)
 
@@ -248,7 +240,6 @@ class TestRevalidateClaimOperation:
 
         updated = await repo.get("claim", "cl-1")
         assert updated.stage == ClaimStage.HYPOTHESIS
-        assert updated.needs_revalidation is False
         assert updated.modification_count == 1
 
     @pytest.mark.asyncio
@@ -257,7 +248,6 @@ class TestRevalidateClaimOperation:
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.SUPPORTED,
-            needs_revalidation=True,
         )
         await repo.save(claim)
 
@@ -285,11 +275,10 @@ class TestRevalidateClaimOperation:
 
     @pytest.mark.asyncio
     async def test_hypothesis_cannot_demote_further(self, repo):
-        """Claim at HYPOTHESIS with needs_revalidation just clears the flag."""
+        """Claim at HYPOTHESIS stays at HYPOTHESIS — gate always passes."""
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.HYPOTHESIS,
-            needs_revalidation=True,
         )
         await repo.save(claim)
 
@@ -302,12 +291,11 @@ class TestRevalidateClaimOperation:
         result = await op.execute(work)
 
         assert result.success
-        # HYPOTHESIS has no gate — validate_current_stage passes, flag cleared
+        # HYPOTHESIS has no gate — validate_current_stage passes
         assert "still meets" in result.message
 
         updated = await repo.get("claim", "cl-1")
         assert updated.stage == ClaimStage.HYPOTHESIS
-        assert updated.needs_revalidation is False
 
     @pytest.mark.asyncio
     async def test_demotion_records_promotion_history(self, repo):
@@ -315,7 +303,6 @@ class TestRevalidateClaimOperation:
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.SUPPORTED,
-            needs_revalidation=True,
         )
         await repo.save(claim)
 
@@ -410,9 +397,9 @@ class TestTransitiveCascade:
         r1 = await op1.execute(work1)
         assert r1.success
 
-        # C1 should now need revalidation
+        # C1 had its evidence removed by the cascade
         c1_updated = await repo.get("claim", "c1")
-        assert c1_updated.needs_revalidation is True
+        assert "e1" not in c1_updated.evidence_ids
 
         # Step 2: Revalidate C1 → should be demoted → E2 gets invalidated
         op2 = RevalidateClaimOperation(repo=repo, agent_runner=None)
@@ -439,7 +426,6 @@ class TestTransitiveCascade:
         assert r3.success
 
         c2_updated = await repo.get("claim", "c2")
-        assert c2_updated.needs_revalidation is True
         assert "e2" not in c2_updated.evidence_ids
 
     @pytest.mark.asyncio
@@ -468,7 +454,7 @@ class TestTransitiveCascade:
 
         # Unrelated claim untouched
         c_other_check = await repo.get("claim", "c-other")
-        assert c_other_check.needs_revalidation is False
+        assert c_other_check.evidence_ids == ["e-other"]
         assert c_other_check.stage == ClaimStage.SUPPORTED
 
     @pytest.mark.asyncio
@@ -535,7 +521,6 @@ class TestInvestigationStubDependency:
         # Remove evidence so gate fails → demotion
         claim.evidence_ids = []
         claim.evidence_count = 0
-        claim.needs_revalidation = True
         await repo.save(ev)
         await repo.save(ev_supporting)
         await repo.save(claim)
@@ -678,22 +663,24 @@ class TestValidateCurrentStageExtended:
 
 
 class TestPromotionGuard:
-    """Fix 8: PromoteClaimOperation should refuse when revalidation is pending."""
+    """Promotion is now guarded by the graph (TMS runs before promote).
+
+    PromoteClaimOperation no longer checks needs_revalidation — the graph
+    ensures TMS completes before calling promote.  We verify that promotion
+    still works correctly via gate validation.
+    """
 
     @pytest.mark.asyncio
-    async def test_promotion_blocked_by_revalidation(self, repo):
-        """Claims with needs_revalidation=True cannot be promoted."""
+    async def test_promotion_blocked_by_gate_failure(self, repo):
+        """Claims that fail gate validation cannot be promoted."""
         from andamentum.epistemic.operations import PromoteClaimOperation
         from andamentum.epistemic.patterns import WorkItem
 
-        ev = _make_evidence(eid="ev-1", quality_score=0.8)
-        await repo.save(ev)
-
+        # Claim with no evidence — gate should block promotion
         claim = _make_claim(
             cid="cl-1",
             stage=ClaimStage.HYPOTHESIS,
-            evidence_ids=["ev-1"],
-            needs_revalidation=True,
+            evidence_ids=[],
         )
         await repo.save(claim)
 
@@ -704,7 +691,6 @@ class TestPromotionGuard:
         result = await op.execute(work)
 
         assert not result.success
-        assert "revalidation" in result.message.lower()
 
         # Claim should not have changed stage
         updated = await repo.get("claim", "cl-1")

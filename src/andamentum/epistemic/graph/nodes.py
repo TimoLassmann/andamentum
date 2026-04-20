@@ -100,6 +100,7 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
     all_evidence = await deps.repo.query(
         "evidence", objective_id=state.objective_id
     )
+    had_cascades = False
     for ev in all_evidence:
         if (
             isinstance(ev, Evidence)
@@ -110,31 +111,37 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 InvalidateEvidenceOperation, deps, state,
                 ev.entity_id, "evidence", "invalidate_evidence",
             )
+            had_cascades = True
 
-    # Step 2: Revalidate claims flagged by the cascade
-    all_claims = await deps.repo.query(
-        "claim", objective_id=state.objective_id
-    )
-    for claim in all_claims:
-        if (
-            isinstance(claim, Claim)
-            and claim.needs_revalidation
-            and not claim.abandoned
-        ):
-            await _run_op(
-                RevalidateClaimOperation, deps, state,
-                claim.entity_id, "claim", "revalidate_claim",
-            )
+    # Step 2: Revalidate all non-abandoned claims above HYPOTHESIS after cascade.
+    # RevalidateClaimOperation checks the gate and only demotes if it fails,
+    # so running it on unaffected claims is a safe no-op.
+    if had_cascades:
+        from ..entities.claim import ClaimStage
+
+        all_claims = await deps.repo.query(
+            "claim", objective_id=state.objective_id
+        )
+        for claim in all_claims:
+            if (
+                isinstance(claim, Claim)
+                and not claim.abandoned
+                and claim.stage != ClaimStage.HYPOTHESIS
+            ):
+                await _run_op(
+                    RevalidateClaimOperation, deps, state,
+                    claim.entity_id, "claim", "revalidate_claim",
+                )
 
     # Step 3: Process claims flagged for TMS by graph nodes
     for cid in list(state.claims_needing_tms):
         try:
             claim = await deps.repo.get("claim", cid)
             if isinstance(claim, Claim) and not claim.abandoned:
-                # Set needs_revalidation so RevalidateClaimOperation processes it
-                if not claim.needs_revalidation:
-                    claim.needs_revalidation = True
-                    await deps.repo.save(claim)
+                await _run_op(
+                    RevalidateClaimOperation, deps, state,
+                    cid, "claim", "revalidate_claim",
+                )
         except Exception:
             pass
     state.claims_needing_tms.clear()

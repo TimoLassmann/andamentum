@@ -37,14 +37,6 @@ class PromoteClaimOperation(BaseOperation):
                 message="Entity is not Claim",
             )
 
-        # Yield to TMS — if revalidation is pending, don't promote
-        if claim.needs_revalidation:
-            return OperationResult(
-                success=False,
-                entity_id=claim.entity_id,
-                message="Revalidation pending — TMS must run first",
-            )
-
         # Determine target stage
         target_stage = get_next_stage(claim.stage)
         if not target_stage:
