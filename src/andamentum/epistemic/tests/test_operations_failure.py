@@ -867,7 +867,7 @@ class TestInvestigateClaimFailure:
         updated = await failing_repo.get("claim", claim.entity_id)
         assert isinstance(updated, Claim)
         assert updated.investigation_count == 1
-        assert updated.scrutiny_verdict is None  # Reset for re-scrutiny
+        assert updated.scrutiny_verdict == "needs_resolution"  # unchanged by operation
 
     @pytest.mark.asyncio
     async def test_uncertainty_loading_fails_silently(self):

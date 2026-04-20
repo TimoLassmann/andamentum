@@ -360,18 +360,8 @@ class InvestigateClaimOperation(BaseOperation):
                 claim.evidence_ids.append(evidence_stub.entity_id)
                 created_entities.append(evidence_stub.entity_id)
 
-        # Reset scrutiny verdict so claim re-enters scrutiny after new evidence is extracted
-        claim.scrutiny_verdict = None
         claim.investigation_count += 1
         claim.evidence_count = len(claim.evidence_ids)
-
-        # TMS trigger: if the claim is already promoted, signal that the epistemic
-        # landscape has changed and the current stage gate should be re-checked once
-        # the new evidence stubs are extracted and judged. The revalidation will fire
-        # via the pattern scheduler; by the time it runs, new evidence may have shifted
-        # the support/contradict balance.
-        if created_entities and claim.stage != ClaimStage.HYPOTHESIS:
-            claim.needs_revalidation = True
 
         await self.repo.save(claim)
 
