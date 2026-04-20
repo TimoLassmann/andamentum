@@ -1,13 +1,12 @@
 """Tests for Peirce cycling triggered by uncertainty resolution.
 
-When a blocking uncertainty is resolved, affected claims should have their
-scrutiny_verdict reset to None so they re-enter the investigation→scrutiny
-loop. This tests the wiring in ResolveUncertaintyOperation.
+After Clean Task 2 (move flow control from operations to graph nodes),
+the ResolveUncertaintyOperation no longer resets scrutiny_verdict on
+affected claims. That responsibility moved to the ResolveUncertainties
+graph node, which populates state.claims_needing_rescrutiny instead.
 
-Loop safety is guaranteed by three independent caps:
-  - investigation_count (monotonic, max 3) — never reset
-  - MAX_ENTITY_ATTEMPTS (per entity-op pair, max 3) — per run
-  - MAX_UNCERTAINTY_DEPTH (chain depth, max 3) — per chain
+These tests verify that the operation does NOT modify claims (P1/P5),
+and that non-blocking / already-resolved uncertainties remain unchanged.
 """
 
 import pytest
@@ -72,12 +71,12 @@ def _make_uncertainty(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class TestBlockingResolutionResetScrutiny:
-    """Resolved blocking uncertainties reset scrutiny on affected claims."""
+class TestBlockingResolutionNoScrutinyReset:
+    """Operation no longer resets scrutiny — graph node handles this (P1/P5)."""
 
     @pytest.mark.asyncio
-    async def test_contradiction_resolution_resets_scrutiny(self, repo, fake_runner):
-        """Resolving a CONTRADICTION resets scrutiny_verdict on affected claims."""
+    async def test_contradiction_resolution_does_not_reset_scrutiny(self, repo, fake_runner):
+        """Resolving a CONTRADICTION no longer resets scrutiny_verdict (moved to graph)."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
@@ -92,11 +91,11 @@ class TestBlockingResolutionResetScrutiny:
 
         assert result.success
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.scrutiny_verdict is None
+        assert updated_claim.scrutiny_verdict == "pass"  # unchanged by operation
 
     @pytest.mark.asyncio
-    async def test_strong_counterevidence_resets_scrutiny(self, repo, fake_runner):
-        """Resolving STRONG_COUNTEREVIDENCE resets scrutiny."""
+    async def test_strong_counterevidence_does_not_reset_scrutiny(self, repo, fake_runner):
+        """Resolving STRONG_COUNTEREVIDENCE no longer resets scrutiny (moved to graph)."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.STRONG_COUNTEREVIDENCE)
@@ -110,11 +109,11 @@ class TestBlockingResolutionResetScrutiny:
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.scrutiny_verdict is None
+        assert updated_claim.scrutiny_verdict == "pass"  # unchanged by operation
 
     @pytest.mark.asyncio
-    async def test_unknown_type_resets_scrutiny(self, repo, fake_runner):
-        """Resolving UNKNOWN (blocking) resets scrutiny."""
+    async def test_unknown_type_does_not_reset_scrutiny(self, repo, fake_runner):
+        """Resolving UNKNOWN (blocking) no longer resets scrutiny (moved to graph)."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="needs_resolution")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.UNKNOWN)
@@ -128,11 +127,11 @@ class TestBlockingResolutionResetScrutiny:
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.scrutiny_verdict is None
+        assert updated_claim.scrutiny_verdict == "needs_resolution"  # unchanged by operation
 
     @pytest.mark.asyncio
-    async def test_multiple_affected_claims_all_reset(self, repo, fake_runner):
-        """All affected claims have scrutiny reset, not just the first."""
+    async def test_multiple_affected_claims_unchanged(self, repo, fake_runner):
+        """All affected claims remain unchanged — operation does not touch them."""
         await repo.save(_make_objective())
         claim1 = _make_claim(cid="cl-1", scrutiny_verdict="pass")
         claim2 = _make_claim(cid="cl-2", scrutiny_verdict="fail")
@@ -149,8 +148,8 @@ class TestBlockingResolutionResetScrutiny:
 
         cl1 = await repo.get("claim", "cl-1")
         cl2 = await repo.get("claim", "cl-2")
-        assert cl1.scrutiny_verdict is None
-        assert cl2.scrutiny_verdict is None
+        assert cl1.scrutiny_verdict == "pass"  # unchanged
+        assert cl2.scrutiny_verdict == "fail"  # unchanged
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -207,8 +206,8 @@ class TestSafetyCaps:
     """Verify that Peirce cycling safety caps work correctly."""
 
     @pytest.mark.asyncio
-    async def test_abandoned_claims_not_reset(self, repo, fake_runner):
-        """Abandoned claims are skipped — no point cycling a dead claim."""
+    async def test_abandoned_claims_not_touched(self, repo, fake_runner):
+        """Operation does not touch claims at all — abandoned or otherwise."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="fail", abandoned=True)
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
@@ -222,12 +221,12 @@ class TestSafetyCaps:
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
-        # scrutiny_verdict NOT reset because claim is abandoned
+        # Operation no longer touches claims — verdict unchanged
         assert updated_claim.scrutiny_verdict == "fail"
 
     @pytest.mark.asyncio
-    async def test_investigation_count_preserved_after_reset(self, repo, fake_runner):
-        """Resetting scrutiny does NOT reset investigation_count (monotonic cap)."""
+    async def test_investigation_count_preserved(self, repo, fake_runner):
+        """Operation does not modify claims — investigation_count stays unchanged."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass", investigation_count=2)
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
@@ -241,8 +240,8 @@ class TestSafetyCaps:
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.scrutiny_verdict is None
-        # investigation_count is NEVER reset — this is the hard cap
+        # Operation no longer touches claims — both fields unchanged
+        assert updated_claim.scrutiny_verdict == "pass"
         assert updated_claim.investigation_count == 2
 
     @pytest.mark.asyncio
@@ -271,11 +270,12 @@ class TestSafetyCaps:
 
 
 class TestUnresolvableNoReset:
-    """When the agent says can_resolve=False, no cycling should happen."""
+    """When the agent says can_resolve=False, the uncertainty is resolved
+    as 'Unresolvable' but the operation does not touch claims."""
 
     @pytest.mark.asyncio
     async def test_unresolvable_does_not_reset_scrutiny(self, repo):
-        """Unresolvable blocking uncertainty does not reset scrutiny."""
+        """Unresolvable blocking uncertainty does not reset scrutiny (moved to graph)."""
         from .conftest import FakeAgentRunner
 
         runner = FakeAgentRunner(overrides={
@@ -298,17 +298,13 @@ class TestUnresolvableNoReset:
         work = WorkItem(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
         await op.execute(work)
 
-        # Uncertainty is marked as "Unresolvable" — but that's still a resolution,
-        # so the cycling WILL fire (resolution is not None, and type is blocking).
-        # This is correct: even "unresolvable" is a resolution that changes the
-        # epistemic state — the claim should be re-evaluated knowing the uncertainty
-        # is acknowledged but unresolved.
+        # Uncertainty is marked as "Unresolvable" — still a resolution
         updated_unc = await repo.get("uncertainty", "unc-1")
         assert updated_unc.resolution is not None  # "Unresolvable: acknowledged limitation"
 
+        # Operation no longer touches claims — scrutiny unchanged
         updated_claim = await repo.get("claim", "cl-1")
-        # The claim gets reset because the uncertainty IS resolved (with "unresolvable")
-        assert updated_claim.scrutiny_verdict is None
+        assert updated_claim.scrutiny_verdict == "pass"
 
 
 class TestAlreadyResolvedNoop:

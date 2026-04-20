@@ -69,7 +69,7 @@ class TestInvestigationCap:
         await repo.save(claim)
 
         # With no agent_runner, investigation creates no stubs but still
-        # increments count and resets scrutiny
+        # increments count. Scrutiny reset moved to graph node.
         op = InvestigateClaimOperation(repo=repo, agent_runner=None)
         work = WorkItem(
             entity_id=claim.entity_id,
@@ -82,4 +82,4 @@ class TestInvestigationCap:
         updated = await repo.get("claim", claim.entity_id)
         assert updated.abandoned is False
         assert updated.investigation_count == 2
-        assert updated.scrutiny_verdict is None
+        assert updated.scrutiny_verdict == "needs_resolution"  # unchanged by operation

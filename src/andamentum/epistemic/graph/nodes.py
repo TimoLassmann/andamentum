@@ -126,6 +126,19 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 claim.entity_id, "claim", "revalidate_claim",
             )
 
+    # Step 3: Process claims flagged for TMS by graph nodes
+    for cid in list(state.claims_needing_tms):
+        try:
+            claim = await deps.repo.get("claim", cid)
+            if isinstance(claim, Claim) and not claim.abandoned:
+                # Set needs_revalidation so RevalidateClaimOperation processes it
+                if not claim.needs_revalidation:
+                    claim.needs_revalidation = True
+                    await deps.repo.save(claim)
+        except Exception:
+            pass
+    state.claims_needing_tms.clear()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NODES
@@ -298,9 +311,18 @@ class Scrutinize(
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         active_claims = [c for c in all_claims if not c.abandoned]
 
-        # Scrutinise claims without a verdict
+        # Scrutinise claims without a verdict or needing re-scrutiny
         for claim in active_claims:
-            if claim.scrutiny_verdict is None:
+            needs_scrutiny = (
+                claim.scrutiny_verdict is None
+                or claim.entity_id in state.claims_needing_rescrutiny
+            )
+            if needs_scrutiny:
+                # Reset verdict for re-scrutiny so the operation runs
+                if claim.entity_id in state.claims_needing_rescrutiny:
+                    claim.scrutiny_verdict = None
+                    await deps.repo.save(claim)
+                    state.claims_needing_rescrutiny.discard(claim.entity_id)
                 await _run_op(
                     ScrutiniseClaimOperation, deps, state,
                     claim.entity_id, "claim", "scrutinise_claim",
@@ -363,11 +385,19 @@ class Investigate(
             if claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
                 if inv_count < 3:
-                    await _run_op(
+                    result = await _run_op(
                         InvestigateClaimOperation, deps, state,
                         claim.entity_id, "claim", "investigate_claim",
                     )
                     state.investigation_counts[claim.entity_id] = inv_count + 1
+                    if result.success:
+                        state.claims_needing_rescrutiny.add(claim.entity_id)
+                        # TMS: if claim is promoted and new evidence was created
+                        if result.created_entities:
+                            from ..entities.claim import ClaimStage
+                            claim_updated = await deps.repo.get("claim", claim.entity_id)
+                            if claim_updated.stage != ClaimStage.HYPOTHESIS:
+                                state.claims_needing_tms.add(claim.entity_id)
 
         return ExtractNewEvidence()
 
@@ -595,10 +625,19 @@ class ResolveUncertainties(
             return IntegrateEvidence()
 
         for unc in blocking:
-            await _run_op(
+            result = await _run_op(
                 ResolveUncertaintyOperation, deps, state,
                 unc.entity_id, "uncertainty", "resolve_uncertainty",
             )
+            # Graph flow control: mark affected claims for re-scrutiny
+            if result.success:
+                try:
+                    unc_updated = await deps.repo.get("uncertainty", unc.entity_id)
+                    if unc_updated.is_blocking and unc_updated.resolution is not None:
+                        for cid in unc_updated.affected_claim_ids:
+                            state.claims_needing_rescrutiny.add(cid)
+                except Exception:
+                    pass
 
         # Deduplicate concerns on the objective
         await _run_op(

@@ -12,7 +12,6 @@ from .base import BaseOperation, GatheredEvidence, OperationResult, WorkItem
 
 from ..entities import (
     Claim,
-    ClaimStage,
     Evidence,
     Objective,
 )
@@ -214,39 +213,6 @@ class ExtractEvidenceOperation(BaseOperation):
                 evidence.support_judgment = verdict
                 evidence.judgment_reasoning = judgment.reasoning
                 await self.repo.save(evidence)
-
-                # TMS trigger: if this verdict is "contradicts" and the claim is
-                # already promoted, check whether contradicting evidence now outweighs
-                # supporting. validate_current_stage handles the balance check.
-                if (
-                    verdict == "contradicts"
-                    and linked_claim.stage != ClaimStage.HYPOTHESIS
-                ):
-                    supporting = 0
-                    contradicting_count = 0
-                    for eid_check in linked_claim.evidence_ids:
-                        try:
-                            ev_check = await self.repo.get("evidence", eid_check)
-                            if ev_check.invalidated:
-                                continue
-                            j = getattr(ev_check, "support_judgment", None)
-                            if j == "supports":
-                                supporting += 1
-                            elif j == "contradicts":
-                                contradicting_count += 1
-                        except Exception:
-                            pass
-                    if (
-                        supporting + contradicting_count
-                    ) >= 2 and contradicting_count >= supporting:
-                        linked_claim.needs_revalidation = True
-                        await self.repo.save(linked_claim)
-                        _extract_log.info(
-                            "TMS: contradicting balance (%d vs %d) triggers revalidation for %s",
-                            contradicting_count,
-                            supporting,
-                            linked_claim.entity_id,
-                        )
 
         return OperationResult(
             success=True,
