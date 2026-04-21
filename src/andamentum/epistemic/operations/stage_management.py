@@ -47,12 +47,8 @@ class PromoteClaimOperation(BaseOperation):
             )
 
         # Get objective's question_type for routing-aware gate thresholds
-        question_type = None
-        try:
-            objective = await self.repo.get("objective", claim.objective_id)
-            question_type = objective.question_type
-        except Exception:
-            pass  # Fall back to default thresholds
+        objective = await self.repo.get("objective", claim.objective_id)
+        question_type = objective.question_type
 
         # Validate gate requirements
         gate_result = await validate_promotion(

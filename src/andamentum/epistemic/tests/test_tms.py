@@ -676,6 +676,11 @@ class TestPromotionGuard:
         from andamentum.epistemic.operations import PromoteClaimOperation
         from andamentum.epistemic.patterns import OperationInput
 
+        # Save a real Objective so the objective-load step doesn't raise;
+        # the gate check (no evidence) must be what blocks promotion.
+        obj = _make_objective(repo, obj_id="obj-1")
+        await repo.save(obj)
+
         # Claim with no evidence — gate should block promotion
         claim = _make_claim(
             cid="cl-1",
