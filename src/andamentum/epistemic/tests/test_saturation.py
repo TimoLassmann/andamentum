@@ -7,24 +7,26 @@ No other mechanism (saturation, etc.) limits investigation.
 
 import pytest
 
+from andamentum.document_store import DocumentStore
 from ..entities.claim import Claim
 from ..entities.objective import Objective
 from ..primitives import ClaimStage
 from ..operations.investigation import InvestigateClaimOperation
 from ..operations.base import MAX_INVESTIGATION_ATTEMPTS
 from ..patterns import OperationInput
+from ..repository import EpistemicRepository
 
 
 class TestInvestigationCap:
     @pytest.fixture
-    def backend(self):
-        from ..storage import InMemoryStorageBackend
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        from ..repository import EpistemicRepository
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     @pytest.mark.asyncio
     async def test_investigation_exhausted_abandons_claim(self, repo):

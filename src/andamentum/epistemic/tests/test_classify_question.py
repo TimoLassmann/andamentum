@@ -128,7 +128,7 @@ class TestClassifyQuestionAdapter:
         assert result.question_type == "explanatory"
 
 
-from ..storage import InMemoryStorageBackend  # noqa: E402
+from andamentum.document_store import DocumentStore  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES  # noqa: E402
 from ..patterns import OperationInput  # noqa: E402
@@ -136,12 +136,14 @@ from ..patterns import OperationInput  # noqa: E402
 
 class TestClassifyQuestionOperation:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     @pytest.fixture
     def mock_runner(self):
