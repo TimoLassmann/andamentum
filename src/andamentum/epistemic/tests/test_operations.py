@@ -451,8 +451,9 @@ class TestAgentOnlyExtraction:
         assert loaded.quality_metadata is not None
         assert loaded.quality_metadata.get("source") == "agent"
 
-    async def test_default_minimum_when_agent_fails(self, repo):
-        """When agent scoring fails (no runner), extracted evidence gets minimum default score."""
+    async def test_no_runner_no_gatherer_raises(self, repo, fake_runner):
+        """When neither a runner nor a gatherer is wired up, extraction must raise
+        rather than fabricate placeholder content."""
         obj = Objective(
             entity_id="obj-df",
             objective_id="obj-df",
@@ -468,22 +469,13 @@ class TestAgentOnlyExtraction:
         )
         await repo.save(e)
 
-        # Create operations with NO runner and NO gatherer (testing mode)
+        # No runner, no gatherer — must raise, not silently fabricate content
         ops = create_operations(repo, agent_runner=None, evidence_gatherer=None)
         work = OperationInput(
             entity_id="e-df", entity_type="evidence", operation="extract_evidence"
         )
-        result = await ops["extract_evidence"].execute(work)
-
-        assert result.success
-        loaded = await repo.get_evidence("e-df")
-        assert loaded.extracted is True
-        # Placeholder content triggers default minimum scoring
-        assert loaded.quality_score is not None, (
-            "Extracted evidence must never have null quality_score"
-        )
-        assert loaded.quality_score >= 0.05
-        assert loaded.quality_metadata is not None
+        with pytest.raises(RuntimeError, match="no extractor"):
+            await ops["extract_evidence"].execute(work)
 
     async def test_gatherer_exception_propagates(self, repo, fake_runner):
         """When gatherer throws, the exception propagates out of the operation."""

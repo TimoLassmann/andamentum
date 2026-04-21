@@ -85,3 +85,39 @@ def test_pipeline_result_has_quarantined_field():
         status="partial",
     )
     assert result.quarantined == []
+
+
+async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
+    """When neither an agent runner nor a gatherer is wired up, extraction
+    must raise — never fabricate `[Content from ...]` placeholders."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Evidence
+    from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    ev = Evidence(
+        objective_id="obj-1",
+        source_type="web_search",
+        source_ref="http://example.org/paper",
+    )
+    await repo.save(ev)
+
+    op = ExtractEvidenceOperation(
+        repo=repo,
+        agent_runner=None,  # no runner
+        evidence_gatherer=None,  # no gatherer
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="no extractor"):
+        await op.execute(
+            OperationInput(
+                entity_id=ev.entity_id,
+                entity_type="evidence",
+                operation="extract_evidence",
+            )
+        )

@@ -25,8 +25,8 @@ class ExtractEvidenceOperation(BaseOperation):
 
     Evidence gathering strategy:
     1. If evidence_gatherer is available: use it to fetch raw content
-    2. If agent_runner is available (no gatherer): use agent for extraction
-    3. If neither: placeholder content (for testing)
+    2. If agent_runner is available (no gatherer, or gatherer empty/failed): use agent for extraction
+    3. If neither: raises RuntimeError — indicates a wiring bug in graph construction
     """
 
     entity_type = "evidence"
@@ -137,27 +137,14 @@ class ExtractEvidenceOperation(BaseOperation):
             )
             # Score via agent (no GatheredEvidence available in this path)
             await self._score_evidence(evidence)
-
-        # Strategy 3: Placeholder (no agent runner available)
         else:
-            _extract_log.info(
-                "[extract_evidence] PLACEHOLDER for %s (no runner)", evidence.entity_id
+            raise RuntimeError(
+                f"[extract_evidence] no extractor available for {evidence.entity_id}: "
+                f"ExtractEvidenceOperation requires either an evidence_gatherer or "
+                f"an agent_runner. This indicates a wiring bug in graph construction."
             )
-            evidence.extracted_content = f"[Content from {evidence.source_ref}]"
 
         evidence.extracted = True
-        # Final guard: ensure quality_score is never None for extracted evidence with content
-        if (
-            evidence.quality_score is None
-            and evidence.extracted_content
-            and evidence.extracted_content.strip()
-        ):
-            evidence.quality_score = 0.1
-            evidence.quality_metadata = {"source": "default_minimum"}
-            _extract_log.info(
-                "[extract_evidence] FINAL GUARD applied default_minimum for %s",
-                evidence.entity_id,
-            )
 
         _extract_log.info(
             "[extract_evidence] DONE %s extracted=%s quality_score=%s quality_source=%s content_len=%d",
