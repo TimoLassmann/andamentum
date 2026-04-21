@@ -11,7 +11,7 @@ and that non-blocking / already-resolved uncertainties remain unchanged.
 
 import pytest
 
-from ..entities import Claim, ClaimStage, Objective, Uncertainty, UncertaintyType
+from ..entities import Claim, ClaimStage, Evidence, Objective, Uncertainty, UncertaintyType
 from ..operations.uncertainty import ResolveUncertaintyOperation
 from ..patterns import OperationInput
 
@@ -66,6 +66,10 @@ def _make_uncertainty(
     )
 
 
+def _make_evidence(obj_id: str = "obj-1", eid: str = "ev-1") -> Evidence:
+    return Evidence(entity_id=eid, objective_id=obj_id)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Tests: Blocking uncertainty resolution triggers Peirce cycling
 # ══════════════════════════════════════════════════════════════════════════════
@@ -81,6 +85,7 @@ class TestBlockingResolutionNoScrutinyReset:
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -100,6 +105,7 @@ class TestBlockingResolutionNoScrutinyReset:
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.STRONG_COUNTEREVIDENCE)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -118,6 +124,7 @@ class TestBlockingResolutionNoScrutinyReset:
         claim = _make_claim(scrutiny_verdict="needs_resolution")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.UNKNOWN)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -138,6 +145,7 @@ class TestBlockingResolutionNoScrutinyReset:
         unc = _make_uncertainty(affected_claim_ids=["cl-1", "cl-2"])
         await repo.save(claim1)
         await repo.save(claim2)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -167,6 +175,7 @@ class TestNonBlockingResolutionNoReset:
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.EVIDENCE_GAP)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -185,6 +194,7 @@ class TestNonBlockingResolutionNoReset:
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.ASSUMPTION)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -212,6 +222,7 @@ class TestSafetyCaps:
         claim = _make_claim(scrutiny_verdict="fail", abandoned=True)
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -231,6 +242,7 @@ class TestSafetyCaps:
         claim = _make_claim(scrutiny_verdict="pass", investigation_count=2)
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
@@ -245,8 +257,10 @@ class TestSafetyCaps:
         assert updated_claim.investigation_count == 2
 
     @pytest.mark.asyncio
-    async def test_missing_claim_does_not_crash(self, repo, fake_runner):
-        """If an affected_claim_id references a missing claim, resolution still succeeds."""
+    async def test_missing_claim_raises_error(self, repo, fake_runner):
+        """If an affected_claim_id references a missing claim, EntityNotFoundError is raised."""
+        from ..repository import EntityNotFoundError
+
         await repo.save(_make_objective())
         unc = _make_uncertainty(
             uncertainty_type=UncertaintyType.CONTRADICTION,
@@ -258,10 +272,9 @@ class TestSafetyCaps:
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
         work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
-        result = await op.execute(work)
 
-        # Should succeed — missing claim is skipped via except
-        assert result.success
+        with pytest.raises(EntityNotFoundError):
+            await op.execute(work)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -290,6 +303,7 @@ class TestUnresolvableNoReset:
         claim = _make_claim(scrutiny_verdict="pass")
         unc = _make_uncertainty(uncertainty_type=UncertaintyType.CONTRADICTION)
         await repo.save(claim)
+        await repo.save(_make_evidence())
         await repo.save(unc)
 
         op = ResolveUncertaintyOperation(
