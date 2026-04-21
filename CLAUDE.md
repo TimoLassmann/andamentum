@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Follow the rules in CONSTITUTION.md. Project-specific rules below override or extend them where explicitly stated.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project
@@ -69,10 +71,6 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
 **Evidence providers** follow a strict specification documented in `src/andamentum/epistemic/providers/CONTRIBUTING.md`. Read it before adding or modifying any provider. Key rules: providers retrieve and structure evidence, never assess quality (`quality_score=None` always), never truncate content, and return `list[GatheredEvidence]` (empty list on error, never raise).
-
-**No truncation of evidence content.** Evidence extracted_content is NEVER truncated, sliced, or capped before being sent to LLM agents. Operations must pass full content. Limits like `[:300]`, `[:5]`, or `[:20]` on evidence content or evidence ID lists are forbidden — they silently discard information that agents need to make correct judgments. The only acceptable truncation is in log messages and trace metadata (display-only, not decision-relevant).
-
-**No silent error swallowing.** Operations, graph nodes, and gates must NOT catch exceptions with `pass`, `continue`, or silent fallbacks. If evidence can't be loaded or an agent call fails, the pipeline must crash with a traceback. The only acceptable exception handling is at genuine boundaries: external HTTP APIs in providers, serialization for display, and stage sequence lookups.
 
 **Epistemic architecture principles** (enforced across the module):
 - **P1: Operations are pure transforms.** An operation reads entities, does work (LLM calls, computations), and writes the result back. It NEVER manipulates fields on other entities to signal what should happen next.
