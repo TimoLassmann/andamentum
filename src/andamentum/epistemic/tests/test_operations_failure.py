@@ -227,8 +227,8 @@ class TestEvidenceScoringFallbackChain:
         assert updated.quality_metadata.get("cited_by") == 100
 
     @pytest.mark.asyncio
-    async def test_path1_fails_path2_agent_succeeds(self, tmp_path):
-        """Path 1 fails -> Path 2: Agent assessment succeeds."""
+    async def test_path1_fails_raises_on_failure(self, tmp_path):
+        """Path 1 scorer raises -> exception propagates."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
@@ -252,26 +252,18 @@ class TestEvidenceScoringFallbackChain:
         work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("evidence", ev.entity_id)
-        assert isinstance(updated, Evidence)
-        # Agent path computes: 0.35*0.7 + 0.25*0.8 + 0.25*0.6 + 0.15*0.7 = 0.245+0.2+0.15+0.105 = 0.7
-        assert updated.quality_score is not None
-        assert updated.quality_score > 0.0
-        assert updated.quality_metadata is not None
-        assert updated.quality_metadata.get("source") == "agent"
+        with pytest.raises(RuntimeError, match="Scorer failed"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_paths_1_and_2_fail_path3_gatherer(self, tmp_path):
-        """Paths 1+2 fail -> Path 3: Use gatherer's pre-computed score."""
+    async def test_paths_1_and_2_fail_raises_on_failure(self, tmp_path):
+        """Paths 1+2 both configured to fail -> exception from path 1 propagates."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
 
         scorer = MockQualityScorer(fail=True)
-        # Gatherer provides a pre-computed quality_score
+        # Gatherer provides a pre-computed quality_score (never reached)
         gatherer = MockGatherer(
             results=[
                 GatheredEvidence(
@@ -293,24 +285,18 @@ class TestEvidenceScoringFallbackChain:
         work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("evidence", ev.entity_id)
-        assert isinstance(updated, Evidence)
-        assert updated.quality_score == 0.65
-        assert updated.quality_metadata is not None
-        assert updated.quality_metadata.get("source") == "gatherer_fallback"
+        with pytest.raises(RuntimeError, match="Scorer failed"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_all_paths_fail_path4_default(self, tmp_path):
-        """Paths 1+2+3 fail -> Path 4: Default minimum 0.1."""
+    async def test_all_paths_fail_raises_on_failure(self, tmp_path):
+        """All paths configured to fail -> exception from path 1 propagates."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
 
         scorer = MockQualityScorer(fail=True)
-        # Gatherer returns content but no quality_score
+        # Gatherer returns content but no quality_score (never reached)
         gatherer = MockGatherer(
             results=[
                 GatheredEvidence(
@@ -332,19 +318,12 @@ class TestEvidenceScoringFallbackChain:
         work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("evidence", ev.entity_id)
-        assert isinstance(updated, Evidence)
-        # Path 4 default minimum
-        assert updated.quality_score == 0.1
-        assert updated.quality_metadata is not None
-        assert updated.quality_metadata.get("source") == "default_minimum"
+        with pytest.raises(RuntimeError, match="Scorer failed"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_no_content_no_score(self, tmp_path):
-        """No scoring paths succeed AND no content -> no score set."""
+    async def test_no_content_raises_on_agent_failure(self, tmp_path):
+        """Agent scorer raises -> exception propagates even with no content."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
@@ -371,19 +350,12 @@ class TestEvidenceScoringFallbackChain:
         work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("evidence", ev.entity_id)
-        assert isinstance(updated, Evidence)
-        # Empty content: final guard only fires if content has non-whitespace
-        # The gatherer provided empty content, so Path 4 _score_evidence won't set a score,
-        # but the final guard in execute() checks too. Since content is empty, no score.
-        assert updated.quality_score is None
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_agent_extraction_fallback_when_gatherer_fails(self, tmp_path):
-        """When gatherer throws, fall through to agent extraction path."""
+    async def test_gatherer_fails_raises_on_failure(self, tmp_path):
+        """When gatherer throws, the exception propagates."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(repo, obj.entity_id, source_ref="http://example.com")
@@ -398,14 +370,8 @@ class TestEvidenceScoringFallbackChain:
         work = OperationInput(
             entity_id=ev.entity_id, entity_type="evidence", operation="extract_evidence"
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("evidence", ev.entity_id)
-        assert isinstance(updated, Evidence)
-        assert updated.extracted is True
-        # Content came from agent extraction
-        assert updated.extracted_content != ""
+        with pytest.raises(RuntimeError, match="Gatherer failed"):
+            await op.execute(work)
 
 
 # ── 2. Scrutiny Operation Failure ────────────────────────────────────────────
@@ -415,8 +381,8 @@ class TestScrutinyOperationFailure:
     """Test ScrutiniseClaimOperation under failure."""
 
     @pytest.mark.asyncio
-    async def test_evidence_loading_fails_silently(self, tmp_path):
-        """Evidence loading in try/except loop should skip failed evidence."""
+    async def test_evidence_loading_raises_on_failure(self, tmp_path):
+        """Evidence loading raises RuntimeError when repo fails on a bad ID."""
         store = await _make_store(tmp_path)
         failing_repo = FailingRepo(store, fail_on={"bad-evidence-id"})
         obj = await _save_objective(failing_repo)
@@ -438,13 +404,8 @@ class TestScrutinyOperationFailure:
         work = OperationInput(
             entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim"
         )
-        result = await op.execute(work)
-
-        # Should succeed despite one evidence failing to load
-        assert result.success
-        updated = await failing_repo.get("claim", claim.entity_id)
-        assert isinstance(updated, Claim)
-        assert updated.scrutiny_verdict is not None
+        with pytest.raises(RuntimeError, match="Simulated repo failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
     async def test_agent_failure_propagates(self, tmp_path):
@@ -781,8 +742,8 @@ class TestPredictionClassificationFailure:
     """
 
     @pytest.mark.asyncio
-    async def test_classification_fails_skips_aspect(self, tmp_path):
-        """If classify_prediction throws, that aspect is skipped but operation succeeds."""
+    async def test_classification_raises_on_failure(self, tmp_path):
+        """If classify_prediction throws, the exception propagates."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
@@ -806,18 +767,12 @@ class TestPredictionClassificationFailure:
             entity_type="claim",
             operation="generate_prediction",
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("claim", claim.entity_id)
-        assert isinstance(updated, Claim)
-        assert updated.predictions_generated is True
-        # All aspects fail at classify step, so no predictions stored
-        assert len(updated.predictions) == 0
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_evidence_loading_fails_silently(self, tmp_path):
-        """Evidence loading in prediction generation skips failed evidence."""
+    async def test_evidence_loading_raises_on_failure(self, tmp_path):
+        """Evidence loading in prediction generation raises when repo fails."""
         store = await _make_store(tmp_path)
         failing_repo = FailingRepo(store, fail_on={"bad-evidence-id"})
         obj = await _save_objective(failing_repo)
@@ -835,12 +790,8 @@ class TestPredictionClassificationFailure:
             entity_type="claim",
             operation="generate_prediction",
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await failing_repo.get("claim", claim.entity_id)
-        assert isinstance(updated, Claim)
-        assert updated.predictions_generated is True
+        with pytest.raises(RuntimeError, match="Simulated repo failure"):
+            await op.execute(work)
 
 
 # ── 6. Investigate Claim Failure ─────────────────────────────────────────────
@@ -850,8 +801,8 @@ class TestInvestigateClaimFailure:
     """Test InvestigateClaimOperation under failure."""
 
     @pytest.mark.asyncio
-    async def test_evidence_loading_fails_silently(self, tmp_path):
-        """Evidence loading in investigate skips failed evidence."""
+    async def test_evidence_loading_raises_on_failure(self, tmp_path):
+        """Evidence loading in investigate raises when repo fails."""
         store = await _make_store(tmp_path)
         failing_repo = FailingRepo(store, fail_on={"bad-evidence-id"})
         obj = await _save_objective(failing_repo)
@@ -869,17 +820,12 @@ class TestInvestigateClaimFailure:
             entity_type="claim",
             operation="investigate_claim",
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await failing_repo.get("claim", claim.entity_id)
-        assert isinstance(updated, Claim)
-        assert updated.investigation_count == 1
-        assert updated.scrutiny_verdict == "needs_resolution"  # unchanged by operation
+        with pytest.raises(RuntimeError, match="Simulated repo failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_uncertainty_loading_fails_silently(self, tmp_path):
-        """Uncertainty query failure in investigate is caught."""
+    async def test_uncertainty_loading_raises_on_failure(self, tmp_path):
+        """Uncertainty query failure in investigate raises the error."""
         store = await _make_store(tmp_path)
         failing_repo = FailingRepo(store, fail_on_query={"uncertainty"})
         obj = await _save_objective(failing_repo)
@@ -896,9 +842,8 @@ class TestInvestigateClaimFailure:
             entity_type="claim",
             operation="investigate_claim",
         )
-        result = await op.execute(work)
-
-        assert result.success
+        with pytest.raises(RuntimeError, match="Simulated query failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
     async def test_investigation_exhausted_abandons_claim(self, tmp_path):
@@ -937,8 +882,8 @@ class TestResolveUncertaintyFailure:
     """Test ResolveUncertaintyOperation under failure."""
 
     @pytest.mark.asyncio
-    async def test_parent_entity_loading_fails_silently(self, tmp_path):
-        """Loading objective/claims with try/except should not crash."""
+    async def test_parent_entity_loading_raises_on_failure(self, tmp_path):
+        """Loading claims raises RuntimeError when repo fails on a bad ID."""
         store = await _make_store(tmp_path)
         # Create a real objective first so _maybe_advance_phase doesn't crash
         repo = EpistemicRepository(store)
@@ -964,10 +909,8 @@ class TestResolveUncertaintyFailure:
             entity_type="uncertainty",
             operation="resolve_uncertainty",
         )
-        result = await op.execute(work)
-
-        # Should succeed even though claim entity failed to load
-        assert result.success
+        with pytest.raises(RuntimeError, match="Simulated repo failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
     async def test_unresolvable_uncertainty(self, tmp_path):
