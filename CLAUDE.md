@@ -94,6 +94,19 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 
 **Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`) for side-by-side comparison with the legacy `html_report.py` renderer. See `src/andamentum/typeset/USAGE.md` for the full API reference.
 
+## Working in git worktrees
+
+When you need a worktree (e.g. for executing a multi-step plan in isolation), create it **inside this repo at `.worktrees/<feature-name>/`** — never as a sibling directory like `../andamentum-<feature>/`. Sibling worktrees fall outside Claude Code's permission scope and force the user to manually approve every single tool call.
+
+`.worktrees/` is gitignored, so the nested worktrees don't pollute git status. Standard commands:
+
+```bash
+git worktree add .worktrees/<feature-name> -b <branch-name>
+# ... do the work ...
+git worktree remove .worktrees/<feature-name>
+git branch -d <branch-name>  # after merging back
+```
+
 ## Known quirks
 
 - `pytest.ini_options.testpaths = ["src/andamentum"]` — tests live next to the code they test, not in a top-level `tests/` directory.
