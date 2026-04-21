@@ -219,7 +219,9 @@ class TestDedupIntegration:
 
             async def run(self, agent_name: str, **kwargs: object) -> SimpleNamespace:
                 self.calls.append((agent_name, kwargs))
-                if agent_name == "epistemic_extract_assertion":
+                if agent_name == "epistemic_screen_relevance":
+                    return SimpleNamespace(is_relevant=True)
+                elif agent_name == "epistemic_extract_assertion":
                     call_count[0] += 1
                     return SimpleNamespace(assertion=f"Assertion {call_count[0]}")
                 elif agent_name == "epistemic_draft_claim":

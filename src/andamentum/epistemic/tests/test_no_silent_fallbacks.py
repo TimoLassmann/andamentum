@@ -87,6 +87,58 @@ def test_pipeline_result_has_quarantined_field():
     assert result.quarantined == []
 
 
+@pytest.mark.asyncio
+async def test_propose_claims_propagates_screening_failure(tmp_path):
+    """When epistemic_screen_relevance raises, ProposeClaimsOperation must
+    propagate — the previous behavior (include-by-default) silently poisoned
+    downstream evidence selection with unscreened items."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Evidence, Objective
+    from andamentum.epistemic.operations.claims import ProposeClaimsOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _RaisingScreenRunner:
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_screen_relevance":
+                raise RuntimeError("screening model timed out")
+            # Other agents shouldn't be reached before screening
+            raise AssertionError(
+                f"Unexpected agent call {agent_name} before screening failed"
+            )
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="test question", clarified_question="q?")
+    obj.objective_id = obj.entity_id  # Objectives are self-referential
+    await repo.save(obj)
+    ev = Evidence(
+        objective_id=obj.entity_id,
+        source_type="web_search",
+        source_ref="http://example.org/x",
+        extracted=True,
+        extracted_content="some content",
+    )
+    await repo.save(ev)
+
+    op = ProposeClaimsOperation(
+        repo=repo,
+        agent_runner=_RaisingScreenRunner(),
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="screening model timed out"):
+        await op.execute(
+            OperationInput(
+                entity_id=obj.entity_id,
+                entity_type="objective",
+                operation="propose_claims",
+            )
+        )
+
+
 async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
     """When neither an agent runner nor a gatherer is wired up, extraction
     must raise — never fabricate `[Content from ...]` placeholders."""

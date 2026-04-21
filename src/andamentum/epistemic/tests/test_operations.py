@@ -1543,8 +1543,9 @@ class TestEvidenceRelevanceFiltering:
         assert len(extract_calls) == 1
 
     @pytest.mark.asyncio
-    async def test_screening_failure_includes_evidence(self, repo, fake_runner):
-        """If screening fails, evidence should be included (fail-open)."""
+    async def test_screening_failure_propagates(self, repo, fake_runner):
+        """If screening fails, the exception must propagate — fail-open was removed
+        because it silently poisoned downstream evidence selection."""
         obj = Objective(
             description="Test question",
             phase="planned",
@@ -1577,15 +1578,5 @@ class TestEvidenceRelevanceFiltering:
             entity_id=obj.entity_id, entity_type="objective", operation="propose_claims"
         )
 
-        with patch(
-            "andamentum.epistemic.embeddings.embed_texts", new_callable=AsyncMock
-        ) as mock_embed:
-            mock_embed.return_value = [[0.5] * 10]
-            with patch(
-                "andamentum.epistemic.similarity.group_by_similarity"
-            ) as mock_cluster:
-                mock_cluster.return_value = [[0]]
-                result = await op.execute(work)
-
-        # Should still succeed — screening failure doesn't block the pipeline
-        assert result.success
+        with pytest.raises(RuntimeError, match="Screening failed"):
+            await op.execute(work)
