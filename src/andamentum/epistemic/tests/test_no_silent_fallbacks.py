@@ -50,7 +50,12 @@ async def test_run_op_quarantines_entity_on_exception():
     deps = _StubDeps()
 
     result = await _run_op(
-        _RaisingOp, cast(EpistemicDeps, deps), state, "claim-7", "claim", "scrutinize_claim"
+        _RaisingOp,
+        cast(EpistemicDeps, deps),
+        state,
+        "claim-7",
+        "claim",
+        "scrutinize_claim",
     )
 
     # The result is surfaced as success=False (for logging), but the state
@@ -135,6 +140,62 @@ async def test_propose_claims_propagates_screening_failure(tmp_path):
                 entity_id=obj.entity_id,
                 entity_type="objective",
                 operation="propose_claims",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_adversarial_check_propagates_counterquery_failure(tmp_path):
+    """One failing framing must propagate. Previous: silently dropped to 2/3.
+    New: the claim gets quarantined by _run_op."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Claim, Objective
+    from andamentum.epistemic.entities.claim import ClaimStage
+    from andamentum.epistemic.operations.verification import AdversarialSearchOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _OneFramingRaisesRunner:
+        def __init__(self):
+            self.calls = 0
+
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_generate_counterquery":
+                self.calls += 1
+                if self.calls == 2:
+                    raise RuntimeError("framing 2 failed")
+                from types import SimpleNamespace
+
+                return SimpleNamespace(query=f"q-{self.calls}", framing="test")
+            raise AssertionError(f"Unexpected agent {agent_name}")
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="q", clarified_question="q")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        scope="specific",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(claim)
+
+    op = AdversarialSearchOperation(
+        repo=repo,
+        agent_runner=_OneFramingRaisesRunner(),
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="framing 2 failed"):
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="adversarial_check",
             )
         )
 
