@@ -171,9 +171,7 @@ class AdversarialSearchOperation(BaseOperation):
                     )
                     # Capture the agent's justification — this is the system's
                     # own interpretation of what the counterargument says.
-                    justification = (
-                        getattr(eval_result, "justification", None) or ""
-                    )
+                    justification = getattr(eval_result, "justification", None) or ""
                     proper_ca = create_counterargument(
                         summary=summary,
                         source_ref=source_ref,
@@ -351,34 +349,26 @@ class AssessConvergenceOperation(BaseOperation):
             content = ev.extracted_content
 
             if self.agent_runner:
-                try:
-                    dc_result = await self.run_agent(
-                        "epistemic_classify_evidence_domain",
-                        evidence_text=content,
-                        source_type=ev.source_type,
-                        source_ref=ev.source_ref,
-                    )
-                    # Convert adapter result to DomainClassification
-                    classification = DomainClassification(
-                        evidence_id=eid,
-                        claim_id=claim.entity_id,
-                        method_type=MethodType(dc_result.method_type),
-                        data_source=DataSourceType(dc_result.data_source),
-                        temporal=TemporalApproach(dc_result.temporal_approach),
-                        causal_role=CausalRole(dc_result.causal_role),
-                        classification_confidence=float(dc_result.confidence),
-                        classification_method="agent",
-                        classification_notes=dc_result.justification,
-                    )
-                except Exception:
-                    # Fallback to default classification
-                    classification = default_classify(
-                        evidence_id=eid,
-                        claim_id=claim.entity_id,
-                        evidence_text=content,
-                    )
+                dc_result = await self.run_agent(
+                    "epistemic_classify_evidence_domain",
+                    evidence_text=content,
+                    source_type=ev.source_type,
+                    source_ref=ev.source_ref,
+                )
+                # Convert adapter result to DomainClassification
+                classification = DomainClassification(
+                    evidence_id=eid,
+                    claim_id=claim.entity_id,
+                    method_type=MethodType(dc_result.method_type),
+                    data_source=DataSourceType(dc_result.data_source),
+                    temporal=TemporalApproach(dc_result.temporal_approach),
+                    causal_role=CausalRole(dc_result.causal_role),
+                    classification_confidence=float(dc_result.confidence),
+                    classification_method="agent",
+                    classification_notes=dc_result.justification,
+                )
             else:
-                # No agent runner — use default classification
+                # No agent runner — use default classification (explicit no-agent path)
                 classification = default_classify(
                     evidence_id=eid,
                     claim_id=claim.entity_id,

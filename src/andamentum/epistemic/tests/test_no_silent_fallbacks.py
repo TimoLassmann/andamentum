@@ -219,7 +219,8 @@ async def test_adversarial_check_propagates_counterarg_eval_failure(tmp_path):
         async def run(self, agent_name: str, **kwargs):
             if agent_name == "epistemic_generate_counterquery":
                 return SimpleNamespace(
-                    query="failed replication of X causes Y", framing="replication_failures"
+                    query="failed replication of X causes Y",
+                    framing="replication_failures",
                 )
             if agent_name == "epistemic_evaluate_counterargument":
                 raise RuntimeError("evaluator failed")
@@ -303,5 +304,73 @@ async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
                 entity_id=ev.entity_id,
                 entity_type="evidence",
                 operation="extract_evidence",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_domain_classifier_failure_propagates(tmp_path):
+    """When epistemic_classify_evidence_domain raises, AssessConvergenceOperation
+    must propagate — never silently fall back to default_classify."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Claim, Evidence, Objective
+    from andamentum.epistemic.entities.claim import ClaimStage
+    from andamentum.epistemic.operations.verification import AssessConvergenceOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _ClassifierFailsRunner:
+        """Returns a valid response for any other agent, raises on domain classifier."""
+
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_classify_evidence_domain":
+                raise RuntimeError("classifier failed")
+            raise AssertionError(f"Unexpected agent call: {agent_name}")
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="test question", clarified_question="q?")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        scope="specific",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(claim)
+
+    # Evidence must have extracted_content and a cluster_status that is NOT
+    # "corroborative" or "deferred" — those are skipped before the classifier runs.
+    ev = Evidence(
+        objective_id=obj.entity_id,
+        source_type="web_search",
+        source_ref="http://example.org/study",
+        extracted=True,
+        extracted_content="Study finds evidence for X causing Y",
+        cluster_status="primary",
+    )
+    ev_id = ev.entity_id
+    await repo.save(ev)
+
+    # Link evidence to claim
+    claim.evidence_ids.append(ev_id)
+    await repo.save(claim)
+
+    op = AssessConvergenceOperation(
+        repo=repo,
+        agent_runner=_ClassifierFailsRunner(),
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="classifier failed"):
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="assess_convergence",
             )
         )
