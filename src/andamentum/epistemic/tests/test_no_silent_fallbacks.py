@@ -374,3 +374,75 @@ async def test_domain_classifier_failure_propagates(tmp_path):
                 operation="assess_convergence",
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_convergence_evidence_load_failure_propagates(tmp_path):
+    """When repo.get("evidence", eid) raises during the convergence loop,
+    AssessConvergenceOperation must propagate — never silently skip the item
+    and compute convergence on a partial evidence set."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Claim, Objective
+    from andamentum.epistemic.entities.claim import ClaimStage
+    from andamentum.epistemic.operations.base import OperationInput
+    from andamentum.epistemic.operations.verification import AssessConvergenceOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _NeverCalledRunner:
+        """Asserts that no agent is called — operation should raise before
+        reaching the classifier."""
+
+        async def run(self, agent_name: str, **kwargs):
+            raise AssertionError(
+                f"Agent {agent_name!r} called; expected operation to raise first"
+            )
+
+    class _RaiseOnGetEvidenceRepo:
+        """Wraps a real repo but raises RuntimeError on any get("evidence", …)."""
+
+        def __init__(self, real_repo: EpistemicRepository) -> None:
+            self._real = real_repo
+
+        async def get(self, kind: str, eid: str):
+            if kind == "evidence":
+                raise RuntimeError("storage backend error")
+            return await self._real.get(kind, eid)
+
+        def __getattr__(self, name: str):
+            return getattr(self._real, name)
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    real_repo = EpistemicRepository(store)
+
+    obj = Objective(description="test question", clarified_question="q?")
+    obj.objective_id = obj.entity_id
+    await real_repo.save(obj)
+
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        scope="specific",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    # Attach a bogus evidence_id — it will never exist in the store.
+    claim.evidence_ids.append("bogus-evidence-id-does-not-exist")
+    await real_repo.save(claim)
+
+    stub_repo = _RaiseOnGetEvidenceRepo(real_repo)
+
+    op = AssessConvergenceOperation(
+        repo=stub_repo,  # type: ignore[arg-type]
+        agent_runner=_NeverCalledRunner(),
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="storage backend error"):
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="assess_convergence",
+            )
+        )
