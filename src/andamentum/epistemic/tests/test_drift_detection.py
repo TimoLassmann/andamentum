@@ -80,7 +80,7 @@ TRACKED_SECTIONS = [
         "file": _SRC / "operations" / "scrutiny.py",
         "start": "evidence_summaries: list[str] = []",
         "num_lines": 15,
-        "description": "Scrutiny evidence loading try/except loop",
+        "description": "Scrutiny evidence loading loop",
         "test_file": "test_operations_failure.py::TestScrutinyOperationFailure",
     },
     # operations/verification.py: Counterargument evaluation fallback
@@ -146,11 +146,11 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 4-path fallback chain": "22f3340e91e9dd5f",
-    "Scrutiny evidence loading try/except loop": "a9f3aef6d1b1351d",
+    "Evidence scoring 4-path fallback chain": "b28d52f14432cc49",
+    "Scrutiny evidence loading loop": "92c9edb568f22327",
     "Counterargument evaluation fallback": "69cd986c22d846e6",
     "Writer-validator loop": "3c3f161d6f5b27cf",
-    "Prediction generation per-aspect error handling": "b6987e0d7bae1cea",
+    "Prediction generation per-aspect error handling": "82cee56e946a4202",
     "Gate validate_promotion logic": "42b2f8500930928a",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     "CompositeGatherer provider error handling": "a5b200c49da5b67b",
