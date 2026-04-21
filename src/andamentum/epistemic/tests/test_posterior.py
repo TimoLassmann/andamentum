@@ -60,7 +60,7 @@ def _make_evidence(
 ) -> Evidence:
     kwargs: dict = dict(
         objective_id=objective_id,
-        source_type="web",
+        source_type="web_search",
         source_ref="https://example.com",
         extracted_content="Some content",
         extracted=True,
