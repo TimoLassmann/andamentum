@@ -48,20 +48,17 @@ class AbductiveIntegrationOperation(BaseOperation):
         no_bearing_items: list[str] = []
 
         for eid in claim.evidence_ids:
-            try:
-                ev = await self.repo.get("evidence", eid)
-                if not isinstance(ev, Evidence) or ev.invalidated:
-                    continue
-                content = (ev.extracted_content or "")[:300]
-                summary = f"[{ev.source_type}] {content}"
-                if ev.support_judgment == "supports":
-                    supports_items.append(summary)
-                elif ev.support_judgment == "contradicts":
-                    contradicts_items.append(summary)
-                else:
-                    no_bearing_items.append(summary)
-            except Exception:
+            ev = await self.repo.get("evidence", eid)
+            if not isinstance(ev, Evidence) or ev.invalidated:
                 continue
+            content = (ev.extracted_content or "")[:300]
+            summary = f"[{ev.source_type}] {content}"
+            if ev.support_judgment == "supports":
+                supports_items.append(summary)
+            elif ev.support_judgment == "contradicts":
+                contradicts_items.append(summary)
+            else:
+                no_bearing_items.append(summary)
 
         # Adversarial outcome
         adversarial_text = "Adversarial search has NOT been conducted."
