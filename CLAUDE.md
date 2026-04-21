@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Follow the rules in CONSTITUTION.md. Project-specific rules below override or extend them where explicitly stated.
+Follow the rules in @CONSTITUTION.md. Project-specific rules below override or extend them where explicitly stated.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
