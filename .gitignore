@@ -10,3 +10,6 @@ wheels/
 .venv
 dist/
 .playwright-mcp/
+
+# Git worktrees (kept inside the repo so Claude Code's permission scope covers them)
+.worktrees/
