@@ -53,21 +53,32 @@ async def _run_op(
     entity_type: str,
     operation: str,
 ) -> Any:
-    """Instantiate an operation, execute it, log the result, and return it."""
+    """Instantiate an operation, execute it, log the result, and return it.
+
+    If the operation raises, record a quarantine on the graph state and
+    return a failed OperationResult — never swallow silently. Downstream
+    nodes must call state.is_quarantined(entity_id) before scheduling
+    further work on the entity.
+    """
     op = _make_op(op_class, deps)
     work = _op_input(entity_id, entity_type, operation)
     try:
         result = await op.execute(work)
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "%s on %s failed with exception: %s", operation, entity_id[:12], e
+        logger.warning(
+            "%s on %s raised %s: %s — quarantining entity",
+            operation,
+            entity_id[:12],
+            type(e).__name__,
+            e,
         )
+        state.quarantine(entity_id, entity_type, operation, e)
         from ..operations.base import OperationResult
 
         result = OperationResult(
-            success=False, entity_id=entity_id, message=f"{operation} error: {e}"
+            success=False,
+            entity_id=entity_id,
+            message=f"{operation} quarantined: {type(e).__name__}: {e}",
         )
     state.log_operation(operation, entity_id, result.success, result.message)
     # Persist execution trace to the database.
