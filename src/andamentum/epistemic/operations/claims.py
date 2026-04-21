@@ -224,17 +224,14 @@ class ProposeClaimsOperation(BaseOperation):
         if self.agent_runner and extracted:
             relevant: list[Evidence] = []
             for ev in extracted:
-                try:
-                    screen = await self.run_agent(
-                        "epistemic_screen_relevance",
-                        research_question=clarified,
-                        evidence_content=ev.extracted_content,
-                        source_info=f"[{ev.source_type}] {ev.source_ref}",
-                    )
-                    if screen.is_relevant:
-                        relevant.append(ev)
-                except Exception:
-                    relevant.append(ev)  # Screening failed — include by default
+                screen = await self.run_agent(
+                    "epistemic_screen_relevance",
+                    research_question=clarified,
+                    evidence_content=ev.extracted_content,
+                    source_info=f"[{ev.source_type}] {ev.source_ref}",
+                )
+                if screen.is_relevant:
+                    relevant.append(ev)
             extracted = relevant
 
         if not self.agent_runner:
