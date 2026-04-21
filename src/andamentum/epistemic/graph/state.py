@@ -68,7 +68,7 @@ class EpistemicGraphState:
 
     # Entities whose operations raised. Downstream nodes must skip these.
     quarantined: list[QuarantineRecord] = field(default_factory=list)
-    _quarantined_ids: set[str] = field(default_factory=set)
+    _quarantined_ids: set[str] = field(default_factory=set, init=False)
 
     def log_operation(
         self, operation: str, entity_id: str, success: bool, message: str
@@ -95,7 +95,7 @@ class EpistemicGraphState:
         operation: str,
         exception: BaseException,
     ) -> None:
-        """Record that an entity's operation raised. Idempotent per entity."""
+        """Record an operation failure. Appends a record; skip-set membership is idempotent."""
         record = QuarantineRecord(
             entity_id=entity_id,
             entity_type=entity_type,
