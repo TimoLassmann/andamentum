@@ -261,15 +261,17 @@ class TestFailureModes:
 
 
 class TestPlanTaskOperationContract:
-    async def test_plan_without_agent_runner_uses_web_search_fallback(self):
+    async def test_plan_without_agent_runner_uses_web_search_fallback(self, tmp_path):
         """Without an agent_runner, LLM routing can't run, so only web_search is selected."""
+        from andamentum.document_store import DocumentStore
         from andamentum.epistemic.entities.objective import Objective
         from andamentum.epistemic.operations.preplanning import PlanTaskOperation
         from andamentum.epistemic.patterns import OperationInput
         from andamentum.epistemic.repository import EpistemicRepository
-        from andamentum.epistemic.storage import InMemoryStorageBackend
 
-        repo = EpistemicRepository(InMemoryStorageBackend())
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        repo = EpistemicRepository(s)
         obj = Objective(
             entity_id="obj-1",
             objective_id="obj-1",

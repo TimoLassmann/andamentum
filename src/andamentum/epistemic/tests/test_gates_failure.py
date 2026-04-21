@@ -21,11 +21,18 @@ from ..gates import (
     GateResult,
     STAGE_GATES,
 )
-from ..storage import InMemoryStorageBackend
+from andamentum.document_store import DocumentStore
 from ..repository import EpistemicRepository
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+async def _make_store(tmp_path) -> DocumentStore:
+    """Create a fresh DocumentStore for test use."""
+    s = DocumentStore.for_database("test", db_dir=tmp_path)
+    await s.initialize()
+    return s
 
 
 class FailingRepo(EpistemicRepository):
@@ -33,11 +40,11 @@ class FailingRepo(EpistemicRepository):
 
     def __init__(
         self,
-        backend,
+        store,
         fail_on_get: set[str] | None = None,
         fail_on_query: set[str] | None = None,
     ):
-        super().__init__(backend)
+        super().__init__(store)
         self.fail_on_get = fail_on_get or set()
         self.fail_on_query = fail_on_query or set()
 
@@ -72,10 +79,10 @@ def _make_claim(**overrides: Any) -> Claim:
 class TestQualityWeightedEvidenceSumFailure:
     """Test quality_weighted_evidence_sum when repo throws."""
 
-    async def test_single_evidence_get_fails(self):
+    async def test_single_evidence_get_fails(self, tmp_path):
         """If one evidence get fails, it should be skipped (not crash)."""
-        backend = InMemoryStorageBackend()
-        repo = FailingRepo(backend, fail_on_get={"e-2"})
+        store = await _make_store(tmp_path)
+        repo = FailingRepo(store, fail_on_get={"e-2"})
 
         e1 = Evidence(entity_id="e-1", objective_id="obj-test", quality_score=0.7)
         await repo.save(e1)
@@ -84,19 +91,19 @@ class TestQualityWeightedEvidenceSumFailure:
         total = await quality_weighted_evidence_sum(claim, repo)
         assert total == pytest.approx(0.7)
 
-    async def test_all_evidence_gets_fail(self):
+    async def test_all_evidence_gets_fail(self, tmp_path):
         """If all evidence gets fail, sum should be 0."""
-        backend = InMemoryStorageBackend()
-        repo = FailingRepo(backend, fail_on_get={"e-1", "e-2"})
+        store = await _make_store(tmp_path)
+        repo = FailingRepo(store, fail_on_get={"e-1", "e-2"})
 
         claim = _make_claim(evidence_ids=["e-1", "e-2"])
         total = await quality_weighted_evidence_sum(claim, repo)
         assert total == 0.0
 
-    async def test_evidence_with_none_quality_score(self):
+    async def test_evidence_with_none_quality_score(self, tmp_path):
         """Evidence with None quality_score should be skipped."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         e1 = Evidence(entity_id="e-1", objective_id="obj-test", quality_score=None)
         e2 = Evidence(entity_id="e-2", objective_id="obj-test", quality_score=0.5)
@@ -107,10 +114,10 @@ class TestQualityWeightedEvidenceSumFailure:
         total = await quality_weighted_evidence_sum(claim, repo)
         assert total == pytest.approx(0.5)
 
-    async def test_invalidated_evidence_excluded(self):
+    async def test_invalidated_evidence_excluded(self, tmp_path):
         """Invalidated evidence should not count toward quality sum."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         e1 = Evidence(
             entity_id="e-1",
@@ -133,11 +140,11 @@ class TestQualityWeightedEvidenceSumFailure:
 class TestValidatePromotionFailure:
     """Test validate_promotion gate under various failure conditions."""
 
-    async def test_quality_sum_below_threshold_blocks(self):
+    async def test_quality_sum_below_threshold_blocks(self, tmp_path):
         """When quality sum is below the gate threshold, promotion should be blocked."""
-        backend = InMemoryStorageBackend()
+        store = await _make_store(tmp_path)
         # Fail all evidence gets so quality_sum = 0.0
-        repo = FailingRepo(backend, fail_on_get={"e-1", "e-2"})
+        repo = FailingRepo(store, fail_on_get={"e-1", "e-2"})
 
         claim = _make_claim(
             stage=ClaimStage.HYPOTHESIS,
@@ -152,15 +159,15 @@ class TestValidatePromotionFailure:
         assert not result.passed
         assert any("quality sum" in r.lower() for r in result.blocking_reasons)
 
-    async def test_blocking_uncertainty_lookup_failure_blocks_promotion(self):
+    async def test_blocking_uncertainty_lookup_failure_blocks_promotion(self, tmp_path):
         """When uncertainty query throws, the gate MUST block promotion.
 
         Previously (gates.py:484-486) this only produced a warning, allowing
         claims to be promoted without uncertainty validation. Now fixed:
         if we can't verify no blocking uncertainties exist, we deny promotion.
         """
-        backend = InMemoryStorageBackend()
-        repo = FailingRepo(backend, fail_on_query={"uncertainty"})
+        store = await _make_store(tmp_path)
+        repo = FailingRepo(store, fail_on_query={"uncertainty"})
 
         claim = _make_claim(
             stage=ClaimStage.HYPOTHESIS,
@@ -177,15 +184,15 @@ class TestValidatePromotionFailure:
         assert not result.passed
         assert any("uncertaint" in r.lower() for r in result.blocking_reasons)
 
-    async def test_custom_check_failure_blocks_promotion(self):
+    async def test_custom_check_failure_blocks_promotion(self, tmp_path):
         """When custom_check throws, the gate MUST block promotion.
 
         Previously (gates.py:500-501) this only produced a warning, allowing
         claims through without custom validation. Now fixed: a crashing
         safety check denies promotion.
         """
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         # Create a claim that meets all SUPPORTED requirements
         claim = _make_claim(
@@ -215,10 +222,10 @@ class TestValidatePromotionFailure:
         finally:
             gate.custom_check = original
 
-    async def test_unknown_target_stage_returns_failure(self):
+    async def test_unknown_target_stage_returns_failure(self, tmp_path):
         """Requesting promotion to HYPOTHESIS (no gate defined) should fail explicitly."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim()
         # HYPOTHESIS has no entry in STAGE_GATES, so validate_promotion returns failure
@@ -226,10 +233,10 @@ class TestValidatePromotionFailure:
         assert not result.passed
         assert any("unknown" in r.lower() for r in result.blocking_reasons)
 
-    async def test_gate_blocks_with_blocking_uncertainties(self):
+    async def test_gate_blocks_with_blocking_uncertainties(self, tmp_path):
         """Gate must block when claim has unresolved blocking uncertainties."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             stage=ClaimStage.HYPOTHESIS,
@@ -254,10 +261,10 @@ class TestValidatePromotionFailure:
         assert not result.passed
         assert any("blocking" in r.lower() for r in result.blocking_reasons)
 
-    async def test_gate_passes_with_resolved_uncertainties(self):
+    async def test_gate_passes_with_resolved_uncertainties(self, tmp_path):
         """Gate should pass when all uncertainties are resolved."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             stage=ClaimStage.HYPOTHESIS,
@@ -284,10 +291,10 @@ class TestValidatePromotionFailure:
         # No blocking reasons from uncertainties since the only one is resolved
         assert not any("blocking" in r.lower() for r in result.blocking_reasons)
 
-    async def test_adversarial_balance_below_threshold(self):
+    async def test_adversarial_balance_below_threshold(self, tmp_path):
         """Gate should block when adversarial balance is below threshold."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         # PROVISIONAL stage requires adversarial_balance_threshold >= 0.4
         claim = _make_claim(
@@ -310,10 +317,10 @@ class TestValidatePromotionFailure:
         assert not result.passed
         assert any("adversarial balance" in r.lower() for r in result.blocking_reasons)
 
-    async def test_zero_quality_evidence_below_threshold(self):
+    async def test_zero_quality_evidence_below_threshold(self, tmp_path):
         """Evidence with quality 0.0 should count toward sum as zero."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             stage=ClaimStage.SUPPORTED,
@@ -342,14 +349,14 @@ class TestValidatePromotionFailure:
 class TestValidateCurrentStageFailure:
     """Test validate_current_stage (TMS) under failure conditions."""
 
-    async def test_evidence_get_fails_reduces_count(self):
+    async def test_evidence_get_fails_reduces_count(self, tmp_path):
         """CRITICAL: When evidence get fails in validate_current_stage,
         the evidence is silently not counted (gates.py:552-553 -- except Exception: pass).
 
         With all gets failing, valid_evidence_count = 0, and SUPPORTED requires >= 1.
         """
-        backend = InMemoryStorageBackend()
-        repo = FailingRepo(backend, fail_on_get={"e-1", "e-2"})
+        store = await _make_store(tmp_path)
+        repo = FailingRepo(store, fail_on_get={"e-1", "e-2"})
 
         claim = _make_claim(
             stage=ClaimStage.SUPPORTED,
@@ -362,10 +369,10 @@ class TestValidateCurrentStageFailure:
         assert not result.passed
         assert any("evidence" in r.lower() for r in result.blocking_reasons)
 
-    async def test_quality_sum_partial_failure(self):
+    async def test_quality_sum_partial_failure(self, tmp_path):
         """When one evidence get fails and the remaining quality is below threshold."""
-        backend = InMemoryStorageBackend()
-        repo = FailingRepo(backend, fail_on_get={"e-1"})
+        store = await _make_store(tmp_path)
+        repo = FailingRepo(store, fail_on_get={"e-1"})
 
         # Save one evidence, fail on the other
         e2 = Evidence(entity_id="e-2", objective_id="obj-test", quality_score=0.3)
@@ -381,19 +388,19 @@ class TestValidateCurrentStageFailure:
         # PROVISIONAL needs min_quality_sum >= 0.5, so 0.3 < 0.5 blocks
         assert not result.passed
 
-    async def test_hypothesis_always_passes(self):
+    async def test_hypothesis_always_passes(self, tmp_path):
         """HYPOTHESIS has no gate -- validate_current_stage should always pass."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(stage=ClaimStage.HYPOTHESIS, evidence_ids=[])
         result = await validate_current_stage(claim, repo)
         assert result.passed
 
-    async def test_all_evidence_invalidated(self):
+    async def test_all_evidence_invalidated(self, tmp_path):
         """If all evidence is invalidated, claim should fail current stage validation."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         e1 = Evidence(
             entity_id="e-1",
@@ -421,20 +428,20 @@ class TestValidateCurrentStageFailure:
 class TestGateEdgeCases:
     """Edge cases in gate validation."""
 
-    async def test_empty_evidence_ids(self):
+    async def test_empty_evidence_ids(self, tmp_path):
         """Claim with no evidence_ids should fail any stage requiring evidence."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(evidence_ids=[], scrutiny_verdict="pass")
         result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
         assert not result.passed
         assert any("evidence" in r.lower() for r in result.blocking_reasons)
 
-    async def test_negative_quality_score(self):
+    async def test_negative_quality_score(self, tmp_path):
         """Negative quality scores should still work arithmetically."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         e1 = Evidence(entity_id="e-1", objective_id="obj-test", quality_score=-0.5)
         await repo.save(e1)
@@ -448,10 +455,10 @@ class TestGateEdgeCases:
         assert GateResult(passed=True)
         assert not GateResult(passed=False, blocking_reasons=["something"])
 
-    async def test_non_blocking_uncertainty_does_not_block(self):
+    async def test_non_blocking_uncertainty_does_not_block(self, tmp_path):
         """Non-blocking uncertainty types should not prevent promotion."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             stage=ClaimStage.HYPOTHESIS,
@@ -477,10 +484,10 @@ class TestGateEdgeCases:
         # The gate filters for is_blocking=True, so this should not block
         assert not any("blocking" in r.lower() for r in result.blocking_reasons)
 
-    async def test_missing_scrutiny_verdict_blocks(self):
+    async def test_missing_scrutiny_verdict_blocks(self, tmp_path):
         """Claims without scrutiny verdict should fail promotion to SUPPORTED."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             evidence_ids=["e-1"],
@@ -494,10 +501,10 @@ class TestGateEdgeCases:
         assert not result.passed
         assert any("scrutiny" in r.lower() for r in result.blocking_reasons)
 
-    async def test_degeneracy_blocks_promotion(self):
+    async def test_degeneracy_blocks_promotion(self, tmp_path):
         """Claims with excessive modifications should be blocked by degeneracy detection."""
-        backend = InMemoryStorageBackend()
-        repo = EpistemicRepository(backend)
+        store = await _make_store(tmp_path)
+        repo = EpistemicRepository(store)
 
         claim = _make_claim(
             evidence_ids=["e-1"],

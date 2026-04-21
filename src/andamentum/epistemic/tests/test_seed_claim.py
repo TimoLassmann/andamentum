@@ -9,13 +9,15 @@ from andamentum.epistemic.entities.evidence import Evidence
 from andamentum.epistemic.entities.objective import Objective
 from andamentum.epistemic.operations.seed_claim import SeedClaimOperation
 from andamentum.epistemic.patterns import OperationInput
+from andamentum.document_store import DocumentStore
 from andamentum.epistemic.repository import EpistemicRepository
-from andamentum.epistemic.storage import InMemoryStorageBackend
 
 
 @pytest.fixture
-def repo():
-    return EpistemicRepository(InMemoryStorageBackend())
+async def repo(tmp_path):
+    s = DocumentStore.for_database("test", db_dir=tmp_path)
+    await s.initialize()
+    return EpistemicRepository(s)
 
 
 class TestSeedClaimOperation:

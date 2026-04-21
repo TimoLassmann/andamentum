@@ -11,6 +11,7 @@ import pathlib
 
 import pytest
 
+from andamentum.document_store import DocumentStore
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations import (
     AdversarialSearchOperation,
@@ -18,7 +19,6 @@ from ..operations import (
     GatheredEvidence,
 )
 from ..patterns import OperationInput
-from ..storage import InMemoryStorageBackend
 from ..repository import EpistemicRepository
 
 _test_dir = str(pathlib.Path(__file__).parent)
@@ -34,9 +34,16 @@ from conftest import (  # noqa: E402  # type: ignore[import-not-found]
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-async def _make_repo() -> EpistemicRepository:
-    backend = InMemoryStorageBackend()
-    return EpistemicRepository(backend)
+async def _make_store(tmp_path) -> DocumentStore:
+    """Create a fresh DocumentStore for test use."""
+    s = DocumentStore.for_database("test", db_dir=tmp_path)
+    await s.initialize()
+    return s
+
+
+async def _make_repo(tmp_path) -> EpistemicRepository:
+    store = await _make_store(tmp_path)
+    return EpistemicRepository(store)
 
 
 async def _save_objective(
@@ -107,8 +114,8 @@ class TestCounterargEvalLogsOnFailure:
     """AdversarialSearchOperation should log when evaluate_counterargument agent fails."""
 
     @pytest.mark.asyncio
-    async def test_counterarg_eval_logs_on_failure(self, caplog):
-        repo = await _make_repo()
+    async def test_counterarg_eval_logs_on_failure(self, caplog, tmp_path):
+        repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
             repo,
@@ -167,8 +174,8 @@ class TestPredictionClassificationLogsOnFailure:
     """GeneratePredictionOperation should log when a per-aspect step fails."""
 
     @pytest.mark.asyncio
-    async def test_prediction_generation_logs_on_failure(self, caplog):
-        repo = await _make_repo()
+    async def test_prediction_generation_logs_on_failure(self, caplog, tmp_path):
+        repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
             repo,
