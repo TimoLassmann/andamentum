@@ -70,9 +70,9 @@ async def _run_op(
             success=False, entity_id=entity_id, message=f"{operation} error: {e}"
         )
     state.log_operation(operation, entity_id, result.success, result.message)
-    # Persist execution trace via the repo's storage backend.
-    # Uses the StorageBackend.add() method (not DocumentStore.register_document,
-    # which deduplicates by content hash and would collapse same-message steps).
+    # Persist execution trace to the database.
+    # Uses DocumentStore.add() (not register_document, which deduplicates
+    # by content hash and would collapse same-message steps).
     try:
         backend = getattr(deps.repo, "store", None)
         if backend is not None:

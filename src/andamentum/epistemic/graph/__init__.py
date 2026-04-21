@@ -51,8 +51,6 @@ async def run_epistemic_graph(
     from ..evidence_gathering import get_default_gatherer
     from ..repository import EpistemicRepository
     from ..runner import DefaultAgentRunner
-    from ..storage import DocumentStoreAdapter
-
     from .deps import EpistemicDeps
     from .nodes import PrepareObjective, epistemic_graph
     from .state import EpistemicGraphState
@@ -60,7 +58,7 @@ async def run_epistemic_graph(
     # Initialize database and repository
     store = DocumentStore.for_database(database_name, db_dir=db_dir)
     await store.initialize()
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
 
     # Resume if an objective already exists, otherwise create one
     existing_objectives = await repo.query("objective")
