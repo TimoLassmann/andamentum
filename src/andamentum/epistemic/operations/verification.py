@@ -83,19 +83,17 @@ class AdversarialSearchOperation(BaseOperation):
                 "replication_failures",
             ]
 
-            async def _generate_one(framing: str) -> str | None:
-                try:
-                    cq_result = await self.run_agent(
-                        "epistemic_generate_counterquery",
-                        claim=claim.statement,
-                        framing=framing,
-                    )
-                    return cq_result.query
-                except Exception:
-                    return None
+            async def _generate_one(framing: str) -> str:
+                cq_result = await self.run_agent(
+                    "epistemic_generate_counterquery",
+                    claim=claim.statement,
+                    framing=framing,
+                )
+                return cq_result.query
 
-            results = await asyncio.gather(*[_generate_one(f) for f in framings])
-            agent_queries = [q for q in results if q is not None]
+            agent_queries = list(
+                await asyncio.gather(*[_generate_one(f) for f in framings])
+            )
 
         # Combine template + agent queries, deduplicate by exact match
         seen: set[str] = set()
