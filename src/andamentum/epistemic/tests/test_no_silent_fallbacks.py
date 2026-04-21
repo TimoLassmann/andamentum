@@ -377,6 +377,51 @@ async def test_domain_classifier_failure_propagates(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_promote_claim_propagates_objective_load_failure(tmp_path):
+    """When the objective can't be loaded, promotion must raise — silently
+    falling back to default thresholds could promote claims under the wrong
+    routing profile."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic import EntityNotFoundError
+    from andamentum.epistemic.entities import Claim
+    from andamentum.epistemic.entities.claim import ClaimStage
+    from andamentum.epistemic.operations.base import OperationInput
+    from andamentum.epistemic.operations.stage_management import PromoteClaimOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    # Save a claim whose objective_id points to nothing in the repo.
+    # The try/except in stage_management.py previously swallowed the load error;
+    # now it must propagate before even reaching gate validation.
+    claim = Claim(
+        objective_id="does-not-exist",
+        statement="X causes Y",
+        scope="specific",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(claim)
+
+    op = PromoteClaimOperation(
+        repo=repo,
+        agent_runner=None,
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(EntityNotFoundError):
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="promote_claim",
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_convergence_evidence_load_failure_propagates(tmp_path):
     """When repo.get("evidence", eid) raises during the convergence loop,
     AssessConvergenceOperation must propagate — never silently skip the item
