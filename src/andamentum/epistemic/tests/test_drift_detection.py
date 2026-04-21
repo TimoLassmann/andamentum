@@ -146,7 +146,7 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 3-path chain (no fallback)": "eb3c4821080a58e3",
+    "Evidence scoring 3-path chain (no fallback)": "15f95baae9409f45",
     "Scrutiny evidence loading loop": "92c9edb568f22327",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     "Writer-validator loop": "3c3f161d6f5b27cf",
