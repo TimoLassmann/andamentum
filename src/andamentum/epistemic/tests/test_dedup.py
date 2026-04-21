@@ -226,6 +226,8 @@ class TestDedupIntegration:
                     return SimpleNamespace(
                         statement="Test claim", scope="General", direction="supports"
                     )
+                elif agent_name == "epistemic_judge_evidence":
+                    return SimpleNamespace(verdict="supports", reasoning="Test judgment")
                 return SimpleNamespace()
 
         return Runner()
@@ -462,7 +464,8 @@ class TestDedupIntegration:
         )
         await repo.save(obj)
 
-        # Create 5 evidence items — item 3 has highest quality but is NOT medoid or boundary
+        # Create 5 evidence items — the item with quality 0.9 has highest quality
+        # but must NOT be in the initial representative set returned by the mock.
         qualities = [0.5, 0.4, 0.3, 0.9, 0.2]
         for i in range(5):
             ev = Evidence(
@@ -487,19 +490,37 @@ class TestDedupIntegration:
                 "andamentum.epistemic.similarity.group_by_similarity"
             ) as mock_cluster,
         ):
-            # 1 cluster of 5 items: medoid=0, boundary=[1,2], best_quality=3 (not in reps)
-            mock_dedup.return_value = [
-                EvidenceCluster(
-                    medoid_index=0,
-                    representative_indices=[
-                        0,
-                        1,
-                        2,
-                    ],  # medoid + 2 boundary, missing best quality
-                    member_indices=[0, 1, 2, 3, 4],
-                    count=5,
-                ),
-            ]
+            # 1 cluster of 5 items: best-quality member is NOT in the initial
+            # representative set so that select_top_k_evidence must add it.
+            # We use side_effect to find the best-quality index dynamically
+            # because the repo may return evidence in a different order than
+            # insertion order.
+            async def _dedup_side_effect(texts, *, min_cluster_size=2, embedding_model=""):
+                # texts correspond 1:1 with the extracted list passed to deduplicate_evidence.
+                # Find the best-quality index dynamically so the test is order-independent.
+                from andamentum.epistemic.entities.evidence import Evidence as _Ev
+                ev_list = await repo.query("evidence", objective_id="obj-1", extracted=True)
+                extracted_ordered = [
+                    e for e in ev_list
+                    if isinstance(e, _Ev) and e.extracted and e.extracted_content and not e.invalidated
+                ]
+                best_idx = max(range(len(extracted_ordered)), key=lambda i: extracted_ordered[i].quality_score or 0.0)
+                n = len(extracted_ordered)
+                # Build 3 initial reps that do NOT include best_idx so augmentation adds it.
+                # Pick the first 3 indices from [0..n-1] that are not best_idx.
+                initial_reps = [i for i in range(n) if i != best_idx][:3]
+                medoid_idx = initial_reps[0]
+                return [
+                    EvidenceCluster(
+                        medoid_index=medoid_idx,
+                        representative_indices=initial_reps,
+                        member_indices=list(range(n)),
+                        count=n,
+                    ),
+                ]
+            mock_dedup.side_effect = _dedup_side_effect
+            # Representatives after augmentation = initial_reps(3) + best_idx(1) = 4 items,
+            # so assertion clustering receives 4 assertions.
             mock_embed.return_value = [[0.1] * 10] * 4  # For assertion clustering
             mock_cluster.return_value = [[i] for i in range(4)]
 
@@ -514,10 +535,10 @@ class TestDedupIntegration:
             e for e in all_evidence if e.cluster_status == "representative"
         ]
 
-        # Should have 4 representatives: medoid(0) + boundary(1,2) + best_quality(3)
+        # Should have 4 representatives: 3 from initial_reps + 1 best_quality added
         assert len(representatives) == 4
 
-        # Item 3 (quality 0.9) should be a representative
+        # The best-quality item (quality 0.9) should be a representative
         rep_qualities = [e.quality_score for e in representatives]
         assert 0.9 in rep_qualities
 
