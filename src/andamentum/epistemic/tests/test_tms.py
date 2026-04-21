@@ -43,7 +43,7 @@ def _make_evidence(
     return Evidence(
         entity_id=eid,
         objective_id=obj_id,
-        source_type="web",
+        source_type="web_search",
         source_ref="https://example.com",
         extracted_content="Test content",
         extracted=extracted,
