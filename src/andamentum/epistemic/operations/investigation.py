@@ -56,7 +56,7 @@ class GeneratePredictionOperation(BaseOperation):
         if self.agent_runner:
             # Gather supporting evidence summary for grounded predictions
             evidence_summary = ""
-            for eid in claim.evidence_ids[:5]:
+            for eid in claim.evidence_ids:
                 ev = await self.repo.get("evidence", eid)
                 if isinstance(ev, Evidence) and ev.extracted_content:
                     evidence_summary += ev.extracted_content + "\n"

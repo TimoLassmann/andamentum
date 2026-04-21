@@ -112,7 +112,7 @@ class AdversarialSearchOperation(BaseOperation):
         search_hits: list[tuple[str, str]] = []  # (summary_text, source_ref)
         gatherer = self.evidence_gatherer
         if gatherer is not None and all_queries:
-            queries_to_run = all_queries[:5]  # Limit to 5 queries to control cost
+            queries_to_run = all_queries
             search_semaphore = asyncio.Semaphore(5)
 
             async def _gather_one(query: str) -> list[tuple[str, str]]:
@@ -513,25 +513,13 @@ class ValidateDeductivelyOperation(BaseOperation):
                 context_parts.append(f"Scope: {claim.scope}")
             if claim.assumptions:
                 context_parts.append(f"Assumptions: {'; '.join(claim.assumptions)}")
-            representative_ids = []
             for eid in claim.evidence_ids:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if isinstance(ev, Evidence) and ev.extracted_content:
-                        if ev.cluster_status not in ("corroborative", "deferred"):
-                            representative_ids.append(eid)
-                except Exception:
-                    continue
-
-            for eid in representative_ids[:5]:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if isinstance(ev, Evidence) and ev.extracted_content:
+                ev = await self.repo.get("evidence", eid)
+                if isinstance(ev, Evidence) and ev.extracted_content:
+                    if ev.cluster_status not in ("corroborative", "deferred"):
                         context_parts.append(
                             f"[{ev.source_type}] {ev.extracted_content}"
                         )
-                except Exception:
-                    continue
 
             result = await self.run_agent(
                 "epistemic_deductive_validation",
@@ -600,25 +588,13 @@ class VerifyComputationallyOperation(BaseOperation):
             context_parts: list[str] = []
             if claim.scope:
                 context_parts.append(f"Scope: {claim.scope}")
-            representative_ids = []
             for eid in claim.evidence_ids:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if isinstance(ev, Evidence) and ev.extracted_content:
-                        if ev.cluster_status not in ("corroborative", "deferred"):
-                            representative_ids.append(eid)
-                except Exception:
-                    continue
-
-            for eid in representative_ids[:3]:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if isinstance(ev, Evidence) and ev.extracted_content:
+                ev = await self.repo.get("evidence", eid)
+                if isinstance(ev, Evidence) and ev.extracted_content:
+                    if ev.cluster_status not in ("corroborative", "deferred"):
                         context_parts.append(
                             f"[{ev.source_type}] {ev.extracted_content}"
                         )
-                except Exception:
-                    continue
 
             result = await self.run_agent(
                 "epistemic_verify_computationally",

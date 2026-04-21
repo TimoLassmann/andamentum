@@ -98,7 +98,7 @@ class ResolveUncertaintyOperation(BaseOperation):
                         f"- [{c.stage.value}] {c.statement} (scope: {c.scope})"
                     )
                     # Gather evidence linked to this claim
-                    for eid in c.evidence_ids[:5]:  # Limit to 5 per claim
+                    for eid in c.evidence_ids:
                         ev = await self.repo.get("evidence", eid)
                         if isinstance(ev, Evidence) and ev.extracted_content:
                             evidence_text.append(
