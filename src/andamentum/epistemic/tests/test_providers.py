@@ -895,7 +895,11 @@ class TestCompositeGathererErrorPaths:
         assert len(results) >= 2
 
     async def test_all_providers_fail(self):
-        """All providers throw → verify empty results, no crash (source_type='all')."""
+        """All providers throw AND web search throws → RuntimeError raised (source_type='all').
+
+        Previously this silently returned []. Now it raises because every gather call
+        failed and returning [] would hide the total failure from the caller.
+        """
         from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
         failing1 = _MockProvider(error=RuntimeError("API 1 down"))
@@ -910,11 +914,8 @@ class TestCompositeGathererErrorPaths:
             },
         )
 
-        results = await gatherer.gather("all", "test query")
-
-        # All providers failed, web search also failed — should return empty list
-        assert isinstance(results, list)
-        assert results == []
+        with pytest.raises(RuntimeError, match="All gather calls failed"):
+            await gatherer.gather("all", "test query")
 
     async def test_web_search_gatherer_fails(self):
         """WebSearchGatherer throws → verify graceful handling for unknown source_type."""
@@ -932,37 +933,32 @@ class TestCompositeGathererErrorPaths:
         with pytest.raises(RuntimeError, match="SearXNG not running"):
             await gatherer.gather("web_search", "test query")
 
-    async def test_provider_fails_falls_back_to_web_search(self):
-        """Registered provider throws → falls back to web search for that source_type."""
+    async def test_provider_fails_raises(self):
+        """Registered provider throws → error propagates for that specific source_type.
+
+        Previously this silently fell back to web search, which could return web results
+        labelled as if they came from the requested provider. Now it raises so the caller
+        knows the requested source failed.
+        """
         from andamentum.epistemic.evidence_gathering import CompositeGatherer
 
-        web_evidence = GatheredEvidence(
-            content="Web fallback",
-            source_ref="web-source",
-            source_type="web_search",
-            quality_score=0.4,
-        )
-
         failing_provider = _MockProvider(error=RuntimeError("Monarch down"))
-        web_search = _MockWebSearch(results=[web_evidence])
+        web_search = _MockWebSearch(results=[])  # should never be called
 
         gatherer = CompositeGatherer(
             web_search=web_search,
             providers={"monarch": failing_provider},
         )
 
-        # When a specific provider fails, CompositeGatherer falls back to web search
-        results = await gatherer.gather("monarch", "BRCA1")
-
-        assert len(results) == 1
-        assert results[0].content == "Web fallback"
+        with pytest.raises(RuntimeError, match="Monarch down"):
+            await gatherer.gather("monarch", "BRCA1")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Cochrane Provider
 # ──────────────────────────────────────────────────────────────────────────────
 
-_COCHRANE_EFETCH_XML = '''<?xml version="1.0"?>
+_COCHRANE_EFETCH_XML = """<?xml version="1.0"?>
 <PubmedArticleSet>
   <PubmedArticle>
     <MedlineCitation>
@@ -986,7 +982,7 @@ _COCHRANE_EFETCH_XML = '''<?xml version="1.0"?>
       </MedlineJournalInfo>
     </MedlineCitation>
   </PubmedArticle>
-</PubmedArticleSet>'''
+</PubmedArticleSet>"""
 
 
 class CochraneMockTransport(httpx.AsyncBaseTransport):
@@ -1098,7 +1094,7 @@ class TestCochraneProvider:
 # arXiv Provider
 # ──────────────────────────────────────────────────────────────────────────────
 
-_ARXIV_XML_WITH_JOURNAL = '''<?xml version="1.0" encoding="UTF-8"?>
+_ARXIV_XML_WITH_JOURNAL = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom"
       xmlns:arxiv="http://arxiv.org/schemas/atom"
       xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
@@ -1119,9 +1115,9 @@ _ARXIV_XML_WITH_JOURNAL = '''<?xml version="1.0" encoding="UTF-8"?>
     <arxiv:comment>10 pages, 3 figures</arxiv:comment>
     <link title="pdf" href="http://arxiv.org/pdf/2301.00001v1" rel="related"/>
   </entry>
-</feed>'''
+</feed>"""
 
-_ARXIV_XML_NO_JOURNAL = '''<?xml version="1.0" encoding="UTF-8"?>
+_ARXIV_XML_NO_JOURNAL = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom"
       xmlns:arxiv="http://arxiv.org/schemas/atom"
       xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
@@ -1137,7 +1133,7 @@ Neural Language Models</title>
     <category term="cs.LG"/>
     <arxiv:primary_category term="cs.LG"/>
   </entry>
-</feed>'''
+</feed>"""
 
 
 class ArXivMockTransport(httpx.AsyncBaseTransport):

@@ -335,7 +335,17 @@ class CompositeGatherer:
         self._providers: dict = dict(providers) if providers else {}
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
-        """Gather evidence, routing to the appropriate provider."""
+        """Gather evidence.
+
+        Routing:
+        - Specific provider registered for source_type → call it.
+          Provider raises → propagate (no silent fallback).
+          Provider returns empty → return empty (no silent fallback).
+        - source_type == "all" → call every provider and web search,
+          aggregate successes, log per-provider failures. Raise only
+          if EVERY single call fails.
+        - Unknown source_type → use web search (explicit default route).
+        """
         logger.info(
             "[CompositeGatherer] source_type=%s providers=%s query=%.80s",
             source_type,
@@ -343,54 +353,53 @@ class CompositeGatherer:
             query,
         )
 
-        # Try registered provider first
-        provider = self._providers.get(source_type)
-        if provider:
-            try:
-                results = await provider.gather(query)
-                if results:
-                    logger.info(
-                        f"[CompositeGatherer] Provider '{source_type}' returned {len(results)} results"
-                    )
-                    return results
-                logger.info(
-                    f"[CompositeGatherer] Provider '{source_type}' returned no results, falling back to web search"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"[CompositeGatherer] Provider '{source_type}' failed: {e}, falling back to web search"
-                )
-
-        # Query all providers for "all" source type
         if source_type == "all":
             all_results: list[GatheredEvidence] = []
+            failures: list[tuple[str, Exception]] = []
+
             for name, prov in self._providers.items():
                 try:
                     results = await prov.gather(query)
                     logger.info(
-                        f"[CompositeGatherer] Provider '{name}' returned {len(results)} results"
+                        "[CompositeGatherer] Provider '%s' returned %d results",
+                        name,
+                        len(results),
                     )
                     all_results.extend(results)
                 except Exception as e:
                     logger.warning(
-                        f"[CompositeGatherer] Provider '{name}' failed during 'all' gather: {e}"
+                        "[CompositeGatherer] Provider '%s' failed during 'all': %s",
+                        name,
+                        e,
                     )
+                    failures.append((name, e))
             try:
                 web_results = await self._web_search.gather(source_type, query)
-                logger.info(
-                    f"[CompositeGatherer] Web search returned {len(web_results)} results"
-                )
                 all_results.extend(web_results)
             except Exception as e:
                 logger.warning(
-                    f"[CompositeGatherer] Web search FAILED during 'all' gather: {e}"
+                    "[CompositeGatherer] Web search failed during 'all': %s", e
                 )
-            logger.info(
-                f"[CompositeGatherer] Total results for 'all': {len(all_results)}"
-            )
+                failures.append(("web_search", e))
+
+            if not all_results and failures:
+                raise RuntimeError(
+                    f"All gather calls failed for 'all' source_type. "
+                    f"Failures: {[(n, type(e).__name__, str(e)) for n, e in failures]}"
+                )
             return all_results
 
-        # Default: web search
+        provider = self._providers.get(source_type)
+        if provider:
+            results = await provider.gather(query)
+            logger.info(
+                "[CompositeGatherer] Provider '%s' returned %d results",
+                source_type,
+                len(results),
+            )
+            return results
+
+        # Unknown source_type → explicit web-search default route
         return await self._web_search.gather(source_type, query)
 
 
