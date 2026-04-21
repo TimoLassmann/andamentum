@@ -752,17 +752,14 @@ async def validate_current_stage(
     supporting = 0
     contradicting = 0
     for eid in claim.evidence_ids:
-        try:
-            ev = await repo.get("evidence", eid)
-            if ev.invalidated:
-                continue
-            judgment = getattr(ev, "support_judgment", None)
-            if judgment == "supports":
-                supporting += 1
-            elif judgment == "contradicts":
-                contradicting += 1
-        except Exception:
-            pass
+        ev = await repo.get("evidence", eid)
+        if ev.invalidated:
+            continue
+        judgment = getattr(ev, "support_judgment", None)
+        if judgment == "supports":
+            supporting += 1
+        elif judgment == "contradicts":
+            contradicting += 1
     # Only fail if we have at least 2 judged items and contradicts >= supports
     if (supporting + contradicting) >= 2 and contradicting >= supporting:
         reasons.append(

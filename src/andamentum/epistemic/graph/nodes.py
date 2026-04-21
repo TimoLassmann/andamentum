@@ -73,27 +73,24 @@ async def _run_op(
     # Persist execution trace to the database.
     # Uses DocumentStore.add() (not register_document, which deduplicates
     # by content hash and would collapse same-message steps).
-    try:
-        backend = getattr(deps.repo, "store", None)
-        if backend is not None:
-            step_number = len(state.operations_log)
-            await backend.add(
-                file_path=f"execution_step_{step_number}",
-                content=result.message or "",
-                title=f"{operation} on {entity_id[:12]}",
-                metadata={
-                    "epistemic_type": "execution_step",
-                    "step_number": step_number,
-                    "operation": operation,
-                    "entity_id": entity_id,
-                    "entity_type": entity_type,
-                    "success": result.success,
-                    "message": result.message or "",
-                    "created_entities": getattr(result, "created_entities", []),
-                },
-            )
-    except Exception:
-        pass  # Best effort — don't crash the pipeline for trace failures
+    backend = getattr(deps.repo, "store", None)
+    if backend is not None:
+        step_number = len(state.operations_log)
+        await backend.add(
+            file_path=f"execution_step_{step_number}",
+            content=result.message or "",
+            title=f"{operation} on {entity_id[:12]}",
+            metadata={
+                "epistemic_type": "execution_step",
+                "step_number": step_number,
+                "operation": operation,
+                "entity_id": entity_id,
+                "entity_type": entity_type,
+                "success": result.success,
+                "message": result.message or "",
+                "created_entities": getattr(result, "created_entities", []),
+            },
+        )
     if deps.progress_callback:
         extras = {"created_entities": getattr(result, "created_entities", [])}
         if not result.success:
@@ -163,15 +160,12 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
 
     # Step 3: Process claims flagged for TMS by graph nodes
     for cid in list(state.claims_needing_tms):
-        try:
-            claim = await deps.repo.get("claim", cid)
-            if isinstance(claim, Claim) and not claim.abandoned:
-                await _run_op(
-                    RevalidateClaimOperation, deps, state,
-                    cid, "claim", "revalidate_claim",
-                )
-        except Exception:
-            pass
+        claim = await deps.repo.get("claim", cid)
+        if isinstance(claim, Claim) and not claim.abandoned:
+            await _run_op(
+                RevalidateClaimOperation, deps, state,
+                cid, "claim", "revalidate_claim",
+            )
     state.claims_needing_tms.clear()
 
 
@@ -608,17 +602,14 @@ class ClusterEvidence(
                 continue
             all_ev = []
             for eid in claim.evidence_ids:
-                try:
-                    ev = await deps.repo.get("evidence", eid)
-                    if (
-                        isinstance(ev, Evidence)
-                        and ev.extracted
-                        and ev.extracted_content
-                        and not ev.invalidated
-                    ):
-                        all_ev.append(ev)
-                except Exception:
-                    continue
+                ev = await deps.repo.get("evidence", eid)
+                if (
+                    isinstance(ev, Evidence)
+                    and ev.extracted
+                    and ev.extracted_content
+                    and not ev.invalidated
+                ):
+                    all_ev.append(ev)
             if len(all_ev) >= 2:
                 await select_top_k_evidence(
                     deps.repo, all_ev, embedding_model=deps.embedding_model
@@ -762,13 +753,10 @@ class ResolveUncertainties(
             )
             # Graph flow control: mark affected claims for re-scrutiny
             if result.success:
-                try:
-                    unc_updated = await deps.repo.get("uncertainty", unc.entity_id)
-                    if unc_updated.is_blocking and unc_updated.resolution is not None:
-                        for cid in unc_updated.affected_claim_ids:
-                            state.claims_needing_rescrutiny.add(cid)
-                except Exception:
-                    pass
+                unc_updated = await deps.repo.get("uncertainty", unc.entity_id)
+                if unc_updated.is_blocking and unc_updated.resolution is not None:
+                    for cid in unc_updated.affected_claim_ids:
+                        state.claims_needing_rescrutiny.add(cid)
 
         # Deduplicate concerns on the objective
         await _run_op(
