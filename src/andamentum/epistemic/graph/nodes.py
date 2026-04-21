@@ -57,9 +57,12 @@ async def _run_op(
 
     If the operation raises, record a quarantine on the graph state and
     return a failed OperationResult — never swallow silently. Downstream
-    nodes must call state.is_quarantined(entity_id) before scheduling
-    further work on the entity.
+    nodes should call state.is_quarantined(entity_id) before scheduling
+    further work on the entity; this guard is added per-operation in
+    subsequent tasks.
     """
+    from ..operations.base import OperationResult
+
     op = _make_op(op_class, deps)
     work = _op_input(entity_id, entity_type, operation)
     try:
@@ -73,8 +76,6 @@ async def _run_op(
             e,
         )
         state.quarantine(entity_id, entity_type, operation, e)
-        from ..operations.base import OperationResult
-
         result = OperationResult(
             success=False,
             entity_id=entity_id,
