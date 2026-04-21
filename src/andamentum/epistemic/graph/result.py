@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .quarantine import QuarantineRecord
+
 
 @dataclass
 class EpistemicResult:
@@ -28,3 +30,5 @@ class EpistemicResult:
 
     # Posterior (computed after graph completes, before returning)
     posterior: Optional[Any] = None  # PosteriorReport
+
+    quarantined: list[QuarantineRecord] = field(default_factory=list)
