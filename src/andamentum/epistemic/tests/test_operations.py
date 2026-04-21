@@ -451,7 +451,7 @@ class TestAgentOnlyExtraction:
         assert loaded.quality_metadata is not None
         assert loaded.quality_metadata.get("source") == "agent"
 
-    async def test_no_runner_no_gatherer_raises(self, repo, fake_runner):
+    async def test_no_runner_no_gatherer_raises(self, repo):
         """When neither a runner nor a gatherer is wired up, extraction must raise
         rather than fabricate placeholder content."""
         obj = Objective(
