@@ -86,33 +86,24 @@ class ResolveUncertaintyOperation(BaseOperation):
 
             # Load objective description
             if uncertainty.objective_id:
-                try:
-                    obj = await self.repo.get("objective", uncertainty.objective_id)
-                    if isinstance(obj, Objective):
-                        objective_description = obj.description
-                except Exception:
-                    pass
+                obj = await self.repo.get("objective", uncertainty.objective_id)
+                if isinstance(obj, Objective):
+                    objective_description = obj.description
 
             # Load affected claims and their evidence
             for cid in uncertainty.affected_claim_ids:
-                try:
-                    c = await self.repo.get("claim", cid)
-                    if isinstance(c, Claim):
-                        affected_claims_text.append(
-                            f"- [{c.stage.value}] {c.statement} (scope: {c.scope})"
-                        )
-                        # Gather evidence linked to this claim
-                        for eid in c.evidence_ids[:5]:  # Limit to 5 per claim
-                            try:
-                                ev = await self.repo.get("evidence", eid)
-                                if isinstance(ev, Evidence) and ev.extracted_content:
-                                    evidence_text.append(
-                                        f"[{ev.source_type}] {ev.source_ref}\n{ev.extracted_content}"
-                                    )
-                            except Exception:
-                                continue
-                except Exception:
-                    continue
+                c = await self.repo.get("claim", cid)
+                if isinstance(c, Claim):
+                    affected_claims_text.append(
+                        f"- [{c.stage.value}] {c.statement} (scope: {c.scope})"
+                    )
+                    # Gather evidence linked to this claim
+                    for eid in c.evidence_ids[:5]:  # Limit to 5 per claim
+                        ev = await self.repo.get("evidence", eid)
+                        if isinstance(ev, Evidence) and ev.extracted_content:
+                            evidence_text.append(
+                                f"[{ev.source_type}] {ev.source_ref}\n{ev.extracted_content}"
+                            )
 
             result = await self.run_agent(
                 "epistemic_resolve_uncertainty",
@@ -148,15 +139,12 @@ class ResolveUncertaintyOperation(BaseOperation):
                     if uncertainty.spawned_from_id:
                         current_id = uncertainty.spawned_from_id
                         for _ in range(10):  # hard safety limit
-                            try:
-                                parent = await self.repo.get("uncertainty", current_id)
-                                depth += 1
-                                parent_spawned = parent.spawned_from_id
-                                if not parent_spawned:
-                                    break
-                                current_id = parent_spawned
-                            except Exception:
+                            parent = await self.repo.get("uncertainty", current_id)
+                            depth += 1
+                            parent_spawned = parent.spawned_from_id
+                            if not parent_spawned:
                                 break
+                            current_id = parent_spawned
 
                     obj = await self.repo.get("objective", uncertainty.objective_id)
                     if isinstance(obj, Objective):

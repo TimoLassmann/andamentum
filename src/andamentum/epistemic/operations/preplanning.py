@@ -272,17 +272,14 @@ class PlanTaskOperation(BaseOperation):
                 description = PROVIDER_DESCRIPTIONS.get(provider_name, "")
                 if not description:
                     continue
-                try:
-                    result = await self.run_agent(
-                        "epistemic_select_provider",
-                        question=clarified,
-                        provider=provider_name,
-                        provider_description=description,
-                    )
-                    if result.relevant:
-                        providers.append(provider_name)
-                except Exception:
-                    pass  # On failure, skip this provider
+                result = await self.run_agent(
+                    "epistemic_select_provider",
+                    question=clarified,
+                    provider=provider_name,
+                    provider_description=description,
+                )
+                if result.relevant:
+                    providers.append(provider_name)
 
         # Always include web_search as universal fallback.
         if "web_search" not in providers:
@@ -297,17 +294,13 @@ class PlanTaskOperation(BaseOperation):
             query = clarified  # fallback if no agent_runner
 
             if self.agent_runner:
-                try:
-                    result = await self.run_agent(
-                        "epistemic_formulate_query",
-                        question=clarified,
-                        provider=provider,
-                        provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
-                    )
-                    query = result.query
-                except Exception:
-                    # On agent failure, use clarified question as query
-                    pass
+                result = await self.run_agent(
+                    "epistemic_formulate_query",
+                    question=clarified,
+                    provider=provider,
+                    provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
+                )
+                query = result.query
 
             evidence = Evidence(
                 objective_id=objective.entity_id,
