@@ -4,7 +4,6 @@ import pytest
 from types import SimpleNamespace
 from typing import Any
 
-from andamentum.epistemic.storage import InMemoryStorageBackend
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -63,11 +62,11 @@ class FailingRepo(EpistemicRepository):
 
     def __init__(
         self,
-        backend,
+        store,
         fail_on: set[str] | None = None,
         fail_on_query: set[str] | None = None,
     ):
-        super().__init__(backend)
+        super().__init__(store)
         self.fail_on = fail_on or set()
         self.fail_on_query = fail_on_query or set()
         self.failure_log: list[str] = []
@@ -282,15 +281,19 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
 
 
 @pytest.fixture
-def backend():
-    """Fresh InMemoryStorageBackend."""
-    return InMemoryStorageBackend()
+async def store(tmp_path):
+    """Fresh DocumentStore backed by a temp directory."""
+    from andamentum.document_store import DocumentStore
+
+    s = DocumentStore.for_database("test", db_dir=tmp_path)
+    await s.initialize()
+    return s
 
 
 @pytest.fixture
-def repo(backend):
-    """EpistemicRepository backed by in-memory storage."""
-    return EpistemicRepository(backend)
+async def repo(store):
+    """EpistemicRepository backed by a real DocumentStore."""
+    return EpistemicRepository(store)
 
 
 @pytest.fixture
@@ -306,9 +309,9 @@ def fake_runner():
 
 
 @pytest.fixture
-def failing_repo(backend):
-    """FailingRepo backed by in-memory storage."""
-    return FailingRepo(backend)
+async def failing_repo(store):
+    """FailingRepo backed by a real DocumentStore."""
+    return FailingRepo(store)
 
 
 @pytest.fixture
