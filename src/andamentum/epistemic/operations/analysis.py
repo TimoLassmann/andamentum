@@ -122,12 +122,9 @@ class ContrastiveEvaluationOperation(BaseOperation):
             shared_evidence_ids = set(claim.evidence_ids) & set(sibling.evidence_ids)
             evidence_texts = []
             for eid in shared_evidence_ids:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if ev.extracted_content:
-                        evidence_texts.append(ev.extracted_content)
-                except Exception:
-                    pass
+                ev = await self.repo.get("evidence", eid)
+                if ev.extracted_content:
+                    evidence_texts.append(ev.extracted_content)
 
             shared_evidence = (
                 "\n---\n".join(evidence_texts)

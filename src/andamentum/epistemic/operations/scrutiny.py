@@ -37,22 +37,19 @@ class ScrutiniseClaimOperation(BaseOperation):
         """Gather formatted evidence summaries for agent input."""
         evidence_summaries: list[str] = []
         for eid in claim.evidence_ids:
-            try:
-                ev = await self.repo.get("evidence", eid)
-                if isinstance(ev, Evidence) and ev.extracted_content:
-                    if ev.invalidated:
-                        continue
-                    # Skip corroborative/deferred evidence — only representatives carry to scrutiny
-                    if ev.cluster_status in ("corroborative", "deferred"):
-                        continue
-                    quality_str = (
-                        f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
-                    )
-                    evidence_summaries.append(
-                        f"[{ev.source_type}{quality_str}] {ev.source_ref}\n{ev.extracted_content}"
-                    )
-            except Exception:
-                continue
+            ev = await self.repo.get("evidence", eid)
+            if isinstance(ev, Evidence) and ev.extracted_content:
+                if ev.invalidated:
+                    continue
+                # Skip corroborative/deferred evidence — only representatives carry to scrutiny
+                if ev.cluster_status in ("corroborative", "deferred"):
+                    continue
+                quality_str = (
+                    f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
+                )
+                evidence_summaries.append(
+                    f"[{ev.source_type}{quality_str}] {ev.source_ref}\n{ev.extracted_content}"
+                )
         return evidence_summaries
 
     # Blocking types that remain blocking even when scrutiny passes.
@@ -100,19 +97,16 @@ class ScrutiniseClaimOperation(BaseOperation):
             # Handle corrupted evidence: invalidate rather than create uncertainty
             if issue_type_str == "evidence_corrupted":
                 for eid in claim.evidence_ids:
-                    try:
-                        ev = await self.repo.get("evidence", eid)
-                        if (
-                            isinstance(ev, Evidence)
-                            and ev.extracted_content
-                            and not ev.invalidated
-                        ):
-                            ev.invalidated = True
-                            ev.invalidation_reason = str(issue)
-                            await self.repo.save(ev)
-                            break  # One invalidation per issue
-                    except Exception:
-                        continue
+                    ev = await self.repo.get("evidence", eid)
+                    if (
+                        isinstance(ev, Evidence)
+                        and ev.extracted_content
+                        and not ev.invalidated
+                    ):
+                        ev.invalidated = True
+                        ev.invalidation_reason = str(issue)
+                        await self.repo.save(ev)
+                        break  # One invalidation per issue
                 continue
 
             # Map issue_type string to UncertaintyType enum
@@ -175,40 +169,34 @@ class ScrutiniseClaimOperation(BaseOperation):
         async def _check_single_evidence(
             evidence_item: str,
         ) -> dict[str, object] | None:
-            try:
-                result = await self.run_agent(
-                    "epistemic_identify_single_issue",
-                    claim=claim.statement,
-                    scope=claim.scope,
-                    evidence=evidence_item,
-                )
-                if result.has_issue:
-                    return {
-                        "description": result.description,
-                        "issue_type": result.issue_type,
-                        "reversal_test": result.reversal_test,
-                    }
-            except Exception:
-                pass
+            result = await self.run_agent(
+                "epistemic_identify_single_issue",
+                claim=claim.statement,
+                scope=claim.scope,
+                evidence=evidence_item,
+            )
+            if result.has_issue:
+                return {
+                    "description": result.description,
+                    "issue_type": result.issue_type,
+                    "reversal_test": result.reversal_test,
+                }
             return None
 
         async def _check_contradictions(all_evidence: str) -> dict[str, object] | None:
-            try:
-                result = await self.run_agent(
-                    "epistemic_identify_single_issue",
-                    claim=claim.statement,
-                    scope=claim.scope,
-                    evidence=all_evidence,
-                    focus="Check whether any of the evidence items contradict each other.",
-                )
-                if result.has_issue:
-                    return {
-                        "description": result.description,
-                        "issue_type": result.issue_type,
-                        "reversal_test": result.reversal_test,
-                    }
-            except Exception:
-                pass
+            result = await self.run_agent(
+                "epistemic_identify_single_issue",
+                claim=claim.statement,
+                scope=claim.scope,
+                evidence=all_evidence,
+                focus="Check whether any of the evidence items contradict each other.",
+            )
+            if result.has_issue:
+                return {
+                    "description": result.description,
+                    "issue_type": result.issue_type,
+                    "reversal_test": result.reversal_test,
+                }
             return None
 
         # Build tasks: one per evidence item (capped at MAX_ISSUES) + one contradiction check
@@ -274,17 +262,14 @@ class ScrutiniseClaimOperation(BaseOperation):
             if claim.investigation_count > 0:
                 all_evidence = []
                 for eid in claim.evidence_ids:
-                    try:
-                        ev = await self.repo.get("evidence", eid)
-                        if (
-                            isinstance(ev, Evidence)
-                            and ev.extracted
-                            and ev.extracted_content
-                            and not ev.invalidated
-                        ):
-                            all_evidence.append(ev)
-                    except Exception:
-                        continue
+                    ev = await self.repo.get("evidence", eid)
+                    if (
+                        isinstance(ev, Evidence)
+                        and ev.extracted
+                        and ev.extracted_content
+                        and not ev.invalidated
+                    ):
+                        all_evidence.append(ev)
                 if len(all_evidence) >= 2:
                     await select_top_k_evidence(
                         self.repo, all_evidence, embedding_model=self.embedding_model
