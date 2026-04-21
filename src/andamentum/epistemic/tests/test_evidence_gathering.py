@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ..evidence_gathering import WebSearchGatherer
+from ..operations import GatheredEvidence
 
 
 def _make_research_result(
@@ -305,3 +306,124 @@ class TestWebSearchGathererEdgeCases:
 
         sd = gathered[0].structured_data
         assert sd["page_title"] == "Test Page"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CompositeGatherer — silent fallback removal tests (Task 12)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestCompositeGathererNoSilentFallback:
+    """Assert that CompositeGatherer does NOT silently fall back to web search
+    when a specifically-requested provider fails or returns empty."""
+
+    async def test_specific_provider_failure_raises(self):
+        """When the specifically-requested provider fails, CompositeGatherer must
+        raise — not silently fall through to web search."""
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
+
+        class _FailingProvider:
+            async def gather(self, query: str) -> list[GatheredEvidence]:
+                raise RuntimeError("clinicaltrials.gov unreachable")
+
+        class _UnreachableWebSearch:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
+                raise AssertionError(
+                    "web search should not be called on provider failure"
+                )
+
+        gatherer = CompositeGatherer(
+            web_search=_UnreachableWebSearch(),
+            providers={"clinicaltrials": _FailingProvider()},
+        )
+        with pytest.raises(RuntimeError, match="clinicaltrials.gov unreachable"):
+            await gatherer.gather("clinicaltrials", "diabetes prevention")
+
+    async def test_specific_provider_empty_returns_empty(self):
+        """When the specifically-requested provider returns empty, CompositeGatherer
+        must return empty — not silently fall through to web search."""
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
+
+        class _EmptyProvider:
+            async def gather(self, query: str) -> list[GatheredEvidence]:
+                return []
+
+        class _UnreachableWebSearch:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
+                raise AssertionError(
+                    "web search should not be called on empty provider"
+                )
+
+        gatherer = CompositeGatherer(
+            web_search=_UnreachableWebSearch(),
+            providers={"chembl": _EmptyProvider()},
+        )
+        assert await gatherer.gather("chembl", "aspirin") == []
+
+    async def test_all_aggregates_successes_logs_failures(self):
+        """source_type='all' iterates all providers + web. Per-provider failures
+        are logged but do not prevent aggregation of successes."""
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
+
+        good_result = GatheredEvidence(
+            content="Good provider result",
+            source_ref="good-source",
+            source_type="openalex",
+            quality_score=0.8,
+        )
+        web_result = GatheredEvidence(
+            content="Web result",
+            source_ref="web-source",
+            source_type="web_search",
+            quality_score=0.5,
+        )
+
+        class _GoodProvider:
+            async def gather(self, query: str) -> list[GatheredEvidence]:
+                return [good_result]
+
+        class _RaisingProvider:
+            async def gather(self, query: str) -> list[GatheredEvidence]:
+                raise RuntimeError("openalex down")
+
+        class _GoodWebSearch:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
+                return [web_result]
+
+        gatherer = CompositeGatherer(
+            web_search=_GoodWebSearch(),
+            providers={"good": _GoodProvider(), "failing": _RaisingProvider()},
+        )
+        results = await gatherer.gather("all", "test query")
+
+        contents = [r.content for r in results]
+        assert "Good provider result" in contents
+        assert "Web result" in contents
+        assert len(results) == 2
+
+    async def test_all_raises_when_every_call_fails(self):
+        """source_type='all': if every provider AND web search fail, raise RuntimeError."""
+        from andamentum.epistemic.evidence_gathering import CompositeGatherer
+
+        class _FailingProvider:
+            async def gather(self, query: str) -> list[GatheredEvidence]:
+                raise RuntimeError("provider down")
+
+        class _FailingWebSearch:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
+                raise ConnectionError("SearXNG down")
+
+        gatherer = CompositeGatherer(
+            web_search=_FailingWebSearch(),
+            providers={"p1": _FailingProvider(), "p2": _FailingProvider()},
+        )
+        with pytest.raises(RuntimeError):
+            await gatherer.gather("all", "test query")
