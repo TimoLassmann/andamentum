@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .quarantine import QuarantineRecord
+
 
 @dataclass
 class EpistemicGraphState:
@@ -64,6 +66,10 @@ class EpistemicGraphState:
     failed: int = 0
     errors: list[str] = field(default_factory=list)
 
+    # Entities whose operations raised. Downstream nodes must skip these.
+    quarantined: list[QuarantineRecord] = field(default_factory=list)
+    _quarantined_ids: set[str] = field(default_factory=set)
+
     def log_operation(
         self, operation: str, entity_id: str, success: bool, message: str
     ) -> None:
@@ -81,3 +87,25 @@ class EpistemicGraphState:
         else:
             self.failed += 1
             self.errors.append(message)
+
+    def quarantine(
+        self,
+        entity_id: str,
+        entity_type: str,
+        operation: str,
+        exception: BaseException,
+    ) -> None:
+        """Record that an entity's operation raised. Idempotent per entity."""
+        record = QuarantineRecord(
+            entity_id=entity_id,
+            entity_type=entity_type,
+            operation=operation,
+            exception_type=type(exception).__name__,
+            message=str(exception),
+        )
+        self.quarantined.append(record)
+        self._quarantined_ids.add(entity_id)
+
+    def is_quarantined(self, entity_id: str) -> bool:
+        """Return True if this entity is quarantined from further operations."""
+        return entity_id in self._quarantined_ids
