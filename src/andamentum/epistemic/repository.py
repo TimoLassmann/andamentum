@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any, Literal, Optional, TypeVar, TYPE_CHECKING, overload
 import logging
 
+from andamentum.document_store import DocumentStore
+
 if TYPE_CHECKING:
-    from .storage import StorageBackend
     from .primitives import AdversarialEvidence, ConvergentEvidence
 
 from .entities import (
@@ -72,12 +73,11 @@ class EpistemicRepository:
         - Comparison: field__gte=value, field__lte=value, etc. (in-memory)
     """
 
-    def __init__(self, store: "StorageBackend"):
-        """Initialize repository with a storage backend.
+    def __init__(self, store: DocumentStore):
+        """Initialize repository with a DocumentStore.
 
         Args:
-            store: Any object implementing the StorageBackend protocol.
-                   DocumentStore satisfies this naturally.
+            store: A DocumentStore instance (initialized).
         """
         self.store = store
         self._entity_classes = ENTITY_CLASSES
@@ -97,13 +97,9 @@ class EpistemicRepository:
         Returns:
             Repository ready for use.
         """
-        from andamentum.document_store import DocumentStore
-
-        from .storage import DocumentStoreAdapter
-
         store = DocumentStore.for_database(name, db_dir=db_dir)
         await store.initialize()
-        return cls(DocumentStoreAdapter(store))
+        return cls(store)
 
     @overload
     async def get(
