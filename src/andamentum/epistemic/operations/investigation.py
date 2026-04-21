@@ -57,83 +57,68 @@ class GeneratePredictionOperation(BaseOperation):
             # Gather supporting evidence summary for grounded predictions
             evidence_summary = ""
             for eid in claim.evidence_ids[:5]:
-                try:
-                    ev = await self.repo.get("evidence", eid)
-                    if isinstance(ev, Evidence) and ev.extracted_content:
-                        evidence_summary += ev.extracted_content + "\n"
-                except Exception:
-                    continue
+                ev = await self.repo.get("evidence", eid)
+                if isinstance(ev, Evidence) and ev.extracted_content:
+                    evidence_summary += ev.extracted_content + "\n"
 
             # Step 1: Identify testable aspects (narrow agent, run K times)
             # Each call sees previously found aspects to avoid duplicates
             aspects = []
             for i in range(self.NUM_ASPECTS):
-                try:
-                    if aspects:
-                        prev_text = "\n".join(
-                            f"- {a.testable_dimension}" for a in aspects
-                        )
-                    else:
-                        prev_text = "(none yet)"
-
-                    aspect_result = await self.run_agent(
-                        "epistemic_identify_testable_aspect",
-                        claim=claim.statement,
-                        evidence_summary=evidence_summary
-                        if evidence_summary
-                        else "[No evidence available]",
-                        aspect_number=i + 1,
-                        previously_identified=prev_text,
+                if aspects:
+                    prev_text = "\n".join(
+                        f"- {a.testable_dimension}" for a in aspects
                     )
-                    aspects.append(aspect_result)
-                except Exception:
-                    pass  # Best effort — skip failed aspects
+                else:
+                    prev_text = "(none yet)"
+
+                aspect_result = await self.run_agent(
+                    "epistemic_identify_testable_aspect",
+                    claim=claim.statement,
+                    evidence_summary=evidence_summary
+                    if evidence_summary
+                    else "[No evidence available]",
+                    aspect_number=i + 1,
+                    previously_identified=prev_text,
+                )
+                aspects.append(aspect_result)
 
             # Steps 2-4: For each aspect, specify -> falsify -> classify
             for aspect in aspects:
-                try:
-                    # Step 2: Specify prediction details
-                    spec_result = await self.run_agent(
-                        "epistemic_specify_prediction",
-                        testable_dimension=aspect.testable_dimension,
-                        claim=claim.statement,
-                    )
+                # Step 2: Specify prediction details
+                spec_result = await self.run_agent(
+                    "epistemic_specify_prediction",
+                    testable_dimension=aspect.testable_dimension,
+                    claim=claim.statement,
+                )
 
-                    # Step 3: Define falsification criterion
-                    fals_result = await self.run_agent(
-                        "epistemic_define_falsification",
-                        prediction=spec_result.expected_observation,
-                        conditions=spec_result.conditions,
-                        timeframe=spec_result.timeframe,
-                    )
+                # Step 3: Define falsification criterion
+                fals_result = await self.run_agent(
+                    "epistemic_define_falsification",
+                    prediction=spec_result.expected_observation,
+                    conditions=spec_result.conditions,
+                    timeframe=spec_result.timeframe,
+                )
 
-                    # Step 4: Classify prediction (existing narrow agent)
-                    class_result = await self.run_agent(
-                        "epistemic_classify_prediction",
-                        prediction_statement=spec_result.expected_observation,
-                        claim_statement=claim.statement,
-                    )
+                # Step 4: Classify prediction (existing narrow agent)
+                class_result = await self.run_agent(
+                    "epistemic_classify_prediction",
+                    prediction_statement=spec_result.expected_observation,
+                    claim_statement=claim.statement,
+                )
 
-                    prediction_dict = {
-                        "statement": spec_result.expected_observation,
-                        "type": class_result.prediction_type,
-                        "specificity": float(class_result.specificity),
-                        "success_criteria": spec_result.expected_observation,
-                        "failure_criteria": fals_result.falsification_criterion,
-                        "time_horizon": spec_result.timeframe,
-                        "conditions": spec_result.conditions,
-                        "measurability": spec_result.measurability,
-                        "observation_type": aspect.observation_type,
-                    }
-                    claim.predictions.append(prediction_dict)
-                except Exception as e:
-                    import logging
-
-                    logging.getLogger(__name__).warning(
-                        "Prediction generation failed for claim %s aspect: %s",
-                        claim.entity_id,
-                        e,
-                    )
+                prediction_dict = {
+                    "statement": spec_result.expected_observation,
+                    "type": class_result.prediction_type,
+                    "specificity": float(class_result.specificity),
+                    "success_criteria": spec_result.expected_observation,
+                    "failure_criteria": fals_result.falsification_criterion,
+                    "time_horizon": spec_result.timeframe,
+                    "conditions": spec_result.conditions,
+                    "measurability": spec_result.measurability,
+                    "observation_type": aspect.observation_type,
+                }
+                claim.predictions.append(prediction_dict)
 
         claim.predictions_generated = True
         await self.repo.save(claim)
@@ -188,27 +173,24 @@ class RecordDecisionOperation(BaseOperation):
             objective_description = ""
             all_claims_text: list[str] = []
             if claim.objective_id:
-                try:
-                    obj = await self.repo.get("objective", claim.objective_id)
-                    if isinstance(obj, Objective):
-                        objective_description = obj.description
-                    # Load all claims for this objective
-                    all_claims = await self.repo.query(
-                        "claim", objective_id=claim.objective_id
-                    )
-                    for i, c in enumerate(all_claims):
-                        if isinstance(c, Claim) and not c.abandoned:
-                            marker = (
-                                " <- (this claim)"
-                                if c.entity_id == claim.entity_id
-                                else ""
-                            )
-                            all_claims_text.append(
-                                f"[{i}] [{c.stage.value}] {c.statement} "
-                                f"(evidence: {c.evidence_count}, confidence: {c.confidence_score or 'N/A'}){marker}"
-                            )
-                except Exception:
-                    pass
+                obj = await self.repo.get("objective", claim.objective_id)
+                if isinstance(obj, Objective):
+                    objective_description = obj.description
+                # Load all claims for this objective
+                all_claims = await self.repo.query(
+                    "claim", objective_id=claim.objective_id
+                )
+                for i, c in enumerate(all_claims):
+                    if isinstance(c, Claim) and not c.abandoned:
+                        marker = (
+                            " <- (this claim)"
+                            if c.entity_id == claim.entity_id
+                            else ""
+                        )
+                        all_claims_text.append(
+                            f"[{i}] [{c.stage.value}] {c.statement} "
+                            f"(evidence: {c.evidence_count}, confidence: {c.confidence_score or 'N/A'}){marker}"
+                        )
 
             result = await self.run_agent(
                 "epistemic_record_decision",
@@ -289,31 +271,25 @@ class InvestigateClaimOperation(BaseOperation):
         evidence_summaries: list[str] = []
         source_types_seen: set[str] = set()
         for eid in claim.evidence_ids:
-            try:
-                ev = await self.repo.get("evidence", eid)
-                if isinstance(ev, Evidence) and ev.extracted_content:
-                    evidence_summaries.append(
-                        f"[{ev.source_type}] {ev.extracted_content}"
-                    )
-                    source_types_seen.add(ev.source_type)
-            except Exception:
-                continue
+            ev = await self.repo.get("evidence", eid)
+            if isinstance(ev, Evidence) and ev.extracted_content:
+                evidence_summaries.append(
+                    f"[{ev.source_type}] {ev.extracted_content}"
+                )
+                source_types_seen.add(ev.source_type)
 
         # Load scrutiny issues from uncertainties
         scrutiny_issues: list[str] = []
-        try:
-            uncertainties = await self.repo.query(
-                "uncertainty",
-                objective_id=claim.objective_id,
-            )
-            for u in uncertainties:
-                affected = u.affected_claim_ids
-                if claim.entity_id in affected:
-                    desc = u.description
-                    if desc:
-                        scrutiny_issues.append(str(desc))
-        except Exception:
-            pass
+        uncertainties = await self.repo.query(
+            "uncertainty",
+            objective_id=claim.objective_id,
+        )
+        for u in uncertainties:
+            affected = u.affected_claim_ids
+            if claim.entity_id in affected:
+                desc = u.description
+                if desc:
+                    scrutiny_issues.append(str(desc))
 
         # Run investigation agent
         created_entities: list[str] = []
