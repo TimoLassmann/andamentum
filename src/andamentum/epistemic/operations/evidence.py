@@ -62,26 +62,15 @@ class ExtractEvidenceOperation(BaseOperation):
 
         # Strategy 1: Use evidence gatherer (async Python, no LLM)
         if self.evidence_gatherer:
-            try:
-                gathered = await self.evidence_gatherer.gather(
-                    evidence.source_type,
-                    evidence.source_ref,
-                )
-                _extract_log.info(
-                    "[extract_evidence] GATHERER returned %d items for %s",
-                    len(gathered) if gathered else 0,
-                    evidence.entity_id,
-                )
-            except Exception as e:
-                import traceback
-
-                _extract_log.warning(
-                    "[extract_evidence] GATHERER FAILED for %s: %r\n%s",
-                    evidence.entity_id,
-                    e,
-                    traceback.format_exc(),
-                )
-                gathered = None
+            gathered = await self.evidence_gatherer.gather(
+                evidence.source_type,
+                evidence.source_ref,
+            )
+            _extract_log.info(
+                "[extract_evidence] GATHERER returned %d items for %s",
+                len(gathered) if gathered else 0,
+                evidence.entity_id,
+            )
 
             if gathered:
                 # Fill original stub with first gathered item
@@ -266,114 +255,97 @@ class ExtractEvidenceOperation(BaseOperation):
 
         # Path 1: Try OpenAlex if we have a DOI or PMID identifier
         if self.quality_scorer:
-            try:
-                qs = await self.quality_scorer.score(
-                    evidence.source_ref, evidence.source_type
-                )
-                if qs is not None and qs.source != "needs_assessment":
-                    evidence.quality_score = qs.score
-                    evidence.quality_metadata = qs.raw_metadata
-                    _log.info(
-                        "[_score_evidence] PATH1 OpenAlex %s score=%s",
-                        evidence.entity_id,
-                        qs.score,
-                    )
-                    return
-            except Exception as e:
-                _log.warning(
-                    "[_score_evidence] PATH1 OpenAlex failed for %s: %r",
+            qs = await self.quality_scorer.score(
+                evidence.source_ref, evidence.source_type
+            )
+            if qs is not None and qs.source != "needs_assessment":
+                evidence.quality_score = qs.score
+                evidence.quality_metadata = qs.raw_metadata
+                _log.info(
+                    "[_score_evidence] PATH1 OpenAlex %s score=%s",
                     evidence.entity_id,
-                    e,
+                    qs.score,
                 )
+                return
 
         # Path 2: Agent-based quality assessment
         if self.agent_runner:
-            try:
-                claim_context = ""
-                if evidence.objective_id:
-                    claims = await self.repo.query(
-                        "claim", objective_id=evidence.objective_id
-                    )
-                    if claims:
-                        claim_context = claims[0].statement
+            claim_context = ""
+            if evidence.objective_id:
+                claims = await self.repo.query(
+                    "claim", objective_id=evidence.objective_id
+                )
+                if claims:
+                    claim_context = claims[0].statement
 
-                source_header = (
-                    f"Source: {evidence.source_type} — {evidence.source_ref}"
+            source_header = (
+                f"Source: {evidence.source_type} — {evidence.source_ref}"
+            )
+            if gathered and gathered.quality_metadata:
+                provider = gathered.quality_metadata.get(
+                    "provider", evidence.source_type
                 )
-                if gathered and gathered.quality_metadata:
-                    provider = gathered.quality_metadata.get(
-                        "provider", evidence.source_type
-                    )
-                    source_header = f"Source: {provider} — {evidence.source_ref}"
-                    extra = {
-                        k: v
-                        for k, v in gathered.quality_metadata.items()
-                        if k != "provider"
-                    }
-                    if extra:
-                        source_header += f"\nMetadata: {extra}"
-
-                content = evidence.extracted_content or (
-                    gathered.content if gathered else ""
-                )
-                _log.info(
-                    "[_score_evidence] PATH2 calling agent for %s content_len=%d",
-                    evidence.entity_id,
-                    len(content),
-                )
-                result = await self.run_agent(
-                    "epistemic_assess_evidence_quality",
-                    evidence_content=content,
-                    source_header=source_header,
-                    claim_statement=claim_context,
-                )
-                # Deterministic combination
-                score = (
-                    0.35 * result.source_credibility
-                    + 0.25 * result.relevance
-                    + 0.25 * result.specificity
-                    + 0.15 * result.recency_appropriate
-                )
-                evidence.quality_score = max(0.05, min(1.0, score))
-                evidence.quality_metadata = {
-                    "source": "agent",
-                    "source_credibility": result.source_credibility,
-                    "relevance": result.relevance,
-                    "specificity": result.specificity,
-                    "recency_appropriate": result.recency_appropriate,
-                    "justification": result.justification,
+                source_header = f"Source: {provider} — {evidence.source_ref}"
+                extra = {
+                    k: v
+                    for k, v in gathered.quality_metadata.items()
+                    if k != "provider"
                 }
-                _log.info(
-                    "[_score_evidence] PATH2 agent scored %s = %.3f",
+                if extra:
+                    source_header += f"\nMetadata: {extra}"
+
+            content = evidence.extracted_content or (
+                gathered.content if gathered else ""
+            )
+            _log.info(
+                "[_score_evidence] PATH2 calling agent for %s content_len=%d",
+                evidence.entity_id,
+                len(content),
+            )
+            result = await self.run_agent(
+                "epistemic_assess_evidence_quality",
+                evidence_content=content,
+                source_header=source_header,
+                claim_statement=claim_context,
+            )
+            # Deterministic combination
+            score = (
+                0.35 * result.source_credibility
+                + 0.25 * result.relevance
+                + 0.25 * result.specificity
+                + 0.15 * result.recency_appropriate
+            )
+            evidence.quality_score = max(0.05, min(1.0, score))
+            evidence.quality_metadata = {
+                "source": "agent",
+                "source_credibility": result.source_credibility,
+                "relevance": result.relevance,
+                "specificity": result.specificity,
+                "recency_appropriate": result.recency_appropriate,
+                "justification": result.justification,
+            }
+            _log.info(
+                "[_score_evidence] PATH2 agent scored %s = %.3f",
+                evidence.entity_id,
+                evidence.quality_score,
+            )
+
+            # TMS trigger: agent-assessed evidence scoring near zero is unreliable.
+            # 0.10 threshold means all four quality dimensions averaged near zero.
+            # Only applies to agent assessments — not defaults or fallbacks.
+            if evidence.quality_score < 0.10:
+                evidence.invalidated = True
+                evidence.invalidation_reason = (
+                    f"Agent quality assessment scored {evidence.quality_score:.3f} "
+                    f"(credibility={result.source_credibility:.2f}): {result.justification}"
+                )
+                _log.warning(
+                    "[_score_evidence] TMS: invalidated %s — quality %.3f below threshold",
                     evidence.entity_id,
                     evidence.quality_score,
                 )
 
-                # TMS trigger: agent-assessed evidence scoring near zero is unreliable.
-                # 0.10 threshold means all four quality dimensions averaged near zero.
-                # Only applies to agent assessments — not defaults or fallbacks.
-                if evidence.quality_score < 0.10:
-                    evidence.invalidated = True
-                    evidence.invalidation_reason = (
-                        f"Agent quality assessment scored {evidence.quality_score:.3f} "
-                        f"(credibility={result.source_credibility:.2f}): {result.justification}"
-                    )
-                    _log.warning(
-                        "[_score_evidence] TMS: invalidated %s — quality %.3f below threshold",
-                        evidence.entity_id,
-                        evidence.quality_score,
-                    )
-
-                return
-            except Exception as e:
-                import traceback
-
-                _log.warning(
-                    "[_score_evidence] PATH2 agent FAILED for %s: %r\n%s",
-                    evidence.entity_id,
-                    e,
-                    traceback.format_exc(),
-                )
+            return
 
         # Path 3: Fall back to gatherer's quality_score if available
         if gathered and gathered.quality_score is not None:

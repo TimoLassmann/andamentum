@@ -287,15 +287,12 @@ class ProposeClaimsOperation(BaseOperation):
         # that was over-eager on small models and rejected legitimate findings.
         assertions: list[tuple[str, str]] = []  # (assertion_text, evidence_id)
         for ev in extracted:
-            try:
-                result = await self.run_agent(
-                    "epistemic_extract_assertion",
-                    evidence_content=ev.extracted_content,
-                    research_question=clarified,
-                )
-                assertion_text = result.assertion
-            except Exception:
-                assertion_text = None  # Agent call failed — skip this evidence
+            result = await self.run_agent(
+                "epistemic_extract_assertion",
+                evidence_content=ev.extracted_content,
+                research_question=clarified,
+            )
+            assertion_text = result.assertion
 
             if assertion_text:
                 assertions.append((assertion_text, ev.entity_id))
@@ -340,54 +337,47 @@ class ProposeClaimsOperation(BaseOperation):
             claim_statement = None
             claim_scope = None
 
-            try:
-                result = await self.run_agent(
-                    "epistemic_draft_claim",
-                    assertions=joined_assertions,
-                    research_question=clarified,
-                )
-                claim_statement = result.statement
-                claim_scope = result.scope
-            except Exception:
-                continue  # Agent call failed — skip this cluster
+            result = await self.run_agent(
+                "epistemic_draft_claim",
+                assertions=joined_assertions,
+                research_question=clarified,
+            )
+            claim_statement = result.statement
+            claim_scope = result.scope
 
             if not claim_statement:
                 continue  # Agent returned empty — skip this cluster
 
-            try:
-                claim = Claim(
-                    objective_id=objective.entity_id,
-                    statement=claim_statement,
-                    scope=claim_scope,
-                    stage=ClaimStage.HYPOTHESIS,
-                    evidence_ids=cluster_evidence_ids,
+            claim = Claim(
+                objective_id=objective.entity_id,
+                statement=claim_statement,
+                scope=claim_scope,
+                stage=ClaimStage.HYPOTHESIS,
+                evidence_ids=cluster_evidence_ids,
+            )
+            await self.repo.save(claim)
+            created_claims.append(claim.entity_id)
+
+            # ── Judge each evidence item against the claim ─────────
+            from ..judge import judge_evidence as _judge
+
+            for eid in cluster_evidence_ids:
+                ev = await self.repo.get("evidence", eid)
+                if ev.support_judgment is not None:
+                    continue
+                judgment = await _judge(
+                    claim_statement=claim.statement,
+                    claim_scope=claim.scope,
+                    evidence_content=ev.extracted_content or "",
+                    evidence_source=f"{ev.source_type}: {ev.source_ref}",
+                    runner=self.agent_runner,
                 )
-                await self.repo.save(claim)
-                created_claims.append(claim.entity_id)
-
-                # ── Judge each evidence item against the claim ─────────
-                from ..judge import judge_evidence as _judge
-
-                for eid in cluster_evidence_ids:
-                    ev = await self.repo.get("evidence", eid)
-                    if ev.support_judgment is not None:
-                        continue
-                    judgment = await _judge(
-                        claim_statement=claim.statement,
-                        claim_scope=claim.scope,
-                        evidence_content=ev.extracted_content or "",
-                        evidence_source=f"{ev.source_type}: {ev.source_ref}",
-                        runner=self.agent_runner,
-                    )
-                    verdict = judgment.verdict.lower().strip()
-                    if verdict not in ("supports", "contradicts", "no_bearing"):
-                        verdict = "no_bearing"
-                    ev.support_judgment = verdict
-                    ev.judgment_reasoning = judgment.reasoning
-                    await self.repo.save(ev)
-
-            except Exception:
-                pass  # Best effort per cluster
+                verdict = judgment.verdict.lower().strip()
+                if verdict not in ("supports", "contradicts", "no_bearing"):
+                    verdict = "no_bearing"
+                ev.support_judgment = verdict
+                ev.judgment_reasoning = judgment.reasoning
+                await self.repo.save(ev)
 
         objective.claims_proposed = True
         objective.phase = "claims_proposed"
