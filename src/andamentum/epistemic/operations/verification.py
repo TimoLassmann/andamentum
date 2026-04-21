@@ -147,58 +147,41 @@ class AdversarialSearchOperation(BaseOperation):
             async def _evaluate_one(
                 summary: str, source_ref: str
             ) -> tuple[CounterargumentModel, str]:
-                """Evaluate a single search hit. Returns (counterargument, justification).
-
-                On failure, returns a fallback counterargument with defaults and empty
-                justification — same behavior as the previous sequential loop.
-                """
+                """Evaluate a single search hit. Raises on agent failure —
+                the caller relies on asyncio.gather to propagate."""
                 async with eval_semaphore:
+                    eval_result = await self.run_agent(
+                        "epistemic_evaluate_counterargument",
+                        claim_statement=claim.statement,
+                        counterargument_text=summary,
+                        source_ref=source_ref,
+                    )
+                    # Map agent category string to CriticismCategory enum
                     try:
-                        eval_result = await self.run_agent(
-                            "epistemic_evaluate_counterargument",
-                            claim_statement=claim.statement,
-                            counterargument_text=summary,
-                            source_ref=source_ref,
-                        )
-                        # Map agent category string to CriticismCategory enum
-                        try:
-                            category = CriticismCategory(eval_result.category)
-                        except ValueError:
-                            category = CriticismCategory.INTERPRETATION
+                        category = CriticismCategory(eval_result.category)
+                    except ValueError:
+                        category = CriticismCategory.INTERPRETATION
 
-                        quality = CounterargumentQuality(
-                            relevance=eval_result.relevance,
-                            specificity=eval_result.specificity,
-                            evidence_backed=eval_result.evidence_backed,
-                            source_credibility=eval_result.source_credibility,
-                            novelty=0.5,  # Not assessed by this agent; neutral default
-                        )
-                        # Capture the agent's justification — this is the system's
-                        # own interpretation of what the counterargument says.
-                        justification = (
-                            getattr(eval_result, "justification", None) or ""
-                        )
-                        proper_ca = create_counterargument(
-                            summary=summary,
-                            source_ref=source_ref,
-                            claim_id=claim.entity_id,
-                            category=category,
-                            quality=quality,
-                        )
-                        return proper_ca, justification
-                    except Exception as e:
-                        logger.warning(
-                            "Counterargument evaluation failed for claim %s: %s",
-                            claim.entity_id,
-                            e,
-                        )
-                        # Fallback: use create_counterargument with defaults if agent fails
-                        proper_ca = create_counterargument(
-                            summary=summary,
-                            source_ref=source_ref,
-                            claim_id=claim.entity_id,
-                        )
-                        return proper_ca, ""
+                    quality = CounterargumentQuality(
+                        relevance=eval_result.relevance,
+                        specificity=eval_result.specificity,
+                        evidence_backed=eval_result.evidence_backed,
+                        source_credibility=eval_result.source_credibility,
+                        novelty=0.5,  # Not assessed by this agent; neutral default
+                    )
+                    # Capture the agent's justification — this is the system's
+                    # own interpretation of what the counterargument says.
+                    justification = (
+                        getattr(eval_result, "justification", None) or ""
+                    )
+                    proper_ca = create_counterargument(
+                        summary=summary,
+                        source_ref=source_ref,
+                        claim_id=claim.entity_id,
+                        category=category,
+                        quality=quality,
+                    )
+                    return proper_ca, justification
 
             if search_hits:
                 eval_results = await asyncio.gather(

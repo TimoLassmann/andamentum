@@ -453,8 +453,8 @@ class TestAdversarialSearchFailure:
     """Test AdversarialSearchOperation under failure."""
 
     @pytest.mark.asyncio
-    async def test_counterargument_evaluation_fails_uses_defaults(self, tmp_path):
-        """If evaluate_counterargument agent fails, operation uses create_counterargument fallback."""
+    async def test_counterargument_evaluation_fails_raises(self, tmp_path):
+        """If evaluate_counterargument agent fails, the operation raises — no silent fallback."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
@@ -471,39 +471,29 @@ class TestAdversarialSearchFailure:
             evidence_ids=[ev.entity_id],
         )
 
-        # Runner that succeeds on adversarial_search but fails on evaluate_counterargument
-        runner = FakeAgentRunner(
-            overrides={
-                "epistemic_adversarial_search": {
-                    "counterarguments": [
-                        {
-                            "summary": "This contradicts the claim",
-                            "source_url": "http://counter.example.com",
-                        },
-                    ],
-                    "recommendation": "maintain",
-                },
-            }
-        )
         failing_runner = PartiallyFailingRunner(
             fail_on={"epistemic_evaluate_counterargument"},
-            fallback_runner=runner,
+            fallback_runner=FakeAgentRunner(),
+        )
+        # Supply a gatherer that returns one hit so the evaluator is actually invoked.
+        gatherer = MockGatherer(
+            results=[
+                GatheredEvidence(
+                    content="Contradicting evidence",
+                    source_ref="http://counter.example.com",
+                    source_type="web_search",
+                )
+            ]
         )
 
-        op = AdversarialSearchOperation(repo, failing_runner)
+        op = AdversarialSearchOperation(repo, failing_runner, evidence_gatherer=gatherer)
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
             operation="adversarial_search",
         )
-        result = await op.execute(work)
-
-        assert result.success
-        updated = await repo.get("claim", claim.entity_id)
-        assert isinstance(updated, Claim)
-        assert updated.adversarial_checked is True
-        # Balance should still be computed (fallback counterargument used)
-        assert updated.adversarial_balance is not None
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
 
     @pytest.mark.asyncio
     async def test_gatherer_search_fails_per_query(self, tmp_path):

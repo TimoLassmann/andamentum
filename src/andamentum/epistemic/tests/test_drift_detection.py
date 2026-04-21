@@ -83,13 +83,13 @@ TRACKED_SECTIONS = [
         "description": "Scrutiny evidence loading loop",
         "test_file": "test_operations_failure.py::TestScrutinyOperationFailure",
     },
-    # operations/verification.py: Counterargument evaluation fallback
+    # operations/verification.py: Counterargument evaluation (no fallback)
     {
         "file": _SRC / "operations" / "verification.py",
         "start": "async def _evaluate_one(",
         "end": "# Step 5: Compute adversarial balance (deterministic)",
-        "description": "Counterargument evaluation fallback",
-        "test_file": "test_operations_failure.py::TestAdversarialSearchFailure",
+        "description": "Counterargument evaluation (no fallback)",
+        "test_file": "test_no_silent_fallbacks.py::test_adversarial_check_propagates_counterarg_eval_failure",
     },
     # operations/synthesis.py: Writer-validator loop
     {
@@ -148,7 +148,7 @@ TRACKED_SECTIONS = [
 EXPECTED_CHECKSUMS: dict[str, str] = {
     "Evidence scoring 4-path fallback chain": "b28d52f14432cc49",
     "Scrutiny evidence loading loop": "92c9edb568f22327",
-    "Counterargument evaluation fallback": "69cd986c22d846e6",
+    "Counterargument evaluation (no fallback)": "530ee42315177bec",
     "Writer-validator loop": "3c3f161d6f5b27cf",
     "Prediction generation per-aspect error handling": "82cee56e946a4202",
     "Gate validate_promotion logic": "42b2f8500930928a",

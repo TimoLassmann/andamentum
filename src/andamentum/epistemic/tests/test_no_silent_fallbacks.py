@@ -200,6 +200,77 @@ async def test_adversarial_check_propagates_counterquery_failure(tmp_path):
         )
 
 
+@pytest.mark.asyncio
+async def test_adversarial_check_propagates_counterarg_eval_failure(tmp_path):
+    """When epistemic_evaluate_counterargument raises on any hit, the
+    operation must raise — do not build a default-scored Counterargument."""
+    from types import SimpleNamespace
+
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Claim, Objective
+    from andamentum.epistemic.entities.claim import ClaimStage
+    from andamentum.epistemic.operations.base import GatheredEvidence
+    from andamentum.epistemic.operations.verification import AdversarialSearchOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _EvalFailsRunner:
+        """Returns valid counterquery results, but raises on evaluator."""
+
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_generate_counterquery":
+                return SimpleNamespace(
+                    query="failed replication of X causes Y", framing="replication_failures"
+                )
+            if agent_name == "epistemic_evaluate_counterargument":
+                raise RuntimeError("evaluator failed")
+            raise AssertionError(f"Unexpected agent call: {agent_name}")
+
+    class _StubGatherer:
+        """Returns one hit so evaluation is actually invoked."""
+
+        async def gather(self, provider: str, query: str):
+            return [
+                GatheredEvidence(
+                    content="Study finds no evidence for X causing Y",
+                    source_ref="https://example.com/study",
+                    source_type="web_search",
+                )
+            ]
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="test question", clarified_question="q?")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        scope="specific",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(claim)
+
+    op = AdversarialSearchOperation(
+        repo=repo,
+        agent_runner=_EvalFailsRunner(),
+        evidence_gatherer=_StubGatherer(),  # type: ignore[arg-type]
+        quality_scorer=None,
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="evaluator failed"):
+        from andamentum.epistemic.operations.base import OperationInput
+
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="adversarial_check",
+            )
+        )
+
+
 async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
     """When neither an agent runner nor a gatherer is wired up, extraction
     must raise — never fabricate `[Content from ...]` placeholders."""
