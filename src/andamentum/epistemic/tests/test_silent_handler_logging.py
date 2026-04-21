@@ -5,7 +5,6 @@ They ensure that exception handlers that were previously completely silent
 now produce warning-level log messages.
 """
 
-import logging
 import sys
 import pathlib
 
@@ -109,11 +108,16 @@ class _SimpleGatherer:
         return self._results
 
 
-class TestCounterargEvalLogsOnFailure:
-    """AdversarialSearchOperation should log when evaluate_counterargument agent fails."""
+class TestCounterargEvalRaisesOnFailure:
+    """AdversarialSearchOperation must raise when evaluate_counterargument agent fails.
+
+    The previous behavior (log a warning and continue with a default-scored
+    counterargument) was a silent fallback that polluted adversarial_balance.
+    Task 7 removed the outer try/except so failures now propagate.
+    """
 
     @pytest.mark.asyncio
-    async def test_counterarg_eval_logs_on_failure(self, caplog, tmp_path):
+    async def test_counterarg_eval_raises_on_failure(self, tmp_path):
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
@@ -130,7 +134,7 @@ class TestCounterargEvalLogsOnFailure:
             evidence_ids=[ev.entity_id],
         )
 
-        # Evidence gatherer returns a search result that will be evaluated as a counterargument
+        # Evidence gatherer returns a search result so the evaluator is invoked
         gatherer = _SimpleGatherer(
             results=[
                 GatheredEvidence(
@@ -141,11 +145,10 @@ class TestCounterargEvalLogsOnFailure:
             ]
         )
 
-        # Runner that succeeds on generate_counterquery but fails on evaluate_counterargument
-        runner = FakeAgentRunner()
+        # Runner that succeeds on generate_counterquery but raises on evaluate_counterargument
         failing_runner = PartiallyFailingRunner(
             fail_on={"epistemic_evaluate_counterargument"},
-            fallback_runner=runner,
+            fallback_runner=FakeAgentRunner(),
         )
 
         op = AdversarialSearchOperation(
@@ -157,15 +160,7 @@ class TestCounterargEvalLogsOnFailure:
             operation="adversarial_search",
         )
 
-        with caplog.at_level(logging.WARNING, logger="epistemic.operations"):
-            result = await op.execute(work)
-
-        assert result.success
-        assert any(
-            "Counterargument evaluation failed" in record.message
-            for record in caplog.records
-        ), (
-            f"Expected 'Counterargument evaluation failed' warning, got: {[r.message for r in caplog.records]}"
-        )
+        with pytest.raises(RuntimeError, match="Simulated agent failure"):
+            await op.execute(work)
 
 
