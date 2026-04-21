@@ -15,7 +15,6 @@ from andamentum.document_store import DocumentStore
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations import (
     AdversarialSearchOperation,
-    GeneratePredictionOperation,
     GatheredEvidence,
 )
 from ..patterns import OperationInput
