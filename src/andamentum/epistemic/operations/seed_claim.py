@@ -90,23 +90,20 @@ class SeedClaimOperation(BaseOperation):
                     continue
                 if ev.cluster_status in ("corroborative", "deferred"):
                     continue
-                try:
-                    judgment = await _judge(
-                        claim_statement=claim.statement,
-                        claim_scope=claim.scope,
-                        evidence_content=ev.extracted_content,
-                        evidence_source=f"{ev.source_type}: {ev.source_ref}",
-                        runner=self.agent_runner,
-                    )
-                    verdict = judgment.verdict.lower().strip()
-                    if verdict not in ("supports", "contradicts", "no_bearing"):
-                        verdict = "no_bearing"
-                    ev.support_judgment = verdict
-                    ev.judgment_reasoning = judgment.reasoning
-                    await self.repo.save(ev)
-                    judged += 1
-                except Exception:
-                    pass  # Best effort, same as ProposeClaimsOperation
+                judgment = await _judge(
+                    claim_statement=claim.statement,
+                    claim_scope=claim.scope,
+                    evidence_content=ev.extracted_content,
+                    evidence_source=f"{ev.source_type}: {ev.source_ref}",
+                    runner=self.agent_runner,
+                )
+                verdict = judgment.verdict.lower().strip()
+                if verdict not in ("supports", "contradicts", "no_bearing"):
+                    verdict = "no_bearing"
+                ev.support_judgment = verdict
+                ev.judgment_reasoning = judgment.reasoning
+                await self.repo.save(ev)
+                judged += 1
 
         # Mark objective as having claims proposed (same contract as
         # ProposeClaimsOperation) so the pipeline advances.
