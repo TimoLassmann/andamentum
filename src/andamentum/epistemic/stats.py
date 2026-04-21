@@ -136,9 +136,8 @@ async def get_all_verification_evidence(
         Dict with keys: adversarial, convergent, computational, temporal, deductive
     """
     from .repository import EpistemicRepository
-    from .storage import DocumentStoreAdapter
 
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
     claims = await repo.get_claims_for_objective(objective_id)
 
     adversarial: list[Any] = []

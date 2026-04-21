@@ -45,11 +45,9 @@ class ReportGenerator:
             store: DocumentStore for the epistemic database
             database_name: Name of the database for report metadata
         """
-        from .storage import DocumentStoreAdapter
-
         self.store = store
         self.database_name = database_name
-        self.repo = EpistemicRepository(DocumentStoreAdapter(store))
+        self.repo = EpistemicRepository(store)
 
     async def extract_report_data(
         self,

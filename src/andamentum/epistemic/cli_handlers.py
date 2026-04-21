@@ -40,7 +40,6 @@ from .result_models import (
 from .primitives import ClaimStage, Claim, Evidence, Uncertainty
 from .trace import ReasoningTrace
 from andamentum.document_store import DocumentStore
-from .storage import DocumentStoreAdapter
 from andamentum.document_store.lifecycle import (
     delete_database,
     get_db_path,
@@ -516,7 +515,7 @@ async def handle_claims(
 
     from .repository import EpistemicRepository
 
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
 
     # Get objective
     if not objective_id:
@@ -575,7 +574,7 @@ async def handle_evidence(
     from .repository import EpistemicRepository
     from .stats import get_all_verification_evidence
 
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
 
     # Get objective
     if not objective_id:
@@ -656,7 +655,7 @@ async def handle_uncertainties(
 
     from .repository import EpistemicRepository
 
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
 
     # Get objective
     if not objective_id:
@@ -702,7 +701,7 @@ async def handle_decisions(
 
     from .repository import EpistemicRepository
 
-    repo = EpistemicRepository(DocumentStoreAdapter(store))
+    repo = EpistemicRepository(store)
 
     # Get objective
     if not objective_id:
