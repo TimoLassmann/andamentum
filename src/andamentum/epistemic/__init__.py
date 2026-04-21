@@ -57,6 +57,7 @@ from .patterns import OperationInput, WorkItem  # WorkItem is backward compat al
 
 # ── Pipeline result ──────────────────────────────────────────────────────
 from .operations_runner import PipelineResult
+from .graph.quarantine import QuarantineRecord
 
 # ── Operations ────────────────────────────────────────────────────────────
 from .operations import (
@@ -129,6 +130,7 @@ __all__ = [
     "WorkItem",  # backward compat alias
     # Pipeline result
     "PipelineResult",
+    "QuarantineRecord",
     # Operations
     "BaseOperation",
     "OperationResult",
