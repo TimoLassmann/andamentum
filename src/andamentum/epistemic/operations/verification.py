@@ -337,13 +337,10 @@ class AssessConvergenceOperation(BaseOperation):
         classifications: list[DomainClassification] = []
 
         for eid in claim.evidence_ids:
-            try:
-                ev = await self.repo.get("evidence", eid)
-                if not isinstance(ev, Evidence) or not ev.extracted_content:
-                    continue
-                if ev.cluster_status in ("corroborative", "deferred"):
-                    continue
-            except Exception:
+            ev = await self.repo.get("evidence", eid)
+            if not isinstance(ev, Evidence) or not ev.extracted_content:
+                continue
+            if ev.cluster_status in ("corroborative", "deferred"):
                 continue
 
             content = ev.extracted_content

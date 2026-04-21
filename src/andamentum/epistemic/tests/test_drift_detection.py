@@ -148,7 +148,7 @@ TRACKED_SECTIONS = [
 EXPECTED_CHECKSUMS: dict[str, str] = {
     "Evidence scoring 4-path fallback chain": "b28d52f14432cc49",
     "Scrutiny evidence loading loop": "92c9edb568f22327",
-    "Counterargument evaluation (no fallback)": "530ee42315177bec",
+    "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     "Writer-validator loop": "3c3f161d6f5b27cf",
     "Prediction generation per-aspect error handling": "82cee56e946a4202",
     "Gate validate_promotion logic": "42b2f8500930928a",
