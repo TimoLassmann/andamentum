@@ -30,14 +30,7 @@ from .entities import (
     Artefact,
 )
 
-# ── Storage & Repository ──────────────────────────────────────────────────
-from .storage import (
-    StorageBackend,
-    InMemoryStorageBackend,
-    StoredDocument,
-    DocumentRef,
-    DocumentMetadata,
-)
+# ── Repository ────────────────────────────────────────────────────────────
 from .repository import (
     EpistemicRepository,
     EntityNotFoundError,
@@ -115,12 +108,7 @@ __all__ = [
     "Decision",
     "Snapshot",
     "Artefact",
-    # Storage & Repository
-    "StorageBackend",
-    "InMemoryStorageBackend",
-    "StoredDocument",
-    "DocumentRef",
-    "DocumentMetadata",
+    # Repository
     "EpistemicRepository",
     "EntityNotFoundError",
     # Gates
