@@ -1,4 +1,4 @@
-"""Tests for epistemic operations using InMemoryStorageBackend + MockAgentRunner."""
+"""Tests for epistemic operations using DocumentStore + MockAgentRunner."""
 
 import pytest
 from typing import Any
