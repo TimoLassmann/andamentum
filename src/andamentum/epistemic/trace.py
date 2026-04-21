@@ -106,9 +106,7 @@ class ClaimLineage:
                         "evidence_id": e.evidence_id,
                         "source_type": e.source_type,
                         "source_ref": e.source_ref,
-                        "extracted_content_preview": e.extracted_content[:200]
-                        if e.extracted_content
-                        else "",
+                        "extracted_content": e.extracted_content or "",
                     }
                 )
 

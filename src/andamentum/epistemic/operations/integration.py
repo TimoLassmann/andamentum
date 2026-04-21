@@ -51,7 +51,7 @@ class AbductiveIntegrationOperation(BaseOperation):
             ev = await self.repo.get("evidence", eid)
             if not isinstance(ev, Evidence) or ev.invalidated:
                 continue
-            content = (ev.extracted_content or "")[:300]
+            content = ev.extracted_content or ""
             summary = f"[{ev.source_type}] {content}"
             if ev.support_judgment == "supports":
                 supports_items.append(summary)
@@ -100,7 +100,7 @@ class AbductiveIntegrationOperation(BaseOperation):
             claim_scope=claim.scope,
             supporting_evidence="\n\n".join(supports_items) or "None found.",
             contradicting_evidence="\n\n".join(contradicts_items) or "None found.",
-            no_bearing_evidence="\n\n".join(no_bearing_items[:20]) or "None.",
+            no_bearing_evidence="\n\n".join(no_bearing_items) or "None.",
             adversarial_outcome=adversarial_text,
             open_uncertainties=unc_text,
             evidence_count=len(supports_items) + len(contradicts_items) + len(no_bearing_items),
