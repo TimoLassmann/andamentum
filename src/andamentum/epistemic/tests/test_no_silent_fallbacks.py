@@ -64,3 +64,24 @@ async def test_run_op_quarantines_entity_on_exception():
     assert record.operation == "scrutinize_claim"
     assert record.exception_type == "RuntimeError"
     assert "kaboom" in record.message
+
+
+def test_epistemic_result_has_quarantined_field():
+    from andamentum.epistemic.graph.result import EpistemicResult
+
+    result = EpistemicResult(objective_id="obj-1", status="partial")
+    # Default: empty list, not None
+    assert result.quarantined == []
+
+
+def test_pipeline_result_has_quarantined_field():
+    from andamentum.epistemic.operations_runner import PipelineResult
+
+    result = PipelineResult(
+        objective_id="obj-1",
+        iterations=0,
+        successful=0,
+        failed=0,
+        status="partial",
+    )
+    assert result.quarantined == []

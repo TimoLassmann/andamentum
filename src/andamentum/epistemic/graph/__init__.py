@@ -163,4 +163,5 @@ async def run_epistemic_graph(
         status=result.status,
         errors=result.errors,
         posterior=posterior_report,
+        quarantined=result.quarantined,
     )

@@ -988,6 +988,7 @@ class CheckCompletion(
                 errors=state.errors,
                 operations_log=state.operations_log,
                 termination_reason=reason,
+                quarantined=state.quarantined,
             )
         )
 
@@ -1039,6 +1040,7 @@ class Synthesize(
                 errors=state.errors,
                 operations_log=state.operations_log,
                 termination_reason="complete",
+                quarantined=state.quarantined,
             )
         )
 

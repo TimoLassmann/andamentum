@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from .confidence import PosteriorReport
 
+from .graph.quarantine import QuarantineRecord
+
 # Type for progress callback: (operation_type, workitem_id, success, message, outputs) -> None
 ProgressCallback = Callable[[str, str, bool, str, dict[str, Any]], None]
 
@@ -40,6 +42,7 @@ class PipelineResult:
         status: str,
         errors: Optional[list[str]] = None,
         posterior: Optional["PosteriorReport"] = None,
+        quarantined: Optional[list[QuarantineRecord]] = None,
     ):
         self.objective_id = objective_id
         self.iterations = iterations
@@ -48,6 +51,7 @@ class PipelineResult:
         self.status = status
         self.errors = errors or []
         self.posterior = posterior
+        self.quarantined: list[QuarantineRecord] = quarantined or []
 
     @property
     def success(self) -> bool:
