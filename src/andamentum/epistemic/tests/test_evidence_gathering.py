@@ -425,5 +425,5 @@ class TestCompositeGathererNoSilentFallback:
             web_search=_FailingWebSearch(),
             providers={"p1": _FailingProvider(), "p2": _FailingProvider()},
         )
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="All gather calls failed"):
             await gatherer.gather("all", "test query")
