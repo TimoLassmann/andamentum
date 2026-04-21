@@ -111,7 +111,7 @@ class TestCrossClaimConsistencyAgent:
         assert result.tension_point == "X contradicts Y"
 
 
-from ..storage import InMemoryStorageBackend  # noqa: E402
+from andamentum.document_store import DocumentStore  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..entities.objective import Objective  # noqa: E402
 from ..operations import (  # noqa: E402
@@ -124,12 +124,14 @@ from ..patterns import OperationInput  # noqa: E402
 
 class TestContrastiveEvaluationOperation:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     def _make_runner(self, better_claim="A", confidence=0.8):
         class Runner:
@@ -260,12 +262,14 @@ class TestContrastiveEvaluationOperation:
 
 class TestCrossClaimConsistencyOperation:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     def _make_runner(self, conflicts=False, tension_point=""):
         class Runner:

@@ -188,7 +188,7 @@ class TestDeduplicateEvidence:
 
 from types import SimpleNamespace  # noqa: E402
 
-from ..storage import InMemoryStorageBackend  # noqa: E402
+from andamentum.document_store import DocumentStore  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..entities.objective import Objective  # noqa: E402
 from ..entities.evidence import Evidence  # noqa: E402
@@ -200,12 +200,14 @@ from ..patterns import OperationInput  # noqa: E402
 
 class TestDedupIntegration:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     def _make_runner(self):
         """Mock runner that returns canned responses for assertion extraction and claim drafting."""
@@ -522,12 +524,14 @@ class TestDedupIntegration:
 
 class TestDownstreamFiltering:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     @pytest.mark.asyncio
     async def test_scrutiny_excludes_corroborative(self, repo):

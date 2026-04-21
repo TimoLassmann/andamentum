@@ -6,7 +6,7 @@ and that parameterized gates respect question_type.
 
 import pytest
 
-from ..storage import InMemoryStorageBackend
+from andamentum.document_store import DocumentStore
 from ..repository import EpistemicRepository
 from ..entities.objective import Objective
 from ..entities.claim import Claim
@@ -27,12 +27,14 @@ def _make_objective(obj_id: str, **kwargs) -> Objective:
 
 class TestSetRoutingDefaultsOperation:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     @pytest.mark.asyncio
     async def test_skips_tracks_for_exploratory(self, repo):
@@ -191,12 +193,14 @@ from ..gates import validate_promotion  # noqa: E402
 
 class TestParameterizedGates:
     @pytest.fixture
-    def backend(self):
-        return InMemoryStorageBackend()
+    async def store(self, tmp_path):
+        s = DocumentStore.for_database("test", db_dir=tmp_path)
+        await s.initialize()
+        return s
 
     @pytest.fixture
-    def repo(self, backend):
-        return EpistemicRepository(backend)
+    async def repo(self, store):
+        return EpistemicRepository(store)
 
     @pytest.mark.asyncio
     async def test_exploratory_lower_evidence_bar(self, repo):
