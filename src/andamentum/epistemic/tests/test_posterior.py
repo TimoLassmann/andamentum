@@ -432,3 +432,158 @@ class TestPosteriorReportStructure:
         expected = 1.0 / (1.0 + math.exp(-2))
         assert report.posterior == pytest.approx(expected, abs=1e-4)
         assert report.log_odds == 2
+
+
+# =========================================================================
+# Integration synthesis tests
+# =========================================================================
+
+
+class TestPosteriorIntegrationSynthesis:
+    """Tests that integration assessment blends with per-item counting."""
+
+    async def test_insufficient_falls_through_to_counting(self, repo):
+        """Integration 'insufficient' should not affect the posterior."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        e1 = _make_evidence(support_judgment="supports", entity_id="e-i1")
+        e2 = _make_evidence(support_judgment="supports", entity_id="e-i2")
+        e3 = _make_evidence(support_judgment="supports", entity_id="e-i3")
+        await repo.save(e1)
+        await repo.save(e2)
+        await repo.save(e3)
+
+        claim = _make_claim(evidence_ids=["e-i1", "e-i2", "e-i3"])
+        claim.integrated_assessment = "insufficient"
+        claim.integrated_confidence = 0.5
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        assert report.mode == "counting_only"
+        assert report.posterior == report.counting_posterior
+        assert report.supporting_count == 3
+        assert report.integration_verdict == "insufficient"
+
+    async def test_supports_blends_with_counting(self, repo):
+        """Integration 'supports' should blend with per-item counting."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        e1 = _make_evidence(support_judgment="supports", entity_id="e-b1")
+        e2 = _make_evidence(support_judgment="contradicts", entity_id="e-b2")
+        await repo.save(e1)
+        await repo.save(e2)
+
+        claim = _make_claim(evidence_ids=["e-b1", "e-b2"])
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.8
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        assert report.mode == "synthesized"
+        # Counting: 1 sup, 1 con → 0.5
+        assert report.counting_posterior == pytest.approx(0.5)
+        # Integration: supports at 0.8 → 0.9
+        # n_directional=2, w=2/7≈0.286
+        # Blended: 0.286*0.5 + 0.714*0.9 = 0.143 + 0.643 = 0.786
+        assert report.posterior > 0.5  # Integration pulls up
+        assert report.posterior == pytest.approx(
+            (2 / 7) * 0.5 + (5 / 7) * 0.9, abs=0.01
+        )
+        assert report.integration_verdict == "supports"
+
+    async def test_contradicts_dampens_counting(self, repo):
+        """Integration 'contradicts' should dampen a counting-supports signal."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        e1 = _make_evidence(support_judgment="supports", entity_id="e-d1")
+        e2 = _make_evidence(support_judgment="supports", entity_id="e-d2")
+        e3 = _make_evidence(support_judgment="supports", entity_id="e-d3")
+        await repo.save(e1)
+        await repo.save(e2)
+        await repo.save(e3)
+
+        claim = _make_claim(evidence_ids=["e-d1", "e-d2", "e-d3"])
+        claim.integrated_assessment = "contradicts"
+        claim.integrated_confidence = 0.9
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        assert report.mode == "synthesized"
+        # Counting: 3 sup, 0 con → high posterior
+        counting_p = 1.0 / (1.0 + math.exp(-3))
+        assert report.counting_posterior == pytest.approx(counting_p, abs=1e-4)
+        # Integration contradicts → pulls down
+        assert report.posterior < report.counting_posterior
+        assert "disagree" in report.explanation.lower()
+
+    async def test_more_evidence_increases_counting_weight(self, repo):
+        """With more directional evidence, counting should dominate."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        # Create 20 supporting evidence items
+        eids = []
+        for i in range(20):
+            eid = f"e-w{i}"
+            eids.append(eid)
+            e = _make_evidence(support_judgment="supports", entity_id=eid)
+            await repo.save(e)
+
+        claim = _make_claim(evidence_ids=eids)
+        claim.integrated_assessment = "contradicts"
+        claim.integrated_confidence = 0.9
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        # With 20 items, w = 20/25 = 0.8 — counting dominates
+        # Counting posterior is very high (logistic(20) ≈ 1.0)
+        # Integration contradicts at 0.05
+        # Blended: 0.8 * ~1.0 + 0.2 * 0.05 = 0.81
+        assert report.posterior > 0.7  # counting still wins despite integration contradicting
+
+    async def test_no_evidence_integration_only(self, repo):
+        """With no directional evidence, integration should fully determine posterior."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        claim = _make_claim(evidence_ids=[])
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.8
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        assert report.mode == "synthesized"
+        # n_directional=0, w=0 → pure integration
+        # p_integration = 0.5 + 0.8/2 = 0.9
+        assert report.posterior == pytest.approx(0.9, abs=0.01)
+
+    async def test_report_includes_new_fields(self, repo):
+        """PosteriorReport should include counting_posterior, integration fields, and mode."""
+        obj = _make_objective()
+        await repo.save(obj)
+
+        e1 = _make_evidence(support_judgment="supports", entity_id="e-nf1")
+        await repo.save(e1)
+
+        claim = _make_claim(evidence_ids=["e-nf1"])
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.7
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, OBJ_ID)
+        assert report is not None
+        assert hasattr(report, "counting_posterior")
+        assert hasattr(report, "integration_verdict")
+        assert hasattr(report, "integration_confidence")
+        assert hasattr(report, "mode")
+        assert report.integration_verdict == "supports"
+        assert report.integration_confidence == pytest.approx(0.7, abs=0.01)
+        assert report.mode == "synthesized"
