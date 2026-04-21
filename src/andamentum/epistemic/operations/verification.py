@@ -262,7 +262,7 @@ class AdversarialSearchOperation(BaseOperation):
             for ca, reasoning in best_per_source.values():
                 adv_evidence = Evidence(
                     objective_id=claim.objective_id,
-                    source_type="web",
+                    source_type="web_search",
                     source_ref=ca.source_ref,
                     extracted_content=ca.summary,
                     extracted=True,
