@@ -441,6 +441,8 @@ class ExtractNewEvidence(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> "Scrutinize":
         from ..operations.evidence import ExtractEvidenceOperation
+        from ..entities import Claim, Evidence
+        from ..judge import judge_evidence
 
         state = ctx.state
         deps = ctx.deps
@@ -452,10 +454,70 @@ class ExtractNewEvidence(
         )
 
         for ev in unextracted:
-            await _run_op(
+            result = await _run_op(
                 ExtractEvidenceOperation, deps, state,
                 ev.entity_id, "evidence", "extract_evidence",
             )
+
+            # Link newly created evidence to the same claim as the stub.
+            # Extraction from a single query may produce multiple Evidence
+            # entities (gathered[1:]). The original stub is linked to a
+            # claim via depends_on_claim_id, but the extras are orphans.
+            if not result.success:
+                continue
+
+            created_ids = getattr(result, "created_entities", []) or []
+            if len(created_ids) <= 1:
+                continue  # Only the original stub, nothing to link
+
+            # Find the claim this stub was created for
+            original = await deps.repo.get("evidence", ev.entity_id)
+            claim_id = original.depends_on_claim_id
+            if not claim_id:
+                continue
+
+            claim = await deps.repo.get("claim", claim_id)
+            if not isinstance(claim, Claim):
+                continue
+
+            # Link extras to the claim and judge all created entities.
+            # When the gatherer returns multiple results, ExtractEvidenceOperation
+            # returns early (before the judgment block) so the original stub is
+            # also unjudged. Judge every created entity that still lacks a verdict.
+            extras_linked = 0
+            for eid in created_ids:
+                entity_ev = await deps.repo.get("evidence", eid)
+                if not isinstance(entity_ev, Evidence):
+                    continue
+
+                # Link to claim (extras are not linked; original already is)
+                if eid not in claim.evidence_ids:
+                    claim.evidence_ids.append(eid)
+                    extras_linked += 1
+
+                # Judge if not yet judged
+                if (
+                    deps.agent_runner
+                    and entity_ev.extracted_content
+                    and entity_ev.support_judgment is None
+                ):
+                    judgment = await judge_evidence(
+                        claim_statement=claim.statement,
+                        claim_scope=claim.scope or "",
+                        evidence_content=entity_ev.extracted_content,
+                        evidence_source=f"{entity_ev.source_type}: {entity_ev.source_ref}",
+                        runner=deps.agent_runner,
+                    )
+                    verdict = judgment.verdict.lower().strip()
+                    if verdict not in ("supports", "contradicts", "no_bearing"):
+                        verdict = "no_bearing"
+                    entity_ev.support_judgment = verdict
+                    entity_ev.judgment_reasoning = judgment.reasoning
+                    await deps.repo.save(entity_ev)
+
+            if extras_linked > 0:
+                claim.evidence_count = len(claim.evidence_ids)
+                await deps.repo.save(claim)
 
         # TMS sweep: new evidence may trigger revalidation of claims
         await _run_tms_sweep(deps, state)
