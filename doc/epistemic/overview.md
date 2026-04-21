@@ -34,7 +34,7 @@ No single agent decides whether a claim is true. The verdict emerges from the st
 | Devil's advocate | Adversarial search agent |
 | Journal acceptance criteria | Stage gates |
 | Retraction / correction | TMS cascading belief maintenance |
-| The scientific community | The pattern-driven scheduler |
+| The scientific community | The pydantic-graph pipeline (DAG scheduler) |
 
 ### What This Is Not
 
@@ -91,7 +91,7 @@ An interpreted observation from a source. Evidence is not raw data — it is dat
 
 ### 3. Claim
 
-A scoped proposition with a defined lifecycle. Claims are the central currency of the system. Each has a statement, a scope (what it applies to), a stage (how well-substantiated it is), and explicit links to supporting evidence. Claims accumulate verification results as they progress through scrutiny, and track modification history for degeneracy detection. Additional fields: `contrastive_checked` and `consistency_checked` (for the two pairwise verification tracks), `routing_applied` (whether `SetRoutingDefaultsOperation` has pre-marked skipped tracks), and `saturated` (whether investigation has stopped producing new information, preventing infinite cycling).
+A scoped proposition with a defined lifecycle. Claims are the central currency of the system. Each has a statement, a scope (what it applies to), a stage (how well-substantiated it is), and explicit links to supporting evidence. Claims accumulate verification results as they progress through scrutiny, and track modification history for degeneracy detection. Additional fields: `contrastive_checked` and `consistency_checked` (for the two pairwise verification tracks), `integrated_assessment` (holistic evidence verdict from abductive integration: 'supports', 'contradicts', or 'insufficient'), `integrated_confidence` (0.0-1.0 confidence from integration), and `integrated_reasoning` (evidential chain from integration).
 
 ### 4. Uncertainty
 
@@ -146,7 +146,7 @@ Each stage transition is governed by a **deterministic gate** — requirements t
 
 The `min_supporting_sources` gate counts independent evidence clusters with a `support_judgment` of "supports" (set by the judge module). This gate is only enforced when at least one evidence item has been judged, providing a graceful transition as the judge is integrated into existing inquiries.
 
-The SUPPORTED → PROVISIONAL gate requires all seven verification track flags (`adversarial_checked`, `convergence_checked`, `deductive_checked`, `computational_checked`, `contrastive_checked`, `consistency_checked`, and `argument_analyzed`) to be true. Tracks that are not applicable to the question type are pre-marked `True` by `SetRoutingDefaultsOperation` before verification begins, so the gate condition is met without those tracks actually firing.
+The SUPPORTED → PROVISIONAL gate requires verification tracks relevant to the question type to be complete. The graph's `RunVerification` node runs only applicable tracks based on the routing profile. Tracks marked SKIP in the routing profile are not required by the gate — `validate_promotion()` checks activation levels and only enforces PRIMARY and SECONDARY tracks.
 
 **Question-type parameterization**: Gate thresholds are overridden per question type via the routing config. For example, exploratory questions lower the SUPPORTED evidence threshold to 0.5, while verificatory questions raise the PROVISIONAL gate to require convergence. The `validate_promotion()` function reads overrides from the routing profile's `gate_thresholds` and falls back to defaults when no override exists.
 
@@ -234,16 +234,13 @@ The following are properly deterministic and should NOT use agent calls:
 - Domain distance metrics (lookup table between classification categories)
 - Degeneracy detection (modification counts and timestamps)
 - Bibliometric quality scoring (citation counts, journal status)
-- Answer confidence scoring (checklist pass/fail, logistic transform)
-- Posterior confidence scoring (count claims supported - count contradicted, logistic transform)
+- Posterior confidence scoring (integration assessment when available, falls back to count-based logistic)
 - Question-type routing (lookup table from question type to track activation levels)
 - Provider selection (semantic similarity: embed question + provider descriptions, rank by cosine, select top-K)
 - Evidence deduplication (HDBSCAN clustering on embedding distances)
 - Evidence dedup via shared similarity module (single-linkage clustering, Union-Find)
 - Caveat dedup (group non-blocking uncertainties by embedding, keep medoid)
 - Batched concern dedup (group buffered remaining_concerns, filter against existing)
-- Saturation detection (verdict unchanged + no unresolved blocking uncertainties)
-- Routing defaults (pre-marking skipped track flags on claim entities)
 
 ---
 
@@ -273,7 +270,7 @@ Parallelization in steps 2–4 is what keeps wall time bounded. A sequential imp
 
 Three distinct artifacts are written to the database after a successful adversarial search:
 
-- **The `Claim` entity** gets its `adversarial_balance`, `adversarial_checked`, and (for strongly challenged claims) `needs_revalidation` fields updated in place.
+- **The `Claim` entity** gets its `adversarial_balance` and `adversarial_checked` fields updated in place.
 - **Quality-passing counterarguments** are persisted as individual `Evidence` entities with `support_judgment="contradicts"`, deduplicated by source URL (the highest-quality counterargument per URL wins). The claim's `evidence_ids` list is extended with the new evidence IDs so TMS and the evidence bibliography can find them.
 - **The full `AdversarialEvidence` wrapper** (with `epistemic_type="adversarial_evidence"`, containing the complete counterargument list, queries used, weights, verdict, explanation, and recommendation) is persisted via `EpistemicRepository.save_adversarial_evidence()`. This is the source of truth for report rendering — without it, the counterargument synthesis is lost between the verification operation and the report generator.
 
@@ -355,14 +352,14 @@ Each track is assigned one of four activation levels per question type:
 
 ### SetRoutingDefaultsOperation
 
-Before verification tracks begin, `SetRoutingDefaultsOperation` reads the objective's `question_type`, looks up the routing profile, and sets all SKIP track flags to `True` on every SUPPORTED claim. This is a deterministic operation — no LLM call. It runs at priority 4 (before verification at priority 5) and marks `routing_applied = True` on each claim to prevent re-execution.
+`SetRoutingDefaultsOperation` reads the objective's `question_type`, looks up the routing profile, and sets all SKIP track flags to `True` on every SUPPORTED claim. This is a deterministic operation — no LLM call. It is called by the `PromoteToSupported` graph node before verification begins. The `routing_applied` flag was removed — the operation is idempotent (setting already-true flags is a no-op) and the graph ensures it runs exactly once per promote cycle. The operation pre-marks SKIP track flags so gate validation works correctly.
 
 ### Gate Threshold Overrides
 
 Each routing profile includes a `gate_thresholds` dict that can override the default stage gate requirements. For example:
 - Exploratory questions lower the SUPPORTED evidence threshold to 0.5 (breadth over depth).
 - Explanatory questions add a `requires_contrastive_superiority` check at PROVISIONAL.
-- Predictive questions require `requires_falsification_criteria` at SUPPORTED.
+- Predictive questions require `requires_falsification_criteria` at ACTIONABLE (predictions are generated at ROBUST stage).
 
 The `validate_promotion()` function merges these overrides with default gate thresholds at runtime.
 
@@ -413,17 +410,9 @@ When `ResolveUncertaintyOperation` generates remaining concerns, they are buffer
 
 ---
 
-## Saturation Control
+## Investigation Termination
 
-Investigation cycling (Peirce) can enter an unproductive loop: scrutiny says "needs_resolution," investigation fetches more evidence, re-scrutiny still says "needs_resolution" with the same concerns. Without termination logic, this repeats until the investigation count limit (3) is reached — wasting LLM calls on a claim where additional evidence is not helping.
-
-### Deterministic Saturation Check
-
-After re-scrutiny (when `investigation_count > 0`), if the verdict is still `needs_resolution` and all blocking uncertainties for the claim have been resolved (including those marked as "Unresolvable"), the claim is marked `saturated = True`. This is a purely deterministic check — no LLM call.
-
-Saturated claims are excluded from further investigation via a `saturated: False` filter on investigation patterns. The claim remains in its current state (not abandoned, not promoted) and is included in synthesis as-is. If the claim is demoted by a later event, `saturated` is reset to `False` alongside all other verification flags, allowing fresh investigation.
-
-This prevents the infinite loop while preserving the claim and its evidence for the final report.
+Investigation cycles are capped by `MAX_INVESTIGATION_ATTEMPTS = 3` in `InvestigateClaimOperation`. After 3 investigation cycles, the claim is abandoned via the `AbandonOrDemote` graph node. No separate saturation mechanism exists — the investigation count is the sole termination condition.
 
 ---
 
@@ -469,7 +458,7 @@ When a claim is demoted, its verification flags are reset — scrutiny verdict c
 
 ### Investigation Cycling
 
-When scrutiny produces doubt but the claim is not clearly wrong (verdict: `needs_resolution`), the system enters an investigation cycle: analyze the scrutiny feedback, generate targeted search queries, create new evidence stubs, reset the scrutiny verdict. Investigation terminates in one of two ways: the claim is marked *saturated* when re-scrutiny produces the same verdict with no remaining blocking uncertainties (see Saturation Control), or the hard limit of 3 investigation attempts is reached.
+When scrutiny produces doubt but the claim is not clearly wrong (verdict: `needs_resolution`), the system enters an investigation cycle: analyze the scrutiny feedback, generate targeted search queries, create new evidence stubs. The graph re-enters the Scrutinize node after new evidence is extracted. Investigation terminates when the hard limit of 3 investigation attempts is reached, at which point the claim is abandoned.
 
 Investigation cycling implements Peirce's insight more faithfully than demotion alone. Demotion says "this was wrong, try again." Investigation says "this might be right, but we need more evidence to tell."
 
@@ -510,56 +499,73 @@ Revision follows the AGM framework: success (new information incorporated), cons
 
 ---
 
-## Pattern-Driven Architecture
+## Graph-Driven Architecture
 
-The system has no central orchestrator. The workflow emerges from **entity state** and **declarative patterns**.
+The system uses a pydantic-graph DAG (Directed Acyclic Graph with explicit cycles) to control the pipeline. Each node wraps one or more operations and returns the next node to run via typed return values. The graph makes dependencies explicit and type-checked — if a node returns a type not in the graph, construction fails at import time.
 
-A pattern is a rule: "when an entity of type X is in state Y, perform operation Z." The scheduler scans all entities, matches against all patterns, and produces prioritized work. When an operation changes entity state, new patterns may match. The workflow terminates when no patterns match.
+### Architecture Principles
 
-### Advantages
+Five rules govern the interaction between graph nodes and operations:
 
-- **Extensible**: New verification method = new pattern + new operation. No orchestration changes.
-- **Resilient**: Operation failures don't block unrelated work.
-- **Transparent**: The pattern table is a readable specification of the system's behavior.
-- **Naturally terminating**: No explicit "done" logic — absence of pending work is the termination condition.
+- **P1: Operations are pure transforms.** An operation reads entities, does work, and writes the result. It never manipulates fields on other entities to signal what should happen next.
+- **P2: The graph is the sole flow controller.** Only graph nodes decide what runs next, based on operation results, entity state, and graph state.
+- **P3: Entity fields are data, not signals.** Every field on Claim, Evidence, Objective represents something real — a verdict, a score, a stage. No field exists solely to tell the scheduler what to do.
+- **P4: Graph state tracks pipeline progress.** `EpistemicGraphState` tracks what work has been done and what needs doing — not entity fields.
+- **P5: Operations don't reach across entity boundaries.** An operation on an Uncertainty does not modify Claims. Cross-entity effects are the graph's job.
 
-### Pattern Table
+### Graph Topology (16 nodes)
 
-| Phase | Priority | Entity | Condition | Operation |
-|---|---|---|---|---|
-| TMS | 1 | evidence | invalidated=True, invalidation_cascaded=False | `invalidate_evidence` |
-| | 1 | claim | needs_revalidation=True, abandoned=False | `revalidate_claim` |
-| Pre-planning | 1 | objective | phase=new | `clarify_question` |
-| | 1 | objective | phase=clarified, question_type=None | `classify_question` |
-| | 1 | objective | phase=clarified | `conceptual_analysis` |
-| | 1 | objective | phase=analyzed | `plan_task` |
-| Uncertainty | 2 | uncertainty | unresolved, blocking | `resolve_uncertainty` |
-| Concern Dedup | 2 | objective | pending_concerns_count > 0 | `deduplicate_concerns` |
-| Evidence | 3 | evidence | extracted=False | `extract_evidence` |
-| Investigation | 4 | claim | verdict=needs_resolution, investigation_count<3, saturated=False | `investigate_claim` |
-| | 4 | claim | verdict=fail, stage=hypothesis, investigation_count<3, saturated=False | `investigate_claim` |
-| Claim Seed (verification mode) | 4 | objective | phase=planned, claims_proposed=False, claim_to_verify!=None | `seed_claim` |
-| Claim Proposal (research mode) | 4 | objective | phase=planned, claims_proposed=False, claim_to_verify=None | `propose_claims` |
-| Routing | 4 | claim | stage=supported, scrutiny_verdict=pass, routing_applied=False | `set_routing_defaults` |
-| Scrutiny | 5 | claim | scrutiny_verdict=None | `scrutinise_claim` |
-| Verification | 5 | claim | stage=supported, adversarial_checked=False | `adversarial_search` |
-| | 5 | claim | stage=supported, convergence_checked=False | `assess_convergence` |
-| | 5 | claim | stage=supported, deductive_checked=False | `validate_deductively` |
-| | 5 | claim | stage=supported, computational_checked=False | `verify_computationally` |
-| | 5 | claim | stage=supported, contrastive_checked=False | `contrastive_evaluation` |
-| | 5 | claim | stage=supported, consistency_checked=False | `cross_claim_consistency` |
-| Analysis | 5 | claim | argument_analyzed=False, scrutiny=pass | `analyze_argument` |
-| Promotion | 6 | claim | stage=hypothesis, scrutiny_verdict=pass | `promote_claim` |
-| | 6 | claim | stage=supported, all 7 track flags=True | `promote_claim` |
-| | 6 | claim | stage=provisional, evidence_count≥3 | `promote_claim` |
-| | 6 | claim | stage=robust, evidence_count≥3 | `promote_claim` |
-| Demotion | 6 | claim | scrutiny_verdict=fail, stage≠hypothesis | `demote_claim` |
-| Prediction | 7 | claim | stage=robust, predictions_generated=False | `generate_prediction` |
-| Synthesis | 7 | objective | phase=claims_done, snapshot_id=None | `freeze_snapshot` |
-| | 8 | snapshot | final, artefact_id=None | `synthesize_report` |
-| Decision | 9 | claim | stage=actionable, decision_recorded=False | `record_decision` |
+```
+PrepareObjective → PlanEvidence → ExtractEvidence → CreateClaims → Scrutinize
+                                                                       │
+  ┌────────────────────────────────────────────────────────────────────┘
+  │
+  ├── Investigate → ExtractNewEvidence → Scrutinize (cycle, max 3)
+  ├── AbandonOrDemote → Scrutinize or CheckCompletion
+  └── ResolveUncertainties → PromoteToSupported → ClusterEvidence → RunVerification
+                                    │                                      │
+                                    └── CheckCompletion         ResolveUncertainties
+                                                                           │
+                                                                    IntegrateEvidence
+                                                                           │
+                                                                    PromoteSupported
+                                                                           │
+                                                                    CheckCompletion
+                                                                           │
+                                                                      Synthesize → End
+```
 
-Verification track patterns are subject to runtime routing filtering: the scheduler removes work items for SKIP tracks and checks SECONDARY conditions before enqueueing work (see Question-Type Routing above).
+### Node Types
+
+| Node | Type | Operations wrapped |
+|---|---|---|
+| PrepareObjective | LLM | clarify_question, classify_question, conceptual_analysis |
+| PlanEvidence | LLM | plan_task |
+| ExtractEvidence | LLM + embedding | extract_evidence (loops all unextracted) |
+| CreateClaims | LLM | seed_claim OR propose_claims |
+| Scrutinize | LLM | scrutinise_claim (loops all unscrutinized) |
+| Investigate | LLM | investigate_claim |
+| ExtractNewEvidence | LLM + embedding | extract_evidence (investigation stubs) |
+| AbandonOrDemote | Deterministic | abandon_stale_claim, demote_claim |
+| ResolveUncertainties | LLM | resolve_uncertainty, deduplicate_concerns |
+| PromoteToSupported | Deterministic | promote_claim, set_routing_defaults |
+| ClusterEvidence | Embedding | select_top_k_evidence (HDBSCAN clustering) |
+| RunVerification | LLM | adversarial, convergence, deductive, computational, contrastive, consistency, argument |
+| IntegrateEvidence | LLM | integrate_evidence (abductive integration) |
+| PromoteSupported | Deterministic | promote_claim (S→P→R→A), generate_prediction, record_decision |
+| CheckCompletion | Deterministic | routes to Synthesize or End |
+| Synthesize | LLM | freeze_snapshot, synthesize_report |
+
+### Key Design Decisions
+
+- **ResolveUncertainties appears in two positions**: before first promote (uncertainties from scrutiny) and after verification (uncertainties from adversarial search). The `next_on_clear` parameter routes to PromoteToSupported or IntegrateEvidence accordingly.
+- **PromoteToSupported is a routing hub**: checks actual claim state (HYPOTHESIS with pass → promote; SUPPORTED without verification → ClusterEvidence; all done → CheckCompletion). This correctly handles re-entry after uncertainty resolution.
+- **ClusterEvidence is a separate node**: deterministic embedding-based clustering separated from LLM-calling verification tracks. Reduces 100+ evidence items to ~8 representatives before verification.
+- **TMS runs as a sweep**: `_run_tms_sweep()` is called after RunVerification and ExtractNewEvidence — not as a separate node. It cascades evidence invalidation and claim revalidation.
+
+### Entry Point
+
+The sole entry point is `run_research_question()` in `operations_runner.py`, which delegates to `run_epistemic_graph()` in `graph/__init__.py`. Both the CLI and benchmark harnesses should call this function.
 
 ---
 
@@ -569,24 +575,26 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 
 | Layer | Location | Responsibility |
 |---|---|---|
-| **Library** | `src/andamentum/epistemic/` | Framework-agnostic. Entities, operations, patterns, gates, adapters, agents (Python-native), routing, dedup, confidence, runner. Install with `pip install andamentum`. |
+| **Library** | `src/andamentum/epistemic/` | Framework-agnostic. Entities, operations, graph-based scheduling, gates, adapters, agents (Python-native), routing, dedup, confidence, runner. Install with `pip install andamentum`. |
 
 ### Agents
 
-32 Python-native agent definitions, all narrow: each agent has a maximum of 7 output fields with no nested object lists. Agents are registered in `AGENT_REGISTRY` via `register_agent()` at import time, grouped by domain module:
+34 Python-native agent definitions, all narrow: each agent has a maximum of 7 output fields with no nested object lists. Agents are registered in `AGENT_REGISTRY` via `register_agent()` at import time, grouped by domain module:
 
 - **Preplanning** (4): `epistemic_clarify_question`, `epistemic_classify_question`, `epistemic_conceptual_analysis`, `epistemic_formulate_query`
 - **Evidence** (5): `epistemic_extract_evidence`, `epistemic_assess_evidence`, `epistemic_assess_evidence_quality`, `epistemic_extract_assertion`, `epistemic_screen_relevance`
 - **Verification** (12): `epistemic_draft_claim`, `epistemic_identify_single_issue`, `epistemic_identify_testable_aspect`, `epistemic_investigate_claim`, `epistemic_deductive_validation`, `epistemic_verify_computationally`, `epistemic_analyze_argument`, `epistemic_contrastive_evaluation`, `epistemic_cross_claim_consistency`, `epistemic_generate_counterquery`, `epistemic_evaluate_counterargument`, `epistemic_check_pairwise_independence`
 - **Synthesis** (5): `epistemic_validate_answer`, `epistemic_write_answer`, `epistemic_resolve_uncertainty`, `epistemic_record_decision`, `epistemic_classify_evidence_domain`
+- **Integration** (1): `epistemic_integrate_evidence` (abductive integration of evidence for a claim)
 - **Prediction** (3): `epistemic_classify_prediction`, `epistemic_define_falsification`, `epistemic_specify_prediction`
 - **Judge** (2): `epistemic_judge_evidence` (supports/contradicts/no_bearing), `epistemic_judge_independence` (binary independence)
+- **Provider** (1): `epistemic_select_provider` (semantic provider selection)
 - **Similarity** (1): `epistemic_validate_group` (generic group validation for dedup)
 - **Output models** (1 module): Shared Pydantic output models in `agents/output_models.py`
 
 ### Operations
 
-26 operation classes registered in `OPERATION_CLASSES`, each inheriting from `BaseOperation`:
+29 operation classes registered in `OPERATION_CLASSES`, each inheriting from `BaseOperation`:
 
 | Operation | Entity | Effect |
 |---|---|---|
@@ -595,9 +603,11 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 | `ConceptualAnalysisOperation` | objective | Define terms, set phase=analyzed |
 | `PlanTaskOperation` | objective | Create evidence stubs, set phase=planned |
 | `ProposeClaimsOperation` | objective | Deduplicate evidence (HDBSCAN), propose claims from top-K representatives |
+| `SeedClaimOperation` | objective | Create claim from `claim_to_verify` (verification mode) |
 | `ExtractEvidenceOperation` | evidence | Fill extracted_content from source |
-| `ScrutiniseClaimOperation` | claim | Set scrutiny_verdict, may create uncertainties; saturation check after re-scrutiny |
+| `ScrutiniseClaimOperation` | claim | Set scrutiny_verdict, may create uncertainties |
 | `InvestigateClaimOperation` | claim | Create targeted evidence stubs, reset verdict |
+| `AbandonStaleClaimOperation` | claim | Abandon claims that exhausted investigation attempts |
 | `SetRoutingDefaultsOperation` | claim | Pre-mark skipped track flags based on question type routing (deterministic, no LLM) |
 | `AdversarialSearchOperation` | claim | Evaluate counterarguments, set adversarial_balance |
 | `AssessConvergenceOperation` | claim | Assess cross-domain convergence |
@@ -606,8 +616,9 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 | `ContrastiveEvaluationOperation` | claim | Pairwise comparison of competing claims |
 | `CrossClaimConsistencyOperation` | claim | Pairwise conflict check between claims |
 | `AnalyzeArgumentOperation` | claim | Analyze argument structure, premises, fallacies |
+| `IntegrateEvidenceOperation` | claim | Abductive integration of evidence for holistic assessment |
 | `PromoteClaimOperation` | claim | Advance stage via deterministic gate check (routing-aware thresholds) |
-| `DemoteClaimOperation` | claim | Lower stage, reset all 7 verification flags + routing_applied + saturated |
+| `DemoteClaimOperation` | claim | Lower stage, reset all 7 verification flags |
 | `ResolveUncertaintyOperation` | uncertainty | Set resolution text |
 | `DeduplicateConcernsOperation` | objective | Batch dedup buffered remaining concerns |
 | `GeneratePredictionOperation` | claim | Create testable predictions |
@@ -623,7 +634,7 @@ Verification track patterns are subject to runtime routing filtering: the schedu
 
 **Code-driven synthesis**: `SynthesizeReportOperation` loads entities from the snapshot, calls the agent for prose only, and assembles the structured report and trace mapping deterministically in code. The LLM writes; the code structures.
 
-**Cycling reset**: When `DemoteClaimOperation` fires, it clears `scrutiny_verdict` and resets all seven verification booleans, `routing_applied`, and `saturated` to False, forcing full re-evaluation from scratch.
+**Cycling reset**: When `DemoteClaimOperation` fires, it clears `scrutiny_verdict` and resets all seven verification booleans to False, forcing full re-evaluation from scratch.
 
 **TMS operations**: `InvalidateEvidenceOperation` and `RevalidateClaimOperation` implement Doyle's truth maintenance. When evidence is invalidated (e.g., retracted source), cascading invalidation marks dependent claims for revalidation. `RevalidateClaimOperation` re-checks stage gates using `validate_current_stage()` and demotes claims that no longer meet their current stage requirements.
 
@@ -643,7 +654,7 @@ src/andamentum/epistemic/
 │   ├── judge.py                   # judge_evidence, judge_independence
 │   └── similarity.py             # validate_group
 ├── validation/                    # Gate validators, output validators, traceability
-├── operations/                    # 26 operation classes (split by pipeline phase)
+├── operations/                    # 29 operation classes (split by pipeline phase)
 │   ├── __init__.py                #   re-exports, OPERATION_CLASSES, create_operations()
 │   ├── base.py                    #   protocols, BaseOperation, constants
 │   ├── preplanning.py             #   clarify, classify, analyze, plan
@@ -658,7 +669,8 @@ src/andamentum/epistemic/
 │   ├── investigation.py           #   investigate, predict, decide
 │   ├── belief_maintenance.py      #   invalidate, revalidate, routing defaults
 │   └── concerns.py                #   batch dedup of remaining concerns
-├── patterns.py                    # 30 pattern definitions + PatternScheduler with routing filter
+├── graph/                         # pydantic-graph DAG (16 nodes, EpistemicGraphState)
+├── patterns.py                    # Legacy pattern definitions (retained for reference)
 ├── gates.py                       # StageGate definitions + validate_promotion() (routing-aware) + TMS validate_current_stage()
 ├── routing.py                     # Question-type routing table (verification tracks, gate overrides)
 ├── provider_routing.py            # Semantic provider selection (embed question + rank providers by cosine similarity)
@@ -666,13 +678,13 @@ src/andamentum/epistemic/
 ├── similarity.py                  # Shared embed-compare-group utility (cosine, Union-Find, medoid, validation)
 ├── dedup.py                       # HDBSCAN evidence deduplication
 ├── embeddings.py                  # Ollama embedding client for dedup clustering + provider routing
-├── confidence.py                  # Answer confidence (checklist) + posterior confidence scoring
+├── confidence.py                  # Posterior confidence scoring
 ├── typeset_report.py              # Adapter: convert ReportData to typeset atom list
 ├── adapters.py                    # Agent output normalization
 ├── repository.py                  # Entity CRUD interface
 ├── storage.py                     # StorageBackend protocol
 ├── runner.py                      # DefaultAgentRunner (PydanticAI agent execution)
-├── operations_runner.py           # Scheduler loop + confidence computation
+├── operations_runner.py           # Entry point: run_research_question() → graph execution
 ├── primitives.py                  # Shared enums and dataclasses
 ├── quality.py                     # Bibliometric quality scoring
 ├── adversarial_balance.py         # Balance calculation (deterministic)
@@ -710,7 +722,7 @@ Provider selection uses **semantic similarity**: `select_providers()` in `provid
 
 ### Extension Guide
 
-**Add a new operation**: Create `BaseOperation` subclass → add Pattern to `WORK_PATTERNS` → register in `OPERATION_CLASSES` → create agent manifest → (optional) add adapter.
+**Add a new operation**: Create `BaseOperation` subclass → register in `OPERATION_CLASSES` → add a graph node that calls it → create agent manifest → (optional) add adapter.
 
 **Add an evidence provider**: Implement `EvidenceGatherer` protocol → wire into `DefaultEvidenceGatherer`. Implement `check_health()` → `async def check_health(self) -> CheckResult` so preflight discovers the provider automatically (see Preflight section below).
 
@@ -774,32 +786,17 @@ After every run, the CLI prints an operation profiling table aggregated from exe
 
 ### Confidence Scoring
 
-Two scores run after the scheduler completes. Both are pure computations — no LLM calls, no trained weights, zero free parameters.
-
-#### Answer Confidence (process completion)
-
-`compute_answer_confidence()` produces an `AnswerConfidenceReport`. It evaluates a checklist of pass/fail checks and converts to a probability via the logistic function:
-
-**Universal checks** (always evaluated):
-- `evidence_basis` — at least one active claim has judged, non-invalidated evidence
-- `scrutiny_complete` — all active claims have a scrutiny verdict
-- `uncertainties_resolved` — no unresolved blocking uncertainties remain
-- `belief_maintenance` — no active claims need revalidation
-
-**Routing-dependent checks** (one per PRIMARY verification track for the question type):
-- `track:adversarial`, `track:convergence`, `track:deductive`, `track:computational`, `track:contrastive`, `track:consistency` — each checks that all active claims completed the corresponding track
-
-Each check contributes +1 (pass) or -1 (fail) to log-odds. The logistic transform converts to a probability: `confidence = 1 / (1 + exp(-log_odds))`. Classified as high (>=0.75), moderate (>=0.50), low (>=0.25), or insufficient (<0.25).
+Posterior confidence runs after the graph completes. It is a pure computation — no LLM calls, no trained weights, zero free parameters.
 
 #### Posterior confidence (evidential direction)
 
 `compute_posterior()` produces a `PosteriorReport` for yes/no-style research questions (verificatory, comparative, predictive). Returns None for other question types where a directional answer is not meaningful. Works on claims at any stage (including HYPOTHESIS) so the metric is meaningful even when claims have not been promoted.
 
-Aggregates evidence direction across all active claims: `log_odds = claims_supported - claims_contradicted`, then `posterior_confidence = 1 / (1 + exp(-log_odds))`. Only representative (not corroborative/deferred), non-invalidated evidence with a directional judgment counts.
+When integration assessment is available (i.e., a claim has `integrated_assessment` set by `IntegrateEvidenceOperation`), the posterior uses the integration verdict directly. Otherwise, it falls back to count-based logistic: `log_odds = claims_supported - claims_contradicted`, then `posterior_confidence = 1 / (1 + exp(-log_odds))`. Only representative (not corroborative/deferred), non-invalidated evidence with a directional judgment counts.
 
 ### Diagnostic Logging
 
-Evidence selection during deduplication logs cluster counts, representative selections, and corroborative evidence counts at the INFO level. The scheduler logs each operation execution, pattern matching, and budget consumption. All diagnostic output uses standard Python logging, not print statements.
+Evidence selection during deduplication logs cluster counts, representative selections, and corroborative evidence counts at the INFO level. The graph logs each node transition and operation execution. All diagnostic output uses standard Python logging, not print statements.
 
 ---
 
