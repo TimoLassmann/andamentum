@@ -67,13 +67,13 @@ def _sha256(text: str) -> str:
 # Each entry maps a source code section to the test file that covers it.
 
 TRACKED_SECTIONS = [
-    # operations/evidence.py: _score_evidence fallback chain
+    # operations/evidence.py: _score_evidence chain (no fallback default — raises on miss)
     {
         "file": _SRC / "operations" / "evidence.py",
         "start": "async def _score_evidence",
         "num_lines": 100,
-        "description": "Evidence scoring 4-path fallback chain",
-        "test_file": "test_operations_failure.py::TestEvidenceScoringFallbackChain",
+        "description": "Evidence scoring 3-path chain (no fallback)",
+        "test_file": "test_no_silent_fallbacks.py",
     },
     # operations/scrutiny.py: Scrutiny evidence loading loop
     {
@@ -146,7 +146,7 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 4-path fallback chain": "b28d52f14432cc49",
+    "Evidence scoring 3-path chain (no fallback)": "eb3c4821080a58e3",
     "Scrutiny evidence loading loop": "92c9edb568f22327",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     "Writer-validator loop": "3c3f161d6f5b27cf",

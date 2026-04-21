@@ -230,7 +230,7 @@ class ExtractEvidenceOperation(BaseOperation):
     async def _score_evidence(
         self, evidence: Evidence, gathered: GatheredEvidence | None = None
     ) -> None:
-        """Score evidence quality. Four paths: OpenAlex -> agent assessment -> gatherer fallback -> minimum default."""
+        """Score evidence quality. Three paths: OpenAlex -> agent assessment -> gatherer-supplied score. Raises if none can produce a score."""
         import logging
 
         _log = logging.getLogger(__name__)
@@ -265,9 +265,7 @@ class ExtractEvidenceOperation(BaseOperation):
                 if claims:
                     claim_context = claims[0].statement
 
-            source_header = (
-                f"Source: {evidence.source_type} — {evidence.source_ref}"
-            )
+            source_header = f"Source: {evidence.source_type} — {evidence.source_ref}"
             if gathered and gathered.quality_metadata:
                 provider = gathered.quality_metadata.get(
                     "provider", evidence.source_type
@@ -345,16 +343,10 @@ class ExtractEvidenceOperation(BaseOperation):
             )
             return
 
-        # Path 4: Minimum default — never leave extracted evidence unscored
-        if evidence.extracted_content and evidence.extracted_content.strip():
-            evidence.quality_score = 0.1
-            evidence.quality_metadata = {"source": "default_minimum"}
-            _log.info(
-                "[_score_evidence] PATH4 default_minimum %s score=0.1",
-                evidence.entity_id,
-            )
-        else:
-            _log.warning(
-                "[_score_evidence] NO SCORE for %s — no content to score",
-                evidence.entity_id,
-            )
+        # No scoring strategy succeeded — fail loud rather than fabricating a default.
+        raise RuntimeError(
+            f"[_score_evidence] no scorer available for {evidence.entity_id}: "
+            f"_score_evidence requires a quality_scorer, an agent_runner, or a "
+            f"gatherer-supplied quality_score on the GatheredEvidence. None were "
+            f"available. This indicates a wiring bug in graph construction."
+        )

@@ -539,3 +539,56 @@ async def test_convergence_evidence_load_failure_propagates(tmp_path):
                 operation="assess_convergence",
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_score_evidence_raises_when_no_scorer_available(tmp_path):
+    """_score_evidence previously fabricated quality_score=0.1 ("default_minimum")
+    when no scorer succeeded. That silently polluted posteriors with a fake
+    quality signal. Now it raises so the failure is visible."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Evidence
+    from andamentum.epistemic.operations.base import GatheredEvidence
+    from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    class _UnscoredGatherer:
+        """Returns content but no quality_score — exactly the input shape that
+        used to land in Path 4's default_minimum fabrication."""
+
+        async def gather(self, source_type: str, query: str):
+            return [
+                GatheredEvidence(
+                    content="some extracted passage about the claim",
+                    source_ref=query,
+                    source_type=source_type,
+                    quality_score=None,  # the whole point
+                )
+            ]
+
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    ev = Evidence(
+        objective_id="obj-1",
+        source_type="web_search",
+        source_ref="http://example.org/paper",
+    )
+    await repo.save(ev)
+
+    op = ExtractEvidenceOperation(
+        repo=repo,
+        agent_runner=None,  # no agent scoring
+        evidence_gatherer=_UnscoredGatherer(),
+        quality_scorer=None,  # no OpenAlex
+        embedding_model=None,
+    )
+    with pytest.raises(RuntimeError, match="no scorer available"):
+        await op.execute(
+            OperationInput(
+                entity_id=ev.entity_id,
+                entity_type="evidence",
+                operation="extract_evidence",
+            )
+        )
