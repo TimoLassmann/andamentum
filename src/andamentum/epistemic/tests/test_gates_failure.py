@@ -349,12 +349,8 @@ class TestValidatePromotionFailure:
 class TestValidateCurrentStageFailure:
     """Test validate_current_stage (TMS) under failure conditions."""
 
-    async def test_evidence_get_fails_reduces_count(self, tmp_path):
-        """CRITICAL: When evidence get fails in validate_current_stage,
-        the evidence is silently not counted (gates.py:552-553 -- except Exception: pass).
-
-        With all gets failing, valid_evidence_count = 0, and SUPPORTED requires >= 1.
-        """
+    async def test_evidence_get_fails_raises(self, tmp_path):
+        """When evidence get fails in validate_current_stage, the exception propagates."""
         store = await _make_store(tmp_path)
         repo = FailingRepo(store, fail_on_get={"e-1", "e-2"})
 
@@ -363,14 +359,11 @@ class TestValidateCurrentStageFailure:
             evidence_ids=["e-1", "e-2"],
         )
 
-        result = await validate_current_stage(claim, repo)
-        # With all evidence gets failing, valid_evidence_count = 0
-        # SUPPORTED requires min_evidence >= 1, so this should fail
-        assert not result.passed
-        assert any("evidence" in r.lower() for r in result.blocking_reasons)
+        with pytest.raises(RuntimeError):
+            await validate_current_stage(claim, repo)
 
-    async def test_quality_sum_partial_failure(self, tmp_path):
-        """When one evidence get fails and the remaining quality is below threshold."""
+    async def test_quality_sum_partial_failure_raises(self, tmp_path):
+        """When one evidence get fails, the exception propagates out of validate_current_stage."""
         store = await _make_store(tmp_path)
         repo = FailingRepo(store, fail_on_get={"e-1"})
 
@@ -379,14 +372,12 @@ class TestValidateCurrentStageFailure:
         await repo.save(e2)
 
         claim = _make_claim(
-            stage=ClaimStage.PROVISIONAL,  # Has min_quality_sum = 0.5
+            stage=ClaimStage.PROVISIONAL,
             evidence_ids=["e-1", "e-2"],
         )
 
-        result = await validate_current_stage(claim, repo)
-        # One evidence get fails (not counted), the other has quality 0.3
-        # PROVISIONAL needs min_quality_sum >= 0.5, so 0.3 < 0.5 blocks
-        assert not result.passed
+        with pytest.raises(RuntimeError):
+            await validate_current_stage(claim, repo)
 
     async def test_hypothesis_always_passes(self, tmp_path):
         """HYPOTHESIS has no gate -- validate_current_stage should always pass."""

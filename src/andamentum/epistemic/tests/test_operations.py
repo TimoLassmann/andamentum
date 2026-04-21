@@ -485,8 +485,8 @@ class TestAgentOnlyExtraction:
         assert loaded.quality_score >= 0.05
         assert loaded.quality_metadata is not None
 
-    async def test_gatherer_exception_falls_through_to_agent(self, repo, fake_runner):
-        """When gatherer throws, operation falls through to agent-based extraction."""
+    async def test_gatherer_exception_propagates(self, repo, fake_runner):
+        """When gatherer throws, the exception propagates out of the operation."""
 
         class FailingGatherer:
             async def gather(
@@ -510,21 +510,13 @@ class TestAgentOnlyExtraction:
         work = OperationInput(
             entity_id="e-gf", entity_type="evidence", operation="extract_evidence"
         )
-        result = await ops["extract_evidence"].execute(work)
+        with pytest.raises(ConnectionError):
+            await ops["extract_evidence"].execute(work)
 
-        assert result.success, (
-            f"Operation should succeed via agent fallback: {result.message}"
-        )
-        loaded = await repo.get_evidence("e-gf")
-        assert loaded.extracted is True
-        assert loaded.extracted_content, "Agent should have extracted content"
-        assert loaded.quality_score is not None, "Evidence must be scored"
-        assert loaded.quality_score > 0
+    async def test_gatherer_agent_failure_propagates(self, repo):
+        """When agent scoring fails, the exception propagates out of the operation."""
 
-    async def test_gatherer_fallback_on_agent_failure(self, repo):
-        """When agent scoring fails, gatherer's quality_score is used as fallback."""
-
-        # Runner that fails on quality assessment but works for extraction
+        # Runner that fails on quality assessment
         class FailingRunner:
             def __init__(self):
                 self.calls: list[tuple[str, dict]] = []
@@ -575,14 +567,8 @@ class TestAgentOnlyExtraction:
         )
         await repo.save(e)
 
-        result = await ops["extract_evidence"].execute(work)
-        assert result.success
-        loaded = await repo.get_evidence("e-fb")
-        assert loaded.quality_score is not None, (
-            "Gatherer fallback must set quality_score"
-        )
-        assert loaded.quality_score >= 0.05
-        assert loaded.quality_metadata.get("source") == "gatherer_fallback"
+        with pytest.raises(RuntimeError, match="LLM unavailable"):
+            await ops["extract_evidence"].execute(work)
 
 
 class TestScrutiny:

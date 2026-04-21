@@ -277,6 +277,14 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "scope": "General",
         "direction": "supports",
     },
+    "epistemic_judge_evidence": {
+        "verdict": "supports",
+        "reasoning": "Test judgment",
+    },
+    "epistemic_select_provider": {
+        "relevant": True,
+        "reasoning": "Provider is relevant for this question type",
+    },
 }
 
 
