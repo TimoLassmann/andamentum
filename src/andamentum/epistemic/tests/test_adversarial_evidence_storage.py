@@ -73,7 +73,7 @@ class TestAdversarialEvidenceStorage:
 
         # Check the evidence fields
         ae = adversarial_evidence[0]
-        assert ae.source_type == "web"
+        assert ae.source_type == "web_search"
         assert ae.extracted is True
         assert ae.cluster_status == "representative"
 
