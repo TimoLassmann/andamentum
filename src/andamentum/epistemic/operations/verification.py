@@ -393,28 +393,25 @@ class AssessConvergenceOperation(BaseOperation):
                 eids = cluster.evidence_ids
                 for i in range(len(eids)):
                     for j in range(i + 1, len(eids)):
-                        try:
-                            # Find the evidence content for each item
-                            ev_a_content = ""
-                            ev_b_content = ""
-                            for item in evidence_items:
-                                if item["evidence_id"] == eids[i]:
-                                    ev_a_content = item["content"]
-                                elif item["evidence_id"] == eids[j]:
-                                    ev_b_content = item["content"]
+                        # Find the evidence content for each item
+                        ev_a_content = ""
+                        ev_b_content = ""
+                        for item in evidence_items:
+                            if item["evidence_id"] == eids[i]:
+                                ev_a_content = item["content"]
+                            elif item["evidence_id"] == eids[j]:
+                                ev_b_content = item["content"]
 
-                            if ev_a_content and ev_b_content:
-                                await self.run_agent(
-                                    "epistemic_check_pairwise_independence",
-                                    evidence_a=ev_a_content,
-                                    evidence_b=ev_b_content,
-                                )
-                                # The result is logged via run_agent; the deterministic
-                                # convergence detector handles independence via domain
-                                # distance. The pairwise check is an additional signal
-                                # recorded in the audit trail.
-                        except Exception:
-                            continue
+                        if ev_a_content and ev_b_content:
+                            await self.run_agent(
+                                "epistemic_check_pairwise_independence",
+                                evidence_a=ev_a_content,
+                                evidence_b=ev_b_content,
+                            )
+                            # The result is logged via run_agent; the deterministic
+                            # convergence detector handles independence via domain
+                            # distance. The pairwise check is an additional signal
+                            # recorded in the audit trail.
 
         # Step 3: Deterministic convergence computation
         convergence = detect_convergence(
