@@ -28,7 +28,6 @@ class EpistemicDeps:
 
     repo: "EpistemicRepository"
     agent_runner: Any  # AgentRunner or None (for no-LLM mode)
-    store: Any = None  # DocumentStore for execution trace recording
     evidence_gatherer: Any | None = None
     quality_scorer: Any | None = None
     embedding_model: str | None = None

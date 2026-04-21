@@ -70,12 +70,17 @@ async def _run_op(
             success=False, entity_id=entity_id, message=f"{operation} error: {e}"
         )
     state.log_operation(operation, entity_id, result.success, result.message)
-    # Persist execution trace to DocumentStore for replay/debugging
-    if deps.store:
-        try:
+    # Persist execution trace via the repo's storage backend.
+    # Uses the StorageBackend.add() method (not DocumentStore.register_document,
+    # which deduplicates by content hash and would collapse same-message steps).
+    try:
+        backend = getattr(deps.repo, "store", None)
+        if backend is not None:
             step_number = len(state.operations_log)
-            await deps.store.add_document(
+            await backend.add(
+                file_path=f"execution_step_{step_number}",
                 content=result.message or "",
+                title=f"{operation} on {entity_id[:12]}",
                 metadata={
                     "epistemic_type": "execution_step",
                     "step_number": step_number,
@@ -87,8 +92,8 @@ async def _run_op(
                     "created_entities": getattr(result, "created_entities", []),
                 },
             )
-        except Exception:
-            pass  # Best effort — don't crash the pipeline for trace failures
+    except Exception:
+        pass  # Best effort — don't crash the pipeline for trace failures
     if deps.progress_callback:
         extras = {"created_entities": getattr(result, "created_entities", [])}
         if not result.success:
