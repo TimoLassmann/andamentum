@@ -422,6 +422,54 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp_path):
+    """When compute_posterior raises, run_epistemic_graph must propagate —
+    a silent None posterior hides the headline result."""
+    from andamentum.epistemic.graph import run_epistemic_graph
+    from andamentum.epistemic.graph.result import EpistemicResult
+
+    # Fake graph result with successful=1 so the posterior branch is reached.
+    fake_epistemic_result = EpistemicResult(
+        objective_id="obj-fake",
+        status="complete",
+        successful=1,
+        failed=0,
+    )
+
+    class _FakeGraphRunResult:
+        output = fake_epistemic_result
+
+    class _FakeGraph:
+        async def run(self, *args, **kwargs):
+            return _FakeGraphRunResult()
+
+    # Patch the graph object inside nodes so run_epistemic_graph uses our fake.
+    monkeypatch.setattr(
+        "andamentum.epistemic.graph.nodes.epistemic_graph",
+        _FakeGraph(),
+    )
+
+    # Patch compute_posterior to raise.
+    async def _raising_posterior(*args, **kwargs):
+        raise RuntimeError("posterior computation failed")
+
+    monkeypatch.setattr(
+        "andamentum.epistemic.confidence.compute_posterior",
+        _raising_posterior,
+    )
+
+    with pytest.raises(RuntimeError, match="posterior computation failed"):
+        await run_epistemic_graph(
+            question="Does X cause Y?",
+            database_name="test_posterior_failure",
+            model="test:stub",
+            provider="none",
+            providers={},
+            db_dir=str(tmp_path),
+        )
+
+
+@pytest.mark.asyncio
 async def test_convergence_evidence_load_failure_propagates(tmp_path):
     """When repo.get("evidence", eid) raises during the convergence loop,
     AssessConvergenceOperation must propagate — never silently skip the item

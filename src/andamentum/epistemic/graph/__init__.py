@@ -142,15 +142,13 @@ async def run_epistemic_graph(
             f"Graph complete: {result.successful} successful, {result.failed} failed"
         )
 
-    # Compute posterior confidence (deterministic, no LLM)
+    # Compute posterior confidence (deterministic, no LLM).
+    # No fallback: if posterior raises, the caller sees the real error.
     posterior_report = None
     if result.successful > 0:
-        try:
-            from ..confidence import compute_posterior
+        from ..confidence import compute_posterior
 
-            posterior_report = await compute_posterior(repo, objective_id)
-        except Exception as e:
-            logger.warning(f"Posterior computation failed: {e}")
+        posterior_report = await compute_posterior(repo, objective_id)
 
     # Return backward-compatible result
     from ..operations_runner import PipelineResult
