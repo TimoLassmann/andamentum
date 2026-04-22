@@ -7,7 +7,7 @@ Architecture: Layer 1 (framework-agnostic, no model calls)
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import uuid
 
 from .primitives import (
@@ -42,6 +42,8 @@ def detect_convergence(
     claim_id: str,
     objective_id: str,
     evidence_qualities: Optional[Dict[str, float]] = None,
+    precomputed_classifications: Optional[List[DomainClassification]] = None,
+    pairwise_independence: Optional[Dict[Tuple[str, str], bool]] = None,
 ) -> ConvergentEvidence:
     """Detect cross-domain convergence in evidence.
 
@@ -52,6 +54,14 @@ def detect_convergence(
         claim_id: ID of the claim this evidence supports
         objective_id: ID of the objective
         evidence_qualities: Optional dict of evidence_id -> quality score (0-1)
+        precomputed_classifications: Optional list of DomainClassification from the LLM
+            agent (epistemic_classify_evidence_domain). When provided, these replace
+            the deterministic classify_evidence_domain heuristic. Must have exactly one
+            entry per evidence item in the same order.
+        pairwise_independence: Optional dict mapping (eid_a, eid_b) -> bool from the
+            epistemic_check_pairwise_independence agent. When provided, within-cluster
+            pairs judged independent signal hidden methodological diversity and boost
+            the independence score.
 
     Returns:
         ConvergentEvidence with full convergence analysis
@@ -59,24 +69,38 @@ def detect_convergence(
     if not evidence_items:
         return _empty_convergence(claim_id, objective_id)
 
-    # Step 1: Classify each evidence item by domain
-    classifications = []
-    for item in evidence_items:
-        evidence_id = item.get("evidence_id", str(uuid.uuid4()))
-        text = (
-            item.get("content", "") or item.get("text", "") or item.get("summary", "")
-        )
-        metadata = {
-            k: v for k, v in item.items() if k not in ["evidence_id", "content", "text"]
-        }
-
-        classification = classify_evidence_domain(
-            evidence_id=evidence_id,
-            claim_id=claim_id,
-            evidence_text=text,
-            evidence_metadata=metadata,
-        )
-        classifications.append(classification)
+    # Step 1: Use precomputed classifications if provided, else classify internally.
+    # Precomputed classifications come from the LLM agent (epistemic_classify_evidence_domain),
+    # which is more accurate than the deterministic classify_evidence_domain heuristic.
+    if precomputed_classifications is not None:
+        # Validate alignment: one classification per evidence item, in order
+        if len(precomputed_classifications) != len(evidence_items):
+            raise ValueError(
+                f"precomputed_classifications length ({len(precomputed_classifications)}) "
+                f"does not match evidence_items length ({len(evidence_items)})"
+            )
+        classifications = list(precomputed_classifications)
+    else:
+        classifications = []
+        for item in evidence_items:
+            evidence_id = item.get("evidence_id", str(uuid.uuid4()))
+            text = (
+                item.get("content", "")
+                or item.get("text", "")
+                or item.get("summary", "")
+            )
+            metadata = {
+                k: v
+                for k, v in item.items()
+                if k not in ["evidence_id", "content", "text"]
+            }
+            classification = classify_evidence_domain(
+                evidence_id=evidence_id,
+                claim_id=claim_id,
+                evidence_text=text,
+                evidence_metadata=metadata,
+            )
+            classifications.append(classification)
 
     # Step 2: Cluster by domain
     clusters = cluster_by_domain(
@@ -97,11 +121,15 @@ def detect_convergence(
     # Step 4: Calculate inter-cluster distances
     avg_distance, min_distance = calculate_inter_cluster_distances(clusters)
 
-    # Step 5: Run independence checks
-    independence_checks = _check_independence(clusters, min_distance)
+    # Step 5: Run independence checks (now augmented by agent's pairwise judgments)
+    independence_checks = _check_independence(
+        clusters, min_distance, pairwise_independence
+    )
 
     # Step 6: Calculate independence score
-    independence_score = _calculate_independence_score(clusters, avg_distance)
+    independence_score = _calculate_independence_score(
+        clusters, avg_distance, independence_checks
+    )
 
     # Step 7: Detect convergence
     convergence_detected, strength = _detect_convergence_signal(
@@ -179,6 +207,7 @@ def _empty_convergence(claim_id: str, objective_id: str) -> ConvergentEvidence:
 def _check_independence(
     clusters: List[DomainCluster],
     min_distance: float,
+    pairwise_independence: Optional[Dict[Tuple[str, str], bool]] = None,
 ) -> Dict[str, bool]:
     """Check various independence criteria."""
     checks = {}
@@ -207,12 +236,38 @@ def _check_independence(
             data_sources.add(cluster.representative_classification.data_source)
     checks["data_source_diversity"] = len(data_sources) >= 2
 
+    # Check 5: Agent-judged within-cluster independence
+    # If the LLM finds that items WITHIN the same domain cluster are actually
+    # independent (different labs, different methodologies despite same domain),
+    # the cluster has hidden diversity — a positive signal beyond structural checks.
+    if pairwise_independence:
+        intra_cluster_pairs = []
+        for cluster in clusters:
+            eids = cluster.evidence_ids
+            for i in range(len(eids)):
+                for j in range(i + 1, len(eids)):
+                    pair_key = (eids[i], eids[j])
+                    rev_key = (eids[j], eids[i])
+                    if pair_key in pairwise_independence:
+                        intra_cluster_pairs.append(pairwise_independence[pair_key])
+                    elif rev_key in pairwise_independence:
+                        intra_cluster_pairs.append(pairwise_independence[rev_key])
+        if intra_cluster_pairs:
+            independent_count = sum(1 for v in intra_cluster_pairs if v)
+            ratio = independent_count / len(intra_cluster_pairs)
+            checks["intra_cluster_diversity"] = ratio >= 0.5
+        else:
+            checks["intra_cluster_diversity"] = False
+    else:
+        checks["intra_cluster_diversity"] = False
+
     return checks
 
 
 def _calculate_independence_score(
     clusters: List[DomainCluster],
     avg_distance: float,
+    independence_checks: Optional[Dict[str, bool]] = None,
 ) -> float:
     """Calculate overall independence score (0-1)."""
     if len(clusters) < 2:
@@ -233,8 +288,13 @@ def _calculate_independence_score(
     )
     quality_score = quality_sum / len(clusters) if clusters else 0.5
 
-    # Weighted combination
-    return 0.4 * cluster_score + 0.4 * distance_score + 0.2 * quality_score
+    # 4. Bonus for agent-judged intra-cluster diversity (if available)
+    bonus = 0.0
+    if independence_checks and independence_checks.get("intra_cluster_diversity"):
+        bonus = 0.1  # small but visible boost
+
+    base = 0.4 * cluster_score + 0.4 * distance_score + 0.2 * quality_score
+    return min(1.0, base + bonus)
 
 
 def _detect_convergence_signal(
@@ -348,6 +408,9 @@ def _generate_justification(
 
     if independence_checks.get("data_source_diversity"):
         parts.append("multiple data sources represented")
+
+    if independence_checks.get("intra_cluster_diversity"):
+        parts.append("agent finds within-cluster items methodologically diverse")
 
     return "; ".join(parts) + "."
 
