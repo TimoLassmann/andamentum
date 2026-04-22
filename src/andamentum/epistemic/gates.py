@@ -843,13 +843,7 @@ def can_demote(current_stage: ClaimStage) -> bool:
 
 def get_demotion_targets(current_stage: ClaimStage) -> list[ClaimStage]:
     """Get valid demotion targets from current stage."""
-    stage_order = [
-        ClaimStage.HYPOTHESIS,
-        ClaimStage.SUPPORTED,
-        ClaimStage.PROVISIONAL,
-        ClaimStage.ROBUST,
-        ClaimStage.ACTIONABLE,
-    ]
+    stage_order = sorted(STAGE_HIERARCHY, key=lambda s: STAGE_HIERARCHY[s])
     current_idx = stage_order.index(current_stage)
     return stage_order[:current_idx]
 

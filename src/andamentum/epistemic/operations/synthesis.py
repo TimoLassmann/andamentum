@@ -23,6 +23,7 @@ from ..entities import (
     Snapshot,
     Uncertainty,
 )
+from ..gates import STAGE_HIERARCHY
 
 
 class FreezeSnapshotOperation(BaseOperation):
@@ -196,19 +197,12 @@ class SynthesizeReportOperation(BaseOperation):
         objective = await self.repo.get("objective", snapshot.objective_id)
 
         # Load claims sorted by stage (highest first)
-        stage_order = {
-            ClaimStage.ACTIONABLE: 0,
-            ClaimStage.ROBUST: 1,
-            ClaimStage.PROVISIONAL: 2,
-            ClaimStage.SUPPORTED: 3,
-            ClaimStage.HYPOTHESIS: 4,
-        }
         claims: list[Claim] = []
         for cid in snapshot.claim_ids:
             c = await self.repo.get("claim", cid)
             if isinstance(c, Claim):
                 claims.append(c)
-        claims.sort(key=lambda c: stage_order.get(c.stage, 99))
+        claims.sort(key=lambda c: -STAGE_HIERARCHY.get(c.stage, -1))
 
         # Load evidence (snapshot excludes corroborative/deferred at creation, but filter
         # defensively for both and for evidence invalidated after the snapshot was frozen)
@@ -526,13 +520,6 @@ class SynthesizeReportOperation(BaseOperation):
         uncertainties: list["Uncertainty"],
     ) -> dict[str, Any]:
         """Compute structured quality signals deterministically from entities."""
-        stage_order = {
-            ClaimStage.HYPOTHESIS: 0,
-            ClaimStage.SUPPORTED: 1,
-            ClaimStage.PROVISIONAL: 2,
-            ClaimStage.ROBUST: 3,
-            ClaimStage.ACTIONABLE: 4,
-        }
         max_stage = "hypothesis"
         confidence_scores: list[float] = []
         scrutiny_passed = 0
@@ -541,7 +528,7 @@ class SynthesizeReportOperation(BaseOperation):
 
         for claim in non_abandoned:
             stage = claim.stage
-            if stage_order.get(stage, 0) > stage_order.get(ClaimStage(max_stage), 0):
+            if STAGE_HIERARCHY.get(stage, 0) > STAGE_HIERARCHY.get(ClaimStage(max_stage), 0):
                 max_stage = stage.value
 
             if claim.confidence_score is not None:
@@ -565,7 +552,7 @@ class SynthesizeReportOperation(BaseOperation):
         source_types = {e.source_type for e in evidence}
         has_external = bool(source_types - {"world_knowledge"})
         supported_plus = sum(
-            1 for c in non_abandoned if stage_order.get(c.stage, 0) >= 1
+            1 for c in non_abandoned if STAGE_HIERARCHY.get(c.stage, 0) >= STAGE_HIERARCHY[ClaimStage.SUPPORTED]
         )
 
         if len(evidence) == 0:
