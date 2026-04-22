@@ -19,13 +19,13 @@ class EpistemicResult:
     """Final output of an epistemic graph run."""
 
     objective_id: str
-    status: str  # "complete", "partial", "no_claims"
+    status: str  # "complete", "partial", "no_claims", "retrieval_failed"
     successful: int = 0
     failed: int = 0
     errors: list[str] = field(default_factory=list)
     operations_log: list[dict[str, Any]] = field(default_factory=list)
 
-    # Termination reason: "complete", "no_claims", "partial"
+    # Termination reason: "complete", "no_claims", "partial", "retrieval_failed"
     termination_reason: str = ""
 
     # Posterior (computed after graph completes, before returning)

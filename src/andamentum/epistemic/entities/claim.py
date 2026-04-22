@@ -157,7 +157,11 @@ class Claim(EpistemicEntity):
         description="Generated testable predictions: [{statement, type, time_horizon, specificity}]",
     )
 
-    # Abductive integration (Peirce + Kahneman)
+    # Abductive integration (Peirce + Kahneman).
+    # Written by IntegrateEvidenceOperation on the normal path; also written by
+    # PromoteAsRefutedOperation when a HYPOTHESIS claim is refute-promoted
+    # (contradicts + mechanical confidence, integration LLM skipped). Both
+    # writers target the same entity, so the shared write is P5-compatible.
     integrated_assessment: Optional[str] = Field(
         default=None,
         description="Holistic evidence verdict: 'supports', 'contradicts', 'insufficient'",
