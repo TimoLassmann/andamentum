@@ -564,7 +564,24 @@ class AbandonOrDemote(
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
 
                 if claim.stage == ClaimStage.HYPOTHESIS and inv_count >= 3:
-                    # Abandon
+                    # First try refute-promotion: if evidence overwhelmingly
+                    # contradicts, promote to SUPPORTED with
+                    # integrated_assessment="contradicts" instead of abandoning.
+                    from ..operations.stage_management import (
+                        PromoteAsRefutedOperation,
+                    )
+                    refute_result = await _run_op(
+                        PromoteAsRefutedOperation, deps, state,
+                        claim.entity_id, "claim", "promote_as_refuted",
+                    )
+                    if refute_result.success:
+                        # Claim is now SUPPORTED with "contradicts"
+                        # assessment. Mark verification done so downstream
+                        # nodes skip re-work and route to completion.
+                        state.verification_done.add(claim.entity_id)
+                        continue
+
+                    # Fall through: truly stale, abandon as before.
                     await _run_op(
                         AbandonStaleClaimOperation, deps, state,
                         claim.entity_id, "claim", "abandon_stale_claim",
