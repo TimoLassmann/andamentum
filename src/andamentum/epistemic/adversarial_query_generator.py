@@ -143,27 +143,3 @@ def generate_adversarial_queries(
     return queries[:max_queries]
 
 
-def get_domain_specific_templates(domain: str) -> List[str]:
-    """Get adversarial query templates for a specific domain.
-
-    Args:
-        domain: One of 'biomedical', 'statistical', 'computational', 'theoretical', 'social_science'.
-
-    Returns:
-        List of template strings with {topic} placeholder.
-    """
-    return DOMAIN_TEMPLATES.get(domain, GENERAL_TEMPLATES)
-
-
-def generate_steelmanned_query(criticism_summary: str) -> str:
-    """Generate a query to find the strongest version of a criticism.
-
-    From spec Part 7.3: Present the STRONGEST version of criticism.
-
-    Args:
-        criticism_summary: Brief summary of the criticism.
-
-    Returns:
-        A search query to find the strongest articulation of this criticism.
-    """
-    return f'"{criticism_summary}" strongest argument evidence study'
