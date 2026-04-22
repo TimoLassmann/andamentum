@@ -128,13 +128,17 @@ class HttpxSearchBackend:
         if len(markdown.strip()) < 50:
             raise RuntimeError(f"Fetched page has insufficient content from {url}")
 
+        markdown_full_len = len(markdown)
+        markdown_capped = markdown[:50000]
         return FetchedPage(
             url=url,
             title=urlparse(url).netloc or url,
-            content=markdown[:50000],
-            word_count=len(markdown.split()),
+            content=markdown_capped,
+            word_count=len(markdown_capped.split()),
             relevance_score=0.8,
             is_relevant=True,
+            original_length=markdown_full_len,
+            truncated=markdown_full_len > 50000,
         )
 
     async def close(self) -> None:

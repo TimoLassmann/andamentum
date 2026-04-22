@@ -65,11 +65,20 @@ class FetchedPage(BaseModel):
 
     url: str
     title: str
-    content: str = Field(..., description="Cleaned, sanitized page content")
+    content: str = Field(
+        ...,
+        description="Cleaned, sanitized page content (may be truncated; see truncated/original_length)",
+    )
     word_count: int
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     is_relevant: bool = Field(..., description="Whether content is relevant to query")
     extraction_timestamp: datetime = Field(default_factory=datetime.now)
+    original_length: int = Field(
+        default=0, description="Original character length before any truncation"
+    )
+    truncated: bool = Field(
+        default=False, description="True if content was truncated from a longer source"
+    )
 
 
 class FetchPlan(BaseModel):
