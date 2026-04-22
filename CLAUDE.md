@@ -66,7 +66,13 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 
 **Explicit model argument, no hidden defaults.** Every public function that calls an LLM takes `model=` as a keyword-only argument. There is no shared config module, no silent fallback, no ambient default. When adding new LLM-calling code, match this pattern — don't reach for a global config.
 
-**Core module** (`andamentum.core`) — shared infrastructure for model resolution, agent execution, and (future) embeddings. All sub-modules import from core instead of maintaining independent implementations. When adding LLM-calling code, use `core.agents.AgentRunner` or `core.agents.run_agent_with_fallback()` — they provide model resolution (ollama, bedrock, passthrough) and PromptedOutput fallback for free. Sub-modules (`epistemic`, `deep_research`, `document_store`) do not import from each other — only from `core`.
+**Core module** (`andamentum.core`) — shared infrastructure for model resolution, agent execution, and (future) embeddings. All sub-modules import from core instead of maintaining independent implementations. When adding LLM-calling code, use `core.agents.AgentRunner` or `core.agents.run_agent_with_fallback()` — they provide model resolution (ollama, bedrock, passthrough) and PromptedOutput fallback for free.
+
+**Layering:**
+- `core` is the shared base — no sub-module imports from another sub-module via core's surface (core itself depends on neither).
+- `document_store` is foundational; `epistemic` may depend on it directly (e.g., `EpistemicRepository` wraps a `DocumentStore`).
+- `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
+- `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
