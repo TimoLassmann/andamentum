@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from andamentum.document_store import DocumentStore
+from andamentum.epistemic.confidence import compute_posterior
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.gates import (
@@ -32,6 +33,11 @@ async def _setup_claim_with_evidence(
     await store.initialize()
     repo = EpistemicRepository(store)
     obj = Objective(description="test objective", question_type="predictive")
+    # Objectives are self-referential: objective_id == entity_id. Production
+    # code (graph/__init__.py) constructs Objective with both set explicitly;
+    # without this, _build_metadata writes objective_id="" and round-trip
+    # lookups via repo.get_objective(...) fail.
+    obj.objective_id = obj.entity_id
     await repo.save(obj)
     claim = Claim(
         statement="Test claim.",
@@ -247,3 +253,31 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         assert reloaded.abandoned is True
         assert claim.entity_id in state.terminal_claims
         assert claim.entity_id not in state.verification_done
+
+
+class TestPosteriorIncludesRefuted:
+    async def test_refuted_claim_drives_posterior_low(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 1, 9)
+
+        # Verify objective exists in repo before continuing
+        objective = await repo.get_objective(claim.objective_id)
+        assert objective is not None
+
+        op = PromoteAsRefutedOperation(repo=repo, agent_runner=None)
+        result = await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="promote_as_refuted",
+            )
+        )
+        assert result.success
+
+        posterior = await compute_posterior(
+            repo, objective_id=claim.objective_id
+        )
+        assert posterior is not None
+        assert posterior.posterior < 0.2, (
+            f"Expected low posterior (evidence contradicts), got {posterior.posterior:.3f}"
+        )
+        assert posterior.integration_verdict == "contradicts"
