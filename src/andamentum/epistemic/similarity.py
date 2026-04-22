@@ -16,15 +16,11 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
+
+from .operations.base import AgentRunner
 
 logger = logging.getLogger(__name__)
-
-
-class AgentRunner(Protocol):
-    """Minimal protocol for running epistemic agents."""
-
-    async def run(self, agent_name: str, **kwargs: Any) -> Any: ...
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
