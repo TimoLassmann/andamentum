@@ -90,7 +90,7 @@ class TestInvalidateEvidenceOperation:
         await repo.save(claim)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
@@ -116,7 +116,7 @@ class TestInvalidateEvidenceOperation:
         await repo.save(ev)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
@@ -137,7 +137,7 @@ class TestInvalidateEvidenceOperation:
         await repo.save(claim)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
@@ -163,7 +163,7 @@ class TestInvalidateEvidenceOperation:
         await repo.save(claim2)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="ev-1", entity_type="evidence", operation="invalidate_evidence"
@@ -203,7 +203,7 @@ class TestRevalidateClaimOperation:
         await repo.save(claim)
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
@@ -228,7 +228,7 @@ class TestRevalidateClaimOperation:
         await repo.save(claim)
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
@@ -259,7 +259,7 @@ class TestRevalidateClaimOperation:
         await repo.save(derived_ev)
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
@@ -283,7 +283,7 @@ class TestRevalidateClaimOperation:
         await repo.save(claim)
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
@@ -307,7 +307,7 @@ class TestRevalidateClaimOperation:
         await repo.save(claim)
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
@@ -377,7 +377,7 @@ class TestTransitiveCascade:
     @pytest.mark.asyncio
     async def test_full_cascade_chain(self, repo):
         """E1 invalidated → C1 demoted → E2 invalidated → C2 flagged."""
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         # Build the chain: E1 supports C1, E2 depends on C1 and supports C2
         e1 = _make_evidence(eid="e1", quality_score=0.5, invalidated=True)
@@ -445,7 +445,7 @@ class TestTransitiveCascade:
         await repo.save(c_other)
 
         op = InvalidateEvidenceOperation(repo=repo, agent_runner=None)
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         work = OperationInput(
             entity_id="e1", entity_type="evidence", operation="invalidate_evidence"
@@ -460,7 +460,7 @@ class TestTransitiveCascade:
     @pytest.mark.asyncio
     async def test_cascade_terminates(self, repo):
         """Cascade terminates: cascaded evidence is not reprocessed."""
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         ev = _make_evidence(eid="ev-1", invalidated=True, invalidation_cascaded=False)
         claim = _make_claim(cid="cl-1", evidence_ids=["ev-1"])
@@ -525,7 +525,7 @@ class TestInvestigationStubDependency:
         await repo.save(ev_supporting)
         await repo.save(claim)
 
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         op = RevalidateClaimOperation(repo=repo, agent_runner=None)
         work = OperationInput(
@@ -674,7 +674,7 @@ class TestPromotionGuard:
     async def test_promotion_blocked_by_gate_failure(self, repo):
         """Claims that fail gate validation cannot be promoted."""
         from andamentum.epistemic.operations import PromoteClaimOperation
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         # Save a real Objective so the objective-load step doesn't raise;
         # the gate check (no evidence) must be what blocks promotion.

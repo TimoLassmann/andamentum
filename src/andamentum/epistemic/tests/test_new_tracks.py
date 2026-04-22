@@ -119,7 +119,7 @@ from ..operations import (  # noqa: E402
     CrossClaimConsistencyOperation,
     OPERATION_CLASSES,
 )
-from ..patterns import OperationInput  # noqa: E402
+from ..operations.base import OperationInput  # noqa: E402
 
 
 class TestContrastiveEvaluationOperation:

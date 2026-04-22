@@ -16,7 +16,7 @@ from ..operations import (
     AdversarialSearchOperation,
     GatheredEvidence,
 )
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
 
 _test_dir = str(pathlib.Path(__file__).parent)

@@ -195,7 +195,7 @@ from ..entities.evidence import Evidence  # noqa: E402
 from ..entities.claim import Claim  # noqa: E402
 from ..primitives import ClaimStage  # noqa: E402
 from ..operations import ProposeClaimsOperation  # noqa: E402
-from ..patterns import OperationInput  # noqa: E402
+from ..operations.base import OperationInput  # noqa: E402
 
 
 class TestDedupIntegration:
@@ -720,7 +720,7 @@ class TestDownstreamFiltering:
     async def test_freeze_snapshot_excludes_corroborative(self, repo):
         """FreezeSnapshotOperation should not include corroborative evidence in snapshot."""
         from andamentum.epistemic.operations import FreezeSnapshotOperation
-        from andamentum.epistemic.patterns import OperationInput
+        from andamentum.epistemic.operations.base import OperationInput
 
         obj = Objective(
             entity_id="obj-freeze-1",

@@ -36,7 +36,7 @@ from ..operations import (
     QualityScore,
 )
 from andamentum.document_store import DocumentStore
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
 
 import sys

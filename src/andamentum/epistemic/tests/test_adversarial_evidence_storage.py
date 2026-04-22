@@ -4,7 +4,7 @@ import pytest
 from ..entities.claim import Claim, ClaimStage
 from ..entities.evidence import Evidence
 from ..operations.verification import AdversarialSearchOperation
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 
 
 class TestAdversarialEvidenceStorage:

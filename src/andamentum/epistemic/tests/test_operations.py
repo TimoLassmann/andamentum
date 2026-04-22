@@ -20,7 +20,7 @@ from ..operations import (
     create_operations,
     ProposeClaimsOperation,
 )
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 
 
 class FakeEvidenceGatherer:

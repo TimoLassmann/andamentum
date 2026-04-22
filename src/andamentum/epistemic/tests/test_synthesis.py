@@ -18,7 +18,7 @@ from ..entities import (
     UncertaintyType,
 )
 from ..operations import create_operations, SynthesizeReportOperation
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 
 
 class TestSynthesizeContentBody:

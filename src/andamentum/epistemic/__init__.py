@@ -52,8 +52,8 @@ from .gates import (
     compute_confidence_score,
 )
 
-# ── Patterns ──────────────────────────────────────────────────────────────
-from .patterns import OperationInput, WorkItem  # WorkItem is backward compat alias
+# ── Operation input ───────────────────────────────────────────────────────
+from .operations.base import OperationInput
 
 # ── Pipeline result ──────────────────────────────────────────────────────
 from .operations_runner import PipelineResult
@@ -116,9 +116,8 @@ __all__ = [
     "DegeneracyCodes",
     "quality_weighted_evidence_sum",
     "compute_confidence_score",
-    # Patterns
+    # Operation input
     "OperationInput",
-    "WorkItem",  # backward compat alias
     # Pipeline result
     "PipelineResult",
     "QuarantineRecord",

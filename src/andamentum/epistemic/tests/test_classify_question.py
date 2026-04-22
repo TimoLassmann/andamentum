@@ -131,7 +131,7 @@ class TestClassifyQuestionAdapter:
 from andamentum.document_store import DocumentStore  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES  # noqa: E402
-from ..patterns import OperationInput  # noqa: E402
+from ..operations.base import OperationInput  # noqa: E402
 
 
 class TestClassifyQuestionOperation:

@@ -9,7 +9,7 @@ Verifies that AbductiveIntegrationOperation:
 
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations.integration import AbductiveIntegrationOperation
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 
 
 def _make_objective(obj_id: str = "obj-1") -> Objective:
