@@ -547,7 +547,10 @@ class AbandonOrDemote(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> Union["Scrutinize", "CheckCompletion"]:
         from ..operations.cleanup import AbandonStaleClaimOperation
-        from ..operations.stage_management import DemoteClaimOperation
+        from ..operations.stage_management import (
+            DemoteClaimOperation,
+            PromoteAsRefutedOperation,
+        )
         from ..entities.claim import ClaimStage
 
         state = ctx.state
@@ -567,9 +570,6 @@ class AbandonOrDemote(
                     # First try refute-promotion: if evidence overwhelmingly
                     # contradicts, promote to SUPPORTED with
                     # integrated_assessment="contradicts" instead of abandoning.
-                    from ..operations.stage_management import (
-                        PromoteAsRefutedOperation,
-                    )
                     refute_result = await _run_op(
                         PromoteAsRefutedOperation, deps, state,
                         claim.entity_id, "claim", "promote_as_refuted",
