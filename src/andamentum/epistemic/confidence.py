@@ -85,6 +85,8 @@ class PosteriorReport(BaseModel):
 async def compute_posterior(
     repo: EpistemicRepository,
     objective_id: str,
+    *,
+    retrieval_failed: bool = False,
 ) -> PosteriorReport | None:
     """Compute posterior probability P(Y) by synthesizing counting and integration.
 
@@ -99,6 +101,34 @@ async def compute_posterior(
     Returns:
         PosteriorReport, or None for ineligible question types.
     """
+    # Retrieval-failed short-circuit: the pipeline flagged that evidence
+    # extraction kept returning empty content. Emit an explicit
+    # terminal_state report so callers don't mistake an uninformative
+    # 0.5 for a "genuinely balanced evidence" conclusion. Still scoped
+    # to POSTERIOR_ELIGIBLE question types — for ineligible types,
+    # posterior is N/A regardless.
+    if retrieval_failed:
+        objective = await repo.get_objective(objective_id)
+        qt = objective.question_type
+        if qt is None or qt not in POSTERIOR_ELIGIBLE:
+            return None
+        return PosteriorReport(
+            posterior=0.5,
+            log_odds=0,
+            supporting_count=0,
+            contradicting_count=0,
+            counting_posterior=0.5,
+            mode="counting_only",
+            objective_id=objective_id,
+            question_type=qt,
+            explanation=(
+                "Retrieval failed: evidence extraction returned empty content "
+                "at least 3 times consecutively. Posterior defaults to 0.5 "
+                "(uninformative); terminal_state='retrieval_failed'."
+            ),
+            terminal_state="retrieval_failed",
+        )
+
     # 1. Load objective, check eligibility
     objective = await repo.get_objective(objective_id)
     question_type = objective.question_type
@@ -221,9 +251,7 @@ async def compute_posterior(
                 f"Blended with counting weight {n_directional / (n_directional + MIXING_K):.2f}."
             )
         else:
-            parts.append(
-                f"Integration: {integration_verdict} — abstained from blend."
-            )
+            parts.append(f"Integration: {integration_verdict} — abstained from blend.")
 
     # Flag disagreement between counting and integration (Doyle TMS)
     if integration_posterior is not None:
@@ -232,7 +260,10 @@ async def compute_posterior(
             if counting_posterior > 0.5
             else ("contradicts" if counting_posterior < 0.5 else "neutral")
         )
-        if integration_verdict != counting_direction and counting_direction != "neutral":
+        if (
+            integration_verdict != counting_direction
+            and counting_direction != "neutral"
+        ):
             parts.append(
                 f"NOTE: Counting ({counting_direction}) and integration "
                 f"({integration_verdict}) disagree."
