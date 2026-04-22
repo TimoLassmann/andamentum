@@ -139,9 +139,9 @@ If there is no issue, set has_issue to false.
 
 Apply these tests in order:
 
-1. Is the evidence corrupted/garbled? → issue_type: "evidence_corrupted", reversal_test: false
-2. Are two assertions mutually exclusive? → issue_type: "contradiction", reversal_test: true
-3. Could learning the missing info reverse the conclusion? → issue_type: "unknown", reversal_test: true
+1. Is the evidence corrupted/garbled? → issue_type: "evidence_corrupted"
+2. Are two assertions mutually exclusive? → issue_type: "contradiction"
+3. Could learning the missing info reverse the conclusion? → issue_type: "unknown"
 4. Otherwise it's non-blocking. Pick one:
    - "evidence_gap" — more evidence would help but claim is directionally supported
    - "assumption" — claim relies on an unstated assumption
@@ -151,14 +151,11 @@ Apply these tests in order:
    - "definitional_variation" — sources differ on definitions
    - "perspectival" — valid different viewpoints
 
-For all non-blocking types: reversal_test is false.
-
 ## Output
 
 - has_issue: true if you found an issue, false if no more issues
 - description: what the issue is (empty string if has_issue is false)
 - issue_type: the classification (empty string if has_issue is false)
-- reversal_test: true only for "unknown" and "contradiction"
 
 Now identify one issue (or set has_issue to false if none remain)."""
 
