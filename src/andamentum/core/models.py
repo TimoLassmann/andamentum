@@ -88,6 +88,20 @@ def resolve_model(model: str) -> Any:
     return model
 
 
+DEFAULT_EMBEDDING_MODEL = "embeddinggemma:latest"
+EMBEDDING_MODEL_ENV_VAR = "ANDAMENTUM_EMBEDDING_MODEL"
+
+
+def resolve_embedding_model_from_args(arg: str | None = None) -> str:
+    """Resolve embedding model from explicit arg, env var, or default."""
+    if arg:
+        return arg
+    env_value = os.environ.get(EMBEDDING_MODEL_ENV_VAR)
+    if env_value:
+        return env_value
+    return DEFAULT_EMBEDDING_MODEL
+
+
 def resolve_model_from_args(model_arg: str | None) -> str:
     """Resolve model from CLI arg or ANDAMENTUM_MAIN_LLM_MODEL env var.
 
