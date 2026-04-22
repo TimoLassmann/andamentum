@@ -11,6 +11,10 @@ from andamentum.epistemic.gates import (
     count_support_contradict,
     is_refuted_by_evidence,
 )
+from andamentum.epistemic.operations.base import OperationInput
+from andamentum.epistemic.operations.stage_management import (
+    PromoteAsRefutedOperation,
+)
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -27,30 +31,38 @@ async def _setup_claim_with_evidence(
     obj = Objective(description="test objective", question_type="predictive")
     await repo.save(obj)
     claim = Claim(
-        statement="Test claim.", scope="test scope", objective_id=obj.entity_id,
+        statement="Test claim.",
+        scope="test scope",
+        objective_id=obj.entity_id,
         stage=ClaimStage.HYPOTHESIS,
     )
     await repo.save(claim)
     for i in range(n_supports):
         ev = Evidence(
-            source_type="web", source_ref=f"https://ex.com/s{i}",
-            extracted_content="supports", objective_id=obj.entity_id,
+            source_type="web",
+            source_ref=f"https://ex.com/s{i}",
+            extracted_content="supports",
+            objective_id=obj.entity_id,
             support_judgment="supports",
         )
         await repo.save(ev)
         claim.evidence_ids.append(ev.entity_id)
     for i in range(n_contradicts):
         ev = Evidence(
-            source_type="web", source_ref=f"https://ex.com/c{i}",
-            extracted_content="contradicts", objective_id=obj.entity_id,
+            source_type="web",
+            source_ref=f"https://ex.com/c{i}",
+            extracted_content="contradicts",
+            objective_id=obj.entity_id,
             support_judgment="contradicts",
         )
         await repo.save(ev)
         claim.evidence_ids.append(ev.entity_id)
     for i in range(n_unjudged):
         ev = Evidence(
-            source_type="web", source_ref=f"https://ex.com/u{i}",
-            extracted_content="x", objective_id=obj.entity_id,
+            source_type="web",
+            source_ref=f"https://ex.com/u{i}",
+            extracted_content="x",
+            objective_id=obj.entity_id,
         )
         await repo.save(ev)
         claim.evidence_ids.append(ev.entity_id)
@@ -122,3 +134,58 @@ class TestIsRefutedByEvidence:
         # 3 >= 3 passes but 3 >= 2 * 2 = 4 fails. Must be False.
         claim, repo = await _setup_claim_with_evidence(tmp_path, 2, 3)
         assert await is_refuted_by_evidence(claim, repo) is False
+
+
+class TestPromoteAsRefutedOperation:
+    async def test_promotes_to_supported_with_contradicts(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 1, 9)
+        op = PromoteAsRefutedOperation(repo=repo, agent_runner=None)
+        result = await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="promote_as_refuted",
+            )
+        )
+        assert result.success is True
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.stage == ClaimStage.SUPPORTED
+        assert reloaded.integrated_assessment == "contradicts"
+        assert reloaded.integrated_confidence is not None
+        assert 0.5 <= reloaded.integrated_confidence <= 0.95
+        assert reloaded.integrated_reasoning is not None
+        assert reloaded.abandoned is False
+
+    async def test_refuses_when_not_refuted(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 5, 1)
+        op = PromoteAsRefutedOperation(repo=repo, agent_runner=None)
+        result = await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="promote_as_refuted",
+            )
+        )
+        assert result.success is False
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.stage == ClaimStage.HYPOTHESIS
+        assert reloaded.integrated_assessment is None
+
+    async def test_refuses_when_not_hypothesis(self, tmp_path: Path) -> None:
+        # Only HYPOTHESIS claims are eligible; SUPPORTED claims should be refused.
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 1, 9)
+        claim.stage = ClaimStage.SUPPORTED
+        await repo.save(claim)
+        op = PromoteAsRefutedOperation(repo=repo, agent_runner=None)
+        result = await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="promote_as_refuted",
+            )
+        )
+        assert result.success is False
+        reloaded = await repo.get("claim", claim.entity_id)
+        # Stage unchanged; assessment still None.
+        assert reloaded.stage == ClaimStage.SUPPORTED
+        assert reloaded.integrated_assessment is None

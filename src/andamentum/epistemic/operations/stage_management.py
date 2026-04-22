@@ -14,6 +14,7 @@ from datetime import datetime
 from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import Claim
+from ..entities.claim import ClaimStage
 
 
 class PromoteClaimOperation(BaseOperation):
@@ -167,4 +168,79 @@ class DemoteClaimOperation(BaseOperation):
             success=True,
             entity_id=claim.entity_id,
             message=f"Demoted to {target_stage.value}",
+        )
+
+
+class PromoteAsRefutedOperation(BaseOperation):
+    """Promote a HYPOTHESIS claim to SUPPORTED with integrated_assessment="contradicts".
+
+    Bypasses the scrutiny gate's "verdict must be pass" rule. Intended as an
+    escape valve when the evidence overwhelmingly contradicts the claim —
+    without this path, such claims get abandoned and their contradiction
+    signal drops out of the posterior entirely.
+
+    Integration LLM is skipped for these claims because integrated_assessment
+    is pre-set; the existing "if integrated_assessment is not None: skip"
+    check in IntegrateEvidence handles this correctly.
+    """
+
+    entity_type = "claim"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        from ..gates import count_support_contradict, is_refuted_by_evidence
+
+        claim = await self.repo.get("claim", work.entity_id)
+        if not isinstance(claim, Claim):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Claim",
+            )
+        if claim.stage != ClaimStage.HYPOTHESIS:
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message=f"Refuted-promotion only runs on HYPOTHESIS, not {claim.stage.value}",
+            )
+        if not await is_refuted_by_evidence(claim, self.repo):
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message="Evidence balance does not meet refutation threshold",
+            )
+
+        n_sup, n_con = await count_support_contradict(claim, self.repo)
+        # Confidence from imbalance; cap at 0.9 because this is a mechanical
+        # count, not holistic integration.
+        confidence = min(0.9, n_con / (n_con + max(1, n_sup)))
+
+        claim.promotion_history.append(
+            {
+                "from": claim.stage.value,
+                "to": ClaimStage.SUPPORTED.value,
+                "timestamp": datetime.now().isoformat(),
+                "justification": f"Refuted by evidence: {n_con} contradicts vs {n_sup} supports",
+            }
+        )
+        claim.stage = ClaimStage.SUPPORTED
+        claim.integrated_assessment = "contradicts"
+        claim.integrated_confidence = confidence
+        claim.integrated_reasoning = (
+            f"Promoted as refuted: evidence balance {n_con} contradicts vs "
+            f"{n_sup} supports. Confidence derived mechanically from imbalance; "
+            f"integration LLM skipped."
+        )
+        claim.confidence_score = confidence
+        await self.repo.save(claim)
+
+        await self.log_event(
+            "claim_promoted_as_refuted",
+            claim.entity_id,
+            {"n_supports": n_sup, "n_contradicts": n_con, "confidence": confidence},
+        )
+
+        return OperationResult(
+            success=True,
+            entity_id=claim.entity_id,
+            message=f"[{claim.statement[:60]}] → supported (refuted: {n_con}⊥ / {n_sup}✓)",
         )
