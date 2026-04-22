@@ -30,6 +30,7 @@ from .base import (
     OperationInput,
     OperationResult,
     OperationValidator,
+    ProviderRegistry,
     QualityScore,
     QualityScorer,
     WorkItem,
@@ -171,7 +172,7 @@ def create_operations(
     evidence_gatherer: Optional[EvidenceGatherer] = None,
     quality_scorer: Optional[QualityScorer] = None,
     model: Optional[str] = None,
-    providers: Optional[dict] = None,
+    providers: Optional[ProviderRegistry] = None,
     embedding_model: Optional[str] = None,
 ) -> dict[str, BaseOperation]:
     """Create all operation instances.
@@ -227,6 +228,7 @@ __all__ = [
     "MAX_UNCERTAINTY_DEPTH",
     "OperationInput",
     "WorkItem",  # backward compat alias
+    "ProviderRegistry",
     "_truncate_for_trace",
     # Claims
     "EVIDENCE_TOP_K",

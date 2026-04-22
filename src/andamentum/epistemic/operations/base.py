@@ -10,12 +10,21 @@ Architecture: Layer 1 (framework-agnostic)
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import json as _json
-from typing import Any, Optional, Protocol, TYPE_CHECKING
+from typing import Any, Mapping, Optional, Protocol, TYPE_CHECKING
 
 from ..adapters import ADAPTERS
 
 if TYPE_CHECKING:
     from ..repository import EpistemicRepository
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TYPE ALIASES
+# ══════════════════════════════════════════════════════════════════════════════
+
+#: Registry mapping provider name → gatherer duck-typed instance.
+#: Each value must implement ``gather(query: str) -> list[GatheredEvidence]``.
+ProviderRegistry = Mapping[str, Any]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -33,7 +42,7 @@ class OperationInput:
     entity_id: str
     entity_type: str
     operation: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)  # TODO(theme-5): per-operation TypedDicts when feasible
 
 
 # Backward compatibility alias
