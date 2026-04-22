@@ -11,7 +11,7 @@ from ..repository import EpistemicRepository
 from ..entities.objective import Objective
 from ..entities.claim import Claim
 from ..primitives import ClaimStage
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 from ..operations import SetRoutingDefaultsOperation, OPERATION_CLASSES
 
 

@@ -13,7 +13,7 @@ from ..entities.objective import Objective
 from ..primitives import ClaimStage
 from ..operations.investigation import InvestigateClaimOperation
 from ..operations.base import MAX_INVESTIGATION_ATTEMPTS
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
 
 

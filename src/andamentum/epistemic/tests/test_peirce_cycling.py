@@ -13,7 +13,7 @@ import pytest
 
 from ..entities import Claim, ClaimStage, Evidence, Objective, Uncertainty, UncertaintyType
 from ..operations.uncertainty import ResolveUncertaintyOperation
-from ..patterns import OperationInput
+from ..operations.base import OperationInput
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,7 @@ from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.evidence import Evidence
 from andamentum.epistemic.entities.objective import Objective
 from andamentum.epistemic.operations.seed_claim import SeedClaimOperation
-from andamentum.epistemic.patterns import OperationInput
+from andamentum.epistemic.operations.base import OperationInput
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.repository import EpistemicRepository
 
