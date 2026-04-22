@@ -242,7 +242,12 @@ class PubMedProvider:
         if title:
             content_parts.append(title)
         if authors:
-            content_parts.append(f"Authors: {', '.join(authors[:5])}")
+            if len(authors) > 5:
+                content_parts.append(
+                    f"Authors: {', '.join(authors[:5])} (et al, {len(authors)} authors total)"
+                )
+            else:
+                content_parts.append(f"Authors: {', '.join(authors)}")
         if journal and year:
             content_parts.append(f"{journal}, {year}")
         if abstract:
@@ -274,7 +279,7 @@ class PubMedProvider:
             identifiers=identifiers,
             structured_data={
                 "title": title,
-                "authors": authors[:10],
+                "authors": authors,
                 "journal": journal,
                 "year": year,
                 "abstract": abstract,

@@ -154,7 +154,12 @@ class ArXivProvider:
                     # Build content
                     content_parts = [title]
                     if authors:
-                        content_parts.append(f"Authors: {', '.join(authors[:5])}")
+                        if len(authors) > 5:
+                            content_parts.append(
+                                f"Authors: {', '.join(authors[:5])} (et al, {len(authors)} authors total)"
+                            )
+                        else:
+                            content_parts.append(f"Authors: {', '.join(authors)}")
                     if summary:
                         content_parts.append(f"\n{summary}")
 

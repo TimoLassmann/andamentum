@@ -85,7 +85,12 @@ class OpenAlexProvider:
             if r.title:
                 content_parts.append(r.title)
             if r.authors:
-                content_parts.append(f"Authors: {', '.join(r.authors[:5])}")
+                if len(r.authors) > 5:
+                    content_parts.append(
+                        f"Authors: {', '.join(r.authors[:5])} (et al, {len(r.authors)} authors total)"
+                    )
+                else:
+                    content_parts.append(f"Authors: {', '.join(r.authors)}")
             if r.abstract:
                 content_parts.append(f"\n{r.abstract}")
 
@@ -111,7 +116,7 @@ class OpenAlexProvider:
                     identifiers=ids,
                     structured_data={
                         "title": r.title or "",
-                        "authors": r.authors[:10] if r.authors else [],
+                        "authors": r.authors if r.authors else [],
                         "year": getattr(r, "year", None),
                         "journal": getattr(r, "journal", None),
                         "citation_count": getattr(r, "citation_count", None),

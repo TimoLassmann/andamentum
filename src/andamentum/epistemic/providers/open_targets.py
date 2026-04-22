@@ -44,6 +44,7 @@ _DATATYPE_TO_KIND: dict[str, str] = {
     "genetic_literature": "curated_genetic",
 }
 
+
 class OpenTargetsProvider:
     """Evidence provider using Open Targets Platform GraphQL API.
 
@@ -122,20 +123,31 @@ class OpenTargetsProvider:
                 for disease in diseases[: self.max_results]:
                     disease_id = disease.get("id", "")
                     target_ids = await self._get_top_target_ids(client, disease_id)
+                    target_total = len(target_ids)
                     for tid in target_ids[:3]:
                         items = await self._get_evidence_items(
                             client, tid, [disease_id]
                         )
+                        # Surface total target count in each item's quality_metadata
+                        for item in items:
+                            if item.quality_metadata is not None:
+                                item.quality_metadata["target_total"] = target_total
+                            else:
+                                item.quality_metadata = {"target_total": target_total}
                         gathered.extend(items)
+                    if target_total > 3:
+                        logger.debug(
+                            "Disease %s: showing 3 of %d targets",
+                            disease_id,
+                            target_total,
+                        )
 
         except Exception as e:
             logger.warning(f"Open Targets query failed for '{query}': {e}")
 
         return gathered[: self.max_results]
 
-    async def _search_entities(
-        self, client: Any, query: str
-    ) -> list[dict[str, Any]]:
+    async def _search_entities(self, client: Any, query: str) -> list[dict[str, Any]]:
         """Search Open Targets for targets or diseases matching query."""
         gql = """
         query Search($q: String!, $size: Int!) {
@@ -295,9 +307,7 @@ class OpenTargetsProvider:
             rows = target.get("evidences", {}).get("rows", [])
 
             for row in rows:
-                evidence = self._parse_evidence_row(
-                    row, target_symbol, target_name
-                )
+                evidence = self._parse_evidence_row(row, target_symbol, target_name)
                 if evidence:
                     gathered.append(evidence)
 
@@ -327,8 +337,7 @@ class OpenTargetsProvider:
 
         # Header: what target-disease pair, from which source
         content_parts.append(
-            f"{target_symbol} ({target_name}) — {disease} "
-            f"[{datasource}, {datatype}]"
+            f"{target_symbol} ({target_name}) — {disease} [{datasource}, {datatype}]"
         )
 
         # Text mining sentences are the richest content
@@ -339,6 +348,8 @@ class OpenTargetsProvider:
                 if text:
                     prefix = f"[{section}] " if section else ""
                     content_parts.append(f"{prefix}{text}")
+            if len(sentences) > 5:
+                content_parts.append(f"({len(sentences) - 5} more sentences not shown)")
 
         # For non-literature evidence, add available context
         if not sentences:
@@ -364,8 +375,7 @@ class OpenTargetsProvider:
             source_ref = urls[0].get("url", "")
         if not source_ref:
             source_ref = (
-                f"https://platform.opentargets.org/evidence/"
-                f"{row.get('id', '')}"
+                f"https://platform.opentargets.org/evidence/{row.get('id', '')}"
             )
 
         # Evidence kind from datatype

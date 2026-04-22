@@ -307,7 +307,7 @@ async def search_literature(
                 authorships = work.get("authorships", []) or []
                 authors = [
                     a.get("author", {}).get("display_name", "")
-                    for a in authorships[:10]  # Limit to first 10 authors
+                    for a in authorships
                     if a.get("author", {}).get("display_name")
                 ]
 

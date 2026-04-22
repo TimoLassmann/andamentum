@@ -106,14 +106,18 @@ class ClinicalTrialsProvider:
                         continue
 
                     has_results = study.get("hasResults", False)
-                    gathered.append(self._parse_study(protocol, has_results=has_results))
+                    gathered.append(
+                        self._parse_study(protocol, has_results=has_results)
+                    )
 
         except Exception as e:
             logger.warning(f"ClinicalTrials.gov query failed for '{query}': {e}")
 
         return gathered
 
-    def _parse_study(self, protocol: dict[str, Any], *, has_results: bool = False) -> GatheredEvidence:
+    def _parse_study(
+        self, protocol: dict[str, Any], *, has_results: bool = False
+    ) -> GatheredEvidence:
         """Parse a single study protocol section."""
         id_module = protocol.get("identificationModule", {})
         status_module = protocol.get("statusModule", {})
@@ -185,10 +189,16 @@ class ClinicalTrialsProvider:
             content_parts.append(f"Phase: {phase.replace('PHASE', 'Phase ')}")
         content_parts.append(f"Status: {status}")
         if conditions:
-            content_parts.append(f"Conditions: {', '.join(conditions[:3])}")
+            suffix = f" (and {len(conditions) - 3} more)" if len(conditions) > 3 else ""
+            content_parts.append(f"Conditions: {', '.join(conditions[:3])}{suffix}")
         if interventions:
             names = [i["name"] for i in interventions[:3]]
-            content_parts.append(f"Interventions: {', '.join(names)}")
+            suffix = (
+                f" (and {len(interventions) - 3} more)"
+                if len(interventions) > 3
+                else ""
+            )
+            content_parts.append(f"Interventions: {', '.join(names)}{suffix}")
         if enrollment:
             content_parts.append(f"Enrollment: {enrollment}")
         if brief_summary:

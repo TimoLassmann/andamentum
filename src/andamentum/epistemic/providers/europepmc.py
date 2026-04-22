@@ -104,9 +104,7 @@ class EuropePMCProvider:
                     return gathered
 
                 data = response.json()
-                results = (
-                    data.get("resultList", {}).get("result", [])
-                )
+                results = data.get("resultList", {}).get("result", [])
 
                 for item in results:
                     title = item.get("title", "")
@@ -115,7 +113,9 @@ class EuropePMCProvider:
 
                     authors = item.get("authorString", "")
                     abstract_raw = item.get("abstractText", "")
-                    abstract = _HTML_TAG_RE.sub("", abstract_raw) if abstract_raw else ""
+                    abstract = (
+                        _HTML_TAG_RE.sub("", abstract_raw) if abstract_raw else ""
+                    )
 
                     doi = item.get("doi", "")
                     pmid = item.get("pmid", "")
@@ -126,7 +126,11 @@ class EuropePMCProvider:
                     cited_by_count = item.get("citedByCount", 0)
                     is_open_access = item.get("isOpenAccess", "N")
                     pub_type_list = item.get("pubTypeList", {})
-                    pub_types: list[str] = pub_type_list.get("pubType", []) if isinstance(pub_type_list, dict) else []
+                    pub_types: list[str] = (
+                        pub_type_list.get("pubType", [])
+                        if isinstance(pub_type_list, dict)
+                        else []
+                    )
 
                     # Build content
                     content_parts = [title]

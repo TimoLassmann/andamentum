@@ -152,7 +152,12 @@ class ChEMBLProvider:
                             )
                             for a in activities[:3]
                         ]
-                        content_parts.append(f"Activity: {'; '.join(act_strs)}")
+                        suffix = (
+                            f" (showing top 3 of {len(activities)})"
+                            if len(activities) > 3
+                            else ""
+                        )
+                        content_parts.append(f"Activity: {'; '.join(act_strs)}{suffix}")
 
                     identifiers: dict[str, str] = {"chembl_id": chembl_id}
                     if smiles:
@@ -233,7 +238,9 @@ class ChEMBLProvider:
                 for act in data.get("activities", []):
                     raw_pchembl = act.get("pchembl_value")
                     try:
-                        pchembl = float(raw_pchembl) if raw_pchembl is not None else None
+                        pchembl = (
+                            float(raw_pchembl) if raw_pchembl is not None else None
+                        )
                     except (ValueError, TypeError):
                         pchembl = None
                     if pchembl is None:
@@ -249,7 +256,7 @@ class ChEMBLProvider:
                         }
                     )
                 activities.sort(key=lambda a: a["pchembl_value"], reverse=True)
-                return activities[:5]
+                return activities
         except Exception:
             pass
         return []
@@ -269,7 +276,14 @@ class ChEMBLProvider:
 
                 admet: dict[str, Any] = {}
                 props = data.get("molecule_properties") or {}
-                for key in ("alogp", "hba", "hbd", "psa", "ro5_violations", "mw_freebase"):
+                for key in (
+                    "alogp",
+                    "hba",
+                    "hbd",
+                    "psa",
+                    "ro5_violations",
+                    "mw_freebase",
+                ):
                     val = props.get(key)
                     if val is not None:
                         try:
