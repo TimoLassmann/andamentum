@@ -8,7 +8,9 @@ just field-to-atom mapping.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from andamentum.typeset import Report
 
@@ -24,6 +26,72 @@ QUESTION_TYPE_LABELS: dict[str, str] = {
     "methodological": "methodology question",
     "normative": "value judgment or recommendation",
 }
+
+STAGE_DISPLAY_ORDER: tuple[str, ...] = (
+    "supported",
+    "provisional",
+    "robust",
+    "actionable",
+    "hypothesis",
+    "abandoned",
+)
+
+
+def _short_source(url: str) -> str:
+    """Return a concise display label for a source URL.
+
+    Prefers DOI, PMC id, or arXiv id when recognisable; otherwise returns
+    the hostname plus the last path segment if it's short.
+    """
+    if not url:
+        return ""
+    m = re.search(r"(10\.\d{4,9}/\S+)$", url)
+    if m:
+        return m.group(1).rstrip("/")
+    m = re.search(r"/(PMC\d+)", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"arxiv\.org/abs/(\S+)$", url)
+    if m:
+        return f"arXiv:{m.group(1)}"
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    host = parsed.netloc.replace("www.", "")
+    last = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    if last and len(last) < 40 and not last.isdigit():
+        return f"{host}/{last}"
+    return host or url
+
+
+def _sanitize_excerpt(text: str, max_chars: int = 800) -> str:
+    """Make raw scraped markdown safe for a reference body.
+
+    Strips markdown/HTML that would pollute the document outline:
+    - removes heading prefixes (``# Foo`` → ``Foo``)
+    - unwraps ``[label](url)`` to ``label``
+    - drops raw URLs and HTML tags
+    - collapses whitespace, preserves paragraph breaks
+    - truncates to *max_chars* with an ellipsis on a word boundary
+    """
+    cleaned = re.sub(r"<[^>]+>", "", text)
+    cleaned = re.sub(r"^#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"https?://\S+", "", cleaned)
+    paras = [re.sub(r"\s+", " ", p).strip() for p in cleaned.split("\n\n")]
+    result = "\n\n".join(p for p in paras if p)
+    if len(result) > max_chars:
+        truncated = result[:max_chars]
+        if " " in truncated:
+            truncated = truncated.rsplit(" ", 1)[0]
+        result = truncated + "…"
+    return result
+
+
+def _claim_slug(claim_id: str) -> str:
+    """Short stable id for in-page anchoring."""
+    return f"claim-{claim_id.split('-', 1)[0]}"
 
 
 def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
@@ -56,6 +124,18 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
     if qt_label:
         r.callout(f"This is a {qt_label}", tone="note")
+
+    # ── Posterior interpretation ─────────────────────────────────────
+
+    if data.confidence_scores and data.confidence_scores.posterior is not None:
+        posterior_pct = data.confidence_scores.posterior * 100
+        cs = data.confidence_scores
+        interp = (
+            f"**P(YES) ≈ {posterior_pct:.1f}%** — "
+            f"{cs.posterior_supporting} supporting vs "
+            f"{cs.posterior_contradicting} contradicting evidence points."
+        )
+        r.callout(interp, tone="info")
 
     # ── Key Findings Q&A ─────────────────────────────────────────────
 
@@ -104,9 +184,9 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
         summary_parts.append(providers_str)
 
         summary_parts.append(data.direct_answer)
-        r.prose("\n\n".join(summary_parts), heading="Summary")
+        r.prose("\n\n".join(summary_parts), heading="Summary", id="summary")
 
-    # ── Claims as cards ──────────────────────────────────────────────
+    # ── Claims as cards, each followed by its counterarguments ───────
 
     if data.claims:
         r.prose(
@@ -114,7 +194,12 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
             f"each traced to specific evidence sources. "
             f"Findings are ordered by strength of support.",
             heading="Findings",
+            id="findings",
         )
+
+    adv_by_claim: dict[str, list[Any]] = {}
+    for adv in data.adversarial:
+        adv_by_claim.setdefault(adv.claim_id, []).append(adv)
 
     for claim in data.claims:
         refs = [str(n) for n in claim.evidence_refs_display]
@@ -129,7 +214,10 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
                 "**Assumptions:** " + "; ".join(claim.assumptions)
             )
 
-        card_kw: dict[str, Any] = {"badge": claim.stage}
+        card_kw: dict[str, Any] = {
+            "badge": claim.stage,
+            "id": _claim_slug(claim.claim_id),
+        }
         if refs:
             card_kw["refs"] = refs
         if details_parts:
@@ -137,119 +225,98 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
         r.card(claim.statement, **card_kw)
 
-    # ── Evidence as references ───────────────────────────────────────
+        # Consecutive run of reference atoms with shared group → clustered under a heading
+        claim_advs = adv_by_claim.get(claim.claim_id, [])
+        if claim_advs:
+            short_stmt = claim.statement[:70].rstrip()
+            if len(claim.statement) > 70:
+                short_stmt += "…"
+            group_label = f"Counterarguments — {short_stmt}"
+            for adv in claim_advs:
+                ref_kw: dict[str, Any] = {
+                    "badge": "contradicts",
+                    "group": group_label,
+                }
+                if adv.source_ref:
+                    ref_kw["source"] = adv.source_ref
+                    ref_kw["source_label"] = _short_source(adv.source_ref)
+                r.reference(
+                    _sanitize_excerpt(adv.counterargument), **ref_kw
+                )
+
+    # ── Supporting evidence as references ────────────────────────────
+
+    supporting_ev = [e for e in data.evidence if e.support_judgment == "supports"]
+    contradicting_ev = [e for e in data.evidence if e.support_judgment == "contradicts"]
+    other_ev = [
+        e for e in data.evidence
+        if e.support_judgment not in ("supports", "contradicts")
+    ]
 
     if data.evidence:
-        r.prose("", heading="Sources")
-
-        # Group by judgment
-        supporting = [e for e in data.evidence if e.support_judgment == "supports"]
-        contradicting = [e for e in data.evidence if e.support_judgment == "contradicts"]
-        other = [
-            e for e in data.evidence
-            if e.support_judgment not in ("supports", "contradicts")
-        ]
+        r.prose("", heading="Sources", id="sources")
 
         for group_label, group in [
-            ("Supporting", supporting),
-            ("Contradicting", contradicting),
-            ("Other", other),
+            ("Supporting", supporting_ev),
+            ("Contradicting", contradicting_ev),
+            ("Other", other_ev),
         ]:
             if not group:
                 continue
-            r.prose(f"#### {group_label}")
-
             for ev in group:
                 number = data.evidence_index_map.get(ev.evidence_id)
-                content_parts: list[str] = []
 
-                # Source type + judgment header
                 header_parts: list[str] = []
                 if ev.source_type:
                     header_parts.append(ev.source_type)
                 if ev.provider:
                     header_parts.append(ev.provider)
+                header_line = " ".join(header_parts)
+                if ev.quality_score is not None and header_line:
+                    header_line += f"  quality: {ev.quality_score:.2f}"
 
-                # Reasoning or extracted content
+                content_parts: list[str] = []
+                if header_line:
+                    content_parts.append(header_line)
                 if ev.judgment_reasoning:
                     content_parts.append(ev.judgment_reasoning)
-                elif ev.extracted_content:
-                    content_parts.append(ev.extracted_content)
-
-                # Limitations
                 if ev.limitations:
-                    content_parts.append(
-                        "*" + "; ".join(ev.limitations) + "*"
-                    )
+                    content_parts.append("*" + "; ".join(ev.limitations) + "*")
 
-                ref_kw: dict[str, Any] = {}
+                ref_kw_ev: dict[str, Any] = {"group": group_label}
                 if number is not None:
-                    ref_kw["number"] = number
+                    ref_kw_ev["number"] = number
                 if ev.source_ref:
-                    ref_kw["source"] = ev.source_ref
+                    ref_kw_ev["source"] = ev.source_ref
+                    ref_kw_ev["source_label"] = _short_source(ev.source_ref)
                 if ev.support_judgment:
-                    ref_kw["badge"] = ev.support_judgment
-                if ev.quality_score is not None:
-                    # Append quality to the header line
-                    content_parts.insert(
-                        0,
-                        " ".join(header_parts) if header_parts else ""
-                    )
-                    if header_parts:
-                        content_parts[0] += f"  quality: {ev.quality_score:.2f}"
-                elif header_parts:
-                    content_parts.insert(0, " ".join(header_parts))
+                    ref_kw_ev["badge"] = ev.support_judgment
 
                 r.reference(
                     "\n\n".join(p for p in content_parts if p),
-                    **ref_kw,
+                    **ref_kw_ev,
                 )
 
-    # ── Adversarial counterarguments ─────────────────────────────────
-
-    if data.adversarial:
-        claim_ids_with_adv = {a.claim_id for a in data.adversarial}
-        for claim in data.claims:
-            if claim.claim_id not in claim_ids_with_adv:
-                continue
-            claim_advs = [
-                a for a in data.adversarial if a.claim_id == claim.claim_id
-            ]
-            if not claim_advs:
-                continue
-
-            r.prose(
-                f"#### Counterarguments to: *{claim.statement[:80]}...*"
-                if len(claim.statement) > 80
-                else f"#### Counterarguments to: *{claim.statement}*"
-            )
-            for adv in claim_advs:
-                ref_kw_adv: dict[str, Any] = {"badge": "contradicts"}
-                if adv.source_ref:
-                    ref_kw_adv["source"] = adv.source_ref
-                r.reference(adv.counterargument, **ref_kw_adv)
-
-    # ── Uncertainties / limitations ──────────────────────────────────
+    # ── Caveats (non-blocking unresolved) + Limitations (blocking) ──
+    # Matches legacy's split: non-blocking → Caveats, blocking → Limitations.
 
     unresolved = [u for u in data.uncertainties if not u.is_resolved]
-    if unresolved:
-        caveats = [
-            u for u in unresolved
-            if u.uncertainty_type in ("caveat", "limitation", "scope_limitation")
-        ]
-        blocking = [u for u in unresolved if u.is_blocking and u not in caveats]
+    caveats = [u for u in unresolved if not u.is_blocking]
+    blocking = [u for u in unresolved if u.is_blocking]
 
-        parts: list[str] = []
-        if caveats:
-            parts.append("**Caveats**\n\n" + "\n".join(
-                f"- {u.description}" for u in caveats
-            ))
-        if blocking:
-            parts.append("**Unresolved blocking issues**\n\n" + "\n".join(
-                f"- {u.description}" for u in blocking
-            ))
-        if parts:
-            r.prose("\n\n".join(parts), heading="Limitations")
+    if caveats:
+        r.prose(
+            "\n".join(f"- {u.description}" for u in caveats),
+            heading="Caveats",
+            id="caveats",
+        )
+
+    if blocking:
+        r.prose(
+            "\n".join(f"- {u.description}" for u in blocking),
+            heading="Limitations",
+            id="limitations",
+        )
 
     # ── Open questions ───────────────────────────────────────────────
 
@@ -257,34 +324,47 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
         r.prose(
             "\n".join(f"1. {q}" for q in data.open_questions),
             heading="Open Questions",
+            id="open-questions",
         )
 
     # ── Investigation process ────────────────────────────────────────
 
     if data.investigation_narrative:
-        r.prose(data.investigation_narrative, heading="Investigation Process")
+        r.prose(
+            data.investigation_narrative,
+            heading="Investigation Process",
+            id="investigation",
+        )
 
-    # ── Confidence sidebar ───────────────────────────────────────────
+    # ── Sidebar ──────────────────────────────────────────────────────
+
+    stage_counts = data.stats.claims_by_stage or {}
+    claims_group: dict[str, str] = {"Total": str(data.stats.total_claims)}
+    for stage in STAGE_DISPLAY_ORDER:
+        n = stage_counts.get(stage, 0)
+        if n:
+            claims_group[stage.title()] = str(n)
 
     sidebar_groups: dict[str, dict[str, str]] = {
         "Investigation": {
             "Evidence": str(data.stats.total_evidence),
-            "Claims": f"{data.stats.total_claims}",
+            "Claims": str(data.stats.total_claims),
             "Uncertainties": str(
                 data.stats.blocking_uncertainties
                 + data.stats.non_blocking_uncertainties
                 + data.stats.resolved_uncertainties
             ),
         },
+        "Claims by stage": claims_group,
     }
 
     if data.confidence_scores:
         cs = data.confidence_scores
         confidence_data: dict[str, str] = {}
         if cs.posterior is not None:
-            confidence_data["Posterior"] = f"{cs.posterior:.2%}"
-            confidence_data["Claims supported"] = str(cs.posterior_supporting)
-            confidence_data["Claims contradicted"] = str(cs.posterior_contradicting)
+            confidence_data["P(YES)"] = f"{cs.posterior:.2%}"
+            confidence_data["Supporting"] = str(cs.posterior_supporting)
+            confidence_data["Contradicting"] = str(cs.posterior_contradicting)
         else:
             confidence_data["Posterior"] = "N/A"
         sidebar_groups["Confidence"] = confidence_data
