@@ -270,10 +270,15 @@ class SummarizePages(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         agent = _build_agent("page_summarizer", ctx.deps.model)
 
         async def summarize(page: FetchedPage) -> PageSummary:
+            truncation_note = (
+                f"\n[NOTE: Page was {page.original_length:,} chars; showing first 50,000 (truncated).]"
+                if page.truncated
+                else ""
+            )
             prompt = f"""Research Question: {ctx.state.query}
 
 Page Content ({page.word_count} words):
-{page.content[:20000]}{"..." if len(page.content) > 20000 else ""}
+{page.content}{truncation_note}
 
 Extract ONLY information that DIRECTLY answers or informs the research question.
 Create a 200-word summary, identify 3-5 key points, and include 1-3 verbatim quotes from the page.
@@ -317,13 +322,8 @@ class AnalyzeGaps(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 
         agent = _build_agent("gap_analyzer", ctx.deps.model)
 
-        evidence = [
-            f"{p.title}: {p.content[:2000]}..."
-            if len(p.content) > 2000
-            else f"{p.title}: {p.content}"
-            for p in ctx.state.fetched_pages
-        ]
-        sources = [p.url for p in ctx.state.fetched_pages]
+        evidence = [f"{s.title}: {s.summary}" for s in ctx.state.page_summaries]
+        sources = [s.url for s in ctx.state.page_summaries]
 
         prompt = f"""Research Question: {ctx.state.query}
 
