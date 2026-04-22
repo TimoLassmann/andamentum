@@ -574,9 +574,5 @@ class IntegrationAssessment(BaseModel):
         description="'supports', 'contradicts', or 'insufficient'. "
         "Based on collective evidence weight, not individual counts."
     )
-    confidence: float = Field(
-        description="0.0-1.0 confidence in the verdict"
-    )
-    reasoning: str = Field(
-        description="The evidential chain explaining the verdict"
-    )
+    confidence: float = Field(description="0.0-1.0 confidence in the verdict")
+    reasoning: str = Field(description="The evidential chain explaining the verdict")

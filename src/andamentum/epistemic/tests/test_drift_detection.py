@@ -151,7 +151,7 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     "Writer-validator loop": "3c3f161d6f5b27cf",
     "Prediction generation per-aspect error handling": "82cee56e946a4202",
-    "Gate validate_promotion logic": "42b2f8500930928a",
+    "Gate validate_promotion logic": "a18d738337b70cb6",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     "CompositeGatherer provider error handling": "9d1f267d891787a1",
     "Adapter registry (agent name → adapter function mapping)": "e780e336e9788f27",

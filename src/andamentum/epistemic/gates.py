@@ -548,7 +548,11 @@ async def validate_promotion(
                 and claim.adversarial_balance >= 0.7
             )
 
-            if any_judged and supporting < gate.min_supporting_sources and not adversarial_survived:
+            if (
+                any_judged
+                and supporting < gate.min_supporting_sources
+                and not adversarial_survived
+            ):
                 reasons.append(
                     f"Need {gate.min_supporting_sources} supporting sources, have {supporting}"
                 )
