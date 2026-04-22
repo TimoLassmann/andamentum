@@ -39,7 +39,6 @@ class AdversarialSearchOperation(BaseOperation):
 
         from ..adversarial_query_generator import (
             generate_adversarial_queries,
-            detect_domain,
         )
         from ..adversarial_evaluator import create_counterargument
         from ..adversarial_balance import synthesize_adversarial_result
@@ -64,10 +63,8 @@ class AdversarialSearchOperation(BaseOperation):
             )
 
         # Step 1: Generate template-based adversarial queries (deterministic)
-        domain = detect_domain(claim.statement)
         template_queries = generate_adversarial_queries(
             claim.statement,
-            claim_domain=domain,
             max_queries=5,
         )
 
