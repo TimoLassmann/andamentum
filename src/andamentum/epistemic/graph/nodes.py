@@ -27,6 +27,28 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+_EMPTY_EXTRACTION_THRESHOLD = 3
+
+
+def _update_retrieval_health(state: EpistemicGraphState, evidence: Any) -> None:
+    """Update retrieval-health counters based on one extraction outcome.
+
+    Empty extraction (``extracted_content`` is falsy) increments the
+    consecutive-empty counter; non-empty resets it to zero. When the
+    counter crosses ``_EMPTY_EXTRACTION_THRESHOLD``, ``state.retrieval_failed``
+    flips True. Once flipped, the flag stays True for the remainder of the
+    run — a late successful extraction shouldn't erase the fact that the
+    retrieval infrastructure was already flagged as failing.
+    """
+    content = getattr(evidence, "extracted_content", None)
+    if content:
+        state.consecutive_empty_extractions = 0
+    else:
+        state.consecutive_empty_extractions += 1
+        if state.consecutive_empty_extractions >= _EMPTY_EXTRACTION_THRESHOLD:
+            state.retrieval_failed = True
+
+
 def _make_op(op_class: type, deps: EpistemicDeps) -> Any:
     """Create an operation instance from graph deps."""
     return op_class(
@@ -42,7 +64,9 @@ def _op_input(entity_id: str, entity_type: str, operation: str) -> Any:
     """Create an OperationInput for operation execution."""
     from ..operations.base import OperationInput
 
-    return OperationInput(entity_id=entity_id, entity_type=entity_type, operation=operation)
+    return OperationInput(
+        entity_id=entity_id, entity_type=entity_type, operation=operation
+    )
 
 
 async def _run_op(
@@ -130,19 +154,17 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
     )
 
     # Step 1: Cascade invalidated evidence → affected claims
-    all_evidence = await deps.repo.query(
-        "evidence", objective_id=state.objective_id
-    )
+    all_evidence = await deps.repo.query("evidence", objective_id=state.objective_id)
     had_cascades = False
     for ev in all_evidence:
-        if (
-            isinstance(ev, Evidence)
-            and ev.invalidated
-            and not ev.invalidation_cascaded
-        ):
+        if isinstance(ev, Evidence) and ev.invalidated and not ev.invalidation_cascaded:
             await _run_op(
-                InvalidateEvidenceOperation, deps, state,
-                ev.entity_id, "evidence", "invalidate_evidence",
+                InvalidateEvidenceOperation,
+                deps,
+                state,
+                ev.entity_id,
+                "evidence",
+                "invalidate_evidence",
             )
             had_cascades = True
 
@@ -152,9 +174,7 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
     if had_cascades:
         from ..entities.claim import ClaimStage
 
-        all_claims = await deps.repo.query(
-            "claim", objective_id=state.objective_id
-        )
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         for claim in all_claims:
             if (
                 isinstance(claim, Claim)
@@ -162,8 +182,12 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 and claim.stage != ClaimStage.HYPOTHESIS
             ):
                 result = await _run_op(
-                    RevalidateClaimOperation, deps, state,
-                    claim.entity_id, "claim", "revalidate_claim",
+                    RevalidateClaimOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "revalidate_claim",
                 )
                 # If TMS demoted the claim, remove from verification_done
                 # so PromoteToSupported re-routes it through verification
@@ -175,8 +199,12 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
         claim = await deps.repo.get("claim", cid)
         if isinstance(claim, Claim) and not claim.abandoned:
             await _run_op(
-                RevalidateClaimOperation, deps, state,
-                cid, "claim", "revalidate_claim",
+                RevalidateClaimOperation,
+                deps,
+                state,
+                cid,
+                "claim",
+                "revalidate_claim",
             )
     state.claims_needing_tms.clear()
 
@@ -187,9 +215,7 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
 
 
 @dataclass
-class PrepareObjective(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class PrepareObjective(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Run clarification, classification, and conceptual analysis on the objective."""
 
     async def run(
@@ -208,7 +234,12 @@ class PrepareObjective(
         if not state.skip_preplanning:
             # 1. Clarify
             await _run_op(
-                ClarifyQuestionOperation, deps, state, oid, "objective", "clarify_question"
+                ClarifyQuestionOperation,
+                deps,
+                state,
+                oid,
+                "objective",
+                "clarify_question",
             )
             obj = await deps.repo.get("objective", oid)
             obj.phase = "clarified"
@@ -216,7 +247,12 @@ class PrepareObjective(
 
             # 2. Classify
             await _run_op(
-                ClassifyQuestionOperation, deps, state, oid, "objective", "classify_question"
+                ClassifyQuestionOperation,
+                deps,
+                state,
+                oid,
+                "objective",
+                "classify_question",
             )
             obj = await deps.repo.get("objective", oid)
             if obj.question_type:
@@ -224,7 +260,12 @@ class PrepareObjective(
 
             # 3. Conceptual analysis
             await _run_op(
-                ConceptualAnalysisOperation, deps, state, oid, "objective", "conceptual_analysis"
+                ConceptualAnalysisOperation,
+                deps,
+                state,
+                oid,
+                "objective",
+                "conceptual_analysis",
             )
             obj = await deps.repo.get("objective", oid)
             obj.phase = "analyzed"
@@ -239,9 +280,7 @@ class PrepareObjective(
 
 
 @dataclass
-class PlanEvidence(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class PlanEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Create evidence stubs via plan_task."""
 
     async def run(
@@ -253,8 +292,12 @@ class PlanEvidence(
         deps = ctx.deps
 
         await _run_op(
-            PlanTaskOperation, deps, state,
-            state.objective_id, "objective", "plan_task",
+            PlanTaskOperation,
+            deps,
+            state,
+            state.objective_id,
+            "objective",
+            "plan_task",
         )
 
         obj = await deps.repo.get("objective", state.objective_id)
@@ -265,9 +308,7 @@ class PlanEvidence(
 
 
 @dataclass
-class ExtractEvidence(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Extract content from all unextracted evidence stubs."""
 
     async def run(
@@ -286,9 +327,15 @@ class ExtractEvidence(
 
         for ev in unextracted:
             await _run_op(
-                ExtractEvidenceOperation, deps, state,
-                ev.entity_id, "evidence", "extract_evidence",
+                ExtractEvidenceOperation,
+                deps,
+                state,
+                ev.entity_id,
+                "evidence",
+                "extract_evidence",
             )
+            updated_ev = await deps.repo.get("evidence", ev.entity_id)
+            _update_retrieval_health(state, updated_ev)
 
         state.evidence_extracted = True
 
@@ -300,9 +347,7 @@ class ExtractEvidence(
 
 
 @dataclass
-class CreateClaims(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Create claims — seed_claim (verification) or propose_claims (research)."""
 
     async def run(
@@ -317,9 +362,13 @@ class CreateClaims(
 
         obj = await deps.repo.get("objective", oid)
         if obj.claim_to_verify:
-            await _run_op(SeedClaimOperation, deps, state, oid, "objective", "seed_claim")
+            await _run_op(
+                SeedClaimOperation, deps, state, oid, "objective", "seed_claim"
+            )
         else:
-            await _run_op(ProposeClaimsOperation, deps, state, oid, "objective", "propose_claims")
+            await _run_op(
+                ProposeClaimsOperation, deps, state, oid, "objective", "propose_claims"
+            )
 
         # Populate claim IDs from repo
         claims = await deps.repo.query("claim", objective_id=oid)
@@ -335,9 +384,7 @@ class CreateClaims(
 
 
 @dataclass
-class Scrutinize(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Run scrutiny on claims that have not yet been scrutinised."""
 
     async def run(
@@ -365,8 +412,12 @@ class Scrutinize(
                     await deps.repo.save(claim)
                     state.claims_needing_rescrutiny.discard(claim.entity_id)
                 await _run_op(
-                    ScrutiniseClaimOperation, deps, state,
-                    claim.entity_id, "claim", "scrutinise_claim",
+                    ScrutiniseClaimOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "scrutinise_claim",
                 )
 
         # Re-read claims after scrutiny
@@ -405,9 +456,7 @@ class Scrutinize(
 
 
 @dataclass
-class Investigate(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class Investigate(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Run investigation on claims needing more evidence."""
 
     async def run(
@@ -427,8 +476,12 @@ class Investigate(
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
                 if inv_count < 3:
                     result = await _run_op(
-                        InvestigateClaimOperation, deps, state,
-                        claim.entity_id, "claim", "investigate_claim",
+                        InvestigateClaimOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "investigate_claim",
                     )
                     state.investigation_counts[claim.entity_id] = inv_count + 1
                     if result.success:
@@ -436,7 +489,10 @@ class Investigate(
                         # TMS: if claim is promoted and new evidence was created
                         if result.created_entities:
                             from ..entities.claim import ClaimStage
-                            claim_updated = await deps.repo.get("claim", claim.entity_id)
+
+                            claim_updated = await deps.repo.get(
+                                "claim", claim.entity_id
+                            )
                             if claim_updated.stage != ClaimStage.HYPOTHESIS:
                                 state.claims_needing_tms.add(claim.entity_id)
 
@@ -444,9 +500,7 @@ class Investigate(
 
 
 @dataclass
-class ExtractNewEvidence(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Extract content from newly created evidence stubs, then re-enter scrutiny."""
 
     async def run(
@@ -467,9 +521,15 @@ class ExtractNewEvidence(
 
         for ev in unextracted:
             result = await _run_op(
-                ExtractEvidenceOperation, deps, state,
-                ev.entity_id, "evidence", "extract_evidence",
+                ExtractEvidenceOperation,
+                deps,
+                state,
+                ev.entity_id,
+                "evidence",
+                "extract_evidence",
             )
+            updated_ev = await deps.repo.get("evidence", ev.entity_id)
+            _update_retrieval_health(state, updated_ev)
 
             # Link newly created evidence to the same claim as the stub.
             # Extraction from a single query may produce multiple Evidence
@@ -538,9 +598,7 @@ class ExtractNewEvidence(
 
 
 @dataclass
-class AbandonOrDemote(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Abandon HYPOTHESIS claims that exhausted investigation; demote SUPPORTED+ claims."""
 
     async def run(
@@ -571,8 +629,12 @@ class AbandonOrDemote(
                     # contradicts, promote to SUPPORTED with
                     # integrated_assessment="contradicts" instead of abandoning.
                     refute_result = await _run_op(
-                        PromoteAsRefutedOperation, deps, state,
-                        claim.entity_id, "claim", "promote_as_refuted",
+                        PromoteAsRefutedOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "promote_as_refuted",
                     )
                     if refute_result.success:
                         # Claim is now SUPPORTED with "contradicts"
@@ -583,15 +645,23 @@ class AbandonOrDemote(
 
                     # Fall through: truly stale, abandon as before.
                     await _run_op(
-                        AbandonStaleClaimOperation, deps, state,
-                        claim.entity_id, "claim", "abandon_stale_claim",
+                        AbandonStaleClaimOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "abandon_stale_claim",
                     )
                     state.terminal_claims.add(claim.entity_id)
                 elif claim.stage != ClaimStage.HYPOTHESIS:
                     # Demote SUPPORTED+ claims
                     await _run_op(
-                        DemoteClaimOperation, deps, state,
-                        claim.entity_id, "claim", "demote_claim",
+                        DemoteClaimOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "demote_claim",
                     )
                     demoted_any = True
 
@@ -604,9 +674,7 @@ class AbandonOrDemote(
 
 
 @dataclass
-class PromoteToSupported(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class PromoteToSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Promote HYPOTHESIS claims and route SUPPORTED claims to verification.
 
     This is a routing hub that checks actual claim state:
@@ -635,15 +703,26 @@ class PromoteToSupported(
         for claim in all_claims:
             if claim.abandoned:
                 continue
-            if claim.stage == ClaimStage.HYPOTHESIS and claim.scrutiny_verdict == "pass":
+            if (
+                claim.stage == ClaimStage.HYPOTHESIS
+                and claim.scrutiny_verdict == "pass"
+            ):
                 result = await _run_op(
-                    PromoteClaimOperation, deps, state,
-                    claim.entity_id, "claim", "promote_claim",
+                    PromoteClaimOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "promote_claim",
                 )
                 if result.success:
                     await _run_op(
-                        SetRoutingDefaultsOperation, deps, state,
-                        claim.entity_id, "claim", "set_routing_defaults",
+                        SetRoutingDefaultsOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "set_routing_defaults",
                     )
 
         # Step 2: Check if any SUPPORTED claims need verification
@@ -664,9 +743,7 @@ class PromoteToSupported(
 
 
 @dataclass
-class ClusterEvidence(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class ClusterEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Cluster evidence into representatives before verification.
 
     Deterministic (embedding-based, no LLM). Runs HDBSCAN on evidence
@@ -710,9 +787,7 @@ class ClusterEvidence(
 
 
 @dataclass
-class RunVerification(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Run verification tracks on SUPPORTED claims based on routing profile.
 
     LLM-heavy: adversarial search, convergence, deductive validation,
@@ -747,13 +822,41 @@ class RunVerification(
             profile = get_routing_profile("verificatory")
 
         track_map: dict[str, tuple[type, str, str]] = {
-            "adversarial": (AdversarialSearchOperation, "adversarial_search", "adversarial_checked"),
-            "convergence": (AssessConvergenceOperation, "assess_convergence", "convergence_checked"),
-            "deductive": (ValidateDeductivelyOperation, "validate_deductively", "deductive_checked"),
-            "computational": (VerifyComputationallyOperation, "verify_computationally", "computational_checked"),
-            "argument": (AnalyzeArgumentOperation, "analyze_argument", "argument_analyzed"),
-            "contrastive": (ContrastiveEvaluationOperation, "contrastive_evaluation", "contrastive_checked"),
-            "consistency": (CrossClaimConsistencyOperation, "cross_claim_consistency", "consistency_checked"),
+            "adversarial": (
+                AdversarialSearchOperation,
+                "adversarial_search",
+                "adversarial_checked",
+            ),
+            "convergence": (
+                AssessConvergenceOperation,
+                "assess_convergence",
+                "convergence_checked",
+            ),
+            "deductive": (
+                ValidateDeductivelyOperation,
+                "validate_deductively",
+                "deductive_checked",
+            ),
+            "computational": (
+                VerifyComputationallyOperation,
+                "verify_computationally",
+                "computational_checked",
+            ),
+            "argument": (
+                AnalyzeArgumentOperation,
+                "analyze_argument",
+                "argument_analyzed",
+            ),
+            "contrastive": (
+                ContrastiveEvaluationOperation,
+                "contrastive_evaluation",
+                "contrastive_checked",
+            ),
+            "consistency": (
+                CrossClaimConsistencyOperation,
+                "cross_claim_consistency",
+                "consistency_checked",
+            ),
         }
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
@@ -785,8 +888,12 @@ class RunVerification(
                     continue
 
                 await _run_op(
-                    op_class, deps, state,
-                    claim.entity_id, "claim", op_name,
+                    op_class,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    op_name,
                 )
 
         # TMS sweep: adversarial search may have created contradicting
@@ -817,7 +924,9 @@ class ResolveUncertainties(
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["IntegrateEvidence", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"]:
+    ) -> Union[
+        "IntegrateEvidence", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"
+    ]:
         from ..operations.uncertainty import ResolveUncertaintyOperation
         from ..operations.concerns import DeduplicateConcernsOperation
 
@@ -839,8 +948,12 @@ class ResolveUncertainties(
 
         for unc in blocking:
             result = await _run_op(
-                ResolveUncertaintyOperation, deps, state,
-                unc.entity_id, "uncertainty", "resolve_uncertainty",
+                ResolveUncertaintyOperation,
+                deps,
+                state,
+                unc.entity_id,
+                "uncertainty",
+                "resolve_uncertainty",
             )
             # Graph flow control: mark affected claims for re-scrutiny
             if result.success:
@@ -851,8 +964,12 @@ class ResolveUncertainties(
 
         # Deduplicate concerns on the objective
         await _run_op(
-            DeduplicateConcernsOperation, deps, state,
-            state.objective_id, "objective", "deduplicate_concerns",
+            DeduplicateConcernsOperation,
+            deps,
+            state,
+            state.objective_id,
+            "objective",
+            "deduplicate_concerns",
         )
 
         # Check if new blocking uncertainties were created
@@ -885,9 +1002,7 @@ class ResolveUncertainties(
 
 
 @dataclass
-class IntegrateEvidence(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class IntegrateEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Run abductive integration on each SUPPORTED claim."""
 
     async def run(
@@ -904,19 +1019,24 @@ class IntegrateEvidence(
         for claim in all_claims:
             if claim.abandoned:
                 continue
-            if claim.stage == ClaimStage.SUPPORTED and claim.integrated_assessment is None:
+            if (
+                claim.stage == ClaimStage.SUPPORTED
+                and claim.integrated_assessment is None
+            ):
                 await _run_op(
-                    AbductiveIntegrationOperation, deps, state,
-                    claim.entity_id, "claim", "integrate_evidence",
+                    AbductiveIntegrationOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "integrate_evidence",
                 )
 
         return PromoteSupported()
 
 
 @dataclass
-class PromoteSupported(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class PromoteSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Try advancing claims beyond SUPPORTED: S->P, P->R, R->A, then record decisions."""
 
     async def run(
@@ -947,8 +1067,12 @@ class PromoteSupported(
                     break
 
                 result = await _run_op(
-                    PromoteClaimOperation, deps, state,
-                    claim.entity_id, "claim", "promote_claim",
+                    PromoteClaimOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "promote_claim",
                 )
                 if not result.success:
                     break
@@ -960,15 +1084,23 @@ class PromoteSupported(
                 # At ROBUST: generate predictions
                 if current == ClaimStage.ROBUST and not claim.predictions_generated:
                     await _run_op(
-                        GeneratePredictionOperation, deps, state,
-                        claim.entity_id, "claim", "generate_prediction",
+                        GeneratePredictionOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "generate_prediction",
                     )
 
                 # At ACTIONABLE: record decision
                 if current == ClaimStage.ACTIONABLE and not claim.decision_recorded:
                     await _run_op(
-                        RecordDecisionOperation, deps, state,
-                        claim.entity_id, "claim", "record_decision",
+                        RecordDecisionOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "record_decision",
                     )
 
             state.verification_done.add(claim.entity_id)
@@ -977,9 +1109,7 @@ class PromoteSupported(
 
 
 @dataclass
-class CheckCompletion(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class CheckCompletion(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Check whether any non-abandoned claims remain and route accordingly."""
 
     async def run(
@@ -1011,9 +1141,7 @@ class CheckCompletion(
 
 
 @dataclass
-class Synthesize(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class Synthesize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
     """Freeze snapshot and synthesize the final report."""
 
     async def run(
@@ -1030,8 +1158,12 @@ class Synthesize(
 
         # Freeze snapshot
         await _run_op(
-            FreezeSnapshotOperation, deps, state,
-            oid, "objective", "freeze_snapshot",
+            FreezeSnapshotOperation,
+            deps,
+            state,
+            oid,
+            "objective",
+            "freeze_snapshot",
         )
 
         # Get the snapshot ID from the objective
@@ -1039,8 +1171,12 @@ class Synthesize(
 
         if obj.snapshot_id:
             await _run_op(
-                SynthesizeReportOperation, deps, state,
-                obj.snapshot_id, "snapshot", "synthesize_report",
+                SynthesizeReportOperation,
+                deps,
+                state,
+                obj.snapshot_id,
+                "snapshot",
+                "synthesize_report",
             )
 
         obj = await deps.repo.get("objective", oid)
