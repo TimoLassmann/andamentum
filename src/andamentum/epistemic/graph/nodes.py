@@ -1118,6 +1118,25 @@ class CheckCompletion(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
         state = ctx.state
         deps = ctx.deps
 
+        # Short-circuit on retrieval failure: evidence extraction kept
+        # returning empty content, so there's nothing to synthesize.
+        # Terminate with a distinct status so the posterior/report can
+        # surface retrieval_failed as the terminal state.
+        if state.retrieval_failed:
+            return End(
+                EpistemicResult(
+                    objective_id=state.objective_id,
+                    status="retrieval_failed",
+                    successful=state.successful,
+                    failed=state.failed,
+                    errors=state.errors,
+                    operations_log=state.operations_log,
+                    termination_reason="retrieval_failed",
+                    quarantined=state.quarantined,
+                    retrieval_failed=True,
+                )
+            )
+
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         non_abandoned = [c for c in all_claims if not c.abandoned]
 
@@ -1136,6 +1155,7 @@ class CheckCompletion(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
                 operations_log=state.operations_log,
                 termination_reason=reason,
                 quarantined=state.quarantined,
+                retrieval_failed=state.retrieval_failed,
             )
         )
 
@@ -1194,6 +1214,7 @@ class Synthesize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
                 operations_log=state.operations_log,
                 termination_reason="complete",
                 quarantined=state.quarantined,
+                retrieval_failed=state.retrieval_failed,
             )
         )
 

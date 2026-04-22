@@ -32,3 +32,5 @@ class EpistemicResult:
     posterior: Optional[Any] = None  # PosteriorReport
 
     quarantined: list[QuarantineRecord] = field(default_factory=list)
+
+    retrieval_failed: bool = False

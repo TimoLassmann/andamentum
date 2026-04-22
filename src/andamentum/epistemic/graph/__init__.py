@@ -142,11 +142,16 @@ async def run_epistemic_graph(
 
     # Compute posterior confidence (deterministic, no LLM).
     # No fallback: if posterior raises, the caller sees the real error.
+    # Pass retrieval_failed so compute_posterior can emit a
+    # terminal_state="retrieval_failed" report instead of counting
+    # over empty evidence.
     posterior_report = None
     if result.successful > 0:
         from ..confidence import compute_posterior
 
-        posterior_report = await compute_posterior(repo, objective_id)
+        posterior_report = await compute_posterior(
+            repo, objective_id, retrieval_failed=result.retrieval_failed
+        )
 
     # Return backward-compatible result
     from ..operations_runner import PipelineResult
@@ -160,4 +165,5 @@ async def run_epistemic_graph(
         errors=result.errors,
         posterior=posterior_report,
         quarantined=result.quarantined,
+        retrieval_failed=result.retrieval_failed,
     )

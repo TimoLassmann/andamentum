@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from andamentum.document_store import DocumentStore
-from andamentum.epistemic.confidence import PosteriorReport
+from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
 from andamentum.epistemic.graph.nodes import _update_retrieval_health
 from andamentum.epistemic.graph.state import EpistemicGraphState
@@ -135,3 +135,57 @@ class TestRetrievalHealthUpdater:
         # the fact that we've already been flagged as a failed-retrieval run.
         assert state.consecutive_empty_extractions == 0
         assert state.retrieval_failed is True
+
+
+class TestPipelineResultExposesRetrievalFailed:
+    def test_default_is_false(self) -> None:
+        from andamentum.epistemic.operations_runner import PipelineResult
+
+        r = PipelineResult(
+            objective_id="x",
+            iterations=0,
+            successful=0,
+            failed=0,
+            status="done",
+        )
+        assert r.retrieval_failed is False
+
+    def test_constructor_accepts_flag(self) -> None:
+        from andamentum.epistemic.operations_runner import PipelineResult
+
+        r = PipelineResult(
+            objective_id="x",
+            iterations=0,
+            successful=0,
+            failed=0,
+            status="done",
+            retrieval_failed=True,
+        )
+        assert r.retrieval_failed is True
+
+
+class TestComputePosteriorRetrievalFailed:
+    async def test_emits_terminal_state_report(self, tmp_path: Path) -> None:
+        repo = await _make_repo(tmp_path)
+        obj = await _make_obj(repo)
+
+        posterior = await compute_posterior(
+            repo, objective_id=obj.entity_id, retrieval_failed=True
+        )
+        assert posterior is not None
+        assert posterior.terminal_state == "retrieval_failed"
+        assert posterior.posterior == 0.5
+        assert posterior.supporting_count == 0
+        assert posterior.contradicting_count == 0
+        assert "Retrieval failed" in posterior.explanation
+
+    async def test_normal_path_unaffected(self, tmp_path: Path) -> None:
+        # When retrieval_failed=False (default), compute_posterior runs the
+        # normal path. With no claims, it still returns a report (counting
+        # posterior defaults to 0.5 from log_odds 0).
+        repo = await _make_repo(tmp_path)
+        obj = await _make_obj(repo)
+
+        posterior = await compute_posterior(repo, objective_id=obj.entity_id)
+        assert posterior is not None
+        assert posterior.terminal_state == "completed"

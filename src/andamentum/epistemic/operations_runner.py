@@ -43,6 +43,7 @@ class PipelineResult:
         errors: Optional[list[str]] = None,
         posterior: Optional["PosteriorReport"] = None,
         quarantined: Optional[list[QuarantineRecord]] = None,
+        retrieval_failed: bool = False,
     ):
         self.objective_id = objective_id
         self.iterations = iterations
@@ -52,6 +53,7 @@ class PipelineResult:
         self.errors = errors or []
         self.posterior = posterior
         self.quarantined: list[QuarantineRecord] = quarantined or []
+        self.retrieval_failed = retrieval_failed
 
     @property
     def success(self) -> bool:
