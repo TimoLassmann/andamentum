@@ -215,7 +215,12 @@ def guard_query_against_goal(
     goal: str,
     logger: logging.Logger | None = None,
 ) -> str:
-    """Validate a search query stays on-topic relative to the research goal."""
+    """Validate a search query stays on-topic relative to the research goal.
+
+    # TODO(theme-7): replace with LLM check or remove if planner agent is
+    # trustworthy enough. Current regex+stopword approach does fuzzy semantic
+    # work deterministically — fragile and likely to produce false positives.
+    """
     anchors = extract_anchor_terms(goal)
     if not anchors:
         return query
