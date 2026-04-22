@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
-from .entities import Claim, ClaimStage
+from .entities import Claim, ClaimStage, Evidence
 
 if TYPE_CHECKING:
     from .repository import EpistemicRepository
@@ -426,6 +426,50 @@ async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") 
                 "count_supporting_sources: failed to load evidence %s: %s", eid, e
             )
     return count
+
+
+async def count_support_contradict(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> tuple[int, int]:
+    """Return (n_supports, n_contradicts) across the claim's non-invalidated evidence.
+
+    Mirrors ``count_supporting_sources`` but returns the contradict count too,
+    so callers can assess directional balance.
+    """
+    n_sup = 0
+    n_con = 0
+    for eid in claim.evidence_ids:
+        try:
+            ev = await repo.get("evidence", eid)
+        except Exception as e:
+            logger.warning(
+                "count_support_contradict: failed to load evidence %s: %s", eid, e
+            )
+            continue
+        if not isinstance(ev, Evidence):
+            continue
+        if ev.invalidated:
+            continue
+        if ev.support_judgment == "supports":
+            n_sup += 1
+        elif ev.support_judgment == "contradicts":
+            n_con += 1
+    return n_sup, n_con
+
+
+async def is_refuted_by_evidence(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> bool:
+    """True when the claim's evidence overwhelmingly contradicts it.
+
+    Heuristic: at least 3 contradicting evidence items AND contradicts >= 2 ×
+    supports (treating zero-supports as 1 to avoid divide-by-zero). Designed
+    to fire only on clear refutation, not mixed/ambiguous cases.
+    """
+    n_sup, n_con = await count_support_contradict(claim, repo)
+    if n_con < 3:
+        return False
+    return n_con >= 2 * max(1, n_sup)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
