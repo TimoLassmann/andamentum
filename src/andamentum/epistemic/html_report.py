@@ -107,6 +107,7 @@ class ConfidenceScores:
     posterior_supporting: int = 0
     posterior_contradicting: int = 0
     posterior_question_type: Optional[str] = None
+    terminal_state: str = "completed"
 
 
 @dataclass
@@ -1211,7 +1212,9 @@ def _build_key_findings_qa(data: ReportData) -> str:
     if data.confidence_scores is not None:
         sc = data.confidence_scores
         confidence_str = (
-            f"Posterior: {sc.posterior:.2%}" if sc.posterior is not None else "No posterior computed"
+            f"Posterior: {sc.posterior:.2%}"
+            if sc.posterior is not None
+            else "No posterior computed"
         )
 
     # How thorough was the investigation?

@@ -127,7 +127,17 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
     # ── Posterior interpretation ─────────────────────────────────────
 
-    if data.confidence_scores and data.confidence_scores.posterior is not None:
+    if (
+        data.confidence_scores
+        and data.confidence_scores.terminal_state == "retrieval_failed"
+    ):
+        r.callout(
+            "**Retrieval failed** — evidence extraction returned empty content "
+            "repeatedly (3+ times consecutively). The posterior is uninformative; "
+            "the investigation could not gather enough data to form a reasoned answer.",
+            tone="warning",
+        )
+    elif data.confidence_scores and data.confidence_scores.posterior is not None:
         posterior_pct = data.confidence_scores.posterior * 100
         cs = data.confidence_scores
         interp = (
@@ -156,14 +166,18 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
     if data.confidence_scores:
         cs = data.confidence_scores
         conf_body = (
-            f"Posterior: {cs.posterior:.2%}" if cs.posterior is not None else "No posterior computed"
+            f"Posterior: {cs.posterior:.2%}"
+            if cs.posterior is not None
+            else "No posterior computed"
         )
         qa_entries.append({"label": "How confident are we?", "body": conf_body})
 
-        qa_entries.append({
-            "label": "How thorough was the investigation?",
-            "body": f"{data.stats.total_evidence} evidence sources examined",
-        })
+        qa_entries.append(
+            {
+                "label": "How thorough was the investigation?",
+                "body": f"{data.stats.total_evidence} evidence sources examined",
+            }
+        )
 
     r.items(entries=qa_entries)
 
@@ -172,13 +186,13 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
     if data.direct_answer:
         summary_parts: list[str] = []
 
-        summary_parts.append(
-            f"**Research Question:** *{data.research_question}*"
-        )
+        summary_parts.append(f"**Research Question:** *{data.research_question}*")
 
         providers_str = f"**Evidence Sources:** {data.stats.total_evidence}"
         claims_supported = sum(
-            1 for c in data.claims if c.stage.lower() in ("supported", "robust", "provisional", "actionable")
+            1
+            for c in data.claims
+            if c.stage.lower() in ("supported", "robust", "provisional", "actionable")
         )
         providers_str += f" | **Claims Established:** {claims_supported} of {data.stats.total_claims}"
         summary_parts.append(providers_str)
@@ -210,9 +224,7 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
         if claim.verification_summary:
             details_parts.append(f"**Verification:** {claim.verification_summary}")
         if claim.assumptions:
-            details_parts.append(
-                "**Assumptions:** " + "; ".join(claim.assumptions)
-            )
+            details_parts.append("**Assumptions:** " + "; ".join(claim.assumptions))
 
         card_kw: dict[str, Any] = {
             "badge": claim.stage,
@@ -240,16 +252,15 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
                 if adv.source_ref:
                     ref_kw["source"] = adv.source_ref
                     ref_kw["source_label"] = _short_source(adv.source_ref)
-                r.reference(
-                    _sanitize_excerpt(adv.counterargument), **ref_kw
-                )
+                r.reference(_sanitize_excerpt(adv.counterargument), **ref_kw)
 
     # ── Supporting evidence as references ────────────────────────────
 
     supporting_ev = [e for e in data.evidence if e.support_judgment == "supports"]
     contradicting_ev = [e for e in data.evidence if e.support_judgment == "contradicts"]
     other_ev = [
-        e for e in data.evidence
+        e
+        for e in data.evidence
         if e.support_judgment not in ("supports", "contradicts")
     ]
 
