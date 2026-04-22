@@ -46,6 +46,7 @@ def heading(content: str, **kwargs: Any) -> dict[str, Any]:
         content: Document title text (markdown).
         subtitle: Optional subtitle string.
         meta: Optional metadata — a string or dict of key/value pairs.
+        id: Optional DOM id rendered on the ``<header>`` element (for anchors).
     """
     return {"kind": "heading", "content": content, **kwargs}
 
@@ -56,6 +57,8 @@ def prose(content: str, **kwargs: Any) -> dict[str, Any]:
     Args:
         content: Markdown body text.
         heading: Optional section heading rendered as ``<h2>``.
+        id: Optional DOM id rendered on the ``<h2>`` when ``heading`` is set,
+            otherwise on the ``<section>`` (for anchors).
     """
     return {"kind": "prose", "content": content, **kwargs}
 
@@ -99,7 +102,9 @@ def card(content: str, **kwargs: Any) -> dict[str, Any]:
         badge: Optional status label (e.g., ``"supported"``, ``"challenged"``).
         refs: Optional list of citation identifiers.
         source: Optional URL.
+        source_label: Optional display text for ``source`` (defaults to the URL).
         details: Optional collapsible details (markdown).
+        id: Optional DOM id rendered on the card container (for anchors).
     """
     return {"kind": "card", "content": content, **kwargs}
 
@@ -111,6 +116,7 @@ def reference(content: str, **kwargs: Any) -> dict[str, Any]:
         content: Reference text (markdown).
         number: Optional sequence number.
         source: Optional URL.
+        source_label: Optional display text for ``source`` (defaults to the URL).
         badge: Optional status label.
         group: Optional grouping key (consecutive references with the
                same group are clustered under a heading).

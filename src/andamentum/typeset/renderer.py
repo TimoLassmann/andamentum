@@ -66,11 +66,17 @@ def _strip_p(html: str) -> str:
 # Atom renderers
 # ---------------------------------------------------------------------------
 
+def _id_attr(atom: dict[str, object]) -> str:
+    """Return ``id="..."`` (with leading space) when the atom has an ``id`` field."""
+    atom_id = atom.get("id")
+    return f' id="{atom_id}"' if atom_id is not None else ""
+
+
 def _render_heading(atom: dict[str, object]) -> str:
     """Render a *heading* atom to an HTML ``<header>`` block."""
     content = _strip_p(_md(str(atom["content"])))
     parts: list[str] = [
-        '<header class="typeset-heading">',
+        f'<header class="typeset-heading"{_id_attr(atom)}>',
         f"<h1>{content}</h1>",
     ]
 
@@ -96,9 +102,11 @@ def _render_prose(atom: dict[str, object]) -> str:
 
     heading = atom.get("heading")
     if heading is not None:
-        parts.append(f"<h2>{heading}</h2>")
+        parts.append(f"<h2{_id_attr(atom)}>{heading}</h2>")
+        parts.append('<section class="typeset-prose">')
+    else:
+        parts.append(f'<section class="typeset-prose"{_id_attr(atom)}>')
 
-    parts.append('<section class="typeset-prose">')
     parts.append(_md(str(atom["content"])))
     parts.append("</section>")
     return "\n".join(parts)
@@ -170,7 +178,7 @@ def _render_aside(atom: dict[str, object]) -> str:
 
 def _render_card(atom: dict[str, object]) -> str:
     """Render a *card* atom."""
-    parts: list[str] = ['<div class="typeset-card">']
+    parts: list[str] = [f'<div class="typeset-card"{_id_attr(atom)}>']
     parts.append('  <div class="typeset-card-body">')
     parts.append(f'    {_md(str(atom.get("content", "")))}')
 
@@ -188,7 +196,8 @@ def _render_card(atom: dict[str, object]) -> str:
 
     source = atom.get("source")
     if source is not None:
-        parts.append(f'  <div class="typeset-card-source"><a href="{source}">{source}</a></div>')
+        label = atom.get("source_label", source)
+        parts.append(f'  <div class="typeset-card-source"><a href="{source}">{label}</a></div>')
 
     details = atom.get("details")
     if details is not None:
@@ -218,7 +227,8 @@ def _render_reference(atom: dict[str, object]) -> str:
 
     source = atom.get("source")
     if source is not None:
-        parts.append(f'    <div class="typeset-ref-source"><a href="{source}">{source}</a></div>')
+        label = atom.get("source_label", source)
+        parts.append(f'    <div class="typeset-ref-source"><a href="{source}">{label}</a></div>')
 
     parts.append("  </div>")
 

@@ -197,6 +197,57 @@ class TestReference:
         assert "Paper C" in html
         assert "typeset-reference-group" in html
 
+    def test_reference_source_label_overrides_url(self) -> None:
+        html = render([{
+            "kind": "reference",
+            "content": "X.",
+            "source": "https://example.com/very/long/path",
+            "source_label": "example.com",
+        }])
+        assert 'href="https://example.com/very/long/path"' in html
+        assert ">example.com<" in html
+
+    def test_reference_source_label_defaults_to_url(self) -> None:
+        html = render([{
+            "kind": "reference",
+            "content": "X.",
+            "source": "https://example.com",
+        }])
+        assert ">https://example.com<" in html
+
+
+class TestAnchorIds:
+    def test_heading_id(self) -> None:
+        html = render([{"kind": "heading", "content": "T", "id": "top"}])
+        assert 'id="top"' in html
+
+    def test_prose_id_on_h2_when_heading_set(self) -> None:
+        html = render([{
+            "kind": "prose",
+            "content": "Body.",
+            "heading": "Sources",
+            "id": "sources",
+        }])
+        assert '<h2 id="sources">' in html
+
+    def test_prose_id_on_section_when_no_heading(self) -> None:
+        html = render([{"kind": "prose", "content": "Body.", "id": "intro"}])
+        assert 'class="typeset-prose" id="intro"' in html
+
+    def test_card_id(self) -> None:
+        html = render([{"kind": "card", "content": "Claim.", "id": "claim-1"}])
+        assert '<div class="typeset-card" id="claim-1">' in html
+
+    def test_card_source_label(self) -> None:
+        html = render([{
+            "kind": "card",
+            "content": "Claim.",
+            "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/",
+            "source_label": "PMC12028114",
+        }])
+        assert 'href="https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/"' in html
+        assert ">PMC12028114<" in html
+
 
 class TestRenderShell:
     def test_output_is_complete_html(self) -> None:
