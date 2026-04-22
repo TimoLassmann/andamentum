@@ -8,7 +8,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 import aiosqlite
 
@@ -447,7 +447,7 @@ async def list_documents_by_type(
 
 async def find_by_metadata(
     db_path: str,
-    filters: dict[str, Any],
+    filters: Mapping[str, Any],
     limit: int = 100,
 ) -> list[DocumentMetadata]:
     """Find documents by metadata field values.
