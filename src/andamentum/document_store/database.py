@@ -38,27 +38,6 @@ async def get_async_connection(db_path: str):
         yield db
 
 
-async def init_document_store_tables(db_path: str) -> None:
-    """DEPRECATED: Use init_all_tables() from utilities.init_database instead.
-
-    This function creates a partial schema (document_tiers + working_documents_fts)
-    which is now obsolete. The unified schema uses the documents table from
-    utilities.documents with full RAG support.
-
-    Kept for backward compatibility only. Will be removed in future version.
-    """
-    import warnings
-
-    warnings.warn(
-        "init_document_store_tables() is deprecated. Use init_all_tables() from utilities.init_database instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    # No-op: Modern initialization uses init_all_tables()
-    pass
-
-
 async def register_document(
     db_path: str,
     doc_id: str,
