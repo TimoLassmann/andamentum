@@ -978,9 +978,17 @@ async def handle_ask(
         )
 
         console.print()
-        if run_result.failed > 0:
+        errored = len(run_result.quarantined)
+        gate_rejected = run_result.failed - errored
+        if errored > 0:
             console.print(
-                f"[yellow]Completed {run_result.successful} operations, {run_result.failed} failed[/yellow]"
+                f"[red]Completed {run_result.successful} operations; "
+                f"{errored} errored, {gate_rejected} gate-blocked[/red]"
+            )
+        elif gate_rejected > 0:
+            console.print(
+                f"[yellow]Completed {run_result.successful} operations; "
+                f"{gate_rejected} gate-blocked[/yellow]"
             )
         else:
             console.print(
@@ -1025,7 +1033,8 @@ async def handle_ask(
             "workitems_executed_this_run": run_result.iterations,
             "total_workitems": run_result.iterations,
             "operations_successful": run_result.successful,
-            "operations_failed": run_result.failed,
+            "operations_errored": len(run_result.quarantined),
+            "operations_gate_blocked": run_result.failed - len(run_result.quarantined),
             "workitems_by_status": {
                 "completed": run_result.successful,
                 "failed": run_result.failed,
@@ -1318,12 +1327,15 @@ def _print_ask_results(
 
         # Compact stats line
         ops_ok = stats.get("operations_successful", 0)
-        ops_fail = stats.get("operations_failed", 0)
+        ops_errored = stats.get("operations_errored", 0)
+        ops_gate_blocked = stats.get("operations_gate_blocked", 0)
         workitems = stats.get("workitems_executed_this_run", 0)
 
         stats_line = f"[dim]Stats: {workitems} work items, {ops_ok} ops succeeded"
-        if ops_fail > 0:
-            stats_line += f", [red]{ops_fail} failed[/red]"
+        if ops_errored > 0:
+            stats_line += f", [red]{ops_errored} errored[/red]"
+        if ops_gate_blocked > 0:
+            stats_line += f", [yellow]{ops_gate_blocked} gate-blocked[/yellow]"
         stats_line += "[/dim]"
         console.print(stats_line)
 
