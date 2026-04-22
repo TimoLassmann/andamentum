@@ -379,10 +379,7 @@ class ProposeClaimsOperation(BaseOperation):
                     evidence_source=f"{ev.source_type}: {ev.source_ref}",
                     runner=self.agent_runner,
                 )
-                verdict = judgment.verdict.lower().strip()
-                if verdict not in ("supports", "contradicts", "no_bearing"):
-                    verdict = "no_bearing"
-                ev.support_judgment = verdict
+                ev.support_judgment = judgment.verdict
                 ev.judgment_reasoning = judgment.reasoning
                 await self.repo.save(ev)
 

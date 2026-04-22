@@ -110,11 +110,7 @@ class AbductiveIntegrationOperation(BaseOperation):
         )
 
         # Store assessment
-        verdict = result.verdict.lower().strip()
-        if verdict not in ("supports", "contradicts", "insufficient"):
-            verdict = "insufficient"
-
-        claim.integrated_assessment = verdict
+        claim.integrated_assessment = result.verdict
         claim.integrated_confidence = float(result.confidence)
         claim.integrated_reasoning = result.reasoning
         await self.repo.save(claim)
@@ -122,5 +118,5 @@ class AbductiveIntegrationOperation(BaseOperation):
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"Integration: {verdict} (confidence {result.confidence:.2f})",
+            message=f"Integration: {result.verdict} (confidence {result.confidence:.2f})",
         )
