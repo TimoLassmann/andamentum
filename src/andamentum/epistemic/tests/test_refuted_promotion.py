@@ -155,6 +155,9 @@ class TestPromoteAsRefutedOperation:
         assert 0.5 <= reloaded.integrated_confidence <= 0.95
         assert reloaded.integrated_reasoning is not None
         assert reloaded.abandoned is False
+        assert reloaded.confidence_score == reloaded.integrated_confidence
+        assert len(reloaded.promotion_history) == 1
+        assert reloaded.promotion_history[-1]["to"] == ClaimStage.SUPPORTED.value
 
     async def test_refuses_when_not_refuted(self, tmp_path: Path) -> None:
         claim, repo = await _setup_claim_with_evidence(tmp_path, 5, 1)
