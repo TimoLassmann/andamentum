@@ -87,11 +87,9 @@ async def run_epistemic_graph(
             "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
         )
     if not embedding_model:
-        import os as _os
+        from andamentum.core.models import resolve_embedding_model_from_args
 
-        embedding_model = _os.environ.get(
-            "ANDAMENTUM_EMBEDDING_MODEL", "embeddinggemma:latest"
-        )
+        embedding_model = resolve_embedding_model_from_args()
     agent_runner = DefaultAgentRunner(model=model)
 
     # Auto-load providers

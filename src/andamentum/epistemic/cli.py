@@ -229,12 +229,10 @@ async def _ask(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    import os
+    from andamentum.core.models import resolve_embedding_model_from_args
 
     model = _resolve_model(args)
-    embedding_model = args.embedding_model or os.environ.get(
-        "ANDAMENTUM_EMBEDDING_MODEL", "embeddinggemma:latest"
-    )
+    embedding_model = resolve_embedding_model_from_args(args.embedding_model)
     result = await handle_ask(
         question=args.question,
         name=args.name,
