@@ -18,7 +18,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 import numpy as np
 
@@ -522,7 +522,7 @@ class DocumentStore:
 
     async def find_by_metadata(
         self,
-        filters: dict[str, Any],
+        filters: Mapping[str, Any],
         limit: int = 100,
     ) -> list[DocumentMetadata]:
         """Find documents by metadata field values.

@@ -44,6 +44,7 @@ Requires:
 # Public API
 from .public import (
     DuplicateGroup,
+    MetadataFilterValue,
     RepairReport,
     SearchResult,
     delete,
@@ -105,6 +106,7 @@ __all__ = [
     "SearchResult",
     "RepairReport",
     "DuplicateGroup",
+    "MetadataFilterValue",
     # Low-level API
     "DocumentStore",
     # Chunking

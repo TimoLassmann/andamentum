@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Mapping, Optional
 
 
 from .api import DocumentStore
@@ -31,6 +31,14 @@ from .chunking import chunk_markdown
 from .extraction import extract_chunk_metadata, extract_document_metadata
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+#: Allowed value types for :func:`find_by_metadata` filter predicates.
+#: All conditions are exact-match AND-ed; None matches SQL NULL.
+MetadataFilterValue = str | int | bool | None
 
 # Module-level caches
 _stores: dict[str, DocumentStore] = {}
@@ -562,7 +570,7 @@ async def search(
 
 async def find_by_metadata(
     database: str,
-    filters: dict,
+    filters: Mapping[str, MetadataFilterValue],
     limit: int = 100,
 ) -> list[SearchResult]:
     """Find documents by exact metadata field values.
@@ -576,8 +584,8 @@ async def find_by_metadata(
 
     Args:
         database: Database name (e.g., "brain")
-        filters: Dict of {field_name: expected_value} to match.
-            All conditions are ANDed. Values can be str, bool, int.
+        filters: Mapping of {field_name: expected_value} to match.
+            All conditions are ANDed. Values can be str, int, bool, or None.
         limit: Maximum results to return
 
     Returns:
