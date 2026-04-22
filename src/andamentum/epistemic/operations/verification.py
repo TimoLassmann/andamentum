@@ -8,7 +8,7 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim, Evidence, Uncertainty entities
 """
 
-from typing import Any
+from typing import Any, Dict, Tuple
 
 from .base import BaseOperation, OperationInput, OperationResult
 
@@ -299,7 +299,8 @@ class AssessConvergenceOperation(BaseOperation):
     1. Classify each evidence item's domain via epistemic_classify_evidence_domain (narrow agent)
     2. For evidence pairs within same domain cluster, check pairwise independence
        via epistemic_check_pairwise_independence (narrow agent)
-    3. Compute convergence deterministically via detect_convergence()
+    3. Compute convergence deterministically via detect_convergence(), using the
+       agent classifications from step 1 and the pairwise judgments from step 2.
     """
 
     entity_type = "claim"
@@ -381,19 +382,19 @@ class AssessConvergenceOperation(BaseOperation):
             )
 
         # Step 2: Pairwise independence check for evidence within same domain cluster
-        # Only run if we have an agent runner and multiple evidence items
+        pairwise_independence: Dict[Tuple[str, str], bool] = {}
         if self.agent_runner and len(classifications) >= 2:
             from ..domain_distance import cluster_by_domain
 
-            clusters = cluster_by_domain(classifications, distance_threshold=0.3)
-            for cluster in clusters:
+            clusters_for_pairs = cluster_by_domain(
+                classifications, distance_threshold=0.3
+            )
+            for cluster in clusters_for_pairs:
                 if len(cluster.evidence_ids) < 2:
                     continue
-                # Check pairs within this cluster
                 eids = cluster.evidence_ids
                 for i in range(len(eids)):
                     for j in range(i + 1, len(eids)):
-                        # Find the evidence content for each item
                         ev_a_content = ""
                         ev_b_content = ""
                         for item in evidence_items:
@@ -403,21 +404,24 @@ class AssessConvergenceOperation(BaseOperation):
                                 ev_b_content = item["content"]
 
                         if ev_a_content and ev_b_content:
-                            await self.run_agent(
+                            pair_result = await self.run_agent(
                                 "epistemic_check_pairwise_independence",
                                 evidence_a=ev_a_content,
                                 evidence_b=ev_b_content,
                             )
-                            # The result is logged via run_agent; the deterministic
-                            # convergence detector handles independence via domain
-                            # distance. The pairwise check is an additional signal
-                            # recorded in the audit trail.
+                            pairwise_independence[(eids[i], eids[j])] = bool(
+                                pair_result.independent
+                            )
 
-        # Step 3: Deterministic convergence computation
+        # Step 3: Deterministic convergence computation, augmented by LLM signals
         convergence = detect_convergence(
             evidence_items=evidence_items,
             claim_id=claim.entity_id,
             objective_id=claim.objective_id,
+            precomputed_classifications=classifications,
+            pairwise_independence=pairwise_independence
+            if pairwise_independence
+            else None,
         )
 
         # Create WEAK_CONVERGENCE uncertainty if convergence is weak
