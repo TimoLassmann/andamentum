@@ -116,21 +116,7 @@ class TestPreplanningChain:
             entity_id="obj-1", entity_type="objective", operation="plan_task"
         )
 
-        # PlanTaskOperation now uses semantic routing. Mock embed_texts so
-        # the test does not require a live Ollama backend.
-        from andamentum.epistemic import provider_routing
-
-        provider_routing._clear_cache()
-        fake_vec = [1.0, 0.0, 0.0]
-
-        async def _fake_embed(texts, *, model):
-            return [fake_vec] * len(texts)
-
-        with patch(
-            "andamentum.epistemic.provider_routing.embed_texts",
-            side_effect=_fake_embed,
-        ):
-            result = await ops["plan_task"].execute(work)
+        result = await ops["plan_task"].execute(work)
 
         assert result.success
         loaded = await repo.get_objective("obj-1")

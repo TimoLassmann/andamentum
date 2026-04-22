@@ -81,15 +81,6 @@ from .confidence import (
 # ── Preflight ─────────────────────────────────────────────────────────────
 from .preflight import CheckResult, PreflightResult, HealthCheckable, preflight
 
-# ── Provider routing (DEPRECATED — embedding-based, replaced by LLM agent) ──
-# Kept for optional fast-path use. Primary routing is now via the
-# epistemic_select_provider focused agent in PlanTaskOperation.
-from .provider_routing import (
-    ProviderScore,
-    rank_providers,
-    select_providers,
-)
-
 # ── Runner (standalone execution) ────────────────────────────────────────
 # Lazy import to keep pydantic-ai off the critical import path:
 #   from andamentum.epistemic.runner import DefaultAgentRunner
@@ -149,8 +140,4 @@ __all__ = [
     "PreflightResult",
     "HealthCheckable",
     "preflight",
-    # Provider routing
-    "ProviderScore",
-    "rank_providers",
-    "select_providers",
 ]
