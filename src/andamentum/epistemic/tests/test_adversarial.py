@@ -4,7 +4,6 @@ import pytest
 
 from ..adversarial_query_generator import (
     generate_adversarial_queries,
-    detect_domain,
 )
 from ..adversarial_evaluator import (
     create_counterargument,
@@ -28,14 +27,6 @@ class TestAdversarialQueryGeneration:
     def test_max_queries_respected(self):
         queries = generate_adversarial_queries("Test claim", max_queries=3)
         assert len(queries) <= 3
-
-    def test_detect_domain_returns_none(self):
-        """detect_domain is a stub that always returns None (agent should classify)."""
-        assert detect_domain("This drug treatment shows clinical efficacy") is None
-        assert (
-            detect_domain("The neural network algorithm achieves high accuracy") is None
-        )
-        assert detect_domain("Something very generic") is None
 
     def test_domain_specific_queries_included(self):
         queries = generate_adversarial_queries(

@@ -83,22 +83,6 @@ SOURCE_SPECIFIC_TEMPLATES = [
 ]
 
 
-def detect_domain(claim_text: str) -> Optional[str]:
-    """Detect the domain of a claim.
-
-    Previously used keyword matching. Now returns None — domain detection
-    should be performed by a focused agent and passed as domain_hint to
-    generate_adversarial_queries().
-
-    Args:
-        claim_text: The claim text (unused).
-
-    Returns:
-        Always None. Use agent-based domain detection instead.
-    """
-    return None
-
-
 def generate_adversarial_queries(
     claim_text: str,
     claim_domain: Optional[str] = None,
