@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from andamentum.deep_research.models import PageSummary
 
 from .operations import GatheredEvidence, EvidenceGatherer
+from .operations.base import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -329,10 +330,10 @@ class CompositeGatherer:
     def __init__(
         self,
         web_search: Any,  # accepts WebSearchGatherer or any compatible gatherer
-        providers: Optional[dict] = None,
+        providers: Optional[ProviderRegistry] = None,
     ):
         self._web_search = web_search
-        self._providers: dict = dict(providers) if providers else {}
+        self._providers: dict[str, Any] = dict(providers) if providers else {}
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
         """Gather evidence.
@@ -406,7 +407,7 @@ class CompositeGatherer:
 def get_default_gatherer(
     *,
     model: str,
-    providers: Optional[dict] = None,
+    providers: Optional[ProviderRegistry] = None,
     embedding_model: Optional[str] = None,
 ) -> Optional[EvidenceGatherer]:
     """Create a default evidence gatherer if deep_research is available.

@@ -25,7 +25,10 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from .operations.base import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,7 @@ async def _run_check(component: Any, fallback_name: str) -> CheckResult:
 async def preflight(
     *,
     model: str,
-    providers: dict[str, Any] | None = None,
+    providers: ProviderRegistry | None = None,
     verbose: bool = False,
 ) -> PreflightResult:
     """Run preflight checks on LLM, web search, and evidence providers.
