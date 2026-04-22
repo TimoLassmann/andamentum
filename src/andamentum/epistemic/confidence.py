@@ -23,6 +23,7 @@ Usage::
 
 import logging
 import math
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -67,6 +68,14 @@ class PosteriorReport(BaseModel):
     mode: str = Field(
         default="counting_only",
         description="'counting_only' or 'synthesized'",
+    )
+    terminal_state: Literal["completed", "retrieval_failed"] = Field(
+        default="completed",
+        description=(
+            "How the investigation terminated. 'completed' for normal runs; "
+            "'retrieval_failed' when evidence extraction kept returning empty "
+            "content, meaning the posterior is based on insufficient data."
+        ),
     )
     objective_id: str
     question_type: str

@@ -49,6 +49,18 @@ class EpistemicGraphState:
     # Claims that have been abandoned or reached terminal stage
     terminal_claims: set[str] = field(default_factory=set)
 
+    # ── Retrieval health ────────────────────────────────────────
+    # Number of consecutive extractions that returned zero content.
+    # Incremented by ExtractEvidence nodes (Task B2); reset to 0
+    # when a non-empty extraction lands.
+    consecutive_empty_extractions: int = 0
+
+    # Set to True when consecutive_empty_extractions crosses the
+    # threshold. Downstream nodes (Task B3) check this and
+    # short-circuit to CheckCompletion; the PosteriorReport
+    # surfaces it as a distinct terminal_state.
+    retrieval_failed: bool = False
+
     # ── Flow control (graph-managed, not on entities) ───────────
     # Claims needing re-scrutiny after uncertainty resolution or
     # investigation. Scrutinize node checks this IN ADDITION to
