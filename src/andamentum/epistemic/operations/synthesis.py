@@ -12,7 +12,12 @@ Operates on: Objective, Snapshot, Artefact, Claim, Evidence, Uncertainty entitie
 
 from typing import Any
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
+from .base import (
+    BaseOperation,
+    DEDUP_SIMILARITY_THRESHOLD,
+    OperationInput,
+    OperationResult,
+)
 
 from ..entities import (
     Artefact,
@@ -528,7 +533,9 @@ class SynthesizeReportOperation(BaseOperation):
 
         for claim in non_abandoned:
             stage = claim.stage
-            if STAGE_HIERARCHY.get(stage, 0) > STAGE_HIERARCHY.get(ClaimStage(max_stage), 0):
+            if STAGE_HIERARCHY.get(stage, 0) > STAGE_HIERARCHY.get(
+                ClaimStage(max_stage), 0
+            ):
                 max_stage = stage.value
 
             if claim.confidence_score is not None:
@@ -552,7 +559,9 @@ class SynthesizeReportOperation(BaseOperation):
         source_types = {e.source_type for e in evidence}
         has_external = bool(source_types - {"world_knowledge"})
         supported_plus = sum(
-            1 for c in non_abandoned if STAGE_HIERARCHY.get(c.stage, 0) >= STAGE_HIERARCHY[ClaimStage.SUPPORTED]
+            1
+            for c in non_abandoned
+            if STAGE_HIERARCHY.get(c.stage, 0) >= STAGE_HIERARCHY[ClaimStage.SUPPORTED]
         )
 
         if len(evidence) == 0:

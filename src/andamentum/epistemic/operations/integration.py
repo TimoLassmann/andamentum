@@ -78,10 +78,12 @@ class AbductiveIntegrationOperation(BaseOperation):
 
         # Open uncertainties
         uncertainties = await self.repo.query(
-            "uncertainty", objective_id=claim.objective_id,
+            "uncertainty",
+            objective_id=claim.objective_id,
         )
         open_blocking = [
-            u for u in uncertainties
+            u
+            for u in uncertainties
             if isinstance(u, Uncertainty)
             and claim.entity_id in u.affected_claim_ids
             and u.resolution is None
@@ -103,7 +105,9 @@ class AbductiveIntegrationOperation(BaseOperation):
             no_bearing_evidence="\n\n".join(no_bearing_items) or "None.",
             adversarial_outcome=adversarial_text,
             open_uncertainties=unc_text,
-            evidence_count=len(supports_items) + len(contradicts_items) + len(no_bearing_items),
+            evidence_count=len(supports_items)
+            + len(contradicts_items)
+            + len(no_bearing_items),
             supporting_count=len(supports_items),
             contradicting_count=len(contradicts_items),
             no_bearing_count=len(no_bearing_items),

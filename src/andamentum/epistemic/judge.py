@@ -12,8 +12,6 @@ Architecture: Layer 1 (framework-agnostic, async)
 
 from __future__ import annotations
 
-from typing import Any
-
 from .agents.output_models import EvidenceJudgmentOutput, IndependenceJudgmentOutput
 from .operations.base import AgentRunner
 
