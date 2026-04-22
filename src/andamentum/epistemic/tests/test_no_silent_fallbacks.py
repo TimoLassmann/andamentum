@@ -592,3 +592,169 @@ async def test_score_evidence_raises_when_no_scorer_available(tmp_path):
                 operation="extract_evidence",
             )
         )
+
+
+# ── Deferred-cluster visibility ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_select_top_k_evidence_returns_deferred_count(monkeypatch, tmp_path):
+    """When more clusters exist than EVIDENCE_TOP_K, select_top_k_evidence must
+    return (representatives, total_clusters, deferred_count) — not silently drop
+    the overflow. The deferred_count must be > 0."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.dedup import EvidenceCluster
+    from andamentum.epistemic.entities import Evidence
+    from andamentum.epistemic.operations.claims import (
+        EVIDENCE_TOP_K,
+        select_top_k_evidence,
+    )
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    # Build 8 fake evidence items (more than EVIDENCE_TOP_K=5)
+    store = DocumentStore.for_database("test_deferred", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    evidences: list[Evidence] = []
+    for i in range(8):
+        ev = Evidence(
+            objective_id="obj-1",
+            source_type="web_search",
+            source_ref=f"http://example.org/ev{i}",
+            extracted=True,
+            extracted_content=f"Evidence content {i}",
+            quality_score=0.5,
+        )
+        await repo.save(ev)
+        evidences.append(ev)
+
+    # Stub deduplicate_evidence to return 8 singleton clusters
+    async def _stub_dedup(texts, min_cluster_size=2, *, embedding_model):
+        return [
+            EvidenceCluster(
+                medoid_index=i,
+                representative_indices=[i],
+                member_indices=[i],
+                count=1,
+            )
+            for i in range(len(texts))
+        ]
+
+    monkeypatch.setattr(
+        "andamentum.epistemic.operations.claims.deduplicate_evidence", _stub_dedup
+    )
+
+    representatives, total_clusters, deferred_count = await select_top_k_evidence(
+        repo,
+        evidences,
+        top_k=EVIDENCE_TOP_K,
+        embedding_model="stub-model",
+    )
+
+    assert total_clusters == 8, f"Expected 8 total clusters, got {total_clusters}"
+    assert deferred_count == 8 - EVIDENCE_TOP_K, (
+        f"Expected {8 - EVIDENCE_TOP_K} deferred clusters, got {deferred_count}"
+    )
+    assert len(representatives) == EVIDENCE_TOP_K, (
+        f"Expected {EVIDENCE_TOP_K} representatives, got {len(representatives)}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_propose_claims_surfaces_deferred_cluster_count(monkeypatch, tmp_path):
+    """When more than EVIDENCE_TOP_K clusters exist, the deferred count must
+    appear in the OperationResult.message — not silently dropped."""
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.dedup import EvidenceCluster
+    from andamentum.epistemic.entities import Evidence, Objective
+    from andamentum.epistemic.operations.base import OperationInput
+    from andamentum.epistemic.operations.claims import ProposeClaimsOperation
+    from andamentum.epistemic.repository import EpistemicRepository
+    from types import SimpleNamespace
+
+    # Stub deduplicate_evidence to return 8 singleton clusters
+    async def _stub_dedup(texts, min_cluster_size=2, *, embedding_model):
+        return [
+            EvidenceCluster(
+                medoid_index=i,
+                representative_indices=[i],
+                member_indices=[i],
+                count=1,
+            )
+            for i in range(len(texts))
+        ]
+
+    monkeypatch.setattr(
+        "andamentum.epistemic.operations.claims.deduplicate_evidence", _stub_dedup
+    )
+
+    # Stub embed_and_group to return single cluster for assertion clustering
+    async def _stub_embed_and_group(texts, threshold=0.7, *, embedding_model):
+        return [list(range(len(texts)))]
+
+    monkeypatch.setattr(
+        "andamentum.epistemic.similarity.embed_and_group",
+        _stub_embed_and_group,
+    )
+
+    class _StubRunner:
+        """Returns minimal valid outputs for all agents called."""
+
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_screen_relevance":
+                return SimpleNamespace(is_relevant=True)
+            if agent_name == "epistemic_extract_assertion":
+                return SimpleNamespace(assertion="X is associated with Y")
+            if agent_name == "epistemic_draft_claim":
+                return SimpleNamespace(
+                    statement="X is associated with Y",
+                    scope="specific",
+                    direction="positive",
+                )
+            if agent_name == "epistemic_judge_evidence":
+                return SimpleNamespace(
+                    verdict="supports", reasoning="evidence supports"
+                )
+            # judge_evidence
+            return SimpleNamespace(verdict="supports", reasoning="ok")
+
+    store = DocumentStore.for_database("test_deferred_claims", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="Does X cause Y?", clarified_question="Does X cause Y?")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    # Create 8 evidence items (will produce 8 clusters, 3 deferred)
+    for i in range(8):
+        ev = Evidence(
+            objective_id=obj.entity_id,
+            source_type="web_search",
+            source_ref=f"http://example.org/paper{i}",
+            extracted=True,
+            extracted_content=f"Evidence content for claim {i}",
+            quality_score=0.5,
+        )
+        await repo.save(ev)
+
+    op = ProposeClaimsOperation(
+        repo=repo,
+        agent_runner=_StubRunner(),
+        evidence_gatherer=None,
+        quality_scorer=None,
+        embedding_model="stub-model",
+    )
+    result = await op.execute(
+        OperationInput(
+            entity_id=obj.entity_id,
+            entity_type="objective",
+            operation="propose_claims",
+        )
+    )
+
+    assert result.success is True, f"Expected success, got: {result.message}"
+    assert "deferred" in result.message, (
+        f"Expected 'deferred' in result.message. Got:\n{result.message}"
+    )

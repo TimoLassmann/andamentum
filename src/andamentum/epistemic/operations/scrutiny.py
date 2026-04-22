@@ -255,6 +255,7 @@ class ScrutiniseClaimOperation(BaseOperation):
                 message="Already scrutinized",
             )
 
+        _deferred = 0  # track deferred cluster count for visibility
         if self.agent_runner:
             # If this is re-scrutiny after investigation, cluster the claim's
             # evidence first. Investigation may have fetched many new items that
@@ -271,7 +272,7 @@ class ScrutiniseClaimOperation(BaseOperation):
                     ):
                         all_evidence.append(ev)
                 if len(all_evidence) >= 2:
-                    await select_top_k_evidence(
+                    _reps, _total, _deferred = await select_top_k_evidence(
                         self.repo, all_evidence, embedding_model=self.embedding_model
                     )
 
@@ -284,8 +285,11 @@ class ScrutiniseClaimOperation(BaseOperation):
 
         await self.repo.save(claim)
 
+        deferred_note = (
+            f" ({_deferred} evidence clusters deferred)" if _deferred > 0 else ""
+        )
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"[{claim.statement[:60]}] verdict: {claim.scrutiny_verdict}",
+            message=f"[{claim.statement[:60]}] verdict: {claim.scrutiny_verdict}{deferred_note}",
         )

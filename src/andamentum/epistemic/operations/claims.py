@@ -10,7 +10,12 @@ Operates on: Objective, Evidence, Claim entities
 
 from typing import TYPE_CHECKING, Optional
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
+from .base import (
+    BaseOperation,
+    DEDUP_SIMILARITY_THRESHOLD,
+    OperationInput,
+    OperationResult,
+)
 
 from ..dedup import deduplicate_evidence
 from ..entities import (
@@ -39,7 +44,7 @@ async def select_top_k_evidence(
     extracted: list[Evidence],
     top_k: int = EVIDENCE_TOP_K,
     embedding_model: Optional[str] = None,
-) -> list[Evidence]:
+) -> tuple[list[Evidence], int, int]:
     """Select the most informative evidence subset via cluster-ranked top-K.
 
     Clusters evidence by semantic similarity (HDBSCAN), ranks clusters by
@@ -61,7 +66,10 @@ async def select_top_k_evidence(
         top_k: Maximum number of clusters to process
 
     Returns:
-        Filtered list containing only representative evidence
+        3-tuple of (representatives, total_clusters, deferred_count).
+        ``total_clusters`` is the total number of semantic clusters found.
+        ``deferred_count`` is how many clusters were not processed due to the
+        top_k cap — visible so callers can surface this to users.
     """
     import logging as _logging
 
@@ -75,7 +83,7 @@ async def select_top_k_evidence(
 
     if len(extracted) < 2:
         _sel_log.warning("[select_top_k_evidence] < 2 items, returning as-is")
-        return extracted
+        return extracted, 1, 0
 
     import uuid as _uuid
 
@@ -159,6 +167,8 @@ async def select_top_k_evidence(
 
     # Step 6: Return only representatives
     representatives = [e for e in extracted if e.cluster_status == "representative"]
+    total_clusters = len(clusters)
+    deferred_count = len(deferred_clusters)
     _sel_log.warning(
         "[select_top_k_evidence] Result: %d representatives, %d corroborative, %d deferred (from %d total)",
         len(representatives),
@@ -166,7 +176,7 @@ async def select_top_k_evidence(
         sum(1 for e in extracted if e.cluster_status == "deferred"),
         len(extracted),
     )
-    return representatives
+    return representatives, total_clusters, deferred_count
 
 
 class ProposeClaimsOperation(BaseOperation):
@@ -274,7 +284,7 @@ class ProposeClaimsOperation(BaseOperation):
         # ── Evidence selection: cluster-ranked top-K ────────────────────────
         # Clusters evidence by semantic similarity, ranks clusters by quality,
         # selects top-K clusters, and returns representative evidence only.
-        extracted = await select_top_k_evidence(
+        extracted, _total_clusters, _deferred_count = await select_top_k_evidence(
             self.repo, extracted, embedding_model=self.embedding_model
         )
 
@@ -380,9 +390,16 @@ class ProposeClaimsOperation(BaseOperation):
         objective.phase = "claims_proposed"
         await self.repo.save(objective)
 
+        deferred_text = (
+            f" ({_deferred_count} clusters deferred)" if _deferred_count > 0 else ""
+        )
         return OperationResult(
             success=True,
             entity_id=objective.entity_id,
-            message=f"Proposed {len(created_claims)} claims from {len(assertions)} assertions in {len(clusters)} clusters",
+            message=(
+                f"Proposed {len(created_claims)} claims from {len(assertions)} assertions"
+                f" in {len(clusters)} clusters"
+                f" ({len(extracted)} of {_total_clusters} evidence clusters selected{deferred_text})"
+            ),
             created_entities=created_claims,
         )
