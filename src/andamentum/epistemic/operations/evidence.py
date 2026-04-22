@@ -183,10 +183,7 @@ class ExtractEvidenceOperation(BaseOperation):
                     evidence_source=f"{evidence.source_type}: {evidence.source_ref}",
                     runner=self.agent_runner,
                 )
-                verdict = judgment.verdict.lower().strip()
-                if verdict not in ("supports", "contradicts", "no_bearing"):
-                    verdict = "no_bearing"
-                evidence.support_judgment = verdict
+                evidence.support_judgment = judgment.verdict
                 evidence.judgment_reasoning = judgment.reasoning
                 await self.repo.save(evidence)
 

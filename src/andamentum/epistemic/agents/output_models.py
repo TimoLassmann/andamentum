@@ -6,6 +6,8 @@ Field names MUST match what adapters.py accesses via attribute access.
 Architecture: Layer 1 (framework-agnostic, pure Pydantic)
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -524,7 +526,9 @@ class EvidenceJudgmentOutput(BaseModel):
     contradict, or have no bearing on the claim?
     """
 
-    verdict: str = Field(description='One of: "supports", "contradicts", "no_bearing"')
+    verdict: Literal["supports", "contradicts", "no_bearing"] = Field(
+        description='One of: "supports", "contradicts", "no_bearing"'
+    )
     reasoning: str = Field(
         description="One sentence explaining why the evidence has this relationship to the claim"
     )
@@ -566,7 +570,7 @@ class ValidateGroupOutput(BaseModel):
 class IntegrationAssessment(BaseModel):
     """Output of abductive integration: holistic evidence assessment."""
 
-    verdict: str = Field(
+    verdict: Literal["supports", "contradicts", "insufficient"] = Field(
         description="'supports', 'contradicts', or 'insufficient'. "
         "Based on collective evidence weight, not individual counts."
     )
