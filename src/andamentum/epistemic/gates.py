@@ -77,7 +77,7 @@ class StageGate:
 
     target_stage: ClaimStage
     min_evidence: int
-    min_quality_sum: float  # Legacy — kept for old confidence scorer
+    min_quality_sum: float  # Min sum of quality_score across stage evidence; promotion requires at least this total (0.0 = disabled)
     requires_scrutiny: bool
     requires_adversarial: bool
     requires_convergence: bool
