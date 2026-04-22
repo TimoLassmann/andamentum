@@ -40,6 +40,7 @@ class AgentDefinition:
     output_model: type[BaseModel]
     retries: int = 3
     output_retries: int = 5
+    has_tools: bool = False
 
 
 class AgentRunner:
