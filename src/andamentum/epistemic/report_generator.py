@@ -395,7 +395,13 @@ class ReportGenerator:
             resolved_count,
         )
 
-        # Compute confidence scores
+        # Compute confidence scores.
+        # Note: this call does NOT thread retrieval_failed — that flag lives
+        # on the graph state and is not persisted on the Objective. So an
+        # offline report regenerated from a stored DB will always show
+        # terminal_state="completed" even if the original run failed
+        # retrieval. The retrieval_failed signal is only surfaced in the
+        # live CLI path (via PipelineResult.retrieval_failed).
         confidence_scores: ConfidenceScores | None = None
         try:
             from .confidence import compute_posterior
