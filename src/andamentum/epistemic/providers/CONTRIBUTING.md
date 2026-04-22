@@ -98,7 +98,12 @@ finding. Never truncate. Build it from parts:
 ```python
 content_parts = [title]
 if authors:
-    content_parts.append(f"Authors: {', '.join(authors[:5])}")
+    if len(authors) > 5:
+        content_parts.append(
+            f"Authors: {', '.join(authors[:5])} (et al, {len(authors)} authors total)"
+        )
+    else:
+        content_parts.append(f"Authors: {', '.join(authors)}")
 if abstract:
     content_parts.append(f"\n{abstract}")
 gathered.append(GatheredEvidence(

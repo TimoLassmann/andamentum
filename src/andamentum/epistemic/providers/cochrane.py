@@ -56,9 +56,7 @@ class CochraneProvider:
                 elapsed = (time.monotonic() - t0) * 1000
                 if response.status_code == 200:
                     data = response.json()
-                    count = int(
-                        data.get("esearchresult", {}).get("count", "0")
-                    )
+                    count = int(data.get("esearchresult", {}).get("count", "0"))
                     if count > 0:
                         return CheckResult(
                             name="CochraneProvider",
@@ -156,9 +154,7 @@ class CochraneProvider:
 
         return gathered
 
-    def _parse_single_article(
-        self, article_el: Any
-    ) -> GatheredEvidence | None:
+    def _parse_single_article(self, article_el: Any) -> GatheredEvidence | None:
         """Parse a single PubmedArticle XML element into GatheredEvidence."""
         medline = article_el.find(".//MedlineCitation")
         article = medline.find(".//Article") if medline is not None else None
@@ -187,7 +183,12 @@ class CochraneProvider:
         abstract_sections: dict[str, str] = {}
         content_parts: list[str] = [title]
         if authors:
-            content_parts.append(f"Authors: {', '.join(authors[:5])}")
+            if len(authors) > 5:
+                content_parts.append(
+                    f"Authors: {', '.join(authors[:5])} (et al, {len(authors)} authors total)"
+                )
+            else:
+                content_parts.append(f"Authors: {', '.join(authors)}")
 
         if article is not None:
             for abstract_text in article.findall(".//Abstract/AbstractText"):
@@ -207,9 +208,7 @@ class CochraneProvider:
                     doi = id_el.text or ""
                     break
         if not doi:
-            for id_el in article_el.findall(
-                ".//PubmedData/ArticleIdList/ArticleId"
-            ):
+            for id_el in article_el.findall(".//PubmedData/ArticleIdList/ArticleId"):
                 if id_el.get("IdType") == "doi":
                     doi = id_el.text or ""
                     break
@@ -217,9 +216,7 @@ class CochraneProvider:
         # Publication date
         pub_date = ""
         if article is not None:
-            year_el = article.find(
-                ".//Journal/JournalIssue/PubDate/Year"
-            )
+            year_el = article.find(".//Journal/JournalIssue/PubDate/Year")
             if year_el is not None and year_el.text:
                 pub_date = year_el.text
 
@@ -241,7 +238,7 @@ class CochraneProvider:
             identifiers=identifiers,
             structured_data={
                 "title": title,
-                "authors": authors[:10],
+                "authors": authors,
                 "pub_date": pub_date,
                 "abstract_sections": abstract_sections,
             },

@@ -143,7 +143,12 @@ class BioRxivProvider:
 
                     content_parts = [title]
                     if authors:
-                        content_parts.append(f"Authors: {', '.join(authors[:5])}")
+                        if len(authors) > 5:
+                            content_parts.append(
+                                f"Authors: {', '.join(authors[:5])} (et al, {len(authors)} authors total)"
+                            )
+                        else:
+                            content_parts.append(f"Authors: {', '.join(authors)}")
                     if source:
                         content_parts.append(f"Source: {source}")
 
@@ -160,7 +165,7 @@ class BioRxivProvider:
                             identifiers=identifiers,
                             structured_data={
                                 "title": title,
-                                "authors": authors[:10],
+                                "authors": authors,
                                 "source": source,
                                 "pubdate": pubdate,
                                 "server": self.server,

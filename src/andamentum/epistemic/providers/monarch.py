@@ -127,9 +127,22 @@ class MonarchProvider:
 
                 # Step 2: Fetch associations for each entity
                 entity_ids = self._extract_entity_ids(search_results, query)
+                entity_total = len(entity_ids)
                 for entity_id in entity_ids[:3]:
                     assoc_results = await self._get_associations(client, entity_id)
+                    # Surface total entity count in quality_metadata when truncated
+                    if entity_total > 3:
+                        for item in assoc_results:
+                            if item.quality_metadata is not None:
+                                item.quality_metadata["entity_total"] = entity_total
+                            else:
+                                item.quality_metadata = {"entity_total": entity_total}
                     gathered.extend(assoc_results)
+                if entity_total > 3:
+                    logger.debug(
+                        "Monarch: showing associations for 3 of %d entities",
+                        entity_total,
+                    )
 
         except Exception as e:
             logger.warning(f"Monarch Initiative query failed for '{query}': {e}")
@@ -322,7 +335,11 @@ class MonarchProvider:
 
         # Knowledge source context
         if primary_knowledge_source:
-            source_short = primary_knowledge_source.split(":")[-1] if ":" in primary_knowledge_source else primary_knowledge_source
+            source_short = (
+                primary_knowledge_source.split(":")[-1]
+                if ":" in primary_knowledge_source
+                else primary_knowledge_source
+            )
             knowledge_desc = ""
             if knowledge_level:
                 knowledge_desc = f", {knowledge_level.replace('_', ' ')}"
@@ -331,7 +348,8 @@ class MonarchProvider:
         # Publications
         pmids = [p for p in publications if isinstance(p, str) and "PMID" in p.upper()]
         if pmids:
-            content_parts.append(f"Publications: {', '.join(pmids[:5])}")
+            suffix = f" ({len(pmids)} total)" if len(pmids) > 5 else ""
+            content_parts.append(f"Publications: {', '.join(pmids[:5])}{suffix}")
 
         # Evidence type (ECO codes)
         if has_evidence:
@@ -351,7 +369,11 @@ class MonarchProvider:
                     break
             if not source_ref:
                 first = publications_links[0]
-                source_ref = first.get("url", str(first)) if isinstance(first, dict) else str(first)
+                source_ref = (
+                    first.get("url", str(first))
+                    if isinstance(first, dict)
+                    else str(first)
+                )
         if not source_ref and pmids:
             pmid_num = pmids[0].replace("PMID:", "").strip()
             source_ref = f"https://pubmed.ncbi.nlm.nih.gov/{pmid_num}"
