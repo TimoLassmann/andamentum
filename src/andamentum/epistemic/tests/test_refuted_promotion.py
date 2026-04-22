@@ -11,6 +11,9 @@ from andamentum.epistemic.gates import (
     count_support_contradict,
     is_refuted_by_evidence,
 )
+from andamentum.epistemic.graph.deps import EpistemicDeps
+from andamentum.epistemic.graph.nodes import AbandonOrDemote
+from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.operations.base import OperationInput
 from andamentum.epistemic.operations.stage_management import (
     PromoteAsRefutedOperation,
@@ -192,3 +195,55 @@ class TestPromoteAsRefutedOperation:
         # Stage unchanged; assessment still None.
         assert reloaded.stage == ClaimStage.SUPPORTED
         assert reloaded.integrated_assessment is None
+
+
+class _FakeRunContext:
+    """Duck-typed GraphRunContext for tests — AbandonOrDemote only reads .state and .deps."""
+
+    def __init__(self, state: EpistemicGraphState, deps: EpistemicDeps) -> None:
+        self.state = state
+        self.deps = deps
+
+
+class TestAbandonOrDemoteRoutesToRefutedPromotion:
+    async def test_refuted_hypothesis_is_promoted_not_abandoned(
+        self, tmp_path: Path
+    ) -> None:
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 1, 9)
+        claim.scrutiny_verdict = "fail"
+        await repo.save(claim)
+
+        state = EpistemicGraphState(objective_id=claim.objective_id)
+        state.investigation_counts[claim.entity_id] = 3
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+        node = AbandonOrDemote()
+        ctx = _FakeRunContext(state, deps)
+        await node.run(ctx)  # type: ignore[arg-type]
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.abandoned is False
+        assert reloaded.stage == ClaimStage.SUPPORTED
+        assert reloaded.integrated_assessment == "contradicts"
+        assert claim.entity_id in state.verification_done
+        assert claim.entity_id not in state.terminal_claims
+
+    async def test_nonrefuted_hypothesis_is_still_abandoned(
+        self, tmp_path: Path
+    ) -> None:
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 3, 2)
+        claim.scrutiny_verdict = "needs_resolution"
+        await repo.save(claim)
+
+        state = EpistemicGraphState(objective_id=claim.objective_id)
+        state.investigation_counts[claim.entity_id] = 3
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+        node = AbandonOrDemote()
+        ctx = _FakeRunContext(state, deps)
+        await node.run(ctx)  # type: ignore[arg-type]
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.abandoned is True
+        assert claim.entity_id in state.terminal_claims
+        assert claim.entity_id not in state.verification_done
