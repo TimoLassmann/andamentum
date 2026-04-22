@@ -75,6 +75,7 @@ The top of the document. Large serif title, optional subtitle, optional meta cap
 - `content` (required): the document title. Rendered as `<h1>`.
 - `subtitle` (optional): rendered below the title in lighter weight.
 - `meta` (optional): if a dict, values are joined with ` · `. If a string, used directly. Rendered as a small gray caption line.
+- `id` (optional): DOM id attached to the `<header>` element. Use for in-page anchors.
 
 Every document should start with exactly one heading atom.
 
@@ -89,6 +90,7 @@ The workhorse atom. Most of your document will be prose. Write standard markdown
 
 - `content` (required): markdown text. All standard markdown features work.
 - `heading` (optional): if provided, a `<h2>` is rendered before the prose body. Useful for section titles when the prose content doesn't start with a heading.
+- `id` (optional): DOM id for anchors. Attached to the `<h2>` when `heading` is set, otherwise to the `<section>`.
 
 ```python
 # These two are equivalent:
@@ -199,7 +201,9 @@ A bordered block for a distinct assertion, finding, or claim. Has slots for a st
   - Gray: anything else (e.g., `"v2.1"`, `"draft"`, `"under investigation"`)
 - `refs` (optional): list of citation identifiers (strings or numbers) rendered as superscripts.
 - `source` (optional): URL rendered as a small link below the body.
+- `source_label` (optional): display text for the source link. Defaults to the URL.
 - `details` (optional): markdown text rendered inside a collapsible `<details>` element.
+- `id` (optional): DOM id attached to the card container (for anchors).
 
 ### `reference` — compact source entry
 
@@ -216,6 +220,7 @@ A bibliographic-style entry with a number, body text, source link, and badge. Us
 - `content` (required): the reference text, in markdown. Bold author names, italic journals, etc. all work.
 - `number` (optional): displayed as a left-margin counter (e.g., `1.`, `2.`).
 - `source` (optional): URL rendered as a small link below the body.
+- `source_label` (optional): display text for the source link. Defaults to the URL.
 - `badge` (optional): a status pill (same coloring rules as card badges).
 - `group` (optional): when consecutive references share the same `group` value, they are clustered under a group heading. Useful for year-grouped publication lists:
 
