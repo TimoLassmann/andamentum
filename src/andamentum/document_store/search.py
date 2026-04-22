@@ -25,7 +25,7 @@ import aiosqlite
 from .database import get_async_connection
 from .hybrid_search import multi_strategy_search
 from .rag.embeddings import generate_embedding
-from .rag.search import SearchConfig
+from .rag.search import RRF_K, SearchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +497,7 @@ async def search_unified(
             if doc_uuids is not None and result.doc_id not in doc_uuids:
                 continue
             rrf_scores[result.doc_id] = rrf_scores.get(result.doc_id, 0.0) + 1.0 / (
-                rank + 60
+                rank + RRF_K
             )
             existing = doc_lookup.get(result.doc_id)
             if existing is None or _tier_priority(result.tier) > _tier_priority(
@@ -659,7 +659,7 @@ async def search_multi_database(
         if key not in rrf_data:
             rrf_data[key] = result
             rrf_scores[key] = 0.0
-        rrf_scores[key] += 1.0 / (rank + 60)
+        rrf_scores[key] += 1.0 / (rank + RRF_K)
 
     # Sort by final RRF score and build results
     sorted_keys = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)

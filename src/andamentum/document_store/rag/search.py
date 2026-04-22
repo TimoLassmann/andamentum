@@ -23,6 +23,8 @@ from rank_bm25 import BM25Okapi
 
 from .database import search_chunks, get_connection, DEFAULT_DB_PATH
 
+RRF_K = 60  # Reciprocal Rank Fusion smoothing constant; industry standard
+
 
 @dataclass
 class SearchConfig:
@@ -93,7 +95,7 @@ def normalize_scores(scores: List[float]) -> List[float]:
 
 
 def reciprocal_rank_fusion(
-    result_lists: List[List[SearchResult]], k: int = 60
+    result_lists: List[List[SearchResult]], k: int = RRF_K
 ) -> List[SearchResult]:
     """Fuse multiple ranked lists using Reciprocal Rank Fusion (RRF).
 
@@ -599,7 +601,7 @@ def ensemble_search(
         # Both strategies returned results - fuse with RRF
         fused_results = reciprocal_rank_fusion(
             result_lists=[semantic_results, keyword_results],
-            k=60,  # Industry standard
+            k=RRF_K,
         )
 
     # Optional: Cross-encoder re-ranking
