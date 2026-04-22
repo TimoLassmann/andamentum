@@ -463,8 +463,8 @@ async def is_refuted_by_evidence(
     """True when the claim's evidence overwhelmingly contradicts it.
 
     Heuristic: at least 3 contradicting evidence items AND contradicts >= 2 ×
-    supports (treating zero-supports as 1 to avoid divide-by-zero). Designed
-    to fire only on clear refutation, not mixed/ambiguous cases.
+    supports (treating zero supports as 1 so the 3:0 case still refutes).
+    Designed to fire only on clear refutation, not mixed/ambiguous cases.
     """
     n_sup, n_con = await count_support_contradict(claim, repo)
     if n_con < 3:
