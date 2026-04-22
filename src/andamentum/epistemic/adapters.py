@@ -516,11 +516,12 @@ class IdentifySingleIssueResult:
 
 
 def adapt_identify_single_issue(raw: Any) -> IdentifySingleIssueResult:
+    issue_type = raw.issue_type.strip().lower() if raw.issue_type else ""
     return IdentifySingleIssueResult(
         has_issue=bool(raw.has_issue),
         description=raw.description.strip() if raw.description else "",
-        issue_type=raw.issue_type.strip().lower() if raw.issue_type else "",
-        reversal_test=bool(raw.reversal_test),
+        issue_type=issue_type,
+        reversal_test=issue_type in {"unknown", "contradiction"},
     )
 
 

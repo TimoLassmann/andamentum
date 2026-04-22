@@ -117,10 +117,6 @@ class IdentifySingleIssueOutput(BaseModel):
         "scope_difference, methodological_variation, definitional_variation, "
         "perspectival, evidence_corrupted. Empty string if has_issue is false."
     )
-    reversal_test: bool = Field(
-        description="Could learning the missing information reverse the conclusion? "
-        "TRUE only for unknown and contradiction. FALSE for everything else."
-    )
 
 
 class DeductiveValidationOutput(BaseModel):
