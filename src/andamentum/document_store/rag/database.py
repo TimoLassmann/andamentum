@@ -60,43 +60,6 @@ def _init_rag_tables(cursor) -> None:
     )
 
 
-def _init_modernization_tables(cursor) -> None:
-    """Initialize agent audit log table.
-
-    NOTE: FTS5 tables (documents_fts, chunks_fts) are now created by
-    utilities.search.database.init_fts_tables() which is called by init_all_tables().
-    This avoids duplication and keeps FTS initialization centralized.
-    """
-
-    # ============================================
-    # AGENT AUDIT LOG
-    # ============================================
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS agent_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            agent_type TEXT NOT NULL,
-            action_type TEXT NOT NULL,
-            details TEXT NOT NULL,
-            reversible INTEGER DEFAULT 1,
-            reversed INTEGER DEFAULT 0,
-            reverse_action_id INTEGER,
-            affected_documents TEXT,
-            affected_entities TEXT,
-            affected_tags TEXT,
-            FOREIGN KEY (reverse_action_id) REFERENCES agent_actions(id)
-        )
-    """)
-
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_agent_actions_timestamp ON agent_actions(timestamp)"
-    )
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_type)"
-    )
-
-
 def store_chunk_for_document(
     doc_uuid: str,
     chunk_text: str,
