@@ -9,7 +9,13 @@ from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
 from andamentum.epistemic.graph.nodes import _update_retrieval_health
 from andamentum.epistemic.graph.state import EpistemicGraphState
+from andamentum.epistemic.html_report import (
+    ConfidenceScores,
+    InvestigationStats,
+    ReportData,
+)
 from andamentum.epistemic.repository import EpistemicRepository
+from andamentum.epistemic.typeset_report import build_typeset_report
 
 
 class TestGraphStateRetrievalFields:
@@ -189,3 +195,57 @@ class TestComputePosteriorRetrievalFailed:
         posterior = await compute_posterior(repo, objective_id=obj.entity_id)
         assert posterior is not None
         assert posterior.terminal_state == "completed"
+
+
+class TestConfidenceScoresTerminalState:
+    def test_default_terminal_state_is_completed(self) -> None:
+        cs = ConfidenceScores()
+        assert cs.terminal_state == "completed"
+
+    def test_accepts_retrieval_failed(self) -> None:
+        cs = ConfidenceScores(terminal_state="retrieval_failed")
+        assert cs.terminal_state == "retrieval_failed"
+
+
+def _make_report_data(terminal_state: str = "completed") -> ReportData:
+    from datetime import datetime
+
+    return ReportData(
+        research_question="Test?",
+        clarified_question="Test?",
+        investigation_date=datetime.now(),
+        model_used="test:model",
+        database_name="test_db",
+        direct_answer="Answer text.",
+        question_type="predictive",
+        verdict="Test verdict",
+        stats=InvestigationStats(total_claims=0, total_evidence=0),
+        confidence_scores=ConfidenceScores(
+            posterior=0.5,
+            posterior_supporting=0,
+            posterior_contradicting=0,
+            posterior_question_type="predictive",
+            terminal_state=terminal_state,
+        ),
+    )
+
+
+class TestTypesetReportRetrievalFailed:
+    def test_emits_warning_callout_when_retrieval_failed(self) -> None:
+        data = _make_report_data(terminal_state="retrieval_failed")
+        atoms = build_typeset_report(data)
+        callout_texts = [
+            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
+        ]
+        assert any("Retrieval failed" in t for t in callout_texts)
+        # Should NOT include the P(YES) interpretation when retrieval failed.
+        assert not any("P(YES)" in t for t in callout_texts)
+
+    def test_emits_p_yes_when_normal_completion(self) -> None:
+        data = _make_report_data(terminal_state="completed")
+        atoms = build_typeset_report(data)
+        callout_texts = [
+            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
+        ]
+        assert any("P(YES)" in t for t in callout_texts)
+        assert not any("Retrieval failed" in t for t in callout_texts)

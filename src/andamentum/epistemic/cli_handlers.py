@@ -994,6 +994,11 @@ async def handle_ask(
             console.print(
                 f"[green]Completed {run_result.successful} operations[/green]"
             )
+        if run_result.retrieval_failed:
+            console.print(
+                "[red]⚠ Retrieval failed: evidence extraction returned empty "
+                "content 3+ times consecutively. Posterior is uninformative.[/red]"
+            )
 
         # Gather results from the database
         store = DocumentStore.for_database(name, db_dir=db_dir)

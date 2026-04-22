@@ -407,6 +407,7 @@ class ReportGenerator:
                 posterior_supporting=po.supporting_count if po else 0,
                 posterior_contradicting=po.contradicting_count if po else 0,
                 posterior_question_type=po.question_type if po else None,
+                terminal_state=po.terminal_state if po else "completed",
             )
         except Exception as e:
             logger.warning(f"Failed to compute confidence scores: {e}")
