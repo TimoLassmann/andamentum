@@ -16,10 +16,8 @@ This module provides internal components for:
 """
 
 from .database import (
-    add_document_chunks,
     delete_chunks_for_document,
     get_document_stats,
-    init_rag_database,
     search_chunks,
     store_chunk_for_document,
 )
@@ -35,8 +33,6 @@ from .search import (
 
 __all__ = [
     # Database operations
-    "init_rag_database",
-    "add_document_chunks",
     "search_chunks",
     "get_document_stats",
     "store_chunk_for_document",
