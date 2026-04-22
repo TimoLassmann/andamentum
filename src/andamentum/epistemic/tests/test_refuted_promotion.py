@@ -1,0 +1,95 @@
+"""Tests for the refuted claim promotion path."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from andamentum.document_store import DocumentStore
+from andamentum.epistemic.entities import Claim, Evidence, Objective
+from andamentum.epistemic.entities.claim import ClaimStage
+from andamentum.epistemic.gates import (
+    count_support_contradict,
+    is_refuted_by_evidence,
+)
+from andamentum.epistemic.repository import EpistemicRepository
+
+
+async def _setup_claim_with_evidence(
+    n_supports: int, n_contradicts: int, n_unjudged: int = 0, tmp_path: Path | None = None
+) -> tuple[Claim, EpistemicRepository]:
+    """Create an objective + claim linked to N supporting + M contradicting evidence."""
+    if tmp_path is None:
+        import tempfile
+        tmp_path = Path(tempfile.mkdtemp())
+    store = DocumentStore.for_database("test", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+    obj = Objective(description="test objective", question_type="predictive")
+    await repo.save(obj)
+    claim = Claim(
+        statement="Test claim.", scope="test scope", objective_id=obj.entity_id,
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(claim)
+    for i in range(n_supports):
+        ev = Evidence(
+            source_type="web", source_ref=f"https://ex.com/s{i}",
+            extracted_content="supports", objective_id=obj.entity_id,
+            support_judgment="supports",
+        )
+        await repo.save(ev)
+        claim.evidence_ids.append(ev.entity_id)
+    for i in range(n_contradicts):
+        ev = Evidence(
+            source_type="web", source_ref=f"https://ex.com/c{i}",
+            extracted_content="contradicts", objective_id=obj.entity_id,
+            support_judgment="contradicts",
+        )
+        await repo.save(ev)
+        claim.evidence_ids.append(ev.entity_id)
+    for i in range(n_unjudged):
+        ev = Evidence(
+            source_type="web", source_ref=f"https://ex.com/u{i}",
+            extracted_content="x", objective_id=obj.entity_id,
+        )
+        await repo.save(ev)
+        claim.evidence_ids.append(ev.entity_id)
+    claim.evidence_count = len(claim.evidence_ids)
+    await repo.save(claim)
+    return claim, repo
+
+
+class TestCountSupportContradict:
+    async def test_counts_directional_judgments(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(2, 5, tmp_path=tmp_path)
+        n_sup, n_con = await count_support_contradict(claim, repo)
+        assert n_sup == 2
+        assert n_con == 5
+
+    async def test_ignores_unjudged(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(1, 1, n_unjudged=3, tmp_path=tmp_path)
+        n_sup, n_con = await count_support_contradict(claim, repo)
+        assert (n_sup, n_con) == (1, 1)
+
+    async def test_empty_evidence(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(0, 0, tmp_path=tmp_path)
+        assert await count_support_contradict(claim, repo) == (0, 0)
+
+
+class TestIsRefutedByEvidence:
+    async def test_refuted_when_contradicts_dominate(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(1, 9, tmp_path=tmp_path)
+        assert await is_refuted_by_evidence(claim, repo) is True
+
+    async def test_not_refuted_when_balanced(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(4, 5, tmp_path=tmp_path)
+        assert await is_refuted_by_evidence(claim, repo) is False
+
+    async def test_not_refuted_when_too_few_contradicts(self, tmp_path: Path) -> None:
+        # Threshold requires at least 3 contradicts.
+        claim, repo = await _setup_claim_with_evidence(0, 2, tmp_path=tmp_path)
+        assert await is_refuted_by_evidence(claim, repo) is False
+
+    async def test_refuted_with_zero_supports(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_claim_with_evidence(0, 3, tmp_path=tmp_path)
+        assert await is_refuted_by_evidence(claim, repo) is True
