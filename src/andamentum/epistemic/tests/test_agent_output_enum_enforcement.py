@@ -219,3 +219,71 @@ class TestClassifyPredictionEnumConstraints:
         kwargs["time_horizon"] = "eventually"
         with pytest.raises(ValidationError):
             ClassifyPredictionOutput(**kwargs)
+
+
+class TestVerdictLikeLiteralConstraints:
+    """Cluster of verdict-like Literal[...] fields (evidence_weight,
+    deductive_soundness, recommendation, validity, soundness, direction).
+    Each was bare ``str`` with values in the description — now a Literal."""
+
+    def test_evidence_weight_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import AssessEvidenceOutput
+
+        values = _field_allowed_values(
+            AssessEvidenceOutput.model_json_schema(), "evidence_weight"
+        )
+        assert set(values) == {"strong", "moderate", "weak", "conflicting"}
+
+    def test_deductive_soundness_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            DeductiveValidationOutput,
+        )
+
+        values = _field_allowed_values(
+            DeductiveValidationOutput.model_json_schema(), "deductive_soundness"
+        )
+        assert set(values) == {"sound", "questionable", "unsound"}
+
+    def test_recommendation_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            DeductiveValidationOutput,
+        )
+
+        values = _field_allowed_values(
+            DeductiveValidationOutput.model_json_schema(), "recommendation"
+        )
+        assert set(values) == {"promote", "hold", "demote"}
+
+    def test_validity_and_soundness_have_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import AnalyzeArgumentOutput
+
+        schema = AnalyzeArgumentOutput.model_json_schema()
+        assert set(_field_allowed_values(schema, "validity")) == {
+            "valid",
+            "invalid",
+            "indeterminate",
+        }
+        assert set(_field_allowed_values(schema, "soundness")) == {
+            "sound",
+            "unsound",
+            "questionable",
+        }
+
+    def test_direction_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import DraftClaimOutput
+
+        values = _field_allowed_values(
+            DraftClaimOutput.model_json_schema(), "direction"
+        )
+        assert set(values) == {"supports", "undermines", "neutral"}
+
+    def test_rejects_invalid_evidence_weight(self) -> None:
+        from andamentum.epistemic.agents.output_models import AssessEvidenceOutput
+
+        with pytest.raises(ValidationError):
+            AssessEvidenceOutput(
+                claim_id="c1",
+                evidence_weight="overwhelming",  # type: ignore[arg-type]
+                confidence_estimate=0.9,
+                justification="x",
+            )

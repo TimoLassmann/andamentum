@@ -623,7 +623,9 @@ def adapt_draft_claim(raw: Any) -> DraftClaimResult:
     return DraftClaimResult(
         statement=raw.statement.strip(),
         scope=raw.scope.strip(),
-        direction=raw.direction.strip().lower(),
+        # direction is a Literal on DraftClaimOutput — pydantic-ai enforces
+        # the value; no .strip().lower() needed.
+        direction=raw.direction,
     )
 
 
