@@ -14,6 +14,7 @@ from ..primitives import (
     CausalRole,
     DataSourceType,
     MethodType,
+    QuestionType,
     TemporalApproach,
 )
 
@@ -60,11 +61,8 @@ class ClassifyQuestionOutput(BaseModel):
     decision for the entire downstream pipeline.
     """
 
-    question_type: str = Field(
-        description=(
-            'One of: "verificatory", "explanatory", "exploratory", '
-            '"comparative", "predictive", "compositional", "normative"'
-        )
+    question_type: QuestionType = Field(
+        description="Epistemic question type — drives downstream verification routing"
     )
     reasoning: str = Field(
         description="One sentence explaining the classification choice"

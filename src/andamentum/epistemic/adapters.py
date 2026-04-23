@@ -507,11 +507,12 @@ def adapt_assess_evidence_quality(raw: Any) -> AssessEvidenceQualityResult:
 def adapt_classify_question(raw: Any) -> ClassifyQuestionResult:
     """Adapt epistemic_classify_question output.
 
-    Normalizes question_type to lowercase and strips whitespace since
-    LLMs sometimes return uppercase or padded values.
+    ClassifyQuestionOutput.question_type is a QuestionType enum —
+    pydantic-ai already constrains the value via the JSON schema's
+    enum, so no case/whitespace normalization is required here.
     """
     return ClassifyQuestionResult(
-        question_type=raw.question_type.strip().lower(),
+        question_type=raw.question_type,
         reasoning=raw.reasoning,
     )
 

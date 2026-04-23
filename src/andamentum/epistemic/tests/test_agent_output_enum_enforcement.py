@@ -139,3 +139,27 @@ class TestClassifyEvidenceDomainRejectsInvalidValues:
         # Values come back as the enum value strings (StrEnum behaviour).
         assert out.method_type == "experimental"
         assert out.data_source == "primary"
+
+
+class TestClassifyQuestionEnumConstraints:
+    def test_question_type_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyQuestionOutput
+
+        values = _field_allowed_values(
+            ClassifyQuestionOutput.model_json_schema(), "question_type"
+        )
+        assert set(values) == {
+            "verificatory",
+            "explanatory",
+            "exploratory",
+            "comparative",
+            "predictive",
+            "compositional",
+            "normative",
+        }, values
+
+    def test_rejects_invalid_question_type(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyQuestionOutput
+
+        with pytest.raises(ValidationError):
+            ClassifyQuestionOutput(question_type="speculative", reasoning="x")
