@@ -794,8 +794,16 @@ replication scores high on evidence_backed.
 - 0.5: Credible but not specialist source
 - 0.0: Anonymous, non-expert, or known unreliable source
 
-**category**: Classify the type of criticism (one of: methodological, empirical, logical, scope, statistical, \
-theoretical, replication, alternative_explanation, ethical)
+**category**: Classify the type of criticism. Pick the best fit from:
+- methodological: flaws in study design or procedure
+- statistical: problems with statistical analysis or inference
+- replication_failure: the finding has failed to replicate
+- confounding: an alternative variable could explain the result
+- generalization: the claim over-extends from the supporting evidence
+- interpretation: the data is misread or misinterpreted
+- theoretical: conflict with established theory or mechanism
+- fringe: outside mainstream scientific consensus
+- ad_hominem: attacks the author, not the argument
 """
 
 register_agent(

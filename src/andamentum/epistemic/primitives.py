@@ -589,7 +589,7 @@ class AdversarialEvidence(BaseModel):
                     source_author=ca_meta.get("source_author"),
                     supporting_evidence=ca_meta.get("supporting_evidence", ""),
                     category=CriticismCategory(
-                        ca_meta.get("category", "factual_dispute")
+                        ca_meta.get("category", CriticismCategory.METHODOLOGICAL.value)
                     ),
                     quality=CounterargumentQuality(
                         relevance=ca_meta.get("quality", {}).get("relevance", 0.0),

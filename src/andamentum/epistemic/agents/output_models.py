@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..primitives import (
     CausalRole,
+    CriticismCategory,
     DataSourceType,
     MethodType,
     PredictionType,
@@ -80,9 +81,9 @@ class ClassifyQuestionOutput(BaseModel):
 class ExtractEvidenceOutput(BaseModel):
     """Output from epistemic_extract_evidence agent."""
 
-    source_type: str = Field(
-        description="Type of source - paper, dataset, note, conversation, webpage, book, report"
-    )
+    source_type: Literal[
+        "paper", "dataset", "note", "conversation", "webpage", "book", "report"
+    ] = Field(description="Type of source document")
     source_ref: str = Field(description="Reference to the source (URL, DOI, file path)")
     relevant_quotes: list[str] = Field(
         description="Key facts, findings, or quotes from the source content that are relevant to the objective."
@@ -126,10 +127,25 @@ class IdentifySingleIssueOutput(BaseModel):
     description: str = Field(
         description="What the issue is (empty string if has_issue is false)"
     )
-    issue_type: str = Field(
-        description="One of: unknown, contradiction, evidence_gap, risk, assumption, "
-        "scope_difference, methodological_variation, definitional_variation, "
-        "perspectival, evidence_corrupted. Empty string if has_issue is false."
+    issue_type: Literal[
+        "",
+        "evidence_corrupted",
+        "unknown",
+        "contradiction",
+        "evidence_gap",
+        "risk",
+        "assumption",
+        "scope_difference",
+        "methodological_variation",
+        "definitional_variation",
+        "perspectival",
+    ] = Field(
+        description=(
+            'Issue classification. Empty string when has_issue is false. '
+            '"evidence_corrupted" is a sentinel that triggers evidence '
+            'invalidation rather than uncertainty creation; all other values '
+            'map to UncertaintyType members.'
+        )
     )
 
 
@@ -353,9 +369,12 @@ class EvaluateCounterargumentOutput(BaseModel):
     source_credibility: float = Field(
         description="0.0-1.0: Is the source authoritative for this domain?"
     )
-    category: str = Field(
-        description="One of: methodological, empirical, logical, scope, statistical, theoretical, replication,"
-        " alternative_explanation, ethical"
+    category: CriticismCategory = Field(
+        description=(
+            "Category of criticism — must match a CriticismCategory enum "
+            "member since downstream code keys weights off specific values "
+            "(e.g. replication_failure, ad_hominem)."
+        )
     )
     justification: str = Field(description="One sentence explaining the scores")
 
