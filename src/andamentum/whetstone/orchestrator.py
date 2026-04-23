@@ -43,7 +43,7 @@ from .agents.output_models import (
     SynthesisCriticalIssue,  # noqa: F401 — needed for pydantic union resolution
 )
 from .issues import DocumentIssue
-from .models import DocumentPatch
+from .models import ChecklistItem, DocumentPatch
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,11 @@ class ReviewResult(BaseModel):
     expert_profiles: list[ExpertProfile] = Field(default_factory=list, description="Generated expert profiles (panel)")
     expert_reviews: list[ExpertReviewOutput] = Field(
         default_factory=list, description="Individual expert reviews (panel)"
+    )
+
+    checklist: list[ChecklistItem] = Field(
+        default_factory=list,
+        description="Checklist items from 'checklist' task",
     )
 
 
