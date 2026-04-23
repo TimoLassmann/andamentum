@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional
 
 from .primitives import (
     CausalRole,
+    CriticismCategory,
     DataSourceType,
     MethodType,
     PredictionType,
@@ -179,7 +180,7 @@ class EvaluateCounterargumentResult:
     specificity: float = 0.0
     evidence_backed: float = 0.0
     source_credibility: float = 0.0
-    category: str = "logical"
+    category: CriticismCategory = CriticismCategory.METHODOLOGICAL
     justification: str = ""
 
 

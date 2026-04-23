@@ -326,3 +326,90 @@ class TestObservationMeasurabilityAmbiguityConstraints:
                 testable_dimension="x",
                 observation_type="categorical",  # type: ignore[arg-type]
             )
+
+
+class TestComplexVocabConstraints:
+    def test_extract_evidence_source_type_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import ExtractEvidenceOutput
+
+        values = _field_allowed_values(
+            ExtractEvidenceOutput.model_json_schema(), "source_type"
+        )
+        assert set(values) == {
+            "paper",
+            "dataset",
+            "note",
+            "conversation",
+            "webpage",
+            "book",
+            "report",
+        }
+
+    def test_identify_single_issue_type_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            IdentifySingleIssueOutput,
+        )
+
+        values = _field_allowed_values(
+            IdentifySingleIssueOutput.model_json_schema(), "issue_type"
+        )
+        # Includes "" for the has_issue=False case, plus the 9 UncertaintyType
+        # values the LLM may pick + the "evidence_corrupted" sentinel that
+        # triggers evidence invalidation rather than uncertainty creation.
+        assert set(values) == {
+            "",
+            "evidence_corrupted",
+            "unknown",
+            "contradiction",
+            "evidence_gap",
+            "risk",
+            "assumption",
+            "scope_difference",
+            "methodological_variation",
+            "definitional_variation",
+            "perspectival",
+        }
+
+    def test_evaluate_counterargument_category_has_enum(self) -> None:
+        # This field was bare str with a description vocabulary that drifted
+        # from the CriticismCategory enum downstream code actually consumes
+        # (primitives.py coerces via CriticismCategory(...)). Align the
+        # LLM's vocabulary with the enum so strict-structured-outputs mode
+        # cannot produce ValueErrors at the boundary.
+        from andamentum.epistemic.agents.output_models import (
+            EvaluateCounterargumentOutput,
+        )
+
+        values = _field_allowed_values(
+            EvaluateCounterargumentOutput.model_json_schema(), "category"
+        )
+        assert set(values) == {
+            "methodological",
+            "statistical",
+            "replication_failure",
+            "confounding",
+            "generalization",
+            "interpretation",
+            "theoretical",
+            "fringe",
+            "ad_hominem",
+        }
+
+    def test_rejects_drift_values_on_category(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            EvaluateCounterargumentOutput,
+        )
+
+        # These were in the previous prompt/description but NOT in the
+        # CriticismCategory enum — the exact drift that used to cause
+        # ValueErrors at primitives.py::AdversarialFinding construction.
+        for bad in ("empirical", "logical", "scope", "alternative_explanation", "ethical"):
+            with pytest.raises(ValidationError):
+                EvaluateCounterargumentOutput(
+                    relevance=0.5,
+                    specificity=0.5,
+                    evidence_backed=0.5,
+                    source_credibility=0.5,
+                    category=bad,  # type: ignore[arg-type]
+                    justification="x",
+                )
