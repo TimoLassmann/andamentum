@@ -90,8 +90,11 @@ class TestClassifyQuestionAgent:
         assert len(fields) == 2
 
     def test_output_model_accepts_valid_type(self):
+        # Pass the enum value directly — pydantic coerces the str to the
+        # QuestionType enum. The type-level check passes because the
+        # QuestionType enum is a str subclass.
         output = ClassifyQuestionOutput(
-            question_type="verificatory",
+            question_type=QuestionType.VERIFICATORY,
             reasoning="Binary truth claim",
         )
         assert output.question_type == "verificatory"
@@ -111,21 +114,22 @@ class TestClassifyQuestionAdapter:
         assert result.question_type == "verificatory"
         assert result.reasoning == "Binary truth claim about efficacy"
 
-    def test_normalizes_case(self):
-        raw = SimpleNamespace(
-            question_type="VERIFICATORY",
-            reasoning="test",
-        )
-        result = adapt_agent_output("epistemic_classify_question", raw)
-        assert result.question_type == "verificatory"
+    def test_pydantic_model_rejects_out_of_vocabulary_values(self):
+        # With ClassifyQuestionOutput.question_type typed as QuestionType,
+        # pydantic (and OpenAI strict structured outputs) enforce the
+        # vocabulary at model-construction time. The LLM never gets to emit
+        # "VERIFICATORY" or "  explanatory  " — the API rejects it. This
+        # test replaces the old adapter-level .strip().lower() normalisation
+        # tests that were masking LLM misbehaviour.
+        import pytest
+        from pydantic import ValidationError
 
-    def test_strips_whitespace(self):
-        raw = SimpleNamespace(
-            question_type="  explanatory  ",
-            reasoning="test",
-        )
-        result = adapt_agent_output("epistemic_classify_question", raw)
-        assert result.question_type == "explanatory"
+        from ..agents.output_models import ClassifyQuestionOutput
+
+        with pytest.raises(ValidationError):
+            ClassifyQuestionOutput(question_type="VERIFICATORY", reasoning="test")  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            ClassifyQuestionOutput(question_type="  explanatory  ", reasoning="test")  # type: ignore[arg-type]
 
 
 from andamentum.document_store import DocumentStore  # noqa: E402
@@ -253,4 +257,3 @@ class TestClassifyQuestionOperation:
 
         assert result.success
         assert len(mock_runner.calls) == 0  # No agent call
-

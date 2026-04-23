@@ -159,20 +159,11 @@ class ClassifyQuestionOperation(BaseOperation):
             question=question,
         )
 
-        # Adapter normalizes to lowercase
+        # ClassifyQuestionOutput.question_type is typed as the QuestionType
+        # enum, so pydantic-ai has already enforced the vocabulary at the
+        # OpenAI strict-structured-outputs boundary. No defensive check or
+        # case-normalization needed here.
         question_type = result.question_type
-
-        # Validate against known types
-        from ..primitives import QuestionType
-
-        valid_types = {qt.value for qt in QuestionType}
-        if question_type not in valid_types:
-            return OperationResult(
-                success=False,
-                entity_id=work.entity_id,
-                message=f"Invalid question type: {question_type}. Valid: {valid_types}",
-            )
-
         objective.question_type = question_type
         await self.repo.save(objective)
 
