@@ -305,13 +305,7 @@ class AssessConvergenceOperation(BaseOperation):
     async def execute(self, work: OperationInput) -> OperationResult:
         from ..convergence_detector import detect_convergence
         from ..domain_classifier import classify_evidence_domain as default_classify
-        from ..primitives import (
-            DomainClassification,
-            MethodType,
-            DataSourceType,
-            TemporalApproach,
-            CausalRole,
-        )
+        from ..primitives import DomainClassification
 
         claim = await self.repo.get("claim", work.entity_id)
 
@@ -350,14 +344,18 @@ class AssessConvergenceOperation(BaseOperation):
                     source_type=ev.source_type,
                     source_ref=ev.source_ref,
                 )
-                # Convert adapter result to DomainClassification
+                # The pydantic output model (ClassifyEvidenceDomainOutput)
+                # already types these fields as MethodType / DataSourceType /
+                # TemporalApproach / CausalRole enums, so pydantic-ai enforces
+                # the enum constraint at the API schema level. No boundary
+                # coercion needed.
                 classification = DomainClassification(
                     evidence_id=eid,
                     claim_id=claim.entity_id,
-                    method_type=MethodType(dc_result.method_type),
-                    data_source=DataSourceType(dc_result.data_source),
-                    temporal=TemporalApproach(dc_result.temporal_approach),
-                    causal_role=CausalRole(dc_result.causal_role),
+                    method_type=dc_result.method_type,
+                    data_source=dc_result.data_source,
+                    temporal=dc_result.temporal_approach,
+                    causal_role=dc_result.causal_role,
                     classification_confidence=float(dc_result.confidence),
                     classification_method="agent",
                     classification_notes=dc_result.justification,

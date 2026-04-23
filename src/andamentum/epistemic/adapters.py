@@ -13,6 +13,13 @@ Architecture: Layer 1 (framework-agnostic)
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from .primitives import (
+    CausalRole,
+    DataSourceType,
+    MethodType,
+    TemporalApproach,
+)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RESULT DATACLASSES
@@ -180,13 +187,15 @@ class ClassifyEvidenceDomainResult:
     """Result from evidence domain classification.
 
     Manifest fields: method_type, data_source, temporal_approach,
-    causal_role, confidence, justification.
+    causal_role, confidence, justification. The four classification
+    fields are enums — pydantic-ai enforces the enum constraint via
+    the JSON schema so downstream code never has to coerce from str.
     """
 
-    method_type: str = "theoretical"
-    data_source: str = "secondary"
-    temporal_approach: str = "cross_sectional"
-    causal_role: str = "phenomenological"
+    method_type: MethodType = MethodType.THEORETICAL
+    data_source: DataSourceType = DataSourceType.SECONDARY
+    temporal_approach: TemporalApproach = TemporalApproach.CROSS_SECTIONAL
+    causal_role: CausalRole = CausalRole.PHENOMENOLOGICAL
     confidence: float = 0.0
     justification: str = ""
 
