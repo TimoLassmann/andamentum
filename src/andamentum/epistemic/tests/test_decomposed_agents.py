@@ -233,14 +233,17 @@ class TestDraftClaimAgent:
         assert "direction" in fields
         assert len(fields) == 3
 
-    def test_adapter(self):
-        raw = SimpleNamespace(
-            statement="test", scope="general", direction="  SUPPORTS  "
-        )
-        result = adapt_agent_output("epistemic_draft_claim", raw)
-        assert result.direction == "supports"
+    def test_pydantic_model_rejects_out_of_vocab_direction(self):
+        # `direction` is now a Literal on DraftClaimOutput, so pydantic
+        # rejects case/whitespace drift at model-construction time. The
+        # previous adapter-level `.strip().lower()` is therefore dead.
+        import pytest
+        from pydantic import ValidationError
 
-    def test_adapter_strips_whitespace(self):
+        with pytest.raises(ValidationError):
+            DraftClaimOutput(statement="x", scope="y", direction="  SUPPORTS  ")  # type: ignore[arg-type]
+
+    def test_adapter_strips_whitespace_on_free_text(self):
         raw = SimpleNamespace(
             statement="  claim  ", scope="  wide  ", direction="neutral"
         )

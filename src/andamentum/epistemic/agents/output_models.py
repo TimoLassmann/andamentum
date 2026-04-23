@@ -102,7 +102,9 @@ class AssessEvidenceOutput(BaseModel):
     """Output from epistemic_assess_evidence agent (split scrutiny: evidence weight only)."""
 
     claim_id: str = Field(description="ID of the claim being assessed")
-    evidence_weight: str = Field(description="strong, moderate, weak, or conflicting")
+    evidence_weight: Literal["strong", "moderate", "weak", "conflicting"] = Field(
+        description="Overall evidential weight for the claim"
+    )
     confidence_estimate: float = Field(
         description="0.0-1.0 probability claim is true given evidence"
     )
@@ -135,8 +137,8 @@ class DeductiveValidationOutput(BaseModel):
     """Output from epistemic_deductive_validation agent."""
 
     claim_id: str = Field(description="ID of the claim being validated")
-    deductive_soundness: str = Field(
-        description="Overall deductive assessment - sound, questionable, or unsound"
+    deductive_soundness: Literal["sound", "questionable", "unsound"] = Field(
+        description="Overall deductive assessment of the claim"
     )
     confidence_estimate: float = Field(
         description="Confidence in the deductive assessment (0.0-1.0)"
@@ -150,8 +152,12 @@ class DeductiveValidationOutput(BaseModel):
     issue_types: list[str] = Field(
         description="Type for each issue. Use blocking types for genuine logical failures, assumption for acknowledged but non-fatal gaps."
     )
-    recommendation: str = Field(
-        description="One of - promote (deductively sound), hold (questionable, needs clarification), demote (deductively unsound)"
+    recommendation: Literal["promote", "hold", "demote"] = Field(
+        description=(
+            "promote = deductively sound; "
+            "hold = questionable, needs clarification; "
+            "demote = deductively unsound"
+        )
     )
 
 
@@ -178,11 +184,11 @@ class AnalyzeArgumentOutput(BaseModel):
 
     premises: list[str] = Field(description="Identified premises supporting the claim")
     conclusion: str = Field(description="The claim restated as a conclusion")
-    validity: str = Field(
-        description='Does conclusion follow from premises? "valid", "invalid", or "indeterminate"'
+    validity: Literal["valid", "invalid", "indeterminate"] = Field(
+        description="Does the conclusion follow from the premises?"
     )
-    soundness: str = Field(
-        description='Are premises true/supported? "sound", "unsound", or "questionable"'
+    soundness: Literal["sound", "unsound", "questionable"] = Field(
+        description="Are the premises true and well-supported?"
     )
     fallacies: list[str] = Field(
         description='Logical fallacies detected (e.g., "correlation_causation", "hasty_generalization")'
@@ -517,8 +523,8 @@ class DraftClaimOutput(BaseModel):
         description="One claim statement capturing the shared content of the assertions"
     )
     scope: str = Field(description="Under what conditions this claim holds")
-    direction: str = Field(
-        description='"supports", "undermines", or "neutral" toward the research question'
+    direction: Literal["supports", "undermines", "neutral"] = Field(
+        description="The claim's stance toward the research question"
     )
 
 
