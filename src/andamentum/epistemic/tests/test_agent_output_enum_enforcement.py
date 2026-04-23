@@ -287,3 +287,42 @@ class TestVerdictLikeLiteralConstraints:
                 confidence_estimate=0.9,
                 justification="x",
             )
+
+
+class TestObservationMeasurabilityAmbiguityConstraints:
+    def test_observation_type_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            IdentifyTestableAspectOutput,
+        )
+
+        values = _field_allowed_values(
+            IdentifyTestableAspectOutput.model_json_schema(), "observation_type"
+        )
+        assert set(values) == {"quantitative", "qualitative", "binary"}
+
+    def test_measurability_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import SpecifyPredictionOutput
+
+        values = _field_allowed_values(
+            SpecifyPredictionOutput.model_json_schema(), "measurability"
+        )
+        assert set(values) == {"quantitative", "qualitative", "binary"}
+
+    def test_ambiguity_level_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClarifyQuestionOutput
+
+        values = _field_allowed_values(
+            ClarifyQuestionOutput.model_json_schema(), "ambiguity_level"
+        )
+        assert set(values) == {"clear", "moderate", "high"}
+
+    def test_rejects_invalid_observation_type(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            IdentifyTestableAspectOutput,
+        )
+
+        with pytest.raises(ValidationError):
+            IdentifyTestableAspectOutput(
+                testable_dimension="x",
+                observation_type="categorical",  # type: ignore[arg-type]
+            )

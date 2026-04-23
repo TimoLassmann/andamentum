@@ -91,16 +91,27 @@ class TestIdentifyTestableAspectAgent:
         assert "observation_type" in fields
         assert len(fields) == 2
 
-    def test_adapter(self):
-        raw = SimpleNamespace(
-            testable_dimension="test dim", observation_type="  QUANTITATIVE  "
-        )
-        result = adapt_agent_output("epistemic_identify_testable_aspect", raw)
-        assert result.observation_type == "quantitative"
+    def test_pydantic_model_rejects_out_of_vocab_observation_type(self):
+        # observation_type is a Literal — pydantic rejects case/whitespace
+        # drift at model-construction time. The old adapter-level
+        # .strip().lower() that these tests exercised is therefore dead.
+        import pytest
+        from pydantic import ValidationError
 
-    def test_adapter_strips_and_lowercases(self):
+        with pytest.raises(ValidationError):
+            IdentifyTestableAspectOutput(
+                testable_dimension="x",
+                observation_type="  QUANTITATIVE  ",  # type: ignore[arg-type]
+            )
+        with pytest.raises(ValidationError):
+            IdentifyTestableAspectOutput(
+                testable_dimension="x",
+                observation_type="  Binary  ",  # type: ignore[arg-type]
+            )
+
+    def test_adapter_passes_valid_observation_type_unchanged(self):
         raw = SimpleNamespace(
-            testable_dimension="BP decrease", observation_type="  Binary  "
+            testable_dimension="BP decrease", observation_type="binary"
         )
         result = adapt_agent_output("epistemic_identify_testable_aspect", raw)
         assert result.observation_type == "binary"

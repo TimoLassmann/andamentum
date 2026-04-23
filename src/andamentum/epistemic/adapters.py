@@ -470,10 +470,14 @@ def adapt_classify_prediction(raw: Any) -> ClassifyPredictionResult:
 
 
 def adapt_identify_testable_aspect(raw: Any) -> IdentifyTestableAspectResult:
-    """Adapt epistemic_identify_testable_aspect output."""
+    """Adapt epistemic_identify_testable_aspect output.
+
+    observation_type is a Literal on IdentifyTestableAspectOutput, so
+    pydantic-ai enforces the value; no case/whitespace normalisation here.
+    """
     return IdentifyTestableAspectResult(
         testable_dimension=raw.testable_dimension,
-        observation_type=raw.observation_type.strip().lower(),
+        observation_type=raw.observation_type,
     )
 
 
