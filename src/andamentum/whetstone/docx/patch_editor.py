@@ -96,7 +96,7 @@ class PatchDocxEditor(DocxEditor):
                     elif "validation" in failure_reason.lower():
                         validation_failures += 1
 
-            except Exception as e:
+            except Exception:
                 failed_patches.append(patch)
                 self.failed_patches.append(patch)
                 validation_failures += 1

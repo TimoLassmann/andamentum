@@ -7,7 +7,6 @@ made which specific changes, preventing attribution loss when multiple agents
 edit the same paragraph.
 """
 
-import re
 import difflib
 from typing import List, Optional, Dict, Tuple
 from dataclasses import dataclass
@@ -119,7 +118,6 @@ class ChangeAttributionTracker:
         """
         new_attributions = []
         original_idx = 0
-        new_idx = 0
 
         # Use difflib to find the optimal sequence of operations
         for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, original_tokens, new_tokens).get_opcodes():
@@ -299,9 +297,6 @@ class ChangeAttributionTracker:
             Dictionary mapping token indices to author names
         """
         author_map = {}
-
-        # Build a mapping from current tokens back to attributions
-        current_tokens = [attr.token for attr in self.attributions]
 
         # For each token in the new text, find its attribution
         for i, token in enumerate(new_tokens):
