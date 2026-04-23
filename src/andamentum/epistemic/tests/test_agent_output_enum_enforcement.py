@@ -413,3 +413,58 @@ class TestComplexVocabConstraints:
                     category=bad,  # type: ignore[arg-type]
                     justification="x",
                 )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Regression barrier — fire if anyone reverts a field back to bare `str`
+# ─────────────────────────────────────────────────────────────────────────
+
+# (model class name, field name) pairs that MUST carry a JSON-schema
+# enum constraint. If you intentionally remove one, delete its row here;
+# if you add a new enum-like field to an agent output model, add its row.
+EXPECTED_ENUM_FIELDS: list[tuple[str, str]] = [
+    ("ClarifyQuestionOutput", "ambiguity_level"),
+    ("ClassifyQuestionOutput", "question_type"),
+    ("ExtractEvidenceOutput", "source_type"),
+    ("AssessEvidenceOutput", "evidence_weight"),
+    ("IdentifySingleIssueOutput", "issue_type"),
+    ("DeductiveValidationOutput", "deductive_soundness"),
+    ("DeductiveValidationOutput", "recommendation"),
+    ("AnalyzeArgumentOutput", "validity"),
+    ("AnalyzeArgumentOutput", "soundness"),
+    ("IdentifyTestableAspectOutput", "observation_type"),
+    ("SpecifyPredictionOutput", "measurability"),
+    ("EvaluateCounterargumentOutput", "category"),
+    ("ClassifyEvidenceDomainOutput", "method_type"),
+    ("ClassifyEvidenceDomainOutput", "data_source"),
+    ("ClassifyEvidenceDomainOutput", "temporal_approach"),
+    ("ClassifyEvidenceDomainOutput", "causal_role"),
+    ("ClassifyPredictionOutput", "prediction_type"),
+    ("ClassifyPredictionOutput", "time_horizon"),
+    ("DraftClaimOutput", "direction"),
+]
+
+
+class TestAgentOutputEnumManifest:
+    """All enum-constrained fields across the agent output models — one
+    regression-barrier test that iterates the manifest.
+
+    If a new controlled-vocabulary field is added to any output model,
+    append its (model, field) pair to ``EXPECTED_ENUM_FIELDS`` above.
+    """
+
+    @pytest.mark.parametrize("model_name,field_name", EXPECTED_ENUM_FIELDS)
+    def test_field_has_enum_constraint(
+        self, model_name: str, field_name: str
+    ) -> None:
+        from andamentum.epistemic.agents import output_models
+
+        model_cls = getattr(output_models, model_name)
+        schema = model_cls.model_json_schema()
+        values = _field_allowed_values(schema, field_name)
+        assert values, (
+            f"{model_name}.{field_name} has no enum constraint in its JSON "
+            f"schema — did you revert it to bare str? pydantic-ai can only "
+            f"enforce the vocabulary via strict structured outputs when the "
+            f"schema carries an `enum` node."
+        )
