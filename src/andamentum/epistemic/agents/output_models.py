@@ -14,9 +14,14 @@ from ..primitives import (
     CausalRole,
     DataSourceType,
     MethodType,
+    PredictionType,
     QuestionType,
     TemporalApproach,
 )
+
+TimeHorizon = Literal[
+    "immediate", "short_term", "medium_term", "long_term", "indefinite"
+]
 
 
 # ── Preplanning ──────────────────────────────────────────────────────────
@@ -367,16 +372,16 @@ class ClassifyEvidenceDomainOutput(BaseModel):
 class ClassifyPredictionOutput(BaseModel):
     """Output from epistemic_classify_prediction agent."""
 
-    prediction_type: str = Field(
-        description="One of: quantitative, temporal, conditional, binary, qualitative"
+    prediction_type: PredictionType = Field(
+        description="How is this prediction structured?"
     )
     specificity: float = Field(
         description="0.0-1.0: How specific and testable is this prediction?"
     )
     success_criteria: str = Field(description="What would confirm this prediction?")
     failure_criteria: str = Field(description="What would refute this prediction?")
-    time_horizon: str = Field(
-        description="Expected timeframe: immediate, short_term, medium_term, long_term, indefinite"
+    time_horizon: TimeHorizon = Field(
+        description="Expected timeframe for observing the prediction"
     )
     justification: str = Field(
         description="One sentence explaining type and specificity assessment"
