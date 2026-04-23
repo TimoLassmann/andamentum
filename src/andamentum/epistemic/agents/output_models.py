@@ -30,8 +30,8 @@ TimeHorizon = Literal[
 class ClarifyQuestionOutput(BaseModel):
     """Output from epistemic_clarify_question agent."""
 
-    ambiguity_level: str = Field(
-        description='Level of ambiguity - "clear", "moderate", or "high"'
+    ambiguity_level: Literal["clear", "moderate", "high"] = Field(
+        description="How ambiguous is the original question?"
     )
     clarified_question: str = Field(
         description="Rewritten question that is unambiguous and specific"
@@ -271,8 +271,8 @@ class IdentifyTestableAspectOutput(BaseModel):
     testable_dimension: str = Field(
         description="What would be observably different if this claim is true vs false (one sentence)"
     )
-    observation_type: str = Field(
-        description='Type of observation: "quantitative", "qualitative", or "binary"'
+    observation_type: Literal["quantitative", "qualitative", "binary"] = Field(
+        description="What kind of observation captures the testable difference?"
     )
 
 
@@ -287,7 +287,9 @@ class SpecifyPredictionOutput(BaseModel):
     )
     conditions: str = Field(description="Under what conditions this prediction holds")
     timeframe: str = Field(description="When the observation should be possible")
-    measurability: str = Field(description='"quantitative", "qualitative", or "binary"')
+    measurability: Literal["quantitative", "qualitative", "binary"] = Field(
+        description="How the observation will be measured"
+    )
 
 
 class DefineFalsificationOutput(BaseModel):
