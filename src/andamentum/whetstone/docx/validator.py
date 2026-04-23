@@ -6,11 +6,11 @@ This module eliminates the duplication of validation patterns found
 across patch_docx_editor.py, sequential_processor.py, and other components.
 """
 
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any
 from difflib import SequenceMatcher
 
 from ..models import DocumentPatch
-from .result_types import ValidationResult, LocationResult, ValidationStatus, LocationStatus
+from .result_types import ValidationResult, LocationResult
 
 
 class PatchValidator:

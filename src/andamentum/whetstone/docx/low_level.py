@@ -37,7 +37,7 @@ from docx.oxml.ns import qn
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 from .attribution import ChangeAttributionTracker
-from .xml_builder import XMLElementBuilder, XMLPatternMatcher
+from .xml_builder import XMLElementBuilder
 from .token_processor import TokenProcessor
 
 # Logger for this module
@@ -814,13 +814,13 @@ class DocxEditor:
             if part.startswith("**") and part.endswith("**") and len(part) > 4:
                 # Bold text
                 rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                b = etree.SubElement(rPr, f"{{{NS['w']}}}b")
+                etree.SubElement(rPr, f"{{{NS['w']}}}b")
                 t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
                 t_elem.text = part[2:-2]
             elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
                 # Italic text
                 rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                i = etree.SubElement(rPr, f"{{{NS['w']}}}i")
+                etree.SubElement(rPr, f"{{{NS['w']}}}i")
                 t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
                 t_elem.text = part[1:-1]
             else:
@@ -892,7 +892,7 @@ class DocxEditor:
                 text = line[2:-2]
                 r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
                 rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                b = etree.SubElement(rPr, f"{{{NS['w']}}}b")
+                etree.SubElement(rPr, f"{{{NS['w']}}}b")
                 t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
                 t_elem.text = text
                 elements_to_prepend.append(p_elem)
@@ -902,7 +902,7 @@ class DocxEditor:
                 text = line[1:-1]
                 r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
                 rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                i = etree.SubElement(rPr, f"{{{NS['w']}}}i")
+                etree.SubElement(rPr, f"{{{NS['w']}}}i")
                 t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
                 t_elem.text = text
                 elements_to_prepend.append(p_elem)
@@ -1513,7 +1513,6 @@ class DocumentReview:
             # Process indented paragraphs (2+ spaces at start) - CHECK BEFORE STRIPPING!
             indent_match = re.match(r"^( {2,})(.+)$", line)
             if indent_match:
-                spaces = len(indent_match.group(1))
                 content = indent_match.group(2)
 
                 # Check if this is an indented ~~~ pattern that should be processed as metadata

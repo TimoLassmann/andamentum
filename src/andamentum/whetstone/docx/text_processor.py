@@ -645,7 +645,7 @@ class TextProcessor:
             for i, (text, sim) in enumerate(suggestions, 1):
                 suggestion_list.append(f"{i}. '{text}' (similarity: {sim:.2f})")
 
-            return f"Did you mean one of these?\n" + "\n".join(suggestion_list)
+            return "Did you mean one of these?\n" + "\n".join(suggestion_list)
 
     @classmethod
     def find_best_pattern_match(
