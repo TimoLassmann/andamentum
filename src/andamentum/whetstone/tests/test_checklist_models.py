@@ -26,12 +26,12 @@ def test_checklist_item_all_fields():
 
 def test_checklist_item_rejects_bad_status():
     with pytest.raises(ValidationError):
-        ChecklistItem(name="x", status="maybe", notes="")
+        ChecklistItem(name="x", status="maybe", notes="")  # type: ignore[arg-type]
 
 
 def test_checklist_item_rejects_bad_source():
     with pytest.raises(ValidationError):
-        ChecklistItem(name="x", status="pass", notes="y", source="other")
+        ChecklistItem(name="x", status="pass", notes="y", source="other")  # type: ignore[arg-type]
 
 
 def test_baseline_check_deterministic():
@@ -56,4 +56,4 @@ def test_baseline_check_llm():
 
 def test_baseline_check_rejects_bad_kind():
     with pytest.raises(ValidationError):
-        BaselineCheck(name="x", category="y", kind="guess")
+        BaselineCheck(name="x", category="y", kind="guess")  # type: ignore[arg-type]

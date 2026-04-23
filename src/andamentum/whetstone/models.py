@@ -27,43 +27,43 @@ class DocumentPatch(BaseModel):
 
     # Location identification - REQUIRED for text_edit and comment, OPTIONAL for document_analysis
     text_pattern: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for text_edit/comment: Exact text to find and modify. NOT NEEDED for document_analysis patches.",
     )
 
     # Location identification - OPTIONAL
-    paragraph_index: Optional[int] = Field(None, description="OPTIONAL: Target paragraph index if known")
-    original_text: Optional[str] = Field(None, description="OPTIONAL: Original text for validation")
+    paragraph_index: Optional[int] = Field(default=None, description="OPTIONAL: Target paragraph index if known")
+    original_text: Optional[str] = Field(default=None, description="OPTIONAL: Original text for validation")
 
     # Content - CONDITIONAL
     new_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for text_edit patches: The improved replacement text. Must NOT be None or empty for text_edit patches.",
     )
     comment_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for comment patches: The suggestion or note text. Must NOT be None or empty for comment patches.",
     )
     analysis_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for document_analysis patches: Detailed structured analysis in markdown format with comprehensive evaluation, scores, recommendations, and specific insights",
     )
 
     # Position tracking - SYSTEM USE ONLY (not for LLM)
     found_at: Optional[int] = Field(
-        None,
+        default=None,
         description="SYSTEM-POPULATED: Do NOT set this field. The system will automatically populate it after finding the text_pattern.",
     )
     original_start: Optional[int] = Field(
-        None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
+        default=None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
     )
     original_end: Optional[int] = Field(
-        None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
+        default=None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
     )
 
     # Metadata - REQUIRED
     confidence: float = Field(
-        0.8,
+        default=0.8,
         ge=0.0,
         le=1.0,
         description="REQUIRED: Confidence score between 0.0 and 1.0. Use 0.9+ for obvious errors, 0.7+ for good improvements, 0.5+ for suggestions.",
@@ -142,10 +142,10 @@ class PatchApplicationResult(BaseModel):
     processing_time: float = Field(..., description="Time taken to apply patches in seconds")
 
     # Detailed results
-    applied_edits: int = Field(0, description="Number of text edits applied")
-    applied_comments: int = Field(0, description="Number of comments applied")
-    location_failures: int = Field(0, description="Patches that failed due to location issues")
-    validation_failures: int = Field(0, description="Patches that failed validation")
+    applied_edits: int = Field(default=0, description="Number of text edits applied")
+    applied_comments: int = Field(default=0, description="Number of comments applied")
+    location_failures: int = Field(default=0, description="Patches that failed due to location issues")
+    validation_failures: int = Field(default=0, description="Patches that failed validation")
 
     @property
     def success_rate(self) -> float:
@@ -170,10 +170,10 @@ class ChecklistItem(BaseModel):
 
     name: str = Field(..., description="The check, e.g. 'Abstract word count declared'")
     status: Literal["pass", "fail", "unclear"] = Field(..., description="Outcome of the check")
-    notes: str = Field("", description="Evidence (quote/location) and, if status=fail, what to fix")
-    category: str = Field("", description="Category — set by the orchestrator, not the LLM")
+    notes: str = Field(default="", description="Evidence (quote/location) and, if status=fail, what to fix")
+    category: str = Field(default="", description="Category — set by the orchestrator, not the LLM")
     source: Literal["baseline", "journal"] = Field(
-        "baseline",
+        default="baseline",
         description="Which source produced this check — set by the orchestrator, not the LLM",
     )
 
@@ -190,5 +190,5 @@ class BaselineCheck(BaseModel):
     name: str
     category: str
     kind: Literal["deterministic", "llm"]
-    scanner: Optional[str] = Field(None, description="Function name in checklist_scanners (kind='deterministic')")
-    prompt_hint: Optional[str] = Field(None, description="Extra guidance (kind='llm')")
+    scanner: Optional[str] = Field(default=None, description="Function name in checklist_scanners (kind='deterministic')")
+    prompt_hint: Optional[str] = Field(default=None, description="Extra guidance (kind='llm')")
