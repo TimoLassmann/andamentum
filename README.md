@@ -8,6 +8,7 @@ for building agentic reasoning pipelines:
 - **`andamentum.epistemic`** — formal epistemology, claim analysis, multi-agent verification
 - **`andamentum.deep_research`** — web research pipeline with iterative search, verification, and synthesis
 - **`andamentum.document_store`** — SQLite + FTS5 + vector search storage with automatic chunking and LLM metadata extraction
+- **`andamentum.whetstone`** — sharpen your own drafts with editing, specialist review, or multi-expert panel feedback (track changes, HTML, or markdown output)
 
 ## Installation
 
@@ -41,6 +42,7 @@ Two CLIs are installed with the package:
 ```bash
 andamentum-epistemic --help
 andamentum-research --help
+andamentum-whetstone --help
 ```
 
 Set `ANDAMENTUM_MAIN_LLM_MODEL` in your environment to avoid passing `--model` on
