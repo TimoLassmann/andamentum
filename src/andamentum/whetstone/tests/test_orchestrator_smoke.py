@@ -23,3 +23,15 @@ def test_review_result_defaults():
 async def test_sharpen_document_rejects_invalid_task():
     with pytest.raises(ValueError, match="Invalid task"):
         await sharpen_document("hello", task="bogus")
+
+
+def test_review_result_checklist_default():
+    r = ReviewResult(task="checklist")
+    assert r.checklist == []
+
+
+def test_review_result_checklist_accepts_items():
+    from andamentum.whetstone.models import ChecklistItem
+    items = [ChecklistItem(name="x", status="pass", notes="")]
+    r = ReviewResult(task="checklist", checklist=items)
+    assert len(r.checklist) == 1
