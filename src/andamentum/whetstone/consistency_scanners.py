@@ -14,19 +14,52 @@ import re
 
 from .issues import DocumentIssue
 
-_FIGURE_PATTERN = re.compile(r"\b(?:Figure|Fig\.?)\s+(\d+)\b")
+_FIGURE_PATTERN = re.compile(r"\b(?:Figure\s+|Fig\.\s*|Fig\s+)(\d+)\b")
 _ACRONYM_PATTERN = re.compile(r"\b([A-Z]{2,6})\b")
 _CITATION_NUMERIC = re.compile(r"\[(\d+(?:\s*[,-]\s*\d+)*)\]")
-_REFERENCES_HEADER = re.compile(r"^\s*(?:References|Bibliography)\s*$", re.MULTILINE | re.IGNORECASE)
+_REFERENCES_HEADER = re.compile(
+    r"^\s*(?:References|Bibliography)\s*$", re.MULTILINE | re.IGNORECASE
+)
 
 # Common acronyms skipped by check_acronym_first_use — universally recognised,
-# not worth flagging. Add to this set rather than changing the check logic.
-_COMMON_ACRONYMS: frozenset[str] = frozenset({
-    "DNA", "RNA", "PCR", "HIV", "USA", "UK", "EU", "CI", "SD", "SEM",
-    "FDA", "NIH", "NASA", "NSF", "PDF", "HTML", "URL", "API", "CPU",
-    "GPU", "RAM", "USB", "AI", "ML", "ATP", "GDP", "OECD", "CO2", "H2O",
-    "mRNA", "tRNA", "rRNA", "PCA", "SVM", "MHz", "GHz", "MB", "GB",
-})
+# not worth flagging. Only pure uppercase ASCII entries matter: mixed-case or
+# digit-containing acronyms (mRNA, CO2, MHz, etc.) would never reach this
+# allowlist because _ACRONYM_PATTERN only extracts [A-Z]{2,6} runs.
+_COMMON_ACRONYMS: frozenset[str] = frozenset(
+    {
+        "DNA",
+        "RNA",
+        "PCR",
+        "HIV",
+        "USA",
+        "UK",
+        "EU",
+        "CI",
+        "SD",
+        "SEM",
+        "FDA",
+        "NIH",
+        "NASA",
+        "NSF",
+        "PDF",
+        "HTML",
+        "URL",
+        "API",
+        "CPU",
+        "GPU",
+        "RAM",
+        "USB",
+        "AI",
+        "ML",
+        "ATP",
+        "GDP",
+        "OECD",
+        "PCA",
+        "SVM",
+        "MB",
+        "GB",
+    }
+)
 
 
 def check_figure_order(text: str) -> list[DocumentIssue]:
@@ -140,9 +173,11 @@ def check_citation_resolution(text: str) -> list[DocumentIssue]:
         nums: list[int] = []
         for part in re.split(r"\s*,\s*", raw):
             if "-" in part:
-                lo, hi = part.split("-")
-                nums.extend(range(int(lo), int(hi) + 1))
-            else:
+                halves = part.split("-", 1)
+                if len(halves) == 2 and halves[0].isdigit() and halves[1].isdigit():
+                    nums.extend(range(int(halves[0]), int(halves[1]) + 1))
+                # silently skip malformed ranges like [1-3-5]
+            elif part.isdigit():
                 nums.append(int(part))
         for n in nums:
             if n in seen:
