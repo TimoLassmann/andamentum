@@ -157,3 +157,38 @@ class PatchApplicationResult(BaseModel):
     def __str__(self) -> str:
         """Human-readable summary of application results."""
         return f"Applied {self.applied_patches}/{self.total_patches} patches ({self.success_rate:.1f}% success rate)"
+
+
+class ChecklistItem(BaseModel):
+    """One pre-submission check, evaluated against a draft.
+
+    Three fields are LLM-visible (name, status, notes). Two are set by
+    the orchestrator (category, source). The LLM is not asked to re-emit
+    contextual metadata already known at dispatch time — this keeps the
+    output schema small and tractable for local models.
+    """
+
+    name: str = Field(..., description="The check, e.g. 'Abstract word count declared'")
+    status: Literal["pass", "fail", "unclear"] = Field(..., description="Outcome of the check")
+    notes: str = Field("", description="Evidence (quote/location) and, if status=fail, what to fix")
+    category: str = Field("", description="Category — set by the orchestrator, not the LLM")
+    source: Literal["baseline", "journal"] = Field(
+        "baseline",
+        description="Which source produced this check — set by the orchestrator, not the LLM",
+    )
+
+
+class BaselineCheck(BaseModel):
+    """An entry in the pre-submission baseline checklist.
+
+    `kind` selects between a deterministic scanner (pure Python) and an
+    LLM evaluator. `scanner` names a function in checklist_scanners;
+    `prompt_hint` carries extra guidance for the LLM. The two are
+    mutually exclusive in practice.
+    """
+
+    name: str
+    category: str
+    kind: Literal["deterministic", "llm"]
+    scanner: Optional[str] = Field(None, description="Function name in checklist_scanners (kind='deterministic')")
+    prompt_hint: Optional[str] = Field(None, description="Extra guidance (kind='llm')")
