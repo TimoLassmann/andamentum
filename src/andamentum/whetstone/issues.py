@@ -42,17 +42,17 @@ class DocumentIssue(BaseModel):
 
     description: str = Field(..., description="Detailed explanation of the issue and why it matters")
 
-    recommendation: Optional[str] = Field(None, description="Specific actionable advice for addressing the issue")
+    recommendation: Optional[str] = Field(default=None, description="Specific actionable advice for addressing the issue")
 
     # Location and context
     location: Optional[str] = Field(
-        None, description="Where the issue occurs: 'Introduction', 'Section 2.3', 'Overall structure', 'Abstract', etc."
+        default=None, description="Where the issue occurs: 'Introduction', 'Section 2.3', 'Overall structure', 'Abstract', etc."
     )
 
     # Quality metadata
-    confidence: float = Field(0.8, ge=0.0, le=1.0, description="Confidence in this issue assessment (0.0-1.0)")
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0, description="Confidence in this issue assessment (0.0-1.0)")
 
-    priority: Literal["high", "medium", "low"] = Field("medium", description="Priority level for addressing this issue")
+    priority: Literal["high", "medium", "low"] = Field(default="medium", description="Priority level for addressing this issue")
 
     # Attribution
     agent_type: str = Field(
@@ -63,15 +63,15 @@ class DocumentIssue(BaseModel):
 
     # Clustering metadata fields
     cluster_id: Optional[int] = Field(
-        None,
+        default=None,
         description="Cluster ID if this issue is part of a cluster (-1 for noise/singletons, None if not clustered)",
     )
 
     is_cluster_representative: bool = Field(
-        False, description="Whether this issue is the representative for its cluster"
+        default=False, description="Whether this issue is the representative for its cluster"
     )
 
-    cluster_size: Optional[int] = Field(None, description="Number of similar issues in the same cluster")
+    cluster_size: Optional[int] = Field(default=None, description="Number of similar issues in the same cluster")
 
     related_agents: List[str] = Field(
         default_factory=list, description="Other agent types that identified similar issues in the same cluster"
@@ -96,7 +96,7 @@ class DocumentIssueCollection(BaseModel):
     """
 
     issues: List[DocumentIssue] = Field(default_factory=list)
-    document_title: Optional[str] = Field(None)
+    document_title: Optional[str] = Field(default=None)
     analysis_timestamp: datetime = Field(default_factory=datetime.now)
 
     def add_issue(self, issue: DocumentIssue):
