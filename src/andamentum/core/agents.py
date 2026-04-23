@@ -33,11 +33,15 @@ class AgentDefinition:
 
     Each definition maps to a pydantic-ai Agent with a system prompt
     (via the instructions parameter) and structured output model.
+
+    ``output_model`` may be ``None`` for agents whose output schema is
+    determined at runtime (e.g. custom-criteria reviewers). Such agents
+    must be executed with an explicitly-provided output type.
     """
 
     name: str
     prompt: str
-    output_model: type[BaseModel]
+    output_model: type[BaseModel] | None
     retries: int = 3
     output_retries: int = 5
     has_tools: bool = False
@@ -78,6 +82,14 @@ class AgentRunner:
         from pydantic_ai import Agent
         from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
+        # Guard: output_model must be concrete for direct execution.
+        # Dynamic-schema agents (output_model=None) use _run_one_dynamic.
+        if defn.output_model is None:
+            raise ValueError(
+                f"Agent {defn.name}: output_model is None. "
+                "Dynamic-schema agents must be executed via _run_one_dynamic()."
+            )
+
         user_message = "\n".join(f"{k}: {v}" for k, v in kwargs.items())
 
         if defn.name not in self._cache:
@@ -109,9 +121,18 @@ class AgentRunner:
         user_message: str,
         validators: list[Callable[..., Any]] | None = None,
     ) -> Any:
-        """Retry with PromptedOutput (schema in prompt, not tools)."""
+        """Retry with PromptedOutput (schema in prompt, not tools).
+
+        Assumes defn.output_model is not None (enforced by run()).
+        """
         from pydantic_ai import Agent
         from pydantic_ai.output import PromptedOutput
+
+        # Guard: output_model must be concrete (enforced by run() before fallback).
+        if defn.output_model is None:
+            raise ValueError(
+                f"Agent {defn.name}: output_model is None in fallback. This should never happen; check run()."
+            )
 
         cache_key = f"{defn.name}__prompted"
         if cache_key not in self._cache:
