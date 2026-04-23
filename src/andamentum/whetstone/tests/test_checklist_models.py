@@ -57,3 +57,21 @@ def test_baseline_check_llm():
 def test_baseline_check_rejects_bad_kind():
     with pytest.raises(ValidationError):
         BaselineCheck(name="x", category="y", kind="guess")  # type: ignore[arg-type]
+
+
+def test_consistency_review_output_defaults():
+    from andamentum.whetstone.agents.output_models import ConsistencyReviewOutput
+    o = ConsistencyReviewOutput()
+    assert o.issues == []
+
+
+def test_extracted_checklist_names_defaults():
+    from andamentum.whetstone.agents.output_models import ExtractedChecklistNames
+    o = ExtractedChecklistNames()
+    assert o.items == []
+
+
+def test_extracted_checklist_names_accepts_list():
+    from andamentum.whetstone.agents.output_models import ExtractedChecklistNames
+    o = ExtractedChecklistNames(items=["check one", "check two"])
+    assert len(o.items) == 2
