@@ -30,11 +30,14 @@ dependencies = [
     "python-dotenv>=1.0.0",      # epistemic[llm], deep-research[llm]
     "rich>=13.0.0",              # epistemic[llm]
     "markdown>=3.5.0",           # typeset
+    "python-docx>=1.2.0",        # whetstone (docx track changes)
+    "lxml>=5.0.0",               # whetstone (docx xml manipulation)
 ]
 
 [project.scripts]
 andamentum-epistemic = "andamentum.epistemic.cli:main"
 andamentum-research  = "andamentum.deep_research.cli:main"
+andamentum-whetstone = "andamentum.whetstone.cli:main"
 
 [project.optional-dependencies]
 dev = [
