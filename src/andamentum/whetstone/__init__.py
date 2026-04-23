@@ -10,4 +10,6 @@ been asked to review confidentially — that would violate journal policy.
 Use it on *your own* drafts, before submission.
 """
 
+__version__ = "0.1.0"
+
 # Populated by Task 10. Kept empty here to allow incremental task commits.
