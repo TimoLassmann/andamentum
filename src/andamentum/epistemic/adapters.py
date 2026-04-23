@@ -17,6 +17,7 @@ from .primitives import (
     CausalRole,
     DataSourceType,
     MethodType,
+    PredictionType,
     TemporalApproach,
 )
 
@@ -219,11 +220,11 @@ class ClassifyPredictionResult:
     failure_criteria, time_horizon, justification.
     """
 
-    prediction_type: str = "qualitative"
+    prediction_type: PredictionType = PredictionType.QUALITATIVE
     specificity: float = 0.0
     success_criteria: str = ""
     failure_criteria: str = ""
-    time_horizon: str = "indefinite"
+    time_horizon: str = "indefinite"  # Literal[5 values] — see output_models.TimeHorizon
     justification: str = ""
 
 

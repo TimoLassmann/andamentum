@@ -162,4 +162,60 @@ class TestClassifyQuestionEnumConstraints:
         from andamentum.epistemic.agents.output_models import ClassifyQuestionOutput
 
         with pytest.raises(ValidationError):
-            ClassifyQuestionOutput(question_type="speculative", reasoning="x")
+            ClassifyQuestionOutput(question_type="speculative", reasoning="x")  # type: ignore[arg-type]
+
+
+class TestClassifyPredictionEnumConstraints:
+    def _valid_kwargs(self) -> dict[str, Any]:
+        return {
+            "prediction_type": "quantitative",
+            "specificity": 0.8,
+            "success_criteria": "x",
+            "failure_criteria": "y",
+            "time_horizon": "short_term",
+            "justification": "z",
+        }
+
+    def test_prediction_type_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyPredictionOutput
+
+        values = _field_allowed_values(
+            ClassifyPredictionOutput.model_json_schema(), "prediction_type"
+        )
+        assert set(values) == {
+            "quantitative",
+            "qualitative",
+            "conditional",
+            "temporal",
+            "binary",
+        }, values
+
+    def test_time_horizon_has_enum(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyPredictionOutput
+
+        values = _field_allowed_values(
+            ClassifyPredictionOutput.model_json_schema(), "time_horizon"
+        )
+        assert set(values) == {
+            "immediate",
+            "short_term",
+            "medium_term",
+            "long_term",
+            "indefinite",
+        }, values
+
+    def test_rejects_invalid_prediction_type(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyPredictionOutput
+
+        kwargs = self._valid_kwargs()
+        kwargs["prediction_type"] = "probabilistic"
+        with pytest.raises(ValidationError):
+            ClassifyPredictionOutput(**kwargs)
+
+    def test_rejects_invalid_time_horizon(self) -> None:
+        from andamentum.epistemic.agents.output_models import ClassifyPredictionOutput
+
+        kwargs = self._valid_kwargs()
+        kwargs["time_horizon"] = "eventually"
+        with pytest.raises(ValidationError):
+            ClassifyPredictionOutput(**kwargs)
