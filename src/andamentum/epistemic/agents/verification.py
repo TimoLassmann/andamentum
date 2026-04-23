@@ -834,7 +834,7 @@ Read the evidence content and its source metadata, then classify along each dime
 - primary: Original data collected for this purpose
 - secondary: Re-analysis of existing data
 - synthetic: Generated or simulated data
-- meta_analytic: Systematic aggregation of multiple studies
+- meta: Systematic aggregation of multiple studies (meta-analysis)
 
 **temporal_approach**: What is the time dimension?
 - cross_sectional: Single point in time

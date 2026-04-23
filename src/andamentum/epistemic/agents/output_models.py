@@ -10,6 +10,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from ..primitives import (
+    CausalRole,
+    DataSourceType,
+    MethodType,
+    TemporalApproach,
+)
+
 
 # ── Preplanning ──────────────────────────────────────────────────────────
 
@@ -345,17 +352,13 @@ class EvaluateCounterargumentOutput(BaseModel):
 class ClassifyEvidenceDomainOutput(BaseModel):
     """Output from epistemic_classify_evidence_domain agent."""
 
-    method_type: str = Field(
-        description="One of: experimental, observational, computational, theoretical"
+    method_type: MethodType = Field(description="How was this knowledge generated?")
+    data_source: DataSourceType = Field(description="What kind of data underlies this?")
+    temporal_approach: TemporalApproach = Field(
+        description="What is the time dimension of this evidence?"
     )
-    data_source: str = Field(
-        description="One of: primary, secondary, synthetic, meta_analytic"
-    )
-    temporal_approach: str = Field(
-        description="One of: cross_sectional, longitudinal, retrospective, prospective"
-    )
-    causal_role: str = Field(
-        description="One of: mechanistic, phenomenological, interventional, predictive"
+    causal_role: CausalRole = Field(
+        description="What kind of causal claim does this evidence support?"
     )
     confidence: float = Field(
         description="0.0-1.0: Overall confidence in classification"
