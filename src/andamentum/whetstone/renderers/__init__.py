@@ -11,11 +11,11 @@ Plus a text utility:
 
 from .diff import apply_patches, render_diff
 from .docx import render_docx
-
-# render_html added in Task 7 — don't export until it exists.
+from .html import render_html
 
 __all__ = [
     "apply_patches",
     "render_diff",
     "render_docx",
+    "render_html",
 ]
