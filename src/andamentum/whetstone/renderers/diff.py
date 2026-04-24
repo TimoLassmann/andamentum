@@ -11,6 +11,39 @@ from typing import Sequence
 from ..models import DocumentPatch
 from ..issues import DocumentIssue
 
+_STATUS_MARKER = {"pass": "✓ PASS", "fail": "✗ FAIL", "unclear": "? UNCLEAR"}
+
+
+def _render_checklist_markdown(items: list) -> str:
+    if not items:
+        return ""
+    from collections import defaultdict
+
+    by_cat: dict[str, list] = defaultdict(list)
+    for it in items:
+        by_cat[it.category or "other"].append(it)
+
+    passes = sum(1 for i in items if i.status == "pass")
+    fails = sum(1 for i in items if i.status == "fail")
+    unclears = sum(1 for i in items if i.status == "unclear")
+
+    lines = [
+        "## Pre-submission checklist",
+        "",
+        f"**Summary:** {passes} pass · {fails} fail · {unclears} unclear (of {len(items)} items)",
+        "",
+    ]
+    for cat in sorted(by_cat):
+        lines.append(f"### {cat.title()}")
+        lines.append("")
+        for it in by_cat[cat]:
+            marker = _STATUS_MARKER.get(it.status, "?")
+            lines.append(f"- **{marker}** {it.name}")
+            if it.notes:
+                lines.append(f"  - {it.notes}")
+        lines.append("")
+    return "\n".join(lines)
+
 
 def apply_patches(content: str, patches: Sequence[DocumentPatch]) -> str:
     """Apply text_edit patches to content via string replacement.
@@ -47,6 +80,7 @@ def render_diff(
     issues: Sequence[DocumentIssue],
     original_content: str,
     synthesis_text: str | None = None,
+    checklist: list | None = None,
 ) -> str:
     """Render a lightweight markdown diff view.
 
@@ -126,6 +160,10 @@ def render_diff(
 
     # -- Empty fallback -----------------------------------------------------
     if not sections:
-        return "No edits or issues found."
+        output = "No edits or issues found."
+    else:
+        output = "\n\n---\n\n".join(sections)
 
-    return "\n\n---\n\n".join(sections)
+    if checklist:
+        output = _render_checklist_markdown(checklist) + "\n\n" + output
+    return output
