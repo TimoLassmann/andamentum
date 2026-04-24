@@ -7,7 +7,9 @@ from andamentum.whetstone.models import BaselineCheck, ChecklistItem
 
 
 def test_checklist_item_minimal():
-    item = ChecklistItem(name="Abstract word count", status="pass", notes="240 words on page 1")
+    item = ChecklistItem(
+        name="Abstract word count", status="pass", notes="240 words on page 1"
+    )
     assert item.name == "Abstract word count"
     assert item.status == "pass"
     assert item.notes == "240 words on page 1"
@@ -17,8 +19,11 @@ def test_checklist_item_minimal():
 
 def test_checklist_item_all_fields():
     item = ChecklistItem(
-        name="Keywords present", status="fail", notes="No keywords section",
-        category="hygiene", source="baseline",
+        name="Keywords present",
+        status="fail",
+        notes="No keywords section",
+        category="hygiene",
+        source="baseline",
     )
     assert item.category == "hygiene"
     assert item.source == "baseline"
@@ -36,8 +41,10 @@ def test_checklist_item_rejects_bad_source():
 
 def test_baseline_check_deterministic():
     c = BaselineCheck(
-        name="All figures referenced", category="figures",
-        kind="deterministic", scanner="check_all_figures_referenced",
+        name="All figures referenced",
+        category="figures",
+        kind="deterministic",
+        scanner="check_all_figures_referenced",
     )
     assert c.kind == "deterministic"
     assert c.scanner == "check_all_figures_referenced"
@@ -46,8 +53,10 @@ def test_baseline_check_deterministic():
 
 def test_baseline_check_llm():
     c = BaselineCheck(
-        name="Abstract structured", category="abstract",
-        kind="llm", prompt_hint="Look for background/methods/results/conclusion.",
+        name="Abstract structured",
+        category="abstract",
+        kind="llm",
+        prompt_hint="Look for background/methods/results/conclusion.",
     )
     assert c.kind == "llm"
     assert c.prompt_hint is not None
@@ -61,17 +70,20 @@ def test_baseline_check_rejects_bad_kind():
 
 def test_consistency_review_output_defaults():
     from andamentum.whetstone.agents.output_models import ConsistencyReviewOutput
+
     o = ConsistencyReviewOutput()
     assert o.issues == []
 
 
 def test_extracted_checklist_names_defaults():
     from andamentum.whetstone.agents.output_models import ExtractedChecklistNames
+
     o = ExtractedChecklistNames()
     assert o.items == []
 
 
 def test_extracted_checklist_names_accepts_list():
     from andamentum.whetstone.agents.output_models import ExtractedChecklistNames
+
     o = ExtractedChecklistNames(items=["check one", "check two"])
     assert len(o.items) == 2

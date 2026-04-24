@@ -34,29 +34,46 @@ class DocumentIssue(BaseModel):
     )
 
     category: str = Field(
-        ..., description="Domain category like 'structure', 'novelty', 'methodology', 'clarity', 'style', 'technical'"
+        ...,
+        description="Domain category like 'structure', 'novelty', 'methodology', 'clarity', 'style', 'technical'",
     )
 
     # Issue content
-    title: str = Field(..., description="Brief, clear title summarizing the issue (like a commit message)")
+    title: str = Field(
+        ...,
+        description="Brief, clear title summarizing the issue (like a commit message)",
+    )
 
-    description: str = Field(..., description="Detailed explanation of the issue and why it matters")
+    description: str = Field(
+        ..., description="Detailed explanation of the issue and why it matters"
+    )
 
-    recommendation: Optional[str] = Field(default=None, description="Specific actionable advice for addressing the issue")
+    recommendation: Optional[str] = Field(
+        default=None, description="Specific actionable advice for addressing the issue"
+    )
 
     # Location and context
     location: Optional[str] = Field(
-        default=None, description="Where the issue occurs: 'Introduction', 'Section 2.3', 'Overall structure', 'Abstract', etc."
+        default=None,
+        description="Where the issue occurs: 'Introduction', 'Section 2.3', 'Overall structure', 'Abstract', etc.",
     )
 
     # Quality metadata
-    confidence: float = Field(default=0.8, ge=0.0, le=1.0, description="Confidence in this issue assessment (0.0-1.0)")
+    confidence: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in this issue assessment (0.0-1.0)",
+    )
 
-    priority: Literal["high", "medium", "low"] = Field(default="medium", description="Priority level for addressing this issue")
+    priority: Literal["high", "medium", "low"] = Field(
+        default="medium", description="Priority level for addressing this issue"
+    )
 
     # Attribution
     agent_type: str = Field(
-        ..., description="Type of agent that identified this issue (novelty, structure, scientific_review, etc.)"
+        ...,
+        description="Type of agent that identified this issue (novelty, structure, scientific_review, etc.)",
     )
 
     timestamp: datetime = Field(default_factory=datetime.now)
@@ -68,13 +85,17 @@ class DocumentIssue(BaseModel):
     )
 
     is_cluster_representative: bool = Field(
-        default=False, description="Whether this issue is the representative for its cluster"
+        default=False,
+        description="Whether this issue is the representative for its cluster",
     )
 
-    cluster_size: Optional[int] = Field(default=None, description="Number of similar issues in the same cluster")
+    cluster_size: Optional[int] = Field(
+        default=None, description="Number of similar issues in the same cluster"
+    )
 
     related_agents: List[str] = Field(
-        default_factory=list, description="Other agent types that identified similar issues in the same cluster"
+        default_factory=list,
+        description="Other agent types that identified similar issues in the same cluster",
     )
 
     def __str__(self) -> str:
@@ -109,7 +130,9 @@ class DocumentIssueCollection(BaseModel):
 
     def get_issues_by_category(self, category: str) -> List[DocumentIssue]:
         """Get all issues in a specific category."""
-        return [issue for issue in self.issues if issue.category.lower() == category.lower()]
+        return [
+            issue for issue in self.issues if issue.category.lower() == category.lower()
+        ]
 
     def get_issues_by_agent(self, agent_type: str) -> List[DocumentIssue]:
         """Get all issues from a specific agent."""
@@ -121,7 +144,11 @@ class DocumentIssueCollection(BaseModel):
 
     def get_high_priority_issues(self) -> List[DocumentIssue]:
         """Get all major issues and high-priority items."""
-        return [issue for issue in self.issues if issue.issue_type == "major" or issue.priority == "high"]
+        return [
+            issue
+            for issue in self.issues
+            if issue.issue_type == "major" or issue.priority == "high"
+        ]
 
     def get_summary_stats(self) -> dict:
         """Get summary statistics about the issues."""
@@ -134,21 +161,30 @@ class DocumentIssueCollection(BaseModel):
             "by_priority": {},
             "by_category": {},
             "by_agent": {},
-            "avg_confidence": sum(issue.confidence for issue in self.issues) / len(self.issues),
+            "avg_confidence": sum(issue.confidence for issue in self.issues)
+            / len(self.issues),
         }
 
         for issue in self.issues:
             # Count by type
-            stats["by_type"][issue.issue_type] = stats["by_type"].get(issue.issue_type, 0) + 1
+            stats["by_type"][issue.issue_type] = (
+                stats["by_type"].get(issue.issue_type, 0) + 1
+            )
 
             # Count by priority
-            stats["by_priority"][issue.priority] = stats["by_priority"].get(issue.priority, 0) + 1
+            stats["by_priority"][issue.priority] = (
+                stats["by_priority"].get(issue.priority, 0) + 1
+            )
 
             # Count by category
-            stats["by_category"][issue.category] = stats["by_category"].get(issue.category, 0) + 1
+            stats["by_category"][issue.category] = (
+                stats["by_category"].get(issue.category, 0) + 1
+            )
 
             # Count by agent
-            stats["by_agent"][issue.agent_type] = stats["by_agent"].get(issue.agent_type, 0) + 1
+            stats["by_agent"][issue.agent_type] = (
+                stats["by_agent"].get(issue.agent_type, 0) + 1
+            )
 
         return stats
 
@@ -168,13 +204,17 @@ class DocumentIssueCollection(BaseModel):
         title = self.document_title or "Document"
         lines.append(f"# {title} - Review Issues")
         lines.append("")
-        lines.append(f"*Generated on {self.analysis_timestamp.strftime('%Y-%m-%d %H:%M')}*")
+        lines.append(
+            f"*Generated on {self.analysis_timestamp.strftime('%Y-%m-%d %H:%M')}*"
+        )
         lines.append("")
 
         # AI Transparency Disclaimer
         lines.append("## ⚠️ AI-Generated Analysis Notice")
         lines.append("")
-        lines.append("This review was automatically generated by AI and has important limitations:")
+        lines.append(
+            "This review was automatically generated by AI and has important limitations:"
+        )
         lines.append("")
         lines.append(
             "- **No Internet Access**: The AI cannot check current research, recent publications, or verify facts online"
@@ -202,7 +242,9 @@ class DocumentIssueCollection(BaseModel):
             total = stats["total"]
             major = stats["by_type"].get("major", 0)
             if major > 0:
-                lines.append(f"*Found {total} issues including {major} major issues requiring attention*")
+                lines.append(
+                    f"*Found {total} issues including {major} major issues requiring attention*"
+                )
             else:
                 lines.append(f"*Found {total} issues and suggestions for improvement*")
             lines.append("")
@@ -210,7 +252,10 @@ class DocumentIssueCollection(BaseModel):
             lines.append("")
 
         # Check if issues are organized by clusters
-        has_clusters = any(hasattr(issue, "cluster_id") and issue.cluster_id is not None for issue in self.issues)
+        has_clusters = any(
+            hasattr(issue, "cluster_id") and issue.cluster_id is not None
+            for issue in self.issues
+        )
 
         if has_clusters:
             self._format_clustered_issues(lines)
@@ -270,7 +315,8 @@ class DocumentIssueCollection(BaseModel):
                     (
                         issue
                         for issue in cluster_issues
-                        if hasattr(issue, "is_cluster_representative") and issue.is_cluster_representative
+                        if hasattr(issue, "is_cluster_representative")
+                        and issue.is_cluster_representative
                     ),
                     cluster_issues[0],
                 )
@@ -288,12 +334,19 @@ class DocumentIssueCollection(BaseModel):
                     "technical": "Technical",
                     "polish": "Polish",
                 }
-                agent_names = [agent_display_names.get(agent, agent.replace("_", " ").title()) for agent in all_agents]
+                agent_names = [
+                    agent_display_names.get(agent, agent.replace("_", " ").title())
+                    for agent in all_agents
+                ]
 
                 # Clean cluster header
                 cluster_theme = self._extract_cluster_theme(representative.title)
-                lines.append(f"#### Cluster {cluster_id + 1}: {cluster_theme} ({len(cluster_issues)} related issues)")
-                lines.append(f"*Multiple agents: {', '.join(sorted(n for n in agent_names if n))}*")
+                lines.append(
+                    f"#### Cluster {cluster_id + 1}: {cluster_theme} ({len(cluster_issues)} related issues)"
+                )
+                lines.append(
+                    f"*Multiple agents: {', '.join(sorted(n for n in agent_names if n))}*"
+                )
                 lines.append("")
 
                 # Format representative issue first
@@ -303,7 +356,10 @@ class DocumentIssueCollection(BaseModel):
                 related_issues = [
                     issue
                     for issue in cluster_issues
-                    if not (hasattr(issue, "is_cluster_representative") and issue.is_cluster_representative)
+                    if not (
+                        hasattr(issue, "is_cluster_representative")
+                        and issue.is_cluster_representative
+                    )
                 ]
 
                 if related_issues:
@@ -314,7 +370,9 @@ class DocumentIssueCollection(BaseModel):
                     related_issues.sort(key=lambda x: -x.confidence)
 
                     for issue in related_issues:
-                        self._format_single_issue(lines, issue, is_representative=False, is_related=True)
+                        self._format_single_issue(
+                            lines, issue, is_representative=False, is_related=True
+                        )
 
                 # Add horizontal line after cluster with extra spacing
                 lines.append("***")
@@ -329,7 +387,13 @@ class DocumentIssueCollection(BaseModel):
 
                 # Sort singletons by priority and confidence
                 priority_order = {"high": 0, "medium": 1, "low": 2}
-                singletons.sort(key=lambda x: (priority_order.get(x.priority, 3), -x.confidence, x.title))
+                singletons.sort(
+                    key=lambda x: (
+                        priority_order.get(x.priority, 3),
+                        -x.confidence,
+                        x.title,
+                    )
+                )
 
                 for issue in singletons:
                     self._format_single_issue(lines, issue, is_representative=False)
@@ -361,7 +425,11 @@ class DocumentIssueCollection(BaseModel):
                 self._format_single_issue(lines, issue, is_representative=False)
 
     def _format_single_issue(
-        self, lines: list[str], issue: DocumentIssue, is_representative: bool = False, is_related: bool = False
+        self,
+        lines: list[str],
+        issue: DocumentIssue,
+        is_representative: bool = False,
+        is_related: bool = False,
     ) -> None:
         """Format a single issue with improved navigation hierarchy."""
 
@@ -377,10 +445,14 @@ class DocumentIssueCollection(BaseModel):
             "technical": "Technical",
             "polish": "Polish",
         }
-        agent_name = agent_display_names.get(issue.agent_type, issue.agent_type.replace("_", " ").title())
+        agent_name = agent_display_names.get(
+            issue.agent_type, issue.agent_type.replace("_", " ").title()
+        )
 
         # Clean confidence display
-        confidence_pct = issue.confidence * 100 if issue.confidence <= 1.0 else issue.confidence
+        confidence_pct = (
+            issue.confidence * 100 if issue.confidence <= 1.0 else issue.confidence
+        )
         confidence_text = f"{confidence_pct:.0f}%"
 
         # Location and priority info for title
@@ -399,7 +471,9 @@ class DocumentIssueCollection(BaseModel):
         indent = "  " if is_related else ""
 
         # 1. TITLE (most important - immediate scanning)
-        lines.append(f"{indent}{heading_level} {issue.title}{location_str}{priority_suffix}")
+        lines.append(
+            f"{indent}{heading_level} {issue.title}{location_str}{priority_suffix}"
+        )
         lines.append("")
 
         # 2. DESCRIPTION (core content - what the user needs to know) - INDENTED slightly (0.5cm = ~0.2in)
@@ -422,10 +496,13 @@ class DocumentIssueCollection(BaseModel):
         # Add related agents info if available
         if hasattr(issue, "related_agents") and issue.related_agents:
             clean_related_names = [
-                agent_display_names.get(agent, agent.replace("_", " ").title()) for agent in issue.related_agents
+                agent_display_names.get(agent, agent.replace("_", " ").title())
+                for agent in issue.related_agents
             ]
             if clean_related_names:
-                metadata_parts.append(f"Also identified by: {', '.join(clean_related_names)}")
+                metadata_parts.append(
+                    f"Also identified by: {', '.join(clean_related_names)}"
+                )
 
         metadata_line = " | ".join(metadata_parts)
         # Use special marker for right-aligned grey text
@@ -449,11 +526,17 @@ class DocumentIssueCollection(BaseModel):
             return "Data Analysis Issues"
         elif any(word in title_lower for word in ["result", "finding", "conclusion"]):
             return "Results & Conclusions"
-        elif any(word in title_lower for word in ["clarity", "structure", "organization"]):
+        elif any(
+            word in title_lower for word in ["clarity", "structure", "organization"]
+        ):
             return "Document Structure"
-        elif any(word in title_lower for word in ["reference", "citation", "literature"]):
+        elif any(
+            word in title_lower for word in ["reference", "citation", "literature"]
+        ):
             return "Literature & Citations"
-        elif any(word in title_lower for word in ["novelty", "contribution", "significance"]):
+        elif any(
+            word in title_lower for word in ["novelty", "contribution", "significance"]
+        ):
             return "Scientific Merit"
         elif any(word in title_lower for word in ["grammar", "style", "writing"]):
             return "Writing Quality"
@@ -511,11 +594,15 @@ class LimitedDocumentIssueList(BaseModel):
     while preserving a balanced distribution across issue types.
     """
 
-    max_items: int = Field(default=15, ge=5, le=30, description="Maximum number of issues allowed")
+    max_items: int = Field(
+        default=15, ge=5, le=30, description="Maximum number of issues allowed"
+    )
     issues: List[DocumentIssue] = Field(default_factory=list)
 
     @field_validator("issues", mode="after")
-    def validate_issue_count_and_quality(cls, v: List[DocumentIssue], info: ValidationInfo) -> List[DocumentIssue]:
+    def validate_issue_count_and_quality(
+        cls, v: List[DocumentIssue], info: ValidationInfo
+    ) -> List[DocumentIssue]:
         """Validate and limit the number of issues, preserving quality and distribution."""
         if not v:
             return v
@@ -530,7 +617,9 @@ class LimitedDocumentIssueList(BaseModel):
         return cls._smart_truncate_issues(v, max_items)
 
     @classmethod
-    def _smart_truncate_issues(cls, issues: List[DocumentIssue], max_items: int) -> List[DocumentIssue]:
+    def _smart_truncate_issues(
+        cls, issues: List[DocumentIssue], max_items: int
+    ) -> List[DocumentIssue]:
         """
         Smart truncation that maintains issue type distribution and selects highest quality issues.
         """
@@ -547,15 +636,21 @@ class LimitedDocumentIssueList(BaseModel):
         target_distribution = {
             "major": max(1, int((len(by_type["major"]) / total_original) * max_items)),
             "minor": max(1, int((len(by_type["minor"]) / total_original) * max_items)),
-            "suggestion": max(1, int((len(by_type["suggestion"]) / total_original) * max_items)),
-            "strength": max(1, int((len(by_type["strength"]) / total_original) * max_items)),
+            "suggestion": max(
+                1, int((len(by_type["suggestion"]) / total_original) * max_items)
+            ),
+            "strength": max(
+                1, int((len(by_type["strength"]) / total_original) * max_items)
+            ),
         }
 
         # Adjust if totals don't match (rounding issues)
         current_total = sum(target_distribution.values())
         if current_total > max_items:
             # Reduce largest category first
-            largest_type = max(target_distribution.keys(), key=lambda k: target_distribution[k])
+            largest_type = max(
+                target_distribution.keys(), key=lambda k: target_distribution[k]
+            )
             target_distribution[largest_type] -= current_total - max_items
         elif current_total < max_items:
             # Add to major issues first (most important)
@@ -583,7 +678,9 @@ class LimitedDocumentIssueList(BaseModel):
             # Take top N for this type
             selected.extend(type_issues[:target_count])
 
-        logger.info(f"Issue truncation: {len(issues)} → {len(selected)} issues (max: {max_items})")
+        logger.info(
+            f"Issue truncation: {len(issues)} → {len(selected)} issues (max: {max_items})"
+        )
         logger.info(
             f"Distribution: {len([i for i in selected if i.issue_type == 'major'])} major, "
             f"{len([i for i in selected if i.issue_type == 'minor'])} minor, "
