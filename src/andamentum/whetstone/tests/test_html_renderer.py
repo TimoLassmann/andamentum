@@ -130,3 +130,31 @@ def test_html_panel_task_renders_experts():
     assert "Dr. Jane Doe" in html
     assert "Testology" in html
     assert "Minor Revisions" in html
+
+
+def test_html_renders_checklist_items():
+    from andamentum.whetstone import ChecklistItem, ReviewResult
+    from andamentum.whetstone.renderers import render_html
+
+    result = ReviewResult(
+        task="checklist",
+        checklist=[
+            ChecklistItem(
+                name="Abstract wordcount",
+                status="pass",
+                notes="240 words",
+                category="abstract",
+            ),
+            ChecklistItem(
+                name="Ethics statement",
+                status="fail",
+                notes="Missing",
+                category="statements",
+            ),
+        ],
+    )
+    html = render_html(result=result, original_content="")
+    assert "Abstract wordcount" in html
+    assert "Ethics statement" in html
+    # Some fail indicator somewhere in the output
+    assert "fail" in html.lower() or "✗" in html

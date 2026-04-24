@@ -31,6 +31,8 @@ _TASK_TITLES: dict[str, str] = {
     "edit": "Whetstone · Editing Pass",
     "review": "Whetstone · Review",
     "panel": "Whetstone · Expert Panel",
+    "consistency": "Whetstone — Internal Consistency",
+    "checklist": "Whetstone — Pre-Submission Checklist",
 }
 
 
@@ -77,7 +79,9 @@ def _synthesis_atom(synthesis: Any) -> list[dict[str, Any]]:
                 "kind": "items",
                 "heading": "Consensus strengths",
                 "variant": "pairs",
-                "entries": [{"label": f"{i}.", "body": s} for i, s in enumerate(strengths, 1)],
+                "entries": [
+                    {"label": f"{i}.", "body": s} for i, s in enumerate(strengths, 1)
+                ],
             }
         )
     if weaknesses:
@@ -86,7 +90,9 @@ def _synthesis_atom(synthesis: Any) -> list[dict[str, Any]]:
                 "kind": "items",
                 "heading": "Consensus weaknesses",
                 "variant": "pairs",
-                "entries": [{"label": f"{i}.", "body": w} for i, w in enumerate(weaknesses, 1)],
+                "entries": [
+                    {"label": f"{i}.", "body": w} for i, w in enumerate(weaknesses, 1)
+                ],
             }
         )
 
@@ -160,16 +166,28 @@ def _edit_section(patches: list[DocumentPatch]) -> list[dict[str, Any]]:
 
     atoms: list[dict[str, Any]] = []
     if edits:
-        atoms.append({"kind": "prose", "heading": f"Proposed edits ({len(edits)})", "content": ""})
+        atoms.append(
+            {
+                "kind": "prose",
+                "heading": f"Proposed edits ({len(edits)})",
+                "content": "",
+            }
+        )
         atoms.extend(_edit_card(p) for p in edits)
     if comments:
-        atoms.append({"kind": "prose", "heading": f"Comments ({len(comments)})", "content": ""})
+        atoms.append(
+            {"kind": "prose", "heading": f"Comments ({len(comments)})", "content": ""}
+        )
         atoms.extend(_comment_card(p) for p in comments)
     if analyses:
-        atoms.append({"kind": "prose", "heading": f"Analyses ({len(analyses)})", "content": ""})
+        atoms.append(
+            {"kind": "prose", "heading": f"Analyses ({len(analyses)})", "content": ""}
+        )
         atoms.extend(_analysis_card(p) for p in analyses)
     if not (edits or comments or analyses):
-        atoms.append({"kind": "prose", "content": "_No edits or comments were proposed._"})
+        atoms.append(
+            {"kind": "prose", "content": "_No edits or comments were proposed._"}
+        )
     return atoms
 
 
@@ -220,6 +238,53 @@ def _issue_section(issues: list[DocumentIssue]) -> list[dict[str, Any]]:
             }
         )
         atoms.extend(_issue_card(i) for i in group)
+    return atoms
+
+
+def _checklist_atoms(items: list[Any]) -> list[dict[str, Any]]:
+    """Build typeset atoms for a list of ChecklistItem."""
+    if not items:
+        return []
+
+    passes = sum(1 for i in items if i.status == "pass")
+    fails = sum(1 for i in items if i.status == "fail")
+    unclears = sum(1 for i in items if i.status == "unclear")
+
+    atoms: list[dict[str, Any]] = [
+        {
+            "kind": "callout",
+            "tone": "info",
+            "content": (
+                f"**{passes}** pass · "
+                f"**{fails}** fail · "
+                f"**{unclears}** unclear "
+                f"(of {len(items)} checks)"
+            ),
+        },
+    ]
+
+    from collections import defaultdict
+
+    by_cat: dict[str, list[Any]] = defaultdict(list)
+    for it in items:
+        by_cat[it.category or "other"].append(it)
+
+    status_icon = {"pass": "✓", "fail": "✗", "unclear": "?"}
+    for cat in sorted(by_cat):
+        entries = []
+        for it in by_cat[cat]:
+            icon = status_icon.get(it.status, "?")
+            label = f"{icon} {it.status.upper()} — {it.name}"
+            body = it.notes if it.notes else ""
+            entries.append({"label": label, "body": body})
+        atoms.append(
+            {
+                "kind": "items",
+                "heading": cat.title(),
+                "variant": "pairs",
+                "entries": entries,
+            }
+        )
     return atoms
 
 
@@ -316,5 +381,9 @@ def render_html(
         atoms.extend(_issue_section(list(getattr(result, "issues", []) or [])))
     elif task == "panel":
         atoms.extend(_panel_section(result))
+
+    checklist = list(getattr(result, "checklist", []) or [])
+    if checklist:
+        atoms.extend(_checklist_atoms(checklist))
 
     return typeset_render(atoms, style=style, title=_TASK_TITLES.get(task, "Whetstone"))
