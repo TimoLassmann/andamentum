@@ -173,12 +173,12 @@ def check_citation_resolution(text: str) -> list[DocumentIssue]:
         nums: list[int] = []
         for part in re.split(r"\s*,\s*", raw):
             if "-" in part:
-                halves = part.split("-", 1)
+                halves = [h.strip() for h in part.split("-", 1)]
                 if len(halves) == 2 and halves[0].isdigit() and halves[1].isdigit():
                     nums.extend(range(int(halves[0]), int(halves[1]) + 1))
                 # silently skip malformed ranges like [1-3-5]
-            elif part.isdigit():
-                nums.append(int(part))
+            elif part.strip().isdigit():
+                nums.append(int(part.strip()))
         for n in nums:
             if n in seen:
                 continue
