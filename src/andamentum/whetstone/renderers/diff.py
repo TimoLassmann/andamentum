@@ -85,11 +85,12 @@ def render_diff(
     """Render a lightweight markdown diff view.
 
     Sections (separated by ``---``):
-    1. Optional synthesis summary
-    2. Edits -- ``diff`` fenced blocks with old/new text and rationale
-    3. Comments -- bold location lines with blockquoted text
-    4. Issues -- grouped by type with headings, descriptions, recommendations
-    5. Fallback "No edits or issues found." when everything is empty
+    1. Optional pre-submission checklist (prepended when non-empty)
+    2. Optional synthesis summary
+    3. Edits -- ``diff`` fenced blocks with old/new text and rationale
+    4. Comments -- bold location lines with blockquoted text
+    5. Issues -- grouped by type with headings, descriptions, recommendations
+    6. Fallback "No edits or issues found." when everything is empty
 
     Args:
         patches: Sequence of DocumentPatch objects (edits + comments).
@@ -97,6 +98,9 @@ def render_diff(
         original_content: The original document text (unused currently,
             reserved for future context-aware rendering).
         synthesis_text: Optional high-level synthesis/summary text.
+        checklist: Optional list of ChecklistItem objects. When provided
+            and non-empty, a markdown checklist section is prepended and
+            the empty-output fallback is suppressed.
 
     Returns:
         A markdown string ready for display in a terminal or log file.
@@ -159,11 +163,14 @@ def render_diff(
         sections.append("\n".join(issue_lines))
 
     # -- Empty fallback -----------------------------------------------------
+    # Suppress the fallback message when a checklist is the entire output —
+    # a checklist-only run is intentional, not an empty result.
     if not sections:
-        output = "No edits or issues found."
+        output = "" if checklist else "No edits or issues found."
     else:
         output = "\n\n---\n\n".join(sections)
 
     if checklist:
-        output = _render_checklist_markdown(checklist) + "\n\n" + output
+        cl_section = _render_checklist_markdown(checklist)
+        output = cl_section + ("\n\n" + output if output else "")
     return output
