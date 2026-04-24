@@ -48,3 +48,12 @@ def test_get_agent_unknown_raises():
 def test_custom_reviewer_has_dynamic_output():
     defn = get_agent("custom_document_reviewer")
     assert defn.output_model is None  # signals dynamic schema at runtime
+
+
+def test_consistency_reviewer_registered():
+    from andamentum.whetstone.agents import AGENT_REGISTRY
+    from andamentum.whetstone.agents.output_models import ConsistencyReviewOutput
+
+    assert "consistency_reviewer" in AGENT_REGISTRY
+    defn = AGENT_REGISTRY["consistency_reviewer"]
+    assert defn.output_model is ConsistencyReviewOutput
