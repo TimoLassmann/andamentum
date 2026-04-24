@@ -93,6 +93,7 @@ def test_baseline_scanners_exist():
 
     for check in BASELINE_CHECKS:
         if check.kind == "deterministic":
+            assert check.scanner is not None
             assert hasattr(checklist_scanners, check.scanner), (
                 f"BASELINE_CHECK '{check.name}' references missing scanner '{check.scanner}'"
             )
