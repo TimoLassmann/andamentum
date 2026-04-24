@@ -204,6 +204,7 @@ def _render_output(
         expert_reviews = getattr(result, "expert_reviews", [])
         expert_profiles = getattr(result, "expert_profiles", [])
 
+        checklist_items = getattr(result, "checklist", None) or None
         patch_result = render_docx(
             input_path=input_path,
             output_path=output_path,
@@ -212,6 +213,7 @@ def _render_output(
             critical_issues=critical_issues,
             expert_reviews=list(expert_reviews) if expert_reviews else None,
             generated_experts=list(expert_profiles) if expert_profiles else None,
+            checklist_items=checklist_items,
         )
         applied = getattr(patch_result, "applied_patches", 0)
         total = getattr(patch_result, "total_patches", 0)

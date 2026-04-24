@@ -52,6 +52,7 @@ def finalize_reviewed_document(
     expert_reviews: Optional[list] = None,
     generated_experts: Optional[list] = None,
     novelty_findings: str = "",
+    checklist_items: Optional[list] = None,
 ) -> tuple[str, PatchApplicationResult]:
     """
     Apply editing patches to create final reviewed Word document with track changes.
@@ -79,6 +80,36 @@ def finalize_reviewed_document(
         FileNotFoundError: If original file doesn't exist
         Exception: If patch application or file operations fail
     """
+    if checklist_items:
+        from collections import defaultdict
+
+        passes = sum(1 for i in checklist_items if i.status == "pass")
+        fails = sum(1 for i in checklist_items if i.status == "fail")
+        unclears = sum(1 for i in checklist_items if i.status == "unclear")
+
+        by_cat: Dict[str, list] = defaultdict(list)
+        for it in checklist_items:
+            by_cat[it.category or "other"].append(it)
+
+        cl_lines = [
+            "## Pre-submission Checklist",
+            "",
+            f"*{passes} pass · {fails} fail · {unclears} unclear (of {len(checklist_items)} checks)*",
+            "",
+        ]
+        status_marker = {"pass": "✓ PASS", "fail": "✗ FAIL", "unclear": "? UNCLEAR"}
+        for cat in sorted(by_cat):
+            cl_lines.append(f"### {cat.title()}")
+            cl_lines.append("")
+            for it in by_cat[cat]:
+                cl_lines.append(f"- **{status_marker.get(it.status, '?')}** {it.name}")
+                if it.notes:
+                    cl_lines.append(f"    - {it.notes}")
+            cl_lines.append("")
+        checklist_markdown = "\n".join(cl_lines) + "\n\n---\n\n"
+        # Prepend to whatever markdown report is being built
+        review_summary = checklist_markdown + (review_summary or "")
+
     original_path = Path(original_file_path)
 
     if not original_path.exists():
@@ -89,12 +120,19 @@ def finalize_reviewed_document(
         editor = PatchDocxEditor(str(original_path), author=author)
 
         # Step 2: Apply all patches with track changes
-        patch_result = editor.apply_patches(patches, use_patch_authors=use_patch_authors)
+        patch_result = editor.apply_patches(
+            patches, use_patch_authors=use_patch_authors
+        )
 
         # Step 3: Prepend review report if provided
         if review_summary:
             review_text = _format_review_report(
-                review_summary, issues_count, critical_issues, expert_reviews, generated_experts, novelty_findings
+                review_summary,
+                issues_count,
+                critical_issues,
+                expert_reviews,
+                generated_experts,
+                novelty_findings,
             )
             editor.prepend_review_section(review_text)
 
@@ -196,7 +234,11 @@ def _format_critical_issues(critical_issues: Optional[list]) -> List[str]:
 
 
 def _format_expert_header(
-    expert_name: str, discipline: str, position: Optional[str], education: Optional[str], index: int
+    expert_name: str,
+    discipline: str,
+    position: Optional[str],
+    education: Optional[str],
+    index: int,
 ) -> List[str]:
     """Format expert header with metadata."""
     lines = [
@@ -300,7 +342,9 @@ def _format_single_expert_review(
         education = None
 
     # Add expert header
-    lines.extend(_format_expert_header(expert_name, discipline, position, education, index))
+    lines.extend(
+        _format_expert_header(expert_name, discipline, position, education, index)
+    )
 
     # Extract and categorize review data
     review_data = normalize_to_dict(review)
@@ -312,7 +356,12 @@ def _format_single_expert_review(
 
     # Add structured fields
     other_fields = {**categories["structured"], **categories["other"]}
-    for field_name in ("strengths", "weaknesses", "recommendation", "overall_assessment"):
+    for field_name in (
+        "strengths",
+        "weaknesses",
+        "recommendation",
+        "overall_assessment",
+    ):
         if field_name in other_fields:
             lines.extend(_format_structured_field(field_name, other_fields[field_name]))
 
@@ -321,7 +370,10 @@ def _format_single_expert_review(
         remaining = {
             k: v
             for k, v in other_fields.items()
-            if k not in ("strengths", "weaknesses", "recommendation", "overall_assessment") and v and str(v).strip()
+            if k
+            not in ("strengths", "weaknesses", "recommendation", "overall_assessment")
+            and v
+            and str(v).strip()
         }
         if remaining:
             lines.extend(_format_other_fields(remaining))
@@ -333,7 +385,9 @@ def _format_single_expert_review(
     return lines
 
 
-def _format_expert_reviews(expert_reviews: Optional[list], generated_experts: Optional[list]) -> List[str]:
+def _format_expert_reviews(
+    expert_reviews: Optional[list], generated_experts: Optional[list]
+) -> List[str]:
     """Format all expert reviews section."""
     if not expert_reviews or len(expert_reviews) == 0:
         return []
@@ -351,7 +405,11 @@ def _format_expert_reviews(expert_reviews: Optional[list], generated_experts: Op
         if generated_experts and i <= len(generated_experts):
             expert_metadata = normalize_to_dict(generated_experts[i - 1])
 
-        lines.extend(_format_single_expert_review(review, expert_metadata, i, len(expert_reviews)))
+        lines.extend(
+            _format_single_expert_review(
+                review, expert_metadata, i, len(expert_reviews)
+            )
+        )
 
     return lines
 
