@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from andamentum.core.agents import AgentDefinition, AgentRunner
 
+from . import consistency_scanners
 from .agents import AGENT_REGISTRY
 from .agents.output_models import (
     CriticalIssue,  # noqa: F401 — needed for pydantic union resolution
@@ -70,12 +71,16 @@ class ReviewResult(BaseModel):
         default_factory=list,
         description="Issues from review agents",
     )
-    synthesis: Optional[DocumentReviewSynthesisOutput | PanelSynthesisOutput | FormatterOutput] = Field(
-        default=None, description="Consolidated review report"
-    )
+    synthesis: Optional[
+        DocumentReviewSynthesisOutput | PanelSynthesisOutput | FormatterOutput
+    ] = Field(default=None, description="Consolidated review report")
 
-    disciplines: list[str] = Field(default_factory=list, description="Extracted disciplines (panel)")
-    expert_profiles: list[ExpertProfile] = Field(default_factory=list, description="Generated expert profiles (panel)")
+    disciplines: list[str] = Field(
+        default_factory=list, description="Extracted disciplines (panel)"
+    )
+    expert_profiles: list[ExpertProfile] = Field(
+        default_factory=list, description="Generated expert profiles (panel)"
+    )
     expert_reviews: list[ExpertReviewOutput] = Field(
         default_factory=list, description="Individual expert reviews (panel)"
     )
@@ -103,7 +108,9 @@ async def _run_one(runner: AgentRunner, agent_name: str, **kwargs: Any) -> Any:
     """Run a registered whetstone agent via the core AgentRunner."""
     defn = AGENT_REGISTRY.get(agent_name)
     if defn is None:
-        raise ValueError(f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise ValueError(
+            f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
     if defn.output_model is None:
         raise ValueError(
             f"Agent {agent_name} uses a dynamic output model. Use _run_one_dynamic() with an explicit output_type."
@@ -121,7 +128,9 @@ async def _run_one_dynamic(
     """Run a dynamic-schema agent with an explicit runtime output type."""
     defn = AGENT_REGISTRY.get(agent_name)
     if defn is None:
-        raise ValueError(f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise ValueError(
+            f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
 
     runtime_defn = AgentDefinition(
         name=f"{defn.name}__dynamic",
@@ -171,7 +180,9 @@ async def sharpen_document(
         RuntimeError: If any agent phase fails.
     """
     if task not in ("edit", "review", "panel"):
-        raise ValueError(f"Invalid task '{task}'. Must be 'edit', 'review', or 'panel'.")
+        raise ValueError(
+            f"Invalid task '{task}'. Must be 'edit', 'review', or 'panel'."
+        )
 
     runner = AgentRunner(model=model)
     result = ReviewResult(task=task)
@@ -207,10 +218,38 @@ async def _run_edit(
         result.patches = getattr(output, "patches", [])
     else:
         print(f"Running {len(editors)} editors...", file=sys.stderr)
-        coros = [_run_one(runner, "unified_editor", document=content, editing_instructions=inst) for inst in editors]
+        coros = [
+            _run_one(
+                runner, "unified_editor", document=content, editing_instructions=inst
+            )
+            for inst in editors
+        ]
         outputs = await _run_agents("multi-editor", *coros)
         for output in outputs:
             result.patches.extend(getattr(output, "patches", []))
+
+
+# ---------------------------------------------------------------------------
+# Task: Consistency
+# ---------------------------------------------------------------------------
+
+
+async def _run_consistency(
+    runner: AgentRunner,
+    result: ReviewResult,
+    content: str,
+    verbose: bool,
+) -> None:
+    """Run deterministic scanners + the consistency_reviewer LLM agent."""
+    print("Running consistency scanners...", file=sys.stderr)
+    scanner_issues = consistency_scanners.run_all(content)
+    logger.debug("consistency scanners produced %d issues", len(scanner_issues))
+
+    print("Running consistency_reviewer agent...", file=sys.stderr)
+    llm_output = await _run_one(runner, "consistency_reviewer", document=content)
+    llm_issues = getattr(llm_output, "issues", [])
+
+    result.issues = [*scanner_issues, *llm_issues]
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +320,11 @@ async def _run_custom_review(
     )
 
     print("Formatting results...", file=sys.stderr)
-    custom_data = custom_result.model_dump() if hasattr(custom_result, "model_dump") else str(custom_result)
+    custom_data = (
+        custom_result.model_dump()
+        if hasattr(custom_result, "model_dump")
+        else str(custom_result)
+    )
     result.synthesis = await _run_one(
         runner,
         "results_formatter",
