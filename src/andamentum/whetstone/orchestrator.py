@@ -32,8 +32,9 @@ from pydantic import BaseModel, Field
 
 from andamentum.core.agents import AgentDefinition, AgentRunner
 
-from . import consistency_scanners
+from . import checklist_scanners, consistency_scanners
 from .agents import AGENT_REGISTRY
+from .agents.checklist import BASELINE_CHECKS
 from .agents.output_models import (
     CriticalIssue,  # noqa: F401 — needed for pydantic union resolution
     DocumentReviewSynthesisOutput,
@@ -44,7 +45,7 @@ from .agents.output_models import (
     SynthesisCriticalIssue,  # noqa: F401 — needed for pydantic union resolution
 )
 from .issues import DocumentIssue
-from .models import ChecklistItem, DocumentPatch
+from .models import BaselineCheck, ChecklistItem, DocumentPatch
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,114 @@ async def _run_panel_review(
         reviews=panel_data,
         document=content,
     )
+
+
+# ---------------------------------------------------------------------------
+# Task: Checklist
+# ---------------------------------------------------------------------------
+
+
+async def _evaluate_baseline_item(
+    runner: AgentRunner,
+    check: BaselineCheck,
+    content: str,
+) -> ChecklistItem:
+    """Dispatch a single baseline check to its scanner or LLM evaluator."""
+    if check.kind == "deterministic":
+        assert check.scanner is not None
+        func = getattr(checklist_scanners, check.scanner)
+        status, notes = func(content)
+        return ChecklistItem(
+            name=check.name,
+            status=status,
+            notes=notes,
+            category=check.category,
+            source="baseline",
+        )
+
+    item = await _run_one(
+        runner,
+        "checklist_item_evaluator",
+        document=content,
+        check_name=check.name,
+        prompt_hint=check.prompt_hint or "",
+    )
+    # Overwrite LLM-drifted metadata with authoritative values
+    item.name = check.name
+    item.category = check.category
+    item.source = "baseline"
+    return item
+
+
+async def _evaluate_journal_item(
+    runner: AgentRunner,
+    check_name: str,
+    content: str,
+) -> ChecklistItem:
+    """Evaluate one journal-extracted item. Failures become 'unclear'.
+
+    Per Constitution Rule 5, baseline-item failures are hard errors, but
+    journal-extracted items come from fuzzy extractor output, so a
+    single failure is an acceptable soft failure.
+    """
+    try:
+        item = await _run_one(
+            runner,
+            "checklist_item_evaluator",
+            document=content,
+            check_name=check_name,
+            prompt_hint="",
+        )
+        item.name = check_name
+        item.category = "journal"
+        item.source = "journal"
+        return item
+    except Exception as exc:
+        logger.warning("journal item %r evaluation failed: %s", check_name, exc)
+        return ChecklistItem(
+            name=check_name,
+            status="unclear",
+            notes=f"Evaluation failed: {exc}",
+            category="journal",
+            source="journal",
+        )
+
+
+async def _run_checklist(
+    runner: AgentRunner,
+    result: ReviewResult,
+    content: str,
+    guidelines: Optional[str],
+    verbose: bool,
+) -> None:
+    """Run the baseline checklist and, if guidelines are provided, the journal layer."""
+    print(
+        f"Running baseline checklist ({len(BASELINE_CHECKS)} items)...", file=sys.stderr
+    )
+
+    baseline_items = await asyncio.gather(
+        *[_evaluate_baseline_item(runner, check, content) for check in BASELINE_CHECKS]
+    )
+    result.checklist.extend(baseline_items)
+
+    if guidelines is None:
+        return
+
+    print("Extracting journal-specific items...", file=sys.stderr)
+    extracted = await _run_one(
+        runner, "journal_guidelines_extractor", guidelines=guidelines
+    )
+    journal_names = list(getattr(extracted, "items", []))
+    logger.info("journal extractor produced %d items", len(journal_names))
+
+    if not journal_names:
+        return
+
+    print(f"Evaluating {len(journal_names)} journal items...", file=sys.stderr)
+    journal_items = await asyncio.gather(
+        *[_evaluate_journal_item(runner, name, content) for name in journal_names]
+    )
+    result.checklist.extend(journal_items)
 
 
 # ---------------------------------------------------------------------------
