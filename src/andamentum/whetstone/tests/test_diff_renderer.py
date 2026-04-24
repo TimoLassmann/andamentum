@@ -114,3 +114,16 @@ def test_render_diff_no_checklist_keeps_old_output():
     out_no = render_diff(patches=[], issues=[], original_content="")
     out_empty_cl = render_diff(patches=[], issues=[], original_content="", checklist=[])
     assert out_no == out_empty_cl
+
+
+def test_render_diff_checklist_only_suppresses_empty_fallback():
+    """Checklist-only runs must not emit 'No edits or issues found.'"""
+    from andamentum.whetstone import ChecklistItem
+    from andamentum.whetstone.renderers import render_diff
+
+    items = [
+        ChecklistItem(name="x", status="pass", notes="y", category="abstract"),
+    ]
+    output = render_diff(patches=[], issues=[], original_content="", checklist=items)
+    assert "No edits or issues found." not in output
+    assert "Pre-submission checklist" in output
