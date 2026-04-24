@@ -26,6 +26,8 @@ EXPECTED = {
     # custom
     "custom_document_reviewer",
     "schema_generator",
+    # consistency
+    "consistency_reviewer",
 }
 
 
