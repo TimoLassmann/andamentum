@@ -105,6 +105,12 @@ def test_citation_resolution_malformed_range_skipped():
     assert check_citation_resolution(text) == []
 
 
+def test_citation_resolution_handles_spaced_range():
+    # Spaced-dash ranges like [1 - 3] must be parsed, not silently dropped.
+    text = "See [1 - 3].\n\nReferences\n[1] A.\n[2] B.\n[3] C.\n"
+    assert check_citation_resolution(text) == []
+
+
 # ---- run_all ---------------------------------------------------------------
 
 

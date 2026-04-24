@@ -54,6 +54,13 @@ def test_all_tables_referenced_pass():
     assert status == "pass"
 
 
+def test_all_tables_referenced_fail():
+    text = "Table 1: Data.\nTable 2: More data.\n\nBody sees Table 1 only."
+    status, notes = check_all_tables_referenced(text)
+    assert status == "fail"
+    assert "2" in notes
+
+
 def test_all_tables_referenced_unclear_no_tables():
     status, _ = check_all_tables_referenced("No tables.")
     assert status == "unclear"
@@ -90,6 +97,13 @@ def test_citations_resolve_fail():
 def test_citations_resolve_no_refs_section():
     status, _ = check_citations_resolve("See [1] and [2].")
     assert status == "unclear"
+
+
+def test_citations_resolve_handles_spaced_range():
+    # Spaced-dash ranges like [1 - 3] must be parsed, not silently dropped.
+    text = "See [1 - 3].\n\nReferences\n[1] A.\n[2] B.\n[3] C.\n"
+    status, _ = check_citations_resolve(text)
+    assert status == "pass"
 
 
 # ---- required statements ---------------------------------------------------

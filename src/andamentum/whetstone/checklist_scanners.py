@@ -101,12 +101,12 @@ def check_citations_resolve(text: str) -> tuple[Status, str]:
     for m in re.finditer(r"\[(\d+(?:\s*[,-]\s*\d+)*)\]", body):
         for part in re.split(r"\s*,\s*", m.group(1)):
             if "-" in part:
-                halves = part.split("-", 1)
+                halves = [h.strip() for h in part.split("-", 1)]
                 if len(halves) == 2 and halves[0].isdigit() and halves[1].isdigit():
                     cit_nums.update(range(int(halves[0]), int(halves[1]) + 1))
                 # silently skip malformed ranges
-            elif part.isdigit():
-                cit_nums.add(int(part))
+            elif part.strip().isdigit():
+                cit_nums.add(int(part.strip()))
     unresolved = cit_nums - ref_nums
     if unresolved:
         return ("fail", f"Citations with no matching reference: {sorted(unresolved)}")
@@ -185,6 +185,14 @@ def check_keywords_section(text: str) -> tuple[Status, str]:
 
 
 def check_authors_listed(text: str) -> tuple[Status, str]:
+    """Scan the document head for affiliation markers.
+
+    Returns "pass" if institutional keywords appear in the first 2000
+    characters, "unclear" otherwise. Never returns "fail": absence of
+    these keywords does not prove authors are unlisted — the document
+    may start with an abstract, use non-standard affiliations, or have
+    been passed in as a body-only excerpt.
+    """
     head = text[:2000]
     pattern = re.compile(
         r"\b(?:Department|Institute|School|University|Laboratory|Center|Centre|Faculty|Hospital)\b"
