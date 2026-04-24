@@ -21,6 +21,7 @@ def render_docx(
     generated_experts: Optional[list] = None,
     novelty_findings: str = "",
     author: str = "Whetstone Review",
+    checklist_items: Optional[list] = None,
 ) -> PatchApplicationResult:
     """Render review results as a Word document with track changes.
 
@@ -37,6 +38,8 @@ def render_docx(
         generated_experts: List of expert profile objects (panel task).
         novelty_findings: External novelty findings text (optional).
         author: Default author name for track changes.
+        checklist_items: Optional list of ChecklistItem objects to prepend
+            to the review report (checklist task).
 
     Returns:
         PatchApplicationResult with applied/failed patch counts.
@@ -58,5 +61,6 @@ def render_docx(
         expert_reviews=expert_reviews,
         generated_experts=generated_experts,
         novelty_findings=novelty_findings,
+        checklist_items=checklist_items,
     )
     return patch_result
