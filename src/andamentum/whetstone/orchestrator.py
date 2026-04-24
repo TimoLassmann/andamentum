@@ -474,8 +474,9 @@ async def _run_checklist(
         f"Running baseline checklist ({len(BASELINE_CHECKS)} items)...", file=sys.stderr
     )
 
-    baseline_items = await asyncio.gather(
-        *[_evaluate_baseline_item(runner, check, content) for check in BASELINE_CHECKS]
+    baseline_items = await _run_agents(
+        "baseline-checklist",
+        *[_evaluate_baseline_item(runner, check, content) for check in BASELINE_CHECKS],
     )
     result.checklist.extend(baseline_items)
 
