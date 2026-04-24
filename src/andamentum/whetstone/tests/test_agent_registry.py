@@ -28,6 +28,9 @@ EXPECTED = {
     "schema_generator",
     # consistency
     "consistency_reviewer",
+    # checklist
+    "checklist_item_evaluator",
+    "journal_guidelines_extractor",
 }
 
 
@@ -59,3 +62,37 @@ def test_consistency_reviewer_registered():
     assert "consistency_reviewer" in AGENT_REGISTRY
     defn = AGENT_REGISTRY["consistency_reviewer"]
     assert defn.output_model is ConsistencyReviewOutput
+
+
+def test_checklist_agents_registered():
+    from andamentum.whetstone.agents import AGENT_REGISTRY
+
+    assert "checklist_item_evaluator" in AGENT_REGISTRY
+    assert "journal_guidelines_extractor" in AGENT_REGISTRY
+
+
+def test_baseline_checks_shape():
+    from andamentum.whetstone.agents.checklist import BASELINE_CHECKS
+
+    assert len(BASELINE_CHECKS) >= 10
+    for check in BASELINE_CHECKS:
+        assert check.name
+        assert check.category
+        if check.kind == "deterministic":
+            assert check.scanner is not None
+            assert check.prompt_hint is None
+        else:
+            assert check.prompt_hint is not None
+            assert check.scanner is None
+
+
+def test_baseline_scanners_exist():
+    """Every deterministic BASELINE_CHECK must point to a real scanner function."""
+    from andamentum.whetstone.agents.checklist import BASELINE_CHECKS
+    from andamentum.whetstone import checklist_scanners
+
+    for check in BASELINE_CHECKS:
+        if check.kind == "deterministic":
+            assert hasattr(checklist_scanners, check.scanner), (
+                f"BASELINE_CHECK '{check.name}' references missing scanner '{check.scanner}'"
+            )
