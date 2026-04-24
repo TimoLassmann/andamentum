@@ -24,7 +24,9 @@ def register_agent(defn: AgentDefinition) -> AgentDefinition:
 def get_agent(name: str) -> AgentDefinition:
     """Look up an agent by name. Raises KeyError if not found."""
     if name not in AGENT_REGISTRY:
-        raise KeyError(f"Unknown whetstone agent: {name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise KeyError(
+            f"Unknown whetstone agent: {name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
     return AGENT_REGISTRY[name]
 
 
@@ -34,6 +36,7 @@ from . import review as _review  # noqa: E402, F401
 from . import synthesis as _synthesis  # noqa: E402, F401
 from . import multi_expert as _multi_expert  # noqa: E402, F401
 from . import custom as _custom  # noqa: E402, F401
+from . import consistency as _consistency  # noqa: E402, F401
 
 __all__ = [
     "AgentDefinition",
