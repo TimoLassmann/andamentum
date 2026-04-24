@@ -30,7 +30,7 @@ Quick start::
 from .agents import AGENT_REGISTRY, AgentDefinition
 from .dynamic_models import convert_fields_to_schema, create_output_model
 from .issues import DocumentIssue
-from .models import DocumentPatch, PatchApplicationResult
+from .models import ChecklistItem, DocumentPatch, PatchApplicationResult
 from .orchestrator import ReviewResult, sharpen_document
 from .renderers import apply_patches, render_diff, render_docx, render_html
 
@@ -43,6 +43,7 @@ __all__ = [
     # Data models
     "DocumentPatch",
     "DocumentIssue",
+    "ChecklistItem",
     "PatchApplicationResult",
     # Renderers
     "render_docx",

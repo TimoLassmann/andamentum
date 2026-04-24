@@ -27,43 +27,49 @@ class DocumentPatch(BaseModel):
 
     # Location identification - REQUIRED for text_edit and comment, OPTIONAL for document_analysis
     text_pattern: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for text_edit/comment: Exact text to find and modify. NOT NEEDED for document_analysis patches.",
     )
 
     # Location identification - OPTIONAL
-    paragraph_index: Optional[int] = Field(None, description="OPTIONAL: Target paragraph index if known")
-    original_text: Optional[str] = Field(None, description="OPTIONAL: Original text for validation")
+    paragraph_index: Optional[int] = Field(
+        default=None, description="OPTIONAL: Target paragraph index if known"
+    )
+    original_text: Optional[str] = Field(
+        default=None, description="OPTIONAL: Original text for validation"
+    )
 
     # Content - CONDITIONAL
     new_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for text_edit patches: The improved replacement text. Must NOT be None or empty for text_edit patches.",
     )
     comment_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for comment patches: The suggestion or note text. Must NOT be None or empty for comment patches.",
     )
     analysis_text: Optional[str] = Field(
-        None,
+        default=None,
         description="REQUIRED for document_analysis patches: Detailed structured analysis in markdown format with comprehensive evaluation, scores, recommendations, and specific insights",
     )
 
     # Position tracking - SYSTEM USE ONLY (not for LLM)
     found_at: Optional[int] = Field(
-        None,
+        default=None,
         description="SYSTEM-POPULATED: Do NOT set this field. The system will automatically populate it after finding the text_pattern.",
     )
     original_start: Optional[int] = Field(
-        None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
+        default=None,
+        description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system.",
     )
     original_end: Optional[int] = Field(
-        None, description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system."
+        default=None,
+        description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system.",
     )
 
     # Metadata - REQUIRED
     confidence: float = Field(
-        0.8,
+        default=0.8,
         ge=0.0,
         le=1.0,
         description="REQUIRED: Confidence score between 0.0 and 1.0. Use 0.9+ for obvious errors, 0.7+ for good improvements, 0.5+ for suggestions.",
@@ -81,26 +87,50 @@ class DocumentPatch(BaseModel):
         # Check required fields based on patch type
         if self.patch_type == "text_edit":
             if not self.text_pattern or self.text_pattern.strip() == "":
-                errors.append("text_pattern is required and cannot be empty for text_edit patches")
+                errors.append(
+                    "text_pattern is required and cannot be empty for text_edit patches"
+                )
             if self.new_text is None or self.new_text.strip() == "":
-                errors.append("new_text is required and cannot be empty for text_edit patches")
-            if self.new_text and self.new_text.strip().lower() in ["none", "null", "n/a"]:
-                errors.append(f"new_text has invalid placeholder value: '{self.new_text}'")
+                errors.append(
+                    "new_text is required and cannot be empty for text_edit patches"
+                )
+            if self.new_text and self.new_text.strip().lower() in [
+                "none",
+                "null",
+                "n/a",
+            ]:
+                errors.append(
+                    f"new_text has invalid placeholder value: '{self.new_text}'"
+                )
 
         elif self.patch_type == "comment":
             if not self.text_pattern or self.text_pattern.strip() == "":
-                errors.append("text_pattern is required and cannot be empty for comment patches")
+                errors.append(
+                    "text_pattern is required and cannot be empty for comment patches"
+                )
             if self.comment_text is None or self.comment_text.strip() == "":
-                errors.append("comment_text is required and cannot be empty for comment patches")
-            if self.comment_text and self.comment_text.strip().lower() in ["none", "null", "n/a"]:
-                errors.append(f"comment_text has invalid placeholder value: '{self.comment_text}'")
+                errors.append(
+                    "comment_text is required and cannot be empty for comment patches"
+                )
+            if self.comment_text and self.comment_text.strip().lower() in [
+                "none",
+                "null",
+                "n/a",
+            ]:
+                errors.append(
+                    f"comment_text has invalid placeholder value: '{self.comment_text}'"
+                )
 
         elif self.patch_type == "document_analysis":
             if self.analysis_text is None or self.analysis_text.strip() == "":
                 errors.append(
                     "analysis_text is required and cannot be empty for document_analysis patches - provide detailed structured analysis"
                 )
-            if self.analysis_text and self.analysis_text.strip().lower() in ["none", "null", "n/a"]:
+            if self.analysis_text and self.analysis_text.strip().lower() in [
+                "none",
+                "null",
+                "n/a",
+            ]:
                 errors.append(
                     f"analysis_text has invalid placeholder value: '{self.analysis_text}' - provide comprehensive analysis instead"
                 )
@@ -108,11 +138,19 @@ class DocumentPatch(BaseModel):
         # Check common required fields
         if not self.explanation or self.explanation.strip() == "":
             errors.append("explanation is required and cannot be empty")
-        if self.explanation and self.explanation.strip().lower() in ["none", "null", "n/a"]:
-            errors.append(f"explanation has invalid placeholder value: '{self.explanation}'")
+        if self.explanation and self.explanation.strip().lower() in [
+            "none",
+            "null",
+            "n/a",
+        ]:
+            errors.append(
+                f"explanation has invalid placeholder value: '{self.explanation}'"
+            )
 
         if not (0.0 <= self.confidence <= 1.0):
-            errors.append(f"confidence must be between 0.0 and 1.0, got {self.confidence}")
+            errors.append(
+                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+            )
 
         if errors:
             raise ValueError(f"DocumentPatch validation failed: {'; '.join(errors)}")
@@ -137,15 +175,25 @@ class PatchApplicationResult(BaseModel):
     """
 
     total_patches: int = Field(..., description="Total number of patches attempted")
-    applied_patches: int = Field(..., description="Number of successfully applied patches")
-    failed_patches: List[DocumentPatch] = Field(default_factory=list, description="Patches that failed to apply")
-    processing_time: float = Field(..., description="Time taken to apply patches in seconds")
+    applied_patches: int = Field(
+        ..., description="Number of successfully applied patches"
+    )
+    failed_patches: List[DocumentPatch] = Field(
+        default_factory=list, description="Patches that failed to apply"
+    )
+    processing_time: float = Field(
+        ..., description="Time taken to apply patches in seconds"
+    )
 
     # Detailed results
-    applied_edits: int = Field(0, description="Number of text edits applied")
-    applied_comments: int = Field(0, description="Number of comments applied")
-    location_failures: int = Field(0, description="Patches that failed due to location issues")
-    validation_failures: int = Field(0, description="Patches that failed validation")
+    applied_edits: int = Field(default=0, description="Number of text edits applied")
+    applied_comments: int = Field(default=0, description="Number of comments applied")
+    location_failures: int = Field(
+        default=0, description="Patches that failed due to location issues"
+    )
+    validation_failures: int = Field(
+        default=0, description="Patches that failed validation"
+    )
 
     @property
     def success_rate(self) -> float:
@@ -157,3 +205,50 @@ class PatchApplicationResult(BaseModel):
     def __str__(self) -> str:
         """Human-readable summary of application results."""
         return f"Applied {self.applied_patches}/{self.total_patches} patches ({self.success_rate:.1f}% success rate)"
+
+
+class ChecklistItem(BaseModel):
+    """One pre-submission check, evaluated against a draft.
+
+    Three fields are LLM-visible (name, status, notes). Two are set by
+    the orchestrator (category, source). The LLM is not asked to re-emit
+    contextual metadata already known at dispatch time — this keeps the
+    output schema small and tractable for local models.
+    """
+
+    name: str = Field(..., description="The check, e.g. 'Abstract word count declared'")
+    status: Literal["pass", "fail", "unclear"] = Field(
+        ..., description="Outcome of the check"
+    )
+    notes: str = Field(
+        default="",
+        description="Evidence (quote/location) and, if status=fail, what to fix",
+    )
+    category: str = Field(
+        default="", description="Category — set by the orchestrator, not the LLM"
+    )
+    source: Literal["baseline", "journal"] = Field(
+        default="baseline",
+        description="Which source produced this check — set by the orchestrator, not the LLM",
+    )
+
+
+class BaselineCheck(BaseModel):
+    """An entry in the pre-submission baseline checklist.
+
+    `kind` selects between a deterministic scanner (pure Python) and an
+    LLM evaluator. `scanner` names a function in checklist_scanners;
+    `prompt_hint` carries extra guidance for the LLM. The two are
+    mutually exclusive in practice.
+    """
+
+    name: str
+    category: str
+    kind: Literal["deterministic", "llm"]
+    scanner: Optional[str] = Field(
+        default=None,
+        description="Function name in checklist_scanners (kind='deterministic')",
+    )
+    prompt_hint: Optional[str] = Field(
+        default=None, description="Extra guidance (kind='llm')"
+    )

@@ -32,7 +32,9 @@ from pydantic import BaseModel, Field
 
 from andamentum.core.agents import AgentDefinition, AgentRunner
 
+from . import checklist_scanners, consistency_scanners
 from .agents import AGENT_REGISTRY
+from .agents.checklist import BASELINE_CHECKS
 from .agents.output_models import (
     CriticalIssue,  # noqa: F401 — needed for pydantic union resolution
     DocumentReviewSynthesisOutput,
@@ -43,7 +45,7 @@ from .agents.output_models import (
     SynthesisCriticalIssue,  # noqa: F401 — needed for pydantic union resolution
 )
 from .issues import DocumentIssue
-from .models import DocumentPatch
+from .models import BaselineCheck, ChecklistItem, DocumentPatch
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +72,23 @@ class ReviewResult(BaseModel):
         default_factory=list,
         description="Issues from review agents",
     )
-    synthesis: Optional[DocumentReviewSynthesisOutput | PanelSynthesisOutput | FormatterOutput] = Field(
-        default=None, description="Consolidated review report"
-    )
+    synthesis: Optional[
+        DocumentReviewSynthesisOutput | PanelSynthesisOutput | FormatterOutput
+    ] = Field(default=None, description="Consolidated review report")
 
-    disciplines: list[str] = Field(default_factory=list, description="Extracted disciplines (panel)")
-    expert_profiles: list[ExpertProfile] = Field(default_factory=list, description="Generated expert profiles (panel)")
+    disciplines: list[str] = Field(
+        default_factory=list, description="Extracted disciplines (panel)"
+    )
+    expert_profiles: list[ExpertProfile] = Field(
+        default_factory=list, description="Generated expert profiles (panel)"
+    )
     expert_reviews: list[ExpertReviewOutput] = Field(
         default_factory=list, description="Individual expert reviews (panel)"
+    )
+
+    checklist: list[ChecklistItem] = Field(
+        default_factory=list,
+        description="Checklist items from 'checklist' task",
     )
 
 
@@ -98,7 +109,9 @@ async def _run_one(runner: AgentRunner, agent_name: str, **kwargs: Any) -> Any:
     """Run a registered whetstone agent via the core AgentRunner."""
     defn = AGENT_REGISTRY.get(agent_name)
     if defn is None:
-        raise ValueError(f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise ValueError(
+            f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
     if defn.output_model is None:
         raise ValueError(
             f"Agent {agent_name} uses a dynamic output model. Use _run_one_dynamic() with an explicit output_type."
@@ -116,7 +129,9 @@ async def _run_one_dynamic(
     """Run a dynamic-schema agent with an explicit runtime output type."""
     defn = AGENT_REGISTRY.get(agent_name)
     if defn is None:
-        raise ValueError(f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}")
+        raise ValueError(
+            f"Unknown whetstone agent: {agent_name}. Available: {sorted(AGENT_REGISTRY)}"
+        )
 
     runtime_defn = AgentDefinition(
         name=f"{defn.name}__dynamic",
@@ -140,6 +155,7 @@ async def sharpen_document(
     num_experts: int = 3,
     criteria: Optional[str] = None,
     editors: Optional[list[str]] = None,
+    guidelines: Optional[str] = None,
     model: str = "openai:gpt-4o",
     verbose: bool = False,
 ) -> ReviewResult:
@@ -154,6 +170,8 @@ async def sharpen_document(
             standard review path with a schema generated at runtime.
         editors: List of editing instructions. When omitted, runs one unified
             editor. When provided, runs one editor per instruction in parallel.
+        guidelines: Journal author guidelines (free text). Only valid
+            for task="checklist"; raises ValueError otherwise.
         model: pydantic-ai model string (e.g. "openai:gpt-4o",
             "anthropic:claude-haiku-4-5").
         verbose: Print progress messages to stderr.
@@ -162,11 +180,17 @@ async def sharpen_document(
         ReviewResult with structured data. Pass to a renderer for output.
 
     Raises:
-        ValueError: If `task` is not one of "edit", "review", "panel".
+        ValueError: If `task` is not one of the valid tasks.
+        ValueError: If `guidelines` is provided with a task other than "checklist".
         RuntimeError: If any agent phase fails.
     """
-    if task not in ("edit", "review", "panel"):
-        raise ValueError(f"Invalid task '{task}'. Must be 'edit', 'review', or 'panel'.")
+    valid_tasks = ("edit", "review", "panel", "consistency", "checklist")
+    if task not in valid_tasks:
+        raise ValueError(f"Invalid task '{task}'. Must be one of {valid_tasks}.")
+    if guidelines is not None and task != "checklist":
+        raise ValueError(
+            f"guidelines is only valid with task='checklist'; got task='{task}'."
+        )
 
     runner = AgentRunner(model=model)
     result = ReviewResult(task=task)
@@ -180,6 +204,10 @@ async def sharpen_document(
             await _run_standard_review(runner, result, content, verbose)
     elif task == "panel":
         await _run_panel_review(runner, result, content, num_experts, verbose)
+    elif task == "consistency":
+        await _run_consistency(runner, result, content, verbose)
+    elif task == "checklist":
+        await _run_checklist(runner, result, content, guidelines, verbose)
 
     return result
 
@@ -202,10 +230,38 @@ async def _run_edit(
         result.patches = getattr(output, "patches", [])
     else:
         print(f"Running {len(editors)} editors...", file=sys.stderr)
-        coros = [_run_one(runner, "unified_editor", document=content, editing_instructions=inst) for inst in editors]
+        coros = [
+            _run_one(
+                runner, "unified_editor", document=content, editing_instructions=inst
+            )
+            for inst in editors
+        ]
         outputs = await _run_agents("multi-editor", *coros)
         for output in outputs:
             result.patches.extend(getattr(output, "patches", []))
+
+
+# ---------------------------------------------------------------------------
+# Task: Consistency
+# ---------------------------------------------------------------------------
+
+
+async def _run_consistency(
+    runner: AgentRunner,
+    result: ReviewResult,
+    content: str,
+    verbose: bool,
+) -> None:
+    """Run deterministic scanners + the consistency_reviewer LLM agent."""
+    print("Running consistency scanners...", file=sys.stderr)
+    scanner_issues = consistency_scanners.run_all(content)
+    logger.debug("consistency scanners produced %d issues", len(scanner_issues))
+
+    print("Running consistency_reviewer agent...", file=sys.stderr)
+    llm_output = await _run_one(runner, "consistency_reviewer", document=content)
+    llm_issues = getattr(llm_output, "issues", [])
+
+    result.issues = [*scanner_issues, *llm_issues]
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +332,11 @@ async def _run_custom_review(
     )
 
     print("Formatting results...", file=sys.stderr)
-    custom_data = custom_result.model_dump() if hasattr(custom_result, "model_dump") else str(custom_result)
+    custom_data = (
+        custom_result.model_dump()
+        if hasattr(custom_result, "model_dump")
+        else str(custom_result)
+    )
     result.synthesis = await _run_one(
         runner,
         "results_formatter",
@@ -340,6 +400,115 @@ async def _run_panel_review(
         reviews=panel_data,
         document=content,
     )
+
+
+# ---------------------------------------------------------------------------
+# Task: Checklist
+# ---------------------------------------------------------------------------
+
+
+async def _evaluate_baseline_item(
+    runner: AgentRunner,
+    check: BaselineCheck,
+    content: str,
+) -> ChecklistItem:
+    """Dispatch a single baseline check to its scanner or LLM evaluator."""
+    if check.kind == "deterministic":
+        assert check.scanner is not None
+        func = getattr(checklist_scanners, check.scanner)
+        status, notes = func(content)
+        return ChecklistItem(
+            name=check.name,
+            status=status,
+            notes=notes,
+            category=check.category,
+            source="baseline",
+        )
+
+    item = await _run_one(
+        runner,
+        "checklist_item_evaluator",
+        document=content,
+        check_name=check.name,
+        prompt_hint=check.prompt_hint or "",
+    )
+    # Overwrite LLM-drifted metadata with authoritative values
+    item.name = check.name
+    item.category = check.category
+    item.source = "baseline"
+    return item
+
+
+async def _evaluate_journal_item(
+    runner: AgentRunner,
+    check_name: str,
+    content: str,
+) -> ChecklistItem:
+    """Evaluate one journal-extracted item. Failures become 'unclear'.
+
+    Per Constitution Rule 5, baseline-item failures are hard errors, but
+    journal-extracted items come from fuzzy extractor output, so a
+    single failure is an acceptable soft failure.
+    """
+    try:
+        item = await _run_one(
+            runner,
+            "checklist_item_evaluator",
+            document=content,
+            check_name=check_name,
+            prompt_hint="",
+        )
+        item.name = check_name
+        item.category = "journal"
+        item.source = "journal"
+        return item
+    except Exception as exc:
+        logger.warning("journal item %r evaluation failed: %s", check_name, exc)
+        return ChecklistItem(
+            name=check_name,
+            status="unclear",
+            notes=f"Evaluation failed: {exc}",
+            category="journal",
+            source="journal",
+        )
+
+
+async def _run_checklist(
+    runner: AgentRunner,
+    result: ReviewResult,
+    content: str,
+    guidelines: Optional[str],
+    verbose: bool,
+) -> None:
+    """Run the baseline checklist and, if guidelines are provided, the journal layer."""
+    print(
+        f"Running baseline checklist ({len(BASELINE_CHECKS)} items)...", file=sys.stderr
+    )
+
+    baseline_items = await _run_agents(
+        "baseline-checklist",
+        *[_evaluate_baseline_item(runner, check, content) for check in BASELINE_CHECKS],
+    )
+    result.checklist.extend(baseline_items)
+
+    if guidelines is None:
+        return
+
+    print("Extracting journal-specific items...", file=sys.stderr)
+    extracted = await _run_one(
+        runner, "journal_guidelines_extractor", guidelines=guidelines
+    )
+    journal_names = list(getattr(extracted, "items", []))
+    logger.info("journal extractor produced %d items", len(journal_names))
+
+    if not journal_names:
+        return
+
+    print(f"Evaluating {len(journal_names)} journal items...", file=sys.stderr)
+    journal_items = await asyncio.gather(
+        *[_evaluate_journal_item(runner, name, content) for name in journal_names]
+    )
+    result.checklist.extend(journal_items)
 
 
 # ---------------------------------------------------------------------------

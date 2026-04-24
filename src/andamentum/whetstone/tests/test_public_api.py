@@ -28,3 +28,10 @@ def test_public_symbols_resolve():
 def test_version_exported():
     assert hasattr(whetstone, "__version__")
     assert whetstone.__version__  # non-empty
+
+
+def test_checklist_item_exported():
+    from andamentum.whetstone import ChecklistItem
+
+    item = ChecklistItem(name="x", status="pass", notes="y")
+    assert item.name == "x"
