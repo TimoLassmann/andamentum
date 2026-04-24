@@ -155,6 +155,7 @@ async def sharpen_document(
     num_experts: int = 3,
     criteria: Optional[str] = None,
     editors: Optional[list[str]] = None,
+    guidelines: Optional[str] = None,
     model: str = "openai:gpt-4o",
     verbose: bool = False,
 ) -> ReviewResult:
@@ -169,6 +170,8 @@ async def sharpen_document(
             standard review path with a schema generated at runtime.
         editors: List of editing instructions. When omitted, runs one unified
             editor. When provided, runs one editor per instruction in parallel.
+        guidelines: Journal author guidelines (free text). Only valid
+            for task="checklist"; raises ValueError otherwise.
         model: pydantic-ai model string (e.g. "openai:gpt-4o",
             "anthropic:claude-haiku-4-5").
         verbose: Print progress messages to stderr.
@@ -177,12 +180,16 @@ async def sharpen_document(
         ReviewResult with structured data. Pass to a renderer for output.
 
     Raises:
-        ValueError: If `task` is not one of "edit", "review", "panel".
+        ValueError: If `task` is not one of the valid tasks.
+        ValueError: If `guidelines` is provided with a task other than "checklist".
         RuntimeError: If any agent phase fails.
     """
-    if task not in ("edit", "review", "panel"):
+    valid_tasks = ("edit", "review", "panel", "consistency", "checklist")
+    if task not in valid_tasks:
+        raise ValueError(f"Invalid task '{task}'. Must be one of {valid_tasks}.")
+    if guidelines is not None and task != "checklist":
         raise ValueError(
-            f"Invalid task '{task}'. Must be 'edit', 'review', or 'panel'."
+            f"guidelines is only valid with task='checklist'; got task='{task}'."
         )
 
     runner = AgentRunner(model=model)
@@ -197,6 +204,10 @@ async def sharpen_document(
             await _run_standard_review(runner, result, content, verbose)
     elif task == "panel":
         await _run_panel_review(runner, result, content, num_experts, verbose)
+    elif task == "consistency":
+        await _run_consistency(runner, result, content, verbose)
+    elif task == "checklist":
+        await _run_checklist(runner, result, content, guidelines, verbose)
 
     return result
 
