@@ -37,6 +37,7 @@ from . import synthesis as _synthesis  # noqa: E402, F401
 from . import multi_expert as _multi_expert  # noqa: E402, F401
 from . import custom as _custom  # noqa: E402, F401
 from . import consistency as _consistency  # noqa: E402, F401
+from . import checklist as _checklist  # noqa: E402, F401
 
 __all__ = [
     "AgentDefinition",
