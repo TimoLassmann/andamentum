@@ -60,3 +60,28 @@ def test_docx_subpackage_imports():
             finalize_reviewed_document,
         ]
     )
+
+
+def test_render_docx_accepts_checklist(tmp_path):
+    """Smoke test: render_docx accepts a checklist parameter without error."""
+    from andamentum.whetstone import ChecklistItem
+    from andamentum.whetstone.renderers import render_docx
+
+    src = tmp_path / "in.docx"
+    dst = tmp_path / "out.docx"
+    # Create a minimal .docx for input
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Hello.")
+    doc.save(str(src))
+
+    items = [ChecklistItem(name="x", status="pass", notes="y", category="abstract")]
+    # Should accept checklist_items kwarg and not raise
+    render_docx(
+        input_path=src,
+        output_path=dst,
+        patches=[],
+        checklist_items=items,
+    )
+    assert dst.exists()

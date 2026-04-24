@@ -56,18 +56,45 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("file", type=Path, help="Path to document to review")
-    parser.add_argument("-o", "--output", type=Path, default=None, help="Output file (.docx, .html, or .md)")
-    parser.add_argument("--task", choices=["edit", "review", "panel"], default="review", help="Task (default: review)")
     parser.add_argument(
-        "--num-experts", type=int, default=3, help="Number of expert reviewers for panel task (default: 3)"
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output file (.docx, .html, or .md)",
     )
-    parser.add_argument("--criteria", type=str, default=None, help="Custom review criteria (text or @filepath)")
+    parser.add_argument(
+        "--task",
+        choices=["edit", "review", "panel", "consistency", "checklist"],
+        default="review",
+        help="Task (default: review)",
+    )
+    parser.add_argument(
+        "--num-experts",
+        type=int,
+        default=3,
+        help="Number of expert reviewers for panel task (default: 3)",
+    )
+    parser.add_argument(
+        "--criteria",
+        type=str,
+        default=None,
+        help="Custom review criteria (text or @filepath)",
+    )
+    parser.add_argument(
+        "--guidelines",
+        type=str,
+        default=None,
+        help="Journal author guidelines (text or @filepath). Only valid with --task checklist.",
+    )
     parser.add_argument(
         "--model",
         default=None,
         help="LLM model (default: $ANDAMENTUM_MAIN_LLM_MODEL or openai:gpt-4o)",
     )
-    parser.add_argument("--verbose", action="store_true", help="Print progress messages")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
     return parser
 
 
@@ -100,6 +127,23 @@ def _resolve_criteria(raw: str | None) -> str | None:
     return raw
 
 
+def _resolve_guidelines(raw: str | None) -> str | None:
+    """Resolve guidelines from string or @filepath (mirrors _resolve_criteria)."""
+    if not raw or not raw.strip():
+        return None
+    if raw.startswith("@"):
+        p = Path(raw[1:])
+        if not p.exists():
+            print(f"Error: guidelines file not found: {p}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            return p.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            print(f"Error: cannot read guidelines file as UTF-8: {e}", file=sys.stderr)
+            sys.exit(1)
+    return raw
+
+
 def _list_agents() -> None:
     """Print all registered agents to stdout.
 
@@ -118,7 +162,9 @@ def _list_agents() -> None:
         print(f"  {name:<35s}  output={model_name}")
 
 
-def _render_output(result: object, content: str, input_path: Path, output_path: Path | None) -> None:
+def _render_output(
+    result: object, content: str, input_path: Path, output_path: Path | None
+) -> None:
     """Render the ReviewResult to the appropriate output format."""
     from .renderers import render_diff
 
@@ -127,13 +173,17 @@ def _render_output(result: object, content: str, input_path: Path, output_path: 
         patches = getattr(result, "patches", [])
         issues = getattr(result, "issues", [])
         synthesis = getattr(result, "synthesis", None)
-        synthesis_text = getattr(synthesis, "review_summary", None) if synthesis else None
+        synthesis_text = (
+            getattr(synthesis, "review_summary", None) if synthesis else None
+        )
 
+        checklist = getattr(result, "checklist", None) or None
         diff_output = render_diff(
             patches=patches,
             issues=issues,
             original_content=content,
             synthesis_text=synthesis_text,
+            checklist=checklist,
         )
         print(diff_output)
         return
@@ -154,6 +204,7 @@ def _render_output(result: object, content: str, input_path: Path, output_path: 
         expert_reviews = getattr(result, "expert_reviews", [])
         expert_profiles = getattr(result, "expert_profiles", [])
 
+        checklist_items = getattr(result, "checklist", None) or None
         patch_result = render_docx(
             input_path=input_path,
             output_path=output_path,
@@ -162,6 +213,7 @@ def _render_output(result: object, content: str, input_path: Path, output_path: 
             critical_issues=critical_issues,
             expert_reviews=list(expert_reviews) if expert_reviews else None,
             generated_experts=list(expert_profiles) if expert_profiles else None,
+            checklist_items=checklist_items,
         )
         applied = getattr(patch_result, "applied_patches", 0)
         total = getattr(patch_result, "total_patches", 0)
@@ -182,19 +234,26 @@ def _render_output(result: object, content: str, input_path: Path, output_path: 
         patches = getattr(result, "patches", [])
         issues = getattr(result, "issues", [])
         synthesis = getattr(result, "synthesis", None)
-        synthesis_text = getattr(synthesis, "review_summary", None) if synthesis else None
+        synthesis_text = (
+            getattr(synthesis, "review_summary", None) if synthesis else None
+        )
 
+        checklist = getattr(result, "checklist", None) or None
         diff_output = render_diff(
             patches=patches,
             issues=issues,
             original_content=content,
             synthesis_text=synthesis_text,
+            checklist=checklist,
         )
         output_path.write_text(diff_output, encoding="utf-8")
         print(f"Output: {output_path}")
 
     else:
-        print(f"Error: unsupported output format '{suffix}'. Use .docx, .html, or .md", file=sys.stderr)
+        print(
+            f"Error: unsupported output format '{suffix}'. Use .docx, .html, or .md",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -222,23 +281,35 @@ async def _run(args: argparse.Namespace) -> None:
     content = _read_document(args.file)
     model = _resolve_model(args)
     criteria = _resolve_criteria(args.criteria)
+    guidelines = _resolve_guidelines(args.guidelines)
+    if guidelines is not None and args.task != "checklist":
+        print(
+            "Error: --guidelines is only valid with --task checklist", file=sys.stderr
+        )
+        sys.exit(2)
 
     # Always show basic progress on stderr
     parts = [f"Task: {args.task}"]
     if criteria:
         parts.append("Criteria: custom")
+    if guidelines:
+        parts.append("Guidelines: provided")
     if args.task == "panel":
         parts.append(f"Experts: {args.num_experts}")
     parts.append(f"Model: {model}")
     print(f"Reviewing: {args.file}", file=sys.stderr)
     print("  |  ".join(parts), file=sys.stderr)
-    print(f"Document: {len(content)} chars, ~{len(content.split())} words", file=sys.stderr)
+    print(
+        f"Document: {len(content)} chars, ~{len(content.split())} words",
+        file=sys.stderr,
+    )
 
     result = await sharpen_document(
         content,
         task=args.task,
         num_experts=args.num_experts,
         criteria=criteria,
+        guidelines=guidelines,
         model=model,
         verbose=args.verbose,
     )

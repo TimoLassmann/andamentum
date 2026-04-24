@@ -235,3 +235,35 @@ class SchemaGeneratorOutput(BaseModel):
     fields: list[AnalysisField] = Field(
         description="List of AnalysisField objects defining what to extract from documents"
     )
+
+
+# ---------------------------------------------------------------------------
+# Consistency-reviewer output
+# ---------------------------------------------------------------------------
+
+
+class ConsistencyReviewOutput(BaseModel):
+    """Output from the consistency_reviewer agent."""
+
+    issues: list[DocumentIssue] = Field(
+        default_factory=list,
+        description="Internal-consistency issues found by reading comprehension",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Journal-guidelines-extractor output
+# ---------------------------------------------------------------------------
+
+
+class ExtractedChecklistNames(BaseModel):
+    """Output from the journal_guidelines_extractor agent.
+
+    A flat list of short, checkable item names. Each name becomes one
+    call to checklist_item_evaluator downstream.
+    """
+
+    items: list[str] = Field(
+        default_factory=list,
+        description="Short checkable items extracted from journal author guidelines",
+    )

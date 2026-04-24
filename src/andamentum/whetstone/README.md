@@ -51,6 +51,61 @@ asyncio.run(main())
 Custom criteria (`criteria="..."`) generates a runtime schema and replaces
 the standard review with one tailored to your brief.
 
+### `consistency` — internal consistency check
+
+Flags internal consistency problems in your draft. Combines deterministic
+scanners (figure ordering, acronym first-use, citation resolution) with
+an LLM pass that looks for reading-comprehension issues (numbers that
+disagree across sections, terminology drift, claim emphasis shifts).
+
+Output: `DocumentIssue`s on `ReviewResult.issues`. Renders through the
+existing `review` rendering path.
+
+```python
+result = await sharpen_document(text, task="consistency", model="anthropic:claude-haiku-4-5")
+```
+
+CLI:
+
+```bash
+andamentum-whetstone draft.docx --task consistency -o issues.html
+```
+
+### `checklist` — pre-submission checklist
+
+Evaluates your draft against a baseline pre-submission checklist and,
+optionally, a journal's author guidelines. Each check returns
+`pass` / `fail` / `unclear` with evidence.
+
+The baseline (16 items) covers abstract hygiene, figures/tables,
+references, required statements (COI, data availability, ethics,
+funding), and manuscript hygiene. Deterministic checks (regex-detectable
+things like figure references, statement presence) run as pure Python;
+reading-comprehension checks go to the LLM. Journal-specific items are
+extracted on-the-fly from free-form guideline text you provide.
+
+Output: `ChecklistItem`s on `ReviewResult.checklist`.
+
+```python
+result = await sharpen_document(
+    text,
+    task="checklist",
+    guidelines=open("journal_guidelines.txt").read(),  # optional
+    model="anthropic:claude-haiku-4-5",
+)
+```
+
+CLI:
+
+```bash
+# Baseline only
+andamentum-whetstone draft.docx --task checklist -o report.md
+
+# With journal guidelines
+andamentum-whetstone draft.docx --task checklist \
+    --guidelines @guidelines.txt -o report.html
+```
+
 ## CLI
 
 ```bash
