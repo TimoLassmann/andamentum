@@ -41,7 +41,7 @@ async def test_consistency_merges_scanner_and_llm():
     result = ReviewResult(task="consistency")
     # Document has Figure 2 before Figure 1 — scanner should flag it
     doc = "First see Figure 2. Later Figure 1 explains."
-    await orchestrator._run_consistency(runner, result, doc, verbose=False)
+    await orchestrator._run_consistency(runner, result, doc, verbose=False)  # type: ignore[arg-type]
 
     assert any(i.agent_type == "scanner:figure_order" for i in result.issues)
     assert any(i.agent_type == "consistency_reviewer" for i in result.issues)
@@ -53,7 +53,6 @@ async def test_consistency_no_scanner_findings():
     llm_out = ConsistencyReviewOutput(issues=[])
     runner = _FakeRunner(returns={"consistency_reviewer": llm_out})
     result = ReviewResult(task="consistency")
-    await orchestrator._run_consistency(
-        runner, result, "Clean text with no problems.", verbose=False
-    )
+    doc = "Clean text with no problems."
+    await orchestrator._run_consistency(runner, result, doc, verbose=False)  # type: ignore[arg-type]
     assert result.issues == []
