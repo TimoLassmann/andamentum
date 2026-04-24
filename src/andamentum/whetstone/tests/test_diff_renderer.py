@@ -38,7 +38,10 @@ def test_apply_patches_highest_confidence_first():
 
 
 def test_render_diff_empty():
-    assert render_diff(patches=[], issues=[], original_content="x") == "No edits or issues found."
+    assert (
+        render_diff(patches=[], issues=[], original_content="x")
+        == "No edits or issues found."
+    )
 
 
 def test_render_diff_with_edit_and_issue():
@@ -71,3 +74,43 @@ def test_render_diff_with_synthesis():
     )
     assert "## Synthesis" in out
     assert "Overall this is a solid draft." in out
+
+
+def test_render_diff_checklist_block():
+    from andamentum.whetstone import ChecklistItem
+    from andamentum.whetstone.renderers import render_diff
+
+    items = [
+        ChecklistItem(
+            name="Abstract words",
+            status="pass",
+            notes="240 on p.1",
+            category="abstract",
+        ),
+        ChecklistItem(
+            name="Ethics statement",
+            status="fail",
+            notes="Missing IRB block",
+            category="statements",
+        ),
+        ChecklistItem(
+            name="Keywords",
+            status="unclear",
+            notes="Found but inline",
+            category="hygiene",
+        ),
+    ]
+    output = render_diff(patches=[], issues=[], original_content="", checklist=items)
+    assert "Abstract words" in output
+    assert "Ethics statement" in output
+    # Some kind of status marker is present
+    assert "PASS" in output or "✓" in output
+    assert "FAIL" in output or "✗" in output
+
+
+def test_render_diff_no_checklist_keeps_old_output():
+    from andamentum.whetstone.renderers import render_diff
+
+    out_no = render_diff(patches=[], issues=[], original_content="")
+    out_empty_cl = render_diff(patches=[], issues=[], original_content="", checklist=[])
+    assert out_no == out_empty_cl

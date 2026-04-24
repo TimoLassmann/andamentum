@@ -177,11 +177,13 @@ def _render_output(
             getattr(synthesis, "review_summary", None) if synthesis else None
         )
 
+        checklist = getattr(result, "checklist", None) or None
         diff_output = render_diff(
             patches=patches,
             issues=issues,
             original_content=content,
             synthesis_text=synthesis_text,
+            checklist=checklist,
         )
         print(diff_output)
         return
@@ -234,11 +236,13 @@ def _render_output(
             getattr(synthesis, "review_summary", None) if synthesis else None
         )
 
+        checklist = getattr(result, "checklist", None) or None
         diff_output = render_diff(
             patches=patches,
             issues=issues,
             original_content=content,
             synthesis_text=synthesis_text,
+            checklist=checklist,
         )
         output_path.write_text(diff_output, encoding="utf-8")
         print(f"Output: {output_path}")
