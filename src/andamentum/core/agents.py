@@ -59,8 +59,25 @@ class AgentRunner:
     def __init__(self, *, model: Any):
         from .models import resolve_model
 
+        self._model_input = model  # original spec, kept for introspection
         self.model = resolve_model(model) if isinstance(model, str) else model
         self._cache: dict[str, Any] = {}
+
+    @property
+    def is_local(self) -> bool:
+        """True if the underlying model runs locally and serialises requests.
+
+        Currently identifies Ollama models. Local models can't actually
+        execute parallel requests against the same weights — they queue
+        them — so callers should run their agent fan-outs sequentially
+        to avoid timeout cascades.
+        """
+        # String form: "ollama:llama3" etc.
+        if isinstance(self._model_input, str):
+            return self._model_input.startswith("ollama:")
+        # Resolved-object form: check the class name to avoid hard-importing
+        # pydantic-ai's optional Ollama provider.
+        return type(self._model_input).__name__.lower().startswith("ollama")
 
     async def run(
         self,

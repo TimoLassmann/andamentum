@@ -17,6 +17,7 @@ class _FakeRunner:
     calls: list = field(default_factory=list)
     extractor_items: list[str] | None = None
     evaluator_factory: Callable[[str], ChecklistItem] | None = None
+    is_local: bool = False  # cloud model by default; tests don't care about ordering
 
     async def run(self, defn, **kwargs):  # noqa: ANN001
         self.calls.append((defn.name, kwargs))

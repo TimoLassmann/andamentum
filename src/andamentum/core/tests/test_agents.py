@@ -68,3 +68,15 @@ class TestAgentRunner:
         runner._cache["test"] = "value"
         runner.clear_cache()
         assert len(runner._cache) == 0
+
+    def test_is_local_true_for_ollama_string(self):
+        runner = AgentRunner(model="ollama:llama3")
+        assert runner.is_local is True
+
+    def test_is_local_false_for_openai_string(self):
+        runner = AgentRunner(model="openai:gpt-4o")
+        assert runner.is_local is False
+
+    def test_is_local_false_for_anthropic_string(self):
+        runner = AgentRunner(model="anthropic:claude-haiku-4-5")
+        assert runner.is_local is False
