@@ -5,5 +5,26 @@ Block-based document authoring. Markdown is the source of truth;
 for design rationale.
 """
 
+from .api import Document, Figure, Heading, Paragraph, Table
+from .models import (
+    Block,
+    Reference,
+    Revision,
+    StaleRevisionError,
+    ValidationIssue,
+)
+
 __version__ = "0.1.0"
-__all__: list[str] = []  # populated as public surface lands
+
+__all__ = [
+    "Block",
+    "Document",
+    "Figure",
+    "Heading",
+    "Paragraph",
+    "Reference",
+    "Revision",
+    "StaleRevisionError",
+    "Table",
+    "ValidationIssue",
+]
