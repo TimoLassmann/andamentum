@@ -65,5 +65,6 @@ def test_atoms_validate_against_typeset_validator(monkeypatch, tmp_path):
     doc.append(Paragraph("P"))
 
     atoms = to_typeset_atoms(doc)
-    validated = validate_document(atoms)  # raises if invalid
+    # Cast to the broader Mapping type expected by typeset's validator.
+    validated = validate_document(list(atoms))  # raises if invalid
     assert len(validated) == 2
