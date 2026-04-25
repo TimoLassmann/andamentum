@@ -87,46 +87,6 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _append_to_section(doc: Document, section_name: str, block_spec: dict) -> str:
-    """Insert a block as the last child of a named section."""
-    import json as _json
-
-    from .api import _new_id, _now_iso
-    from .database import open_db
-
-    section_blocks = doc.section(section_name)
-    last = section_blocks[-1]
-    insert_pos = last.position + 1
-    bid = _new_id()
-    now = _now_iso()
-
-    with open_db(doc.database) as conn:
-        conn.execute(
-            "UPDATE scribe_blocks "
-            "SET position = position + 1 "
-            "WHERE doc_id = ? AND position >= ?",
-            (doc.id, insert_pos),
-        )
-        conn.execute(
-            "INSERT INTO scribe_blocks "
-            "(id, doc_id, type, content, position, parent_id, metadata, "
-            " revision, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, NULL, ?, 1, ?, ?)",
-            (
-                bid,
-                doc.id,
-                block_spec["type"],
-                block_spec.get("content", ""),
-                insert_pos,
-                _json.dumps(block_spec.get("metadata", {})),
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-    return bid
-
-
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
@@ -184,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             width_in=args.width_in,
         )
         if args.section:
-            bid = _append_to_section(doc, args.section, spec)
+            bid = doc.insert_into_section(args.section, spec)
         else:
             bid = doc.append(spec)
         print(bid)
@@ -201,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             label=args.label,
         )
         if args.section:
-            bid = _append_to_section(doc, args.section, spec)
+            bid = doc.insert_into_section(args.section, spec)
         else:
             bid = doc.append(spec)
         print(bid)

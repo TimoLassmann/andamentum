@@ -13,3 +13,6 @@ dist/
 
 # Git worktrees (kept inside the repo so Claude Code's permission scope covers them)
 .worktrees/
+
+# scribe & figures local artifacts
+benchmarks/*/output/

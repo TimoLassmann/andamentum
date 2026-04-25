@@ -426,6 +426,95 @@ class Document:
                 )
             conn.commit()
 
+    def insert_into_section(
+        self,
+        section_name: str,
+        block_spec: dict[str, Any],
+        *,
+        position: str = "end",
+    ) -> str:
+        """Insert a block at the end of (or beginning of) a named section.
+
+        `position` is either "end" (append after the section's current last
+        block) or "start" (insert immediately after the heading). Returns
+        the new block id.
+
+        The section lookup and the position-shift happen under
+        ``BEGIN IMMEDIATE`` so the operation is atomic against concurrent
+        writers.
+        """
+        if position not in ("end", "start"):
+            raise ValueError(f"position must be 'end' or 'start', got {position!r}")
+
+        bid = _new_id()
+        now = _now_iso()
+
+        with open_db(self.database) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            rows = conn.execute(
+                "SELECT id, type, content, position, metadata "
+                "FROM scribe_blocks WHERE doc_id = ? ORDER BY position",
+                (self.id,),
+            ).fetchall()
+
+            head_idx: Optional[int] = None
+            head_level = 1
+            for i, r in enumerate(rows):
+                if r["type"] == "heading" and r["content"] == section_name:
+                    head_idx = i
+                    head_level = int(json.loads(r["metadata"]).get("level", 1))
+                    break
+            if head_idx is None:
+                raise KeyError(
+                    f"Section {section_name!r} not found in document {self.id!r}"
+                )
+
+            end = len(rows)
+            for j in range(head_idx + 1, len(rows)):
+                nr = rows[j]
+                if (
+                    nr["type"] == "heading"
+                    and int(json.loads(nr["metadata"]).get("level", 1)) <= head_level
+                ):
+                    end = j
+                    break
+
+            head = rows[head_idx]
+            section_rows = rows[head_idx:end]
+
+            if position == "end":
+                last = section_rows[-1]
+                insert_pos = last["position"] + 1
+            else:  # "start"
+                insert_pos = head["position"] + 1
+
+            conn.execute(
+                "UPDATE scribe_blocks "
+                "SET position = position + 1 "
+                "WHERE doc_id = ? AND position >= ?",
+                (self.id, insert_pos),
+            )
+            conn.execute(
+                "INSERT INTO scribe_blocks "
+                "(id, doc_id, type, content, position, parent_id, metadata, "
+                " revision, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, NULL, ?, 1, ?, ?)",
+                (
+                    bid,
+                    self.id,
+                    block_spec["type"],
+                    block_spec.get("content", ""),
+                    insert_pos,
+                    json.dumps(block_spec.get("metadata", {})),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+
+        return bid
+
     # ------------------------------------------------------------------
     # Reference management
     # ------------------------------------------------------------------
