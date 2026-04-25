@@ -435,59 +435,6 @@ def fts_search(
         return results
 
 
-def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
-    """Extract snippet around first occurrence of query terms.
-
-    Args:
-        content: Full document content
-        query: Search query
-        max_length: Maximum snippet length
-
-    Returns:
-        Snippet with query context
-    """
-    if not content:
-        return ""
-
-    # Simple tokenization - split query into terms
-    query_terms = [
-        term.strip('"').lower()
-        for term in query.split()
-        if term.strip('"').lower() not in {"and", "or", "not"}
-    ]
-
-    if not query_terms:
-        # No valid query terms, return beginning
-        return content[:max_length] + ("..." if len(content) > max_length else "")
-
-    # Find first occurrence of any query term
-    content_lower = content.lower()
-    first_match_pos = -1
-
-    for term in query_terms:
-        pos = content_lower.find(term.rstrip("*"))  # Handle wildcard
-        if pos != -1 and (first_match_pos == -1 or pos < first_match_pos):
-            first_match_pos = pos
-
-    if first_match_pos == -1:
-        # No match found (shouldn't happen with FTS5), return beginning
-        return content[:max_length] + ("..." if len(content) > max_length else "")
-
-    # Extract snippet centered on match
-    snippet_start = max(0, first_match_pos - max_length // 3)
-    snippet_end = min(len(content), snippet_start + max_length)
-
-    snippet = content[snippet_start:snippet_end]
-
-    # Add ellipsis if truncated
-    if snippet_start > 0:
-        snippet = "..." + snippet
-    if snippet_end < len(content):
-        snippet = snippet + "..."
-
-    return snippet
-
-
 def ensemble_search(
     query: str,
     query_embedding: List[float],
