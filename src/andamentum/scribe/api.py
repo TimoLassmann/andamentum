@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .database import open_db
-from .models import Block, StaleRevisionError
+from .models import Block, Reference, StaleRevisionError
+from .parser import extract_citation_keys
 
 
 def _now_iso() -> str:
@@ -423,3 +424,56 @@ class Document:
                     (_new_id(), self.id, para_text, insert_pos + offset, now, now),
                 )
             conn.commit()
+
+    # ------------------------------------------------------------------
+    # Reference management
+    # ------------------------------------------------------------------
+
+    def add_reference(
+        self,
+        *,
+        cite_key: str,
+        bibtex: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> str:
+        """Attach a bibliographic reference to this document."""
+        rid = _new_id()
+        now = _now_iso()
+        with open_db(self.database) as conn:
+            conn.execute(
+                "INSERT INTO scribe_references "
+                "(id, doc_id, cite_key, bibtex_entry, metadata, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (rid, self.id, cite_key, bibtex, json.dumps(metadata or {}), now),
+            )
+            conn.commit()
+        return rid
+
+    def references(self) -> list[Reference]:
+        """Return all references attached to this document."""
+        with open_db(self.database) as conn:
+            rows = conn.execute(
+                "SELECT id, doc_id, cite_key, bibtex_entry, metadata, created_at "
+                "FROM scribe_references WHERE doc_id = ? ORDER BY created_at",
+                (self.id,),
+            ).fetchall()
+        return [
+            Reference(
+                id=r["id"],
+                doc_id=r["doc_id"],
+                cite_key=r["cite_key"],
+                bibtex_entry=r["bibtex_entry"],
+                metadata=json.loads(r["metadata"]),
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    def citations(self) -> list[str]:
+        """Return all citation keys used in paragraph blocks (deduped)."""
+        seen: list[str] = []
+        for blk in self.query(type="paragraph"):
+            for key in extract_citation_keys(blk.content):
+                if key not in seen:
+                    seen.append(key)
+        return seen
