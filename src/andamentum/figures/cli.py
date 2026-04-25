@@ -1,4 +1,4 @@
-"""CLI entry point for mosaic-figures."""
+"""CLI entry point for andamentum-figures."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mosaic-figures",
+        prog="andamentum-figures",
         description="Publication-quality scientific figure generation",
     )
     sub = parser.add_subparsers(dest="command")
