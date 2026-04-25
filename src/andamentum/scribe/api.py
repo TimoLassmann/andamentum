@@ -12,8 +12,9 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .database import open_db
-from .models import Block, Reference, StaleRevisionError
+from .models import Block, Reference, StaleRevisionError, ValidationIssue
 from .parser import extract_citation_keys
+from .validate import validate_document
 
 
 def _now_iso() -> str:
@@ -477,3 +478,7 @@ class Document:
                 if key not in seen:
                     seen.append(key)
         return seen
+
+    def validate(self) -> list[ValidationIssue]:
+        """Run structural validators. See validate.validate_document."""
+        return validate_document(self)
