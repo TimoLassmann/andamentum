@@ -103,8 +103,16 @@ class Document:
         title: str,
         database: str,
         template: Optional[str] = None,
+        scaffold: Optional[str] = None,
     ) -> "Document":
-        """Create a new document and return its handle."""
+        """Create a new document and return its handle.
+
+        If `scaffold` is given (e.g. "article", "grant"), the document is
+        pre-populated with the corresponding section structure. See
+        scaffolds.py for available scaffolds.
+        """
+        from .scaffolds import SCAFFOLDS
+
         doc_id = _new_id()
         now = _now_iso()
         with open_db(database) as conn:
@@ -115,7 +123,25 @@ class Document:
                 (doc_id, title, template, now, now),
             )
             conn.commit()
-        return cls(id=doc_id, title=title, database=database, template=template)
+        doc = cls(id=doc_id, title=title, database=database, template=template)
+
+        if scaffold is not None:
+            if scaffold not in SCAFFOLDS:
+                raise ValueError(
+                    f"Unknown scaffold {scaffold!r}. Available: {sorted(SCAFFOLDS)}"
+                )
+            for section_name, guide in SCAFFOLDS[scaffold]:
+                doc.append(Heading(section_name, level=1))
+                # placeholder paragraph carrying the guide for downstream agents
+                doc.append(
+                    {
+                        "type": "paragraph",
+                        "content": "",
+                        "metadata": {"guide": guide} if guide else {},
+                    }
+                )
+
+        return doc
 
     @classmethod
     def open(cls, doc_id: str, *, database: str) -> "Document":
