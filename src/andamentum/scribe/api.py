@@ -165,6 +165,51 @@ class Document:
             conn.commit()
         return bid
 
+    def replace(
+        self,
+        block_id: str,
+        new_content: str,
+        *,
+        expected_revision: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Replace a block's content under optimistic locking.
+
+        Raises StaleRevisionError if the block's current revision differs
+        from `expected_revision`. Bumps revision on success and writes
+        an audit row to scribe_revisions.
+        """
+        from .models import StaleRevisionError
+
+        now = _now_iso()
+        with open_db(self.database) as conn:
+            row = conn.execute(
+                "SELECT content, revision FROM scribe_blocks "
+                "WHERE id = ? AND doc_id = ?",
+                (block_id, self.id),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Block {block_id!r} not found in document {self.id!r}")
+            current_rev = row["revision"]
+            if current_rev != expected_revision:
+                raise StaleRevisionError(
+                    block_id=block_id, expected=expected_revision, actual=current_rev
+                )
+            new_rev = current_rev + 1
+            conn.execute(
+                "UPDATE scribe_blocks "
+                "SET content = ?, revision = ?, updated_at = ? "
+                "WHERE id = ?",
+                (new_content, new_rev, now, block_id),
+            )
+            conn.execute(
+                "INSERT INTO scribe_revisions "
+                "(block_id, revision, previous_content, new_content, reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (block_id, new_rev, row["content"], new_content, reason, now),
+            )
+            conn.commit()
+
     def query(self, *, type: Optional[str] = None) -> list[Block]:
         """Return blocks for this document, ordered by position."""
         sql = (
