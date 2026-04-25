@@ -1,6 +1,7 @@
 """Tests for Phase 3: plots and legend modules."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -82,7 +83,8 @@ class TestLinePlot:
         fig, ax = plt.subplots()
         x = [0, 1, 2, 3]
         line_plot(
-            ax, x,
+            ax,
+            x,
             {"A": [100, 80, 50, 20], "B": [100, 90, 70, 60]},
             ci_series={"A": ([95, 75, 45, 15], [105, 85, 55, 25])},
             ylabel="Viability (%)",
@@ -94,7 +96,9 @@ class TestLinePlot:
 class TestLineWithCI:
     def test_basic(self, tmp_path):
         fig, ax = plt.subplots()
-        line_with_ci(ax, [1, 2, 3], [10, 20, 30], [8, 18, 28], [12, 22, 32], label="Test")
+        line_with_ci(
+            ax, [1, 2, 3], [10, 20, 30], [8, 18, 28], [12, 22, 32], label="Test"
+        )
         savefig(fig, tmp_path / "line_ci2.png")
         assert (tmp_path / "line_ci2.png").exists()
 
@@ -106,8 +110,13 @@ class TestScatterPlot:
     def test_basic(self, tmp_path):
         fig, ax = plt.subplots()
         rng = np.random.default_rng(42)
-        scatter_plot(ax, rng.normal(0, 1, 100).tolist(), rng.normal(0, 1, 100).tolist(),
-                     xlabel="X", ylabel="Y")
+        scatter_plot(
+            ax,
+            rng.normal(0, 1, 100).tolist(),
+            rng.normal(0, 1, 100).tolist(),
+            xlabel="X",
+            ylabel="Y",
+        )
         savefig(fig, tmp_path / "scatter.png")
         assert (tmp_path / "scatter.png").exists()
 
@@ -119,10 +128,14 @@ class TestBoxPlot:
     def test_basic(self, tmp_path):
         fig, ax = plt.subplots()
         rng = np.random.default_rng(42)
-        box_plot(ax, {
-            "Control": rng.normal(10, 2, 50).tolist(),
-            "Treatment": rng.normal(15, 3, 50).tolist(),
-        }, ylabel="Response")
+        box_plot(
+            ax,
+            {
+                "Control": rng.normal(10, 2, 50).tolist(),
+                "Treatment": rng.normal(15, 3, 50).tolist(),
+            },
+            ylabel="Response",
+        )
         savefig(fig, tmp_path / "box.png")
         assert (tmp_path / "box.png").exists()
 
@@ -134,8 +147,11 @@ class TestBoxPlot:
 
     def test_sorted(self, tmp_path):
         fig, ax = plt.subplots()
-        box_plot(ax, {"Low": [1, 2, 3], "High": [10, 11, 12], "Mid": [5, 6, 7]},
-                 sort_by_median=True)
+        box_plot(
+            ax,
+            {"Low": [1, 2, 3], "High": [10, 11, 12], "Mid": [5, 6, 7]},
+            sort_by_median=True,
+        )
         savefig(fig, tmp_path / "box_sorted.png")
         assert (tmp_path / "box_sorted.png").exists()
 
@@ -159,10 +175,13 @@ class TestViolinPlot:
     def test_basic(self, tmp_path):
         fig, ax = plt.subplots()
         rng = np.random.default_rng(42)
-        violin_plot(ax, {
-            "Normal": rng.normal(0, 1, 100).tolist(),
-            "Uniform": rng.uniform(-2, 2, 100).tolist(),
-        })
+        violin_plot(
+            ax,
+            {
+                "Normal": rng.normal(0, 1, 100).tolist(),
+                "Uniform": rng.uniform(-2, 2, 100).tolist(),
+            },
+        )
         savefig(fig, tmp_path / "violin.png")
         assert (tmp_path / "violin.png").exists()
 
@@ -208,10 +227,13 @@ class TestSwarmPlot:
     def test_basic(self, tmp_path):
         fig, ax = plt.subplots()
         rng = np.random.default_rng(42)
-        swarm_plot(ax, {
-            "A": rng.normal(5, 1, 30).tolist(),
-            "B": rng.normal(7, 1, 30).tolist(),
-        })
+        swarm_plot(
+            ax,
+            {
+                "A": rng.normal(5, 1, 30).tolist(),
+                "B": rng.normal(7, 1, 30).tolist(),
+            },
+        )
         savefig(fig, tmp_path / "swarm.png")
         assert (tmp_path / "swarm.png").exists()
 

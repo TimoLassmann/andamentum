@@ -9,12 +9,13 @@ Provides heuristics for:
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from .types import DataTable
 
 
 def detect_log_scale(
-    values: list[float | int],
+    values: Sequence[float | int],
     label: str | None = None,
 ) -> bool:
     """Detect whether logarithmic scale is appropriate for the data.

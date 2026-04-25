@@ -3,7 +3,11 @@
 import pytest
 
 from andamentum.figures.advisor import check_banned, recommend_kind, validate_kind
-from andamentum.figures.auto import detect_column_roles, detect_log_scale, recommend_sort
+from andamentum.figures.auto import (
+    detect_column_roles,
+    detect_log_scale,
+    recommend_sort,
+)
 from andamentum.figures.stats import aggregate_by, bootstrap_ci, compute_mean_error
 from andamentum.figures.types import DataTable
 
@@ -43,10 +47,12 @@ class TestRecommendKind:
         assert kind == "bar"
 
     def test_categorical_x_few_per_group_strip(self):
-        dt = DataTable.from_dict({
-            "group": ["A", "A", "A", "B", "B", "B"],
-            "value": [1, 2, 3, 4, 5, 6],
-        })
+        dt = DataTable.from_dict(
+            {
+                "group": ["A", "A", "A", "B", "B", "B"],
+                "value": [1, 2, 3, 4, 5, 6],
+            }
+        )
         kind = recommend_kind(dt, x="group", y="value", group=None)
         assert kind == "strip"
 
@@ -82,10 +88,12 @@ class TestRecommendKind:
 
 class TestValidateKind:
     def test_bar_distribution_warning(self):
-        dt = DataTable.from_dict({
-            "group": ["A"] * 10 + ["B"] * 10,
-            "value": list(range(20)),
-        })
+        dt = DataTable.from_dict(
+            {
+                "group": ["A"] * 10 + ["B"] * 10,
+                "value": list(range(20)),
+            }
+        )
         warnings = validate_kind("bar", dt, x="group", y="value")
         assert any("hides distribution" in w for w in warnings)
 
@@ -101,19 +109,26 @@ class TestValidateKind:
         assert any("colors" in w for w in warnings)
 
     def test_too_many_lines_warning(self):
-        dt = DataTable.from_dict({
-            "x": [1, 2, 3],
-            "a": [1, 2, 3], "b": [2, 3, 4], "c": [3, 4, 5],
-            "d": [4, 5, 6], "e": [5, 6, 7],
-        })
+        dt = DataTable.from_dict(
+            {
+                "x": [1, 2, 3],
+                "a": [1, 2, 3],
+                "b": [2, 3, 4],
+                "c": [3, 4, 5],
+                "d": [4, 5, 6],
+                "e": [5, 6, 7],
+            }
+        )
         warnings = validate_kind("line", dt, x="x", y=["a", "b", "c", "d", "e"])
         assert any("overlapping series" in w for w in warnings)
 
     def test_box_few_obs_warning(self):
-        dt = DataTable.from_dict({
-            "group": ["A", "A", "B", "B"],
-            "value": [1, 2, 3, 4],
-        })
+        dt = DataTable.from_dict(
+            {
+                "group": ["A", "A", "B", "B"],
+                "value": [1, 2, 3, 4],
+            }
+        )
         warnings = validate_kind("box", dt, x="group", y="value")
         assert any("unreliable" in w for w in warnings)
 
@@ -165,7 +180,9 @@ class TestDetectColumnRoles:
         assert len(y_cols) == 1
 
     def test_error_column_auto_detect(self):
-        dt = DataTable.from_dict({"group": ["A", "B"], "val": [1, 2], "error": [0.1, 0.2]})
+        dt = DataTable.from_dict(
+            {"group": ["A", "B"], "val": [1, 2], "error": [0.1, 0.2]}
+        )
         x, y_cols, group, error = detect_column_roles(dt)
         assert error == "error"
 
@@ -211,6 +228,7 @@ class TestBootstrapCI:
     def test_ci_width(self):
         """CI should be narrower (relative to mean) with more data from same distribution."""
         import random
+
         rng = random.Random(42)
         small = [rng.gauss(10, 2) for _ in range(5)]
         large = [rng.gauss(10, 2) for _ in range(200)]
