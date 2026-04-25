@@ -27,7 +27,7 @@ def get_databases_dir() -> Path:
     override = os.environ.get(DB_DIR_ENV_VAR)
     if override:
         return Path(override)
-    return Path(os.environ["HOME"]) / _DEFAULT_SUBDIR
+    return Path.home() / _DEFAULT_SUBDIR
 
 
 def get_database_path(name: str) -> Path:
@@ -41,7 +41,8 @@ def open_db(name_or_path: str) -> Iterator[sqlite3.Connection]:
 
     `name_or_path` is either a logical database name ("my_paper") or
     the literal ":memory:" for an in-memory store. File-based DBs are
-    created on first use.
+    created on first use. The connection is closed even if `init_schema`
+    raises during setup.
     """
     if name_or_path == ":memory:":
         conn = sqlite3.connect(":memory:")
@@ -50,9 +51,9 @@ def open_db(name_or_path: str) -> Iterator[sqlite3.Connection]:
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path))
 
-    conn.row_factory = sqlite3.Row
-    init_schema(conn)
     try:
+        conn.row_factory = sqlite3.Row
+        init_schema(conn)
         yield conn
     finally:
         conn.close()
