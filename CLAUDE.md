@@ -6,13 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Andamentum is a single Python package (`src/andamentum/`) containing three tightly-scoped sub-modules for building agentic reasoning pipelines. It was consolidated from three separate packages; the commit history around that migration is relevant context.
+Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-modules for building agentic reasoning pipelines. The core three were consolidated from separate packages; the commit history around that migration is relevant context.
 
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal Reciprocal Rank Fusion search and LLM metadata extraction
+- `andamentum.whetstone` — structured multi-lens document review over your own drafts (grammar/style edits, specialist critique, multi-expert panel); output as Word track-changes, HTML, or markdown diff
+- `andamentum.typeset` — standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules for rendering
+- `andamentum.core` — shared model-resolution, `AgentRunner`, and (future) embedding infrastructure used by all sub-modules
 
-Everything ships in one distribution. There are no optional extras — dependencies are the flat union of what the three sub-modules need.
+Everything ships in one distribution. There are no optional extras — dependencies are the flat union of what the sub-modules need.
 
 ## Commands
 
@@ -53,14 +56,15 @@ The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1
 
 ## CLIs
 
-Two scripts installed by the package:
+Three scripts installed by the package:
 
 ```bash
 andamentum-epistemic --help
 andamentum-research --help
+andamentum-whetstone --help
 ```
 
-Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`. There are no hidden defaults — if a model isn't provided, the CLI exits with an error.
+All three CLIs require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults.
 
 ## Architectural conventions
 
@@ -73,6 +77,7 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 - `document_store` is foundational; `epistemic` may depend on it directly (e.g., `EpistemicRepository` wraps a `DocumentStore`).
 - `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
+- `whetstone` depends only on `core` (for `AgentRunner`/`AgentDefinition`) and optionally on `typeset` for HTML rendering. It MUST NOT depend on `epistemic`, `deep_research`, or `document_store`.
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
@@ -97,7 +102,9 @@ Both require a model, either via `--model anthropic:claude-haiku-4-5` or `$ANDAM
 
 **Document store** is SQLite-first. Databases live in `~/.local/share/document-store/{name}.db` (override with `DOCUMENT_STORE_DIR`; legacy `ANDAMENTUM_DATABASES_DIR` is also honoured). Ingestion is two-phase: document registered immediately (FTS5-searchable), chunks + embeddings written in a background pass that `repair()` can resume after a crash. Search fuses four signals via RRF: FTS5 keyword, chunk embeddings, doc embeddings, and DHP (temporal clustering, see `dhp.py`). Requires Ollama running locally with `embeddinggemma:latest` for embeddings.
 
-**Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`) for side-by-side comparison with the legacy `html_report.py` renderer. See `src/andamentum/typeset/USAGE.md` for the full API reference.
+**Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`) for side-by-side comparison with the legacy `html_report.py` renderer, and by `whetstone` for its HTML review output. See `src/andamentum/typeset/USAGE.md` for the full API reference.
+
+**Whetstone module** (`andamentum.whetstone`) — structured multi-lens feedback over drafts the user wrote themselves. Entry point: `sharpen_document(text, task=...)` returns a `ReviewResult` holding `DocumentPatch` edits and `DocumentIssue` findings. Scanners live in `consistency_scanners.py` and `checklist_scanners.py`; the agent registry is in `agents/`; renderers (`render_docx`, `render_html`, `render_diff`, `apply_patches`) in `renderers/`. The DOCX renderer emits track-changes Word output and prepends a checklist section when checklist tasks are present.
 
 ## Working in git worktrees
 
