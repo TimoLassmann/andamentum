@@ -18,6 +18,7 @@ class _FakeRunner:
     """
 
     returns: dict[str, Any]
+    is_local: bool = False  # cloud model by default
 
     async def run(self, defn, **kwargs):  # noqa: ANN001
         return self.returns[defn.name]

@@ -97,10 +97,28 @@ class ReviewResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _run_agents(phase_name: str, *coros: Any) -> Any:
-    """Gather coroutines, re-raising with phase context on failure."""
+async def _run_agents(
+    runner: AgentRunner,
+    phase_name: str,
+    *coros: Any,
+) -> list[Any]:
+    """Run several agent calls, in parallel for cloud models, sequentially
+    for local (Ollama) models.
+
+    Local models like Ollama can't truly serve parallel requests against
+    the same weights — they queue them internally, and the OpenAI client's
+    per-request timeout fires on the queued ones. Running sequentially
+    when ``runner.is_local`` avoids the timeout cascade.
+
+    Re-raises any failure with phase context for clearer error messages.
+    """
     try:
-        return await asyncio.gather(*coros)
+        if runner.is_local:
+            results: list[Any] = []
+            for coro in coros:
+                results.append(await coro)
+            return results
+        return list(await asyncio.gather(*coros))
     except Exception as exc:
         raise RuntimeError(f"Agent failure during {phase_name}: {exc}") from exc
 
@@ -237,7 +255,7 @@ async def _run_edit(
             )
             for inst in editors
         ]
-        outputs = await _run_agents("multi-editor", *coros)
+        outputs = await _run_agents(runner, "multi-editor", *coros)
         for output in outputs:
             result.patches.extend(getattr(output, "patches", []))
 
@@ -281,6 +299,7 @@ async def _run_standard_review(
         file=sys.stderr,
     )
     clarity, merit, methodology, results_review = await _run_agents(
+        runner,
         "standard review",
         _run_one(runner, "clarity_accessibility_reviewer", document=content),
         _run_one(runner, "core_scientific_merit_reviewer", document=content),
@@ -368,12 +387,14 @@ async def _run_panel_review(
     print(f"  Disciplines: {', '.join(disciplines)}", file=sys.stderr)
 
     profiles = await _run_agents(
+        runner,
         "expert profile generation",
         *[_run_one(runner, "expert_generator", discipline=d) for d in disciplines],
     )
     result.expert_profiles = list(profiles)
 
     expert_reviews = await _run_agents(
+        runner,
         "expert review",
         *[
             _run_one(
@@ -487,6 +508,7 @@ async def _run_checklist(
     )
 
     baseline_items = await _run_agents(
+        runner,
         "baseline-checklist",
         *[_evaluate_baseline_item(runner, check, content) for check in BASELINE_CHECKS],
     )
@@ -506,8 +528,10 @@ async def _run_checklist(
         return
 
     print(f"Evaluating {len(journal_names)} journal items...", file=sys.stderr)
-    journal_items = await asyncio.gather(
-        *[_evaluate_journal_item(runner, name, content) for name in journal_names]
+    journal_items = await _run_agents(
+        runner,
+        "journal-checklist",
+        *[_evaluate_journal_item(runner, name, content) for name in journal_names],
     )
     result.checklist.extend(journal_items)
 
