@@ -70,7 +70,13 @@ _DDL = [
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """Create scribe tables and record the schema version. Idempotent."""
+    """Create scribe tables and record the schema version. Idempotent.
+
+    Also enables ``PRAGMA foreign_keys = ON``. The pragma is connection-
+    scoped in SQLite, so callers MUST re-apply it for every new connection.
+    The connection factory in :mod:`andamentum.scribe.database` does this
+    by routing every connection through ``init_schema``.
+    """
     conn.execute("PRAGMA foreign_keys = ON")
     for stmt in _DDL:
         conn.execute(stmt)
