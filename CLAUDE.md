@@ -13,6 +13,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal Reciprocal Rank Fusion search and LLM metadata extraction
 - `andamentum.whetstone` — structured multi-lens document review over your own drafts (grammar/style edits, specialist critique, multi-expert panel); output as Word track-changes, HTML, or markdown diff
 - `andamentum.scribe` — structured document drafting: block-based authoring (paragraph, heading, figure, table), section abstraction, built-in `article`/`grant` scaffolds, SQLite-backed source of truth, one-way render to `.docx`. Replaces the standalone `document-tools:doc-draft` plugin.
+- `andamentum.figures` — publication-quality scientific figure generation: 9 chart types, 7 journal palettes, journal-matched sizing, auto chart-kind selection. `scribe_glue.insert_figure` renders + inserts into a scribe section in one call. Absorbed from the standalone `mosaic-figures` package.
 - `andamentum.typeset` — standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules for rendering
 - `andamentum.core` — shared model-resolution, `AgentRunner`, and (future) embedding infrastructure used by all sub-modules
 
@@ -57,16 +58,17 @@ The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1
 
 ## CLIs
 
-Four scripts installed by the package:
+Five scripts installed by the package:
 
 ```bash
 andamentum-epistemic --help
 andamentum-research --help
 andamentum-whetstone --help
 andamentum-scribe --help
+andamentum-figures --help
 ```
 
-`andamentum-epistemic`, `andamentum-research`, and `andamentum-whetstone` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-scribe` has no LLM dependency in v1.
+`andamentum-epistemic`, `andamentum-research`, and `andamentum-whetstone` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
 
 ## Architectural conventions
 
@@ -80,7 +82,8 @@ andamentum-scribe --help
 - `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
 - `whetstone` depends only on `core` (for `AgentRunner`/`AgentDefinition`) and optionally on `typeset` for HTML rendering. It MUST NOT depend on `epistemic`, `deep_research`, or `document_store`.
-- `scribe` depends only on `typeset` (for HTML/PDF rendering) and stdlib `sqlite3`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, or `core`.
+- `scribe` depends only on `typeset` (for HTML/PDF rendering) and stdlib `sqlite3`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `figures`, or `core`.
+- `figures` depends only on matplotlib + numpy + pydantic. The optional `figures.scribe_glue` submodule is the ONLY place where `scribe` is imported; the rest of `figures` MUST NOT touch `scribe`. `figures` MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `typeset`, or `core`.
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
@@ -108,6 +111,8 @@ andamentum-scribe --help
 **Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`) for side-by-side comparison with the legacy `html_report.py` renderer, by `whetstone` for its HTML review output, and by `scribe` for its HTML/PDF render path. See `src/andamentum/typeset/USAGE.md` for the full API reference.
 
 **Whetstone module** (`andamentum.whetstone`) — structured multi-lens feedback over drafts the user wrote themselves. Entry point: `sharpen_document(text, task=...)` returns a `ReviewResult` holding `DocumentPatch` edits and `DocumentIssue` findings. Scanners live in `consistency_scanners.py` and `checklist_scanners.py`; the agent registry is in `agents/`; renderers (`render_docx`, `render_html`, `render_diff`, `apply_patches`) in `renderers/`. The DOCX renderer emits track-changes Word output and prepends a checklist section when checklist tasks are present.
+
+**Figures module** (`andamentum.figures`) — publication-quality scientific figure generation. High-level entry point: `figure(data, *, kind="auto", style="npg", journal="default", output="figure.pdf")`. Lower-level building blocks: `setup_style`, `get_palette`, `savefig`, `panel_label`, `shared_legend`, `despine` (in `style.py`); plot primitives in `plots.py`; auto-detection (chart kind, log scale, column roles) in `auto.py` and `advisor.py`; bootstrap stats in `stats.py`. The package was absorbed from `mosaic-figures` (uninstall the standalone tool with `uv tool uninstall mosaic-figures` once this branch lands). Scribe integration lives in `figures/scribe_glue.py`: `insert_figure(doc, section, *, output_dir, caption, label, **chart_kwargs)` renders a PNG and inserts a `Figure` block via `Document.insert_into_section`.
 
 **Scribe module** (`andamentum.scribe`) — block-based document authoring. Documents live in SQLite at `~/.local/share/scribe/<name>.db` (override with `SCRIBE_DIR`). Public entry point: `Document.create(title=..., database=..., scaffold="article" | "grant" | None)`; mutate with `append`/`replace`/`replace_section`; render with `render(path, format="docx")`. Section operations (`list_sections`, `section`, `replace_section`) are derived from heading blocks — there is no separate sections table. Each block has an integer revision counter; `replace()` enforces optimistic locking via `BEGIN IMMEDIATE` and writes an audit row to `scribe_revisions`. Citations are Pandoc-flavoured `[@key]` spans extracted by regex; references live in their own table; `[verify]` and `[citation needed]` markers are recognised and reported by `validate()`. Inline markdown (bold/italic/code) renders as styled runs in `.docx`. HTML/PDF rendering goes through `typeset` (block→atom mapping in `render_typeset.py`). Scribe replaces the standalone `document-tools:doc-draft` plugin for Word file authoring; `.pptx` stays out of scope.
 
