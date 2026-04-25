@@ -346,9 +346,10 @@ class Document:
             end = len(rows)
             for j in range(head_idx + 1, len(rows)):
                 nr = rows[j]
-                if nr["type"] == "heading" and int(
-                    json.loads(nr["metadata"]).get("level", 1)
-                ) <= head_level:
+                if (
+                    nr["type"] == "heading"
+                    and int(json.loads(nr["metadata"]).get("level", 1)) <= head_level
+                ):
                     end = j
                     break
 
