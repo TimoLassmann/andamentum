@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class Block(BaseModel):
     content: str = ""
     position: int
     parent_id: Optional[str] = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     revision: int = 1
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -32,7 +32,7 @@ class Reference(BaseModel):
     doc_id: str
     cite_key: str
     bibtex_entry: Optional[str] = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
 
 

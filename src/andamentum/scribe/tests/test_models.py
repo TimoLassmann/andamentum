@@ -6,6 +6,7 @@ from andamentum.scribe.models import (
     Block,
     BlockType,
     Reference,
+    Revision,
     StaleRevisionError,
     ValidationIssue,
 )
@@ -85,3 +86,9 @@ def test_stale_revision_error_carries_context():
 def test_block_type_literal_values():
     expected = {"paragraph", "heading", "figure", "table"}
     assert set(BlockType.__args__) == expected
+
+
+def test_revision_minimal():
+    r = Revision(block_id="b1", revision=2, previous_content="old", new_content="new")
+    assert r.id is None
+    assert r.reason is None
