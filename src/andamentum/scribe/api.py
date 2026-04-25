@@ -314,24 +314,56 @@ class Document:
         The heading itself is preserved. Body blocks are deleted (one revision
         row per deleted block) and content is split on blank lines into
         paragraph blocks inserted in their place.
-        """
-        section_blocks = self.section(name)
-        head = section_blocks[0]
-        body = section_blocks[1:]
-        body_ids = [b.id for b in body]
 
+        Uses ``BEGIN IMMEDIATE`` and reads the section under the write lock
+        so the section traversal and the subsequent mutations are atomic.
+        """
+        # Normalise CRLF before splitting so Windows-flavoured input parses correctly.
+        content = content.replace("\r\n", "\n")
         new_paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
         now = _now_iso()
 
         with open_db(self.database) as conn:
-            # Log deletion of each existing body block as a revision row
+            conn.execute("BEGIN IMMEDIATE")
+
+            # Read every block under the write lock and find the named section.
+            rows = conn.execute(
+                "SELECT id, type, content, position, metadata, revision "
+                "FROM scribe_blocks WHERE doc_id = ? ORDER BY position",
+                (self.id,),
+            ).fetchall()
+
+            head_idx: Optional[int] = None
+            head_level = 1
+            for i, r in enumerate(rows):
+                if r["type"] == "heading" and r["content"] == name:
+                    head_idx = i
+                    head_level = int(json.loads(r["metadata"]).get("level", 1))
+                    break
+            if head_idx is None:
+                raise KeyError(f"Section {name!r} not found in document {self.id!r}")
+
+            end = len(rows)
+            for j in range(head_idx + 1, len(rows)):
+                nr = rows[j]
+                if nr["type"] == "heading" and int(
+                    json.loads(nr["metadata"]).get("level", 1)
+                ) <= head_level:
+                    end = j
+                    break
+
+            head = rows[head_idx]
+            body = rows[head_idx + 1 : end]
+            body_ids = [b["id"] for b in body]
+
+            # Log deletion of each existing body block as a revision row.
             for b in body:
-                new_rev = b.revision + 1
+                new_rev = b["revision"] + 1
                 conn.execute(
                     "INSERT INTO scribe_revisions "
                     "(block_id, revision, previous_content, new_content, reason, created_at) "
                     "VALUES (?, ?, ?, '', ?, ?)",
-                    (b.id, new_rev, b.content, reason, now),
+                    (b["id"], new_rev, b["content"], reason, now),
                 )
             if body_ids:
                 placeholders = ",".join("?" for _ in body_ids)
@@ -340,15 +372,15 @@ class Document:
                     body_ids,
                 )
 
-            # Compact remaining positions, then insert new paragraphs after the heading
+            # Compact remaining positions, then insert new paragraphs after the heading.
             conn.execute(
                 "UPDATE scribe_blocks "
                 "SET position = position - ? "
                 "WHERE doc_id = ? AND position > ?",
-                (len(body), self.id, head.position),
+                (len(body), self.id, head["position"]),
             )
-            insert_pos = head.position + 1
-            # Make room for new paragraphs by pushing later blocks down again
+            insert_pos = head["position"] + 1
+            # Make room for new paragraphs by pushing later blocks down again.
             conn.execute(
                 "UPDATE scribe_blocks "
                 "SET position = position + ? "
