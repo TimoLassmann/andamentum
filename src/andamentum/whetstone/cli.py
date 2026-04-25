@@ -90,7 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (default: $ANDAMENTUM_MAIN_LLM_MODEL or openai:gpt-4o)",
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
@@ -99,15 +99,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_model(args: argparse.Namespace) -> str:
-    """Resolve the LLM model string to use for agent execution.
+    """Resolve the LLM model string via the shared core resolver.
 
     Precedence: ``--model`` flag > ``ANDAMENTUM_MAIN_LLM_MODEL`` environment
-    variable > default ``openai:gpt-4o``. Returns a pydantic-ai model
-    string (e.g. ``openai:gpt-4o``, ``anthropic:claude-sonnet-4-5``).
+    variable. If neither is set the resolver prints an error and exits.
     """
-    import os
+    from andamentum.core.models import resolve_model_from_args
 
-    return args.model or os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL") or "openai:gpt-4o"
+    return resolve_model_from_args(args.model)
 
 
 def _resolve_criteria(raw: str | None) -> str | None:
