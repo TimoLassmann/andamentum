@@ -32,6 +32,7 @@ dependencies = [
     "markdown>=3.5.0",           # typeset
     "python-docx>=1.2.0",        # whetstone (docx track changes)
     "lxml>=5.0.0",               # whetstone (docx xml manipulation)
+    "matplotlib>=3.8",           # figures (publication-quality plotting engine)
 ]
 
 [project.scripts]
@@ -39,6 +40,7 @@ andamentum-epistemic = "andamentum.epistemic.cli:main"
 andamentum-research  = "andamentum.deep_research.cli:main"
 andamentum-whetstone = "andamentum.whetstone.cli:main"
 andamentum-scribe    = "andamentum.scribe.cli:main"
+andamentum-figures   = "andamentum.figures.cli:main"
 
 [project.optional-dependencies]
 dev = [
