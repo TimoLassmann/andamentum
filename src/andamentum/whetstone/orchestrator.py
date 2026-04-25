@@ -156,7 +156,7 @@ async def sharpen_document(
     criteria: Optional[str] = None,
     editors: Optional[list[str]] = None,
     guidelines: Optional[str] = None,
-    model: str = "openai:gpt-4o",
+    model: str,
     verbose: bool = False,
 ) -> ReviewResult:
     """Run structured feedback over a draft you wrote yourself.
@@ -172,8 +172,9 @@ async def sharpen_document(
             editor. When provided, runs one editor per instruction in parallel.
         guidelines: Journal author guidelines (free text). Only valid
             for task="checklist"; raises ValueError otherwise.
-        model: pydantic-ai model string (e.g. "openai:gpt-4o",
-            "anthropic:claude-haiku-4-5").
+        model: pydantic-ai model string (e.g. "anthropic:claude-haiku-4-5",
+            "openai:gpt-4o"). Required — no default. CLI callers should
+            resolve via ``andamentum.core.models.resolve_model_from_args``.
         verbose: Print progress messages to stderr.
 
     Returns:

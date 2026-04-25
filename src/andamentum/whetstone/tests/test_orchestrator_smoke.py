@@ -23,7 +23,7 @@ def test_review_result_defaults():
 
 async def test_sharpen_document_rejects_invalid_task():
     with pytest.raises(ValueError, match="Invalid task"):
-        await sharpen_document("hello", task="bogus")
+        await sharpen_document("hello", task="bogus", model="anthropic:claude-haiku-4-5")
 
 
 def test_review_result_checklist_default():
