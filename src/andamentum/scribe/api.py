@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .database import open_db
-from .models import Block
+from .models import Block, StaleRevisionError
 
 
 def _now_iso() -> str:
@@ -178,11 +178,14 @@ class Document:
         Raises StaleRevisionError if the block's current revision differs
         from `expected_revision`. Bumps revision on success and writes
         an audit row to scribe_revisions.
-        """
-        from .models import StaleRevisionError
 
+        Uses ``BEGIN IMMEDIATE`` to acquire the write lock before reading
+        the current revision, closing the TOCTOU window between the
+        check and the update.
+        """
         now = _now_iso()
         with open_db(self.database) as conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT content, revision FROM scribe_blocks "
                 "WHERE id = ? AND doc_id = ?",
