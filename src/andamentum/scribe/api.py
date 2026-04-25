@@ -482,3 +482,12 @@ class Document:
     def validate(self) -> list[ValidationIssue]:
         """Run structural validators. See validate.validate_document."""
         return validate_document(self)
+
+    def render(self, output_path: str, *, format: str = "docx") -> None:
+        """Render this document to a file. v1 supports format='docx' only."""
+        if format == "docx":
+            from .render_docx import render_to_docx
+
+            render_to_docx(self, output_path)
+        else:
+            raise ValueError(f"Unsupported format {format!r}. v1 supports: 'docx'.")
