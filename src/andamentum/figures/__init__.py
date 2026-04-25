@@ -28,28 +28,29 @@ For plot primitives, import from submodules::
     from andamentum.figures.stats import bootstrap_ci
 """
 
+# === Functions you can wrap as agent tools ===
 from .palettes import get_palette, list_palettes
 from .render import figure
 from .standards import get_preset, list_presets, resolve_width
 from .style import despine, panel_label, savefig, setup_style, shared_legend
+
+# === Result/data types (returned by the above; not tools themselves) ===
 from .types import DataTable, FigureMode, FigureResult, PlotKind
 
 __all__ = [
-    # High-level API
+    # Functions / callables
     "figure",
-    # Style & layout
     "setup_style",
     "get_palette",
     "panel_label",
     "savefig",
     "shared_legend",
     "despine",
-    # Presets & palettes
     "get_preset",
     "list_presets",
     "list_palettes",
     "resolve_width",
-    # Types
+    # Data types
     "PlotKind",
     "FigureMode",
     "FigureResult",

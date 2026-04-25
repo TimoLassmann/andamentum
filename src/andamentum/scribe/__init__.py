@@ -5,7 +5,15 @@ Block-based document authoring. Markdown is the source of truth;
 for design rationale.
 """
 
+# === Functions you can wrap as agent tools ===
+# `Document` is a class — wrap its methods (`create`, `open`, `append`, `query`,
+# `replace`, `replace_section`, `insert_into_section`, `add_reference`,
+# `references`, `citations`, `validate`, `render`) as tools.
+# `Heading`, `Paragraph`, `Figure`, `Table` are factory helpers — wrap each
+# as a tool that returns a block dict, then pass the dict to `Document.append`.
 from .api import Document, Figure, Heading, Paragraph, Table
+
+# === Result/data types (returned by the above; not tools themselves) ===
 from .models import (
     Block,
     Reference,
@@ -17,14 +25,16 @@ from .models import (
 __version__ = "0.1.0"
 
 __all__ = [
-    "Block",
+    # Functions / callables
     "Document",
     "Figure",
     "Heading",
     "Paragraph",
+    "Table",
+    # Data types
+    "Block",
     "Reference",
     "Revision",
     "StaleRevisionError",
-    "Table",
     "ValidationIssue",
 ]
