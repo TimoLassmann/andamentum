@@ -28,11 +28,11 @@ def _new_id() -> str:
 # ---------------------------------------------------------------------------
 
 
-def Paragraph(content: str) -> dict:
+def Paragraph(content: str) -> dict[str, Any]:
     return {"type": "paragraph", "content": content, "metadata": {}}
 
 
-def Heading(content: str, *, level: int) -> dict:
+def Heading(content: str, *, level: int) -> dict[str, Any]:
     if not 1 <= level <= 6:
         raise ValueError(f"heading level must be 1..6, got {level}")
     return {"type": "heading", "content": content, "metadata": {"level": level}}
@@ -44,7 +44,7 @@ def Figure(
     caption: str,
     label: str,
     width_in: Optional[float] = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "type": "figure",
         "content": "",
@@ -63,7 +63,7 @@ def Table(
     header_row: bool = True,
     caption: str = "",
     label: str = "",
-) -> dict:
+) -> dict[str, Any]:
     return {
         "type": "table",
         "content": "",
