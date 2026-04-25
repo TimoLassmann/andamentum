@@ -13,130 +13,107 @@ import from the submodule directly::
 
 __version__ = "0.1.0"
 
-# ── Core Entities ──────────────────────────────────────────────────────────
-from .entities import (
-    EpistemicEntity,
-    ENTITY_CLASSES,
-    Objective,
-    Evidence,
-    Claim,
-    ClaimStage,
-    Uncertainty,
-    UncertaintyType,
-    UncertaintyScope,
-    BLOCKING_TYPES,
-    Decision,
-    Snapshot,
-    Artefact,
-)
-
-# ── Repository ────────────────────────────────────────────────────────────
-from .repository import (
-    EpistemicRepository,
-    EntityNotFoundError,
-)
-
-# ── Gates (novel contribution) ────────────────────────────────────────────
+# === Functions you can wrap as agent tools ===
+# `EpistemicRepository`, `BaseOperation`, `EvidenceGatherer`, `QualityScorer`
+# are classes — wrap their methods (or subclass them and wrap subclass methods).
+# To run a full pipeline, use `from andamentum.epistemic.runner import
+# DefaultAgentRunner` (lazy-imported to keep pydantic-ai off the critical path).
+from .confidence import compute_posterior
 from .gates import (
-    StageGate,
-    GateResult,
-    STAGE_GATES,
-    STAGE_HIERARCHY,
-    validate_promotion,
-    get_next_stage,
-    get_previous_stage,
     can_demote,
     check_degeneracy,
-    DegeneracyCodes,
-    quality_weighted_evidence_sum,
     compute_confidence_score,
+    get_next_stage,
+    get_previous_stage,
+    quality_weighted_evidence_sum,
+    validate_promotion,
 )
-
-# ── Operation input ───────────────────────────────────────────────────────
-from .operations.base import OperationInput
-
-# ── Pipeline result ──────────────────────────────────────────────────────
-from .operations_runner import PipelineResult
-from .graph.quarantine import QuarantineRecord
-
-# ── Operations ────────────────────────────────────────────────────────────
 from .operations import (
-    BaseOperation,
-    OperationResult,
     AgentRunner,
-    GatheredEvidence,
+    BaseOperation,
     EvidenceGatherer,
     QualityScorer,
 )
+from .preflight import preflight
+from .repository import EpistemicRepository
 
-# ── Agents (Python-native definitions) ───────────────────────────────────
-from .agents import AgentDefinition, AGENT_REGISTRY
-
-# ── Confidence ────────────────────────────────────────────────────────────
-from .confidence import (
-    compute_posterior,
-    PosteriorReport,
+# === Result/data types (entities, configs, return values; not tools themselves) ===
+from .agents import AGENT_REGISTRY, AgentDefinition
+from .confidence import PosteriorReport
+from .entities import (
+    BLOCKING_TYPES,
+    ENTITY_CLASSES,
+    Artefact,
+    Claim,
+    ClaimStage,
+    Decision,
+    EpistemicEntity,
+    Evidence,
+    Objective,
+    Snapshot,
+    Uncertainty,
+    UncertaintyScope,
+    UncertaintyType,
 )
-
-# ── Preflight ─────────────────────────────────────────────────────────────
-from .preflight import CheckResult, PreflightResult, HealthCheckable, preflight
-
-# ── Runner (standalone execution) ────────────────────────────────────────
-# Lazy import to keep pydantic-ai off the critical import path:
-#   from andamentum.epistemic.runner import DefaultAgentRunner
+from .gates import (
+    STAGE_GATES,
+    STAGE_HIERARCHY,
+    DegeneracyCodes,
+    GateResult,
+    StageGate,
+)
+from .graph.quarantine import QuarantineRecord
+from .operations import GatheredEvidence, OperationResult
+from .operations.base import OperationInput
+from .operations_runner import PipelineResult
+from .preflight import CheckResult, HealthCheckable, PreflightResult
+from .repository import EntityNotFoundError
 
 __all__ = [
-    # Core Entities
-    "EpistemicEntity",
-    "ENTITY_CLASSES",
-    "Objective",
-    "Evidence",
-    "Claim",
-    "ClaimStage",
-    "Uncertainty",
-    "UncertaintyType",
-    "UncertaintyScope",
-    "BLOCKING_TYPES",
-    "Decision",
-    "Snapshot",
-    "Artefact",
-    # Repository
-    "EpistemicRepository",
-    "EntityNotFoundError",
-    # Gates
-    "StageGate",
-    "GateResult",
-    "STAGE_GATES",
-    "STAGE_HIERARCHY",
-    "validate_promotion",
-    "get_next_stage",
-    "get_previous_stage",
-    "can_demote",
-    "check_degeneracy",
-    "DegeneracyCodes",
-    "quality_weighted_evidence_sum",
-    "compute_confidence_score",
-    # Operation input
-    "OperationInput",
-    # Pipeline result
-    "PipelineResult",
-    "QuarantineRecord",
-    # Operations
-    "BaseOperation",
-    "OperationResult",
+    # Functions / callables
     "AgentRunner",
-    "GatheredEvidence",
+    "BaseOperation",
+    "EpistemicRepository",
     "EvidenceGatherer",
     "QualityScorer",
-    # Agents
-    "AgentDefinition",
-    "AGENT_REGISTRY",
-    # Confidence
+    "can_demote",
+    "check_degeneracy",
+    "compute_confidence_score",
     "compute_posterior",
-    "PosteriorReport",
-    # Preflight
-    "CheckResult",
-    "PreflightResult",
-    "HealthCheckable",
+    "get_next_stage",
+    "get_previous_stage",
     "preflight",
+    "quality_weighted_evidence_sum",
+    "validate_promotion",
+    # Data types
+    "AGENT_REGISTRY",
+    "AgentDefinition",
+    "Artefact",
+    "BLOCKING_TYPES",
+    "CheckResult",
+    "Claim",
+    "ClaimStage",
+    "Decision",
+    "DegeneracyCodes",
+    "ENTITY_CLASSES",
+    "EntityNotFoundError",
+    "EpistemicEntity",
+    "Evidence",
+    "GateResult",
+    "GatheredEvidence",
+    "HealthCheckable",
+    "Objective",
+    "OperationInput",
+    "OperationResult",
+    "PipelineResult",
+    "PosteriorReport",
+    "PreflightResult",
+    "QuarantineRecord",
+    "STAGE_GATES",
+    "STAGE_HIERARCHY",
+    "Snapshot",
+    "StageGate",
+    "Uncertainty",
+    "UncertaintyScope",
+    "UncertaintyType",
 ]

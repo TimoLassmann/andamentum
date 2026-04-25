@@ -30,6 +30,9 @@ Seven atoms: ``heading``, ``prose``, ``callout``, ``items``, ``aside``,
 
 from __future__ import annotations
 
+# === Functions you can wrap as agent tools ===
+# `Report` is a class — wrap its methods (`heading`, `prose`, `callout`,
+# `save`, etc.) as tools, or use the standalone builder functions below.
 from .builders import (
     Report,
     aside,
@@ -41,12 +44,14 @@ from .builders import (
     reference,
 )
 from .renderer import render, render_to_file
-from .styles import STYLES, get_style
+from .styles import get_style
+
+# === Result/data types (returned by the above; not tools themselves) ===
+from .styles import STYLES
 
 __all__ = [
-    # Report builder
+    # Functions / callables
     "Report",
-    # Builder functions
     "heading",
     "prose",
     "callout",
@@ -54,13 +59,12 @@ __all__ = [
     "aside",
     "card",
     "reference",
-    # Core renderer
     "render",
     "render_to_file",
     "render_pdf",
-    # Styles
-    "STYLES",
     "get_style",
+    # Data types
+    "STYLES",
 ]
 
 try:

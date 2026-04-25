@@ -9,13 +9,20 @@ Sub-modules (epistemic, deep_research, document_store) import from here
 instead of maintaining independent implementations.
 """
 
-from .agents import AgentDefinition, AgentRunner, run_agent_with_fallback
+# === Functions you can wrap as agent tools ===
+# Note: AgentRunner is a class — wrap its `.run()` method as a tool.
+from .agents import AgentRunner, run_agent_with_fallback
 from .models import resolve_model, resolve_model_from_args
 
+# === Result/data types (config + return values; not tools themselves) ===
+from .agents import AgentDefinition
+
 __all__ = [
-    "AgentDefinition",
+    # Functions / callables
     "AgentRunner",
     "resolve_model",
     "resolve_model_from_args",
     "run_agent_with_fallback",
+    # Data types
+    "AgentDefinition",
 ]

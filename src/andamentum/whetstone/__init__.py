@@ -27,33 +27,34 @@ Quick start::
     asyncio.run(main())
 """
 
-from .agents import AGENT_REGISTRY, AgentDefinition
+# === Functions you can wrap as agent tools ===
 from .dynamic_models import convert_fields_to_schema, create_output_model
+from .orchestrator import sharpen_document
+from .renderers import apply_patches, render_diff, render_docx, render_html
+
+# === Result/data types (returned by the above; not tools themselves) ===
+from .agents import AGENT_REGISTRY, AgentDefinition
 from .issues import DocumentIssue
 from .models import ChecklistItem, DocumentPatch, PatchApplicationResult
-from .orchestrator import ReviewResult, sharpen_document
-from .renderers import apply_patches, render_diff, render_docx, render_html
+from .orchestrator import ReviewResult
 
 __version__ = "0.1.0"
 
 __all__ = [
-    # Public entry point
+    # Functions / callables
     "sharpen_document",
-    "ReviewResult",
-    # Data models
-    "DocumentPatch",
-    "DocumentIssue",
-    "ChecklistItem",
-    "PatchApplicationResult",
-    # Renderers
     "render_docx",
     "render_html",
     "render_diff",
     "apply_patches",
-    # Agents (for introspection / extension)
-    "AgentDefinition",
-    "AGENT_REGISTRY",
-    # Dynamic schema helpers
     "convert_fields_to_schema",
     "create_output_model",
+    # Data types
+    "ReviewResult",
+    "DocumentPatch",
+    "DocumentIssue",
+    "ChecklistItem",
+    "PatchApplicationResult",
+    "AgentDefinition",
+    "AGENT_REGISTRY",
 ]

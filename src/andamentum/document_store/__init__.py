@@ -41,12 +41,22 @@ Requires:
 - pydantic-ai for metadata extraction and query planning (installed as part of andamentum)
 """
 
-# Public API
+# === Functions you can wrap as agent tools ===
+# `DocumentStore` is a class — wrap its methods (`add`, `read`, `search`,
+# `delete`, `find_by_metadata`, `list_documents`, …) as tools.
+# The 10 module-level functions below (ingest/search/etc.) are an alternative
+# higher-level API that doesn't require holding a DocumentStore instance.
+from .api import DocumentStore
+from .chunking import chunk_markdown
+from .extraction import extract_chunk_metadata, extract_document_metadata
+from .lifecycle import (
+    database_exists,
+    delete_database,
+    get_databases_dir,
+    get_db_path,
+    list_databases,
+)
 from .public import (
-    DuplicateGroup,
-    MetadataFilterValue,
-    RepairReport,
-    SearchResult,
     delete,
     find_by_metadata,
     find_duplicates,
@@ -58,18 +68,10 @@ from .public import (
     search,
     update_metadata,
 )
+from .search import search_multi_database, search_unified
 
-# Low-level API for power users
-from .api import DocumentStore
-from .chunking import Chunk, chunk_markdown
-from .extraction import extract_chunk_metadata, extract_document_metadata
-from .lifecycle import (
-    database_exists,
-    delete_database,
-    get_databases_dir,
-    get_db_path,
-    list_databases,
-)
+# === Result/data types (returned by the above; not tools themselves) ===
+from .chunking import Chunk
 from .metadata_models import (
     ChunkLLMFields,
     ChunkMetadataFields,
@@ -83,60 +85,57 @@ from .models import (
     ReembedResult,
     UpdateResult,
 )
+from .public import (
+    DuplicateGroup,
+    MetadataFilterValue,
+    RepairReport,
+    SearchResult,
+)
 from .search import (
     MultiDatabaseSearchResult,
     SearchResultMetadata,
     UnifiedSearchResult,
-    search_multi_database,
-    search_unified,
 )
 
 __all__ = [
-    # Public API
-    "ingest",
-    "search",
-    "find_by_metadata",
-    "update_metadata",
+    # Functions / callables
+    "DocumentStore",
+    "chunk_markdown",
+    "database_exists",
     "delete",
-    "restore",
-    "purge",
-    "list_deleted",
-    "repair",
+    "delete_database",
+    "extract_chunk_metadata",
+    "extract_document_metadata",
+    "find_by_metadata",
     "find_duplicates",
-    "SearchResult",
-    "RepairReport",
+    "get_databases_dir",
+    "get_db_path",
+    "ingest",
+    "list_databases",
+    "list_deleted",
+    "purge",
+    "repair",
+    "restore",
+    "search",
+    "search_multi_database",
+    "search_unified",
+    "update_metadata",
+    # Data types
+    "Chunk",
+    "ChunkLLMFields",
+    "ChunkMetadataFields",
+    "Document",
+    "DocumentLLMFields",
+    "DocumentMetadata",
+    "DocumentMetadataFields",
+    "DocumentType",
     "DuplicateGroup",
     "MetadataFilterValue",
-    # Low-level API
-    "DocumentStore",
-    # Chunking
-    "Chunk",
-    "chunk_markdown",
-    # Metadata models
-    "DocumentMetadataFields",
-    "DocumentLLMFields",
-    "ChunkMetadataFields",
-    "ChunkLLMFields",
-    # Metadata extraction
-    "extract_document_metadata",
-    "extract_chunk_metadata",
-    # Data models
-    "Document",
-    "DocumentMetadata",
-    "DocumentType",
+    "MultiDatabaseSearchResult",
     "ReembedResult",
-    "UpdateResult",
-    # Search result models
+    "RepairReport",
+    "SearchResult",
     "SearchResultMetadata",
     "UnifiedSearchResult",
-    "MultiDatabaseSearchResult",
-    # Search functions
-    "search_unified",
-    "search_multi_database",
-    # Database management
-    "get_db_path",
-    "get_databases_dir",
-    "list_databases",
-    "database_exists",
-    "delete_database",
+    "UpdateResult",
 ]
