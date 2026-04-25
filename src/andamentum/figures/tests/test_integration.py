@@ -1,6 +1,7 @@
 """Integration tests — end-to-end figure() calls."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import pytest
@@ -12,7 +13,10 @@ from andamentum.figures.types import FigureResult
 class TestFigureBar:
     def test_simple_bar(self, tmp_path):
         result = figure(
-            data={"Treatment": ["Control", "Drug A", "Drug B"], "Response": [23.5, 45.2, 67.8]},
+            data={
+                "Treatment": ["Control", "Drug A", "Drug B"],
+                "Response": [23.5, 45.2, 67.8],
+            },
             kind="bar",
             x="Treatment",
             y="Response",
@@ -27,7 +31,7 @@ class TestFigureBar:
         assert result.palette == "npg"
 
     def test_bar_with_errors(self, tmp_path):
-        result = figure(
+        figure(
             data={"Group": ["A", "B", "C"], "Value": [10, 20, 30], "Error": [1, 2, 3]},
             kind="bar",
             x="Group",
@@ -77,10 +81,13 @@ class TestFigureLine:
 class TestFigureScatter:
     def test_scatter(self, tmp_path):
         import random
+
         rng = random.Random(42)
         result = figure(
-            data={"X": [rng.gauss(0, 1) for _ in range(100)],
-                  "Y": [rng.gauss(0, 1) for _ in range(100)]},
+            data={
+                "X": [rng.gauss(0, 1) for _ in range(100)],
+                "Y": [rng.gauss(0, 1) for _ in range(100)],
+            },
             kind="scatter",
             x="X",
             y="Y",
@@ -94,13 +101,14 @@ class TestFigureScatter:
 class TestFigureBox:
     def test_box(self, tmp_path):
         import random
+
         rng = random.Random(42)
         result = figure(
             data={
                 "Method": ["A"] * 30 + ["B"] * 30 + ["C"] * 30,
                 "Score": [rng.gauss(10, 2) for _ in range(30)]
-                       + [rng.gauss(15, 3) for _ in range(30)]
-                       + [rng.gauss(12, 1) for _ in range(30)],
+                + [rng.gauss(15, 3) for _ in range(30)]
+                + [rng.gauss(12, 1) for _ in range(30)],
             },
             kind="box",
             x="Method",
@@ -117,10 +125,13 @@ class TestFigureBox:
 class TestFigureViolinStripSwarm:
     def test_violin(self, tmp_path):
         import random
+
         rng = random.Random(42)
-        result = figure(
-            data={"Group": ["X"] * 50 + ["Y"] * 50,
-                  "Val": [rng.gauss(5, 1) for _ in range(100)]},
+        figure(
+            data={
+                "Group": ["X"] * 50 + ["Y"] * 50,
+                "Val": [rng.gauss(5, 1) for _ in range(100)],
+            },
             kind="violin",
             x="Group",
             y="Val",
@@ -129,9 +140,8 @@ class TestFigureViolinStripSwarm:
         assert (tmp_path / "violin.pdf").exists()
 
     def test_strip(self, tmp_path):
-        result = figure(
-            data={"Group": ["A", "A", "A", "B", "B", "B"],
-                  "Val": [1, 2, 3, 4, 5, 6]},
+        figure(
+            data={"Group": ["A", "A", "A", "B", "B", "B"], "Val": [1, 2, 3, 4, 5, 6]},
             kind="strip",
             x="Group",
             y="Val",
@@ -141,10 +151,13 @@ class TestFigureViolinStripSwarm:
 
     def test_swarm(self, tmp_path):
         import random
+
         rng = random.Random(42)
-        result = figure(
-            data={"Group": ["A"] * 20 + ["B"] * 20,
-                  "Val": [rng.gauss(5, 1) for _ in range(40)]},
+        figure(
+            data={
+                "Group": ["A"] * 20 + ["B"] * 20,
+                "Val": [rng.gauss(5, 1) for _ in range(40)],
+            },
             kind="swarm",
             x="Group",
             y="Val",
@@ -156,6 +169,7 @@ class TestFigureViolinStripSwarm:
 class TestFigureHistogram:
     def test_histogram(self, tmp_path):
         import random
+
         rng = random.Random(42)
         result = figure(
             data={"Expression": [rng.gauss(5, 2) for _ in range(200)]},
@@ -170,7 +184,7 @@ class TestFigureHistogram:
 
 class TestFigureHeatmap:
     def test_heatmap(self, tmp_path):
-        result = figure(
+        figure(
             data={"A": [1.0, 0.5, 0.3], "B": [0.5, 1.0, 0.7], "C": [0.3, 0.7, 1.0]},
             kind="heatmap",
             output=tmp_path / "heatmap.pdf",
@@ -188,24 +202,27 @@ class TestAutoDetection:
 
     def test_auto_strip_small_n(self, tmp_path):
         result = figure(
-            data={"Group": ["A", "A", "A", "B", "B", "B"],
-                  "Val": [1, 2, 3, 4, 5, 6]},
+            data={"Group": ["A", "A", "A", "B", "B", "B"], "Val": [1, 2, 3, 4, 5, 6]},
             output=tmp_path / "auto_strip.pdf",
         )
         assert result.kind == "strip"
 
     def test_auto_box_medium_n(self, tmp_path):
         import random
+
         rng = random.Random(42)
         result = figure(
-            data={"Group": ["A"] * 20 + ["B"] * 20,
-                  "Val": [rng.gauss(5, 1) for _ in range(40)]},
+            data={
+                "Group": ["A"] * 20 + ["B"] * 20,
+                "Val": [rng.gauss(5, 1) for _ in range(40)],
+            },
             output=tmp_path / "auto_box.pdf",
         )
         assert result.kind == "box"
 
     def test_auto_histogram_single_col(self, tmp_path):
         import random
+
         rng = random.Random(42)
         result = figure(
             data={"values": [rng.gauss(0, 1) for _ in range(100)]},
@@ -242,7 +259,7 @@ class TestModes:
 
 class TestDataFormats:
     def test_csv_string(self, tmp_path):
-        result = figure(
+        figure(
             data="Group,Value\nA,10\nB,20\nC,30",
             kind="bar",
             x="Group",
@@ -252,7 +269,7 @@ class TestDataFormats:
         assert (tmp_path / "csv.pdf").exists()
 
     def test_records(self, tmp_path):
-        result = figure(
+        figure(
             data=[{"Group": "A", "Value": 10}, {"Group": "B", "Value": 20}],
             kind="bar",
             x="Group",
@@ -265,8 +282,10 @@ class TestDataFormats:
 class TestLogScale:
     def test_auto_log(self, tmp_path):
         result = figure(
-            data={"Concentration": ["1nM", "10nM", "100nM", "1μM"],
-                  "Response": [0.1, 1, 10, 1000]},
+            data={
+                "Concentration": ["1nM", "10nM", "100nM", "1μM"],
+                "Response": [0.1, 1, 10, 1000],
+            },
             kind="bar",
             x="Concentration",
             y="Response",

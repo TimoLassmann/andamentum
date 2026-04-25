@@ -5,7 +5,13 @@ import pytest
 
 from andamentum.figures.palettes import PALETTES, get_palette, list_palettes
 from andamentum.figures.standards import get_preset, list_presets, resolve_width
-from andamentum.figures.style import despine, panel_label, savefig, setup_style, shared_legend
+from andamentum.figures.style import (
+    despine,
+    panel_label,
+    savefig,
+    setup_style,
+    shared_legend,
+)
 from andamentum.figures.types import BANNED_KINDS, DataTable, FigureResult, PlotKind
 
 
