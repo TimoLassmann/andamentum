@@ -1,0 +1,18 @@
+{
+  "convention": "Each Q+A pair is one unit (question and its answer combined)",
+  "expected_f1_floor": 0.6,
+  "boundary_tolerance_chars": 60,
+  "domain": "transcript",
+  "units": [
+    {
+      "title": "Q1: parallelize for loop",
+      "start_anchor": "**asked by user_42**\n\nI have",
+      "end_anchor": "swap `ProcessPoolExecutor` for `ThreadPoolExecutor`."
+    },
+    {
+      "title": "Q2: custom class with pickling",
+      "start_anchor": "**asked by user_42**\n\nThanks.",
+      "end_anchor": "reconstruct the class in the parent process."
+    }
+  ]
+}
