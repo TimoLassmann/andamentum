@@ -33,6 +33,7 @@ dependencies = [
     "python-docx>=1.2.0",        # whetstone (docx track changes)
     "lxml>=5.0.0",               # whetstone (docx xml manipulation)
     "matplotlib>=3.8",           # figures (publication-quality plotting engine)
+    "rapidfuzz>=3.0",            # chunker (fuzzy anchor matching)
 ]
 
 [project.scripts]
