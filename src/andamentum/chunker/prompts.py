@@ -29,8 +29,11 @@ DOMAIN_HINTS: dict[str, str] = {
         "code blocks separated by blank lines."
     ),
     "transcript": (
-        "This text is a conversation transcript. Unit boundaries: speaker turns, "
-        "topic shifts, Q&A pairs (treat a question + its answer as a single unit when natural)."
+        "This text is a conversation transcript. Q+A pairs are ONE unit — "
+        "do NOT split the question off from its answer. The unit's start_anchor "
+        "should be the question, and its end_anchor should be the END of the answer. "
+        "For free-form transcripts without explicit Q&A markers, use topic shifts "
+        "as boundaries; never split a single speaker turn into multiple units."
     ),
     "general": (
         "Unit boundaries: paragraphs, sections marked by headings, list blocks, "
