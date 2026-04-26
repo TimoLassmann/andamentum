@@ -14,6 +14,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.whetstone` — structured multi-lens document review over your own drafts (grammar/style edits, specialist critique, multi-expert panel); output as Word track-changes, HTML, or markdown diff
 - `andamentum.scribe` — structured document drafting: block-based authoring (paragraph, heading, figure, table), section abstraction, built-in `article`/`grant` scaffolds, SQLite-backed source of truth, one-way render to `.docx`. Replaces the standalone `document-tools:doc-draft` plugin.
 - `andamentum.figures` — publication-quality scientific figure generation: 9 chart types, 7 journal palettes, journal-matched sizing, auto chart-kind selection. `scribe_glue.insert_figure` renders + inserts into a scribe section in one call. Absorbed from the standalone `mosaic-figures` package.
+- `andamentum.chunker` — verifiable semantic chunking of long text. The LLM only points at unit boundaries (start/end anchor strings); extraction is byte-identical to the source. Validation drives `pydantic_ai.ModelRetry` for self-correction; failures escalate via window halving → backup-model chain → loud `ChunkingFailedError`. No heuristic fallbacks.
 - `andamentum.typeset` — standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules for rendering
 - `andamentum.core` — shared model-resolution, `AgentRunner`, and (future) embedding infrastructure used by all sub-modules
 
@@ -58,7 +59,7 @@ The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1
 
 ## CLIs
 
-Five scripts installed by the package:
+Six scripts installed by the package:
 
 ```bash
 andamentum-epistemic --help
@@ -66,9 +67,10 @@ andamentum-research --help
 andamentum-whetstone --help
 andamentum-scribe --help
 andamentum-figures --help
+andamentum-chunker --help
 ```
 
-`andamentum-epistemic`, `andamentum-research`, and `andamentum-whetstone` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
+`andamentum-epistemic`, `andamentum-research`, `andamentum-whetstone`, and `andamentum-chunker` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
 
 ## Architectural conventions
 
@@ -84,6 +86,7 @@ andamentum-figures --help
 - `whetstone` depends only on `core` (for `AgentRunner`/`AgentDefinition`) and optionally on `typeset` for HTML rendering. It MUST NOT depend on `epistemic`, `deep_research`, or `document_store`.
 - `scribe` depends only on `typeset` (for HTML/PDF rendering) and stdlib `sqlite3`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `figures`, or `core`.
 - `figures` depends only on matplotlib + numpy + pydantic. The optional `figures.scribe_glue` submodule is the ONLY place where `scribe` is imported; the rest of `figures` MUST NOT touch `scribe`. `figures` MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `typeset`, or `core`.
+- `chunker` depends only on `core` (for `AgentRunner`, model resolution) and `rapidfuzz` (for tiered anchor matching). MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, or `typeset`. Other modules MAY depend on `chunker` (e.g. whetstone for section-by-section review on huge documents, document_store for embedding-quality chunks).
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 
@@ -113,6 +116,8 @@ andamentum-figures --help
 **Whetstone module** (`andamentum.whetstone`) — structured multi-lens feedback over drafts the user wrote themselves. Entry point: `sharpen_document(text, task=...)` returns a `ReviewResult` holding `DocumentPatch` edits and `DocumentIssue` findings. Scanners live in `consistency_scanners.py` and `checklist_scanners.py`; the agent registry is in `agents/`; renderers (`render_docx`, `render_html`, `render_diff`, `apply_patches`) in `renderers/`. The DOCX renderer emits track-changes Word output and prepends a checklist section when checklist tasks are present.
 
 **Figures module** (`andamentum.figures`) — publication-quality scientific figure generation. High-level entry point: `figure(data, *, kind="auto", style="npg", journal="default", output="figure.pdf")`. Lower-level building blocks: `setup_style`, `get_palette`, `savefig`, `panel_label`, `shared_legend`, `despine` (in `style.py`); plot primitives in `plots.py`; auto-detection (chart kind, log scale, column roles) in `auto.py` and `advisor.py`; bootstrap stats in `stats.py`. The package was absorbed from `mosaic-figures` (uninstall the standalone tool with `uv tool uninstall mosaic-figures` once this branch lands). Scribe integration lives in `figures/scribe_glue.py`: `insert_figure(doc, section, *, output_dir, caption, label, **chart_kwargs)` renders a PNG and inserts a `Figure` block via `Document.insert_into_section`.
+
+**Chunker module** (`andamentum.chunker`) — verifiable semantic chunker. Single entry point: `extract_units(source, *, primary_executor, backup_executors=[], window_size=10000, lookahead=4000, domain="general") -> ChunkingResult`. The model is told ONLY to point at unit boundaries via `start_anchor` + `end_anchor` strings — never to rewrite text. Each unit's `text` is byte-identical to a contiguous source span. Cursor advances monotonically; same anchor appearing twice is disambiguated by "first occurrence after cursor." Validation runs after every model call (`make_validator(window)` in `validation.py`): anchor mismatch / inverted range / empty fields raise `pydantic_ai.ModelRetry` with deterministic feedback, so the model self-corrects within the same conversation. On exhausted retries the system halves the window; if that still fails it escalates to backup executors in order; if every executor fails it raises `ChunkingFailedError` with full diagnostics. NO heuristic fallbacks anywhere. Anchor matching is tiered (`exact` → `whitespace_normalised` → `fuzzy` via rapidfuzz). Domain hints (`academic` / `web` / `code` / `transcript` / `general`) tune the prompt without code paths. Use `make_runner_executor(runner)` to wrap an `AgentRunner` into the `ExecutorFn` callable that `extract_units` expects.
 
 **Scribe module** (`andamentum.scribe`) — block-based document authoring. Documents live in SQLite at `~/.local/share/scribe/<name>.db` (override with `SCRIBE_DIR`). Public entry point: `Document.create(title=..., database=..., scaffold="article" | "grant" | None)`; mutate with `append`/`replace`/`replace_section`; render with `render(path, format="docx")`. Section operations (`list_sections`, `section`, `replace_section`) are derived from heading blocks — there is no separate sections table. Each block has an integer revision counter; `replace()` enforces optimistic locking via `BEGIN IMMEDIATE` and writes an audit row to `scribe_revisions`. Citations are Pandoc-flavoured `[@key]` spans extracted by regex; references live in their own table; `[verify]` and `[citation needed]` markers are recognised and reported by `validate()`. Inline markdown (bold/italic/code) renders as styled runs in `.docx`. HTML/PDF rendering goes through `typeset` (block→atom mapping in `render_typeset.py`). Scribe replaces the standalone `document-tools:doc-draft` plugin for Word file authoring; `.pptx` stays out of scope.
 
