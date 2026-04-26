@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>andamentum-chunker explorer</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 16px; color: #222; }
+    h1 { margin: 0 0 16px 0; font-size: 22px; }
+    .row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    label { font-size: 13px; color: #555; }
+    select, input[type="text"], input[type="number"] { font-size: 13px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+    textarea { width: 100%; height: 220px; font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 13px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    button { font-size: 14px; padding: 6px 14px; background: #1f6feb; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+    button.secondary { background: #2c2c2c; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    #stats { font-size: 13px; color: #555; margin: 12px 0; }
+    #render { white-space: pre-wrap; font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 13px; line-height: 1.55; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+    .unit { padding: 1px 2px; border-radius: 2px; cursor: help; }
+    .gap { background: #eee; color: #888; padding: 1px 2px; border-radius: 2px; }
+    .err { color: #b91c1c; padding: 8px; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 4px; }
+    .u0 { background: #dbeafe; }
+    .u1 { background: #dcfce7; }
+    .u2 { background: #fef3c7; }
+    .u3 { background: #fce7f3; }
+    .u4 { background: #e9d5ff; }
+    .u5 { background: #cffafe; }
+    .u6 { background: #fed7aa; }
+    .u7 { background: #fecaca; }
+  </style>
+</head>
+<body>
+  <h1>andamentum-chunker explorer</h1>
+
+  <div class="row">
+    <label>Model: <input type="text" id="model" value="ollama:gemma4:31b-nvfp4" size="34"></label>
+    <label>Domain:
+      <select id="domain">
+        <option value="general">general</option>
+        <option value="academic">academic</option>
+        <option value="web">web</option>
+        <option value="code">code</option>
+        <option value="transcript">transcript</option>
+      </select>
+    </label>
+    <label>window: <input type="number" id="window" value="10000" min="500" max="100000" style="width: 80px"></label>
+    <label>lookahead: <input type="number" id="lookahead" value="4000" min="0" max="50000" style="width: 80px"></label>
+  </div>
+
+  <textarea id="src" placeholder="paste source text here..."></textarea>
+
+  <div class="row" style="margin-top: 12px;">
+    <button id="go">Chunk it</button>
+    <button id="dl" class="secondary" disabled>Download truth.json</button>
+    <span id="stats"></span>
+  </div>
+
+  <div id="err"></div>
+  <div id="render"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
