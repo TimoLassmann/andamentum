@@ -1,7 +1,5 @@
 """Tests for benchmark metrics — boundary F1, granularity, etc."""
 
-import pytest
-
 from benchmarks.chunker.metrics import (
     boundary_f1,
     granularity_ratio,
