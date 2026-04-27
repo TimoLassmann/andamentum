@@ -128,7 +128,7 @@ class ReviewMetrics(BaseModel):
     challenged_findings_count: int = 0
     edits_count: int = 0
     sections_processed: int = 0
-    hypothesis_budget_used: int = 0
+    reflection_rounds_used: int = 0  # how many of reflection_round_cap got consumed
 
 
 class ReviewResult(BaseModel):
