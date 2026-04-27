@@ -16,6 +16,12 @@ from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
 from .investigate import INVESTIGATE_AGENT, InvestigationOutput
+from .lens import (
+    LensIssueProposal,
+    LensReadOutput,
+    build_lens_agent_definition,
+    list_available_lenses,
+)
 from .skim import SKIM_AGENT, SkimHypothesis, SkimOutput, SkimSection
 from .synthesise import SYNTHESISE_AGENT, ReviewSummary
 
@@ -28,6 +34,11 @@ _REGISTRY: dict[str, AgentDefinition] = {
     SYNTHESISE_AGENT.name: SYNTHESISE_AGENT,
     AUTHOR_QUESTION_AGENT.name: AUTHOR_QUESTION_AGENT,
 }
+
+# Register every available lens under its lens.<name> key.
+for _lens_name in list_available_lenses():
+    _defn = build_lens_agent_definition(_lens_name)
+    _REGISTRY[_defn.name] = _defn
 
 
 def get_agent(name: str) -> AgentDefinition:
@@ -61,12 +72,17 @@ __all__ = [
     "AgentDefinition",
     "build_pydantic_ai_agent",
     "get_agent",
+    # Lens helpers
+    "build_lens_agent_definition",
+    "list_available_lenses",
     # Output schemas re-exported so node code can import from one place
     "AuthorQuestionOutput",
     "ChallengeVerdict",
     "EditProposal",
     "EditorOutput",
     "InvestigationOutput",
+    "LensIssueProposal",
+    "LensReadOutput",
     "ReviewSummary",
     "SkimHypothesis",
     "SkimOutput",
