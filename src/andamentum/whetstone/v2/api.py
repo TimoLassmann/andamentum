@@ -1,12 +1,12 @@
 """Public entry point: ``review_document``.
 
-Single async function. Two required arguments (``source`` and ``model``)
-and four optional ones — kept tight so any agent can call it without
-guessing.
+Single async function. Two arguments matter (``source`` and ``model``);
+the rest are tuning knobs with sensible defaults.
 
-In Phase 1 the ``model`` argument is accepted but unused — the
-deterministic substrate runs without LLM calls. Later phases will use it
-to drive the skim / investigate / challenge / synthesise agents.
+Without a model the deterministic-only path runs (chunking + structural
+extractors). With a model the full critical-review pipeline runs:
+lens reading → bounded reflection loop → optional editor → challenge
+→ author questions → synthesis.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ async def review_document(
     *,
     model: str | None = None,
     perspectives: Sequence[str] = ("rigorous",),
-    hypothesis_budget: int = 30,
+    reflection_round_cap: int = 3,
     challenge: bool = True,
     editor: bool = False,
     editor_criteria: Sequence[str] = ("clarity", "concision", "grammar"),
@@ -36,7 +36,7 @@ async def review_document(
     target_min_chars: int = 2_000,
     target_max_chars: int = 10_000,
 ) -> ReviewResult:
-    """Review a document. Returns confidence-tagged findings + a synthesis.
+    """Review a document. Returns critical-review findings + a synthesis.
 
     Parameters
     ----------
@@ -44,17 +44,25 @@ async def review_document(
         URL string ("http(s)://..."), file path (str or pathlib.Path),
         OR raw markdown (caller already has the text).
     model:
-        pydantic-ai model string (e.g. "openai:gpt-5.4-nano",
-        "ollama:gemma4:31b-nvfp4"). Optional in Phase 1 because no LLM
-        calls happen yet; required from Phase 2 onwards.
+        pydantic-ai model id (e.g. "openai:gpt-5.4-nano",
+        "ollama:gemma4:31b-nvfp4"). Optional — without it, only the
+        deterministic substrate runs (no LLM calls).
     perspectives:
-        Reviewer personas. Default is one ("rigorous"). Pass multiple
-        (e.g. ("rigorous", "statistician", "writer")) for panel mode.
-    hypothesis_budget:
-        Max LLM-investigated hypotheses. Caps cost per review.
+        Lens names. Each lens is one configured reviewer personality.
+        Available: rigorous, writer, methodology, statistician.
+        Default is one ("rigorous"). Multiple lenses run in parallel.
+    reflection_round_cap:
+        Hard upper bound on rounds of the reflection–investigation loop.
+        Default 3. The loop typically exits earlier when the senior
+        reviewer says "nothing more to do".
     challenge:
         Whether to run the Challenge phase (refute high-severity
         findings). On by default.
+    editor:
+        Whether to run the Editor phase, generating concrete edits.
+        Off by default — adds one LLM call per section.
+    editor_criteria:
+        Editorial criteria for the Editor phase.
     embedding_fn:
         Custom embedding function for the chunker. Defaults to local
         Ollama (``embeddinggemma:latest``) inside the chunker module.
@@ -64,14 +72,14 @@ async def review_document(
     Returns
     -------
     ReviewResult
-        Findings, document map, metrics. ``deterministic_findings`` is
-        always populated; ``findings`` and ``summary`` only after later
-        phases ship.
+        Findings, edits, author questions, document map, metrics.
+        ``deterministic_findings`` is always populated; the other LLM-
+        driven fields populate when ``model`` is set.
     """
     state = ReviewState(
         source=source,
         perspectives=list(perspectives),
-        hypothesis_budget=hypothesis_budget,
+        reflection_round_cap=reflection_round_cap,
         challenge_enabled=challenge,
         editor_enabled=editor,
         editor_criteria=list(editor_criteria),
@@ -94,12 +102,17 @@ async def review_document(
 
 
 def _resolve_model(model_string: str):
-    """Convert a model string into something pydantic-ai's Agent will accept.
+    """Convert a model string into a pydantic-ai-ready model object.
 
-    pydantic-ai accepts model strings directly as of recent versions
-    (e.g. ``Agent("openai:gpt-5.4-nano", ...)``). We pass the string
-    through unchanged. Future enhancement: route through
-    ``core.models.resolve_model_from_args`` for ollama/bedrock setup
-    helpers if needed.
+    Delegates to ``core.models.resolve_model`` which:
+      • constructs an ``OllamaModel`` with the right ``OllamaProvider``
+        (honours ``$OLLAMA_BASE_URL``, defaults to localhost) for
+        ``ollama:...`` strings;
+      • constructs a ``BedrockConverseModel`` with regional inference
+        profile for ``bedrock:...`` strings;
+      • passes anything else through (``openai:``, ``anthropic:``, etc.) —
+        pydantic-ai's own ``infer_model`` handles those natively.
     """
-    return model_string
+    from andamentum.core import resolve_model
+
+    return resolve_model(model_string)
