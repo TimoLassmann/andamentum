@@ -1,12 +1,10 @@
 """Build a deterministic DocumentMap from the chunker's section list.
 
-In Phase 1 the map is built purely from the section's heading + first
-paragraph. The skim_agent (Phase 2) will enrich the ``one_line_gist``
-field with an LLM-written summary; the deterministic version here gives
-us something useful immediately AND is what skim_agent's output replaces.
-
-This means: the rest of the pipeline can ALWAYS rely on a populated
-DocumentMap, regardless of whether the LLM has run yet.
+The map is built purely from the section's heading + first paragraph.
+It feeds the reflection prompt — gives the senior reviewer a compact
+overview of the manuscript so it can name section ids when proposing
+investigation tasks. The map is computed once during ChunkAndScan and
+remains stable across the reflection loop.
 """
 
 from __future__ import annotations

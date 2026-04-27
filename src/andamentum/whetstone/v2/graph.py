@@ -11,17 +11,19 @@ Edges (which node returns which next):
                          │
                          ├─ deps.model is None ─► End[ReviewResult]
                          │
-                         └─ deps.model is set  ─► Skim
-                                                    │
-                                                    └► InvestigateLoop
-                                                          │
-                                                          └► Challenge
-                                                                │
-                                                                └► AuthorQuestions
-                                                                       │
-                                                                       └► Synthesise
-                                                                              │
-                                                                              └► End[ReviewResult]
+                         └─ deps.model is set  ─► CriticalRead
+                                                       │
+                                                       └► ReflectAndInvestigate
+                                                              │
+                                                              └► EditSections
+                                                                    │
+                                                                    └► Challenge
+                                                                          │
+                                                                          └► AuthorQuestions
+                                                                                 │
+                                                                                 └► Synthesise
+                                                                                        │
+                                                                                        └► End[ReviewResult]
 """
 
 from pydantic_graph import Graph
@@ -30,10 +32,10 @@ from .nodes import (
     AuthorQuestions,
     Challenge,
     ChunkAndScan,
+    CriticalRead,
     EditSections,
     HarvestSource,
-    InvestigateLoop,
-    Skim,
+    ReflectAndInvestigate,
     Synthesise,
 )
 
@@ -41,8 +43,8 @@ review_graph = Graph(
     nodes=[
         HarvestSource,
         ChunkAndScan,
-        Skim,
-        InvestigateLoop,
+        CriticalRead,
+        ReflectAndInvestigate,
         EditSections,
         Challenge,
         AuthorQuestions,
