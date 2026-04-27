@@ -1,103 +1,36 @@
-"""Text utilities for deep research — SSRF protection and topic anchoring.
+"""Text utilities for deep research — topic anchoring + SSRF re-exports.
 
-Standalone copies of utilities that were previously in src/utilities/.
-Kept small and independent — no external application framework dependencies.
+The SSRF / URL-safety helpers (``is_safe_url``, ``is_internal_ip``,
+``SEARXNG_WHITELIST``, ``CLOUD_METADATA_HOSTS``, ``BLOCKED_SCHEMES``,
+``ALLOWED_SCHEMES``) now live in ``andamentum.harvest.url_safety``.
+They are re-exported here so existing import paths and the runtime
+``text_utils.is_safe_url`` monkey-patch in tests keep working.
 """
 
-import ipaddress
 import logging
 import re
-from urllib.parse import urlparse
 
-# ── SSRF Protection ─────────────────────────────────────────────────────
-
-SEARXNG_WHITELIST = frozenset({"localhost:4070", "127.0.0.1:4070"})
-
-CLOUD_METADATA_HOSTS = frozenset(
-    {
-        "169.254.169.254",
-        "metadata.google.internal",
-        "metadata.google.com",
-        "metadata",
-        "169.254.0.1",
-    }
+from andamentum.harvest.url_safety import (
+    ALLOWED_SCHEMES,
+    BLOCKED_SCHEMES,
+    CLOUD_METADATA_HOSTS,
+    SEARXNG_WHITELIST,
+    is_internal_ip,
+    is_safe_url,
 )
 
-BLOCKED_SCHEMES = frozenset({"file", "ftp", "gopher", "data", "javascript"})
-ALLOWED_SCHEMES = frozenset({"http", "https"})
-
-
-def is_internal_ip(ip_str: str) -> bool:
-    """Check if an IP address is internal/private."""
-    try:
-        ip = ipaddress.ip_address(ip_str)
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-        )
-    except ValueError:
-        return False
-
-
-def is_safe_url(url: str, allow_searxng: bool = False) -> tuple[bool, str]:
-    """Validate URL for SSRF protection.
-
-    Args:
-        url: URL to validate
-        allow_searxng: If True, allow whitelisted SearXNG endpoints
-
-    Returns:
-        Tuple of (is_safe, reason)
-    """
-    if not url:
-        return False, "Empty URL"
-
-    try:
-        parsed = urlparse(url)
-    except Exception as e:
-        return False, f"Invalid URL format: {e}"
-
-    scheme = parsed.scheme.lower()
-    if not scheme:
-        return False, "Missing URL scheme"
-    if scheme in BLOCKED_SCHEMES:
-        return False, f"Blocked scheme: {scheme}"
-    if scheme not in ALLOWED_SCHEMES:
-        return False, f"Unsupported scheme: {scheme}"
-
-    host = parsed.hostname or ""
-    port = parsed.port
-    host_with_port = f"{host}:{port}" if port else host
-
-    if allow_searxng and host_with_port in SEARXNG_WHITELIST:
-        return True, ""
-
-    if host.lower() in CLOUD_METADATA_HOSTS:
-        return False, f"Blocked cloud metadata endpoint: {host}"
-
-    if is_internal_ip(host):
-        return False, f"Blocked internal/private IP: {host}"
-
-    if re.match(r"^(localhost|127\.\d+\.\d+\.\d+|::1|\[::1\])$", host, re.IGNORECASE):
-        return False, f"Blocked localhost: {host}"
-
-    internal_patterns = [
-        r"^internal\.",
-        r"^private\.",
-        r"^local\.",
-        r"\.internal$",
-        r"\.local$",
-        r"\.localhost$",
-    ]
-    for pattern in internal_patterns:
-        if re.search(pattern, host, re.IGNORECASE):
-            return False, f"Blocked internal hostname pattern: {host}"
-
-    return True, ""
-
+__all__ = [
+    "ALLOWED_SCHEMES",
+    "BLOCKED_SCHEMES",
+    "CLOUD_METADATA_HOSTS",
+    "SEARXNG_WHITELIST",
+    "is_internal_ip",
+    "is_safe_url",
+    "extract_anchor_terms",
+    "guard_query_against_goal",
+    "guard_queries_against_drift",
+    "STOP_WORDS",
+]
 
 # ── Topic Anchoring ─────────────────────────────────────────────────────
 

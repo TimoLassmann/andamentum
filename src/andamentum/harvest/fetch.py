@@ -12,8 +12,6 @@ Format detection is intentionally three-tiered:
 
 from __future__ import annotations
 
-import ipaddress
-import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -22,6 +20,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .errors import FetchError, UnsupportedFormatError
+from .url_safety import is_safe_url
 
 Format = Literal["pdf", "html", "docx", "pptx", "markdown", "plain"]
 
@@ -64,42 +63,18 @@ class Fetched:
 
 
 # ----------------------------------------------------------------------------
-# SSRF protection
+# SSRF protection — thin alias preserving the in-module name used by tests
+# and the fetch path. Implementation lives in ``harvest.url_safety``.
 # ----------------------------------------------------------------------------
 
 
 def _is_safe_url(url: str) -> tuple[bool, str]:
     """Block URLs that resolve to private/loopback IPs (basic SSRF protection).
 
-    Mirrors the contract used by deep_research's text_utils.is_safe_url so
-    behaviour is consistent across modules — but reimplemented here so we
-    don't import from deep_research (layering rule).
+    Delegates to ``harvest.url_safety.is_safe_url`` so harvest and
+    deep_research share one implementation.
     """
-    try:
-        parsed = urlparse(url)
-    except Exception as exc:
-        return False, f"URL parse error: {exc}"
-    if parsed.scheme not in ("http", "https"):
-        return False, f"unsupported scheme: {parsed.scheme!r}"
-    if not parsed.hostname:
-        return False, "URL has no hostname"
-    try:
-        ip = socket.gethostbyname(parsed.hostname)
-    except socket.gaierror as exc:
-        return False, f"DNS resolution failed: {exc}"
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError as exc:
-        return False, f"invalid IP from DNS: {exc}"
-    if (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-    ):
-        return False, f"hostname resolves to non-public IP {ip}"
-    return True, "ok"
+    return is_safe_url(url)
 
 
 # ----------------------------------------------------------------------------

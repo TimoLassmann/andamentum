@@ -33,19 +33,15 @@ logger = logging.getLogger(__name__)
 
 
 def _build_agent(name: str, model: Any) -> Agent[Any, Any]:
-    """Create a pydantic-ai Agent from a registry definition."""
-    defn = get_agent(name)
-    if defn.output_model is None:
-        raise ValueError(
-            f"Agent {name}: output_model is None. Deep research only supports agents with concrete output types."
-        )
-    return Agent(
-        model,
-        output_type=defn.output_model,
-        instructions=defn.prompt,
-        retries=defn.retries,
-        output_retries=defn.output_retries,
-    )
+    """Create a pydantic-ai ``Agent`` from a registry definition.
+
+    Delegates to ``andamentum.core.agents.build_pydantic_ai_agent`` so every
+    node-based caller (deep_research, whetstone v2, ...) shares one
+    Agent-construction recipe.
+    """
+    from andamentum.core.agents import build_pydantic_ai_agent
+
+    return build_pydantic_ai_agent(get_agent(name), model)
 
 
 # ── Node Deps ──────────────────────────────────────────────────────────

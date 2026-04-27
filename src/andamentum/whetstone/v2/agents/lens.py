@@ -99,6 +99,7 @@ def build_lens_agent_definition(lens_name: str) -> AgentDefinition:
         prompt=LENS_PROMPTS[lens_name],
         output_model=LensReadOutput,
         retries=2,
+        output_retries=2,
     )
 
 

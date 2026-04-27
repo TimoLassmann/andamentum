@@ -173,6 +173,38 @@ class AgentRunner:
         self._cache.clear()
 
 
+def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
+    """Build a pydantic-ai ``Agent`` from an ``AgentDefinition`` + model.
+
+    Used by sub-modules whose graph nodes need direct access to the agent
+    (for ``deps=``, custom ``RunContext``, tools, etc.) — places where
+    ``AgentRunner.run`` doesn't fit because the node manages the call
+    itself. This helper centralises the (instructions, output_type, retries)
+    shape so every node-based caller agrees on the construction recipe.
+
+    Callers are responsible for resolving the model upstream (typically via
+    ``core.models.resolve_model``) so this stays a pure shape adapter.
+
+    Raises:
+        ValueError: If ``defn.output_model`` is None — node-based agents
+            must declare a concrete output type.
+    """
+    from pydantic_ai import Agent
+
+    if defn.output_model is None:
+        raise ValueError(
+            f"Agent {defn.name}: output_model is None. "
+            "build_pydantic_ai_agent only supports agents with a concrete output_type."
+        )
+    return Agent(
+        model,
+        instructions=defn.prompt,
+        output_type=defn.output_model,
+        retries=defn.retries,
+        output_retries=defn.output_retries,
+    )
+
+
 async def run_agent_with_fallback(
     model: Any,
     *,
