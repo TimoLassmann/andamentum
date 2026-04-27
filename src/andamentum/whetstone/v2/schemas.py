@@ -12,6 +12,7 @@ optional structures, no fields the agent has to guess about.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -38,6 +39,7 @@ class Finding(BaseModel):
     confident they should be in the finding's provenance.
     """
 
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     title: str
     severity: Literal["minor", "moderate", "major"]
     confidence: Literal["low", "medium", "high"]
@@ -46,6 +48,7 @@ class Finding(BaseModel):
     sections_involved: list[str] = Field(default_factory=list)  # section_id list
     source: Literal["deterministic", "investigate", "challenged"] = "deterministic"
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
+    category: str = ""  # short clustering tag picked by the lens
 
 
 class Edit(BaseModel):
