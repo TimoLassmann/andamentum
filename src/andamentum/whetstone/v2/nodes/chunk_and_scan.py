@@ -35,7 +35,7 @@ from ..structural.terms import extract_term_glossary
 from ..structural.types import SectionRef, StructuralFacts
 
 if TYPE_CHECKING:
-    from .skim import Skim
+    from .critical_read import CriticalRead
 
 
 @dataclass
@@ -44,7 +44,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
 
     async def run(
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
-    ) -> "Union[Skim, End[ReviewResult]]":
+    ) -> "Union[CriticalRead, End[ReviewResult]]":
         ctx.state.current_phase = "scan"
 
         # ── 1. Chunk into sections ────────────────────────────────────
@@ -87,9 +87,9 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             ctx.state.current_phase = "done"
             return End(_build_result(ctx.state))
 
-        from .skim import Skim
+        from .critical_read import CriticalRead
 
-        return Skim()
+        return CriticalRead()
 
 
 def _build_result(state: ReviewState) -> ReviewResult:
