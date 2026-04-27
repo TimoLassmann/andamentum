@@ -45,22 +45,56 @@ class NoteUpdate(BaseModel):
     ``action == "drop"`` removes the note from the pool.
     """
 
-    note_id: str
-    action: Literal["keep", "refine", "drop"]
+    note_id: str = Field(
+        description=(
+            "The id of one of the notes shown to you in NOTES TO VERIFY. "
+            "Do not invent ids."
+        ),
+    )
+    action: Literal["keep", "refine", "drop"] = Field(
+        description=(
+            "What to do with this note. "
+            "keep = the note stands as written, no changes. "
+            "refine = the note is partly right; you'll rewrite it. "
+            "drop = the note is wrong on careful re-reading; remove it."
+        ),
+    )
 
     # Required iff action == "refine":
-    refined_title: str = ""
-    refined_severity: Optional[Literal["minor", "moderate", "major"]] = None
-    refined_confidence: Optional[Literal["low", "medium", "high"]] = None
+    refined_title: str = Field(
+        default="",
+        description="New title for the refined note. Required iff action='refine'.",
+    )
+    refined_severity: Optional[Literal["minor", "moderate", "major"]] = Field(
+        default=None,
+        description="New severity if it should change. Required iff action='refine'.",
+    )
+    refined_confidence: Optional[Literal["low", "medium", "high"]] = Field(
+        default=None,
+        description="New confidence if it should change. Required iff action='refine'.",
+    )
     refined_rationale: str = Field(
         default="",
         description=(
             "Rewritten rationale for the refined note. "
-            "Maximum 3 sentences."
+            "Maximum 3 sentences. Required iff action='refine'."
         ),
     )
-    refined_quote_text: str = ""
-    refined_quote_section_id: str = ""
+    refined_quote_text: str = Field(
+        default="",
+        description=(
+            "VERBATIM span from one of the fed sections, supporting the "
+            "refined note. Required iff action='refine'. Anything not "
+            "found in source will cause the refinement to be rejected."
+        ),
+    )
+    refined_quote_section_id: str = Field(
+        default="",
+        description=(
+            "The id of the fed section that refined_quote_text comes from. "
+            "Required iff action='refine'."
+        ),
+    )
 
 
 class NewNote(BaseModel):
@@ -71,25 +105,71 @@ class NewNote(BaseModel):
     quote came from. Anchor verification rejects fabricated quotes.
     """
 
-    title: str
-    severity: Literal["minor", "moderate", "major"]
-    confidence: Literal["low", "medium", "high"]
+    title: str = Field(description="≤80 chars, like a commit message.")
+    severity: Literal["minor", "moderate", "major"] = Field(
+        description=(
+            "How serious is this issue? "
+            "minor = cosmetic / nice-to-have. "
+            "moderate = real but local issue. "
+            "major = load-bearing — undermines a section's claim or "
+            "argument."
+        ),
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description=(
+            "How sure are you? "
+            "low = judgement call. "
+            "medium = clearly an issue. "
+            "high = unambiguous, verifiable from the source."
+        ),
+    )
     rationale: str = Field(
         description=(
             "Explain what the issue is and why it matters. "
             "Maximum 3 sentences."
         ),
     )
-    quote_text: str
-    quote_section_id: str
-    category: str = ""
+    quote_text: str = Field(
+        description=(
+            "VERBATIM span from one of the fed sections, supporting the "
+            "issue. Required. Anything not found in source will cause "
+            "the new note to be dropped."
+        ),
+    )
+    quote_section_id: str = Field(
+        description=(
+            "The id of the fed section that quote_text comes from. "
+            "Required."
+        ),
+    )
+    category: str = Field(
+        default="",
+        description=(
+            "Short tag picked from: evidence, methodology, argument-flow, "
+            "framing, consistency, data-quality, scope. Optional."
+        ),
+    )
 
 
 class InvestigatorOutput(BaseModel):
     """Outcomes for the input notes plus any newly raised notes."""
 
-    updates: list[NoteUpdate] = Field(default_factory=list)
-    new_notes: list[NewNote] = Field(default_factory=list)
+    updates: list[NoteUpdate] = Field(
+        default_factory=list,
+        description=(
+            "One NoteUpdate for each note in NOTES TO VERIFY. If there "
+            "are no notes to verify (the task is purely about raising "
+            "new ones), return an empty list."
+        ),
+    )
+    new_notes: list[NewNote] = Field(
+        default_factory=list,
+        description=(
+            "Issues you noticed that the junior reviewers missed. Empty "
+            "list is fine — only raise new notes when source clearly "
+            "supports them."
+        ),
+    )
 
 
 # ── System prompt ───────────────────────────────────────────────────────

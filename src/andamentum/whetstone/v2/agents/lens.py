@@ -32,8 +32,23 @@ class LensIssueProposal(BaseModel):
     """
 
     title: str = Field(description="≤80 chars, like a commit message")
-    severity: Literal["minor", "moderate", "major"]
-    confidence: Literal["low", "medium", "high"]
+    severity: Literal["minor", "moderate", "major"] = Field(
+        description=(
+            "How serious is this issue? "
+            "minor = cosmetic / nice-to-have. "
+            "moderate = real but local issue. "
+            "major = load-bearing — undermines a section's claim or "
+            "argument."
+        ),
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description=(
+            "How sure are you? "
+            "low = judgement call, could go either way. "
+            "medium = clearly an issue but reasonable people might disagree. "
+            "high = unambiguous — verifiable from the section text."
+        ),
+    )
     rationale: str = Field(
         description=(
             "Explain what the issue is and why it matters. "
