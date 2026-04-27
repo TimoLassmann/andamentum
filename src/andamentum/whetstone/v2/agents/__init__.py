@@ -56,21 +56,16 @@ def get_agent(name: str) -> AgentDefinition:
 
 
 def build_pydantic_ai_agent(name: str, model: Any):
-    """Build a pydantic-ai Agent from a registry definition.
+    """Build a pydantic-ai ``Agent`` from a registry definition.
 
-    Defers the pydantic-ai import so this module can be loaded without it
-    (e.g. for type-checking or for tests that mock at the node level).
+    Thin wrapper around ``andamentum.core.agents.build_pydantic_ai_agent``
+    that adds the registry-name lookup. Kept as a thin shim so
+    ``mock.patch("...build_pydantic_ai_agent", ...)`` in node tests
+    continues to work.
     """
-    from pydantic_ai import Agent
+    from andamentum.core.agents import build_pydantic_ai_agent as _build
 
-    defn = get_agent(name)
-    return Agent(
-        model,
-        output_type=defn.output_model,
-        instructions=defn.prompt,
-        retries=defn.retries,
-        output_retries=defn.output_retries,
-    )
+    return _build(get_agent(name), model)
 
 
 __all__ = [

@@ -239,6 +239,7 @@ def build_investigator_agent_definition() -> AgentDefinition:
         prompt=_INVESTIGATOR_PROMPT,
         output_model=InvestigatorOutput,
         retries=2,
+        output_retries=2,
     )
 
 

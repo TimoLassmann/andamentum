@@ -3,26 +3,50 @@
 Provides:
 - Model resolution (ollama, bedrock, passthrough)
 - Agent execution with PromptedOutput fallback
-- Embedding client
+- Embedding client (Ollama HTTP, cosine similarity, chunked-doc embeds)
 
-Sub-modules (epistemic, deep_research, document_store) import from here
-instead of maintaining independent implementations.
+Sub-modules (epistemic, deep_research, document_store, chunker, ...)
+import from here instead of maintaining independent implementations.
 """
 
-# === Functions you can wrap as agent tools ===
-# Note: AgentRunner is a class — wrap its `.run()` method as a tool.
-from .agents import AgentRunner, run_agent_with_fallback
+from .agents import (
+    AgentDefinition,
+    AgentRunner,
+    build_pydantic_ai_agent,
+    run_agent_with_fallback,
+)
+from .embeddings import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_MAX_EMBED_CHARS,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OVERLAP_CHARS,
+    EmbeddingFn,
+    chunk_text,
+    cosine_similarity,
+    embed_documents,
+    embed_texts,
+    make_ollama_embedder,
+)
 from .models import resolve_model, resolve_model_from_args
 
-# === Result/data types (config + return values; not tools themselves) ===
-from .agents import AgentDefinition
-
 __all__ = [
-    # Functions / callables
+    # Agents
+    "AgentDefinition",
     "AgentRunner",
+    "build_pydantic_ai_agent",
+    "run_agent_with_fallback",
+    # Models
     "resolve_model",
     "resolve_model_from_args",
-    "run_agent_with_fallback",
-    # Data types
-    "AgentDefinition",
+    # Embeddings
+    "EmbeddingFn",
+    "chunk_text",
+    "cosine_similarity",
+    "embed_documents",
+    "embed_texts",
+    "make_ollama_embedder",
+    "DEFAULT_EMBEDDING_MODEL",
+    "DEFAULT_MAX_EMBED_CHARS",
+    "DEFAULT_OLLAMA_URL",
+    "DEFAULT_OVERLAP_CHARS",
 ]

@@ -1,20 +1,13 @@
-"""Tiny module holding ``AgentDefinition`` so individual agent files can
-import it without triggering the agent-registry init in ``__init__.py``.
+"""Re-export ``core.agents.AgentDefinition`` so whetstone v2 agent files share
+one definition class with deep_research, epistemic, and any future module.
+
+Kept as its own file (rather than importing core directly in
+``__init__.py``) so individual agent modules can import the symbol without
+triggering the v2 agent-registry init in ``__init__.py``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from andamentum.core.agents import AgentDefinition
 
-from pydantic import BaseModel
-
-
-@dataclass
-class AgentDefinition:
-    """A single (prompt, output_model, retries) tuple."""
-
-    name: str
-    prompt: str
-    output_model: type[BaseModel]
-    retries: int = 2
-    output_retries: int = 2
+__all__ = ["AgentDefinition"]

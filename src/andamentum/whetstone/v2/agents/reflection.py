@@ -144,6 +144,7 @@ def build_reflection_agent_definition() -> AgentDefinition:
         prompt=_REFLECTION_PROMPT,
         output_model=ReflectionOutput,
         retries=2,
+        output_retries=2,
     )
 
 

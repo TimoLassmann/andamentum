@@ -133,11 +133,22 @@ research question's intent in any way, mark it as not aligned."""
 
 
 def _build_agent(model: Any) -> Any:
-    """Build the alignment validator agent with dynamic system prompt."""
+    """Build the alignment validator agent with dynamic system prompt.
+
+    Resolves string model identifiers via ``core.models.resolve_model`` so
+    ``ollama:`` / ``bedrock:`` prefixes work the same here as everywhere
+    else. The dynamic-prompt-with-``deps_type`` pattern means we can't
+    route this through ``AgentRunner.run`` — we still build the Agent
+    directly — but model resolution stays consistent with core.
+    """
     from pydantic_ai import Agent, RunContext
 
+    from andamentum.core.models import resolve_model
+
+    resolved = resolve_model(model) if isinstance(model, str) else model
+
     agent = Agent(
-        model,
+        resolved,
         system_prompt=_BASE_PROMPT,
         deps_type=AlignmentCheck,
         output_type=AlignmentResult,
