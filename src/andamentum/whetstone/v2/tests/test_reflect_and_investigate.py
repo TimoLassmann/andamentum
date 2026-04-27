@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
-import pytest
-
 from andamentum.whetstone.v2.agents import (
     InvestigatorOutput,
     NewNote,
