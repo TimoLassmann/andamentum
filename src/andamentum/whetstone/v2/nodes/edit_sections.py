@@ -15,6 +15,7 @@ to ``review_document``.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     from .challenge import Challenge
 
 
+logger = logging.getLogger("andamentum.whetstone.v2")
+
 # Cap on parallelism so we don't slam Ollama or hit rate limits.
 _MAX_CONCURRENT_EDITORS = 5
 
@@ -46,28 +49,55 @@ class EditSections(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         ctx.state.current_phase = "edit"
 
         if not ctx.state.editor_enabled:
+            logger.info("[edit] editor disabled — skipping")
             from .challenge import Challenge
 
             return Challenge()
 
+        total = len(ctx.state.sections)
+        logger.info(
+            "[edit] running editor on %d section(s) (concurrency=%d)",
+            total,
+            _MAX_CONCURRENT_EDITORS,
+        )
+
         sem = asyncio.Semaphore(_MAX_CONCURRENT_EDITORS)
         criteria = list(ctx.state.editor_criteria)
+        completed = 0
 
-        async def edit_one(section: "SectionRef") -> list[Edit]:
+        async def edit_one(idx: int, section: "SectionRef") -> list[Edit]:
+            nonlocal completed
             async with sem:
                 try:
-                    return await _run_editor_on_section(ctx.deps, section, criteria)
-                except Exception:
+                    edits = await _run_editor_on_section(ctx.deps, section, criteria)
+                except Exception as exc:
                     # Loud-fail-safe: one section's editor crashing must
                     # not abort the whole pipeline.
+                    logger.warning(
+                        "[edit] section %d/%d (%s) crashed: %s",
+                        idx,
+                        total,
+                        section.id,
+                        exc,
+                    )
                     return []
+                completed += 1
+                logger.info(
+                    "[edit] %d/%d done — %s: %d edit(s)",
+                    completed,
+                    total,
+                    section.title or section.id,
+                    len(edits),
+                )
+                return edits
 
         results = await asyncio.gather(
-            *[edit_one(s) for s in ctx.state.sections]
+            *[edit_one(i, s) for i, s in enumerate(ctx.state.sections, start=1)]
         )
         for edits in results:
             ctx.state.edits.extend(edits)
         ctx.state.llm_calls += sum(1 for r in results if r is not None)
+        logger.info("[edit] done — %d edit(s) total", len(ctx.state.edits))
 
         from .challenge import Challenge
 

@@ -12,6 +12,7 @@ Disabled if ``state.challenge_enabled`` is False (caller passed
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,9 @@ from ..state import ReviewState
 
 if TYPE_CHECKING:
     from .author_questions import AuthorQuestions
+
+
+logger = logging.getLogger("andamentum.whetstone.v2")
 
 
 # Severities that get challenged. Minor findings are kept as is — they're
@@ -45,6 +49,7 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         ctx.state.current_phase = "challenge"
 
         if not ctx.state.challenge_enabled:
+            logger.info("[challenge] disabled — skipping refutation pass")
             ctx.state.challenged_findings = list(ctx.state.findings)
             from .author_questions import AuthorQuestions
 
@@ -56,10 +61,17 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             if f.severity in _CHALLENGEABLE_SEVERITIES
         ]
         if not challengeable_idx:
+            logger.info("[challenge] no challengeable findings (need moderate+ severity)")
             ctx.state.challenged_findings = list(ctx.state.findings)
             from .author_questions import AuthorQuestions
 
             return AuthorQuestions()
+
+        logger.info(
+            "[challenge] refuting %d finding(s) (concurrency=%d)",
+            len(challengeable_idx),
+            _MAX_CONCURRENT_CHALLENGES,
+        )
 
         sections_by_id = {s.id: s for s in ctx.state.sections}
         sem = asyncio.Semaphore(_MAX_CONCURRENT_CHALLENGES)
@@ -71,10 +83,15 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
                         ctx.deps, ctx.state.findings[idx], sections_by_id
                     )
                     return idx, verdict
-                except Exception:
+                except Exception as exc:
                     # Loud-fail-safe: a challenge call that errors out
                     # leaves the finding intact (we'd rather keep a true
                     # finding than silently drop it on an LLM hiccup).
+                    logger.warning(
+                        "[challenge] finding[%d] crashed: %s — keeping intact",
+                        idx,
+                        exc,
+                    )
                     return idx, None
 
         results = await asyncio.gather(
@@ -85,6 +102,7 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         # Apply verdicts. Build a fresh list to avoid mutating in flight.
         verdict_by_idx = {idx: verdict for idx, verdict in results if verdict is not None}
         challenged: list[Finding] = []
+        stood = weakened = withdrawn = 0
         for i, finding in enumerate(ctx.state.findings):
             verdict = verdict_by_idx.get(i)
             if verdict is None:
@@ -92,10 +110,19 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
                 continue
             if verdict.verdict == "stand":
                 challenged.append(_with_source(finding, "challenged"))
+                stood += 1
             elif verdict.verdict == "weaken":
                 challenged.append(_weaken(finding, verdict.reason))
-            # "withdraw" → finding is dropped; do not append.
+                weakened += 1
+            else:  # "withdraw" → finding is dropped; do not append.
+                withdrawn += 1
         ctx.state.challenged_findings = challenged
+        logger.info(
+            "[challenge] done — %d stood, %d weakened, %d withdrawn",
+            stood,
+            weakened,
+            withdrawn,
+        )
 
         from .author_questions import AuthorQuestions
 

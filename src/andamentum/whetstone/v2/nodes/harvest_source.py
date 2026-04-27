@@ -9,6 +9,7 @@ text.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
     from .chunk_and_scan import ChunkAndScan
 
 
+logger = logging.getLogger("andamentum.whetstone.v2")
+
 _URL_PREFIXES = ("http://", "https://", "file://")
 
 
@@ -37,6 +40,7 @@ class HarvestSource(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     ) -> "ChunkAndScan":
         ctx.state.current_phase = "harvest"
         source = ctx.state.source
+        logger.info("[harvest] loading source: %s", _describe_source(source))
 
         if isinstance(source, Path):
             # Path object → always go through harvest (extracts via PDF/DOCX/etc.)
@@ -55,10 +59,25 @@ class HarvestSource(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
                 f"source must be str or pathlib.Path, got {type(source).__name__}"
             )
 
+        logger.info(
+            "[harvest] done — %d chars of markdown", len(ctx.state.markdown)
+        )
+
         # Defer the import to avoid a circular ChunkAndScan ↔ this file at module load.
         from .chunk_and_scan import ChunkAndScan
 
         return ChunkAndScan()
+
+
+def _describe_source(source: object) -> str:
+    """One-line description of the source for logs (truncate raw markdown)."""
+    if isinstance(source, Path):
+        return str(source)
+    if isinstance(source, str):
+        if source.startswith(_URL_PREFIXES) or len(source) <= 120:
+            return source
+        return f"<raw text, {len(source)} chars>"
+    return repr(source)
 
 
 def _looks_like_existing_file(source: str) -> bool:
