@@ -52,7 +52,13 @@ class NoteUpdate(BaseModel):
     refined_title: str = ""
     refined_severity: Optional[Literal["minor", "moderate", "major"]] = None
     refined_confidence: Optional[Literal["low", "medium", "high"]] = None
-    refined_rationale: str = ""
+    refined_rationale: str = Field(
+        default="",
+        description=(
+            "Rewritten rationale for the refined note. "
+            "Maximum 3 sentences."
+        ),
+    )
     refined_quote_text: str = ""
     refined_quote_section_id: str = ""
 
@@ -68,7 +74,12 @@ class NewNote(BaseModel):
     title: str
     severity: Literal["minor", "moderate", "major"]
     confidence: Literal["low", "medium", "high"]
-    rationale: str
+    rationale: str = Field(
+        description=(
+            "Explain what the issue is and why it matters. "
+            "Maximum 3 sentences."
+        ),
+    )
     quote_text: str
     quote_section_id: str
     category: str = ""

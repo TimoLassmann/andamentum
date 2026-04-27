@@ -39,8 +39,9 @@ class ReflectionTask(BaseModel):
 
     description: str = Field(
         description=(
-            "What to check, in your own words. One sentence is fine; "
-            "two if needed. Do NOT use jargon — be concrete."
+            "What to check, in your own words. Be concrete — vague "
+            "descriptions give the investigator nothing to work with. "
+            "Maximum 3 sentences."
         ),
     )
     section_ids: list[str] = Field(
