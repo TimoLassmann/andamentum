@@ -16,9 +16,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 from typing import NoReturn, Sequence
+
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.table import Table
+
+
+_LOGGER_NAME = "andamentum.whetstone.v2"
 
 
 _HELP_DESCRIPTION = """\
@@ -49,15 +58,18 @@ REVIEW OPTIONS
                                clarity,concision,grammar
     --no-challenge             Skip the refutation phase
                                (faster, slightly less reliable findings).
-    --perspectives LIST        Comma-separated personas.
+    --perspectives LIST        Comma-separated lens names.
                                Default: rigorous
-                               Examples: rigorous,statistician,writer
-    --budget N                 Max LLM-investigated hypotheses.
-                               Caps cost per review. Default: 30
+                               Available: rigorous, writer, methodology,
+                                          statistician
+    --rounds N                 Hard cap on rounds of the reflection–
+                               investigation loop. Default: 3.
+                               The loop typically exits earlier when the
+                               senior reviewer says "nothing more to do".
     --no-llm                   Run only the deterministic structural pass
                                (citations, terms, numerics, cross-refs).
                                No --model required. Free, instant.
-    -v, --verbose              Print progress to stderr.
+    -v, --verbose              Print phase-by-phase progress to stderr.
 """
 
 
@@ -66,7 +78,7 @@ EXAMPLES
     # Quick deterministic-only check (no LLM, no cost)
     andamentum-whetstone paper.pdf --no-llm --out review.md
 
-    # Full review of a PDF, output in three formats
+    # Full critical review of a PDF, output in three formats
     andamentum-whetstone paper.pdf \\
         --model openai:gpt-5.4-nano \\
         --out review.md --out review.html --out paper.reviewed.docx
@@ -76,15 +88,15 @@ EXAMPLES
         --model openai:gpt-5.4-nano --editor \\
         --out draft.reviewed.docx
 
-    # Multi-perspective panel on an arXiv paper
+    # Multi-lens panel on an arXiv paper
     andamentum-whetstone https://arxiv.org/pdf/1901.01753 \\
         --model openai:gpt-5.4-nano \\
         --perspectives rigorous,statistician,writer \\
         --out panel-review.html
 
-    # Local model, generous budget, all outputs
+    # Local model, deeper reflection loop (4 rounds), all outputs
     andamentum-whetstone manuscript.pdf \\
-        --model ollama:gemma4:31b-nvfp4 --budget 60 --editor \\
+        --model ollama:gemma4:31b-nvfp4 --rounds 4 --editor \\
         --out review.md --out review.html --out manuscript.reviewed.docx
 
 EXIT CODES
@@ -145,14 +157,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--perspectives",
         default="rigorous",
         metavar="LIST",
-        help="Comma-separated reviewer personas. Default: rigorous",
+        help=(
+            "Comma-separated lens names. "
+            "Available: rigorous, writer, methodology, statistician. "
+            "Default: rigorous"
+        ),
     )
     parser.add_argument(
-        "--budget",
+        "--rounds",
         type=int,
-        default=30,
+        default=3,
         metavar="N",
-        help="Max LLM-investigated hypotheses. Caps cost per review. Default: 30",
+        help=(
+            "Hard cap on rounds of the reflection-investigation loop. "
+            "Default: 3. The loop typically exits earlier."
+        ),
     )
     parser.add_argument(
         "--no-llm",
@@ -187,6 +206,8 @@ def _validate_args(args: argparse.Namespace) -> None:
             "--editor requires --model (the editor agent is an LLM call). "
             "Drop --editor or --no-llm.",
         )
+    if args.rounds < 1:
+        _die(1, "--rounds must be at least 1.")
     for out in args.out:
         ext = out.suffix.lower()
         if ext not in _SUPPORTED_OUT_EXTENSIONS:
@@ -203,7 +224,7 @@ def _die(code: int, message: str) -> NoReturn:
     sys.exit(code)
 
 
-async def _run(args: argparse.Namespace) -> None:
+async def _run(args: argparse.Namespace, console: Console) -> None:
     """Execute the review and write all requested outputs."""
     from .api import review_document
     from .renderers import render_docx, render_html, render_markdown
@@ -213,21 +234,16 @@ async def _run(args: argparse.Namespace) -> None:
         c.strip() for c in args.editor_criteria.split(",") if c.strip()
     )
 
+    logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
-        print(f"reviewing: {args.input}", file=sys.stderr)
-        print(f"  model:        {args.model or '(deterministic only)'}", file=sys.stderr)
-        print(f"  perspectives: {', '.join(perspectives)}", file=sys.stderr)
-        print(f"  editor:       {'on' if args.editor else 'off'}", file=sys.stderr)
-        print(f"  challenge:    {'off' if args.no_challenge else 'on'}", file=sys.stderr)
-        print(f"  budget:       {args.budget}", file=sys.stderr)
-        print(f"  outputs:      {', '.join(str(o) for o in args.out)}", file=sys.stderr)
+        _log_run_config(console, args, perspectives, editor_criteria)
 
     try:
         result = await review_document(
             args.input,
             model=None if args.no_llm else args.model,
             perspectives=perspectives,
-            hypothesis_budget=args.budget,
+            reflection_round_cap=args.rounds,
             challenge=not args.no_challenge,
             editor=args.editor,
             editor_criteria=editor_criteria,
@@ -241,27 +257,15 @@ async def _run(args: argparse.Namespace) -> None:
         else:
             _die(3, f"review pipeline failed: {exc}")
 
-    if args.verbose:
-        m = result.metrics
-        print(
-            f"  → {m.deterministic_findings_count} deterministic + "
-            f"{m.investigated_findings_count} investigated finding(s), "
-            f"{m.edits_count} edit(s); "
-            f"{m.llm_calls} LLM call(s); "
-            f"{m.wall_seconds:.1f}s",
-            file=sys.stderr,
-        )
-
     # If any output is .docx, prepare a baseline .docx ONCE upfront
     # (rather than per-output) so we don't re-harvest if the user asked
     # for multiple .docx outputs.
     baseline_docx: Path | None = None
     baseline_is_temp = False
     if any(o.suffix.lower() == ".docx" for o in args.out):
-        baseline_docx, baseline_is_temp = await _ensure_docx_source(
-            args.input, args.verbose
-        )
+        baseline_docx, baseline_is_temp = await _ensure_docx_source(args.input)
 
+    written: list[Path] = []
     try:
         # ── Write each requested output ──────────────────────────────
         for out in args.out:
@@ -274,8 +278,8 @@ async def _run(args: argparse.Namespace) -> None:
             elif ext == ".docx":
                 assert baseline_docx is not None  # validated above
                 render_docx(result, source_docx_path=baseline_docx, output_path=out)
-            if args.verbose:
-                print(f"  wrote {out}", file=sys.stderr)
+            written.append(out)
+            logger.info("[output] wrote %s", out)
     finally:
         # Clean up the auto-generated baseline docx (if we created one).
         if baseline_is_temp and baseline_docx is not None:
@@ -284,10 +288,56 @@ async def _run(args: argparse.Namespace) -> None:
             except OSError:
                 pass
 
+    _print_summary(console, result, written)
 
-async def _ensure_docx_source(
-    input_arg: str, verbose: bool
-) -> tuple[Path, bool]:
+
+def _log_run_config(
+    console: Console,
+    args: argparse.Namespace,
+    perspectives: tuple[str, ...],
+    editor_criteria: tuple[str, ...],
+) -> None:
+    """Render the input/options panel before the run starts."""
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="bold cyan", justify="right")
+    table.add_column()
+    table.add_row("input:", str(args.input))
+    table.add_row("model:", args.model or "[i](deterministic only)[/i]")
+    table.add_row("perspectives:", ", ".join(perspectives))
+    table.add_row("editor:", "on" if args.editor else "off")
+    if args.editor:
+        table.add_row("editor criteria:", ", ".join(editor_criteria))
+    table.add_row("challenge:", "off" if args.no_challenge else "on")
+    table.add_row("rounds (cap):", str(args.rounds))
+    table.add_row("outputs:", ", ".join(str(o) for o in args.out))
+    console.print(Panel(table, title="whetstone v2", border_style="cyan"))
+
+
+def _print_summary(
+    console: Console, result, written: list[Path]
+) -> None:
+    """Render a Rich summary table after the run completes."""
+    m = result.metrics
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="bold cyan", justify="right")
+    table.add_column()
+    table.add_row("wall time:", f"{m.wall_seconds:.1f}s")
+    table.add_row("LLM calls:", str(m.llm_calls))
+    table.add_row("sections:", str(m.sections_processed))
+    table.add_row(
+        "findings:",
+        f"{m.deterministic_findings_count} deterministic + "
+        f"{m.investigated_findings_count} investigated "
+        f"({m.challenged_findings_count} challenged)",
+    )
+    table.add_row("edits:", str(m.edits_count))
+    table.add_row("author questions:", str(len(result.author_questions)))
+    table.add_row("rounds used:", str(m.reflection_rounds_used))
+    table.add_row("outputs:", "\n".join(str(p) for p in written))
+    console.print(Panel(table, title="review complete", border_style="green"))
+
+
+async def _ensure_docx_source(input_arg: str) -> tuple[Path, bool]:
     """Return ``(path, is_temp)`` for a .docx suitable as track-changes baseline.
 
     If the input is already a local .docx, return its Path with
@@ -299,11 +349,8 @@ async def _ensure_docx_source(
     if input_path is not None and input_path.suffix.lower() == ".docx":
         return input_path, False
 
-    if verbose:
-        print(
-            "  baseline docx: input is not .docx — generating from harvested text",
-            file=sys.stderr,
-        )
+    logger = logging.getLogger(_LOGGER_NAME)
+    logger.info("[baseline] input is not .docx — generating from harvested text")
 
     from andamentum.harvest import extract as harvest_extract
 
@@ -355,10 +402,39 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
     _validate_args(args)
+
+    console = Console(stderr=True)
+    _configure_logging(console, args.verbose)
+
     try:
-        asyncio.run(_run(args))
+        asyncio.run(_run(args, console))
     except KeyboardInterrupt:
         _die(1, "interrupted")
+
+
+def _configure_logging(console: Console, verbose: bool) -> None:
+    """Install a RichHandler on the v2 logger.
+
+    INFO when --verbose, WARNING otherwise so warnings/errors still surface
+    even on quiet runs. We attach to our own namespace logger (not root)
+    so we don't accidentally hijack pydantic-ai/httpx noise.
+    """
+    logger = logging.getLogger(_LOGGER_NAME)
+    # Avoid duplicate handlers if main() is called twice in one process.
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+    logger.setLevel(logging.INFO if verbose else logging.WARNING)
+    handler = RichHandler(
+        console=console,
+        show_time=verbose,
+        show_path=False,
+        show_level=verbose,
+        markup=False,
+        rich_tracebacks=True,
+    )
+    handler.setLevel(logging.INFO if verbose else logging.WARNING)
+    logger.addHandler(handler)
+    logger.propagate = False
 
 
 if __name__ == "__main__":  # pragma: no cover

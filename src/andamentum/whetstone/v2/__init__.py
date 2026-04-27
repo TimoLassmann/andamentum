@@ -2,10 +2,10 @@
 
 Single entry point: ``review_document(source, *, model)``.
 
-Phase 1 (this version) ships only the deterministic substrate:
-StructuralScan extracts citations / terms / numerics / cross-references and
-emits findings without any LLM call. Later phases add Skim, Investigate,
-Challenge, Synthesise.
+Without a ``model`` only the deterministic substrate runs (chunking +
+structural extractors). With a model, the full critical-review pipeline
+runs: lens reading → bounded reflection–investigation loop → optional
+editor → challenge → author questions → synthesis.
 """
 
 from .api import review_document
@@ -14,7 +14,6 @@ from .schemas import (
     AuthorQuestion,
     Edit,
     Finding,
-    Hypothesis,
     Quote,
     ReviewMetrics,
     ReviewResult,
@@ -29,7 +28,6 @@ __all__ = [
     "AuthorQuestion",
     "Edit",
     "Finding",
-    "Hypothesis",
     "Quote",
     "ReviewMetrics",
     "ReviewResult",

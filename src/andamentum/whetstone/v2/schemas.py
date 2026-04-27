@@ -2,7 +2,7 @@
 
 These are the types the API returns and that downstream consumers (other
 agents, CLIs, the user's tooling) read. Pydantic models because:
-  • LLM-filled types (Hypothesis, Finding-from-investigator) need pydantic
+  • LLM-filled types (Finding-from-investigator) need pydantic
   • External consumers benefit from .model_dump() / JSON serialisation
   • Flat field shapes are reliably filled by small local models
 
@@ -12,6 +12,7 @@ optional structures, no fields the agent has to guess about.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -38,6 +39,7 @@ class Finding(BaseModel):
     confident they should be in the finding's provenance.
     """
 
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     title: str
     severity: Literal["minor", "moderate", "major"]
     confidence: Literal["low", "medium", "high"]
@@ -46,6 +48,7 @@ class Finding(BaseModel):
     sections_involved: list[str] = Field(default_factory=list)  # section_id list
     source: Literal["deterministic", "investigate", "challenged"] = "deterministic"
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
+    category: str = ""  # short clustering tag picked by the lens
 
 
 class Edit(BaseModel):
@@ -83,24 +86,6 @@ class AuthorQuestion(BaseModel):
     why: str  # one sentence: why we couldn't answer it ourselves
 
 
-class Hypothesis(BaseModel):
-    """A question to investigate. Emitted by skim_agent (Phase 2).
-
-    Carried in Phase 1 schemas as a placeholder so the type surface is
-    stable from day one. ``investigation_type`` is the dispatch key for the
-    Investigator Registry — defaults to ``"internal"`` (read sections);
-    future investigators (``"novelty"``, ``"factual"``) extend the registry
-    without touching the schema.
-    """
-
-    text: str
-    priority: Literal["low", "medium", "high"]
-    relevant_section_ids: list[str] = Field(default_factory=list)
-    investigation_type: str = "internal"
-    status: Literal["open", "investigating", "resolved", "unfounded"] = "open"
-    perspective: Optional[str] = None  # which persona (panel mode)
-
-
 # ── Document map ────────────────────────────────────────────────────────
 
 
@@ -109,7 +94,7 @@ class SectionCard(BaseModel):
 
     section_id: str
     title: str
-    one_line_gist: str = ""  # populated deterministically; enriched by skim_agent in Phase 2
+    one_line_gist: str = ""  # populated deterministically by document_map
 
 
 # ── Result types ────────────────────────────────────────────────────────
@@ -125,7 +110,7 @@ class ReviewMetrics(BaseModel):
     challenged_findings_count: int = 0
     edits_count: int = 0
     sections_processed: int = 0
-    hypothesis_budget_used: int = 0
+    reflection_rounds_used: int = 0  # how many of reflection_round_cap got consumed
 
 
 class ReviewResult(BaseModel):

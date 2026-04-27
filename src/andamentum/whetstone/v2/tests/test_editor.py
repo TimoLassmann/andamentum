@@ -1,7 +1,7 @@
 """Tests for the EditSections node + editor agent.
 
-Patches the editor agent so we exercise the EditSections flow end-to-end
-without real LLM calls. Verifies:
+Patches every LLM-calling agent in the new pipeline so we exercise the
+EditSections flow end-to-end without real LLM calls. Verifies:
   • editor=False (default) → EditSections is a pass-through, no LLM call
   • editor=True → editor_agent runs once per section, edits accumulate
   • Each Edit's original_text is anchored to a real char span via find_anchor
@@ -19,9 +19,9 @@ from andamentum.whetstone.v2.agents import (
     ChallengeVerdict,
     EditorOutput,
     EditProposal,
-    InvestigationOutput,
+    LensReadOutput,
+    ReflectionOutput,
     ReviewSummary,
-    SkimOutput,
 )
 
 
@@ -54,29 +54,41 @@ def patched_agents(monkeypatch):
     canned: dict[str, Any] = {}
 
     def fake_build(name: str, model: Any) -> _FakeAgent:
+        # Lenses share output schema — match by lens.<name> prefix.
+        if name.startswith("lens.") and "lens" in canned:
+            return _FakeAgent(output=canned["lens"])
         if name not in canned:
             raise AssertionError(f"agent {name!r} called with no canned output")
         return _FakeAgent(output=canned[name])
 
     import andamentum.whetstone.v2.agents as agents_mod
-    import andamentum.whetstone.v2.investigators.internal as inv_mod
     import andamentum.whetstone.v2.nodes.author_questions as aq_mod
     import andamentum.whetstone.v2.nodes.challenge as ch_mod
+    import andamentum.whetstone.v2.nodes.critical_read as cr_mod
     import andamentum.whetstone.v2.nodes.edit_sections as es_mod
-    import andamentum.whetstone.v2.nodes.skim as sk_mod
+    import andamentum.whetstone.v2.nodes.reflect_and_investigate as ri_mod
     import andamentum.whetstone.v2.nodes.synthesise as sy_mod
 
-    for mod in (agents_mod, inv_mod, aq_mod, ch_mod, es_mod, sk_mod, sy_mod):
-        monkeypatch.setattr(mod, "build_pydantic_ai_agent", fake_build, raising=True)
+    for mod in (agents_mod, aq_mod, ch_mod, cr_mod, es_mod, ri_mod, sy_mod):
+        monkeypatch.setattr(
+            mod, "build_pydantic_ai_agent", fake_build, raising=True
+        )
     return canned
 
 
 def _empty_pipeline(canned: dict[str, Any]) -> None:
-    """Set the non-editor agents to no-op outputs."""
-    canned["skim"] = SkimOutput(enriched_sections=[], hypotheses=[])
-    canned["investigate"] = InvestigationOutput(decision="unfounded", unfounded_reason="n/a")
+    """Set the non-editor agents to no-op outputs.
+
+    The lens emits no issues; the reflection loop returns nothing; the
+    challenge agent never gets called (no findings to challenge); the
+    author-question agent stays a no-op; synthesise gets canned prose.
+    """
+    canned["lens"] = LensReadOutput(issues=[])
+    canned["reflection"] = ReflectionOutput(tasks=[])
     canned["challenge"] = ChallengeVerdict(verdict="stand", reason="n/a")
-    canned["author_question"] = AuthorQuestionOutput(question="x", why="x", sections_involved=[])
+    canned["author_question"] = AuthorQuestionOutput(
+        question="x", why="x", sections_involved=[]
+    )
     canned["synthesise"] = ReviewSummary(
         executive_summary="ok",
         major_findings_summary="No major findings.",
@@ -91,7 +103,7 @@ def _empty_pipeline(canned: dict[str, Any]) -> None:
 async def test_editor_disabled_by_default_emits_no_edits(patched_agents):
     _empty_pipeline(patched_agents)
     # Note: no canned editor output. If EditSections invoked it we'd crash.
-    result = await review_document(PAPER, model="fake:test")  # editor defaults to False
+    result = await review_document(PAPER, model="fake:test")
     assert result.edits == []
     assert result.metrics.edits_count == 0
 
@@ -111,7 +123,6 @@ async def test_editor_enabled_runs_per_section_and_anchors_edits(patched_agents)
                 rationale="Wordier than necessary.",
                 severity="minor",
                 confidence="high",
-                # This text appears in BOTH sections of PAPER — use first match
                 original_text="approaches to this problem",
                 new_text="approaches",
             ),
@@ -123,17 +134,14 @@ async def test_editor_enabled_runs_per_section_and_anchors_edits(patched_agents)
         editor=True,
         editor_criteria=["concision"],
     )
-    # Each section calls the editor — both contain "approaches to this problem"
-    # so we expect one Edit per section that contains the matching text.
-    # Section 1 contains the phrase; section 2 has "methodology employed" (no match).
-    # → exactly 1 Edit.
+    # The editor sees each section in turn. Only section 1 contains the
+    # phrase "approaches to this problem", so exactly 1 Edit is anchored.
     assert len(result.edits) == 1
     edit = result.edits[0]
     assert edit.title == "Tighten"
     assert edit.section_id == "sec_001"
     assert edit.original_text == "approaches to this problem"
     assert edit.new_text == "approaches"
-    # Char offsets locate inside the section, not the global doc
     assert 0 <= edit.char_start < edit.char_end
 
 
