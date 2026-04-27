@@ -34,7 +34,12 @@ class LensIssueProposal(BaseModel):
     title: str = Field(description="≤80 chars, like a commit message")
     severity: Literal["minor", "moderate", "major"]
     confidence: Literal["low", "medium", "high"]
-    rationale: str = Field(description="2–3 sentences explaining the issue")
+    rationale: str = Field(
+        description=(
+            "Explain what the issue is and why it matters. "
+            "Maximum 3 sentences."
+        ),
+    )
     quote_text: str = Field(
         default="",
         description="One verbatim span from the section text (≤200 chars). Optional.",
@@ -51,7 +56,13 @@ class LensIssueProposal(BaseModel):
 class LensReadOutput(BaseModel):
     """The lens's full output for one section read."""
 
-    issues: list[LensIssueProposal] = Field(default_factory=list)
+    issues: list[LensIssueProposal] = Field(
+        default_factory=list,
+        description=(
+            "0–3 issues for this section. Quality over quantity — only "
+            "include issues that are concrete and load-bearing."
+        ),
+    )
 
 
 # ── Builder ─────────────────────────────────────────────────────────────

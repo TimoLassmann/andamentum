@@ -147,15 +147,16 @@ _OUTPUT_TRAILER = """
 # Output instructions
 
 You are reading ONE section of the manuscript. Its text is shown to
-you below. Write 0–8 issues — short critical observations a thoughtful
-peer reviewer would write in the margin.
+you below. Write 0–3 issues — short critical observations a thoughtful
+peer reviewer would write in the margin. Quality over quantity: prefer
+fewer, load-bearing issues over many shallow ones.
 
 For each issue, fill in:
 
   • **title** — ≤80 characters. Like a commit message.
   • **severity** — one of: minor / moderate / major.
   • **confidence** — one of: low / medium / high.
-  • **rationale** — 2–3 sentences. What the issue is and why it matters.
+  • **rationale** — explain the issue in at most 3 sentences.
   • **quote_text** — one VERBATIM span from the section text below
     (≤200 characters). Leave empty only if no single span captures it.
     Quotes that don't appear verbatim in the section will be dropped.

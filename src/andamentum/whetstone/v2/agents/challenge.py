@@ -53,7 +53,10 @@ class ChallengeVerdict(BaseModel):
     )
     reason: str = Field(
         default="",
-        description="One short paragraph: why this verdict. For 'withdraw', cite the refuting evidence.",
+        description=(
+            "Why you reached this verdict. For 'withdraw', cite the "
+            "refuting evidence. Maximum 3 sentences."
+        ),
     )
 
 
