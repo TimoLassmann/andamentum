@@ -17,25 +17,19 @@ import traceback
 from pathlib import Path
 
 
-def _read_document(path: Path) -> str:
-    """Read document content, handling both text and binary formats."""
-    suffix = path.suffix.lower()
-    if suffix == ".docx":
-        try:
-            from docx import Document
+async def _read_document(path: Path) -> str:
+    """Read document content as markdown via the harvest extractor.
 
-            doc = Document(str(path))
-            return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
-        except Exception as e:
-            raise ValueError(f"Failed to read .docx file {path}: {e}") from e
-    if suffix == ".pdf":
-        raise ValueError(
-            "PDF reading requires docling. Convert to .docx or .txt first, or install docling: pip install docling"
-        )
+    Supports any format harvest can handle: .txt / .md (passthrough),
+    .docx / .pptx / .pdf (via Docling), .html (via trafilatura/Docling race).
+    PDFs that previously required manual conversion now work directly.
+    """
+    from andamentum.harvest import HarvestError, extract
+
     try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as e:
-        raise ValueError(f"Cannot read {path} as UTF-8 text: {e}") from e
+        return await extract(path)
+    except HarvestError as exc:
+        raise ValueError(f"Could not read {path}: {exc}") from exc
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -277,7 +271,7 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"Error: file not found: {args.file}", file=sys.stderr)
         sys.exit(1)
 
-    content = _read_document(args.file)
+    content = await _read_document(args.file)
     model = _resolve_model(args)
     criteria = _resolve_criteria(args.criteria)
     guidelines = _resolve_guidelines(args.guidelines)
