@@ -22,6 +22,7 @@ from .lens import (
     build_lens_agent_definition,
     list_available_lenses,
 )
+from .reflection import REFLECTION_AGENT, ReflectionOutput, ReflectionTask
 from .skim import SKIM_AGENT, SkimHypothesis, SkimOutput, SkimSection
 from .synthesise import SYNTHESISE_AGENT, ReviewSummary
 
@@ -33,6 +34,7 @@ _REGISTRY: dict[str, AgentDefinition] = {
     CHALLENGE_AGENT.name: CHALLENGE_AGENT,
     SYNTHESISE_AGENT.name: SYNTHESISE_AGENT,
     AUTHOR_QUESTION_AGENT.name: AUTHOR_QUESTION_AGENT,
+    REFLECTION_AGENT.name: REFLECTION_AGENT,
 }
 
 # Register every available lens under its lens.<name> key.
@@ -72,6 +74,8 @@ __all__ = [
     "AgentDefinition",
     "build_pydantic_ai_agent",
     "get_agent",
+    # Module-level definition constants
+    "REFLECTION_AGENT",
     # Lens helpers
     "build_lens_agent_definition",
     "list_available_lenses",
@@ -83,6 +87,8 @@ __all__ = [
     "InvestigationOutput",
     "LensIssueProposal",
     "LensReadOutput",
+    "ReflectionOutput",
+    "ReflectionTask",
     "ReviewSummary",
     "SkimHypothesis",
     "SkimOutput",
