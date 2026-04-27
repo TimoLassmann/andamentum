@@ -109,6 +109,6 @@ def _build_result(state: ReviewState) -> ReviewResult:
             challenged_findings_count=len(state.challenged_findings),
             edits_count=len(state.edits),
             sections_processed=len(state.sections),
-            hypothesis_budget_used=state.investigations_done,
+            reflection_rounds_used=state.reflection_round,
         ),
     )
