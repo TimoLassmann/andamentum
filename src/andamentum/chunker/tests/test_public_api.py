@@ -7,15 +7,16 @@ def test_public_all():
     expected = {
         # Functions / callables
         "extract_units",
+        "make_ollama_embedder",
         "make_runner_executor",
         # Data types
-        "ChunkingResult",
-        "Unit",
-        "Gap",
-        "NextUnitResult",
         "ChunkingFailedError",
-        "ExtractionAttempt",
-        "EscalationOutcome",
+        "ChunkingResult",
+        "EmbeddingFn",
+        "ExecutorFn",
+        "Gap",
+        "JudgeVerdict",
+        "Unit",
     }
     assert set(chunker.__all__) == expected
 

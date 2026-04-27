@@ -6,28 +6,8 @@ from andamentum.chunker.types import (
     ChunkingFailedError,
     ChunkingResult,
     Gap,
-    NextUnitResult,
     Unit,
 )
-
-
-def test_next_unit_result_found_minimal():
-    r = NextUnitResult(
-        found=True,
-        title="Intro",
-        start_anchor="Multiple sequence alignment is",
-        end_anchor="propose a new method.",
-        kind="prose",
-    )
-    assert r.found is True
-    assert r.complete is True  # default
-    assert r.skip_to == ""
-
-
-def test_next_unit_result_not_found():
-    r = NextUnitResult(found=False, skip_to="end of nav block")
-    assert r.found is False
-    assert r.title == ""
 
 
 def test_unit_carries_provenance_and_metadata():

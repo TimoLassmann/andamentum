@@ -1,7 +1,7 @@
 """Pydantic types for the chunker module.
 
 Schemas are kept FLAT and SIMPLE — only what's strictly required —
-because small local models fill them.
+because small local models fill them (used by the optional judge stage).
 """
 
 from __future__ import annotations
@@ -9,60 +9,6 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
-
-# Model-facing schema: kept tiny on purpose.
-class NextUnitResult(BaseModel):
-    """What the LLM returns per call: at most one unit (or 'nothing here')."""
-
-    found: bool = Field(
-        description=(
-            "True if a coherent unit starting at the beginning of the "
-            "visible text was identified. False if the visible text is "
-            "navigation, ads, repeated headers, or otherwise has no "
-            "extractable content."
-        )
-    )
-    title: str = Field(
-        default="",
-        description="Short descriptive title, 3-8 words. Empty when found=False.",
-    )
-    start_anchor: str = Field(
-        default="",
-        description=(
-            "First 8-12 words of the unit, copied VERBATIM from the source. "
-            "Must appear exactly in the visible text."
-        ),
-    )
-    end_anchor: str = Field(
-        default="",
-        description=(
-            "Last 8-12 words of the unit, copied VERBATIM. Must appear "
-            "AFTER start_anchor in the visible text."
-        ),
-    )
-    kind: str = Field(
-        default="prose",
-        description=(
-            "Free-text label, e.g. prose / list / table / code / quote / "
-            "heading / definition. Closed sets confuse small models — keep open."
-        ),
-    )
-    complete: bool = Field(
-        default=True,
-        description=(
-            "False if the unit clearly continues past the visible text "
-            "(no natural ending was reached)."
-        ),
-    )
-    skip_to: str = Field(
-        default="",
-        description=(
-            "Used only when found=False: a short verbatim phrase from "
-            "near the end of the visible text. The system advances the "
-            "cursor past this phrase to skip the junk region."
-        ),
-    )
 
 
 # System-facing types: richer, because they carry provenance and metadata.

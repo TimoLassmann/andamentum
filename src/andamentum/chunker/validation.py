@@ -1,24 +1,21 @@
-"""Tiered anchor matching + ModelRetry-raising validator factory.
+"""Tiered anchor matching for the editor / benchmark.
+
+Used by the editor's `/api/match-anchor` endpoint and by the benchmark
+runner to resolve truth-file anchors against source. The structural-first
+chunker doesn't need anchor matching for its main path (it knows positions
+directly), but exposing this is the contract benchmark cases rely on.
 
 Tiers (in priority order):
   1. exact            — substring match, case-sensitive
   2. whitespace_normalised — collapse all whitespace, lowercase
   3. fuzzy            — rapidfuzz token-set ratio > threshold
-
-If none match, find_anchor returns None and the caller can either
-raise ModelRetry (during validation) or escalate (during refinement).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable, Literal
-
-from pydantic_ai import ModelRetry
-
-from .types import NextUnitResult
-from .windowing import Window
+from typing import Literal
 
 # rapidfuzz is widely available; fall back to no fuzzy matching if absent.
 try:
@@ -101,62 +98,6 @@ def find_anchor(
     return None
 
 
-def make_validator(window: Window) -> Callable[[NextUnitResult], NextUnitResult]:
-    """Build an output_validator closed over the current window.
-
-    The validator raises ``pydantic_ai.ModelRetry`` with deterministic,
-    actionable feedback on any of:
-      - found=True but anchors empty
-      - found=False but skip_to empty
-      - start_anchor not findable in the visible text
-      - end_anchor not findable AFTER start_anchor
-      - end_anchor lands before start_anchor (inverted range)
-    """
-
-    def validate(output: NextUnitResult) -> NextUnitResult:
-        problems: list[str] = []
-
-        if output.found:
-            if not output.start_anchor or not output.end_anchor:
-                problems.append(
-                    "found=True requires both start_anchor and end_anchor "
-                    "to be non-empty (verbatim from the visible text)."
-                )
-            else:
-                start = find_anchor(output.start_anchor, window.text, search_from=0)
-                if start is None:
-                    problems.append(
-                        f"start_anchor {output.start_anchor!r} was not found "
-                        f"anywhere in the visible text. Copy it VERBATIM from "
-                        f"the source — exact wording, exact spelling."
-                    )
-
-                end = (
-                    find_anchor(output.end_anchor, window.text, search_from=start.end)
-                    if start is not None
-                    else None
-                )
-                if start is not None and end is None:
-                    problems.append(
-                        f"end_anchor {output.end_anchor!r} was not found AFTER "
-                        f"start_anchor in the visible text. Make sure end_anchor "
-                        f"comes after start_anchor and is copied VERBATIM."
-                    )
-                if start is not None and end is not None and end.start <= start.end:
-                    problems.append(
-                        "end_anchor must land STRICTLY AFTER start_anchor — "
-                        "they appear to overlap or be reversed."
-                    )
-        else:
-            if not output.skip_to:
-                problems.append(
-                    "found=False requires skip_to to be set to a short verbatim "
-                    "phrase from near the end of the visible text, so the "
-                    "system can advance the cursor past the junk region."
-                )
-
-        if problems:
-            raise ModelRetry("\n".join(problems))
-        return output
-
-    return validate
+# `make_validator` (the LLM ModelRetry validator) was removed when the
+# chunker switched from agentic-windowing to structural-first extraction.
+# `find_anchor` above is now the only thing this module exports.

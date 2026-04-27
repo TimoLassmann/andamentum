@@ -1,38 +1,38 @@
-"""andamentum.chunker — verifiable semantic chunking of long text.
+"""andamentum.chunker — structural-first semantic chunking.
 
-The LLM only points at boundaries (start/end anchor strings) — it
-never rewrites text. Extraction is byte-identical to the source.
-Validation drives ModelRetry; failures escalate through window
-halving → executor escalation → loud failure. No heuristic fallbacks.
+Pipeline (literature consensus, 2026):
+  1. Structural split on markdown headings (deterministic, free).
+  2. Semantic split for over-budget sections via cosine drops between
+     paragraph embeddings.
+  3. Optional LLM judge for grey-zone boundaries.
+
+Output units' ``text`` is byte-identical to a source span. The LLM is
+used only as a boundary judge, never as the primary segmenter.
 """
 
-# === Functions you can wrap as agent tools ===
-# `extract_units` is the main entry point.
-# `make_runner_executor` builds a production executor from an AgentRunner.
-from .extractor import ExtractionAttempt, extract_units, make_runner_executor
-
-# === Result/data types (returned by the above; not tools themselves) ===
-from .refinement import EscalationOutcome
+from .embeddings import EmbeddingFn, make_ollama_embedder
+from .extractor import ExecutorFn, extract_units, make_runner_executor
+from .judge import JudgeVerdict
 from .types import (
     ChunkingFailedError,
     ChunkingResult,
     Gap,
-    NextUnitResult,
     Unit,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Functions / callables
     "extract_units",
+    "make_ollama_embedder",
     "make_runner_executor",
     # Data types
     "ChunkingFailedError",
     "ChunkingResult",
-    "EscalationOutcome",
-    "ExtractionAttempt",
+    "EmbeddingFn",
+    "ExecutorFn",
     "Gap",
-    "NextUnitResult",
+    "JudgeVerdict",
     "Unit",
 ]
