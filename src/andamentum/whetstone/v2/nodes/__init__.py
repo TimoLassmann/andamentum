@@ -13,19 +13,23 @@ Phase 6: AuthorQuestions
 from .author_questions import AuthorQuestions
 from .challenge import Challenge
 from .chunk_and_scan import ChunkAndScan
+from .critical_read import CriticalRead
 from .edit_sections import EditSections
 from .harvest_source import HarvestSource
-from .investigate import InvestigateLoop
-from .skim import Skim
+from .investigate import InvestigateLoop  # legacy; removed in Task 11
+from .reflect_and_investigate import ReflectAndInvestigate
+from .skim import Skim  # legacy; removed in Task 11
 from .synthesise import Synthesise
 
 __all__ = [
     "AuthorQuestions",
     "Challenge",
     "ChunkAndScan",
+    "CriticalRead",
     "EditSections",
     "HarvestSource",
     "InvestigateLoop",
+    "ReflectAndInvestigate",
     "Skim",
     "Synthesise",
 ]
