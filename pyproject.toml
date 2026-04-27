@@ -37,12 +37,13 @@ dependencies = [
 ]
 
 [project.scripts]
-andamentum-epistemic = "andamentum.epistemic.cli:main"
-andamentum-research  = "andamentum.deep_research.cli:main"
-andamentum-whetstone = "andamentum.whetstone.cli:main"
-andamentum-scribe    = "andamentum.scribe.cli:main"
-andamentum-figures   = "andamentum.figures.cli:main"
-andamentum-chunker   = "andamentum.chunker.cli:main"
+andamentum-epistemic    = "andamentum.epistemic.cli:main"
+andamentum-research     = "andamentum.deep_research.cli:main"
+andamentum-whetstone    = "andamentum.whetstone.v2.cli:main"
+andamentum-whetstone-v1 = "andamentum.whetstone.cli:main"
+andamentum-scribe       = "andamentum.scribe.cli:main"
+andamentum-figures      = "andamentum.figures.cli:main"
+andamentum-chunker      = "andamentum.chunker.cli:main"
 
 [project.optional-dependencies]
 dev = [
