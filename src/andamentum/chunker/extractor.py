@@ -1,226 +1,302 @@
-"""The extractor: per-window calls and the main loop.
+"""Structural-first chunker orchestrator.
 
-Per-window flow:
-  1. Build window with lookahead
-  2. Build prompt
-  3. Call executor (fresh Agent per call so validators register correctly)
-  4. Return ExtractionAttempt (success, skip, or error)
+Three stages, in order, each cheaper and more reliable than the next:
+
+  1. STRUCTURE — split at markdown headings (deterministic, free).
+     Most academic papers and clean web articles finish here.
+  2. SEMANTIC — for sections that exceed `target_max`, split at paragraph
+     boundaries chosen by largest cosine drops between adjacent paragraph
+     embeddings.
+  3. JUDGE   — optional. For each cut whose semantic-drop percentile is in
+     the grey zone (60–90th), ask a small LLM `keep | merge`. Cuts the
+     judge says to merge are removed.
+
+Public entry point: ``extract_units``. The output is a ``ChunkingResult``
+with ``Unit`` objects whose ``text`` is byte-identical to a source span —
+exactly what the editor and benchmark already consume.
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
-from .prompts import SYSTEM_PROMPT, build_user_prompt
-from .types import ChunkingResult, Gap, NextUnitResult, Unit
-from .validation import find_anchor, make_validator
-from .windowing import Window, make_window
+from .embeddings import EmbeddingFn, make_ollama_embedder
+from .judge import judge_cut
+from .prompts import TARGET_MAX_CHARS, TARGET_MIN_CHARS
+from .semantic_split import semantic_split_section
+from .structural import build_section_tree, find_headings, split_section_recursively
+from .types import ChunkingResult, Gap, Unit
 
+# Same shape as before — kept for backward compatibility with existing callers
+# (the editor app, the benchmark CLI). The judge stage uses an executor of
+# this signature; the judge-disabled path doesn't need it at all.
+ExecutorFn = Callable[..., Awaitable[object]]
 
-ExecutorFn = Callable[..., Awaitable[Any]]
-"""Async signature: fn(*, instructions, user_message, output_type, validators) -> Any"""
-
-
-@dataclass
-class ExtractionAttempt:
-    """Outcome of a single _extract_one call."""
-
-    result: Optional[NextUnitResult]
-    calls: int
-    error: Optional[Exception]
-
-
-async def _extract_one(
-    *,
-    executor: ExecutorFn,
-    window: Window,
-    domain: str,
-    prior_unit_titles: list[str],
-) -> ExtractionAttempt:
-    """One LLM call to extract the next unit (or report 'nothing here')."""
-    user_prompt = build_user_prompt(
-        window_text=window.text,
-        domain=domain,
-        window_size=window.window_end_offset - window.cursor,
-        prior_unit_titles=prior_unit_titles,
-    )
-    validator = make_validator(window)
-
-    try:
-        result = await executor(
-            instructions=SYSTEM_PROMPT,
-            user_message=user_prompt,
-            output_type=NextUnitResult,
-            validators=[validator],
-        )
-        return ExtractionAttempt(result=result, calls=1, error=None)
-    except Exception as exc:
-        return ExtractionAttempt(result=None, calls=1, error=exc)
+# Anchor extraction defaults — these are stored on Unit objects so the editor
+# can display them and the benchmark can verify against truth files.
+_ANCHOR_WORDS = 8
 
 
 async def extract_units(
     source: str,
     *,
-    primary_executor: ExecutorFn,
-    backup_executors: list[ExecutorFn] | None = None,
-    window_size: int = 10_000,
-    lookahead: int = 4_000,
+    target_min_chars: int = TARGET_MIN_CHARS,
+    target_max_chars: int = TARGET_MAX_CHARS,
+    embedding_fn: EmbeddingFn | None = None,
+    judge_executor: ExecutorFn | None = None,
+    judge_low_pct: float = 0.60,
+    judge_high_pct: float = 0.90,
     domain: str = "general",
+    # ----- Backward-compat aliases (ignored or remapped) -------------------
+    primary_executor: ExecutorFn | None = None,
+    backup_executors: list[ExecutorFn] | None = None,
+    window_size: int | None = None,
+    extension_chars: int | None = None,
+    max_iterations: int | None = None,
+    lookahead: int | None = None,
 ) -> ChunkingResult:
-    """Chunk `source` into a list of self-contained units.
+    """Chunk `source` into self-contained units sized within the target band.
 
-    The LLM only points at boundaries; extracted text is byte-identical to
-    a contiguous span of the source. Validation drives ModelRetry inside
-    each call. On exhausted retries, the system halves the window and/or
-    escalates to a backup executor. If all executors fail at any cursor
-    position, raises ``ChunkingFailedError``.
+    Parameters
+    ----------
+    source:
+        The full document text (markdown for papers/web, plain text for
+        transcripts). The chunker uses leading `#` headings as primary
+        structural cues.
+    target_min_chars / target_max_chars:
+        Soft size band for units. Sections smaller than `target_min_chars`
+        are kept (we don't merge across topics). Sections larger than
+        `target_max_chars` are split semantically.
+    embedding_fn:
+        Async function that returns one embedding per input string. If None,
+        defaults to a local Ollama call (``embeddinggemma:latest``).
+    judge_executor:
+        Optional. If supplied, the LLM judge is consulted for grey-zone
+        boundaries. If None, stage 3 is skipped.
+    judge_low_pct / judge_high_pct:
+        The grey-zone band (cosine-drop percentile range) for which the
+        judge is consulted. Defaults: 60–90th percentile.
+    domain:
+        Currently unused — accepted for API compatibility with the old
+        chunker. Future hook for domain-specific rules.
+
+    Returns
+    -------
+    A ``ChunkingResult`` whose units' ``text`` is byte-identical to a
+    contiguous span of ``source``. ``model_calls`` is the count of judge
+    calls (0 if no judge_executor was provided).
     """
-    # Deferred import to break the circular dependency:
-    # extractor → refinement → extractor (_extract_one, ExecutorFn, ExtractionAttempt)
-    from .refinement import escalate
+    # --- Backward-compat: silently accept legacy params -----------------
+    _ = (
+        primary_executor,
+        backup_executors,
+        window_size,
+        extension_chars,
+        max_iterations,
+        lookahead,
+        domain,
+    )
+    # If no explicit judge_executor but a primary_executor was passed in
+    # (legacy callers), use it as the judge — they already wired up an LLM.
+    if judge_executor is None and primary_executor is not None:
+        judge_executor = primary_executor
 
-    backup_executors = backup_executors or []
+    if not source.strip():
+        return ChunkingResult(
+            units=[],
+            gaps=[],
+            total_chars=len(source),
+            model_calls=0,
+            retries_used=0,
+            windows_processed=0,
+        )
 
+    # ===== Stage 1: structural split ======================================
+    headings = find_headings(source)
+    sections = build_section_tree(source, headings)
+
+    # Pieces are (start, end) spans into source — units to materialise.
+    pieces: list[tuple[int, int]] = []
+
+    # Preamble: text BEFORE the first heading (if any). Treat as its own
+    # piece — typically a paper title + abstract block.
+    first_section_start = sections[0].start if sections else len(source)
+    if first_section_start > 0 and source[:first_section_start].strip():
+        pieces.append((0, first_section_start))
+
+    # Walk top-level sections and split-recursively into structural pieces.
+    flat_pieces: list[tuple[int, int]] = []
+    for sec in sections:
+        for p in split_section_recursively(sec, target_max_chars):
+            flat_pieces.append((p.start, p.end))
+
+    pieces.extend(flat_pieces)
+
+    # ===== Stage 2: semantic split for over-budget pieces =================
+    judge_calls = 0
+    candidate_grey_zone_cuts: list[tuple[int, float, float]] = []
+    # Lazy-init embedder only if we have over-budget pieces.
+    embedder: EmbeddingFn | None = None
+    refined_pieces: list[tuple[int, int]] = []
+
+    for start, end in pieces:
+        length = end - start
+        if length <= target_max_chars:
+            refined_pieces.append((start, end))
+            continue
+
+        if embedder is None:
+            embedder = embedding_fn or make_ollama_embedder()
+        sub_spans, candidates = await semantic_split_section(
+            source=source,
+            section_start=start,
+            section_end=end,
+            target_max=target_max_chars,
+            target_min=target_min_chars,
+            embedding_fn=embedder,
+        )
+        # Track grey-zone cuts among the chosen ones for stage 3.
+        chosen_offsets = {e for s, e in sub_spans[:-1]}  # last span has no cut
+        for cand in candidates:
+            if cand.cut_offset in chosen_offsets:
+                if judge_low_pct <= cand.percentile <= judge_high_pct:
+                    candidate_grey_zone_cuts.append(
+                        (cand.cut_offset, cand.drop, cand.percentile)
+                    )
+        refined_pieces.extend(sub_spans)
+
+    # ===== Stage 3: LLM judge on grey-zone cuts ==========================
+    if judge_executor is not None and candidate_grey_zone_cuts:
+        # Sort by offset so we process spans in order
+        cuts_to_judge = sorted({c[0] for c in candidate_grey_zone_cuts})
+        cuts_to_remove: set[int] = set()
+        for cut in cuts_to_judge:
+            verdict = await judge_cut(
+                executor=judge_executor,
+                source=source,
+                cut_offset=cut,
+            )
+            judge_calls += 1
+            if verdict.decision == "merge":
+                cuts_to_remove.add(cut)
+        if cuts_to_remove:
+            refined_pieces = _remove_cuts(refined_pieces, cuts_to_remove)
+
+    # ===== Materialise units + gaps ======================================
     units: list[Unit] = []
     gaps: list[Gap] = []
     cursor = 0
-    total_calls = 0
-    windows_processed = 0
-    prior_titles: list[str] = []
-
-    while cursor < len(source):
-        outcome = await escalate(
-            primary_executor=primary_executor,
-            backup_executors=backup_executors,
-            source=source,
-            cursor=cursor,
-            window_size=window_size,
-            lookahead=lookahead,
-            domain=domain,
-            prior_unit_titles=prior_titles,
-        )
-        windows_processed += 1
-        total_calls += outcome.total_calls
-
-        result = outcome.attempt.result
-        assert result is not None  # escalate raises on total failure
-
-        # Re-build the window the outcome used (for anchor resolution)
-        window = make_window(
-            source,
-            cursor=cursor,
-            window_size=outcome.window_size_used,
-            lookahead=lookahead,
-        )
-
-        if result.found:
-            unit, new_cursor = _materialise_unit(source, cursor, result, window)
-            if unit is None:
-                raise RuntimeError(
-                    f"Internal error: validator passed but anchor lookup "
-                    f"failed at cursor={cursor}"
-                )
-            # Account for any gap between previous cursor and this unit's start.
-            # Merge with the preceding gap when contiguous (e.g. skip gap
-            # followed by a short whitespace-only gap before the next unit).
-            if unit.source_start > cursor:
-                gap_text = source[cursor : unit.source_start]
-                if gaps and gaps[-1].source_end == cursor:
-                    prev = gaps[-1]
-                    gaps[-1] = Gap(
-                        source_start=prev.source_start,
-                        source_end=unit.source_start,
-                        text=prev.text + gap_text,
-                    )
-                else:
-                    gaps.append(
-                        Gap(
-                            source_start=cursor,
-                            source_end=unit.source_start,
-                            text=gap_text,
-                        )
-                    )
-            units.append(unit)
-            prior_titles.append(unit.title)
-            cursor = new_cursor
-        else:
-            # Skip — model said this region has no extractable content
-            new_cursor = _advance_past_skip(source, cursor, result.skip_to, window)
-            if new_cursor <= cursor:
-                raise RuntimeError(
-                    f"Internal error: skip_to {result.skip_to!r} did not advance "
-                    f"cursor at {cursor}"
-                )
-            gaps.append(
-                Gap(
-                    source_start=cursor,
-                    source_end=new_cursor,
-                    text=source[cursor:new_cursor],
-                )
+    for start, end in refined_pieces:
+        if start < cursor:
+            # Should not happen if pieces are sorted/non-overlapping, but
+            # guard against it.
+            continue
+        if start > cursor:
+            gap_text = source[cursor:start]
+            if gap_text.strip():
+                gaps.append(Gap(source_start=cursor, source_end=start, text=gap_text))
+        unit_text = source[start:end]
+        if not unit_text.strip():
+            cursor = end
+            continue
+        title = _infer_title(unit_text)
+        start_anchor = _first_words(unit_text, _ANCHOR_WORDS)
+        end_anchor = _last_words(unit_text, _ANCHOR_WORDS)
+        units.append(
+            Unit(
+                id=uuid.uuid4().hex[:12],
+                title=title,
+                text=unit_text,
+                kind="prose",
+                source_start=start,
+                source_end=end,
+                complete=True,
+                anchor_match_method="exact",
+                metadata={
+                    "start_anchor": start_anchor,
+                    "end_anchor": end_anchor,
+                },
             )
-            cursor = new_cursor
+        )
+        cursor = end
+
+    if cursor < len(source):
+        tail = source[cursor:]
+        if tail.strip():
+            gaps.append(Gap(source_start=cursor, source_end=len(source), text=tail))
 
     return ChunkingResult(
         units=units,
         gaps=gaps,
         total_chars=len(source),
-        model_calls=total_calls,
-        retries_used=0,  # not tracked granularly yet
-        windows_processed=windows_processed,
+        model_calls=judge_calls,
+        retries_used=0,
+        windows_processed=len(refined_pieces),
     )
 
 
-def _materialise_unit(
-    source: str, cursor: int, result: NextUnitResult, window: Window
-) -> tuple[Unit | None, int]:
-    """Convert a validated NextUnitResult into a Unit by locating anchors."""
-    start = find_anchor(result.start_anchor, window.text, search_from=0)
-    if start is None:
-        return None, cursor
-    end = find_anchor(result.end_anchor, window.text, search_from=start.end)
-    if end is None:
-        return None, cursor
-
-    abs_start = cursor + start.start
-    abs_end = cursor + end.end
-    method = end.method if end.method != "exact" else start.method
-
-    unit = Unit(
-        id=uuid.uuid4().hex[:12],
-        title=result.title,
-        text=source[abs_start:abs_end],
-        kind=result.kind,
-        source_start=abs_start,
-        source_end=abs_end,
-        complete=result.complete,
-        anchor_match_method=method,
-    )
-    return unit, abs_end
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
 
 
-def _advance_past_skip(source: str, cursor: int, skip_to: str, window: Window) -> int:
-    """Find skip_to in the visible window and advance cursor past it."""
-    m = find_anchor(skip_to, window.text, search_from=0)
-    if m is None:
-        # Fallback: advance to the end of the window so we don't loop
-        return min(window.window_end_offset, len(source))
-    return cursor + m.end
+def _remove_cuts(
+    spans: list[tuple[int, int]], cuts_to_remove: set[int]
+) -> list[tuple[int, int]]:
+    """Merge adjacent spans whose boundary is in `cuts_to_remove`."""
+    if not spans:
+        return spans
+    out: list[tuple[int, int]] = [spans[0]]
+    for s, e in spans[1:]:
+        prev_s, prev_e = out[-1]
+        if prev_e == s and prev_e in cuts_to_remove:
+            out[-1] = (prev_s, e)
+        else:
+            out.append((s, e))
+    return out
 
 
-def make_runner_executor(runner: Any) -> ExecutorFn:
-    """Build a production executor from an AgentRunner (uses its model).
+def _first_words(text: str, n: int) -> str:
+    return " ".join(text.strip().split()[:n])
 
-    Wraps `core.run_agent_with_fallback` to create a fresh Agent each call,
-    so per-call validators register correctly (AgentRunner's caching would
-    skip them).
+
+def _last_words(text: str, n: int) -> str:
+    return " ".join(text.strip().split()[-n:])
+
+
+def _infer_title(text: str) -> str:
+    """Pick a title from the first non-empty line, stripping markdown markers."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Strip leading `#` and any trailing punctuation common in headings
+        line = line.lstrip("#").strip()
+        if line:
+            return line[:80]
+    return _first_words(text, 5) or "(unnamed)"
+
+
+# ----------------------------------------------------------------------------
+# Compatibility shim for existing callers that still construct an executor
+# from an AgentRunner. The chunker no longer NEEDS an executor for the main
+# path, but this lets the editor app keep its current wiring.
+# ----------------------------------------------------------------------------
+
+
+def make_runner_executor(runner: object) -> ExecutorFn:
+    """Build a judge-stage executor from an AgentRunner.
+
+    Wraps `core.run_agent_with_fallback` so per-call validators register
+    correctly. The returned executor matches the legacy ExecutorFn signature
+    (kwargs: instructions, user_message, output_type, validators).
     """
     from andamentum.core.agents import run_agent_with_fallback
 
     async def executor(*, instructions, user_message, output_type, validators):
         return await run_agent_with_fallback(
-            model=runner.model,
+            model=runner.model,  # type: ignore[attr-defined]
             instructions=instructions,
             user_message=user_message,
             output_type=output_type,
