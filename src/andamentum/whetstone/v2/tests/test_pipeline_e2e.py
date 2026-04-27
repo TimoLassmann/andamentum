@@ -167,9 +167,12 @@ async def test_reflection_loop_refines_finding(patched_agents) -> None:
             m = re.search(r"\[([0-9a-f]{8})\]", prompt)
             if m and "first_id" not in captured:
                 captured["first_id"] = m.group(1)
-                captured["first_section"] = re.search(
+                section_match = re.search(
                     r"\[[0-9a-f]{8}\] [^\s]+ (sec_\d+):", prompt
-                ).group(1) if re.search(r"\[[0-9a-f]{8}\] [^\s]+ (sec_\d+):", prompt) else "sec_001"
+                )
+                captured["first_section"] = (
+                    section_match.group(1) if section_match else "sec_001"
+                )
                 return _FakeRunResult(output=ReflectionOutput(tasks=[
                     ReflectionTask(
                         description="Verify and refine this vague claim.",

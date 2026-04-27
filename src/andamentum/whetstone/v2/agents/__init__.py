@@ -15,7 +15,6 @@ from ._definition import AgentDefinition
 from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
-from .investigate import INVESTIGATE_AGENT, InvestigationOutput
 from .investigator import (
     INVESTIGATOR_AGENT,
     InvestigatorOutput,
@@ -29,13 +28,10 @@ from .lens import (
     list_available_lenses,
 )
 from .reflection import REFLECTION_AGENT, ReflectionOutput, ReflectionTask
-from .skim import SKIM_AGENT, SkimHypothesis, SkimOutput, SkimSection
 from .synthesise import SYNTHESISE_AGENT, ReviewSummary
 
 
 _REGISTRY: dict[str, AgentDefinition] = {
-    SKIM_AGENT.name: SKIM_AGENT,
-    INVESTIGATE_AGENT.name: INVESTIGATE_AGENT,
     EDITOR_AGENT.name: EDITOR_AGENT,
     CHALLENGE_AGENT.name: CHALLENGE_AGENT,
     SYNTHESISE_AGENT.name: SYNTHESISE_AGENT,
@@ -92,7 +88,6 @@ __all__ = [
     "ChallengeVerdict",
     "EditProposal",
     "EditorOutput",
-    "InvestigationOutput",
     "InvestigatorOutput",
     "LensIssueProposal",
     "LensReadOutput",
@@ -101,7 +96,4 @@ __all__ = [
     "ReflectionOutput",
     "ReflectionTask",
     "ReviewSummary",
-    "SkimHypothesis",
-    "SkimOutput",
-    "SkimSection",
 ]

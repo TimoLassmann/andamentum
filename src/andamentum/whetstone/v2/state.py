@@ -35,7 +35,6 @@ from .schemas import (
     AuthorQuestion,
     Edit,
     Finding,
-    Hypothesis,
     SectionCard,
 )
 from .structural.types import SectionRef, StructuralFacts
@@ -46,19 +45,6 @@ class FailedTask:
     """One reflection-task investigation that crashed (kept for diagnostics)."""
 
     description: str
-    error: str
-
-
-@dataclass
-class FailedInvestigation:
-    """Legacy: one investigation that crashed.
-
-    Retained while the old skim / investigate flow is still on disk so the
-    graph imports cleanly. Removed in Task 11 along with skim.py and
-    investigate.py.
-    """
-
-    hypothesis: Hypothesis
     error: str
 
 
@@ -102,24 +88,12 @@ class ReviewState:
     # ── Errors (accumulated, not raised) ───────────────────────────────
     failed_tasks: list[FailedTask] = field(default_factory=list)
 
-    # ── Legacy fields, removed in Task 11 ──────────────────────────────
-    # Kept on the dataclass while skim.py and investigate.py still ship.
-    hypotheses: list[Hypothesis] = field(default_factory=list)
-    hypothesis_budget: int = 30
-    investigations_done: int = 0
-    failed_investigations: list[FailedInvestigation] = field(default_factory=list)
-
     # ── Flow control ───────────────────────────────────────────────────
     current_phase: Literal[
         "harvest",
         "scan",
-        # Legacy phase labels — kept while skim.py/investigate.py ship:
-        "skim",
-        "investigate",
-        # New phase labels:
         "critical_read",
         "reflect_investigate",
-        # Common to both:
         "edit",
         "challenge",
         "author_questions",

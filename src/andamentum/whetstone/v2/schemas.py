@@ -2,7 +2,7 @@
 
 These are the types the API returns and that downstream consumers (other
 agents, CLIs, the user's tooling) read. Pydantic models because:
-  • LLM-filled types (Hypothesis, Finding-from-investigator) need pydantic
+  • LLM-filled types (Finding-from-investigator) need pydantic
   • External consumers benefit from .model_dump() / JSON serialisation
   • Flat field shapes are reliably filled by small local models
 
@@ -86,24 +86,6 @@ class AuthorQuestion(BaseModel):
     why: str  # one sentence: why we couldn't answer it ourselves
 
 
-class Hypothesis(BaseModel):
-    """A question to investigate. Emitted by skim_agent (Phase 2).
-
-    Carried in Phase 1 schemas as a placeholder so the type surface is
-    stable from day one. ``investigation_type`` is the dispatch key for the
-    Investigator Registry — defaults to ``"internal"`` (read sections);
-    future investigators (``"novelty"``, ``"factual"``) extend the registry
-    without touching the schema.
-    """
-
-    text: str
-    priority: Literal["low", "medium", "high"]
-    relevant_section_ids: list[str] = Field(default_factory=list)
-    investigation_type: str = "internal"
-    status: Literal["open", "investigating", "resolved", "unfounded"] = "open"
-    perspective: Optional[str] = None  # which persona (panel mode)
-
-
 # ── Document map ────────────────────────────────────────────────────────
 
 
@@ -112,7 +94,7 @@ class SectionCard(BaseModel):
 
     section_id: str
     title: str
-    one_line_gist: str = ""  # populated deterministically; enriched by skim_agent in Phase 2
+    one_line_gist: str = ""  # populated deterministically by document_map
 
 
 # ── Result types ────────────────────────────────────────────────────────
