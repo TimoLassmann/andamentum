@@ -1,0 +1,28 @@
+{
+  "convention": "Each section heading + its body paragraph is one unit",
+  "expected_f1_floor": 0.7,
+  "boundary_tolerance_chars": 50,
+  "domain": "academic",
+  "units": [
+    {
+      "title": "Introduction",
+      "start_anchor": "## Introduction",
+      "end_anchor": "remains an open problem."
+    },
+    {
+      "title": "Methods",
+      "start_anchor": "## Methods",
+      "end_anchor": "averaged across reference sets."
+    },
+    {
+      "title": "Results",
+      "start_anchor": "## Results",
+      "end_anchor": "the divergent-sequence set."
+    },
+    {
+      "title": "Discussion",
+      "start_anchor": "## Discussion",
+      "end_anchor": "for proteome-scale alignments."
+    }
+  ]
+}
