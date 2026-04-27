@@ -63,8 +63,24 @@ class EditProposal(BaseModel):
 
     title: str = Field(description="Short label for this edit, e.g. 'Tighten sentence'.")
     rationale: str = Field(description="One sentence: why your version is better.")
-    severity: Literal["minor", "moderate", "major"] = "minor"
-    confidence: Literal["low", "medium", "high"] = "medium"
+    severity: Literal["minor", "moderate", "major"] = Field(
+        default="minor",
+        description=(
+            "minor = cosmetic. "
+            "moderate = clarity/correctness. "
+            "major = changes meaning, removes ambiguity, or fixes an "
+            "actual error."
+        ),
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        default="medium",
+        description=(
+            "low = judgement call. "
+            "medium = clearly better. "
+            "high = objective improvement (typo, broken sentence, "
+            "unambiguous error)."
+        ),
+    )
     original_text: str = Field(
         description="Verbatim span from the section to replace. Copy exactly."
     )
@@ -74,7 +90,14 @@ class EditProposal(BaseModel):
 class EditorOutput(BaseModel):
     """editor_agent's flat output: 0–8 EditProposals for ONE section."""
 
-    edits: list[EditProposal] = Field(default_factory=list)
+    edits: list[EditProposal] = Field(
+        default_factory=list,
+        description=(
+            "0–8 edits for this section. Quality over quantity — return "
+            "an empty list if the section is already well-written. "
+            "Don't propose weak edits to look productive."
+        ),
+    )
 
 
 def _build() -> AgentDefinition:

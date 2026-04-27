@@ -40,7 +40,14 @@ class AuthorQuestionOutput(BaseModel):
 
     question: str = Field(description="One sharp, specific question for the author.")
     why: str = Field(default="", description="One sentence: what's unresolved.")
-    sections_involved: list[str] = Field(default_factory=list)
+    sections_involved: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Section ids the question relates to (so the author knows "
+            "where to look). Empty if the question is about the "
+            "manuscript as a whole."
+        ),
+    )
 
 
 def _build() -> AgentDefinition:

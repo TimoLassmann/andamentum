@@ -62,7 +62,15 @@ class ReflectionTask(BaseModel):
 class ReflectionOutput(BaseModel):
     """Up to 10 tasks. Empty list signals 'nothing more to do — exit loop'."""
 
-    tasks: list[ReflectionTask] = Field(default_factory=list)
+    tasks: list[ReflectionTask] = Field(
+        default_factory=list,
+        description=(
+            "Up to 10 investigation tasks. Quality over quantity — 3–5 "
+            "well-chosen tasks beat 10 mediocre ones. Return an empty "
+            "list when nothing else is worth a closer look; that exits "
+            "the loop, which is a perfectly valid answer."
+        ),
+    )
 
 
 # ── System prompt ───────────────────────────────────────────────────────

@@ -49,7 +49,14 @@ class ChallengeVerdict(BaseModel):
     """challenge_agent's flat output."""
 
     verdict: Literal["stand", "weaken", "withdraw"] = Field(
-        description="What to do with the finding."
+        description=(
+            "What to do with the finding. "
+            "stand = the finding is correct as written; keep it. "
+            "weaken = the finding is partly right but overstated; lower "
+            "its confidence and explain in `reason`. "
+            "withdraw = the finding is wrong; remove it from the report. "
+            "Default to 'stand' unless the source text actively refutes it."
+        ),
     )
     reason: str = Field(
         default="",
