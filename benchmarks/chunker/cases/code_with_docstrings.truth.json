@@ -1,0 +1,23 @@
+{
+  "convention": "Each top-level def or class is one unit (its docstring is part of it)",
+  "expected_f1_floor": 0.7,
+  "boundary_tolerance_chars": 40,
+  "domain": "code",
+  "units": [
+    {
+      "title": "hamming_distance",
+      "start_anchor": "def hamming_distance",
+      "end_anchor": "if x != y)"
+    },
+    {
+      "title": "levenshtein",
+      "start_anchor": "def levenshtein",
+      "end_anchor": "return prev[-1]"
+    },
+    {
+      "title": "AlignmentScore class",
+      "start_anchor": "class AlignmentScore:",
+      "end_anchor": "self.matches - self.mismatches - 2 * self.gaps"
+    }
+  ]
+}

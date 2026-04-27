@@ -1,0 +1,23 @@
+{
+  "convention": "Article body paragraphs are units; nav, ads, headers, footers are NOT units (should be skipped)",
+  "expected_f1_floor": 0.55,
+  "boundary_tolerance_chars": 60,
+  "domain": "web",
+  "units": [
+    {
+      "title": "Lead paragraph",
+      "start_anchor": "A new blood test that detects",
+      "end_anchor": "shed by dying tumor cells."
+    },
+    {
+      "title": "Performance comparison",
+      "start_anchor": "In a cohort of 412 women",
+      "end_anchor": "in the same patient population."
+    },
+    {
+      "title": "Future trial plans",
+      "start_anchor": "The researchers, based at the University",
+      "end_anchor": "becomes detectable on scans."
+    }
+  ]
+}
