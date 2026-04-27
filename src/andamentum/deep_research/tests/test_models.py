@@ -287,7 +287,7 @@ class TestFetchedPageTruncationVisibility:
         def _always_safe(url):
             return True, "ok"
 
-        def _fake_extract(content, content_type, url):
+        async def _fake_extract(content, content_type, url):
             return long_content
 
         from andamentum.deep_research import text_utils
@@ -340,7 +340,7 @@ class TestFetchedPageTruncationVisibility:
         def _always_safe(url):
             return True, "ok"
 
-        def _fake_extract(content, content_type, url):
+        async def _fake_extract(content, content_type, url):
             return short_content
 
         from andamentum.deep_research import text_utils

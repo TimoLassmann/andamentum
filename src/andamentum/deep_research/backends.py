@@ -102,8 +102,6 @@ class HttpxSearchBackend:
 
     async def fetch_page(self, url: str) -> FetchedPage:
         """Fetch page content and extract markdown via content-type routing."""
-        import asyncio
-
         from .text_utils import is_safe_url
         from .content_extractor import extract_content, ExtractionError
 
@@ -116,11 +114,11 @@ class HttpxSearchBackend:
 
         content_type = resp.headers.get("content-type", "")
 
-        # Run extraction in a thread to avoid blocking the event loop
-        # (Docling PDF extraction is CPU-intensive and synchronous)
+        # extract_content is async (it delegates to harvest, which already
+        # offloads CPU-bound docling work via asyncio.to_thread internally).
         try:
-            markdown = await asyncio.to_thread(
-                extract_content, resp.content, content_type, str(resp.url)
+            markdown = await extract_content(
+                resp.content, content_type, str(resp.url)
             )
         except ExtractionError as e:
             raise RuntimeError(f"Content extraction failed for {url}: {e}") from e
