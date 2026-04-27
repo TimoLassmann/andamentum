@@ -32,9 +32,7 @@ async def test_chunker_meets_floor(truth_path, primary_executor, bench_model):
     )
 
     if run.error is not None:
-        pytest.fail(
-            f"Case {case.name!r} crashed on model {bench_model!r}: {run.error}"
-        )
+        pytest.fail(f"Case {case.name!r} crashed on model {bench_model!r}: {run.error}")
 
     m = run.metrics
     assert m is not None  # appease type checker

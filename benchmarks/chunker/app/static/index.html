@@ -2,22 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>andamentum-chunker explorer</title>
+  <title>chunker case editor</title>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 16px; color: #222; }
-    h1 { margin: 0 0 16px 0; font-size: 22px; }
-    .row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-    label { font-size: 13px; color: #555; }
-    select, input[type="text"], input[type="number"] { font-size: 13px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
-    textarea { width: 100%; height: 220px; font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 13px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-    button { font-size: 14px; padding: 6px 14px; background: #1f6feb; color: white; border: 0; border-radius: 4px; cursor: pointer; }
-    button.secondary { background: #2c2c2c; }
-    button:disabled { opacity: 0.5; cursor: wait; }
-    #stats { font-size: 13px; color: #555; margin: 12px 0; }
-    #render { white-space: pre-wrap; font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 13px; line-height: 1.55; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
-    .unit { padding: 1px 2px; border-radius: 2px; cursor: help; }
-    .gap { background: #eee; color: #888; padding: 1px 2px; border-radius: 2px; }
-    .err { color: #b91c1c; padding: 8px; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 4px; }
+    :root {
+      --border: #d8d8d8;
+      --muted: #6b7280;
+      --bg-soft: #fafafa;
+      --bg-card: #fff;
+      --primary: #1f6feb;
+      --danger: #b91c1c;
+      --ok: #047857;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+      color: #222;
+      background: #f3f4f6;
+    }
+    h1 { margin: 0 0 12px 0; font-size: 20px; }
+    h2 { margin: 0 0 8px 0; font-size: 15px; color: #333; font-weight: 600; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row + .row { margin-top: 8px; }
+    label { font-size: 12px; color: var(--muted); }
+    select, input[type="text"], input[type="number"], textarea {
+      font: inherit;
+      font-size: 13px;
+      padding: 5px 7px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: white;
+    }
+    textarea { font-family: ui-monospace, SF Mono, Menlo, monospace; }
+    button {
+      font: inherit;
+      font-size: 13px;
+      padding: 6px 12px;
+      background: var(--primary);
+      color: white;
+      border: 0;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button.secondary { background: #374151; }
+    button.danger { background: var(--danger); }
+    button.ghost { background: transparent; color: #444; border: 1px solid var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Top section: source input */
+    #source-pane {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    #src { width: 100%; height: 160px; }
+
+    #stats { font-size: 12px; color: var(--muted); }
+    #err { color: var(--danger); margin: 8px 0; font-size: 13px; }
+
+    /* Two-pane editor */
+    #editor {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    #editor.hidden { display: none; }
+
+    .pane {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      max-height: calc(100vh - 380px);
+      overflow: auto;
+    }
+    .pane h2 { position: sticky; top: 0; background: var(--bg-card); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+
+    /* Left: highlighted preview */
+    #preview {
+      white-space: pre-wrap;
+      font-family: ui-monospace, SF Mono, Menlo, monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      padding: 8px 4px;
+    }
+    .unit { padding: 1px 2px; border-radius: 2px; cursor: pointer; }
+    .unit.focused { outline: 2px solid #1f6feb; outline-offset: 1px; }
+    .gap { background: #eee; color: #888; padding: 1px 2px; border-radius: 2px; font-style: italic; }
     .u0 { background: #dbeafe; }
     .u1 { background: #dcfce7; }
     .u2 { background: #fef3c7; }
@@ -26,36 +101,315 @@
     .u5 { background: #cffafe; }
     .u6 { background: #fed7aa; }
     .u7 { background: #fecaca; }
+
+    /* Right: editable cards */
+    .unit-card {
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: var(--bg-soft);
+    }
+    .unit-card.focused { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+    .unit-card .swatch {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border-radius: 3px;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    .unit-card .card-head {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 8px;
+    }
+    .unit-card .card-head input[type="text"] { flex: 1; }
+    .unit-card .field { display: grid; grid-template-columns: 90px 1fr 70px; gap: 6px; align-items: center; margin-top: 6px; }
+    .unit-card .field label { text-align: right; font-size: 11px; }
+    .unit-card .field .status { font-size: 11px; padding: 2px 6px; border-radius: 3px; text-align: center; }
+    .status.ok { color: var(--ok); background: #d1fae5; }
+    .status.bad { color: var(--danger); background: #fee2e2; }
+    .status.idle { color: var(--muted); background: #f3f4f6; }
+    .unit-card .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+    .unit-card .actions button { font-size: 11px; padding: 3px 8px; }
+    .add-unit-row { text-align: center; margin: 8px 0; }
+
+    /* Case-level form */
+    #case-meta {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    #case-meta .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px 16px;
+    }
+    #case-meta label { display: block; margin-bottom: 3px; }
+    #case-meta input[type="text"], #case-meta input[type="number"], #case-meta select, #case-meta textarea { width: 100%; }
+    #case-meta textarea { height: 60px; }
+    #save-status { font-size: 13px; margin-top: 8px; }
+    #save-status.ok { color: var(--ok); }
+    #save-status.bad { color: var(--danger); }
+
+    /* Boundary drag handles + ghost line */
+    #preview { position: relative; }
+    .boundary-handle {
+      position: absolute;
+      width: 6px;
+      background: var(--primary);
+      border-radius: 2px;
+      cursor: ew-resize;
+      z-index: 10;
+      opacity: 0.55;
+      transition: opacity 0.1s, transform 0.1s;
+      user-select: none;
+    }
+    .boundary-handle:hover,
+    .boundary-handle.active {
+      opacity: 1;
+      transform: scaleX(1.6);
+    }
+    .boundary-handle.start { background: #047857; }
+    .boundary-handle.end { background: #b91c1c; }
+    /* Make the click target wider than the visible bar */
+    .boundary-handle::after {
+      content: "";
+      position: absolute;
+      top: 0; bottom: 0;
+      left: -6px; right: -6px;
+    }
+    #drag-ghost {
+      position: fixed;
+      display: none;
+      width: 2px;
+      background: var(--primary);
+      pointer-events: none;
+      z-index: 999;
+      box-shadow: 0 0 4px rgba(31,111,235,0.5);
+    }
+    #drag-tooltip {
+      position: fixed;
+      display: none;
+      background: #1f2937;
+      color: white;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      z-index: 1000;
+      pointer-events: none;
+      white-space: nowrap;
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Floating selection toolbar */
+    #sel-toolbar {
+      position: fixed;
+      display: none;
+      z-index: 1000;
+      background: #1f2937;
+      color: white;
+      border-radius: 6px;
+      padding: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #sel-toolbar button {
+      background: transparent;
+      color: white;
+      border: 0;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    #sel-toolbar button:hover { background: rgba(255,255,255,0.15); }
+    #sel-toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #sel-toolbar button + button { margin-left: 2px; }
+    #sel-toolbar .sep { display: inline-block; width: 1px; height: 16px; background: #4b5563; vertical-align: middle; margin: 0 4px; }
+
+    /* Per-card insert affordance */
+    .insert-above {
+      text-align: center;
+      margin: -4px 0 4px 0;
+    }
+    .insert-above button {
+      font-size: 11px;
+      padding: 2px 10px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+    }
+    .insert-above button:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: #f0f7ff;
+    }
+
+    /* Hint message above the preview */
+    .preview-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin: -4px 0 6px 0;
+      font-style: italic;
+    }
+
+    /* Search panel */
+    #search-pane {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    .pill.running { background: #d1fae5; color: var(--ok); }
+    .pill.stopped { background: #fee2e2; color: var(--danger); }
+    .pill.starting { background: #fef3c7; color: #92400e; }
+    .pill.podman-missing { background: #fee2e2; color: var(--danger); }
+    .pill.error { background: #fee2e2; color: var(--danger); }
+    .pill.unknown { background: #f3f4f6; color: var(--muted); }
+    #search-status-msg { font-size: 12px; color: var(--muted); margin-left: 6px; }
+
+    #search-results { margin-top: 10px; max-height: 280px; overflow: auto; }
+    .search-hit {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      background: var(--bg-soft);
+      transition: background 0.1s;
+    }
+    .search-hit:hover { background: #eff6ff; border-color: var(--primary); }
+    .search-hit .title { font-weight: 600; font-size: 13px; color: #111; }
+    .search-hit .url { font-size: 11px; color: var(--ok); margin: 2px 0; }
+    .search-hit .snippet { font-size: 12px; color: #4b5563; line-height: 1.4; }
+    #search-msg { font-size: 12px; margin-top: 6px; }
+    #search-msg.bad { color: var(--danger); }
+    #search-msg.ok { color: var(--ok); }
   </style>
 </head>
 <body>
-  <h1>andamentum-chunker explorer</h1>
+  <h1>chunker case editor</h1>
 
-  <div class="row">
-    <label>Model: <input type="text" id="model" value="ollama:gemma4:31b-nvfp4" size="34"></label>
-    <label>Domain:
-      <select id="domain">
-        <option value="general">general</option>
-        <option value="academic">academic</option>
-        <option value="web">web</option>
-        <option value="code">code</option>
-        <option value="transcript">transcript</option>
-      </select>
-    </label>
-    <label>window: <input type="number" id="window" value="10000" min="500" max="100000" style="width: 80px"></label>
-    <label>lookahead: <input type="number" id="lookahead" value="4000" min="0" max="50000" style="width: 80px"></label>
+  <div id="search-pane">
+    <div class="row">
+      <strong style="font-size: 14px;">Find content from the web</strong>
+      <span>SearXNG: <span id="searxng-pill" class="pill unknown">unknown</span></span>
+      <span id="search-status-msg"></span>
+      <button id="searxng-start" class="ghost" style="display: none;">Start SearXNG</button>
+      <button id="searxng-refresh" class="ghost">↻</button>
+    </div>
+    <div class="row" style="margin-top: 8px;">
+      <input type="text" id="search-query" placeholder="search query…" style="flex: 1; min-width: 280px;">
+      <label>max: <input type="number" id="search-max" value="10" min="1" max="30" style="width: 60px"></label>
+      <button id="search-go">Search</button>
+      <span style="color: var(--muted); font-size: 12px;">— or paste a URL:</span>
+      <input type="text" id="fetch-url" placeholder="https://…" style="flex: 1; min-width: 240px;">
+      <button id="fetch-go" class="ghost">Fetch</button>
+    </div>
+    <div id="search-msg"></div>
+    <div id="search-results"></div>
   </div>
 
-  <textarea id="src" placeholder="paste source text here..."></textarea>
+  <div id="source-pane">
+    <div class="row">
+      <label>Model: <input type="text" id="model" value="openai:gpt-5.4-nano" size="32"></label>
+      <label>Domain:
+        <select id="domain">
+          <option value="general">general</option>
+          <option value="academic">academic</option>
+          <option value="web">web</option>
+          <option value="code">code</option>
+          <option value="transcript">transcript</option>
+        </select>
+      </label>
+      <label>window: <input type="number" id="window" value="10000" min="500" max="100000" style="width: 80px"></label>
+      <label>lookahead: <input type="number" id="lookahead" value="4000" min="0" max="50000" style="width: 80px"></label>
+    </div>
 
-  <div class="row" style="margin-top: 12px;">
-    <button id="go">Chunk it</button>
-    <button id="dl" class="secondary" disabled>Download truth.json</button>
-    <span id="stats"></span>
+    <div class="row" style="margin-top: 8px;">
+      <textarea id="src" placeholder="paste source text here…"></textarea>
+    </div>
+
+    <div class="row" style="margin-top: 8px;">
+      <button id="go">Chunk it</button>
+      <button id="reset" class="ghost" disabled>Reset edits</button>
+      <span id="stats"></span>
+    </div>
+    <div id="err"></div>
   </div>
 
-  <div id="err"></div>
-  <div id="render"></div>
+  <div id="editor" class="hidden">
+    <div class="pane">
+      <h2>Highlighted preview</h2>
+      <div class="preview-hint">Drag the green/red bars to move unit boundaries. Or select text to create a new unit.</div>
+      <div id="preview"></div>
+    </div>
+    <div class="pane">
+      <h2>Units (editable)</h2>
+      <div id="units"></div>
+      <div class="add-unit-row">
+        <button id="add-unit" class="ghost">+ add unit</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="case-meta" class="hidden">
+    <h2>Save as benchmark case</h2>
+    <div class="grid">
+      <div>
+        <label>Case name (lowercase, _ or - allowed)</label>
+        <input type="text" id="case-name" placeholder="my_new_case">
+      </div>
+      <div>
+        <label>Source extension</label>
+        <select id="case-ext">
+          <option value="md">md</option>
+          <option value="txt">txt</option>
+          <option value="html">html</option>
+          <option value="py">py</option>
+          <option value="rst">rst</option>
+          <option value="json">json</option>
+        </select>
+      </div>
+      <div>
+        <label>Expected F1 floor (0.0 – 1.0)</label>
+        <input type="number" id="case-floor" value="0.65" min="0" max="1" step="0.05">
+      </div>
+      <div>
+        <label>Boundary tolerance (chars)</label>
+        <input type="number" id="case-tol" value="50" min="0" max="2000">
+      </div>
+      <div style="grid-column: span 2;">
+        <label>Convention (what counts as a unit for THIS case)</label>
+        <textarea id="case-convention" placeholder="e.g. Each Q+A pair is one unit."></textarea>
+      </div>
+      <div>
+        <label><input type="checkbox" id="case-overwrite"> Overwrite if exists</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 10px;">
+      <button id="save">Save case</button>
+      <span id="save-status"></span>
+    </div>
+  </div>
+
+  <div id="sel-toolbar"></div>
+  <div id="drag-ghost"></div>
+  <div id="drag-tooltip"></div>
 
   <script src="/static/app.js"></script>
 </body>
