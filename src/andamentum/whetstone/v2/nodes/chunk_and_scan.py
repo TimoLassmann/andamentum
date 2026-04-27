@@ -16,6 +16,7 @@ callers who don't want LLM costs can still get the cheap output.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
     from .critical_read import CriticalRead
 
 
+logger = logging.getLogger("andamentum.whetstone.v2")
+
+
 @dataclass
 class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     """Chunk the markdown, extract structural facts, emit deterministic findings."""
@@ -46,6 +50,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
     ) -> "Union[CriticalRead, End[ReviewResult]]":
         ctx.state.current_phase = "scan"
+        logger.info("[scan] chunking %d chars into sections", len(ctx.state.markdown))
 
         # ── 1. Chunk into sections ────────────────────────────────────
         chunking = await extract_units(
@@ -64,6 +69,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             )
             for i, unit in enumerate(chunking.units, start=1)
         ]
+        logger.info("[scan] %d sections produced", len(ctx.state.sections))
 
         # ── 2. Extract structural facts ───────────────────────────────
         ctx.state.structural_facts = StructuralFacts(
@@ -81,10 +87,15 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             sections=ctx.state.sections,
             facts=ctx.state.structural_facts,
         )
+        logger.info(
+            "[scan] %d deterministic finding(s)",
+            len(ctx.state.deterministic_findings),
+        )
 
         # ── 5. Branch: with model → Skim; without → End now ──────────
         if ctx.deps.model is None:
             ctx.state.current_phase = "done"
+            logger.info("[scan] no model — skipping LLM phases (--no-llm mode)")
             return End(_build_result(ctx.state))
 
         from .critical_read import CriticalRead
