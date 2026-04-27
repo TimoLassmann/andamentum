@@ -16,6 +16,12 @@ from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
 from .investigate import INVESTIGATE_AGENT, InvestigationOutput
+from .investigator import (
+    INVESTIGATOR_AGENT,
+    InvestigatorOutput,
+    NewNote,
+    NoteUpdate,
+)
 from .lens import (
     LensIssueProposal,
     LensReadOutput,
@@ -35,6 +41,7 @@ _REGISTRY: dict[str, AgentDefinition] = {
     SYNTHESISE_AGENT.name: SYNTHESISE_AGENT,
     AUTHOR_QUESTION_AGENT.name: AUTHOR_QUESTION_AGENT,
     REFLECTION_AGENT.name: REFLECTION_AGENT,
+    INVESTIGATOR_AGENT.name: INVESTIGATOR_AGENT,
 }
 
 # Register every available lens under its lens.<name> key.
@@ -75,6 +82,7 @@ __all__ = [
     "build_pydantic_ai_agent",
     "get_agent",
     # Module-level definition constants
+    "INVESTIGATOR_AGENT",
     "REFLECTION_AGENT",
     # Lens helpers
     "build_lens_agent_definition",
@@ -85,8 +93,11 @@ __all__ = [
     "EditProposal",
     "EditorOutput",
     "InvestigationOutput",
+    "InvestigatorOutput",
     "LensIssueProposal",
     "LensReadOutput",
+    "NewNote",
+    "NoteUpdate",
     "ReflectionOutput",
     "ReflectionTask",
     "ReviewSummary",
