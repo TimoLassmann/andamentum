@@ -34,14 +34,15 @@ def render_html(
     result: ReviewResult,
     output_path: str | Path | None = None,
     *,
-    style: str = "report",
+    style: str = "article",
 ) -> str:
     """Render a ReviewResult as a self-contained HTML page.
 
     Returns the HTML string. If ``output_path`` is given, also writes
     it to that path (utf-8). The ``style`` argument is forwarded to
-    ``typeset.render`` (defaults to ``"report"``; ``"article"`` and
-    ``"cv"`` are the other built-in options).
+    ``typeset.render`` (defaults to ``"article"``, the warm-serif
+    minimalistic style also used by the epistemic report; ``"report"``
+    and ``"cv"`` are the other built-in options).
     """
     atoms: list[dict[str, Any]] = []
 
