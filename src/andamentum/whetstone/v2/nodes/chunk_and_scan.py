@@ -86,6 +86,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         ctx.state.deterministic_findings = synthesize_deterministic_findings(
             sections=ctx.state.sections,
             facts=ctx.state.structural_facts,
+            markdown=ctx.state.markdown,
         )
         logger.info(
             "[scan] %d deterministic finding(s)",

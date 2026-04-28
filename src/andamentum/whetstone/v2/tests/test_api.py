@@ -38,9 +38,11 @@ Figure 1: Comparison of accuracy across methods.
 async def test_review_document_returns_result_with_deterministic_findings():
     result = await review_document(PAPER_WITH_FAULTS)
     assert isinstance(result, ReviewResult)
-    # Every deterministic finding has high confidence and source="deterministic"
+    # Every deterministic finding has source="deterministic"; structural
+    # checks are high-confidence, checklist body-shape checks (e.g.
+    # "Abstract not identified", "Author block not detected") are medium.
     for f in result.deterministic_findings:
-        assert f.confidence == "high"
+        assert f.confidence in ("high", "medium")
         assert f.source == "deterministic"
 
 
@@ -95,18 +97,68 @@ async def test_review_document_reports_metrics():
 
 
 async def test_review_document_no_findings_on_clean_paper():
-    """A trivially clean paper produces an empty findings list."""
-    clean = """## 1 Introduction
+    """A trivially clean paper produces an empty findings list.
+
+    "Clean" here means: no structural faults (citations, acronyms,
+    cross-refs, sample sizes) AND no missing pre-submission checklist
+    items (title, keywords, abstract, required statements). The
+    deterministic substrate covers both, so this test asserts the
+    union is empty.
+    """
+    clean = """\
+# A study of how spaced repetition affects retention in students
+
+By Jane Doe, Department of Educational Psychology, University of Test.
+
+Keywords: spaced repetition, retention, learning, undergraduates
+
+## Abstract
+
+Background: Spaced repetition is a learning technique whose effect on long-term
+retention has been studied across multiple disciplines and contexts, but the
+evidence in undergraduate cohorts is fragmented and the effect size estimates
+vary widely. The present study seeks to replicate and extend prior work in a
+new task domain. Methods: We conducted a randomised crossover trial with N=50
+undergraduate participants who were assigned to spaced or massed practice
+schedules over four weeks. Each participant completed standardised recall
+assessments at one-week and four-week follow-up timepoints, and analyses
+were preregistered. Results: Participants in the spaced condition showed
+significantly improved recall at the four-week follow-up compared with the
+massed condition, with a moderate effect size that was consistent across
+subgroups defined by prior coursework, gender, and weekly study time.
+Conclusion: Spaced repetition meaningfully improves retention in this
+undergraduate population, replicating prior findings and extending them to a
+new task domain. We discuss implications for course-level study-skill
+guidance and outline pre-registered follow-up work.
+
+## 1 Introduction
 
 We study a simple problem and present results.
 
 ## 2 Conclusion
 
 Our findings are encouraging.
+
+## Conflicts of interest
+
+The author declares no conflicts of interest.
+
+## Data availability
+
+Data are available on request from the corresponding author.
+
+## Funding
+
+This work was supported by a Test University internal grant.
+
+## Ethics
+
+This study was approved by the Test University IRB (protocol #42).
 """
     result = await review_document(clean)
-    # No citations, no acronyms, no figure refs → no deterministic findings
-    assert result.deterministic_findings == []
+    # No structural faults AND no missing checklist items → no findings.
+    titles = [f.title for f in result.deterministic_findings]
+    assert result.deterministic_findings == [], f"Got findings: {titles}"
 
 
 async def test_review_document_handles_path_input(tmp_path):
