@@ -1085,27 +1085,6 @@ async def handle_ask(
                 console.print(
                     f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
                 )
-
-                # Also generate typeset version for comparison
-                try:
-                    report_data = await generator.extract_report_data(
-                        objective_id=objective_id,
-                        model_name=model,
-                    )
-                    if report_data:
-                        from .typeset_report import build_typeset_report
-                        from andamentum.typeset import render_to_file
-
-                        atoms = build_typeset_report(report_data)
-                        new_file = output_file.with_stem(output_file.stem + "_new")
-                        render_to_file(atoms, new_file)
-                        console.print(
-                            f"[green]✓[/green] Typeset report saved to: [bold]{new_file}[/bold]"
-                        )
-                except Exception as e:
-                    console.print(
-                        f"\n[yellow]Warning: Typeset report failed: {e}[/yellow]"
-                    )
             else:
                 console.print(
                     "\n[yellow]Warning: Failed to generate HTML report[/yellow]"

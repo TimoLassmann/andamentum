@@ -9,7 +9,7 @@ from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
 from andamentum.epistemic.graph.nodes import _update_retrieval_health
 from andamentum.epistemic.graph.state import EpistemicGraphState
-from andamentum.epistemic.html_report import (
+from andamentum.epistemic.report_data import (
     ConfidenceScores,
     InvestigationStats,
     ReportData,
