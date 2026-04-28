@@ -11,7 +11,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal Reciprocal Rank Fusion search and LLM metadata extraction
-- `andamentum.whetstone` — structured multi-lens document review over your own drafts. **v1** (still active): `sharpen_document(text, task=...)` returns a `ReviewResult` with edits + issues; output renderers for Word track-changes, HTML, markdown diff. **v2** (`whetstone/v2/`): pydantic-graph driven review with deterministic structural substrate + 6 single-job LLM agents. `await review_document(source, *, model)` returns a `ReviewResult` with confidence-tagged `Finding`s, concrete `Edit`s (when `editor=True`), `AuthorQuestion`s, and a synthesised `summary`. Three renderers (`render_markdown`, `render_html`, `render_docx`) consume the same result; the docx renderer reuses v1's track-changes machinery via a thin Edit/Finding→DocumentPatch adapter.
+- `andamentum.whetstone` — structured multi-lens document review over your own drafts. `await review_document(source, *, model)` is the single entry point: pydantic-graph driven, deterministic structural substrate plus single-job LLM agents. Returns a `ReviewResult` with confidence-tagged `Finding`s, concrete `Edit`s (when `editor=True`), `AuthorQuestion`s, and a synthesised `summary`. Three renderers (`render_markdown`, `render_html`, `render_docx`) consume the same result; the docx renderer feeds an in-tree track-changes machinery (`whetstone.docx`) via a thin Edit/Finding→DocumentPatch adapter. Beyond the basic critical-review pipeline: panel mode (multi-expert review), guidelines mode (`--guidelines @file`), custom criteria mode (`--criteria`), statistical self-consistency check (statcheck-equivalent), claim → evidence anchoring lens, novelty / prior-work check via deep_research, and overclaim ("reviewer 2 bait") detection.
 - `andamentum.scribe` — structured document drafting: block-based authoring (paragraph, heading, figure, table), section abstraction, built-in `article`/`grant` scaffolds, SQLite-backed source of truth, one-way render to `.docx`. Replaces the standalone `document-tools:doc-draft` plugin.
 - `andamentum.figures` — publication-quality scientific figure generation: 9 chart types, 7 journal palettes, journal-matched sizing, auto chart-kind selection. `scribe_glue.insert_figure` renders + inserts into a scribe section in one call. Absorbed from the standalone `mosaic-figures` package.
 - `andamentum.chunker` — structural-first semantic chunking of long markdown into 2k–10k char self-contained units. Stage 1: split at markdown headings. Stage 2: embedding-based split for over-budget sections. Stage 3 (optional): small-LLM judge for grey-zone boundaries. The LLM is never the primary segmenter.
@@ -60,19 +60,18 @@ The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1
 
 ## CLIs
 
-Seven scripts installed by the package:
+Six scripts installed by the package:
 
 ```bash
 andamentum-epistemic --help
 andamentum-research --help
-andamentum-whetstone --help        # whetstone v2 (current)
-andamentum-whetstone-v1 --help     # legacy v1 CLI
+andamentum-whetstone --help
 andamentum-scribe --help
 andamentum-figures --help
 andamentum-chunker --help
 ```
 
-`andamentum-epistemic`, `andamentum-research`, `andamentum-whetstone-v1`, and `andamentum-chunker` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone` (v2) takes `--model` directly (any pydantic-ai model id) and supports a `--no-llm` flag for the deterministic-only path. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
+`andamentum-epistemic`, `andamentum-research`, and `andamentum-chunker` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone` takes `--model` directly (any pydantic-ai model id) and supports a `--no-llm` flag for the deterministic-only path. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
 
 ## Architectural conventions
 
@@ -116,7 +115,7 @@ andamentum-chunker --help
 
 **Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic report adapter (`typeset_report.py`, the only HTML path now that the legacy `html_report.py` has been retired), by `whetstone` for its HTML review output, and by `scribe` for its HTML/PDF render path. The epistemic data schema (the dataclasses consumed by the adapter) lives in `epistemic/report_data.py`. See `src/andamentum/typeset/USAGE.md` for the full API reference.
 
-**Whetstone module** (`andamentum.whetstone`) — structured multi-lens feedback over drafts the user wrote themselves. Entry point: `sharpen_document(text, task=...)` returns a `ReviewResult` holding `DocumentPatch` edits and `DocumentIssue` findings. Scanners live in `consistency_scanners.py` and `checklist_scanners.py`; the agent registry is in `agents/`; renderers (`render_docx`, `render_html`, `render_diff`, `apply_patches`) in `renderers/`. The DOCX renderer emits track-changes Word output and prepends a checklist section when checklist tasks are present.
+**Whetstone module** (`andamentum.whetstone`) — structured multi-lens feedback over drafts the user wrote themselves. Single entry point: `await review_document(source, *, model)` returns a `ReviewResult` with confidence-tagged `Finding`s, concrete `Edit`s (when `editor=True`), `AuthorQuestion`s, and a synthesised `summary`. Implementation is a pydantic-graph DAG (`graph.py`, `nodes/`, `state.py`, `deps.py`) over a deterministic structural substrate (`structural/`) plus single-job pydantic-ai agents (`agents/`). Renderers (`render_markdown`, `render_html`, `render_docx`) in `renderers/` consume the same `ReviewResult`; the DOCX renderer adapts each `Edit`/`Finding` into a `DocumentPatch` (defined in `models.py`) and feeds the in-tree track-changes machinery in `whetstone.docx`. Beyond the basic critical-review pipeline: panel mode (multi-expert review), guidelines mode (`--guidelines @file`), custom criteria mode (`--criteria`), statistical self-consistency (statcheck-equivalent, in `structural/stat_consistency.py`), claim → evidence anchoring lens, novelty / prior-work check via `deep_research`, and overclaim ("reviewer 2 bait") detection. The legacy v1 surface (`sharpen_document`, `consistency_scanners`, `checklist_scanners`, `dynamic_models`, `orchestrator.py`, the v1 `agents/` and `renderers/`) was removed once feature parity was reached.
 
 **Figures module** (`andamentum.figures`) — publication-quality scientific figure generation. High-level entry point: `figure(data, *, kind="auto", style="npg", journal="default", output="figure.pdf")`. Lower-level building blocks: `setup_style`, `get_palette`, `savefig`, `panel_label`, `shared_legend`, `despine` (in `style.py`); plot primitives in `plots.py`; auto-detection (chart kind, log scale, column roles) in `auto.py` and `advisor.py`; bootstrap stats in `stats.py`. The package was absorbed from `mosaic-figures` (uninstall the standalone tool with `uv tool uninstall mosaic-figures` once this branch lands). Scribe integration lives in `figures/scribe_glue.py`: `insert_figure(doc, section, *, output_dir, caption, label, **chart_kwargs)` renders a PNG and inserts a `Figure` block via `Document.insert_into_section`.
 

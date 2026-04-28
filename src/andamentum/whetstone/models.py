@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
-"""
-Patch data models for document editing.
+"""Patch data models for the whetstone DOCX track-changes machinery.
 
-This module provides Pydantic models for representing document patches
-and patch application results.
+This module is the only surviving slice of the old whetstone v1 ``models``
+file. It contains the two types the preserved ``whetstone.docx`` subpackage
+operates on:
+
+* ``DocumentPatch`` — a single edit/comment/analysis instruction that the
+  finalisation pipeline applies as a Word tracked change or comment. The
+  current whetstone ``renderers/docx.py`` adapts each ``Edit`` and
+  ``Finding`` into one of these before invoking
+  ``finalize_reviewed_document``.
+* ``PatchApplicationResult`` — the return type from
+  ``finalize_reviewed_document`` (counts of applied / failed patches).
+
+Everything else from the v1 models module (``ChecklistItem``,
+``BaselineCheck``) was v1-only and has been removed alongside the rest of
+the v1 surface.
 """
 
 import uuid
@@ -205,50 +217,3 @@ class PatchApplicationResult(BaseModel):
     def __str__(self) -> str:
         """Human-readable summary of application results."""
         return f"Applied {self.applied_patches}/{self.total_patches} patches ({self.success_rate:.1f}% success rate)"
-
-
-class ChecklistItem(BaseModel):
-    """One pre-submission check, evaluated against a draft.
-
-    Three fields are LLM-visible (name, status, notes). Two are set by
-    the orchestrator (category, source). The LLM is not asked to re-emit
-    contextual metadata already known at dispatch time — this keeps the
-    output schema small and tractable for local models.
-    """
-
-    name: str = Field(..., description="The check, e.g. 'Abstract word count declared'")
-    status: Literal["pass", "fail", "unclear"] = Field(
-        ..., description="Outcome of the check"
-    )
-    notes: str = Field(
-        default="",
-        description="Evidence (quote/location) and, if status=fail, what to fix",
-    )
-    category: str = Field(
-        default="", description="Category — set by the orchestrator, not the LLM"
-    )
-    source: Literal["baseline", "journal"] = Field(
-        default="baseline",
-        description="Which source produced this check — set by the orchestrator, not the LLM",
-    )
-
-
-class BaselineCheck(BaseModel):
-    """An entry in the pre-submission baseline checklist.
-
-    `kind` selects between a deterministic scanner (pure Python) and an
-    LLM evaluator. `scanner` names a function in checklist_scanners;
-    `prompt_hint` carries extra guidance for the LLM. The two are
-    mutually exclusive in practice.
-    """
-
-    name: str
-    category: str
-    kind: Literal["deterministic", "llm"]
-    scanner: Optional[str] = Field(
-        default=None,
-        description="Function name in checklist_scanners (kind='deterministic')",
-    )
-    prompt_hint: Optional[str] = Field(
-        default=None, description="Extra guidance (kind='llm')"
-    )
