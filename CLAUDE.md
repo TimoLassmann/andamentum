@@ -56,7 +56,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 0 errors, ruff clean, pytest 814 passing (1 benchmark deselected)**. Test count reflects removal of 75 pattern-scheduler tests after graph migration. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 0 errors, ruff clean, pytest 1560 passing (1 skipped, 6 deselected)**. Test count grew through 2026-04 with the whetstone v2 feature-parity work (deterministic checklist, panel mode, guidelines+custom modes, consistency lens, statcheck, claim→evidence anchoring, novelty check, overclaim lens) and dropped by 124 when v1 was decommissioned. Don't claim completion until you've run these three and seen that state.
 
 ## CLIs
 
@@ -84,7 +84,7 @@ andamentum-chunker --help
 - `document_store` is foundational; `epistemic` may depend on it directly (e.g., `EpistemicRepository` wraps a `DocumentStore`).
 - `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
-- `whetstone` depends only on `core` (for `AgentRunner`/`AgentDefinition`) and optionally on `typeset` for HTML rendering. It MUST NOT depend on `epistemic`, `deep_research`, or `document_store`.
+- `whetstone` depends on `core` (for `AgentRunner`/`AgentDefinition`), on `typeset` for HTML rendering, on `chunker` for section splitting, on `harvest` for source ingestion, and on `deep_research` (only when the opt-in novelty check is enabled — `--check-novelty` / `check_novelty=True`; otherwise the import is deferred at runtime). It MUST NOT depend on `epistemic` or `document_store`.
 - `scribe` depends only on `typeset` (for HTML/PDF rendering) and stdlib `sqlite3`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `figures`, or `core`.
 - `figures` depends only on matplotlib + numpy + pydantic. The optional `figures.scribe_glue` submodule is the ONLY place where `scribe` is imported; the rest of `figures` MUST NOT touch `scribe`. `figures` MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `typeset`, or `core`.
 - `chunker` depends only on `core` (for `AgentRunner`, model resolution) and `rapidfuzz` (for tiered anchor matching). MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, or `typeset`. Other modules MAY depend on `chunker` (e.g. whetstone for section-by-section review on huge documents, document_store for embedding-quality chunks).
