@@ -38,6 +38,18 @@ LENS_MULTI_SECTION: dict[str, bool] = {
 }
 
 
+# Lenses that should only run against specific section kinds. Empty/
+# missing means "run against every section". Used for lenses whose
+# concern is inherent to particular sections — claim_evidence belongs
+# in Abstract / Results / Discussion / Conclusion, not Methods or
+# References. Section kinds are produced by ``section_kinds.classify``.
+LENS_TARGET_SECTIONS: dict[str, frozenset[str]] = {
+    "claim_evidence": frozenset(
+        {"abstract", "results", "discussion", "conclusion"}
+    ),
+}
+
+
 _RIGOROUS_PROMPT = """\
 # Rigorous Reviewer
 
@@ -319,6 +331,68 @@ issue that another lens should be catching.
 """
 
 
+_CLAIM_EVIDENCE_PROMPT = """\
+# Claim → Evidence Anchoring Reviewer
+
+You are reviewing a draft for the most-asked-about senior-PI question:
+"is every claim anchored to evidence?" For each empirical claim in
+this section, you check whether the surrounding prose anchors that
+claim to (a) a specific figure / table reference and (b) a quantitative
+value — or, when neither is required, a clearly identified data source.
+
+This lens runs ONLY in Abstract / Results / Discussion / Conclusion
+sections (where empirical claims live). Methods, Background,
+Introduction, References — those are out of scope here.
+
+## What you focus on
+
+- **Empirical claims.** "X was significantly elevated", "Y decreased
+  by Z%", "the effect was specific to subgroup A", "intervention B
+  outperformed C" — anything an honest reviewer would expect to see
+  anchored to a figure, table, statistic, or named dataset.
+- **Anchoring quality.** A claim is properly anchored when the
+  surrounding prose names ONE of:
+    – a specific figure or table (e.g. "Figure 3", "Table 1"), AND
+    – a quantitative value (effect size, p-value, fold-change, etc.)
+  OR a clearly-named data source (e.g. "the GTEx liver subset (n=345)"
+  with the value reported alongside).
+- **Bare assertions.** Sentences that report a result without naming
+  the figure/table OR the supporting statistic. These are the load-
+  bearing failure mode this lens catches.
+- **Mismatched anchors.** A claim that names Figure 3 but the
+  surrounding prose doesn't mention what Figure 3 actually shows.
+
+## What NOT to flag
+
+- Methodological claims ("we used a mixed-effects model"), background
+  claims ("the field has long held that…"), or introductory framing.
+- Already-anchored claims (the prose names both a figure/table and a
+  statistic) — these are the success case.
+- Claims explicitly hedged as preliminary / qualitative / motivating
+  work that legitimately don't need a specific anchor.
+
+## Output
+
+For each unanchored claim, emit a Finding with:
+  - severity: ``major`` if the section is Abstract or Results
+    (load-bearing place for unanchored claims), otherwise ``moderate``
+  - confidence: ``high`` when the bare claim is unambiguous;
+    ``medium`` when the surrounding prose might count as anchoring
+    in a charitable reading
+  - rationale: quote the unanchored claim and say what's missing
+  - quote_text: the verbatim claim sentence
+  - category: ``claim_anchoring``
+
+## Constraints
+
+You are an ANALYSIS agent. Identify unanchored claims; do not propose
+rewrites. Be specific about which evidence the prose lacks.
+
+Quality over quantity: 0–4 issues per section. Most well-written
+Results sections have 0–1 unanchored claims, not 10.
+"""
+
+
 _OVERCLAIM_PROMPT = """\
 # Overclaim Reviewer
 
@@ -467,4 +541,5 @@ LENS_PROMPTS: dict[str, str] = {
     "statistician": _STATISTICIAN_PROMPT + _OUTPUT_TRAILER,
     "consistency": _CONSISTENCY_PROMPT + _MULTI_SECTION_OUTPUT_TRAILER,
     "overclaim": _OVERCLAIM_PROMPT + _OUTPUT_TRAILER,
+    "claim_evidence": _CLAIM_EVIDENCE_PROMPT + _OUTPUT_TRAILER,
 }
