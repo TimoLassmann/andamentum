@@ -112,6 +112,11 @@ class ReviewState:
     custom_criteria: list[str] = field(default_factory=list)
     custom_evaluations: list[CustomEvaluation] = field(default_factory=list)
 
+    # ── Novelty check (orthogonal to mode; opt-in) ─────────────────────
+    check_novelty: bool = False
+    novelty_search_depth: int = 2  # 1=quick, 2=balanced, 3=thorough
+    novelty_cache_dir: Path | None = None  # None → ~/.cache/whetstone/novelty
+
     # ── Flow control ───────────────────────────────────────────────────
     current_phase: Literal[
         "harvest",
@@ -129,5 +134,6 @@ class ReviewState:
         "extract_checkable_items",
         "evaluate_guideline_items",
         "custom_review",
+        "novelty_check",
         "done",
     ] = "harvest"
