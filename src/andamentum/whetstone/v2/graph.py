@@ -53,6 +53,7 @@ from .nodes import (
     ExtractKeywords,
     GenerateExpertPanel,
     HarvestSource,
+    NoveltyCheck,
     PanelSynthesise,
     ReflectAndInvestigate,
     Synthesise,
@@ -65,6 +66,7 @@ review_graph = Graph(
         # Review-mode nodes
         CriticalRead,
         ReflectAndInvestigate,
+        NoveltyCheck,
         EditSections,
         Challenge,
         AuthorQuestions,

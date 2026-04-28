@@ -35,6 +35,7 @@ from .extract_checkable_items import ExtractCheckableItems
 from .extract_keywords import ExtractKeywords
 from .generate_expert_panel import GenerateExpertPanel
 from .harvest_source import HarvestSource
+from .novelty_check import NoveltyCheck
 from .panel_synthesise import PanelSynthesise
 from .reflect_and_investigate import ReflectAndInvestigate
 from .synthesise import Synthesise
@@ -52,6 +53,7 @@ __all__ = [
     "ExtractKeywords",
     "GenerateExpertPanel",
     "HarvestSource",
+    "NoveltyCheck",
     "PanelSynthesise",
     "ReflectAndInvestigate",
     "Synthesise",

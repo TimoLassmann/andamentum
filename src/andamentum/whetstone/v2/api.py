@@ -40,6 +40,9 @@ async def review_document(
     panel_disciplines: Sequence[str] | None = None,
     guidelines: str = "",
     custom_criteria: Sequence[str] | None = None,
+    check_novelty: bool = False,
+    novelty_search_depth: int = 2,
+    novelty_cache_dir: Path | None = None,
 ) -> ReviewResult:
     """Review a document. Returns critical-review findings + a synthesis.
 
@@ -152,6 +155,9 @@ async def review_document(
         n_experts=n_experts,
         panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
         guidelines_text=guidelines,
+        check_novelty=check_novelty,
+        novelty_search_depth=novelty_search_depth,
+        novelty_cache_dir=novelty_cache_dir,
         custom_criteria=list(custom_criteria) if custom_criteria else [],
     )
     deps = ReviewDeps(

@@ -49,7 +49,7 @@ from ..state import FailedTask, ReviewState
 
 if TYPE_CHECKING:
     from ..structural.types import SectionRef
-    from .edit_sections import EditSections
+    from .novelty_check import NoveltyCheck
 
 
 logger = logging.getLogger("andamentum.whetstone.v2")
@@ -62,7 +62,7 @@ class ReflectAndInvestigate(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
 
     async def run(
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
-    ) -> "EditSections":
+    ) -> "NoveltyCheck":
         ctx.state.current_phase = "reflect_investigate"
         cap = ctx.state.reflection_round_cap
         sections_by_id: dict[str, "SectionRef"] = {
@@ -131,9 +131,11 @@ class ReflectAndInvestigate(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             len(ctx.state.findings),
         )
 
-        from .edit_sections import EditSections
+        # Optional novelty-check phase before edit/challenge/synthesise. Gated
+        # by ``state.check_novelty``; the node passes through when off.
+        from .novelty_check import NoveltyCheck
 
-        return EditSections()
+        return NoveltyCheck()
 
 
 # ── Reflection call ─────────────────────────────────────────────────────

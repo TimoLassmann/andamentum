@@ -260,6 +260,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run only the deterministic structural pass. No --model required.",
     )
     parser.add_argument(
+        "--check-novelty",
+        action="store_true",
+        help=(
+            "Verify the manuscript's novelty claims against the literature "
+            "via deep_research. Adds 1 + (3-5)*2 LLM calls + several web "
+            "fetches. Disabled by default."
+        ),
+    )
+    parser.add_argument(
+        "--novelty-search-depth",
+        type=int,
+        default=2,
+        metavar="N",
+        help=(
+            "Search depth for --check-novelty. 1=quick, 2=balanced, 3=thorough. "
+            "Default: 2."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -417,6 +436,8 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             panel_disciplines=panel_disciplines or None,
             guidelines=guidelines_text,
             custom_criteria=custom_criteria,
+            check_novelty=args.check_novelty,
+            novelty_search_depth=args.novelty_search_depth,
         )
     except Exception as exc:
         # Distinguish "couldn't load the input" from "review crashed"
