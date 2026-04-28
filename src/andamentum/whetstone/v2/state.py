@@ -34,7 +34,10 @@ from typing import Literal
 from .schemas import (
     AuthorQuestion,
     Edit,
+    ExpertProfile,
+    ExpertReview,
     Finding,
+    PanelSynthesis,
     SectionCard,
 )
 from .structural.types import SectionRef, StructuralFacts
@@ -88,6 +91,15 @@ class ReviewState:
     # ── Errors (accumulated, not raised) ───────────────────────────────
     failed_tasks: list[FailedTask] = field(default_factory=list)
 
+    # ── Panel mode (mode="panel") ──────────────────────────────────────
+    mode: Literal["review", "panel"] = "review"
+    n_experts: int = 4
+    panel_disciplines: list[str] = field(default_factory=list)  # provided OR extracted
+    disciplines: list[str] = field(default_factory=list)  # extracted by ExtractKeywords
+    expert_profiles: list[ExpertProfile] = field(default_factory=list)
+    expert_reviews: list[ExpertReview] = field(default_factory=list)
+    panel_synthesis: PanelSynthesis | None = None
+
     # ── Flow control ───────────────────────────────────────────────────
     current_phase: Literal[
         "harvest",
@@ -98,5 +110,9 @@ class ReviewState:
         "challenge",
         "author_questions",
         "synthesise",
+        "extract_keywords",
+        "generate_panel",
+        "expert_review",
+        "panel_synthesise",
         "done",
     ] = "harvest"

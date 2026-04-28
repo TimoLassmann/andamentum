@@ -48,24 +48,39 @@ OUTPUTS
                        harvested text and patches are applied to that.
 
 REVIEW OPTIONS
+    --mode {review,panel}      Pipeline to run.
+                                 review (default) — lens-based critical
+                                   review with reflection loop.
+                                 panel — simulate 3-5 fictional expert
+                                   reviewers, scored, with a panel
+                                   synthesis. Costs ~2N+2 LLM calls.
     --model MODEL              pydantic-ai model id, e.g.
                                openai:gpt-5.4-nano,
                                ollama:gemma4:31b-nvfp4.
                                Required unless --no-llm is given.
     --editor                   Also generate concrete edits (rewrites).
                                Default off — adds one LLM call per section.
+                               Ignored in panel mode.
     --editor-criteria LIST     Comma-separated. Default:
                                clarity,concision,grammar
     --no-challenge             Skip the refutation phase
                                (faster, slightly less reliable findings).
+                               Ignored in panel mode.
     --perspectives LIST        Comma-separated lens names.
                                Default: rigorous
                                Available: rigorous, writer, methodology,
                                           statistician
+                               Ignored in panel mode.
     --rounds N                 Hard cap on rounds of the reflection–
                                investigation loop. Default: 3.
                                The loop typically exits earlier when the
                                senior reviewer says "nothing more to do".
+                               Ignored in panel mode.
+    --n-experts N              In panel mode, how many experts to
+                               generate. Default 4.
+    --panel-disciplines LIST   In panel mode, an explicit comma-separated
+                               list of disciplines (skips keyword
+                               extraction).
     --no-llm                   Run only the deterministic structural pass
                                (citations, terms, numerics, cross-refs).
                                No --model required. Free, instant.
@@ -132,10 +147,35 @@ def _build_parser() -> argparse.ArgumentParser:
         "Format inferred from extension (.md / .html / .docx).",
     )
     parser.add_argument(
+        "--mode",
+        choices=("review", "panel"),
+        default="review",
+        help=(
+            "Pipeline to run. review (default): lens-based critical "
+            "review. panel: simulate 3-5 fictional expert reviewers."
+        ),
+    )
+    parser.add_argument(
         "--model",
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
         "ollama:gemma4:31b-nvfp4). Required unless --no-llm.",
+    )
+    parser.add_argument(
+        "--n-experts",
+        type=int,
+        default=4,
+        metavar="N",
+        help="In panel mode, how many experts to generate. Default: 4.",
+    )
+    parser.add_argument(
+        "--panel-disciplines",
+        default="",
+        metavar="LIST",
+        help=(
+            "In panel mode, an explicit comma-separated list of "
+            "disciplines (skips keyword extraction)."
+        ),
     )
     parser.add_argument(
         "--editor",
@@ -206,8 +246,16 @@ def _validate_args(args: argparse.Namespace) -> None:
             "--editor requires --model (the editor agent is an LLM call). "
             "Drop --editor or --no-llm.",
         )
+    if args.no_llm and args.mode == "panel":
+        _die(
+            1,
+            "--mode panel requires --model — every panel-mode phase is "
+            "an LLM call. Drop --no-llm or use --mode review.",
+        )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
+    if args.n_experts < 1:
+        _die(1, "--n-experts must be at least 1.")
     for out in args.out:
         ext = out.suffix.lower()
         if ext not in _SUPPORTED_OUT_EXTENSIONS:
@@ -233,6 +281,9 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     editor_criteria = tuple(
         c.strip() for c in args.editor_criteria.split(",") if c.strip()
     )
+    panel_disciplines = tuple(
+        d.strip() for d in args.panel_disciplines.split(",") if d.strip()
+    )
 
     logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
@@ -247,6 +298,9 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             challenge=not args.no_challenge,
             editor=args.editor,
             editor_criteria=editor_criteria,
+            mode=args.mode,
+            n_experts=args.n_experts,
+            panel_disciplines=panel_disciplines or None,
         )
     except Exception as exc:
         # Distinguish "couldn't load the input" from "review crashed"
@@ -302,13 +356,19 @@ def _log_run_config(
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("input:", str(args.input))
+    table.add_row("mode:", args.mode)
     table.add_row("model:", args.model or "[i](deterministic only)[/i]")
-    table.add_row("perspectives:", ", ".join(perspectives))
-    table.add_row("editor:", "on" if args.editor else "off")
-    if args.editor:
-        table.add_row("editor criteria:", ", ".join(editor_criteria))
-    table.add_row("challenge:", "off" if args.no_challenge else "on")
-    table.add_row("rounds (cap):", str(args.rounds))
+    if args.mode == "panel":
+        table.add_row("n_experts:", str(args.n_experts))
+        if args.panel_disciplines:
+            table.add_row("disciplines:", args.panel_disciplines)
+    else:
+        table.add_row("perspectives:", ", ".join(perspectives))
+        table.add_row("editor:", "on" if args.editor else "off")
+        if args.editor:
+            table.add_row("editor criteria:", ", ".join(editor_criteria))
+        table.add_row("challenge:", "off" if args.no_challenge else "on")
+        table.add_row("rounds (cap):", str(args.rounds))
     table.add_row("outputs:", ", ".join(str(o) for o in args.out))
     console.print(Panel(table, title="whetstone v2", border_style="cyan"))
 

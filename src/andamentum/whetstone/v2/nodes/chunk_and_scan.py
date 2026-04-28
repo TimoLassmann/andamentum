@@ -37,6 +37,7 @@ from ..structural.types import SectionRef, StructuralFacts
 
 if TYPE_CHECKING:
     from .critical_read import CriticalRead
+    from .extract_keywords import ExtractKeywords
 
 
 logger = logging.getLogger("andamentum.whetstone.v2")
@@ -48,7 +49,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
 
     async def run(
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
-    ) -> "Union[CriticalRead, End[ReviewResult]]":
+    ) -> "Union[CriticalRead, ExtractKeywords, End[ReviewResult]]":
         ctx.state.current_phase = "scan"
         logger.info("[scan] chunking %d chars into sections", len(ctx.state.markdown))
 
@@ -93,11 +94,16 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             len(ctx.state.deterministic_findings),
         )
 
-        # ── 5. Branch: with model → Skim; without → End now ──────────
+        # ── 5. Branch: with model → next LLM phase; without → End now ──
         if ctx.deps.model is None:
             ctx.state.current_phase = "done"
             logger.info("[scan] no model — skipping LLM phases (--no-llm mode)")
             return End(_build_result(ctx.state))
+
+        if ctx.state.mode == "panel":
+            from .extract_keywords import ExtractKeywords
+
+            return ExtractKeywords()
 
         from .critical_read import CriticalRead
 

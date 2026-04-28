@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import Sequence
+from typing import Literal, Sequence
 
 from .deps import EmbeddingFn, ReviewDeps
 from .graph import review_graph
@@ -35,8 +35,28 @@ async def review_document(
     embedding_fn: EmbeddingFn | None = None,
     target_min_chars: int = 2_000,
     target_max_chars: int = 10_000,
+    mode: Literal["review", "panel"] = "review",
+    n_experts: int = 4,
+    panel_disciplines: Sequence[str] | None = None,
 ) -> ReviewResult:
     """Review a document. Returns critical-review findings + a synthesis.
+
+    Two pipelines:
+
+    * ``mode="review"`` (default) — the lens-based critical-review
+      pipeline: ``HarvestSource → ChunkAndScan → CriticalRead →
+      ReflectAndInvestigate → (EditSections) → Challenge →
+      AuthorQuestions → Synthesise``. Cost is one LLM call per
+      lens × section + reflection-loop rounds + a few terminal calls.
+
+    * ``mode="panel"`` — simulate a multi-expert review panel.
+      ``HarvestSource → ChunkAndScan → ExtractKeywords →
+      GenerateExpertPanel → ExpertReview → PanelSynthesise``. Cost is
+      ``2N + 2`` LLM calls where ``N`` is the panel size (default 4):
+      one keyword extraction + N expert biosketch generations + N
+      expert reviews + one panel synthesis. At ``n_experts=4`` that is
+      10 calls. Panel mode is intentionally heavier — it is not a
+      drop-in replacement for review mode.
 
     Parameters
     ----------
@@ -51,16 +71,18 @@ async def review_document(
         Lens names. Each lens is one configured reviewer personality.
         Available: rigorous, writer, methodology, statistician.
         Default is one ("rigorous"). Multiple lenses run in parallel.
+        Ignored in ``mode="panel"``.
     reflection_round_cap:
         Hard upper bound on rounds of the reflection–investigation loop.
         Default 3. The loop typically exits earlier when the senior
-        reviewer says "nothing more to do".
+        reviewer says "nothing more to do". Ignored in ``mode="panel"``.
     challenge:
         Whether to run the Challenge phase (refute high-severity
-        findings). On by default.
+        findings). On by default. Ignored in ``mode="panel"``.
     editor:
         Whether to run the Editor phase, generating concrete edits.
-        Off by default — adds one LLM call per section.
+        Off by default — adds one LLM call per section. Ignored in
+        ``mode="panel"``.
     editor_criteria:
         Editorial criteria for the Editor phase.
     embedding_fn:
@@ -68,13 +90,27 @@ async def review_document(
         Ollama (``embeddinggemma:latest``) inside the chunker module.
     target_min_chars / target_max_chars:
         Section size band, passed to chunker.extract_units.
+    mode:
+        Pipeline selector — ``"review"`` (default) or ``"panel"``.
+    n_experts:
+        In ``mode="panel"``, the cap on how many experts to generate.
+        Default 4. If ``ExtractKeywords`` returns more disciplines
+        than this, only the first ``n_experts`` are kept.
+    panel_disciplines:
+        In ``mode="panel"``, an explicit list of disciplines to use
+        for the panel. When supplied, the keyword-extraction LLM call
+        is skipped and these are used directly. Useful for tests and
+        for callers who want to control the panel composition.
 
     Returns
     -------
     ReviewResult
         Findings, edits, author questions, document map, metrics.
         ``deterministic_findings`` is always populated; the other LLM-
-        driven fields populate when ``model`` is set.
+        driven fields populate when ``model`` is set. In ``mode="panel"``
+        runs, ``expert_profiles``, ``expert_reviews``, and
+        ``panel_synthesis`` are populated instead of the lens-driven
+        findings.
     """
     state = ReviewState(
         source=source,
@@ -83,6 +119,9 @@ async def review_document(
         challenge_enabled=challenge,
         editor_enabled=editor,
         editor_criteria=list(editor_criteria),
+        mode=mode,
+        n_experts=n_experts,
+        panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
     )
     deps = ReviewDeps(
         model=_resolve_model(model) if model else None,

@@ -16,7 +16,10 @@ from andamentum.typeset import render as typeset_render
 from ..schemas import (
     AuthorQuestion,
     Edit,
+    ExpertProfile,
+    ExpertReview,
     Finding,
+    PanelSynthesis,
     ReviewResult,
     SectionCard,
 )
@@ -49,9 +52,22 @@ def render_html(
     atoms.append({"kind": "heading", "content": _TITLE, "subtitle": _SUBTITLE})
     atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
 
+    panel_mode = bool(result.expert_profiles or result.expert_reviews)
+
     if result.summary.strip():
         atoms.extend(_summary_atoms(result.summary))
 
+    # ── Panel-mode atoms (priority order) ───────────────────────────
+    if result.panel_synthesis is not None:
+        atoms.extend(_panel_synthesis_atoms(result.panel_synthesis))
+
+    if result.expert_reviews:
+        atoms.extend(_expert_reviews_atoms(result.expert_reviews))
+
+    if result.expert_profiles:
+        atoms.extend(_expert_profiles_atoms(result.expert_profiles))
+
+    # ── Standard review-mode atoms ──────────────────────────────────
     if result.author_questions:
         atoms.extend(_questions_atoms(result.author_questions))
 
@@ -71,7 +87,7 @@ def render_html(
             )
         )
 
-    if result.document_map:
+    if result.document_map and not panel_mode:
         atoms.extend(_document_map_atoms(result.document_map))
 
     if len(atoms) <= 2:  # only heading + disclaimer
@@ -191,6 +207,158 @@ def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, 
                     "details": "".join(details_lines) if details_lines else None,
                 }
             )
+    return out
+
+
+def _panel_synthesis_atoms(s: PanelSynthesis) -> list[dict[str, Any]]:
+    """Headline + recommendation card + per-criterion items."""
+    out: list[dict[str, Any]] = [
+        {"kind": "heading", "content": "Panel synthesis", "level": 2},
+        {
+            "kind": "callout",
+            "tone": "note",
+            "content": (
+                f"**Recommendation: {s.overall_recommendation}** "
+                f"(confidence: {s.confidence_level}). "
+                f"Average score {s.average_overall_score:.1f}/10 "
+                f"(range: {s.score_range}, n={s.number_of_experts})."
+            ),
+        },
+    ]
+    if s.recommendation_justification.strip():
+        out.append({"kind": "prose", "content": s.recommendation_justification})
+    if s.review_summary.strip():
+        out.append({"kind": "heading", "content": "Review summary", "level": 3})
+        out.append({"kind": "prose", "content": s.review_summary})
+    if s.consensus_strengths:
+        out.append(
+            {"kind": "heading", "content": "Consensus strengths", "level": 3}
+        )
+        out.append(
+            {
+                "kind": "items",
+                "entries": [{"label": "+", "body": x} for x in s.consensus_strengths],
+            }
+        )
+    if s.consensus_weaknesses:
+        out.append(
+            {"kind": "heading", "content": "Consensus weaknesses", "level": 3}
+        )
+        out.append(
+            {
+                "kind": "items",
+                "entries": [{"label": "-", "body": x} for x in s.consensus_weaknesses],
+            }
+        )
+    if s.divergent_opinions:
+        out.append(
+            {"kind": "heading", "content": "Divergent opinions", "level": 3}
+        )
+        out.append(
+            {
+                "kind": "items",
+                "entries": [{"label": "?", "body": x} for x in s.divergent_opinions],
+            }
+        )
+    by_criterion = [
+        ("Scientific rigor", s.scientific_rigor_summary),
+        ("Methodology", s.methodology_summary),
+        ("Novelty", s.novelty_summary),
+        ("Clarity", s.clarity_summary),
+    ]
+    if any(body.strip() for _, body in by_criterion):
+        out.append({"kind": "heading", "content": "By criterion", "level": 3})
+        for label, body in by_criterion:
+            if body.strip():
+                out.append(
+                    {
+                        "kind": "card",
+                        "content": f"**{label}**",
+                        "details": body,
+                    }
+                )
+    if s.key_decision_factors:
+        out.append(
+            {"kind": "heading", "content": "Key decision factors", "level": 3}
+        )
+        out.append(
+            {
+                "kind": "items",
+                "entries": [
+                    {"label": "★", "body": x} for x in s.key_decision_factors
+                ],
+            }
+        )
+    return out
+
+
+def _expert_reviews_atoms(reviews: list[ExpertReview]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Expert reviews ({len(reviews)})",
+            "level": 2,
+        }
+    ]
+    for r in reviews:
+        details_lines: list[str] = []
+        details_lines.append(
+            f"**Overall {r.overall_score}/10** — {r.overall_assessment}"
+        )
+        details_lines.append(
+            f"Scores: rigor {r.scientific_rigor_score}/10, "
+            f"methodology {r.methodology_score}/10, "
+            f"novelty {r.novelty_score}/10, "
+            f"clarity {r.clarity_score}/10"
+        )
+        if r.strengths:
+            details_lines.append(
+                "**Strengths.** " + "; ".join(r.strengths)
+            )
+        if r.weaknesses:
+            details_lines.append(
+                "**Weaknesses.** " + "; ".join(r.weaknesses)
+            )
+        if r.recommendation_justification.strip():
+            details_lines.append(
+                f"**Why this recommendation.** {r.recommendation_justification}"
+            )
+        out.append(
+            {
+                "kind": "card",
+                "content": (
+                    f"**{r.expert_name}** ({r.discipline}) — "
+                    f"recommendation: **{r.recommendation}** · "
+                    f"overall {r.overall_score}/10"
+                ),
+                "details": "\n\n".join(details_lines),
+            }
+        )
+    return out
+
+
+def _expert_profiles_atoms(profiles: list[ExpertProfile]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Expert biosketches ({len(profiles)})",
+            "level": 2,
+        }
+    ]
+    for p in profiles:
+        details = (
+            f"**Position.** {p.position}\n\n"
+            f"**Education.** {p.education}\n\n"
+            f"**Contributions.** {p.contributions}\n\n"
+            f"**Research.** {p.research}"
+        )
+        out.append(
+            {
+                "kind": "card",
+                "content": f"**{p.name}** — {p.discipline}",
+                "details": details,
+            }
+        )
     return out
 
 

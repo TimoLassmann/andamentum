@@ -15,6 +15,9 @@ from ._definition import AgentDefinition
 from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
+from .expert_generator import EXPERT_GENERATOR_AGENT
+from .expert_reviewer import EXPERT_REVIEWER_AGENT
+from .extract_keywords import EXTRACT_KEYWORDS_AGENT, KeywordExtractionOutput
 from .investigator import (
     INVESTIGATOR_AGENT,
     InvestigatorOutput,
@@ -27,6 +30,7 @@ from .lens import (
     build_lens_agent_definition,
     list_available_lenses,
 )
+from .panel_synthesise import PANEL_SYNTHESISE_AGENT
 from .reflection import REFLECTION_AGENT, ReflectionOutput, ReflectionTask
 from .synthesise import SYNTHESISE_AGENT, ReviewSummary
 
@@ -38,6 +42,11 @@ _REGISTRY: dict[str, AgentDefinition] = {
     AUTHOR_QUESTION_AGENT.name: AUTHOR_QUESTION_AGENT,
     REFLECTION_AGENT.name: REFLECTION_AGENT,
     INVESTIGATOR_AGENT.name: INVESTIGATOR_AGENT,
+    # Panel mode
+    EXTRACT_KEYWORDS_AGENT.name: EXTRACT_KEYWORDS_AGENT,
+    EXPERT_GENERATOR_AGENT.name: EXPERT_GENERATOR_AGENT,
+    EXPERT_REVIEWER_AGENT.name: EXPERT_REVIEWER_AGENT,
+    PANEL_SYNTHESISE_AGENT.name: PANEL_SYNTHESISE_AGENT,
 }
 
 # Register every available lens under its lens.<name> key.
@@ -75,6 +84,10 @@ __all__ = [
     # Module-level definition constants
     "INVESTIGATOR_AGENT",
     "REFLECTION_AGENT",
+    "EXTRACT_KEYWORDS_AGENT",
+    "EXPERT_GENERATOR_AGENT",
+    "EXPERT_REVIEWER_AGENT",
+    "PANEL_SYNTHESISE_AGENT",
     # Lens helpers
     "build_lens_agent_definition",
     "list_available_lenses",
@@ -84,6 +97,7 @@ __all__ = [
     "EditProposal",
     "EditorOutput",
     "InvestigatorOutput",
+    "KeywordExtractionOutput",
     "LensIssueProposal",
     "LensReadOutput",
     "NewNote",

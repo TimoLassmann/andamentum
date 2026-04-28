@@ -5,25 +5,37 @@ zero domain logic. It just declares the node list. Adding a phase later
 means adding the node class to this list (and editing the previous
 phase's terminal node to return the new node instead of End).
 
-Edges (which node returns which next):
+Both pipelines share ``HarvestSource`` and ``ChunkAndScan``;
+``ChunkAndScan`` branches on ``state.mode`` to dispatch into either
+``CriticalRead`` (mode="review") or ``ExtractKeywords`` (mode="panel").
+
+Edges (review mode):
 
     HarvestSource ──► ChunkAndScan
                          │
-                         ├─ deps.model is None ─► End[ReviewResult]
+                         ├─ deps.model is None        ─► End[ReviewResult]
                          │
-                         └─ deps.model is set  ─► CriticalRead
-                                                       │
-                                                       └► ReflectAndInvestigate
+                         ├─ state.mode == "panel"     ─► ExtractKeywords ─► GenerateExpertPanel
+                         │                                                       │
+                         │                                                       └► ExpertReview
+                         │                                                            │
+                         │                                                            └► PanelSynthesise
+                         │                                                                  │
+                         │                                                                  └► End[ReviewResult]
+                         │
+                         └─ default (mode="review")   ─► CriticalRead
                                                               │
-                                                              └► EditSections
-                                                                    │
-                                                                    └► Challenge
-                                                                          │
-                                                                          └► AuthorQuestions
-                                                                                 │
-                                                                                 └► Synthesise
-                                                                                        │
-                                                                                        └► End[ReviewResult]
+                                                              └► ReflectAndInvestigate
+                                                                     │
+                                                                     └► EditSections
+                                                                            │
+                                                                            └► Challenge
+                                                                                  │
+                                                                                  └► AuthorQuestions
+                                                                                         │
+                                                                                         └► Synthesise
+                                                                                                │
+                                                                                                └► End[ReviewResult]
 """
 
 from pydantic_graph import Graph
@@ -34,7 +46,11 @@ from .nodes import (
     ChunkAndScan,
     CriticalRead,
     EditSections,
+    ExpertReview,
+    ExtractKeywords,
+    GenerateExpertPanel,
     HarvestSource,
+    PanelSynthesise,
     ReflectAndInvestigate,
     Synthesise,
 )
@@ -43,11 +59,17 @@ review_graph = Graph(
     nodes=[
         HarvestSource,
         ChunkAndScan,
+        # Review-mode nodes
         CriticalRead,
         ReflectAndInvestigate,
         EditSections,
         Challenge,
         AuthorQuestions,
         Synthesise,
+        # Panel-mode nodes
+        ExtractKeywords,
+        GenerateExpertPanel,
+        ExpertReview,
+        PanelSynthesise,
     ]
 )
