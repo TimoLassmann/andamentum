@@ -77,7 +77,15 @@ REVIEW OPTIONS
     --perspectives LIST        Comma-separated lens names.
                                Default: rigorous
                                Available: rigorous, writer, methodology,
-                                          statistician
+                                          statistician, consistency,
+                                          claim_evidence, overclaim
+                               Notes:
+                                 consistency reads the WHOLE document
+                                   (cross-section drift / contradictions)
+                                 claim_evidence runs only on Abstract /
+                                   Results / Discussion / Conclusion
+                                 overclaim flags unsupported strength
+                                   language ("first / novel / dramatic")
                                Ignored in panel mode.
     --rounds N                 Hard cap on rounds of the reflection–
                                investigation loop. Default: 3.
@@ -240,7 +248,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="LIST",
         help=(
             "Comma-separated lens names. "
-            "Available: rigorous, writer, methodology, statistician. "
+            "Available: rigorous, writer, methodology, statistician, "
+            "consistency, claim_evidence, overclaim. "
             "Default: rigorous"
         ),
     )
