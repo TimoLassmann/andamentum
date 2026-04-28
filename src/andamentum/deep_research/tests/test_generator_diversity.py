@@ -171,7 +171,7 @@ async def test_generator_responds_to_specific_feedback():
     assert isinstance(n2, Verify)
     q2 = n2.query
 
-    print(f"\n=== feedback responsiveness ===")
+    print("\n=== feedback responsiveness ===")
     print(f"  q1 (no feedback): {q1}")
     print(f"  q2 (feedback: needs 'healthy adults'): {q2}")
 
@@ -199,7 +199,7 @@ async def test_generator_avoids_validated_queries():
 
     n = await GenerateOne().run(ctx)
     assert isinstance(n, Verify)
-    print(f"\n=== avoidance test ===")
+    print("\n=== avoidance test ===")
     print(f"  validated already: {ctx.state.cycle.validated_queries}")
     print(f"  next query:        {n.query}")
 

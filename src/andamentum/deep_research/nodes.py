@@ -14,7 +14,7 @@ are separate LLM calls; the parallel search is pure Python over
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Union
 
 from pydantic_graph import BaseNode, End, GraphRunContext
@@ -35,6 +35,7 @@ from .models import (
 )
 from .agents import get_agent
 from .backends import SearchBackend
+from .reporter import NoopReporter, SearchReporter
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,10 @@ def _build_agent(
 # ── Node Deps ──────────────────────────────────────────────────────────
 
 
+def _default_reporter() -> SearchReporter:
+    return NoopReporter()
+
+
 @dataclass
 class NodeDeps:
     """Dependencies available to graph nodes."""
@@ -84,6 +89,10 @@ class NodeDeps:
     # ``_build_agent`` to substitute a stub Agent for the registry lookup.
     # Production code MUST leave this as ``None``.
     agent_overrides: dict[str, Any] | None = None
+    # Progress reporter for the search cycle. Defaults to a NoopReporter
+    # so nodes can call methods unconditionally; the CLI installs a
+    # RichReporter when ``--verbose`` is set.
+    reporter: SearchReporter = field(default_factory=_default_reporter)
 
 
 # ── PlanResearch ───────────────────────────────────────────────────────
@@ -145,6 +154,13 @@ class PrepareSearchCycle(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             target_count=2 if is_gap else 3,
             gaps=list(ctx.state.identified_gaps) if is_gap else [],
         )
+        ctx.deps.reporter.cycle_starting(
+            iteration=ctx.state.iteration_count,
+            mode=ctx.state.cycle.mode,
+            target_count=ctx.state.cycle.target_count,
+            gaps=ctx.state.cycle.gaps,
+        )
+        ctx.deps.reporter.slot_starting(slot=1)
         return GenerateOne()
 
 
@@ -173,6 +189,13 @@ class GenerateOne(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             usage_limits=UsageLimits(request_limit=10),
         )
         out: GeneratorOutput = result.output
+        c = ctx.state.cycle
+        ctx.deps.reporter.query_generated(
+            slot=len(c.validated_queries) + 1,
+            attempt=c.slot_attempts + 1,
+            query=out.query,
+            rationale=out.rationale,
+        )
         return Verify(query=out.query)
 
     def _prompt(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> str:
@@ -228,17 +251,29 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         verdict: VerifierOutput = result.output
         c = ctx.state.cycle
 
+        slot = len(c.validated_queries) + 1
+
         if verdict.on_topic:
             c.validated_queries.append(self.query)
             c.slot_attempts = 0
             c.slot_rejected_queries.clear()
+            ctx.deps.reporter.query_accepted(
+                slot=slot, query=self.query, reason=verdict.reason
+            )
             if len(c.validated_queries) >= c.target_count:
                 return ParallelSearch()
+            ctx.deps.reporter.slot_starting(slot=slot + 1)
             return GenerateOne()
 
         # Rejected.
         c.slot_attempts += 1
         c.slot_rejected_queries.append(self.query)
+        ctx.deps.reporter.query_rejected(
+            slot=slot,
+            attempt=c.slot_attempts,
+            query=self.query,
+            reason=verdict.reason,
+        )
         if c.slot_attempts >= MAX_SLOT_RETRIES:
             logger.warning(
                 "[%s] Search-cycle slot exhausted retries; tightening target_count "
@@ -252,8 +287,12 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             c.slot_attempts = 0
             c.slot_rejected_queries.clear()
             c.target_count -= 1
+            ctx.deps.reporter.slot_exhausted(
+                slot=slot, new_target_count=c.target_count
+            )
             if len(c.validated_queries) >= c.target_count:
                 return ParallelSearch()
+            ctx.deps.reporter.slot_starting(slot=slot + 1)
             return GenerateOne()
 
         return GenerateOne(feedback=verdict.reason)
@@ -283,6 +322,10 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 ctx.deps.correlation_id,
             )
 
+        ctx.deps.reporter.parallel_search_starting(
+            queries=list(c.validated_queries)
+        )
+
         sem = asyncio.Semaphore(3)
 
         async def do_search(
@@ -307,6 +350,11 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         )
 
         for query_str, results, error_msg in search_results:
+            ctx.deps.reporter.query_search_complete(
+                query=query_str,
+                n_results=len(results),
+                error=error_msg,
+            )
             if error_msg:
                 ctx.state.search_errors.append(
                     {
@@ -333,6 +381,7 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             for r in results:
                 ctx.state.searched_urls.add(r.url)
 
+        ctx.deps.reporter.cycle_complete()
         return FetchPhase()
 
 
