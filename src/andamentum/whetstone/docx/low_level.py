@@ -835,13 +835,28 @@ class DocxEditor:
         """
         Prepend review report as formatted content at document beginning.
 
-        Adds paragraphs at the start of the document using markdown-style formatting.
-        Works directly with XML elements to maintain document structure.
+        Parses the markdown into Word paragraphs with appropriate styles:
+
+          • ``# / ## / ### / #### / ##### / ######`` → Heading 1–6
+          • ``- item`` or ``* item``                  → ``List Bullet`` style
+          • ``1. item`` (any leading digits + dot)    → ``List Number`` style
+          • ``> text``                                → ``Quote`` style
+          • ``---``                                   → horizontal rule
+          • ``**whole line**`` / ``*whole line*``     → bold / italic paragraph
+          • everything else                           → regular paragraph
+
+        Inline ``**bold**`` and ``*italic*`` are applied inside any
+        block (including headings and list items) via
+        ``_parse_inline_markdown``.
+
+        After the parsed content, the method appends one final paragraph
+        containing a hard page break so the original manuscript body
+        starts on its own page — visually separating the review report
+        from the document being reviewed.
 
         Args:
             review_markdown: Markdown-formatted review report
         """
-        # Get the main document tree
         doc_path = self._doc_path
         tree = self.trees[doc_path]
         root = tree.getroot()
@@ -850,106 +865,161 @@ class DocxEditor:
         if body is None:
             return  # No body to prepend to
 
-        # Parse markdown and create XML elements
-        lines = review_markdown.split("\n")
-        elements_to_prepend = []
+        elements_to_prepend = [
+            self._build_review_paragraph(line)
+            for line in review_markdown.split("\n")
+        ]
+        # Trailing page break separates the review report from the
+        # manuscript that follows. Always added — review reports want
+        # a clean visual boundary.
+        elements_to_prepend.append(self._build_page_break_paragraph())
 
-        for line in lines:
-            # Create paragraph element
-            p_elem = etree.Element(f"{{{NS['w']}}}p")
-
-            # Handle different markdown styles
-            if line.startswith("# "):
-                # Heading 1
-                pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
-                pStyle = etree.SubElement(pPr, f"{{{NS['w']}}}pStyle")
-                pStyle.set(f"{{{NS['w']}}}val", "Heading1")
-                text = line[2:]
-            elif line.startswith("## "):
-                # Heading 2
-                pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
-                pStyle = etree.SubElement(pPr, f"{{{NS['w']}}}pStyle")
-                pStyle.set(f"{{{NS['w']}}}val", "Heading2")
-                text = line[3:]
-            elif line.startswith("### "):
-                # Heading 3
-                pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
-                pStyle = etree.SubElement(pPr, f"{{{NS['w']}}}pStyle")
-                pStyle.set(f"{{{NS['w']}}}val", "Heading3")
-                text = line[4:]
-            elif line.strip() == "---":
-                # Horizontal rule - add empty paragraph with border
-                pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
-                pBdr = etree.SubElement(pPr, f"{{{NS['w']}}}pBdr")
-                bottom = etree.SubElement(pBdr, f"{{{NS['w']}}}bottom")
-                bottom.set(f"{{{NS['w']}}}val", "single")
-                bottom.set(f"{{{NS['w']}}}sz", "6")
-                bottom.set(f"{{{NS['w']}}}space", "1")
-                bottom.set(f"{{{NS['w']}}}color", "auto")
-                text = ""
-            elif line.startswith("**") and line.endswith("**") and len(line) > 4:
-                # Bold text
-                text = line[2:-2]
-                r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
-                rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                etree.SubElement(rPr, f"{{{NS['w']}}}b")
-                t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
-                t_elem.text = text
-                elements_to_prepend.append(p_elem)
-                continue
-            elif line.startswith("*") and line.endswith("*") and not line.startswith("**"):
-                # Italic text
-                text = line[1:-1]
-                r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
-                rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-                etree.SubElement(rPr, f"{{{NS['w']}}}i")
-                t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
-                t_elem.text = text
-                elements_to_prepend.append(p_elem)
-                continue
-            else:
-                # Regular paragraph - parse inline markdown
-                text = line
-
-            # Add run(s) with inline markdown parsing
-            if text or not line.strip():  # Add empty paragraphs too
-                if text.strip():
-                    # Parse inline markdown (handles **bold**, *italic*)
-                    self._parse_inline_markdown(text, p_elem)
-                else:
-                    # Empty line - add empty run to preserve spacing
-                    r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
-                    t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
-                    t_elem.text = ""
-                    t_elem.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-
-            elements_to_prepend.append(p_elem)
-
-        # Prepend all elements at the beginning of the body
         first_child = body[0] if len(body) > 0 else None
 
-        # Create ParagraphData objects for prepended elements WITHOUT extracting from XML
-        # This preserves any changes made to existing paragraphs by apply_patches()
+        # Create ParagraphData objects WITHOUT re-extracting from XML so
+        # any changes made by apply_patches() are preserved.
         prepended_paragraphs = []
-        for elem in reversed(elements_to_prepend):  # Reverse to maintain order
+        for elem in reversed(elements_to_prepend):
             if first_child is not None:
                 body.insert(0, elem)
             else:
                 body.append(elem)
 
-            # Create ParagraphData for this prepended paragraph
-            doc_path = self._doc_path
             para_data = ParagraphData(doc_path, elem)
-            # Get text from the element
             text = "".join(t.text or "" for t in elem.xpath(".//w:t", namespaces=NS))
             para_data.modified = text
             para_data.original = text
-            para_data.comment = ""  # No comment needed for review paragraphs
-            prepended_paragraphs.insert(0, para_data)  # Insert at beginning to maintain order
+            para_data.comment = ""
+            prepended_paragraphs.insert(0, para_data)
 
-        # Prepend the new paragraphs to the existing list WITHOUT reloading from XML
-        # This preserves the modified state of paragraphs that have had patches applied
         self.paragraphs = prepended_paragraphs + self.paragraphs
+
+    # ── markdown → Word paragraph helpers ─────────────────────────────
+
+    def _build_review_paragraph(self, line: str):
+        """Convert one markdown line into a Word `<w:p>` element.
+
+        Returns the constructed XML element. The line classification
+        cascade is order-sensitive: more specific patterns first.
+        """
+        # Match heading prefixes (# through ######)
+        for level in range(6, 0, -1):
+            prefix = "#" * level + " "
+            if line.startswith(prefix):
+                return self._make_styled_paragraph(
+                    style_name=f"Heading{level}",
+                    body=line[len(prefix):],
+                )
+
+        stripped = line.strip()
+
+        # Horizontal rule
+        if stripped == "---":
+            return self._make_horizontal_rule_paragraph()
+
+        # Bullet list:  "- item" or "* item"  (single space; not "**")
+        if (
+            len(line) >= 2
+            and line[0] in ("-", "*")
+            and line[1] == " "
+            and not line.startswith("**")
+        ):
+            return self._make_styled_paragraph(
+                style_name="ListBullet",
+                body=line[2:],
+            )
+
+        # Numbered list:  "1. item" / "12. item"
+        if stripped and stripped[0].isdigit():
+            digits_end = 0
+            while digits_end < len(stripped) and stripped[digits_end].isdigit():
+                digits_end += 1
+            if (
+                digits_end > 0
+                and digits_end + 1 < len(stripped)
+                and stripped[digits_end] == "."
+                and stripped[digits_end + 1] == " "
+            ):
+                return self._make_styled_paragraph(
+                    style_name="ListNumber",
+                    body=stripped[digits_end + 2:],
+                )
+
+        # Blockquote
+        if line.startswith("> "):
+            return self._make_styled_paragraph(
+                style_name="Quote",
+                body=line[2:],
+            )
+        if stripped == ">":
+            return self._make_styled_paragraph(style_name="Quote", body="")
+
+        # Whole-line bold / italic (no surrounding text)
+        if line.startswith("**") and line.endswith("**") and len(line) > 4:
+            return self._make_inline_marked_paragraph(line[2:-2], bold=True)
+        if (
+            line.startswith("*")
+            and line.endswith("*")
+            and not line.startswith("**")
+            and len(line) > 2
+        ):
+            return self._make_inline_marked_paragraph(line[1:-1], italic=True)
+
+        # Regular paragraph — empty lines preserve spacing
+        return self._make_styled_paragraph(style_name=None, body=line)
+
+    def _make_styled_paragraph(self, *, style_name, body: str):
+        """Build a paragraph with the given style; body uses inline markdown."""
+        p_elem = etree.Element(f"{{{NS['w']}}}p")
+        if style_name:
+            pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
+            pStyle = etree.SubElement(pPr, f"{{{NS['w']}}}pStyle")
+            pStyle.set(f"{{{NS['w']}}}val", style_name)
+
+        if body.strip():
+            self._parse_inline_markdown(body, p_elem)
+        else:
+            # Empty paragraph — preserve vertical spacing in the docx
+            r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
+            t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
+            t_elem.text = ""
+            t_elem.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        return p_elem
+
+    def _make_horizontal_rule_paragraph(self):
+        """Empty paragraph with a bottom border = a markdown horizontal rule."""
+        p_elem = etree.Element(f"{{{NS['w']}}}p")
+        pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
+        pBdr = etree.SubElement(pPr, f"{{{NS['w']}}}pBdr")
+        bottom = etree.SubElement(pBdr, f"{{{NS['w']}}}bottom")
+        bottom.set(f"{{{NS['w']}}}val", "single")
+        bottom.set(f"{{{NS['w']}}}sz", "6")
+        bottom.set(f"{{{NS['w']}}}space", "1")
+        bottom.set(f"{{{NS['w']}}}color", "auto")
+        return p_elem
+
+    def _make_inline_marked_paragraph(
+        self, text: str, *, bold: bool = False, italic: bool = False
+    ):
+        """Single-run paragraph with bold/italic applied to its only run."""
+        p_elem = etree.Element(f"{{{NS['w']}}}p")
+        r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
+        rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
+        if bold:
+            etree.SubElement(rPr, f"{{{NS['w']}}}b")
+        if italic:
+            etree.SubElement(rPr, f"{{{NS['w']}}}i")
+        t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
+        t_elem.text = text
+        return p_elem
+
+    def _build_page_break_paragraph(self):
+        """A paragraph containing a hard page break — separates review from body."""
+        p_elem = etree.Element(f"{{{NS['w']}}}p")
+        r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
+        br_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}br")
+        br_elem.set(f"{{{NS['w']}}}type", "page")
+        return p_elem
 
     def write(self, output_path):
         """Serialize the edited document to a new .docx file.

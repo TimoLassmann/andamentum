@@ -11,11 +11,11 @@ JUSTIFICATION_SUFFIX = "_justification"
 STRUCTURED_FIELDS = {"strengths", "weaknesses", "recommendation", "overall_assessment"}
 
 # Report section headers
-REPORT_TITLE = "# DOCUMENT REVIEW REPORT"
+REPORT_TITLE = "# Whetstone Review"
 SECTION_SEPARATOR = "---"
 EXECUTIVE_SUMMARY_HEADER = "## Executive Summary"
-CRITICAL_ISSUES_HEADER = "## Critical Issues Identified"
-EXPERT_REVIEWS_HEADER = "## Individual Expert Reviews"
+CRITICAL_ISSUES_HEADER = "## Critical Issues"
+EXPERT_REVIEWS_HEADER = "## Expert Reviews"
 NOVELTY_FINDINGS_HEADER = "## Novelty Assessment"
 
 # Field labels

@@ -193,31 +193,44 @@ def _fallback_summary(result: ReviewResult) -> str:
 def _format_panel_synthesis(s: PanelSynthesis) -> str:
     """Render PanelSynthesis as a markdown block for the prepended report.
 
-    The shape mirrors the markdown / HTML renderers' panel synthesis
-    sections so a reader who's seen one format recognises the other.
+    The structure is designed for the markdown→Word parser in
+    ``whetstone.docx.low_level.prepend_review_section``:
+
+      • ``## Panel Synthesis``      → Heading 2 in Word
+      • ``> Recommendation: ...``   → Quote-styled callout (left bar)
+      • ``### Subsection``          → Heading 3
+      • ``- item``                  → real Word bullet list
+
+    The recommendation gets its own quote block so it's the first
+    visually-prominent thing the reader sees.
     """
     lines = [
         "## Panel Synthesis",
         "",
-        f"**Recommendation: {s.overall_recommendation}** "
-        f"(confidence: {s.confidence_level})",
-        "",
-        f"Average score: **{s.average_overall_score:.1f}/10** "
+        # Quote-styled callout: Word renders this with a left bar +
+        # italic, giving the headline recommendation visual weight.
+        f"> **Recommendation: {s.overall_recommendation}** "
+        f"(confidence: {s.confidence_level}) — average score "
+        f"**{s.average_overall_score:.1f}/10** "
         f"(range: {s.score_range}, n={s.number_of_experts})",
         "",
         s.recommendation_justification,
+        "",
     ]
     if (s.review_summary or "").strip():
-        lines += ["", "### Review summary", "", s.review_summary.strip()]
+        lines += ["### Review summary", "", s.review_summary.strip(), ""]
     if s.consensus_strengths:
-        lines += ["", "### Consensus strengths", ""]
+        lines += ["### Consensus strengths", ""]
         lines += [f"- {item}" for item in s.consensus_strengths]
+        lines += [""]
     if s.consensus_weaknesses:
-        lines += ["", "### Consensus weaknesses", ""]
+        lines += ["### Consensus weaknesses", ""]
         lines += [f"- {item}" for item in s.consensus_weaknesses]
+        lines += [""]
     if s.divergent_opinions:
-        lines += ["", "### Divergent opinions", ""]
+        lines += ["### Divergent opinions", ""]
         lines += [f"- {item}" for item in s.divergent_opinions]
+        lines += [""]
     by_criterion = [
         ("Scientific rigor", s.scientific_rigor_summary),
         ("Methodology", s.methodology_summary),
@@ -225,13 +238,14 @@ def _format_panel_synthesis(s: PanelSynthesis) -> str:
         ("Clarity", s.clarity_summary),
     ]
     if any((body or "").strip() for _, body in by_criterion):
-        lines += ["", "### By criterion", ""]
+        lines += ["### By criterion", ""]
         for label, body in by_criterion:
             if (body or "").strip():
                 lines += [f"**{label}:** {body.strip()}", ""]
     if s.key_decision_factors:
-        lines += ["", "### Key decision factors", ""]
+        lines += ["### Key decision factors", ""]
         lines += [f"- {item}" for item in s.key_decision_factors]
+        lines += [""]
     return "\n".join(lines)
 
 
