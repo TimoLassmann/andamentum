@@ -48,12 +48,20 @@ OUTPUTS
                        harvested text and patches are applied to that.
 
 REVIEW OPTIONS
-    --mode {review,panel}      Pipeline to run.
+    --mode {review,panel,guidelines,custom}
+                               Pipeline to run.
                                  review (default) — lens-based critical
                                    review with reflection loop.
                                  panel — simulate 3-5 fictional expert
                                    reviewers, scored, with a panel
                                    synthesis. Costs ~2N+2 LLM calls.
+                                 guidelines — extract checkable items
+                                   from a journal's author guidelines
+                                   and evaluate each against the
+                                   manuscript. Requires --guidelines.
+                                 custom — evaluate the manuscript
+                                   against caller-supplied criteria
+                                   (one LLM call). Requires --criteria.
     --model MODEL              pydantic-ai model id, e.g.
                                openai:gpt-5.4-nano,
                                ollama:gemma4:31b-nvfp4.
@@ -81,6 +89,15 @@ REVIEW OPTIONS
     --panel-disciplines LIST   In panel mode, an explicit comma-separated
                                list of disciplines (skips keyword
                                extraction).
+    --guidelines TEXT          In guidelines mode, the journal author
+                               guidelines as text. Use ``@path/to/file``
+                               to read from a file. Required when
+                               ``--mode guidelines``.
+    --criteria LIST            In custom mode, semicolon-separated list
+                               of criteria (e.g. "originality; depth of
+                               literature; clarity of methods"). May be
+                               repeated to supply criteria one at a time.
+                               Required when ``--mode custom``.
     --no-llm                   Run only the deterministic structural pass
                                (citations, terms, numerics, cross-refs).
                                No --model required. Free, instant.
@@ -148,11 +165,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=("review", "panel"),
+        choices=("review", "panel", "guidelines", "custom"),
         default="review",
         help=(
             "Pipeline to run. review (default): lens-based critical "
-            "review. panel: simulate 3-5 fictional expert reviewers."
+            "review. panel: simulate 3-5 fictional expert reviewers. "
+            "guidelines: evaluate document against journal author "
+            "guidelines (requires --guidelines). custom: evaluate "
+            "against caller-supplied criteria (requires --criteria)."
         ),
     )
     parser.add_argument(
@@ -175,6 +195,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "In panel mode, an explicit comma-separated list of "
             "disciplines (skips keyword extraction)."
+        ),
+    )
+    parser.add_argument(
+        "--guidelines",
+        default="",
+        metavar="TEXT",
+        help=(
+            "In guidelines mode, the journal author guidelines text. "
+            "Use ``@path/to/file`` to read from a file. Required when "
+            "--mode guidelines."
+        ),
+    )
+    parser.add_argument(
+        "--criteria",
+        action="append",
+        default=None,
+        metavar="LIST",
+        help=(
+            "In custom mode, criteria to evaluate against. Either a "
+            "single semicolon-separated string or repeat the flag to "
+            "supply criteria one at a time. Required when --mode custom."
         ),
     )
     parser.add_argument(
@@ -252,6 +293,41 @@ def _validate_args(args: argparse.Namespace) -> None:
             "--mode panel requires --model — every panel-mode phase is "
             "an LLM call. Drop --no-llm or use --mode review.",
         )
+    if args.no_llm and args.mode == "guidelines":
+        _die(
+            1,
+            "--mode guidelines requires --model — every checkable item "
+            "is an LLM call. Drop --no-llm or use --mode review.",
+        )
+    if args.no_llm and args.mode == "custom":
+        _die(
+            1,
+            "--mode custom requires --model — the custom reviewer is an "
+            "LLM call. Drop --no-llm or use --mode review.",
+        )
+    if args.mode == "guidelines" and not args.guidelines:
+        _die(
+            1,
+            "--mode guidelines requires --guidelines (text or @file).",
+        )
+    if args.mode == "custom" and not args.criteria:
+        _die(
+            1,
+            "--mode custom requires --criteria (semicolon-separated or "
+            "repeated).",
+        )
+    if args.mode != "guidelines" and args.guidelines:
+        _die(
+            1,
+            f"--guidelines is only valid with --mode guidelines (got "
+            f"--mode {args.mode}).",
+        )
+    if args.mode != "custom" and args.criteria:
+        _die(
+            1,
+            f"--criteria is only valid with --mode custom (got --mode "
+            f"{args.mode}).",
+        )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
     if args.n_experts < 1:
@@ -272,6 +348,42 @@ def _die(code: int, message: str) -> NoReturn:
     sys.exit(code)
 
 
+def _resolve_guidelines(value: str) -> str:
+    """Resolve --guidelines value, expanding ``@path`` to file contents.
+
+    A leading ``@`` selects file mode; everything else is treated as a
+    literal guidelines string.
+
+    Raises
+    ------
+    SystemExit
+        With exit code 2 if the file cannot be read.
+    """
+    if value.startswith("@"):
+        path = Path(value[1:])
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as exc:
+            _die(2, f"could not read guidelines file {path}: {exc}")
+    return value
+
+
+def _parse_criteria(values: list[str]) -> list[str]:
+    """Parse ``--criteria`` into a flat list of criterion strings.
+
+    Each ``--criteria`` invocation may be a semicolon-separated string;
+    multiple invocations stack. Empty / whitespace-only entries are
+    silently dropped.
+    """
+    out: list[str] = []
+    for raw in values:
+        for chunk in raw.split(";"):
+            cleaned = chunk.strip()
+            if cleaned:
+                out.append(cleaned)
+    return out
+
+
 async def _run(args: argparse.Namespace, console: Console) -> None:
     """Execute the review and write all requested outputs."""
     from .api import review_document
@@ -284,6 +396,8 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     panel_disciplines = tuple(
         d.strip() for d in args.panel_disciplines.split(",") if d.strip()
     )
+    guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
+    custom_criteria = _parse_criteria(args.criteria) if args.criteria else None
 
     logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
@@ -301,6 +415,8 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             mode=args.mode,
             n_experts=args.n_experts,
             panel_disciplines=panel_disciplines or None,
+            guidelines=guidelines_text,
+            custom_criteria=custom_criteria,
         )
     except Exception as exc:
         # Distinguish "couldn't load the input" from "review crashed"
@@ -362,6 +478,16 @@ def _log_run_config(
         table.add_row("n_experts:", str(args.n_experts))
         if args.panel_disciplines:
             table.add_row("disciplines:", args.panel_disciplines)
+    elif args.mode == "guidelines":
+        guideline_preview = (
+            f"@{args.guidelines[1:]}"
+            if args.guidelines.startswith("@")
+            else f"<{len(args.guidelines)} chars inline>"
+        )
+        table.add_row("guidelines:", guideline_preview)
+    elif args.mode == "custom":
+        criteria_preview = "; ".join(args.criteria) if args.criteria else "(none)"
+        table.add_row("criteria:", criteria_preview)
     else:
         table.add_row("perspectives:", ", ".join(perspectives))
         table.add_row("editor:", "on" if args.editor else "off")

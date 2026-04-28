@@ -14,10 +14,16 @@ from typing import Any
 from ._definition import AgentDefinition
 from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
+from .custom_reviewer import CUSTOM_REVIEWER_AGENT
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
 from .expert_generator import EXPERT_GENERATOR_AGENT
 from .expert_reviewer import EXPERT_REVIEWER_AGENT
+from .extract_checkable_items import (
+    EXTRACT_CHECKABLE_ITEMS_AGENT,
+    ExtractedItemsList,
+)
 from .extract_keywords import EXTRACT_KEYWORDS_AGENT, KeywordExtractionOutput
+from .guideline_item_evaluator import GUIDELINE_ITEM_EVALUATOR_AGENT
 from .investigator import (
     INVESTIGATOR_AGENT,
     InvestigatorOutput,
@@ -47,6 +53,11 @@ _REGISTRY: dict[str, AgentDefinition] = {
     EXPERT_GENERATOR_AGENT.name: EXPERT_GENERATOR_AGENT,
     EXPERT_REVIEWER_AGENT.name: EXPERT_REVIEWER_AGENT,
     PANEL_SYNTHESISE_AGENT.name: PANEL_SYNTHESISE_AGENT,
+    # Guidelines mode
+    EXTRACT_CHECKABLE_ITEMS_AGENT.name: EXTRACT_CHECKABLE_ITEMS_AGENT,
+    GUIDELINE_ITEM_EVALUATOR_AGENT.name: GUIDELINE_ITEM_EVALUATOR_AGENT,
+    # Custom mode (output_model is built at call time)
+    CUSTOM_REVIEWER_AGENT.name: CUSTOM_REVIEWER_AGENT,
 }
 
 # Register every available lens under its lens.<name> key.
@@ -77,8 +88,30 @@ def build_pydantic_ai_agent(name: str, model: Any):
     return _build(get_agent(name), model)
 
 
+def build_dynamic_output_agent(name: str, model: Any, output_type: Any):
+    """Build a pydantic-ai ``Agent`` whose ``output_type`` is supplied at call time.
+
+    For agents whose output schema is built at runtime (custom-criteria
+    mode). The registry definition carries ``output_model=None``; the
+    caller passes the concrete type here. Mirrors
+    :func:`build_pydantic_ai_agent` so node tests can ``mock.patch`` it
+    in the same way.
+    """
+    from pydantic_ai import Agent
+
+    defn = get_agent(name)
+    return Agent(
+        model,
+        instructions=defn.prompt,
+        output_type=output_type,
+        retries=defn.retries,
+        output_retries=defn.output_retries,
+    )
+
+
 __all__ = [
     "AgentDefinition",
+    "build_dynamic_output_agent",
     "build_pydantic_ai_agent",
     "get_agent",
     # Module-level definition constants
@@ -88,6 +121,9 @@ __all__ = [
     "EXPERT_GENERATOR_AGENT",
     "EXPERT_REVIEWER_AGENT",
     "PANEL_SYNTHESISE_AGENT",
+    "EXTRACT_CHECKABLE_ITEMS_AGENT",
+    "GUIDELINE_ITEM_EVALUATOR_AGENT",
+    "CUSTOM_REVIEWER_AGENT",
     # Lens helpers
     "build_lens_agent_definition",
     "list_available_lenses",
@@ -96,6 +132,7 @@ __all__ = [
     "ChallengeVerdict",
     "EditProposal",
     "EditorOutput",
+    "ExtractedItemsList",
     "InvestigatorOutput",
     "KeywordExtractionOutput",
     "LensIssueProposal",
