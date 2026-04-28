@@ -25,7 +25,10 @@ from typing import Iterable
 from ..schemas import (
     AuthorQuestion,
     Edit,
+    ExpertProfile,
+    ExpertReview,
     Finding,
+    PanelSynthesis,
     ReviewResult,
     SectionCard,
 )
@@ -44,9 +47,22 @@ def render_markdown(
     """
     sections: list[str] = [_TITLE]
 
+    panel_mode = bool(result.expert_profiles or result.expert_reviews)
+
     if result.summary.strip():
         sections.append(result.summary.strip())
 
+    # ── Panel-mode sections (priority order) ─────────────────────────
+    if result.panel_synthesis is not None:
+        sections.append(_render_panel_synthesis(result.panel_synthesis))
+
+    if result.expert_reviews:
+        sections.append(_render_expert_reviews(result.expert_reviews))
+
+    if result.expert_profiles:
+        sections.append(_render_expert_profiles(result.expert_profiles))
+
+    # ── Standard review-mode sections ────────────────────────────────
     if result.author_questions:
         sections.append(_render_questions(result.author_questions))
 
@@ -65,7 +81,13 @@ def render_markdown(
             )
         )
 
-    if result.document_map:
+    if result.document_map and not panel_mode:
+        # Document map is most useful in review mode where findings
+        # reference specific section_ids. In panel mode we only show
+        # it if there's nothing else to show — the panel synthesis
+        # already gives a holistic view.
+        sections.append(_render_document_map(result.document_map))
+    elif result.document_map and len(sections) == 1:
         sections.append(_render_document_map(result.document_map))
 
     if len(sections) == 1:
@@ -150,6 +172,113 @@ def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
                 lines.append(f"  > [{q.section_id}] {preview}")
             lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def _render_panel_synthesis(s: PanelSynthesis) -> str:
+    """Top-of-report panel synthesis."""
+    lines = [
+        "## Panel synthesis",
+        "",
+        f"**Recommendation: {s.overall_recommendation}** "
+        f"(confidence: {s.confidence_level})",
+        "",
+        f"Average score: **{s.average_overall_score:.1f}/10** "
+        f"(range: {s.score_range}, n={s.number_of_experts})",
+        "",
+        s.recommendation_justification,
+    ]
+    if s.review_summary.strip():
+        lines += ["", "### Review summary", "", s.review_summary.strip()]
+    if s.consensus_strengths:
+        lines += ["", "### Consensus strengths", ""]
+        lines += [f"- {item}" for item in s.consensus_strengths]
+    if s.consensus_weaknesses:
+        lines += ["", "### Consensus weaknesses", ""]
+        lines += [f"- {item}" for item in s.consensus_weaknesses]
+    if s.divergent_opinions:
+        lines += ["", "### Divergent opinions", ""]
+        lines += [f"- {item}" for item in s.divergent_opinions]
+    by_criterion = [
+        ("Scientific rigor", s.scientific_rigor_summary),
+        ("Methodology", s.methodology_summary),
+        ("Novelty", s.novelty_summary),
+        ("Clarity", s.clarity_summary),
+    ]
+    if any(body.strip() for _, body in by_criterion):
+        lines += ["", "### By criterion", ""]
+        for label, body in by_criterion:
+            if body.strip():
+                lines += [f"**{label}.** {body.strip()}", ""]
+    if s.key_decision_factors:
+        lines += ["### Key decision factors", ""]
+        lines += [f"- {item}" for item in s.key_decision_factors]
+    return "\n".join(lines).rstrip()
+
+
+def _render_expert_reviews(reviews: Iterable[ExpertReview]) -> str:
+    """Per-expert reviews. Collapsible details via blockquote indentation."""
+    reviews = list(reviews)
+    lines = [f"## Expert reviews ({len(reviews)})", ""]
+    for r in reviews:
+        lines += [
+            f"### {r.expert_name} — {r.discipline}",
+            "",
+            f"**Overall: {r.overall_score}/10** · "
+            f"Recommendation: **{r.recommendation}**",
+            "",
+            r.overall_assessment,
+            "",
+            "| Criterion | Score | Justification |",
+            "| --- | --- | --- |",
+            f"| Scientific rigor | {r.scientific_rigor_score}/10 | "
+            f"{_oneline(r.scientific_rigor_justification)} |",
+            f"| Methodology | {r.methodology_score}/10 | "
+            f"{_oneline(r.methodology_justification)} |",
+            f"| Novelty | {r.novelty_score}/10 | "
+            f"{_oneline(r.novelty_justification)} |",
+            f"| Clarity | {r.clarity_score}/10 | "
+            f"{_oneline(r.clarity_justification)} |",
+            "",
+        ]
+        if r.strengths:
+            lines += ["**Strengths**", ""]
+            lines += [f"- {item}" for item in r.strengths]
+            lines += [""]
+        if r.weaknesses:
+            lines += ["**Weaknesses**", ""]
+            lines += [f"- {item}" for item in r.weaknesses]
+            lines += [""]
+        if r.recommendation_justification.strip():
+            lines += [
+                f"_{r.recommendation_justification.strip()}_",
+                "",
+            ]
+    return "\n".join(lines).rstrip()
+
+
+def _render_expert_profiles(profiles: Iterable[ExpertProfile]) -> str:
+    """Footnote-style biosketches at the bottom of the report."""
+    profiles = list(profiles)
+    lines = [f"## Expert biosketches ({len(profiles)})", ""]
+    for p in profiles:
+        lines += [
+            f"### {p.name} — {p.discipline}",
+            "",
+            f"**Position.** {p.position}",
+            "",
+            f"**Education.** {p.education}",
+            "",
+            f"**Contributions.** {p.contributions}",
+            "",
+            f"**Research.** {p.research}",
+            "",
+        ]
+    return "\n".join(lines).rstrip()
+
+
+def _oneline(s: str) -> str:
+    """Squash newlines + collapse whitespace so the markdown table doesn't break."""
+    return " ".join(s.split())
 
 
 def _render_document_map(cards: Iterable[SectionCard]) -> str:

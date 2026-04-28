@@ -91,9 +91,9 @@ def _empty_pipeline(canned: dict[str, Any]) -> None:
     )
     canned["synthesise"] = ReviewSummary(
         executive_summary="ok",
-        major_findings_summary="No major findings.",
-        moderate_findings_summary="No moderate findings.",
-        minor_findings_summary="No minor findings.",
+        must_fix_summary="No must-fix findings.",
+        should_fix_summary="No should-fix findings.",
+        consider_summary="No consider findings.",
     )
 
 

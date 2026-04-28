@@ -22,6 +22,16 @@ Requires an existing .docx file as input — Word's track-changes work
 against a pre-existing structure. For PDF/HTML sources, render to
 markdown or HTML instead, OR convert the source to .docx first via your
 preferred tool.
+
+NOTE — panel mode (``mode="panel"``) is intentionally NOT rendered by
+this docx adapter. Panel output (expert biosketches, scored expert
+reviews, panel synthesis) doesn't fit the v1 track-changes-+-comments
+machinery cleanly. The v1 panel docx flow used a separate document-
+construction path; porting it is its own design exercise. Until then,
+use ``render_markdown`` or ``render_html`` for panel-mode output.
+The docx renderer ignores ``expert_profiles``/``expert_reviews``/
+``panel_synthesis`` if they happen to be present alongside lens
+findings in the same ReviewResult.
 """
 
 from __future__ import annotations
