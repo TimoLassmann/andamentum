@@ -186,6 +186,11 @@ class GenerateOne(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             parts.append("validated_queries: (none yet)")
         if c.gaps:
             parts.append(f"gaps: {', '.join(c.gaps)}")
+        if c.slot_rejected_queries:
+            parts.append(
+                "already_rejected_in_this_slot: "
+                + ", ".join(c.slot_rejected_queries)
+            )
         if self.feedback:
             parts.append(f"feedback: {self.feedback}")
         return "\n".join(parts)
@@ -226,12 +231,14 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         if verdict.on_topic:
             c.validated_queries.append(self.query)
             c.slot_attempts = 0
+            c.slot_rejected_queries.clear()
             if len(c.validated_queries) >= c.target_count:
                 return ParallelSearch()
             return GenerateOne()
 
         # Rejected.
         c.slot_attempts += 1
+        c.slot_rejected_queries.append(self.query)
         if c.slot_attempts >= MAX_SLOT_RETRIES:
             logger.warning(
                 "[%s] Search-cycle slot exhausted retries; tightening target_count "
@@ -243,6 +250,7 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 verdict.reason,
             )
             c.slot_attempts = 0
+            c.slot_rejected_queries.clear()
             c.target_count -= 1
             if len(c.validated_queries) >= c.target_count:
                 return ParallelSearch()
