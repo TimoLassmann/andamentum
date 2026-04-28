@@ -717,7 +717,7 @@ Key Points:
                 "the sources actually say.\n"
             )
 
-        prompt = f"""Research Question: {ctx.state.query}
+        prompt = f"""Question: {ctx.state.query}
 {quality_note}
 Research Process:
 - Iterations: {ctx.state.iteration_count}
@@ -729,25 +729,10 @@ Research Process:
 Page Summaries (sorted by relevance, highest first):
 {"".join(summaries_text)}
 
-Your Task:
-Create a comprehensive EvidenceReport that synthesizes these summaries into:
-
-1. Evidence Summary (2-3 paragraphs):
-   - What did the research reveal?
-   - What are the main themes and findings?
-   - How comprehensive is the evidence?
-
-2. Key Findings (5-10 bullet points):
-   - Each finding MUST be substantiated by a specific claim from at least one source
-   - Include specific details: numbers, dates, names, statistics
-   - Do NOT promote passing mentions or general background into findings
-   - If something is only mentioned in a list or sidebar but not discussed in detail, it is NOT a finding
-
-3. Sources:
-   - List all {len(ctx.state.page_summaries)} source URLs
-
-CRITICAL: Only report what the sources DIRECTLY state. Do not inflate passing mentions into findings.
-If a company or product is just listed alongside others but nothing specific is reported about it, leave it out."""
+Synthesise these into an EvidenceReport. Apply the writing rules in your
+instructions, with hedging calibrated to the max relevance score above.
+Sources must contain UNIQUE URLs only — if the same URL appears in
+several summaries, list it once."""
 
         try:
             result = await agent.run(prompt, usage_limits=UsageLimits(request_limit=25))
@@ -755,6 +740,12 @@ If a company or product is just listed alongside others but nothing specific is 
 
             if not report.sources or report.sources == ["No sources"]:
                 report.sources = list(dict.fromkeys([s.url for s in ctx.state.page_summaries]))
+            else:
+                # Defence-in-depth: even if the agent populated sources, dedupe
+                # — the synthesis prompt instructs unique URLs, but small models
+                # sometimes repeat. Order is preserved (dict.fromkeys keeps
+                # first-occurrence order).
+                report.sources = list(dict.fromkeys(report.sources))
 
             report.total_searches_performed = ctx.state.total_searches
             report.total_pages_fetched = ctx.state.total_pages_fetched
