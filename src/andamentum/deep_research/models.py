@@ -10,6 +10,8 @@ __all__ = [
     "SearchQuery",
     "SearchResult",
     "SearchPlan",
+    "GeneratorOutput",
+    "VerifierOutput",
     "FetchedPage",
     "FetchResults",
     "FetchPlan",
@@ -57,6 +59,32 @@ class SearchPlan(BaseModel):
         description="2-3 diverse search queries to execute",
     )
     reasoning: str = Field(..., description="Overall strategy for these searches")
+
+
+class GeneratorOutput(BaseModel):
+    """Output of the per-slot query generator."""
+
+    query: str = Field(
+        ...,
+        description="A single search query (3-8 keywords, no operators)",
+    )
+    rationale: str = Field(
+        ...,
+        description="One sentence: what angle this query covers",
+    )
+
+
+class VerifierOutput(BaseModel):
+    """Output of the topic verifier — accept/reject one query."""
+
+    on_topic: bool = Field(
+        ...,
+        description="True if the query helps answer the research goal",
+    )
+    reason: str = Field(
+        ...,
+        description="One sentence: why on-topic, or why drifting",
+    )
 
 
 # Fetch phase models

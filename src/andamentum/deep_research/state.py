@@ -6,6 +6,28 @@ from .models import SearchQuery, SearchResult, FetchedPage, EvidenceItem, PageSu
 
 
 @dataclass
+class SearchCycleState:
+    """Per-cycle state for the generate→verify→search loop.
+
+    Reinitialised by ``PrepareSearchCycle`` at the start of every search
+    cycle (initial entry from ``PlanResearch`` and every loop-back from
+    ``RefineSearch``). Read+mutated by ``GenerateOne`` and ``Verify``;
+    consumed by ``ParallelSearch`` on cycle exit.
+
+    ``mode`` and ``target_count`` distinguish initial-broad-coverage
+    cycles from gap-targeted refinement cycles. ``slot_attempts`` is the
+    per-slot retry counter that triggers skip-and-tighten when it exceeds
+    ``MAX_SLOT_RETRIES`` (constant in ``nodes.py``).
+    """
+
+    mode: Literal["initial", "gap"] = "initial"
+    target_count: int = 0
+    gaps: list[str] = field(default_factory=list)
+    validated_queries: list[str] = field(default_factory=list)
+    slot_attempts: int = 0
+
+
+@dataclass
 class ResearchState:
     """Shared state for research workflow."""
 
@@ -33,6 +55,9 @@ class ResearchState:
     # Gap analysis tracking
     identified_gaps: list[str] = field(default_factory=list)
     is_complete: bool = False
+
+    # Search cycle (generate→verify→search) — reset every cycle.
+    cycle: SearchCycleState = field(default_factory=SearchCycleState)
 
     # Flow control
     iteration_count: int = 0

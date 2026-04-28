@@ -41,6 +41,8 @@ def get_agent(name: str) -> AgentDefinition:
 from . import search as _search  # noqa: E402, F401
 from . import analysis as _analysis  # noqa: E402, F401
 from . import novelty as _novelty  # noqa: E402, F401
+from . import query_generator as _query_generator  # noqa: E402, F401
+from . import topic_verifier as _topic_verifier  # noqa: E402, F401
 
 __all__ = [
     "AgentDefinition",
