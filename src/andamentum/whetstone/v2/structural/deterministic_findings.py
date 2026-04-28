@@ -24,6 +24,7 @@ from .crossrefs import (
     find_section_anchors,
     find_table_anchors,
 )
+from .stat_consistency import check_stat_consistency
 from .types import (
     CitationOccurrence,
     CrossReference,
@@ -64,6 +65,7 @@ def synthesize_deterministic_findings(
     )
     findings.extend(_check_inconsistent_sample_sizes(facts.numeric_claims))
     findings.extend(_check_broken_cross_references(facts.cross_references, sections))
+    findings.extend(check_stat_consistency(sections))
     if markdown:
         findings.extend(run_checklist_checks(markdown=markdown, sections=sections))
     return findings
