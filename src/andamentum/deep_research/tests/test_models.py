@@ -7,7 +7,6 @@ from pydantic import ValidationError
 from ..models import (
     SearchQuery,
     SearchResult,
-    SearchPlan,
     FetchedPage,
     FetchPlan,
     FetchResults,
@@ -72,16 +71,6 @@ class TestSearchResult:
                 domain="d",
                 relevance_score=-0.1,
             )
-
-
-class TestSearchPlan:
-    def test_construction(self):
-        sp = SearchPlan(queries=["q1", "q2"], reasoning="strategy")
-        assert len(sp.queries) == 2
-
-    def test_empty_queries_rejected(self):
-        with pytest.raises(ValidationError):
-            SearchPlan(queries=[], reasoning="r")
 
 
 class TestFetchedPage:

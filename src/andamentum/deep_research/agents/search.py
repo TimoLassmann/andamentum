@@ -1,53 +1,14 @@
-"""Search-phase agent definitions: search_planner and page_fetcher."""
+"""Search-phase agent definitions: page_fetcher.
 
-from ..models import SearchPlan, FetchPlan
+The legacy ``search_planner`` agent (and its ``SearchPlan`` output model)
+has been retired. Search-query production now flows through the per-slot
+``query_generator`` + ``topic_verifier`` pair (see
+``agents/query_generator.py`` and ``agents/topic_verifier.py``).
+"""
+
+from ..models import FetchPlan
 from . import AgentDefinition, register_agent
 
-# ── Search Planner ──────────────────────────────────────────────────────
-
-SEARCH_PLANNER_PROMPT = """\
-You are a search query specialist. Your job is to plan 2-3 SHORT, SIMPLE search queries.
-
-**CRITICAL RULES:**
-1. Maximum 3-5 keywords per query
-2. Use simple, natural phrases - NOT long descriptions
-3. No special operators (site:, OR, quotes) - just keywords
-4. Each query must be different aspect of the topic
-
-**GOOD EXAMPLES:**
-- "quantum computing basics"
-- "quantum algorithms explained"
-- "quantum hardware types"
-
-**BAD EXAMPLES (TOO LONG):**
-❌ "Quantum computing basics for beginners: qubits, superposition, entanglement, Bloch sphere explained"
-❌ "Overview of quantum algorithms: Shor's algorithm, Grover's algorithm, quantum speedup"
-
-Your task:
-1. Analyze the research question
-2. Identify 2-3 different aspects to investigate
-3. Generate SHORT keyword queries (3-5 words max)
-
-EXAMPLE OUTPUT:
-{
-  "queries": [
-    "OpenAI latest releases",
-    "OpenAI DevDay 2025",
-    "GPT-5 features"
-  ],
-  "reasoning": "Cover new models, events, and flagship product"
-}"""
-
-register_agent(
-    AgentDefinition(
-        name="search_planner",
-        prompt=SEARCH_PLANNER_PROMPT,
-        output_model=SearchPlan,
-        retries=5,
-        output_retries=5,
-        has_tools=True,
-    )
-)
 
 # ── Page Fetcher ────────────────────────────────────────────────────────
 

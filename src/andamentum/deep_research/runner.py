@@ -37,7 +37,7 @@ class DefaultResearchRunner:
         """Run an agent by name.
 
         Args:
-            agent_name: Registered agent name (e.g. "search_planner")
+            agent_name: Registered agent name (e.g. "query_generator")
             **kwargs: Key-value pairs formatted into the user message
 
         Returns:
