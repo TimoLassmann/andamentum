@@ -6,9 +6,13 @@ delegates styling to typeset.render(). Tests assert on structural markers
 that typeset styling changes don't break them.
 """
 
+from typing import Literal
+
 from andamentum.whetstone.issues import DocumentIssue
 from andamentum.whetstone.models import DocumentPatch
 from andamentum.whetstone.orchestrator import ReviewResult
+
+IssueSeverity = Literal["major", "minor", "suggestion", "strength"]
 
 
 def _edit(pattern: str, new: str) -> DocumentPatch:
@@ -21,7 +25,7 @@ def _edit(pattern: str, new: str) -> DocumentPatch:
     )
 
 
-def _issue(severity: str, title: str) -> DocumentIssue:
+def _issue(severity: IssueSeverity, title: str) -> DocumentIssue:
     return DocumentIssue(
         issue_type=severity,
         category="test",

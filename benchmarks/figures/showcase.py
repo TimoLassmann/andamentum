@@ -16,7 +16,6 @@ Output:
 
 from __future__ import annotations
 
-import math
 import random
 import sys
 from pathlib import Path
@@ -286,15 +285,6 @@ def showcase_presentation():
 
 def generate_gallery(results: list[tuple[str, object]]) -> None:
     """Generate an HTML gallery of all showcase figures."""
-    # Also save PNG versions for the gallery
-    import subprocess
-    for name, result in results:
-        pdf_path = result.path  # type: ignore[attr-defined]
-        png_path = pdf_path.replace(".pdf", ".png")
-        # Re-render as PNG by calling figure again... or just use the PDF
-        # For the gallery, let's regenerate as PNG
-        pass
-
     html_parts = [
         "<!DOCTYPE html>",
         "<html><head>",
@@ -368,7 +358,7 @@ def main() -> None:
 
     print(f"\n{'='*60}")
     print(f"  {len(results)} figures generated in {OUTPUT}/")
-    print(f"  Open gallery.html to inspect all figures visually.")
+    print("  Open gallery.html to inspect all figures visually.")
     print(f"{'='*60}")
 
 

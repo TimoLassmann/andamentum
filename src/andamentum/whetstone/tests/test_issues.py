@@ -23,7 +23,7 @@ def test_issue_basic():
 def test_issue_type_must_be_valid():
     with pytest.raises(ValidationError):
         DocumentIssue(
-            issue_type="catastrophic",  # not in Literal
+            issue_type="catastrophic",  # type: ignore[arg-type]  # intentional invalid Literal
             category="x",
             title="t",
             description="d",

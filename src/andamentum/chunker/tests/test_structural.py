@@ -37,7 +37,7 @@ def test_section_iter_leaves_returns_deepest_only():
     src = "## A\n\n### A1\n\nx\n\n### A2\n\ny\n"
     sections = build_section_tree(src, find_headings(src))
     leaves = section_iter_leaves(sections[0])
-    assert [l.title for l in leaves] == ["A1", "A2"]
+    assert [leaf.title for leaf in leaves] == ["A1", "A2"]
 
 
 def test_split_section_recursively_keeps_small_sections_intact():
