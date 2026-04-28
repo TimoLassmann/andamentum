@@ -181,6 +181,50 @@ async def test_agent_picking_same_link_id_twice_only_fetches_once():
     assert len(ctx.state.fetched_pages) == 1
 
 
+async def test_previously_failed_urls_excluded_in_next_cycle():
+    """URLs in ``state.fetch_errors`` (from prior cycles) must be hard-
+    excluded from the next cycle's candidate list.
+
+    Regression: in a multi-cycle research run, OECD pages 403'd in cycle
+    1 then kept getting re-picked by the fetcher agent in cycles 2+
+    because we tracked successful fetches in ``state.fetched_urls`` but
+    never excluded URLs we had already failed on.
+    """
+    ctx = _make_ctx(fetcher_output=FetchPlan(link_ids=[99], reasoning="r"))
+    ctx.state.fetch_errors = [
+        {
+            "url": "https://failed.test/blocked",
+            "error": "Client error '403 Forbidden'",
+            "is_retryable": "True",
+            "link_id": "0",
+        },
+    ]
+    ctx.state.all_results = {
+        "q1": [
+            _result(link_id=0, url="https://failed.test/blocked"),
+            _result(link_id=1, url="https://fresh.test/"),
+        ],
+    }
+
+    await FetchPhase().run(ctx)
+
+    overrides = ctx.deps.agent_overrides
+    assert overrides is not None
+    fetcher_stub = overrides["page_fetcher"]
+    prompt = fetcher_stub.last_prompt
+    assert prompt is not None
+    eval_block = prompt.split("Search Results to Evaluate")[1].split(
+        "Already Fetched"
+    )[0]
+    assert "failed.test/blocked" not in eval_block, (
+        f"Previously-failed URL leaked back into the fetcher's evaluate "
+        f"list:\n{eval_block}"
+    )
+    assert "fresh.test" in eval_block
+    # url_map should not contain the failed URL either.
+    assert "https://failed.test/blocked" not in ctx.state.url_map.values()
+
+
 async def test_summarize_pages_returns_when_all_urls_already_fetched():
     """If every search-result URL was already fetched in prior cycles,
     FetchPhase must skip the fetcher LLM call entirely and short-circuit
