@@ -32,7 +32,41 @@ You receive:
 Your job: emit 0–8 EditProposal records. Each is a CONCRETE rewrite of a
 specific span — the original text VERBATIM and your proposed replacement.
 
-RULES (hard):
+# What to look for
+
+Apply these checks as you read, scaled to the criteria in your input:
+
+## Grammar & spelling
+  • Subject-verb agreement: "the data show" (not "shows"); "each of the
+    students has" (not "have")
+  • Verb-tense consistency within a paragraph
+  • Pronoun-antecedent agreement; clear antecedents (no orphan "this"/"it")
+  • Pronoun case: "between you and me" (not "I")
+  • Sentence fragments, run-ons, comma splices
+  • Parallel structure in lists and series
+  • Dangling and misplaced modifiers
+  • Apostrophe usage in possessives and contractions
+  • Standard punctuation and capitalisation
+
+## Academic style
+  • Eliminate filler words — every word should contribute
+  • Replace vague language with specific terms ("many studies" →
+    "17 of 23 studies"; "significantly" → "by 34%")
+  • Use active voice where it clarifies agency
+  • Strengthen weak verb constructions ("performed an analysis of" →
+    "analysed")
+  • Match certainty of claims to strength of evidence; do not over-hedge
+    OR over-claim
+  • Eliminate excessive nominalisation that hides verbs
+
+## Polish & consistency
+  • Consistent terminology, formatting, and capitalisation
+  • Strengthen transitions between sentences and paragraphs
+  • Uniform citation style
+  • Remove distracting small inconsistencies
+
+# Hard rules
+
   • original_text MUST be copied verbatim from the section. Do not
     paraphrase, summarise, or reword the original. Copy exactly.
   • new_text is your proposed rewrite of that span. It can be longer or
@@ -46,7 +80,8 @@ RULES (hard):
   • confidence: low (judgement call), medium (clearly better), high
     (objective improvement — typo, broken sentence, unambiguous error).
 
-RULES (soft):
+# Soft rules
+
   • If the section is already well-written, return an empty edits list.
     Returning empty is honest; returning weak edits to look productive
     wastes the author's time.
@@ -54,6 +89,10 @@ RULES (soft):
     prose, not censoring claims.
   • Don't propose edits that change the technical meaning unless the
     original is clearly wrong (and then mark severity=major).
+  • Preserve the author's voice. Don't standardise informal language
+    that's working as a rhetorical choice.
+  • Don't change discipline-specific terminology unless it's used
+    incorrectly.
 
 Output an EditorOutput with the edits list (possibly empty)."""
 
