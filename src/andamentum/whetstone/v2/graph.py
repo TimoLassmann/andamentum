@@ -45,8 +45,11 @@ from .nodes import (
     Challenge,
     ChunkAndScan,
     CriticalRead,
+    CustomReviewer,
     EditSections,
+    EvaluateGuidelineItems,
     ExpertReview,
+    ExtractCheckableItems,
     ExtractKeywords,
     GenerateExpertPanel,
     HarvestSource,
@@ -71,5 +74,10 @@ review_graph = Graph(
         GenerateExpertPanel,
         ExpertReview,
         PanelSynthesise,
+        # Guidelines-mode nodes
+        ExtractCheckableItems,
+        EvaluateGuidelineItems,
+        # Custom-criteria-mode node
+        CustomReviewer,
     ]
 )

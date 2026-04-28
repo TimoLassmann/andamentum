@@ -35,9 +35,11 @@ async def review_document(
     embedding_fn: EmbeddingFn | None = None,
     target_min_chars: int = 2_000,
     target_max_chars: int = 10_000,
-    mode: Literal["review", "panel"] = "review",
+    mode: Literal["review", "panel", "guidelines", "custom"] = "review",
     n_experts: int = 4,
     panel_disciplines: Sequence[str] | None = None,
+    guidelines: str = "",
+    custom_criteria: Sequence[str] | None = None,
 ) -> ReviewResult:
     """Review a document. Returns critical-review findings + a synthesis.
 
@@ -57,6 +59,20 @@ async def review_document(
       expert reviews + one panel synthesis. At ``n_experts=4`` that is
       10 calls. Panel mode is intentionally heavier — it is not a
       drop-in replacement for review mode.
+
+    * ``mode="guidelines"`` — evaluate the document against a journal's
+      free-text author guidelines. ``HarvestSource → ChunkAndScan →
+      ExtractCheckableItems → EvaluateGuidelineItems``. Cost is
+      ``1 + N`` LLM calls where ``N`` is the number of rules the
+      extractor finds (10-30 typical). Requires ``guidelines`` to be a
+      non-empty string. Outputs ``checkable_items`` and
+      ``guideline_evaluations``.
+
+    * ``mode="custom"`` — evaluate the document against caller-supplied
+      criteria. ``HarvestSource → ChunkAndScan → CustomReviewer``. Cost
+      is one LLM call regardless of criterion count (the reviewer fills
+      a runtime-built schema with all verdicts at once). Requires
+      ``custom_criteria`` to be non-empty. Outputs ``custom_evaluations``.
 
     Parameters
     ----------
@@ -101,6 +117,17 @@ async def review_document(
         for the panel. When supplied, the keyword-extraction LLM call
         is skipped and these are used directly. Useful for tests and
         for callers who want to control the panel composition.
+    guidelines:
+        In ``mode="guidelines"``, the journal's free-text author
+        guidelines. Required and must be non-empty when this mode is
+        selected. Ignored otherwise.
+    custom_criteria:
+        In ``mode="custom"``, a sequence of free-text criteria to
+        evaluate the document against (e.g.
+        ``("originality", "depth of literature", "clarity of methods")``).
+        Required and must be non-empty when this mode is selected.
+        Each criterion becomes a status + notes field in the runtime
+        schema; up to 30 criteria supported. Ignored otherwise.
 
     Returns
     -------
@@ -112,6 +139,8 @@ async def review_document(
         ``panel_synthesis`` are populated instead of the lens-driven
         findings.
     """
+    _validate_mode_args(mode, model, guidelines, custom_criteria)
+
     state = ReviewState(
         source=source,
         perspectives=list(perspectives),
@@ -122,6 +151,8 @@ async def review_document(
         mode=mode,
         n_experts=n_experts,
         panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
+        guidelines_text=guidelines,
+        custom_criteria=list(custom_criteria) if custom_criteria else [],
     )
     deps = ReviewDeps(
         model=_resolve_model(model) if model else None,
@@ -138,6 +169,66 @@ async def review_document(
     output: ReviewResult = result.output
     output.metrics.wall_seconds = elapsed
     return output
+
+
+def _validate_mode_args(
+    mode: str,
+    model: str | None,
+    guidelines: str,
+    custom_criteria: Sequence[str] | None,
+) -> None:
+    """Argument validation for mode-specific requirements.
+
+    Raises
+    ------
+    ValueError
+        With a clear message naming the offending argument when a mode
+        is selected without its required input, or when a non-LLM mode
+        receives mode-specific data.
+    """
+    if mode == "guidelines":
+        if model is None:
+            raise ValueError(
+                "mode='guidelines' requires a model — every checkable "
+                "item is an LLM call. Pass model=... or pick mode='review' "
+                "with model=None for the deterministic-only path."
+            )
+        if not guidelines.strip():
+            raise ValueError(
+                "mode='guidelines' requires non-empty guidelines text. "
+                "Pass guidelines=<journal author guidelines string>."
+            )
+    elif mode == "custom":
+        if model is None:
+            raise ValueError(
+                "mode='custom' requires a model — the custom reviewer is "
+                "an LLM call. Pass model=... or pick mode='review' with "
+                "model=None for the deterministic-only path."
+            )
+        if not custom_criteria:
+            raise ValueError(
+                "mode='custom' requires custom_criteria. Pass "
+                "custom_criteria=('...', '...') with at least one entry."
+            )
+        # Reject empty / whitespace-only criterion strings.
+        cleaned = [c for c in custom_criteria if c and c.strip()]
+        if not cleaned:
+            raise ValueError(
+                "mode='custom': custom_criteria contained only empty / "
+                "whitespace strings."
+            )
+    else:
+        # Mode is review or panel — guard against mode-mismatched extras.
+        if guidelines.strip():
+            raise ValueError(
+                f"guidelines was supplied but mode={mode!r}. "
+                "Use mode='guidelines' to evaluate against journal guidelines."
+            )
+        if custom_criteria:
+            raise ValueError(
+                f"custom_criteria was supplied but mode={mode!r}. "
+                "Use mode='custom' to evaluate against custom criteria."
+            )
 
 
 def _resolve_model(model_string: str):

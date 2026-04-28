@@ -24,10 +24,12 @@ from typing import Iterable
 
 from ..schemas import (
     AuthorQuestion,
+    CustomEvaluation,
     Edit,
     ExpertProfile,
     ExpertReview,
     Finding,
+    GuidelineEvaluation,
     PanelSynthesis,
     ReviewResult,
     SectionCard,
@@ -61,6 +63,13 @@ def render_markdown(
 
     if result.expert_profiles:
         sections.append(_render_expert_profiles(result.expert_profiles))
+
+    # ── Guidelines / custom mode sections ───────────────────────────
+    if result.guideline_evaluations:
+        sections.append(_render_guideline_evaluations(result.guideline_evaluations))
+
+    if result.custom_evaluations:
+        sections.append(_render_custom_evaluations(result.custom_evaluations))
 
     # ── Standard review-mode sections ────────────────────────────────
     if result.author_questions:
@@ -279,6 +288,70 @@ def _render_expert_profiles(profiles: Iterable[ExpertProfile]) -> str:
 def _oneline(s: str) -> str:
     """Squash newlines + collapse whitespace so the markdown table doesn't break."""
     return " ".join(s.split())
+
+
+_STATUS_HEADINGS = {
+    "fail": "FAIL",
+    "unclear": "UNCLEAR",
+    "pass": "PASS",
+}
+
+
+def _render_guideline_evaluations(
+    evaluations: Iterable[GuidelineEvaluation],
+) -> str:
+    """Group evaluations by status (fail / unclear / pass), fail first."""
+    evaluations = list(evaluations)
+    by_status: dict[str, list[GuidelineEvaluation]] = {
+        "fail": [],
+        "unclear": [],
+        "pass": [],
+    }
+    for e in evaluations:
+        by_status.setdefault(e.status, []).append(e)
+
+    lines = [f"## Journal-guideline checks ({len(evaluations)})", ""]
+    for status in ("fail", "unclear", "pass"):
+        group = by_status.get(status, [])
+        if not group:
+            continue
+        lines.append(f"### {_STATUS_HEADINGS[status]} ({len(group)})")
+        lines.append("")
+        for e in group:
+            cat = f" · _{e.category}_" if e.category else ""
+            lines.append(f"- **{e.item_name}**{cat}")
+            if e.notes:
+                lines.append(f"  {e.notes}")
+            lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _render_custom_evaluations(
+    evaluations: Iterable[CustomEvaluation],
+) -> str:
+    """Group custom-criteria evaluations by status, fail first."""
+    evaluations = list(evaluations)
+    by_status: dict[str, list[CustomEvaluation]] = {
+        "fail": [],
+        "unclear": [],
+        "pass": [],
+    }
+    for e in evaluations:
+        by_status.setdefault(e.status, []).append(e)
+
+    lines = [f"## Custom-criteria evaluation ({len(evaluations)})", ""]
+    for status in ("fail", "unclear", "pass"):
+        group = by_status.get(status, [])
+        if not group:
+            continue
+        lines.append(f"### {_STATUS_HEADINGS[status]} ({len(group)})")
+        lines.append("")
+        for e in group:
+            lines.append(f"- **{e.criterion}**")
+            if e.notes:
+                lines.append(f"  {e.notes}")
+            lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def _render_document_map(cards: Iterable[SectionCard]) -> str:

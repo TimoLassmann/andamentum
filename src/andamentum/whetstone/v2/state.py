@@ -33,10 +33,13 @@ from typing import Literal
 
 from .schemas import (
     AuthorQuestion,
+    CheckableItem,
+    CustomEvaluation,
     Edit,
     ExpertProfile,
     ExpertReview,
     Finding,
+    GuidelineEvaluation,
     PanelSynthesis,
     SectionCard,
 )
@@ -92,13 +95,22 @@ class ReviewState:
     failed_tasks: list[FailedTask] = field(default_factory=list)
 
     # ── Panel mode (mode="panel") ──────────────────────────────────────
-    mode: Literal["review", "panel"] = "review"
+    mode: Literal["review", "panel", "guidelines", "custom"] = "review"
     n_experts: int = 4
     panel_disciplines: list[str] = field(default_factory=list)  # provided OR extracted
     disciplines: list[str] = field(default_factory=list)  # extracted by ExtractKeywords
     expert_profiles: list[ExpertProfile] = field(default_factory=list)
     expert_reviews: list[ExpertReview] = field(default_factory=list)
     panel_synthesis: PanelSynthesis | None = None
+
+    # ── Guidelines mode (mode="guidelines") ────────────────────────────
+    guidelines_text: str = ""  # free-text journal author guidelines
+    checkable_items: list[CheckableItem] = field(default_factory=list)
+    guideline_evaluations: list[GuidelineEvaluation] = field(default_factory=list)
+
+    # ── Custom-criteria mode (mode="custom") ───────────────────────────
+    custom_criteria: list[str] = field(default_factory=list)
+    custom_evaluations: list[CustomEvaluation] = field(default_factory=list)
 
     # ── Flow control ───────────────────────────────────────────────────
     current_phase: Literal[
@@ -114,5 +126,8 @@ class ReviewState:
         "generate_panel",
         "expert_review",
         "panel_synthesise",
+        "extract_checkable_items",
+        "evaluate_guideline_items",
+        "custom_review",
         "done",
     ] = "harvest"

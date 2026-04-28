@@ -300,6 +300,64 @@ class PanelSynthesis(BaseModel):
     )
 
 
+# ── Guidelines / custom-criteria types ─────────────────────────────────
+
+
+class CheckableItem(BaseModel):
+    """One checkable rule extracted from baseline / journal-guidelines / custom criteria.
+
+    The ``source`` field tracks provenance:
+      • ``baseline`` — built-in submission-readiness checks
+      • ``guidelines`` — extracted from a journal's free-text author guidelines
+      • ``custom`` — supplied by the caller as ad-hoc criteria text
+    """
+
+    name: str = Field(description="Short human-readable rule name.")
+    source: Literal["baseline", "guidelines", "custom"] = Field(
+        description="Provenance of the item."
+    )
+
+
+class GuidelineEvaluation(BaseModel):
+    """Verdict for one journal-guidelines check against the manuscript."""
+
+    item_name: str = Field(description="Verbatim name of the check that was evaluated.")
+    status: Literal["pass", "fail", "unclear"] = Field(
+        description=(
+            "pass = clearly met; fail = clearly not met; unclear = ambiguous "
+            "or the rule does not apply to this document."
+        )
+    )
+    notes: str = Field(
+        description=(
+            "1-2 sentences. For pass: cite evidence (quote a phrase or name "
+            "the section). For fail: say what is missing and what should be "
+            "added. For unclear: say why."
+        )
+    )
+    category: str = Field(
+        default="",
+        description="Optional clustering tag (e.g. 'abstract', 'figures').",
+    )
+
+
+class CustomEvaluation(BaseModel):
+    """Verdict for one user-supplied criterion against the manuscript.
+
+    Flat counterpart to the runtime-built dynamic schema. Renderers and
+    downstream consumers iterate this list — they never see the dynamic
+    model the LLM filled.
+    """
+
+    criterion: str = Field(description="Original criterion text supplied by the caller.")
+    status: Literal["pass", "fail", "unclear"] = Field(
+        description="pass = met; fail = not met; unclear = ambiguous or NA."
+    )
+    notes: str = Field(
+        description="1-2 sentences explaining the verdict, grounded in the document."
+    )
+
+
 class ReviewResult(BaseModel):
     """What ``review_document`` returns.
 
@@ -310,6 +368,11 @@ class ReviewResult(BaseModel):
     ``expert_reviews``, ``panel_synthesis``) are populated; the standard
     review-mode fields may also carry deterministic findings + the
     document map from the shared chunk_and_scan substrate.
+
+    In ``mode="guidelines"`` runs, ``checkable_items`` lists what was
+    extracted from the supplied guidelines and ``guideline_evaluations``
+    holds one verdict per item. In ``mode="custom"`` runs,
+    ``custom_evaluations`` is populated.
     """
 
     summary: str = ""  # filled in Phase 4 (Synthesise)
@@ -323,3 +386,8 @@ class ReviewResult(BaseModel):
     expert_profiles: list[ExpertProfile] = Field(default_factory=list)
     expert_reviews: list[ExpertReview] = Field(default_factory=list)
     panel_synthesis: PanelSynthesis | None = None
+    # Guidelines mode (mode="guidelines") populates these; otherwise empty.
+    checkable_items: list[CheckableItem] = Field(default_factory=list)
+    guideline_evaluations: list[GuidelineEvaluation] = Field(default_factory=list)
+    # Custom mode (mode="custom") populates this; otherwise empty.
+    custom_evaluations: list[CustomEvaluation] = Field(default_factory=list)

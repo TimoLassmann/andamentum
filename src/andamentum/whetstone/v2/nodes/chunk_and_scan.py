@@ -37,6 +37,8 @@ from ..structural.types import SectionRef, StructuralFacts
 
 if TYPE_CHECKING:
     from .critical_read import CriticalRead
+    from .custom_reviewer import CustomReviewer
+    from .extract_checkable_items import ExtractCheckableItems
     from .extract_keywords import ExtractKeywords
 
 
@@ -49,7 +51,7 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
 
     async def run(
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
-    ) -> "Union[CriticalRead, ExtractKeywords, End[ReviewResult]]":
+    ) -> "Union[CriticalRead, ExtractKeywords, ExtractCheckableItems, CustomReviewer, End[ReviewResult]]":
         ctx.state.current_phase = "scan"
         logger.info("[scan] chunking %d chars into sections", len(ctx.state.markdown))
 
@@ -104,6 +106,16 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             from .extract_keywords import ExtractKeywords
 
             return ExtractKeywords()
+
+        if ctx.state.mode == "guidelines":
+            from .extract_checkable_items import ExtractCheckableItems
+
+            return ExtractCheckableItems()
+
+        if ctx.state.mode == "custom":
+            from .custom_reviewer import CustomReviewer
+
+            return CustomReviewer()
 
         from .critical_read import CriticalRead
 

@@ -15,10 +15,12 @@ from andamentum.typeset import render as typeset_render
 
 from ..schemas import (
     AuthorQuestion,
+    CustomEvaluation,
     Edit,
     ExpertProfile,
     ExpertReview,
     Finding,
+    GuidelineEvaluation,
     PanelSynthesis,
     ReviewResult,
     SectionCard,
@@ -66,6 +68,13 @@ def render_html(
 
     if result.expert_profiles:
         atoms.extend(_expert_profiles_atoms(result.expert_profiles))
+
+    # ── Guidelines / custom mode atoms ──────────────────────────────
+    if result.guideline_evaluations:
+        atoms.extend(_guideline_evaluations_atoms(result.guideline_evaluations))
+
+    if result.custom_evaluations:
+        atoms.extend(_custom_evaluations_atoms(result.custom_evaluations))
 
     # ── Standard review-mode atoms ──────────────────────────────────
     if result.author_questions:
@@ -359,6 +368,99 @@ def _expert_profiles_atoms(profiles: list[ExpertProfile]) -> list[dict[str, Any]
                 "details": details,
             }
         )
+    return out
+
+
+_STATUS_HEADINGS = {
+    "fail": "FAIL",
+    "unclear": "UNCLEAR",
+    "pass": "PASS",
+}
+
+_STATUS_LABELS = {
+    "fail": "x",
+    "unclear": "?",
+    "pass": "o",
+}
+
+
+def _guideline_evaluations_atoms(
+    evaluations: list[GuidelineEvaluation],
+) -> list[dict[str, Any]]:
+    """Group evaluations by status, fail first."""
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Journal-guideline checks ({len(evaluations)})",
+            "level": 2,
+        }
+    ]
+    by_status: dict[str, list[GuidelineEvaluation]] = {
+        "fail": [],
+        "unclear": [],
+        "pass": [],
+    }
+    for e in evaluations:
+        by_status.setdefault(e.status, []).append(e)
+    for status in ("fail", "unclear", "pass"):
+        group = by_status.get(status, [])
+        if not group:
+            continue
+        out.append(
+            {
+                "kind": "heading",
+                "content": f"{_STATUS_HEADINGS[status]} ({len(group)})",
+                "level": 3,
+            }
+        )
+        entries = []
+        for e in group:
+            body = f"**{e.item_name}**"
+            if e.notes:
+                body += f" — {e.notes}"
+            if e.category:
+                body += f" _({e.category})_"
+            entries.append({"label": _STATUS_LABELS[status], "body": body})
+        out.append({"kind": "items", "entries": entries})
+    return out
+
+
+def _custom_evaluations_atoms(
+    evaluations: list[CustomEvaluation],
+) -> list[dict[str, Any]]:
+    """Group custom-criteria evaluations by status, fail first."""
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Custom-criteria evaluation ({len(evaluations)})",
+            "level": 2,
+        }
+    ]
+    by_status: dict[str, list[CustomEvaluation]] = {
+        "fail": [],
+        "unclear": [],
+        "pass": [],
+    }
+    for e in evaluations:
+        by_status.setdefault(e.status, []).append(e)
+    for status in ("fail", "unclear", "pass"):
+        group = by_status.get(status, [])
+        if not group:
+            continue
+        out.append(
+            {
+                "kind": "heading",
+                "content": f"{_STATUS_HEADINGS[status]} ({len(group)})",
+                "level": 3,
+            }
+        )
+        entries = []
+        for e in group:
+            body = f"**{e.criterion}**"
+            if e.notes:
+                body += f" — {e.notes}"
+            entries.append({"label": _STATUS_LABELS[status], "body": body})
+        out.append({"kind": "items", "entries": entries})
     return out
 
 
