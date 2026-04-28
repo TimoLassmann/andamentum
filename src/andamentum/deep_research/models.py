@@ -9,7 +9,6 @@ from .verification import VerificationResult
 __all__ = [
     "SearchQuery",
     "SearchResult",
-    "SearchPlan",
     "GeneratorOutput",
     "VerifierOutput",
     "FetchedPage",
@@ -42,23 +41,6 @@ class SearchResult(BaseModel):
     snippet: str = Field(..., description="Result snippet/summary")
     domain: str = Field(..., description="Domain name")
     relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
-
-
-class SearchPlan(BaseModel):
-    """Simplified output from SearchPlanner - just the queries to execute.
-
-    The actual search execution and result accumulation happens in the graph node,
-    not in the LLM output. This avoids complex nested JSON generation that breaks
-    with smaller local models.
-    """
-
-    queries: list[str] = Field(
-        ...,
-        min_length=1,
-        max_length=3,
-        description="2-3 diverse search queries to execute",
-    )
-    reasoning: str = Field(..., description="Overall strategy for these searches")
 
 
 class GeneratorOutput(BaseModel):

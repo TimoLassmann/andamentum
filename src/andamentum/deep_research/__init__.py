@@ -20,12 +20,13 @@ from .models import (
     FetchPlan,
     FetchResults,
     GapAnalysis,
+    GeneratorOutput,
     PageSummary,
     ResearchErrors,
     ResearchResult,
-    SearchPlan,
     SearchQuery,
     SearchResult,
+    VerifierOutput,
 )
 from .novelty import (
     NoveltyAssessment,
@@ -59,6 +60,7 @@ __all__ = [
     "FetchResults",
     "FetchedPage",
     "GapAnalysis",
+    "GeneratorOutput",
     "NoveltyAssessment",
     "NoveltyReport",
     "PageSummary",
@@ -66,8 +68,8 @@ __all__ = [
     "ResearchErrors",
     "ResearchResult",
     "ResearchState",
-    "SearchPlan",
     "SearchQuery",
     "SearchResult",
     "SimilarWork",
+    "VerifierOutput",
 ]
