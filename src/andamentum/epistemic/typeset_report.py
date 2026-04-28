@@ -14,18 +14,7 @@ from urllib.parse import urlparse
 
 from andamentum.typeset import Report
 
-from .html_report import ReportData
-
-
-QUESTION_TYPE_LABELS: dict[str, str] = {
-    "verificatory": "yes/no factual question",
-    "explanatory": "explanation or mechanism question",
-    "exploratory": "open-ended exploration",
-    "comparative": "comparison question",
-    "predictive": "prediction or forecast",
-    "methodological": "methodology question",
-    "normative": "value judgment or recommendation",
-}
+from .report_data import QUESTION_TYPE_LABELS, ReportData
 
 STAGE_DISPLAY_ORDER: tuple[str, ...] = (
     "supported",

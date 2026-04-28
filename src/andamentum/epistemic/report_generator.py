@@ -14,18 +14,18 @@ from pathlib import Path
 from typing import Optional
 
 from andamentum.document_store import DocumentStore
-from .html_report import (
+from .primitives import UncertaintyType
+from .report_data import (
     AdversarialSummary,
     ClaimSummary,
     ConfidenceScores,
     ConvergenceSummary,
     EvidenceSummary,
     InvestigationStats,
+    QUESTION_TYPE_LABELS,
     ReportData,
     UncertaintySummary,
-    render,
 )
-from .primitives import UncertaintyType
 from .repository import EpistemicRepository
 
 logger = logging.getLogger(__name__)
@@ -459,8 +459,6 @@ class ReportGenerator:
 
         # Question type
         question_type = getattr(objective, "question_type", None) or "unknown"
-        from .html_report import QUESTION_TYPE_LABELS
-
         qt_label = QUESTION_TYPE_LABELS.get(question_type, question_type)
 
         # Evidence gathering
@@ -637,7 +635,11 @@ class ReportGenerator:
         if not report_data:
             return None
 
-        return render(report_data)
+        from andamentum.typeset import render as typeset_render
+
+        from .typeset_report import build_typeset_report
+
+        return typeset_render(build_typeset_report(report_data))
 
     async def save_html(
         self,
