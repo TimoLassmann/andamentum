@@ -398,21 +398,27 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         if not ctx.state.all_results:
             return SummarizePages()
 
-        # Flatten across queries, dedupe by URL, exclude already-fetched.
-        # Multiple queries often surface the same URL — without this dedup,
-        # the page_fetcher agent saw the same URL under several link_ids
-        # and could pick it more than once, leading to duplicate fetches,
-        # duplicate summaries, and the same source being listed 2-3 times
-        # in the final report (regression observed on the Kalign query).
-        # Cross-cycle, ``state.fetched_urls`` is a hard exclusion — not
-        # just a text hint to the agent — so the fetcher cannot pick a
-        # URL we already have content for.
+        # Flatten across queries, dedupe by URL, exclude both
+        # already-fetched (state.fetched_urls) and already-failed
+        # (state.fetch_errors). Multiple queries often surface the same
+        # URL — without dedup, the page_fetcher agent saw the same URL
+        # under several link_ids and could pick it more than once.
+        # Without failure exclusion, an authoritative-looking URL that
+        # 403'd in cycle 1 would keep getting re-picked in cycles 2/3
+        # (observed: OECD, oxfordeconomics, on a multi-cycle run). We
+        # treat every prior failure as session-permanent: within a 1-3
+        # minute research run, retrying the same URL almost never
+        # changes the outcome, and we have other candidates to fall back
+        # on.
+        failed_urls = {e["url"] for e in ctx.state.fetch_errors}
         seen_urls: dict[str, SearchResult] = {}
         gid = 0
         for _query, results in ctx.state.all_results.items():
             for r in results:
                 if r.url in ctx.state.fetched_urls:
                     continue  # already fetched in a previous cycle
+                if r.url in failed_urls:
+                    continue  # failed in a previous cycle (don't retry)
                 if r.url in seen_urls:
                     continue  # dupe within this cycle
                 seen_urls[r.url] = SearchResult(
