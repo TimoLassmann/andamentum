@@ -233,3 +233,211 @@ def test_docx_confidence_levels_map_to_floats():
 
     assert 0.0 < _confidence_to_float("low") < _confidence_to_float("medium")
     assert _confidence_to_float("medium") < _confidence_to_float("high") <= 1.0
+
+
+# ── DOCX adapter — panel mode ──────────────────────────────────────────
+
+
+def _panel_result() -> ReviewResult:
+    """A minimal ReviewResult with panel-mode payload populated."""
+    from andamentum.whetstone import (
+        ExpertProfile,
+        ExpertReview,
+        PanelSynthesis,
+    )
+
+    return ReviewResult(
+        summary="",  # synthesise didn't run; only panel synthesis present
+        expert_profiles=[
+            ExpertProfile(
+                name="Dr. Jane Doe",
+                position="Professor of Test Science, Test U.",
+                education="PhD, Test University, 1995",
+                contributions="Pioneered methodology X; co-authored Y.",
+                research="Studies Z in real and simulated systems.",
+                discipline="Testology",
+            ),
+        ],
+        expert_reviews=[
+            ExpertReview(
+                expert_name="Dr. Jane Doe",
+                discipline="Testology",
+                overall_score=8,
+                overall_assessment="Solid contribution.",
+                scientific_rigor_score=7,
+                scientific_rigor_justification="Mostly rigorous.",
+                methodology_score=8,
+                methodology_justification="Sound design.",
+                novelty_score=6,
+                novelty_justification="Some novelty.",
+                clarity_score=9,
+                clarity_justification="Very clear.",
+                strengths=["clear", "rigorous", "well-cited"],
+                weaknesses=["incremental"],
+                recommendation="Minor Revisions",
+                recommendation_justification="Tighten the discussion.",
+            ),
+        ],
+        panel_synthesis=PanelSynthesis(
+            average_overall_score=8.0,
+            score_range="7-9",
+            number_of_experts=1,
+            consensus_strengths=["clear writing", "sound methodology"],
+            consensus_weaknesses=["incremental contribution"],
+            divergent_opinions=[],
+            scientific_rigor_summary="High rigor across reviewers.",
+            methodology_summary="Sound design across reviewers.",
+            novelty_summary="Moderate novelty; one expert flagged it as incremental.",
+            clarity_summary="Excellent clarity.",
+            overall_recommendation="Minor Revisions",
+            recommendation_justification=(
+                "The contribution is sound and the writing is excellent; "
+                "the novelty framing needs tightening."
+            ),
+            confidence_level="high",
+            key_decision_factors=["sound rigor", "clarity"],
+            review_summary="Strong submission with minor revision needs.",
+            critical_issues=[],
+            novelty_findings="",
+        ),
+    )
+
+
+def test_docx_panel_synthesis_in_review_summary():
+    """Panel synthesis prose is folded into the prepended report."""
+    from unittest import mock
+
+    from andamentum.whetstone.renderers import docx as docx_mod
+
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        # Return shape matches finalize_reviewed_document (path, result)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            _panel_result(),
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    summary = captured.get("review_summary", "")
+    assert "Panel Synthesis" in summary
+    assert "Minor Revisions" in summary
+    assert "Average score" in summary
+    assert "Consensus strengths" in summary
+    assert "clear writing" in summary
+
+
+def test_docx_panel_passes_expert_payload_through():
+    """expert_reviews + generated_experts are forwarded to the v1 finaliser."""
+    from unittest import mock
+
+    from andamentum.whetstone.renderers import docx as docx_mod
+
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            _panel_result(),
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    reviews = captured.get("expert_reviews")
+    experts = captured.get("generated_experts")
+    assert reviews is not None and len(reviews) == 1
+    assert experts is not None and len(experts) == 1
+    # The objects passed through are still the v2 pydantic models;
+    # finalize_reviewed_document calls model_dump() on them via
+    # normalize_to_dict.
+    assert reviews[0].expert_name == "Dr. Jane Doe"
+    assert experts[0].discipline == "Testology"
+
+
+def test_docx_review_mode_omits_panel_payload():
+    """When the result has no panel data, expert_reviews/generated_experts
+    are passed as None so the v1 finaliser skips that section."""
+    from unittest import mock
+
+    from andamentum.whetstone.renderers import docx as docx_mod
+
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            _sample_result(),
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    assert captured.get("expert_reviews") is None
+    assert captured.get("generated_experts") is None
+    # And no Panel Synthesis heading in the summary either
+    assert "Panel Synthesis" not in captured.get("review_summary", "")
+
+
+def test_docx_novelty_findings_routed_to_dedicated_field():
+    """Findings with category="novelty" go to novelty_findings, NOT as
+    anchored comments — they have no quotes to anchor to."""
+    from unittest import mock
+
+    from andamentum.whetstone.models import DocumentPatch
+    from andamentum.whetstone.renderers import docx as docx_mod
+    from andamentum.whetstone.renderers.docx import _to_document_patches
+
+    novelty_finding = Finding(
+        title="Novelty claim contradicted by prior work",
+        severity="major",
+        confidence="high",
+        rationale="Prior work X established this in 2018.",
+        quotes=[],
+        sections_involved=[],
+        source="investigate",
+        category="novelty",
+    )
+    result = ReviewResult(findings=[novelty_finding])
+
+    # Adapter must NOT emit a comment for the novelty finding
+    patches = _to_document_patches(result, DocumentPatch)
+    assert patches == []
+
+    # render_docx should pass it through novelty_findings instead
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            result,
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    novelty_text = captured.get("novelty_findings", "")
+    assert "Novelty claim contradicted by prior work" in novelty_text
+    assert "2018" in novelty_text
