@@ -421,7 +421,9 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         url_map = {r.link_id: r.url for r in all_search_results}
         ctx.state.url_map = url_map
 
-        agent = _build_agent("page_fetcher", ctx.deps.model)
+        agent = _build_agent(
+            "page_fetcher", ctx.deps.model, ctx.deps.agent_overrides
+        )
         already_fetched = [p.url for p in ctx.state.fetched_pages]
 
         prompt = f"""Research Question: {ctx.state.query}
@@ -448,14 +450,24 @@ Select the top {ctx.deps.max_pages_to_fetch} most relevant link IDs."""
 
         tasks = [(lid, url_map[lid]) for lid in fetch_plan.link_ids if lid in url_map]
         if tasks:
+            ctx.deps.reporter.fetch_starting(n_pages=len(tasks))
             results = await asyncio.gather(*[do_fetch(lid, url) for lid, url in tasks])
             for status, lid, url, page, err in results:
                 if status == "success" and page is not None:
                     ctx.state.fetched_pages.append(page)
                     ctx.state.total_pages_fetched += 1
                     ctx.state.fetched_urls.add(page.url)
+                    ctx.deps.reporter.fetch_complete(
+                        url=page.url,
+                        success=True,
+                        n_words=page.word_count,
+                        error=None,
+                    )
                 elif err is not None:
                     ctx.state.fetch_errors.append({"url": url, "error": err, "link_id": str(lid)})
+                    ctx.deps.reporter.fetch_complete(
+                        url=url, success=False, n_words=0, error=err
+                    )
 
         return SummarizePages()
 
@@ -473,7 +485,9 @@ class SummarizePages(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         if not ctx.state.fetched_pages:
             return AnalyzeGaps()
 
-        agent = _build_agent("page_summarizer", ctx.deps.model)
+        agent = _build_agent(
+            "page_summarizer", ctx.deps.model, ctx.deps.agent_overrides
+        )
 
         async def summarize(page: FetchedPage) -> PageSummary:
             truncation_note = (
@@ -505,8 +519,24 @@ If this page only mentions the research topic in passing, set relevance_score be
                     relevance_score=0.0,
                 )
 
+        ctx.deps.reporter.summarize_starting(n_pages=len(ctx.state.fetched_pages))
         summaries = await asyncio.gather(*[summarize(p) for p in ctx.state.fetched_pages])
-        ctx.state.page_summaries = [s for s in summaries if s.relevance_score > 0.3]
+
+        # Keep ALL summaries, sorted by relevance descending. Relevance is a
+        # *sort key* (higher first), not a *gate* (drop low). Synthesize will
+        # frame low-relevance results as 'limited evidence' rather than
+        # silently discarding them — see the previous Kalign/competitors
+        # failure mode where every summary scored <0.3 and the system bailed
+        # with "no content summaries available" despite the pages containing
+        # competitor data.
+        sorted_summaries = sorted(
+            summaries, key=lambda s: s.relevance_score, reverse=True
+        )
+        for s in sorted_summaries:
+            ctx.deps.reporter.page_summarized(
+                url=s.url, relevance=s.relevance_score, summary=s.summary
+            )
+        ctx.state.page_summaries = sorted_summaries
         return AnalyzeGaps()
 
 
@@ -520,9 +550,14 @@ class AnalyzeGaps(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> Union["RefineSearch", "Synthesize"]:
         ctx.state.current_phase = "analyze"
 
-        agent = _build_agent("gap_analyzer", ctx.deps.model)
+        agent = _build_agent(
+            "gap_analyzer", ctx.deps.model, ctx.deps.agent_overrides
+        )
 
-        evidence = [f"{s.title}: {s.summary}" for s in ctx.state.page_summaries]
+        evidence = [
+            f"{s.title} (relevance {s.relevance_score:.2f}): {s.summary}"
+            for s in ctx.state.page_summaries
+        ]
         sources = [s.url for s in ctx.state.page_summaries]
 
         prompt = f"""Research Question: {ctx.state.query}
@@ -580,20 +615,42 @@ class Synthesize(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> End[EvidenceReport]:
         ctx.state.current_phase = "synthesize"
 
+        # Empty only when zero pages were fetched at all (search/fetch
+        # failures across the whole run). After the SummarizePages
+        # filter-removal change, low-relevance summaries are NO LONGER
+        # discarded — they're ranked and surfaced via the limited-evidence
+        # path below.
+        max_relevance = (
+            max((s.relevance_score for s in ctx.state.page_summaries), default=0.0)
+        )
+        ctx.deps.reporter.synthesis_starting(
+            n_summaries=len(ctx.state.page_summaries),
+            max_relevance=max_relevance,
+        )
+
         if not ctx.state.page_summaries:
             return End(
                 EvidenceReport(
-                    evidence_summary=f"Research on '{ctx.state.query}' incomplete - no content summaries available.",
-                    key_findings=["No summaries generated"],
-                    sources=[p.url for p in ctx.state.fetched_pages] if ctx.state.fetched_pages else ["No sources"],
+                    evidence_summary=(
+                        f"Research on '{ctx.state.query}' could not gather "
+                        f"evidence — no pages were fetched. "
+                        f"Searches performed: {ctx.state.total_searches}; "
+                        f"fetch failures: {len(ctx.state.fetch_errors)}."
+                    ),
+                    key_findings=["No pages were fetched"],
+                    sources=["No sources"],
                     total_searches_performed=ctx.state.total_searches,
                     total_pages_fetched=ctx.state.total_pages_fetched,
                     iterations_required=ctx.state.iteration_count,
                 )
             )
 
-        agent = _build_agent("lead_agent", ctx.deps.model)
+        agent = _build_agent(
+            "lead_agent", ctx.deps.model, ctx.deps.agent_overrides
+        )
 
+        # Summaries are already sorted by relevance descending in
+        # SummarizePages; preserve that order in the synthesis prompt.
         summaries_text = []
         for i, s in enumerate(ctx.state.page_summaries, 1):
             excerpts = ""
@@ -611,15 +668,40 @@ Key Points:
 {chr(10).join(f"  • {point}" for point in s.key_points)}{excerpts}
 """)
 
-        prompt = f"""Research Question: {ctx.state.query}
+        # Evidence-quality framing — tell the lead agent how confident the
+        # underlying summarisation was, so it can frame the output
+        # appropriately rather than over- or under-claiming.
+        if max_relevance >= 0.6:
+            quality_note = ""
+        elif max_relevance >= 0.3:
+            quality_note = (
+                "\nEVIDENCE QUALITY: MODERATE. The page summaries are "
+                "topically relevant but no single source directly answers "
+                "the question. Synthesise carefully and flag any gaps.\n"
+            )
+        else:
+            quality_note = (
+                "\nEVIDENCE QUALITY: LIMITED. Every page summary scored "
+                "below the relevance threshold (max relevance "
+                f"{max_relevance:.2f}). The pages found may be tangential "
+                "to the research question. Frame your output as 'partial "
+                "findings' or 'limited evidence', acknowledge what the "
+                "available pages actually cover, and explicitly note that "
+                "the question was not directly answered by any source. "
+                "Do NOT pad the answer with speculation — report only what "
+                "the sources actually say.\n"
+            )
 
+        prompt = f"""Research Question: {ctx.state.query}
+{quality_note}
 Research Process:
 - Iterations: {ctx.state.iteration_count}
 - Total Searches: {ctx.state.total_searches}
 - Pages Fetched: {ctx.state.total_pages_fetched}
 - Pages Summarized: {len(ctx.state.page_summaries)}
+- Max Relevance Score: {max_relevance:.2f}
 
-Page Summaries:
+Page Summaries (sorted by relevance, highest first):
 {"".join(summaries_text)}
 
 Your Task:
