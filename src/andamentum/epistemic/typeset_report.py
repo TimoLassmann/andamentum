@@ -74,6 +74,13 @@ def _sanitize_excerpt(text: str, max_chars: int = 800) -> str:
     - drops raw URLs and HTML tags
     - collapses whitespace, preserves paragraph breaks
     - truncates to *max_chars* with an ellipsis on a word boundary
+
+    The ``max_chars=800`` default is a UX choice (readable digest length),
+    not a legal requirement. The report is a private single-user research
+    artifact with attributed quotations, which sits comfortably inside
+    Australian fair dealing for research (Copyright Act §40) and US fair
+    use. Revisit this budget only if the report is ever published or
+    redistributed beyond the user.
     """
     cleaned = re.sub(r"<[^>]+>", "", text)
     cleaned = re.sub(r"^#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
