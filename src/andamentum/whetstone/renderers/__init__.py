@@ -1,21 +1,22 @@
-"""Renderers for whetstone sharpen_document() results.
+"""Renderers turn a ``ReviewResult`` into a human-readable artifact.
 
-Three output formats from the same ReviewResult:
-- render_docx: Word document with track changes and prepended report
-- render_html: Self-contained HTML report (built on andamentum.typeset)
-- render_diff: Lightweight markdown diff view
+Three formats:
+  • ``render_markdown`` — plain markdown report (best for terminals,
+    PR comments, AI agents that consume text).
+  • ``render_html``     — styled HTML via ``andamentum.typeset``
+    (best for sharing in a browser).
+  • ``render_docx``     — Word document with edits as tracked changes
+    and findings as Word comments (best for the author's own
+    editing workflow). Reuses v1's ``whetstone.docx.finalization``
+    machinery via a small adapter.
 
-Plus a text utility:
-- apply_patches: Apply accepted patches to plain text content
+All three consume the same ``ReviewResult`` shape — agents that produce
+review reports for downstream consumers can pick whichever format the
+consumer prefers without changing the data model.
 """
 
-from .diff import apply_patches, render_diff
 from .docx import render_docx
 from .html import render_html
+from .markdown import render_markdown
 
-__all__ = [
-    "apply_patches",
-    "render_diff",
-    "render_docx",
-    "render_html",
-]
+__all__ = ["render_docx", "render_html", "render_markdown"]

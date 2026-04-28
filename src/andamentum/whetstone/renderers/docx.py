@@ -1,66 +1,156 @@
-"""Word document renderer with track changes.
+"""Word document renderer for ``ReviewResult``.
 
-Applies DocumentPatch objects as Word track changes and prepends a review
-report. Wraps the internal finalization module.
+Reuses v1's `whetstone.docx.finalization.finalize_reviewed_document`
+(the existing 5k-line track-changes machinery) by adapting v2's flat
+``Edit`` and ``Finding`` types into v1's ``DocumentPatch`` shape:
+
+  • Edit       → DocumentPatch(patch_type="text_edit",
+                                text_pattern=original_text,
+                                new_text=new_text,
+                                explanation=rationale)
+  • Finding    → DocumentPatch(patch_type="comment",
+                                text_pattern=first_quote_text,
+                                comment_text="<title>\\n\\n<rationale>",
+                                explanation=rationale)
+
+Findings without quotes are skipped — there's nothing to anchor the
+comment to in the .docx structure. Edits whose ``original_text`` doesn't
+appear in the .docx are also dropped silently (v1's ``apply_patches``
+already handles that).
+
+Requires an existing .docx file as input — Word's track-changes work
+against a pre-existing structure. For PDF/HTML sources, render to
+markdown or HTML instead, OR convert the source to .docx first via your
+preferred tool.
+
+NOTE — panel mode (``mode="panel"``) is intentionally NOT rendered by
+this docx adapter. Panel output (expert biosketches, scored expert
+reviews, panel synthesis) doesn't fit the v1 track-changes-+-comments
+machinery cleanly. The v1 panel docx flow used a separate document-
+construction path; porting it is its own design exercise. Until then,
+use ``render_markdown`` or ``render_html`` for panel-mode output.
+The docx renderer ignores ``expert_profiles``/``expert_reviews``/
+``panel_synthesis`` if they happen to be present alongside lens
+findings in the same ReviewResult.
 """
 
-from pathlib import Path
-from typing import Optional
+from __future__ import annotations
 
-from ..models import DocumentPatch, PatchApplicationResult
+from pathlib import Path
+from typing import Any
+
+from ..schemas import Edit, Finding, ReviewResult
 
 
 def render_docx(
+    result: ReviewResult,
     *,
-    input_path: Path,
-    output_path: Path,
-    patches: list[DocumentPatch],
-    review_summary: str = "",
-    critical_issues: Optional[list] = None,
-    expert_reviews: Optional[list] = None,
-    generated_experts: Optional[list] = None,
-    novelty_findings: str = "",
+    source_docx_path: str | Path,
+    output_path: str | Path,
     author: str = "Whetstone Review",
-    checklist_items: Optional[list] = None,
-) -> PatchApplicationResult:
-    """Render review results as a Word document with track changes.
+) -> Any:
+    """Render a ReviewResult as a .docx with track changes + comments.
 
-    Applies patches to the original .docx file as tracked changes,
-    then prepends a formatted review report.
+    Edits become tracked changes (deletion of the original span,
+    insertion of the new span). Findings become Word comments anchored
+    to the first verbatim quote of each finding. The executive summary
+    becomes a prepended review report.
 
-    Args:
-        input_path: Path to original .docx file.
-        output_path: Where to save the reviewed document.
-        patches: DocumentPatch objects to apply as track changes.
-        review_summary: Executive summary text for the report header.
-        critical_issues: List of critical issue objects for the report.
-        expert_reviews: List of expert review objects (panel task).
-        generated_experts: List of expert profile objects (panel task).
-        novelty_findings: External novelty findings text (optional).
-        author: Default author name for track changes.
-        checklist_items: Optional list of ChecklistItem objects to prepend
-            to the review report (checklist task).
+    Parameters
+    ----------
+    result:
+        The ReviewResult to render.
+    source_docx_path:
+        Path to the original .docx file. Track changes are applied
+        against this document's structure.
+    output_path:
+        Where to write the reviewed .docx.
+    author:
+        Author name attributed to the tracked changes.
 
-    Returns:
-        PatchApplicationResult with applied/failed patch counts.
-
-    Raises:
-        FileNotFoundError: If input_path doesn't exist.
-        RuntimeError: If document operations fail.
+    Returns
+    -------
+    The ``PatchApplicationResult`` from v1's finalisation machinery
+    (counts of applied/failed patches).
     """
-    from ..docx.finalization import finalize_reviewed_document
+    # Defer the v1 import: v1 owns the heavy docx machinery, but we want
+    # v2 to be importable without dragging it into the import graph by
+    # default.
+    from andamentum.whetstone.docx.finalization import finalize_reviewed_document
+    from andamentum.whetstone.models import DocumentPatch
+
+    patches = _to_document_patches(result, DocumentPatch)
+    findings = list(result.findings) + list(result.deterministic_findings)
 
     _, patch_result = finalize_reviewed_document(
-        original_file_path=input_path,
+        original_file_path=Path(source_docx_path),
         patches=patches,
-        review_summary=review_summary,
-        issues_count=len(critical_issues) if critical_issues else 0,
-        output_path=output_path,
+        review_summary=result.summary or _fallback_summary(result),
+        issues_count=len(findings),
+        output_path=Path(output_path),
         author=author,
-        critical_issues=critical_issues,
-        expert_reviews=expert_reviews,
-        generated_experts=generated_experts,
-        novelty_findings=novelty_findings,
-        checklist_items=checklist_items,
     )
     return patch_result
+
+
+# ── Adapter: v2 → v1 DocumentPatch ──────────────────────────────────────
+
+
+def _to_document_patches(result: ReviewResult, DocumentPatch) -> list:
+    """Convert v2's Edit + Finding into v1's DocumentPatch list."""
+    patches: list = []
+
+    for e in result.edits:
+        patches.append(_edit_to_patch(e, DocumentPatch))
+
+    findings = list(result.findings) + list(result.deterministic_findings)
+    for f in findings:
+        patch = _finding_to_patch(f, DocumentPatch)
+        if patch is not None:
+            patches.append(patch)
+
+    return patches
+
+
+def _edit_to_patch(edit: Edit, DocumentPatch):
+    return DocumentPatch(
+        patch_type="text_edit",
+        text_pattern=edit.original_text,
+        new_text=edit.new_text,
+        explanation=edit.rationale or edit.title or "Suggested edit",
+        confidence=_confidence_to_float(edit.confidence),
+    )
+
+
+def _finding_to_patch(finding: Finding, DocumentPatch):
+    if not finding.quotes:
+        return None
+    anchor = finding.quotes[0].text
+    if not anchor or not anchor.strip():
+        return None
+    body = finding.title
+    if finding.rationale:
+        body = f"{finding.title}\n\n{finding.rationale}"
+    return DocumentPatch(
+        patch_type="comment",
+        text_pattern=anchor,
+        comment_text=body,
+        explanation=finding.rationale or finding.title,
+        confidence=_confidence_to_float(finding.confidence),
+    )
+
+
+def _confidence_to_float(level: str) -> float:
+    """v2 uses low/medium/high enums; v1's DocumentPatch uses a 0..1 float."""
+    return {"low": 0.4, "medium": 0.7, "high": 0.95}.get(level, 0.7)
+
+
+def _fallback_summary(result: ReviewResult) -> str:
+    """Generate a plain summary for when Synthesise didn't run."""
+    n_findings = len(result.findings) + len(result.deterministic_findings)
+    n_edits = len(result.edits)
+    n_questions = len(result.author_questions)
+    return (
+        f"Whetstone review: {n_findings} finding(s), {n_edits} edit(s), "
+        f"{n_questions} author question(s). Run with model= for synthesis prose."
+    )

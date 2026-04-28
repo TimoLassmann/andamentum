@@ -1,60 +1,47 @@
-"""andamentum.whetstone — a workshop for sharpening your own drafts.
+"""Whetstone v2 — pydantic-graph driven document review.
 
-Whetstone runs structured, multi-lens feedback over documents you wrote
-yourself: grammar and style editing, specialist critique, and multi-expert
-panel review. Output formats: Word track changes, HTML report (via
-andamentum.typeset), or a lightweight markdown diff.
+Single entry point: ``review_document(source, *, model)``.
 
-**This is not a peer-review tool.** Do not use it on manuscripts you have
-been asked to review confidentially — that would violate journal policy.
-Use it on *your own* drafts, before submission.
-
-Quick start::
-
-    import asyncio
-    from andamentum.whetstone import sharpen_document, render_html, apply_patches
-
-    async def main():
-        text = open("my_draft.md").read()
-        result = await sharpen_document(text, task="edit")
-        html = render_html(result=result, original_content=text)
-        open("review.html", "w").write(html)
-
-        # Or apply the edits directly to the text:
-        revised = apply_patches(text, result.patches)
-        open("my_draft.revised.md", "w").write(revised)
-
-    asyncio.run(main())
+Without a ``model`` only the deterministic substrate runs (chunking +
+structural extractors). With a model, the full critical-review pipeline
+runs: lens reading → bounded reflection–investigation loop → optional
+editor → challenge → author questions → synthesis.
 """
 
-# === Functions you can wrap as agent tools ===
-from .dynamic_models import convert_fields_to_schema, create_output_model
-from .orchestrator import sharpen_document
-from .renderers import apply_patches, render_diff, render_docx, render_html
-
-# === Result/data types (returned by the above; not tools themselves) ===
-from .agents import AGENT_REGISTRY, AgentDefinition
-from .issues import DocumentIssue
-from .models import ChecklistItem, DocumentPatch, PatchApplicationResult
-from .orchestrator import ReviewResult
-
-__version__ = "0.1.0"
+from .api import review_document
+from .renderers import render_docx, render_html, render_markdown
+from .schemas import (
+    AuthorQuestion,
+    CheckableItem,
+    CustomEvaluation,
+    Edit,
+    ExpertProfile,
+    ExpertReview,
+    Finding,
+    GuidelineEvaluation,
+    PanelSynthesis,
+    Quote,
+    ReviewMetrics,
+    ReviewResult,
+    SectionCard,
+)
 
 __all__ = [
-    # Functions / callables
-    "sharpen_document",
+    "review_document",
     "render_docx",
     "render_html",
-    "render_diff",
-    "apply_patches",
-    "convert_fields_to_schema",
-    "create_output_model",
-    # Data types
+    "render_markdown",
+    "AuthorQuestion",
+    "CheckableItem",
+    "CustomEvaluation",
+    "Edit",
+    "ExpertProfile",
+    "ExpertReview",
+    "Finding",
+    "GuidelineEvaluation",
+    "PanelSynthesis",
+    "Quote",
+    "ReviewMetrics",
     "ReviewResult",
-    "DocumentPatch",
-    "DocumentIssue",
-    "ChecklistItem",
-    "PatchApplicationResult",
-    "AgentDefinition",
-    "AGENT_REGISTRY",
+    "SectionCard",
 ]
