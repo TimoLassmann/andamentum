@@ -133,11 +133,13 @@ def test_markdown_clean_document_says_so():
     assert "looks clean" in md.lower()
 
 
-def test_markdown_findings_grouped_by_severity():
+def test_markdown_findings_grouped_by_priority():
     md = render_markdown(_sample_result())
-    # Major appears before Minor in the LLM findings section
+    # MUST FIX appears before CONSIDER in the LLM findings section
     findings_section = md.split("## Findings (LLM-investigated)")[1].split("---")[0]
-    assert findings_section.index("### Major") < findings_section.index("### Minor")
+    assert findings_section.index("### MUST FIX") < findings_section.index(
+        "### CONSIDER"
+    )
 
 
 def test_markdown_persona_shown_for_panel_findings():

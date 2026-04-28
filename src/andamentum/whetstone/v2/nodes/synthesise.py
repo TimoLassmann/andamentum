@@ -59,17 +59,17 @@ async def _run_synthesis(
         for c in state.document_map
     )
     finding_lines = "\n".join(
-        f"  [{f.severity}|{f.confidence}] {f.title}\n      sections: {', '.join(f.sections_involved)}\n      {f.rationale}"
+        f"  [{f.priority}|{f.severity}|{f.confidence}] {f.title}\n      sections: {', '.join(f.sections_involved)}\n      {f.rationale}"
         for f in findings
     )
     prompt = f"""DOCUMENT MAP:
 {map_lines}
 
-FINDINGS ({len(findings)} total):
+FINDINGS ({len(findings)} total) — each tagged [priority|severity|confidence]:
 {finding_lines or "  (no findings — clean document)"}
 
 Write a ReviewSummary with executive_summary (2 paragraphs) and
-severity-grouped paragraphs."""
+priority-bucketed paragraphs (must_fix / should_fix / consider)."""
 
     agent = build_pydantic_ai_agent("synthesise", deps.model)
     result = await agent.run(prompt)
@@ -83,9 +83,9 @@ def _flatten_summary(summary: ReviewSummary) -> str:
     surfaced on ReviewResult."""
     parts = [
         ("Executive Summary", summary.executive_summary),
-        ("Major Findings", summary.major_findings_summary),
-        ("Moderate Findings", summary.moderate_findings_summary),
-        ("Minor Findings", summary.minor_findings_summary),
+        ("MUST FIX", summary.must_fix_summary),
+        ("SHOULD FIX", summary.should_fix_summary),
+        ("CONSIDER", summary.consider_summary),
     ]
     return "\n\n".join(f"## {title}\n\n{body}".strip() for title, body in parts if body)
 

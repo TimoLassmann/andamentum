@@ -119,9 +119,9 @@ async def test_lens_findings_land_in_pool(patched_agents) -> None:
     )
     patched_agents["synthesise"] = ReviewSummary(
         executive_summary="some prose issues",
-        major_findings_summary="No major findings.",
-        moderate_findings_summary="No moderate findings.",
-        minor_findings_summary="One minor.",
+        must_fix_summary="No must-fix findings.",
+        should_fix_summary="No should-fix findings.",
+        consider_summary="One consider.",
     )
 
     result = await review_document(
@@ -224,9 +224,9 @@ async def test_reflection_loop_refines_finding(patched_agents) -> None:
     patched_agents["challenge"] = ChallengeVerdict(verdict="stand", reason="ok")
     patched_agents["synthesise"] = ReviewSummary(
         executive_summary="One refined finding.",
-        major_findings_summary="No major findings.",
-        moderate_findings_summary="One moderate, refined.",
-        minor_findings_summary="No minor findings.",
+        must_fix_summary="No must-fix findings.",
+        should_fix_summary="One should-fix, refined.",
+        consider_summary="No consider findings.",
     )
 
     with mock.patch.multiple(
@@ -270,9 +270,9 @@ async def test_round_cap_terminates_loop(patched_agents) -> None:
     )
     patched_agents["synthesise"] = ReviewSummary(
         executive_summary="x",
-        major_findings_summary="No major findings.",
-        moderate_findings_summary="No moderate findings.",
-        minor_findings_summary="No minor findings.",
+        must_fix_summary="No must-fix findings.",
+        should_fix_summary="No should-fix findings.",
+        consider_summary="No consider findings.",
     )
 
     # Reflection returns one task every round (forcing the cap to be hit).
