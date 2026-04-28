@@ -398,22 +398,34 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         if not ctx.state.all_results:
             return SummarizePages()
 
-        # Flatten and renumber link_ids globally
-        all_search_results: list[SearchResult] = []
+        # Flatten across queries, dedupe by URL, exclude already-fetched.
+        # Multiple queries often surface the same URL — without this dedup,
+        # the page_fetcher agent saw the same URL under several link_ids
+        # and could pick it more than once, leading to duplicate fetches,
+        # duplicate summaries, and the same source being listed 2-3 times
+        # in the final report (regression observed on the Kalign query).
+        # Cross-cycle, ``state.fetched_urls`` is a hard exclusion — not
+        # just a text hint to the agent — so the fetcher cannot pick a
+        # URL we already have content for.
+        seen_urls: dict[str, SearchResult] = {}
         gid = 0
         for _query, results in ctx.state.all_results.items():
             for r in results:
-                all_search_results.append(
-                    SearchResult(
-                        link_id=gid,
-                        title=r.title,
-                        url=r.url,
-                        snippet=r.snippet,
-                        domain=r.domain,
-                        relevance_score=r.relevance_score,
-                    )
+                if r.url in ctx.state.fetched_urls:
+                    continue  # already fetched in a previous cycle
+                if r.url in seen_urls:
+                    continue  # dupe within this cycle
+                seen_urls[r.url] = SearchResult(
+                    link_id=gid,
+                    title=r.title,
+                    url=r.url,
+                    snippet=r.snippet,
+                    domain=r.domain,
+                    relevance_score=r.relevance_score,
                 )
                 gid += 1
+
+        all_search_results: list[SearchResult] = list(seen_urls.values())
 
         if not all_search_results:
             return SummarizePages()
@@ -424,7 +436,7 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         agent = _build_agent(
             "page_fetcher", ctx.deps.model, ctx.deps.agent_overrides
         )
-        already_fetched = [p.url for p in ctx.state.fetched_pages]
+        already_fetched = sorted(ctx.state.fetched_urls)
 
         prompt = f"""Research Question: {ctx.state.query}
 
@@ -448,12 +460,26 @@ Select the top {ctx.deps.max_pages_to_fetch} most relevant link IDs."""
             except Exception as e:
                 return ("error", lid, url, None, str(e))
 
-        tasks = [(lid, url_map[lid]) for lid in fetch_plan.link_ids if lid in url_map]
+        # De-duplicate the agent's picks too — even after the URL-set
+        # filter above, an LLM might pick the same link_id twice or
+        # produce a list with repeats. Do not rely on agent obedience.
+        seen_link_ids: set[int] = set()
+        unique_picks = []
+        for lid in fetch_plan.link_ids:
+            if lid in url_map and lid not in seen_link_ids:
+                seen_link_ids.add(lid)
+                unique_picks.append((lid, url_map[lid]))
+        tasks = unique_picks
         if tasks:
             ctx.deps.reporter.fetch_starting(n_pages=len(tasks))
             results = await asyncio.gather(*[do_fetch(lid, url) for lid, url in tasks])
             for status, lid, url, page, err in results:
                 if status == "success" and page is not None:
+                    # Final defence-in-depth: skip any page whose URL is
+                    # already in fetched_urls (would only fire if state
+                    # was mutated concurrently, but cheap to check).
+                    if page.url in ctx.state.fetched_urls:
+                        continue
                     ctx.state.fetched_pages.append(page)
                     ctx.state.total_pages_fetched += 1
                     ctx.state.fetched_urls.add(page.url)
