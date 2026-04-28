@@ -495,14 +495,13 @@ class SummarizePages(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 if page.truncated
                 else ""
             )
-            prompt = f"""Research Question: {ctx.state.query}
+            prompt = f"""Question: {ctx.state.query}
 
 Page Content ({page.word_count} words):
 {page.content}{truncation_note}
 
-Extract ONLY information that DIRECTLY answers or informs the research question.
-Create a 200-word summary, identify 3-5 key points, and include 1-3 verbatim quotes from the page.
-If this page only mentions the research topic in passing, set relevance_score below 0.3."""
+Follow the process in your instructions: extract usable facts first,
+then derive a relevance score from the scale."""
             try:
                 result = await agent.run(prompt, usage_limits=UsageLimits(request_limit=10))
                 summary: PageSummary = result.output
