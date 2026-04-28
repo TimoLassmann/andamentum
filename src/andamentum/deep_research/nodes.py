@@ -1,44 +1,68 @@
 """Graph nodes for research workflow orchestration.
 
-These nodes implement the research cycle: plan → search → fetch → summarize →
-analyze gaps → (refine | synthesize). They use the SearchBackend protocol for
-search/fetch operations and pydantic-ai agents for LLM decisions.
+These nodes implement the research cycle: plan → search-cycle → fetch →
+summarize → analyze gaps → (refine | synthesize). They use the
+SearchBackend protocol for search/fetch operations and pydantic-ai agents
+for LLM decisions.
+
+Search-cycle internals (post-2026-04 redesign): ``PrepareSearchCycle`` →
+``GenerateOne`` ⇄ ``Verify`` (per-slot loop, bounded by
+``MAX_SLOT_RETRIES``) → ``ParallelSearch``. Generation and verification
+are separate LLM calls; the parallel search is pure Python over
+``state.cycle.validated_queries``.
 """
 
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Union, Any
+from typing import Any, Union
 
-from pydantic_graph import BaseNode, GraphRunContext, End
-from pydantic_ai.usage import UsageLimits
+from pydantic_graph import BaseNode, End, GraphRunContext
 from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
-from .state import ResearchState
+from .state import ResearchState, SearchCycleState
 from .models import (
+    EvidenceReport,
+    FetchedPage,
+    FetchPlan,
+    GapAnalysis,
+    GeneratorOutput,
+    PageSummary,
     SearchQuery,
     SearchResult,
-    SearchPlan,
-    FetchPlan,
-    PageSummary,
-    FetchedPage,
-    GapAnalysis,
-    EvidenceReport,
+    VerifierOutput,
 )
-from .text_utils import guard_queries_against_drift
 from .agents import get_agent
 from .backends import SearchBackend
 
 logger = logging.getLogger(__name__)
 
 
-def _build_agent(name: str, model: Any) -> Agent[Any, Any]:
+# Slot-level retry budget for the per-slot generate→verify loop. When a
+# slot exhausts this many rejections, ``Verify`` decrements
+# ``state.cycle.target_count`` and proceeds to the next slot (or to
+# ``ParallelSearch`` if the lowered target is already met).
+MAX_SLOT_RETRIES = 3
+
+
+def _build_agent(
+    name: str,
+    model: Any,
+    overrides: dict[str, Any] | None = None,
+) -> Agent[Any, Any]:
     """Create a pydantic-ai ``Agent`` from a registry definition.
 
-    Delegates to ``andamentum.core.agents.build_pydantic_ai_agent`` so every
-    node-based caller (deep_research, whetstone v2, ...) shares one
-    Agent-construction recipe.
+    If ``overrides`` contains ``name``, the override (typically a stub
+    Agent for tests) is returned instead of building from the registry.
+    Production code never sets ``overrides``; tests pass it via
+    ``NodeDeps.agent_overrides``.
+
+    Delegates to ``andamentum.core.agents.build_pydantic_ai_agent`` so
+    every node-based caller shares one Agent-construction recipe.
     """
+    if overrides and name in overrides:
+        return overrides[name]
     from andamentum.core.agents import build_pydantic_ai_agent
 
     return build_pydantic_ai_agent(get_agent(name), model)
@@ -56,6 +80,10 @@ class NodeDeps:
     correlation_id: str = ""
     max_pages_to_fetch: int = 5
     max_results_per_search: int = 10
+    # Test-only: maps agent name → pydantic-ai Agent instance. Honoured by
+    # ``_build_agent`` to substitute a stub Agent for the registry lookup.
+    # Production code MUST leave this as ``None``.
+    agent_overrides: dict[str, Any] | None = None
 
 
 # ── PlanResearch ───────────────────────────────────────────────────────
@@ -65,26 +93,39 @@ class NodeDeps:
 class PlanResearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     """Entry node: initialize research."""
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "SearchPhase":
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> "PrepareSearchCycle":
         ctx.state.current_phase = "plan"
         ctx.state.iteration_count = 0
-        return SearchPhase()
+        return PrepareSearchCycle()
 
 
-# ── SearchPhase ────────────────────────────────────────────────────────
+# ── PrepareSearchCycle ─────────────────────────────────────────────────
 
 
 @dataclass
-class SearchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
-    """Execute search queries via search_planner agent."""
+class PrepareSearchCycle(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
+    """Initialise per-cycle state and bump the iteration counter.
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> Union["FetchPhase", End[EvidenceReport]]:
+    Runs at the start of every search cycle (initial entry from
+    ``PlanResearch`` and every loop-back from ``RefineSearch``). Replaces
+    ``state.cycle`` with a fresh ``SearchCycleState`` so prior-cycle data
+    (validated queries, slot attempts) doesn't leak forward.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> Union["GenerateOne", End[EvidenceReport]]:
         ctx.state.current_phase = "search"
         ctx.state.iteration_count += 1
 
-        # Guard: max iterations
         if ctx.state.iteration_count > ctx.state.max_iterations:
-            sources = [f"{p.title} - {p.url}" for p in ctx.state.fetched_pages if p.is_relevant]
+            sources = [
+                f"{p.title} - {p.url}"
+                for p in ctx.state.fetched_pages
+                if p.is_relevant
+            ]
             if not sources:
                 sources = ["Research incomplete - max iterations reached"]
             return End(
@@ -98,54 +139,184 @@ class SearchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 )
             )
 
-        agent = _build_agent("search_planner", ctx.deps.model)
+        is_gap = ctx.state.iteration_count > 1 and bool(ctx.state.identified_gaps)
+        ctx.state.cycle = SearchCycleState(
+            mode="gap" if is_gap else "initial",
+            target_count=2 if is_gap else 3,
+            gaps=list(ctx.state.identified_gaps) if is_gap else [],
+        )
+        return GenerateOne()
 
-        previous_queries = [q.query for q in ctx.state.search_history]
-        target_gaps = ctx.state.identified_gaps if ctx.state.iteration_count > 1 else []
 
-        prompt_parts = [
-            f"Research Question: {ctx.state.query}",
-            f"Previous Queries ({len(previous_queries)}): {', '.join(previous_queries) if previous_queries else 'None'}",
-        ]
-        if target_gaps:
-            prompt_parts.append(f"Target Gaps: {', '.join(target_gaps)}")
-            prompt_parts.append("Generate 1-2 queries specifically targeting these gaps.")
-        else:
-            prompt_parts.append("Generate 2-3 diverse initial search queries covering different aspects.")
+# ── GenerateOne ────────────────────────────────────────────────────────
 
+
+@dataclass
+class GenerateOne(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
+    """Produce one search query via the ``query_generator`` agent.
+
+    Called once per slot; on a retry within the same slot the previous
+    verifier's reason is passed in via ``feedback`` so the generator can
+    correct the rejected query without losing strategic context.
+    """
+
+    feedback: str | None = None
+
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> "Verify":
+        agent = _build_agent(
+            "query_generator", ctx.deps.model, ctx.deps.agent_overrides
+        )
         result = await agent.run(
-            "\n".join(prompt_parts),
-            usage_limits=UsageLimits(request_limit=15),
+            self._prompt(ctx),
+            usage_limits=UsageLimits(request_limit=10),
         )
-        search_plan: SearchPlan = result.output
+        out: GeneratorOutput = result.output
+        return Verify(query=out.query)
 
-        # Topic guard
-        search_plan.queries = guard_queries_against_drift(
-            queries=search_plan.queries,
-            objective=ctx.state.query,
+    def _prompt(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> str:
+        c = ctx.state.cycle
+        parts = [f"research_goal: {ctx.state.query}"]
+        if c.validated_queries:
+            parts.append(
+                f"validated_queries: {', '.join(c.validated_queries)}"
+            )
+        else:
+            parts.append("validated_queries: (none yet)")
+        if c.gaps:
+            parts.append(f"gaps: {', '.join(c.gaps)}")
+        if self.feedback:
+            parts.append(f"feedback: {self.feedback}")
+        return "\n".join(parts)
+
+
+# ── Verify ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
+    """Judge a single query against the goal via ``topic_verifier``.
+
+    On accept: appends to ``cycle.validated_queries``, resets
+    ``slot_attempts``, and routes either back to ``GenerateOne`` for the
+    next slot or to ``ParallelSearch`` when ``target_count`` is reached.
+
+    On reject: increments ``slot_attempts``. If under
+    ``MAX_SLOT_RETRIES``, retries the slot via ``GenerateOne`` with the
+    verifier's reason as feedback. If the budget is exhausted, applies
+    skip-and-tighten — drops ``target_count`` by one and proceeds.
+    """
+
+    query: str
+
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> Union["GenerateOne", "ParallelSearch"]:
+        agent = _build_agent(
+            "topic_verifier", ctx.deps.model, ctx.deps.agent_overrides
         )
+        result = await agent.run(
+            f"research_goal: {ctx.state.query}\nquery: {self.query}",
+            usage_limits=UsageLimits(request_limit=5),
+        )
+        verdict: VerifierOutput = result.output
+        c = ctx.state.cycle
 
-        # Parallel search
+        if verdict.on_topic:
+            c.validated_queries.append(self.query)
+            c.slot_attempts = 0
+            if len(c.validated_queries) >= c.target_count:
+                return ParallelSearch()
+            return GenerateOne()
+
+        # Rejected.
+        c.slot_attempts += 1
+        if c.slot_attempts >= MAX_SLOT_RETRIES:
+            logger.warning(
+                "[%s] Search-cycle slot exhausted retries; tightening target_count "
+                "from %d to %d (validated=%d, last reason=%r)",
+                ctx.deps.correlation_id,
+                c.target_count,
+                c.target_count - 1,
+                len(c.validated_queries),
+                verdict.reason,
+            )
+            c.slot_attempts = 0
+            c.target_count -= 1
+            if len(c.validated_queries) >= c.target_count:
+                return ParallelSearch()
+            return GenerateOne()
+
+        return GenerateOne(feedback=verdict.reason)
+
+
+# ── ParallelSearch ─────────────────────────────────────────────────────
+
+
+@dataclass
+class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
+    """Run the validated queries in parallel against the search backend.
+
+    Pure orchestration — no LLM. Bounded concurrency via a semaphore.
+    Errors per query are recorded in ``state.search_errors``; one failed
+    query does not abort the others.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> "FetchPhase":
+        c = ctx.state.cycle
+        if not c.validated_queries:
+            logger.warning(
+                "[%s] Search cycle produced no validated queries; "
+                "ParallelSearch running with empty list "
+                "(outer max_iterations will eventually terminate).",
+                ctx.deps.correlation_id,
+            )
+
         sem = asyncio.Semaphore(3)
 
-        async def do_search(q: str) -> tuple[str, list[SearchResult], str | None]:
+        async def do_search(
+            q: str,
+        ) -> tuple[str, list[SearchResult], str | None]:
             async with sem:
                 try:
-                    results = await ctx.deps.backend.search(q, max_results=ctx.deps.max_results_per_search)
+                    results = await ctx.deps.backend.search(
+                        q, max_results=ctx.deps.max_results_per_search
+                    )
                     return (q, results, None)
                 except Exception as e:
                     return (q, [], str(e))
 
-        search_results = await asyncio.gather(*[do_search(q) for q in search_plan.queries])
+        search_results = await asyncio.gather(
+            *[do_search(q) for q in c.validated_queries]
+        )
+
+        cycle_reasoning = (
+            f"Generated via per-slot generate/verify; "
+            f"mode={c.mode}, validated={len(c.validated_queries)}/{c.target_count}"
+        )
 
         for query_str, results, error_msg in search_results:
             if error_msg:
-                ctx.state.search_errors.append({"query": query_str, "error": error_msg, "is_retryable": "True"})
-                logger.error(f"[{ctx.deps.correlation_id}] Search failed for '{query_str}': {error_msg}")
+                ctx.state.search_errors.append(
+                    {
+                        "query": query_str,
+                        "error": error_msg,
+                        "is_retryable": "True",
+                    }
+                )
+                logger.error(
+                    "[%s] Search failed for %r: %s",
+                    ctx.deps.correlation_id,
+                    query_str,
+                    error_msg,
+                )
 
             query_obj = SearchQuery(
                 query=query_str,
-                reasoning=search_plan.reasoning,
+                reasoning=cycle_reasoning,
                 iteration=ctx.state.iteration_count,
             )
             ctx.state.search_history.append(query_obj)
@@ -335,9 +506,11 @@ class RefineSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 
     gaps: list[str]
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "SearchPhase":
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> "PrepareSearchCycle":
         ctx.state.current_phase = "refine"
-        return SearchPhase()
+        return PrepareSearchCycle()
 
 
 # ── Synthesize ─────────────────────────────────────────────────────────
