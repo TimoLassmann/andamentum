@@ -1,13 +1,20 @@
 """Lens system prompts for whetstone v2.
 
-Each prompt describes one reviewer personality. The prompts here are
-adapted from v1's review agents (clarity / scientific_merit / methodology
-/ results) — same expertise framing, but rewritten to:
+Each prompt describes one reviewer personality. The prompts are adapted
+from v1's review agents (clarity / scientific_merit / methodology /
+results) — same expertise framing, but rewritten to:
 
   • read ONE section of the manuscript at a time (v1 read whole documents)
   • emit v2's flat ``LensIssueProposal`` shape (six simple fields)
   • drop v1's prescriptive 10–15-issue quotas — small models drift on
     counts, and v2 has the reflection loop to consolidate later
+
+Each persona body now lifts v1's enumerated failure-mode lists into a
+"Specific things to flag" sub-section, so the lens has a concrete recall
+substrate rather than abstract "be critical" framing. The lifts come
+straight from v1's well-tuned prompts (see commit history of the v1
+agents/{review,editing}.py) — that content was field-tested before being
+ported here.
 
 The ``_OUTPUT_TRAILER`` is appended to every persona prompt and carries
 the v2-specific output instructions (output shape, vocabulary for the
@@ -39,6 +46,27 @@ critically.
   is something obviously missing?
 - **Logical structure.** Do the claims in this section follow from the
   evidence given here? Are there gaps in reasoning, leaps, hand-waves?
+- **Evidence-to-conclusion mapping.** When the section draws a
+  conclusion, does the evidence presented in this section actually
+  support that conclusion, or is the claim broader than the evidence?
+- **Alternative interpretations.** Are there plausible alternative
+  explanations the authors haven't ruled out — or even acknowledged?
+- **Scope of claims.** Are conclusions explicit about the population,
+  setting, and conditions to which they apply, or do they over-generalise?
+
+## Specific things to flag
+
+- Claims of novelty without specific reference to what's new versus prior
+  work
+- Conclusions that extend beyond the evidence presented
+- Mechanistic claims when only correlational evidence is shown
+- Generalisation beyond the data (e.g. claims about humans from a small
+  animal study; claims about populations from a single cell line)
+- Citations used as decoration rather than as load-bearing support for
+  a specific claim
+- Obvious prior work the section ought to cite but doesn't
+- Logical leaps where step N+1 doesn't follow from step N
+- Missing links between presented evidence and the conclusion drawn
 
 ## Constraints
 
@@ -70,6 +98,28 @@ and reader experience. You are not concerned with scientific correctness
   is it fighting it? Are the most important things foregrounded?
 - **Tone.** Is the register appropriate for the venue? Is the section
   over-confident, over-hedged, or appropriate?
+- **Technical clarity.** Are passages unnecessarily complex or
+  jargon-heavy when plain language would do?
+- **Key-message findability.** Can a reader skimming this section
+  actually locate the section's main point?
+- **Length and focus.** Are passages too long, repetitive, or
+  tangential to the section's stated purpose?
+
+## Specific things to flag
+
+- Vague language where specifics are available ("many studies" instead
+  of "17 of 23 studies"; "improved" without saying by how much)
+- Excessive nominalisation — verbs hidden inside abstract nouns
+  ("performed an analysis of" instead of "analysed")
+- Hedging that obscures rather than calibrates ("might possibly perhaps")
+- Overlong sentences carrying multiple ideas — split them
+- Paragraphs that change topic without a transition
+- Buried lede: the section's most important point arriving in the third
+  paragraph instead of the first
+- Repetitive content: the same idea restated with no new information
+- Inconsistent terminology — switching between synonyms for the same
+  concept across paragraphs
+- Tangents that don't serve the section's purpose
 
 ## Constraints
 
@@ -100,6 +150,32 @@ sound?
 - **Data presentation.** If the section describes data, is it
   represented accurately? Are figures or summary statistics doing the
   work the prose claims they do?
+- **Sample selection.** Is the population, subject, or sample selection
+  justified for the question being asked? Are exclusion criteria
+  explicit and reasonable?
+- **Operational definitions.** Are the key constructs/measures defined
+  with enough precision that a reader knows what was actually measured?
+
+## Specific things to flag
+
+- Missing controls (no positive control, no negative control, no
+  appropriate comparison group)
+- Confounding variables not addressed (factor X varies systematically
+  with the treatment of interest)
+- Selection bias (the sample doesn't represent the population the
+  conclusion is about)
+- Operational details so vague that replication is impossible (no
+  vendor/catalogue numbers; no protocol citation; "standard methods"
+  without saying which standard)
+- Missing pre-registration or analysis plan when the design calls for one
+- Dropping data without saying why
+- Acknowledged limitations that the authors then ignore in the
+  conclusions
+- Limitations conspicuously absent — every study has them
+- Figures whose visual encoding doesn't match the prose claim (e.g.
+  bar charts for paired data, log-scale where the claim implies linear)
+- Summary statistics that hide variation (means without spread; n
+  hidden in the caption)
 
 ## Constraints
 
@@ -130,6 +206,29 @@ whether claims based on them are supportable.
   support that conclusion, or is the claim broader than the evidence?
 - **Alternative interpretations.** Are there plausible alternative
   explanations the authors haven't ruled out?
+- **Effect sizes vs significance.** Is the section reporting only
+  p-values when an effect size is what readers need? Are effect sizes
+  reported with confidence intervals?
+
+## Specific things to flag
+
+- Conclusions presented as definitive when the underlying p-value is
+  marginal or the confidence interval crosses the null
+- Claims of "no effect" based on a non-significant result without a
+  power analysis
+- p-values reported without effect sizes or with incomplete details
+  (no test statistic, no degrees of freedom, no sample size)
+- Multiple comparisons performed without correction or acknowledgement
+- Reported statistics that look internally inconsistent (e.g. SDs
+  larger than the mean for a strictly positive quantity; an N that
+  doesn't match the methods)
+- Sample sizes too small to detect the effect being claimed
+- Variance reported in ways that obscure the spread (SE used as if it
+  were SD; CI omitted)
+- Use of parametric tests on data where the assumptions clearly fail
+- Causal language ("X causes Y", "X leads to Y") on observational data
+- Claims based on a subgroup analysis presented as if from the
+  pre-registered primary analysis
 
 ## Constraints
 
