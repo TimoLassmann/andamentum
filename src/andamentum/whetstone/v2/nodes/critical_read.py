@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, cast
 from pydantic_graph import BaseNode, GraphRunContext
 
 from ..agents import LensReadOutput, build_pydantic_ai_agent
-from ..agents.lens_prompts import LENS_MULTI_SECTION
+from ..agents.lens_prompts import LENS_MULTI_SECTION, LENS_TARGET_SECTIONS
+from ..agents.section_kinds import classify_section_kind
 from ..anchoring import anchor_quote
 from ..deps import ReviewDeps
 from ..schemas import Finding, ReviewResult
@@ -125,7 +126,10 @@ class CriticalRead(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
                 return findings
 
         per_section_tasks = [
-            read_section(s, lens) for s in sections for lens in per_section_lenses
+            read_section(s, lens)
+            for s in sections
+            for lens in per_section_lenses
+            if _lens_targets_section(lens, s)
         ]
         multi_section_tasks = [read_document(lens) for lens in multi_section_lenses]
 
@@ -141,6 +145,19 @@ class CriticalRead(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         from .reflect_and_investigate import ReflectAndInvestigate
 
         return ReflectAndInvestigate()
+
+
+def _lens_targets_section(lens: str, section: "SectionRef") -> bool:
+    """Whether ``lens`` should run against ``section``.
+
+    Lenses with no entry in ``LENS_TARGET_SECTIONS`` run against every
+    section (the default). Lenses with an entry run only against
+    sections whose classified kind is in the entry's set.
+    """
+    targets = LENS_TARGET_SECTIONS.get(lens)
+    if not targets:
+        return True
+    return classify_section_kind(section.title) in targets
 
 
 async def _run_lens(
