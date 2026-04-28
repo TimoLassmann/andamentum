@@ -18,6 +18,12 @@ class SearchCycleState:
     cycles from gap-targeted refinement cycles. ``slot_attempts`` is the
     per-slot retry counter that triggers skip-and-tighten when it exceeds
     ``MAX_SLOT_RETRIES`` (constant in ``nodes.py``).
+
+    ``slot_rejected_queries`` holds the queries the verifier rejected for
+    the *current* slot. It's threaded into the generator's prompt so the
+    generator can see (and avoid paraphrasing) what it already tried.
+    Resets to empty whenever the slot resolves (acceptance or
+    skip-and-tighten).
     """
 
     mode: Literal["initial", "gap"] = "initial"
@@ -25,6 +31,7 @@ class SearchCycleState:
     gaps: list[str] = field(default_factory=list)
     validated_queries: list[str] = field(default_factory=list)
     slot_attempts: int = 0
+    slot_rejected_queries: list[str] = field(default_factory=list)
 
 
 @dataclass

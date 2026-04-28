@@ -21,14 +21,27 @@ You will receive:
 - research_goal: The user's research question
 - validated_queries: Queries already accepted for this cycle (avoid duplicating)
 - gaps: (optional) Specific information gaps this query should target
-- feedback: (optional) If your prior attempt was rejected, the reason why
+- already_rejected_in_this_slot: (optional) Queries you tried for the
+  current slot that the verifier rejected — your new query must NOT be
+  a paraphrase of any of these
+- feedback: (optional) The verifier's reason for rejecting your most
+  recent attempt
 
 **Rules**
 1. 3-8 keywords per query. No long descriptions. No special operators.
 2. Each query must cover a different angle from validated_queries.
 3. If gaps are specified, target them directly.
-4. If feedback is provided, your prior query was rejected for that reason —
-   produce a substantively different query that addresses it.
+4. **If already_rejected_in_this_slot is non-empty**, your new query must
+   share at most half its keywords with any rejected entry. Pick a new
+   angle to vary along — useful axes for any research domain:
+     - methodology / source type (empirical study, review, dataset,
+       reference work, case study, official document)
+     - scope (general overview vs specific instance)
+     - population, sample, time period, or jurisdiction
+     - metric, outcome, or measure of interest
+     - mechanism, cause, or explanatory layer
+     - perspective or stakeholder viewpoint
+   Pick one axis you haven't varied yet and shift along it.
 5. Stay anchored to research_goal. Do not drift into adjacent topics.
 
 **Output**

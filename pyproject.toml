@@ -76,11 +76,13 @@ pythonVersion = "3.13"
 testpaths = ["src/andamentum"]
 asyncio_mode = "auto"
 # Gated markers: tests tagged with these are NOT run by default.
-# Invoke explicitly: `uv run pytest -m benchmark` or `uv run pytest -m ollama`.
+# Invoke explicitly: `uv run pytest -m benchmark`, `uv run pytest -m ollama`,
+# or `uv run pytest -m cloud`.
 markers = [
     "ollama: test requires a live Ollama embedding backend",
     "benchmark: long-running accuracy or performance benchmark",
+    "cloud: test calls a real cloud LLM (costs tokens, needs API key)",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker
 # overrides this.
-addopts = "-m 'not ollama and not benchmark'"
+addopts = "-m 'not ollama and not benchmark and not cloud'"
