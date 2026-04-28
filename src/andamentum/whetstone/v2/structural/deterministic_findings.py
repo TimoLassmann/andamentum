@@ -17,6 +17,7 @@ from collections import defaultdict
 from typing import Iterable
 
 from ..schemas import Finding, Quote
+from .checklist import run_checklist_checks
 from .crossrefs import (
     find_equation_anchors,
     find_figure_anchors,
@@ -38,11 +39,18 @@ def synthesize_deterministic_findings(
     *,
     sections: list[SectionRef],
     facts: StructuralFacts,
+    markdown: str = "",
 ) -> list[Finding]:
     """Run every deterministic check against the StructuralFacts.
 
     Returns Findings in stable order (per check type, then per occurrence)
     so output is reproducible across runs.
+
+    ``markdown`` is the harvested full-document text. When provided,
+    pre-submission checklist checks (required statements, keywords,
+    title, abstract) run alongside the structural-facts checks. When
+    empty, those checks are skipped — useful for unit tests that supply
+    only StructuralFacts.
     """
     findings: list[Finding] = []
     findings.extend(_check_missing_references(facts))
@@ -56,6 +64,8 @@ def synthesize_deterministic_findings(
     )
     findings.extend(_check_inconsistent_sample_sizes(facts.numeric_claims))
     findings.extend(_check_broken_cross_references(facts.cross_references, sections))
+    if markdown:
+        findings.extend(run_checklist_checks(markdown=markdown, sections=sections))
     return findings
 
 
