@@ -1,6 +1,6 @@
 """Word document renderer for ``ReviewResult``.
 
-Reuses v1's `whetstone.docx.finalization.finalize_reviewed_document`
+Reuses the in-tree ``whetstone.docx.finalization.finalize_reviewed_document``
 (the existing 5k-line track-changes machinery) by adapting v2's flat
 ``Edit`` and ``Finding`` types into v1's ``DocumentPatch`` shape:
 
@@ -15,23 +15,26 @@ Reuses v1's `whetstone.docx.finalization.finalize_reviewed_document`
 
 Findings without quotes are skipped — there's nothing to anchor the
 comment to in the .docx structure. Edits whose ``original_text`` doesn't
-appear in the .docx are also dropped silently (v1's ``apply_patches``
-already handles that).
+appear in the .docx are also dropped silently (``apply_patches`` already
+handles that).
+
+Panel mode (``mode="panel"``) is now ALSO rendered: expert biosketches,
+scored expert reviews, and the panel synthesis are folded into the
+prepended review report. ``finalize_reviewed_document`` already accepts
+``expert_reviews`` and ``generated_experts`` keywords; the v2 adapter
+just passes them through. v2's ExpertProfile / ExpertReview pydantic
+schemas are field-compatible with the v1 reader (which uses
+``model_dump()`` then categorises by ``_score`` / ``_justification``
+suffix).
+
+Novelty findings (category="novelty") are also pulled out and passed as
+``novelty_findings`` so they appear in their own report subsection
+rather than mixed with the lens findings.
 
 Requires an existing .docx file as input — Word's track-changes work
 against a pre-existing structure. For PDF/HTML sources, render to
 markdown or HTML instead, OR convert the source to .docx first via your
 preferred tool.
-
-NOTE — panel mode (``mode="panel"``) is intentionally NOT rendered by
-this docx adapter. Panel output (expert biosketches, scored expert
-reviews, panel synthesis) doesn't fit the v1 track-changes-+-comments
-machinery cleanly. The v1 panel docx flow used a separate document-
-construction path; porting it is its own design exercise. Until then,
-use ``render_markdown`` or ``render_html`` for panel-mode output.
-The docx renderer ignores ``expert_profiles``/``expert_reviews``/
-``panel_synthesis`` if they happen to be present alongside lens
-findings in the same ReviewResult.
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..schemas import Edit, Finding, ReviewResult
+from ..schemas import Edit, Finding, PanelSynthesis, ReviewResult
 
 
 def render_docx(
@@ -56,6 +59,9 @@ def render_docx(
     to the first verbatim quote of each finding. The executive summary
     becomes a prepended review report.
 
+    For panel-mode results, the prepended report includes the panel
+    synthesis prose, scored per-expert reviews, and expert biosketches.
+
     Parameters
     ----------
     result:
@@ -70,25 +76,43 @@ def render_docx(
 
     Returns
     -------
-    The ``PatchApplicationResult`` from v1's finalisation machinery
+    The ``PatchApplicationResult`` from the finalisation machinery
     (counts of applied/failed patches).
     """
-    # Defer the v1 import: v1 owns the heavy docx machinery, but we want
-    # v2 to be importable without dragging it into the import graph by
-    # default.
+    # Defer the heavy docx import: the track-changes machinery is large,
+    # and we want v2 to be importable without dragging it into the import
+    # graph by default.
     from andamentum.whetstone.docx.finalization import finalize_reviewed_document
     from andamentum.whetstone.models import DocumentPatch
 
     patches = _to_document_patches(result, DocumentPatch)
     findings = list(result.findings) + list(result.deterministic_findings)
 
+    review_summary = result.summary or _fallback_summary(result)
+    if result.panel_synthesis is not None:
+        # Prepend the panel synthesis prose to whatever ``Synthesise``
+        # produced. Both can be present in panel mode if the standard
+        # synthesis path also ran; concatenating keeps the panel
+        # narrative front-and-centre at the top of the report.
+        review_summary = (
+            _format_panel_synthesis(result.panel_synthesis)
+            + ("\n\n" + review_summary if review_summary.strip() else "")
+        )
+
+    novelty_findings_text = _collect_novelty_findings(result)
+
     _, patch_result = finalize_reviewed_document(
         original_file_path=Path(source_docx_path),
         patches=patches,
-        review_summary=result.summary or _fallback_summary(result),
+        review_summary=review_summary,
         issues_count=len(findings),
         output_path=Path(output_path),
         author=author,
+        # Panel-mode payload (None / empty when not in panel mode)
+        expert_reviews=list(result.expert_reviews) or None,
+        generated_experts=list(result.expert_profiles) or None,
+        # Novelty-check payload (empty string when not used)
+        novelty_findings=novelty_findings_text,
     )
     return patch_result
 
@@ -105,6 +129,11 @@ def _to_document_patches(result: ReviewResult, DocumentPatch) -> list:
 
     findings = list(result.findings) + list(result.deterministic_findings)
     for f in findings:
+        # Novelty findings are surfaced separately via novelty_findings;
+        # don't ALSO emit them as anchored comments because they have
+        # no anchor in the manuscript text.
+        if f.category == "novelty":
+            continue
         patch = _finding_to_patch(f, DocumentPatch)
         if patch is not None:
             patches.append(patch)
@@ -150,7 +179,88 @@ def _fallback_summary(result: ReviewResult) -> str:
     n_findings = len(result.findings) + len(result.deterministic_findings)
     n_edits = len(result.edits)
     n_questions = len(result.author_questions)
-    return (
+    parts = [
         f"Whetstone review: {n_findings} finding(s), {n_edits} edit(s), "
-        f"{n_questions} author question(s). Run with model= for synthesis prose."
-    )
+        f"{n_questions} author question(s)."
+    ]
+    if result.expert_reviews:
+        parts.append(f"Panel: {len(result.expert_reviews)} expert review(s).")
+    if not (result.summary or "").strip():
+        parts.append("Run with model= for synthesis prose.")
+    return " ".join(parts)
+
+
+def _format_panel_synthesis(s: PanelSynthesis) -> str:
+    """Render PanelSynthesis as a markdown block for the prepended report.
+
+    The shape mirrors the markdown / HTML renderers' panel synthesis
+    sections so a reader who's seen one format recognises the other.
+    """
+    lines = [
+        "## Panel Synthesis",
+        "",
+        f"**Recommendation: {s.overall_recommendation}** "
+        f"(confidence: {s.confidence_level})",
+        "",
+        f"Average score: **{s.average_overall_score:.1f}/10** "
+        f"(range: {s.score_range}, n={s.number_of_experts})",
+        "",
+        s.recommendation_justification,
+    ]
+    if (s.review_summary or "").strip():
+        lines += ["", "### Review summary", "", s.review_summary.strip()]
+    if s.consensus_strengths:
+        lines += ["", "### Consensus strengths", ""]
+        lines += [f"- {item}" for item in s.consensus_strengths]
+    if s.consensus_weaknesses:
+        lines += ["", "### Consensus weaknesses", ""]
+        lines += [f"- {item}" for item in s.consensus_weaknesses]
+    if s.divergent_opinions:
+        lines += ["", "### Divergent opinions", ""]
+        lines += [f"- {item}" for item in s.divergent_opinions]
+    by_criterion = [
+        ("Scientific rigor", s.scientific_rigor_summary),
+        ("Methodology", s.methodology_summary),
+        ("Novelty", s.novelty_summary),
+        ("Clarity", s.clarity_summary),
+    ]
+    if any((body or "").strip() for _, body in by_criterion):
+        lines += ["", "### By criterion", ""]
+        for label, body in by_criterion:
+            if (body or "").strip():
+                lines += [f"**{label}:** {body.strip()}", ""]
+    if s.key_decision_factors:
+        lines += ["", "### Key decision factors", ""]
+        lines += [f"- {item}" for item in s.key_decision_factors]
+    return "\n".join(lines)
+
+
+def _collect_novelty_findings(result: ReviewResult) -> str:
+    """Concatenate novelty-category findings into a markdown block.
+
+    The v1 finalize_reviewed_document accepts a ``novelty_findings``
+    string and renders it as its own report subsection. Pulling the
+    novelty findings out of the lens-finding pool prevents them from
+    becoming anchored comments against fictional text spans (they are
+    document-level claims, not section-anchored observations).
+    """
+    novelty = [
+        f
+        for f in (list(result.findings) + list(result.deterministic_findings))
+        if f.category == "novelty"
+    ]
+    if not novelty:
+        return ""
+
+    lines = [
+        f"{len(novelty)} novelty claim(s) flagged by literature search:",
+        "",
+    ]
+    for f in novelty:
+        lines.append(f"- **{f.title}** ({f.severity}, {f.confidence} confidence)")
+        if f.rationale:
+            # Indent rationale under its bullet
+            for ln in f.rationale.splitlines():
+                lines.append(f"    {ln}")
+        lines.append("")
+    return "\n".join(lines)
