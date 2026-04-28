@@ -40,8 +40,9 @@ def test_create_output_model_roundtrip():
     Model = create_output_model("custom_test", spec)
 
     instance = Model(doc_id="abc", score=7)
-    assert instance.doc_id == "abc"
-    assert instance.score == 7
+    dumped = instance.model_dump()
+    assert dumped["doc_id"] == "abc"
+    assert dumped["score"] == 7
 
 
 def test_create_output_model_requires_fields():

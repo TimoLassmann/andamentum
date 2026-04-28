@@ -9,7 +9,16 @@ These tests exercise the linking/judging logic introduced to fix that gap.
 """
 
 from ..entities import Claim, ClaimStage, Evidence, Objective
+from ..graph.deps import EpistemicDeps
+from ..graph.state import EpistemicGraphState
 from ..operations import GatheredEvidence
+
+
+class FakeCtx:
+    """Minimal stand-in for pydantic-graph GraphRunContext used by node tests."""
+
+    state: EpistemicGraphState
+    deps: EpistemicDeps
 
 
 class FakeMultiGatherer:
@@ -91,9 +100,6 @@ class TestExtractNewEvidenceLinking:
         # Run the node via its run() method with a minimal ctx stub
         node = ExtractNewEvidence()
 
-        class FakeCtx:
-            pass
-
         ctx = FakeCtx()
         ctx.state = state
         ctx.deps = deps
@@ -151,9 +157,6 @@ class TestExtractNewEvidenceLinking:
         state = EpistemicGraphState(objective_id="obj-judge")
 
         node = ExtractNewEvidence()
-
-        class FakeCtx:
-            pass
 
         ctx = FakeCtx()
         ctx.state = state
@@ -224,9 +227,6 @@ class TestExtractNewEvidenceLinking:
         state = EpistemicGraphState(objective_id="obj-single")
         node = ExtractNewEvidence()
 
-        class FakeCtx:
-            pass
-
         ctx = FakeCtx()
         ctx.state = state
         ctx.deps = deps
@@ -270,9 +270,6 @@ class TestExtractNewEvidenceLinking:
         )
         state = EpistemicGraphState(objective_id="obj-orphan")
         node = ExtractNewEvidence()
-
-        class FakeCtx:
-            pass
 
         ctx = FakeCtx()
         ctx.state = state
