@@ -166,14 +166,14 @@ class PubMedProvider:
     def _parse_single_article(self, article_el: Any) -> GatheredEvidence:
         """Parse a single PubmedArticle XML element."""
         medline = article_el.find(".//MedlineCitation")
-        article = medline.find(".//Article") if medline else None
+        article = medline.find(".//Article") if medline is not None else None
 
         # PMID
-        pmid_el = medline.find(".//PMID") if medline else None
+        pmid_el = medline.find(".//PMID") if medline is not None else None
         pmid = pmid_el.text if pmid_el is not None else ""
 
         # Title
-        title_el = article.find(".//ArticleTitle") if article else None
+        title_el = article.find(".//ArticleTitle") if article is not None else None
         title = title_el.text if title_el is not None else ""
 
         # Abstract
@@ -198,12 +198,14 @@ class PubMedProvider:
                     authors.append(f"{last} {initials}".strip())
 
         # Journal
-        journal_el = article.find(".//Journal/Title") if article else None
+        journal_el = article.find(".//Journal/Title") if article is not None else None
         journal = journal_el.text if journal_el is not None else ""
 
         # Year
         year_el = (
-            article.find(".//Journal/JournalIssue/PubDate/Year") if article else None
+            article.find(".//Journal/JournalIssue/PubDate/Year")
+            if article is not None
+            else None
         )
         year = year_el.text if year_el is not None else ""
 
