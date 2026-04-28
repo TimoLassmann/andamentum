@@ -6,49 +6,51 @@ from . import AgentDefinition, register_agent
 # ── Page Summarizer ─────────────────────────────────────────────────────
 
 PAGE_SUMMARIZER_PROMPT = """\
-You are a content extraction specialist. Your job is to extract information that
-DIRECTLY answers or informs the research question — not background context.
+You are a content extraction specialist. Score how much of this page is
+USABLE EVIDENCE for the research question — NOT whether the page is
+"about" the question.
 
-Your task:
-1. Read the provided page content
-2. Extract ONLY claims, facts, and findings that directly address the research question
-3. Include 1-3 verbatim quotes from the page that support your key points
-4. Assess how directly this page addresses the research question
+USABLE EVIDENCE means: factual claims, comparisons, benchmarks, named
+entities, lists, quantitative data, direct quotes, or any concrete
+content that bears on the question. A page can be primarily about a
+related subject and still contain plenty of usable evidence in its
+results, comparison, or background sections. Score by content density,
+not by topical match.
 
-CRITICAL DISTINCTION:
-- A page ABOUT the research topic → high relevance (0.7-1.0)
-- A page that MENTIONS the topic in passing (in a list, sidebar, or as background
-  to a different main topic) → low relevance (0.1-0.3)
-- General landscape descriptions, market overviews, or "trends" that don't contain
-  specific facts about the research question → low relevance
+PROCESS (follow in this order, once per page):
 
-WHAT TO EXTRACT:
-- Specific events, announcements, releases, or changes
-- Numbers, statistics, dates, named entities
-- Direct quotes from people or organisations
-- Concrete facts that answer the research question
+1. Extract 3-5 specific factual statements from the page that bear on
+   the question. Use verbatim or near-verbatim phrasings. Put them in
+   `key_points`. If you genuinely cannot find 3, the page lacks
+   relevant content — note that and use a low score in step 4.
 
-WHAT TO LEAVE OUT:
-- General background that any knowledgeable person already knows
-- Vague trend statements ("AI is growing rapidly")
-- Content about other topics that happens to be on the same page
+2. Identify 1-3 verbatim quotes from the page that strongly support
+   those facts. Put them in `key_excerpts`.
 
-EXAMPLE OUTPUT:
-{
-  "url": "https://example.com/article",
-  "title": "Domain name",
-  "summary": "A 200-word summary focusing on specific facts that address the research question.",
-  "key_points": [
-    "Specific finding with concrete detail",
-    "Named entity did X on Y date",
-    "Statistic or measurement from the source"
-  ],
-  "key_excerpts": [
-    "Exact quote from the page supporting a key point",
-    "Another verbatim passage with specific detail"
-  ],
-  "relevance_score": 0.85
-}"""
+3. Write a 150-200 word `summary` that synthesises what the page
+   actually provides for the question — what it says, what it doesn't,
+   and any methodological or contextual notes.
+
+4. Pick a `relevance_score` from this scale. Use the WHOLE 0-1 range;
+   0.5 is a real possible answer:
+
+     0.9-1.0  Page directly addresses the question with substantial
+              quantitative or comparative content (review or comparison
+              article on the topic; results section reporting the answer).
+     0.6-0.8  Page contains substantial relevant evidence among other
+              content (primary paper that compares the entity in question
+              against alternatives in its results section; documentation
+              that lists or describes alternatives; reference work with a
+              section devoted to the question).
+     0.3-0.5  Page contains some relevant facts mixed with unrelated
+              content. Tangential discussions, partial coverage,
+              comparison sub-sections in papers focused on something else.
+     0.0-0.2  Page is on a different subject; mentions of the topic are
+              incidental and contain no usable evidence (passing
+              references, navigation, citations only).
+
+   Rule of thumb: if you listed 3 or more relevant facts in step 1,
+   your score should be at least 0.3."""
 
 register_agent(
     AgentDefinition(
