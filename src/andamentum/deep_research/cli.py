@@ -129,9 +129,18 @@ async def _run(args: argparse.Namespace) -> None:
 
     model = _resolve_model(args)
 
+    reporter: Any = None
     if args.verbose:
-        print(f"Researching: {args.query}")
-        print(f"Model: {model}  |  Max iterations: {args.max_iterations}")
+        from rich.console import Console
+
+        from .reporter import RichReporter
+
+        console = Console()
+        console.print(
+            f"\n[bold]🔬 Researching:[/bold] {args.query}\n"
+            f"[dim]Model: {model}  |  max_iterations={args.max_iterations}[/dim]"
+        )
+        reporter = RichReporter(console)
 
     result = await run_research(
         args.query,
@@ -141,6 +150,7 @@ async def _run(args: argparse.Namespace) -> None:
         max_results=args.max_results,
         max_pages=args.max_pages,
         verbose=args.verbose,
+        reporter=reporter,
     )
 
     if args.json_output:

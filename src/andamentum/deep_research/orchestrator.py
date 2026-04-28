@@ -29,6 +29,7 @@ async def run_research(
     max_pages: int = 5,
     backend: Any = None,  # SearchBackend — typed loosely to avoid import at module level
     verbose: bool = False,
+    reporter: Any = None,  # SearchReporter — typed loosely to avoid mandatory import
 ) -> "ResearchResult":
     """Run a complete research session.
 
@@ -97,17 +98,16 @@ async def run_research(
         max_iterations=max_iterations,
     )
 
-    deps = NodeDeps(
+    deps_kwargs = dict(
         backend=backend,
         model=model_instance,
         correlation_id=correlation_id,
         max_pages_to_fetch=max_pages,
         max_results_per_search=max_results,
     )
-
-    if verbose:
-        print(f"Starting research: {query}")
-        print(f"Model: {model}, Max iterations: {max_iterations}")
+    if reporter is not None:
+        deps_kwargs["reporter"] = reporter
+    deps = NodeDeps(**deps_kwargs)
 
     try:
         # Run the graph
