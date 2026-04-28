@@ -13,9 +13,18 @@ optional structures, no fields the agent has to guess about.
 from __future__ import annotations
 
 import uuid
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# Severity → default priority bucket. Lenses don't need to set priority
+# explicitly; it is derived from severity at construction time. Reflection
+# (or any later step) may override by setting priority directly.
+_DEFAULT_PRIORITY_FROM_SEVERITY = {
+    "major": "must_fix",
+    "moderate": "should_fix",
+    "minor": "consider",
+}
 
 
 # ── Atomic types ────────────────────────────────────────────────────────
@@ -49,6 +58,24 @@ class Finding(BaseModel):
     source: Literal["deterministic", "investigate", "challenged"] = "deterministic"
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
     category: str = ""  # short clustering tag picked by the lens
+    priority: Literal["must_fix", "should_fix", "consider"] = "consider"
+    # priority is derived from severity by default (see _derive_priority);
+    # downstream nodes (reflection, challenge) may override it explicitly.
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_priority(cls, data: Any) -> Any:
+        """Fill in priority from severity when caller didn't provide one.
+
+        This runs before field validation, so we operate on the raw input
+        dict. If the caller passed priority explicitly, we leave it
+        alone; otherwise we map severity → bucket.
+        """
+        if isinstance(data, dict) and "priority" not in data and "severity" in data:
+            data["priority"] = _DEFAULT_PRIORITY_FROM_SEVERITY.get(
+                data["severity"], "consider"
+            )
+        return data
 
 
 class Edit(BaseModel):

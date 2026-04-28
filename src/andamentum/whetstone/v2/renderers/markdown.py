@@ -116,21 +116,31 @@ def _render_edits(edits: Iterable[Edit]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
-    by_sev: dict[str, list[Finding]] = defaultdict(list)
-    for f in findings:
-        by_sev[f.severity].append(f)
+_PRIORITY_HEADINGS = {
+    "must_fix": "MUST FIX",
+    "should_fix": "SHOULD FIX",
+    "consider": "CONSIDER",
+}
 
-    lines = [f"## {heading} ({sum(len(v) for v in by_sev.values())})", ""]
-    for sev in ("major", "moderate", "minor"):
-        group = by_sev.get(sev, [])
+
+def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
+    by_priority: dict[str, list[Finding]] = defaultdict(list)
+    for f in findings:
+        by_priority[f.priority].append(f)
+
+    lines = [f"## {heading} ({sum(len(v) for v in by_priority.values())})", ""]
+    for priority in ("must_fix", "should_fix", "consider"):
+        group = by_priority.get(priority, [])
         if not group:
             continue
-        lines.append(f"### {sev.title()} ({len(group)})")
+        lines.append(f"### {_PRIORITY_HEADINGS[priority]} ({len(group)})")
         lines.append("")
         for f in group:
             persona = f" · _{f.perspective}_" if f.perspective else ""
-            lines.append(f"- **{f.title}** _({f.confidence} confidence{persona})_")
+            sev_tag = f"_{f.severity}_, "
+            lines.append(
+                f"- **{f.title}** _({sev_tag}{f.confidence} confidence{persona})_"
+            )
             if f.rationale:
                 lines.append(f"  {f.rationale}")
             if f.sections_involved:

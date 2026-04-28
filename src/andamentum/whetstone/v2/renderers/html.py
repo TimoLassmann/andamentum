@@ -142,18 +142,35 @@ def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
     return out
 
 
+_PRIORITY_HEADINGS = {
+    "must_fix": "MUST FIX",
+    "should_fix": "SHOULD FIX",
+    "consider": "CONSIDER",
+}
+
+
 def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = [
         {"kind": "heading", "content": f"{heading} ({len(findings)})", "level": 2}
     ]
-    by_sev: dict[str, list[Finding]] = {"major": [], "moderate": [], "minor": []}
+    by_priority: dict[str, list[Finding]] = {
+        "must_fix": [],
+        "should_fix": [],
+        "consider": [],
+    }
     for f in findings:
-        by_sev.setdefault(f.severity, []).append(f)
-    for sev in ("major", "moderate", "minor"):
-        group = by_sev.get(sev, [])
+        by_priority.setdefault(f.priority, []).append(f)
+    for priority in ("must_fix", "should_fix", "consider"):
+        group = by_priority.get(priority, [])
         if not group:
             continue
-        out.append({"kind": "heading", "content": f"{sev.title()} ({len(group)})", "level": 3})
+        out.append(
+            {
+                "kind": "heading",
+                "content": f"{_PRIORITY_HEADINGS[priority]} ({len(group)})",
+                "level": 3,
+            }
+        )
         for f in group:
             persona = f" · _{f.perspective}_" if f.perspective else ""
             details_lines = []
@@ -167,7 +184,10 @@ def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, 
             out.append(
                 {
                     "kind": "card",
-                    "content": f"**{f.title}** _({f.confidence} confidence{persona})_",
+                    "content": (
+                        f"**{f.title}** _({f.severity}, {f.confidence} confidence"
+                        f"{persona})_"
+                    ),
                     "details": "".join(details_lines) if details_lines else None,
                 }
             )
