@@ -36,24 +36,63 @@ if TYPE_CHECKING:
 # the most informative subset.
 # ══════════════════════════════════════════════════════════════════════════════
 
-EVIDENCE_TOP_K = 5  # Maximum clusters to process per cycle
+# Maximum number of representative evidence items each LLM-touching panel
+# operation will inspect (assess_convergence's per-rep classify and pairwise
+# independence; deductive validation; computational verification; abductive
+# integration; synthesis). Bounds per-claim LLM cost where the consumer's
+# work scales with rep count. Independent of clustering: every cluster gets
+# a representative chosen, posterior weighting reads them all, this cap only
+# limits which subset is sent to those specific LLM panels.
+LLM_PANEL_CAP = 10
+
+# Backwards-compatibility alias. Older callers may import EVIDENCE_TOP_K
+# directly. Kept until external consumers (paper harness, integration runs)
+# migrate to LLM_PANEL_CAP.
+EVIDENCE_TOP_K = LLM_PANEL_CAP
+
+
+def top_n_representatives(
+    evidence: list[Evidence], n: int = LLM_PANEL_CAP
+) -> list[Evidence]:
+    """Pick the top N representatives by quality score, descending.
+
+    Centralises the cost-cap behaviour for LLM panel operations. Each
+    consumer (assess_convergence, validate_deductively, integrate_evidence,
+    etc.) calls this with its own gathered representative list to bound the
+    work it sends to the model.
+
+    None quality_scores sort lowest. source_ref is the tiebreaker to keep
+    the selection deterministic across re-runs on the same evidence base.
+    """
+    ranked = sorted(
+        evidence,
+        key=lambda e: (-(e.quality_score or 0.0), e.source_ref or ""),
+    )
+    return ranked[:n]
 
 
 async def select_top_k_evidence(
     repo: "EpistemicRepository",
     extracted: list[Evidence],
-    top_k: int = EVIDENCE_TOP_K,
+    top_k: Optional[int] = None,  # accepted for backwards compatibility; ignored
     embedding_model: Optional[str] = None,
 ) -> tuple[list[Evidence], int, int]:
-    """Select the most informative evidence subset via cluster-ranked top-K.
+    """Cluster evidence and pick representatives for every cluster.
 
-    Clusters evidence by semantic similarity (HDBSCAN), ranks clusters by
-    the best quality_score of any member, and selects the top-K clusters.
-    Within each cluster, representatives are: the medoid (most central),
-    up to 3 boundary members (most diverse), and the best-quality member.
+    HDBSCAN groups evidence by semantic similarity. Inside each cluster we
+    promote the medoid, up to 3 boundary members, and the best-quality
+    member to ``cluster_status="representative"``; the rest become
+    ``cluster_status="corroborative"``. ``corroboration_count`` on every
+    representative records its cluster size, which the posterior reads to
+    weight each cluster proportionally to how much redundant support it
+    represents.
 
-    When HDBSCAN finds no cluster structure (all singletons), this
-    naturally degrades to top-K-by-quality selection.
+    No cap on the number of clusters: every cluster contributes
+    representatives. Cost-bounded LLM panel operations (convergence
+    classification, pairwise independence, deductive validation,
+    computational verification, integration, synthesis) apply
+    ``LLM_PANEL_CAP`` themselves, sorted by quality, so cost stays comparable
+    to the previous top-K behaviour.
 
     Called from two places:
     - ProposeClaimsOperation: clusters initial evidence before claim proposal
@@ -63,22 +102,23 @@ async def select_top_k_evidence(
     Args:
         repo: Repository for saving updated evidence entities
         extracted: All extracted, non-invalidated evidence to select from
-        top_k: Maximum number of clusters to process
+        top_k: Accepted for backwards compatibility but ignored. The cap was
+            removed to stop discarding completed work; consumers cap LLM use.
+        embedding_model: Embedding model id for HDBSCAN.
 
     Returns:
         3-tuple of (representatives, total_clusters, deferred_count).
-        ``total_clusters`` is the total number of semantic clusters found.
-        ``deferred_count`` is how many clusters were not processed due to the
-        top_k cap — visible so callers can surface this to users.
+        ``deferred_count`` is always 0 — kept in the signature so existing
+        callers don't break. Every cluster now produces representatives.
     """
+    del top_k  # accepted for backwards compatibility; clustering is no longer capped
     import logging as _logging
 
     _sel_log = _logging.getLogger(__name__ + ".select_evidence")
 
     _sel_log.warning(
-        "[select_top_k_evidence] Called with %d evidence items, top_k=%d",
+        "[select_top_k_evidence] Called with %d evidence items",
         len(extracted),
-        top_k,
     )
 
     if len(extracted) < 2:
@@ -115,28 +155,9 @@ async def select_top_k_evidence(
         if best_quality_idx not in cluster.representative_indices:
             cluster.representative_indices.append(best_quality_idx)
 
-    # Step 3: Rank clusters by best member quality (descending)
-    clusters.sort(
-        key=lambda c: max(
-            (extracted[i].quality_score or 0.0) for i in c.member_indices
-        ),
-        reverse=True,
-    )
-
-    # Step 4: Select top-K clusters
-    k = min(top_k, len(clusters))
-    selected_clusters = clusters[:k]
-    deferred_clusters = clusters[k:]
-
-    _sel_log.warning(
-        "[select_top_k_evidence] Selected %d clusters (top-K=%d), deferred %d clusters",
-        len(selected_clusters),
-        k,
-        len(deferred_clusters),
-    )
-
-    # Step 5: Mark evidence entities
-    for cluster in selected_clusters:
+    # Step 3: Mark evidence entities. Every cluster contributes representatives;
+    # there is no top-K filter here.
+    for cluster in clusters:
         cluster_id = _uuid.uuid4().hex[:12]
         rep_set = set(cluster.representative_indices)
 
@@ -157,26 +178,17 @@ async def select_top_k_evidence(
 
             await repo.save(ev)
 
-    for cluster in deferred_clusters:
-        cluster_id = _uuid.uuid4().hex[:12]
-        for idx in cluster.member_indices:
-            ev = extracted[idx]
-            ev.cluster_status = "deferred"
-            ev.cluster_id = cluster_id
-            await repo.save(ev)
-
-    # Step 6: Return only representatives
     representatives = [e for e in extracted if e.cluster_status == "representative"]
     total_clusters = len(clusters)
-    deferred_count = len(deferred_clusters)
     _sel_log.warning(
-        "[select_top_k_evidence] Result: %d representatives, %d corroborative, %d deferred (from %d total)",
+        "[select_top_k_evidence] Result: %d representatives, %d corroborative (from %d total, %d clusters)",
         len(representatives),
         sum(1 for e in extracted if e.cluster_status == "corroborative"),
-        sum(1 for e in extracted if e.cluster_status == "deferred"),
         len(extracted),
+        total_clusters,
     )
-    return representatives, total_clusters, deferred_count
+    # deferred_count returned as 0 for backwards-compat; the concept is retired.
+    return representatives, total_clusters, 0
 
 
 class ProposeClaimsOperation(BaseOperation):

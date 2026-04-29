@@ -408,8 +408,10 @@ class TestPosteriorReportStructure:
         assert report.question_type == "verificatory"
         assert 0.0 <= report.posterior <= 1.0
         assert isinstance(report.log_odds, int)
-        assert isinstance(report.supporting_count, int)
-        assert isinstance(report.contradicting_count, int)
+        # supporting_count and contradicting_count are weighted (1 + log(cluster_size))
+        # so they are floats, not ints.
+        assert isinstance(report.supporting_count, float)
+        assert isinstance(report.contradicting_count, float)
         assert isinstance(report.explanation, str)
         assert len(report.explanation) > 0
 

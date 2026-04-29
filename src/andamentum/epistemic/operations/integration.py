@@ -42,15 +42,26 @@ class AbductiveIntegrationOperation(BaseOperation):
                 message="Integration skipped (no agent runner)",
             )
 
-        # Build structured brief from investigation results
-        supports_items: list[str] = []
-        contradicts_items: list[str] = []
-        no_bearing_items: list[str] = []
+        from .claims import LLM_PANEL_CAP, top_n_representatives
 
+        # Build structured brief from investigation results. Filter to
+        # representatives only (clustering already collapsed redundant
+        # sources into corroborative groups) and cap at LLM_PANEL_CAP
+        # highest-quality reps so the integration prompt stays bounded
+        # regardless of how many clusters the evidence base produced.
+        candidates: list[Evidence] = []
         for eid in claim.evidence_ids:
             ev = await self.repo.get("evidence", eid)
             if not isinstance(ev, Evidence) or ev.invalidated:
                 continue
+            if ev.cluster_status in ("corroborative", "deferred"):
+                continue
+            candidates.append(ev)
+
+        supports_items: list[str] = []
+        contradicts_items: list[str] = []
+        no_bearing_items: list[str] = []
+        for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
             content = ev.extracted_content or ""
             summary = f"[{ev.source_type}] {content}"
             if ev.support_judgment == "supports":

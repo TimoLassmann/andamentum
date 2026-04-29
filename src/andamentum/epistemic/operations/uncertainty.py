@@ -31,6 +31,7 @@ class ResolveUncertaintyOperation(BaseOperation):
                 success=False,
                 entity_id=work.entity_id,
                 message="Entity is not Uncertainty",
+                did_work=False,
             )
 
         if uncertainty.resolution is not None:
@@ -38,6 +39,7 @@ class ResolveUncertaintyOperation(BaseOperation):
                 success=True,
                 entity_id=work.entity_id,
                 message="Already resolved",
+                did_work=False,
             )
 
         # ── Sibling grouping: find similar unresolved uncertainties ────

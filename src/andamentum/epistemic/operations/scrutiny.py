@@ -8,8 +8,10 @@ Depends on: base (BaseOperation, OperationResult), claims (select_top_k_evidence
 Operates on: Claim, Evidence, Uncertainty, Objective entities
 """
 
+import hashlib
+
 from .base import BaseOperation, OperationInput, OperationResult
-from .claims import select_top_k_evidence
+from .claims import LLM_PANEL_CAP, select_top_k_evidence, top_n_representatives
 
 from ..entities import (
     Claim,
@@ -33,23 +35,58 @@ class ScrutiniseClaimOperation(BaseOperation):
 
     entity_type = "claim"
 
-    async def _gather_evidence_summaries(self, claim: Claim) -> list[str]:
-        """Gather formatted evidence summaries for agent input."""
-        evidence_summaries: list[str] = []
+    async def _compute_input_fingerprint(self, claim: Claim) -> str:
+        """SHA-256 of the claim+evidence inputs that scrutiny depends on.
+
+        Hashes the claim statement, scope, and the sorted set of evidence_ids
+        that are extracted and not invalidated. cluster_status is intentionally
+        excluded: it's an internal optimization for which subset gets sent to
+        the LLM, not an independent input — the same evidence_id set will
+        produce the same scrutiny outcome regardless of how clustering chooses
+        representatives.
+        """
+        eligible_ids: list[str] = []
         for eid in claim.evidence_ids:
             ev = await self.repo.get("evidence", eid)
-            if isinstance(ev, Evidence) and ev.extracted_content:
-                if ev.invalidated:
-                    continue
-                # Skip corroborative/deferred evidence — only representatives carry to scrutiny
-                if ev.cluster_status in ("corroborative", "deferred"):
-                    continue
-                quality_str = (
-                    f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
-                )
-                evidence_summaries.append(
-                    f"[{ev.source_type}{quality_str}] {ev.source_ref}\n{ev.extracted_content}"
-                )
+            if not isinstance(ev, Evidence):
+                continue
+            if not ev.extracted_content:
+                continue
+            if ev.invalidated:
+                continue
+            eligible_ids.append(eid)
+        eligible_ids.sort()
+
+        parts = [claim.statement, claim.scope or "", *eligible_ids]
+        blob = "\n".join(parts).encode("utf-8")
+        return hashlib.sha256(blob).hexdigest()
+
+    async def _gather_evidence_summaries(self, claim: Claim) -> list[str]:
+        """Gather formatted evidence summaries for agent input.
+
+        Caps the returned list at LLM_PANEL_CAP highest-quality
+        representatives so the assess_evidence and contradiction prompts
+        stay bounded as the underlying evidence base grows.
+        """
+        candidates: list[Evidence] = []
+        for eid in claim.evidence_ids:
+            ev = await self.repo.get("evidence", eid)
+            if not isinstance(ev, Evidence) or not ev.extracted_content:
+                continue
+            if ev.invalidated:
+                continue
+            if ev.cluster_status in ("corroborative", "deferred"):
+                continue
+            candidates.append(ev)
+
+        evidence_summaries: list[str] = []
+        for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+            quality_str = (
+                f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
+            )
+            evidence_summaries.append(
+                f"[{ev.source_type}{quality_str}] {ev.source_ref}\n{ev.extracted_content}"
+            )
         return evidence_summaries
 
     # Blocking types that remain blocking even when scrutiny passes.
@@ -246,13 +283,34 @@ class ScrutiniseClaimOperation(BaseOperation):
                 success=False,
                 entity_id=work.entity_id,
                 message="Entity is not Claim",
+                did_work=False,
             )
+
+        # Idempotence: if the inputs that drive scrutiny are unchanged since
+        # the last successful pass, the outcome would be identical. Returning
+        # early here prevents the operation from minting fresh Uncertainty
+        # entities for the same issues every time the graph re-enters the
+        # scrutinise → resolve cycle. The Scrutinize graph node clears the
+        # fingerprint when it intentionally wants to force a fresh pass.
+        if claim.scrutiny_verdict is not None and claim.scrutiny_fingerprint:
+            current_fp = await self._compute_input_fingerprint(claim)
+            if current_fp == claim.scrutiny_fingerprint:
+                return OperationResult(
+                    success=True,
+                    entity_id=work.entity_id,
+                    message=(
+                        f"[{claim.statement[:60]}] verdict: "
+                        f"{claim.scrutiny_verdict} (inputs unchanged, no-op)"
+                    ),
+                    did_work=False,
+                )
 
         if claim.scrutiny_verdict is not None:
             return OperationResult(
                 success=True,
                 entity_id=work.entity_id,
                 message="Already scrutinized",
+                did_work=False,
             )
 
         _deferred = 0  # track deferred cluster count for visibility
@@ -283,6 +341,9 @@ class ScrutiniseClaimOperation(BaseOperation):
             # No agent runner - pass by default
             claim.scrutiny_verdict = "pass"
 
+        # Stamp the fingerprint of the inputs we just scrutinised so a
+        # subsequent call with identical inputs short-circuits.
+        claim.scrutiny_fingerprint = await self._compute_input_fingerprint(claim)
         await self.repo.save(claim)
 
         deferred_note = (

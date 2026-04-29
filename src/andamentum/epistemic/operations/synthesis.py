@@ -210,8 +210,12 @@ class SynthesizeReportOperation(BaseOperation):
         claims.sort(key=lambda c: -STAGE_HIERARCHY.get(c.stage, -1))
 
         # Load evidence (snapshot excludes corroborative/deferred at creation, but filter
-        # defensively for both and for evidence invalidated after the snapshot was frozen)
-        evidence: list[Evidence] = []
+        # defensively for both and for evidence invalidated after the snapshot was frozen).
+        # Cap at LLM_PANEL_CAP highest-quality reps so the synthesis prompt
+        # stays bounded as the underlying evidence base grows.
+        from .claims import LLM_PANEL_CAP, top_n_representatives
+
+        snapshot_evidence: list[Evidence] = []
         for eid in snapshot.evidence_ids:
             e = await self.repo.get("evidence", eid)
             if (
@@ -220,7 +224,10 @@ class SynthesizeReportOperation(BaseOperation):
                 and getattr(e, "cluster_status", "unclustered")
                 not in ("corroborative", "deferred")
             ):
-                evidence.append(e)
+                snapshot_evidence.append(e)
+        evidence: list[Evidence] = top_n_representatives(
+            snapshot_evidence, LLM_PANEL_CAP
+        )
 
         # Load uncertainties
         uncertainties: list[Uncertainty] = []

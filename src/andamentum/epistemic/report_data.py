@@ -103,8 +103,8 @@ class ConfidenceScores:
     """Answer-level confidence scores for report rendering."""
 
     posterior: Optional[float] = None
-    posterior_supporting: int = 0
-    posterior_contradicting: int = 0
+    posterior_supporting: float = 0.0
+    posterior_contradicting: float = 0.0
     posterior_question_type: Optional[str] = None
     terminal_state: str = "completed"
 

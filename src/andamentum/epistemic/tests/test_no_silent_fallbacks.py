@@ -598,21 +598,22 @@ async def test_score_evidence_raises_when_no_scorer_available(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_select_top_k_evidence_returns_deferred_count(monkeypatch, tmp_path):
-    """When more clusters exist than EVIDENCE_TOP_K, select_top_k_evidence must
-    return (representatives, total_clusters, deferred_count) — not silently drop
-    the overflow. The deferred_count must be > 0."""
+async def test_select_top_k_evidence_promotes_every_cluster(monkeypatch, tmp_path):
+    """select_top_k_evidence must produce a representative for every cluster.
+
+    The old top-K cap discarded clusters past position K (tagging them
+    deferred), which meant most of the gathered evidence never reached the
+    posterior. After A4, clustering's job is to enforce independence in the
+    count, not to discard work. deferred_count is always 0; LLM cost
+    bounding lives in the consumers (LLM_PANEL_CAP).
+    """
     from andamentum.document_store import DocumentStore
     from andamentum.epistemic.dedup import EvidenceCluster
     from andamentum.epistemic.entities import Evidence
-    from andamentum.epistemic.operations.claims import (
-        EVIDENCE_TOP_K,
-        select_top_k_evidence,
-    )
+    from andamentum.epistemic.operations.claims import select_top_k_evidence
     from andamentum.epistemic.repository import EpistemicRepository
 
-    # Build 8 fake evidence items (more than EVIDENCE_TOP_K=5)
-    store = DocumentStore.for_database("test_deferred", db_dir=tmp_path)
+    store = DocumentStore.for_database("test_no_defer", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
@@ -629,7 +630,6 @@ async def test_select_top_k_evidence_returns_deferred_count(monkeypatch, tmp_pat
         await repo.save(ev)
         evidences.append(ev)
 
-    # Stub deduplicate_evidence to return 8 singleton clusters
     async def _stub_dedup(texts, min_cluster_size=2, *, embedding_model):
         return [
             EvidenceCluster(
@@ -648,23 +648,26 @@ async def test_select_top_k_evidence_returns_deferred_count(monkeypatch, tmp_pat
     representatives, total_clusters, deferred_count = await select_top_k_evidence(
         repo,
         evidences,
-        top_k=EVIDENCE_TOP_K,
         embedding_model="stub-model",
     )
 
     assert total_clusters == 8, f"Expected 8 total clusters, got {total_clusters}"
-    assert deferred_count == 8 - EVIDENCE_TOP_K, (
-        f"Expected {8 - EVIDENCE_TOP_K} deferred clusters, got {deferred_count}"
+    assert deferred_count == 0, (
+        f"Expected 0 deferred clusters (cap retired), got {deferred_count}"
     )
-    assert len(representatives) == EVIDENCE_TOP_K, (
-        f"Expected {EVIDENCE_TOP_K} representatives, got {len(representatives)}"
+    assert len(representatives) == 8, (
+        f"Expected one representative per cluster (8), got {len(representatives)}"
     )
 
 
 @pytest.mark.asyncio
-async def test_propose_claims_surfaces_deferred_cluster_count(monkeypatch, tmp_path):
-    """When more than EVIDENCE_TOP_K clusters exist, the deferred count must
-    appear in the OperationResult.message — not silently dropped."""
+async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
+    """ProposeClaimsOperation must report how many clusters it processed.
+
+    The old contract reported a "deferred" count for clusters past the
+    top-K cap. The cap is retired (every cluster now contributes
+    representatives) so the message reports total clusters processed.
+    """
     from andamentum.document_store import DocumentStore
     from andamentum.epistemic.dedup import EvidenceCluster
     from andamentum.epistemic.entities import Evidence, Objective
@@ -755,6 +758,9 @@ async def test_propose_claims_surfaces_deferred_cluster_count(monkeypatch, tmp_p
     )
 
     assert result.success is True, f"Expected success, got: {result.message}"
-    assert "deferred" in result.message, (
-        f"Expected 'deferred' in result.message. Got:\n{result.message}"
+    assert "8 of 8 evidence clusters selected" in result.message, (
+        f"Expected message to surface cluster count. Got:\n{result.message}"
+    )
+    assert "deferred" not in result.message, (
+        f"deferred clusters should be retired. Got:\n{result.message}"
     )

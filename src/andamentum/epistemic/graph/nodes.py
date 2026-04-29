@@ -406,9 +406,13 @@ class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
                 or claim.entity_id in state.claims_needing_rescrutiny
             )
             if needs_scrutiny:
-                # Reset verdict for re-scrutiny so the operation runs
+                # Reset verdict for re-scrutiny so the operation runs.
+                # Clearing scrutiny_fingerprint alongside the verdict tells
+                # the operation that this is an intentional re-pass, not a
+                # spontaneous re-entry on unchanged inputs.
                 if claim.entity_id in state.claims_needing_rescrutiny:
                     claim.scrutiny_verdict = None
+                    claim.scrutiny_fingerprint = None
                     await deps.repo.save(claim)
                     state.claims_needing_rescrutiny.discard(claim.entity_id)
                 await _run_op(
@@ -608,6 +612,7 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
         from ..operations.stage_management import (
             DemoteClaimOperation,
             PromoteAsRefutedOperation,
+            SoftPromoteOperation,
         )
         from ..entities.claim import ClaimStage
 
@@ -643,7 +648,26 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
                         state.verification_done.add(claim.entity_id)
                         continue
 
-                    # Fall through: truly stale, abandon as before.
+                    # Refute declined. If the linked evidence still carries
+                    # directional judgments, soft-promote: SUPPORTED with
+                    # integrated_assessment="insufficient" preserves the
+                    # counts in the posterior instead of erasing them
+                    # via abandonment.
+                    soft_result = await _run_op(
+                        SoftPromoteOperation,
+                        deps,
+                        state,
+                        claim.entity_id,
+                        "claim",
+                        "soft_promote",
+                    )
+                    if soft_result.success:
+                        state.verification_done.add(claim.entity_id)
+                        continue
+
+                    # Fall through: no directional signal at all, abandon
+                    # as before. Posterior stays at 0.5 because there is
+                    # genuinely nothing to say.
                     await _run_op(
                         AbandonStaleClaimOperation,
                         deps,
@@ -796,7 +820,7 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> "ResolveUncertainties":
+    ) -> Union["ResolveUncertainties", "IntegrateEvidence"]:
         from ..operations.verification import (
             AdversarialSearchOperation,
             AssessConvergenceOperation,
@@ -901,6 +925,30 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
         # revalidation.
         await _run_tms_sweep(deps, state)
 
+        # Convergence-driven termination: if the convergence track returned
+        # CONVERGENT for any active SUPPORTED claim AND no blocking
+        # uncertainties remain, the evidence base has stabilised and there
+        # is no resolution work left to do. Skip ResolveUncertainties and
+        # go straight to integration. Without this edge the verdict is
+        # informational only and the graph keeps cycling through resolve
+        # even when convergence has already fired.
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+        any_converged = any(
+            not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.convergence_verdict == "CONVERGENT"
+            for c in all_claims
+        )
+        if any_converged:
+            unresolved = await deps.repo.query(
+                "uncertainty",
+                objective_id=state.objective_id,
+                resolution=None,
+            )
+            blocking_remaining = any(u.is_blocking for u in unresolved)
+            if not blocking_remaining:
+                return IntegrateEvidence()
+
         return ResolveUncertainties()
 
 
@@ -955,8 +1003,14 @@ class ResolveUncertainties(
                 "uncertainty",
                 "resolve_uncertainty",
             )
-            # Graph flow control: mark affected claims for re-scrutiny
-            if result.success:
+            # Mark affected claims for re-scrutiny only when this call did
+            # real work. Sibling-grouping inside ResolveUncertaintyOperation
+            # can resolve N near-duplicate uncertainties in one LLM call; the
+            # remaining entries in the `blocking` list then short-circuit
+            # with did_work=False. Treating those as fresh state changes
+            # would keep bouncing the graph back to Scrutinize on every
+            # resolve loop.
+            if result.success and result.did_work:
                 unc_updated = await deps.repo.get("uncertainty", unc.entity_id)
                 if unc_updated.is_blocking and unc_updated.resolution is not None:
                     for cid in unc_updated.affected_claim_ids:

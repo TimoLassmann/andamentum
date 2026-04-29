@@ -234,10 +234,12 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         assert claim.entity_id in state.verification_done
         assert claim.entity_id not in state.terminal_claims
 
-    async def test_nonrefuted_hypothesis_is_still_abandoned(
+    async def test_no_directional_evidence_is_still_abandoned(
         self, tmp_path: Path
     ) -> None:
-        claim, repo = await _setup_claim_with_evidence(tmp_path, 3, 2)
+        # 0/0 evidence: refute declines AND soft-promote declines (no
+        # directional signal at all). Abandonment is the correct terminal.
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 0, 0)
         claim.scrutiny_verdict = "needs_resolution"
         await repo.save(claim)
 
@@ -253,6 +255,33 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         assert reloaded.abandoned is True
         assert claim.entity_id in state.terminal_claims
         assert claim.entity_id not in state.verification_done
+
+    async def test_directional_evidence_below_refute_threshold_is_soft_promoted(
+        self, tmp_path: Path
+    ) -> None:
+        # 3/2: refute threshold is n_con >= 2*max(1, n_sup) → 2 < 6, declines.
+        # Directional signal exists (3+2 > 0), so soft-promote takes over
+        # instead of abandonment, preserving the counts for the posterior.
+        claim, repo = await _setup_claim_with_evidence(tmp_path, 3, 2)
+        claim.scrutiny_verdict = "needs_resolution"
+        await repo.save(claim)
+
+        state = EpistemicGraphState(objective_id=claim.objective_id)
+        state.investigation_counts[claim.entity_id] = 3
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+        node = AbandonOrDemote()
+        ctx = _FakeRunContext(state, deps)
+        await node.run(ctx)  # type: ignore[arg-type]
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.abandoned is False
+        assert reloaded.stage == ClaimStage.SUPPORTED
+        assert reloaded.integrated_assessment == "insufficient"
+        assert reloaded.integrated_confidence is not None
+        assert reloaded.integrated_confidence <= 0.5
+        assert claim.entity_id in state.verification_done
+        assert claim.entity_id not in state.terminal_claims
 
 
 class TestPosteriorIncludesRefuted:
