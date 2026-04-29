@@ -252,8 +252,20 @@ class SoftPromoteOperation(BaseOperation):
     The middle path between PromoteAsRefutedOperation (strong contradicting
     evidence) and AbandonStaleClaimOperation (no signal at all). Used when
     refute-promotion declined but the linked evidence still carries
-    directional judgments — preserves those counts in the posterior instead
-    of erasing them via abandonment.
+    directional judgments — promotes the claim to SUPPORTED so it can
+    receive the same abductive deliberation (the IBE chain) as any other
+    SUPPORTED claim, instead of being erased via abandonment.
+
+    The verdict is NOT pre-set here. SoftPromote is a routing decision
+    ("let this claim through the gate"), not an integration verdict.
+    Earlier versions of this operation did pre-set
+    integrated_assessment="insufficient" — that was a sensible
+    optimization when integration was a single rubber-stamp LLM call,
+    but it became wrong after the IBE 4-stage refactor (commit
+    3affc1f), where the integration step produces qualitatively richer
+    output than a hard-coded label. Setting integrated_assessment here
+    short-circuits the IBE chain (whose entry condition is
+    integrated_assessment is None) and discards real reasoning.
 
     Returns success=False when n_supports + n_contradicts == 0 so the graph
     falls through to abandon, which is the honest terminal when there is
@@ -290,13 +302,6 @@ class SoftPromoteOperation(BaseOperation):
                 did_work=False,
             )
 
-        # Low confidence by design: the integration LLM did not run, we are
-        # only preserving the counting-mode signal. Cap at 0.5 so the value
-        # cannot be mistaken for a confident integrated verdict. The +1
-        # smoothing keeps tiny-N cases (e.g. 1/0) below the cap.
-        majority = max(n_sup, n_con)
-        confidence = min(0.5, majority / (n_sup + n_con + 1))
-
         claim.promotion_history.append(
             {
                 "from": claim.stage.value,
@@ -305,29 +310,29 @@ class SoftPromoteOperation(BaseOperation):
                 "justification": (
                     f"Soft-promoted: refute threshold not met "
                     f"({n_con} contradicts vs {n_sup} supports). "
-                    f"Counting signal preserved."
+                    f"Promoted to SUPPORTED so the IBE chain can produce a "
+                    f"calibrated verdict on the directional evidence."
                 ),
             }
         )
         claim.stage = ClaimStage.SUPPORTED
-        claim.integrated_assessment = "insufficient"
-        claim.integrated_confidence = confidence
-        claim.integrated_reasoning = (
-            f"Soft-promoted: refute threshold not met "
-            f"({n_con} contradicts vs {n_sup} supports). "
-            f"Integration LLM skipped; counting signal preserved for the posterior."
-        )
-        claim.confidence_score = confidence
+        # integrated_assessment / integrated_confidence / integrated_reasoning
+        # are deliberately left as None. The IBE chain (EnumerateCandidates
+        # → ScoreLoveliness → ScoreLikeliness → SelectBestExplanation) will
+        # populate them based on the actual evidence pattern.
         await self.repo.save(claim)
 
         await self.log_event(
             "claim_soft_promoted",
             claim.entity_id,
-            {"n_supports": n_sup, "n_contradicts": n_con, "confidence": confidence},
+            {"n_supports": n_sup, "n_contradicts": n_con},
         )
 
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"[{claim.statement[:60]}] → supported (insufficient: {n_sup}✓ / {n_con}⊥)",
+            message=(
+                f"[{claim.statement[:60]}] → supported "
+                f"(soft-promote, deferring verdict to IBE: {n_sup}✓ / {n_con}⊥)"
+            ),
         )
