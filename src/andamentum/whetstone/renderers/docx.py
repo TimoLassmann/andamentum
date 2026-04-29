@@ -42,7 +42,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..schemas import Edit, Finding, PanelSynthesis, ReviewResult
+from ..schemas import Edit, Finding, ReviewResult
+from ._panel_layout import body_markdown
 
 
 def render_docx(
@@ -90,13 +91,12 @@ def render_docx(
 
     review_summary = result.summary or _fallback_summary(result)
     if result.panel_synthesis is not None:
-        # Prepend the panel synthesis prose to whatever ``Synthesise``
-        # produced. Both can be present in panel mode if the standard
-        # synthesis path also ran; concatenating keeps the panel
-        # narrative front-and-centre at the top of the report.
-        review_summary = (
-            _format_panel_synthesis(result.panel_synthesis)
-            + ("\n\n" + review_summary if review_summary.strip() else "")
+        # Panel mode: the synthesis is the authoritative summary. ``result.summary``
+        # is intentionally empty (see panel_synthesise.py); render the synthesis
+        # body (no ``## Panel synthesis`` heading — content goes inside the
+        # ``## Executive Summary`` already added by _build_report_header).
+        review_summary = body_markdown(
+            result.panel_synthesis, list(result.expert_reviews)
         )
 
     novelty_findings_text = _collect_novelty_findings(result)
@@ -188,65 +188,6 @@ def _fallback_summary(result: ReviewResult) -> str:
     if not (result.summary or "").strip():
         parts.append("Run with model= for synthesis prose.")
     return " ".join(parts)
-
-
-def _format_panel_synthesis(s: PanelSynthesis) -> str:
-    """Render PanelSynthesis as a markdown block for the prepended report.
-
-    The structure is designed for the markdown→Word parser in
-    ``whetstone.docx.low_level.prepend_review_section``:
-
-      • ``## Panel Synthesis``      → Heading 2 in Word
-      • ``> Recommendation: ...``   → Quote-styled callout (left bar)
-      • ``### Subsection``          → Heading 3
-      • ``- item``                  → real Word bullet list
-
-    The recommendation gets its own quote block so it's the first
-    visually-prominent thing the reader sees.
-    """
-    lines = [
-        "## Panel Synthesis",
-        "",
-        # Quote-styled callout: Word renders this with a left bar +
-        # italic, giving the headline recommendation visual weight.
-        f"> **Recommendation: {s.overall_recommendation}** "
-        f"(confidence: {s.confidence_level}) — average score "
-        f"**{s.average_overall_score:.1f}/10** "
-        f"(range: {s.score_range}, n={s.number_of_experts})",
-        "",
-        s.recommendation_justification,
-        "",
-    ]
-    if (s.review_summary or "").strip():
-        lines += ["### Review summary", "", s.review_summary.strip(), ""]
-    if s.consensus_strengths:
-        lines += ["### Consensus strengths", ""]
-        lines += [f"- {item}" for item in s.consensus_strengths]
-        lines += [""]
-    if s.consensus_weaknesses:
-        lines += ["### Consensus weaknesses", ""]
-        lines += [f"- {item}" for item in s.consensus_weaknesses]
-        lines += [""]
-    if s.divergent_opinions:
-        lines += ["### Divergent opinions", ""]
-        lines += [f"- {item}" for item in s.divergent_opinions]
-        lines += [""]
-    by_criterion = [
-        ("Scientific rigor", s.scientific_rigor_summary),
-        ("Methodology", s.methodology_summary),
-        ("Novelty", s.novelty_summary),
-        ("Clarity", s.clarity_summary),
-    ]
-    if any((body or "").strip() for _, body in by_criterion):
-        lines += ["### By criterion", ""]
-        for label, body in by_criterion:
-            if (body or "").strip():
-                lines += [f"**{label}:** {body.strip()}", ""]
-    if s.key_decision_factors:
-        lines += ["### Key decision factors", ""]
-        lines += [f"- {item}" for item in s.key_decision_factors]
-        lines += [""]
-    return "\n".join(lines)
 
 
 def _collect_novelty_findings(result: ReviewResult) -> str:

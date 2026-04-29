@@ -327,17 +327,17 @@ def test_docx_panel_synthesis_in_review_summary():
         )
 
     summary = captured.get("review_summary", "")
-    assert "Panel Synthesis" in summary
-    assert "Minor Revisions" in summary
-    # The recommendation + score are now packed into one Quote-styled
-    # callout line: "> **Recommendation: ...** ... — average score **N/10**"
+    # Synthesis content slots into ``## Executive Summary`` upstream, so the
+    # body itself opens with the headline line — no nested ``## Panel Synthesis``.
+    assert "Panel Synthesis" not in summary
+    assert "Recommendation: Minor Revisions" in summary
     assert "average score" in summary.lower()
     assert "8.0/10" in summary
+    # Reviewer scores section appears with per-criterion bullet rows.
+    assert "Reviewer scores" in summary
+    assert "Dr. Jane Doe 8" in summary
     assert "Consensus strengths" in summary
     assert "clear writing" in summary
-    # The recommendation block is a Word `Quote` style — markdown form is
-    # a leading "> " on the line.
-    assert "> **Recommendation:" in summary
 
 
 def test_docx_panel_passes_expert_payload_through():

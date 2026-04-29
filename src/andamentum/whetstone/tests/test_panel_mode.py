@@ -483,7 +483,9 @@ class TestPanelSynthesiseNode:
 
         assert state.panel_synthesis is not None
         assert state.panel_synthesis.number_of_experts == 3
-        assert state.summary  # flattened summary string populated
+        # ``summary`` stays empty when panel_synthesis is set; renderers
+        # format the synthesis directly to avoid duplicate output.
+        assert state.summary == ""
         assert state.llm_calls == 1
         # Returns End[ReviewResult]
         out: ReviewResult = end_marker.data
@@ -612,8 +614,9 @@ async def test_e2e_panel_mode(panel_canned: dict[str, Any]) -> None:
     assert result.findings == []
     assert result.edits == []
 
-    # Summary contains the panel recommendation.
-    assert "Minor Revisions" in result.summary
+    # ``summary`` is empty in panel mode; recommendation lives in panel_synthesis.
+    assert result.summary == ""
+    assert result.panel_synthesis.overall_recommendation == "Minor Revisions"
 
     # LLM call count = 1 (extract) + 3 (generate) + 3 (review) + 1 (synth) = 8.
     assert result.metrics.llm_calls == 8
@@ -659,7 +662,7 @@ async def test_e2e_panel_mode_with_explicit_disciplines(
 
 def _panel_result() -> ReviewResult:
     return ReviewResult(
-        summary="## Panel Recommendation\n\n**Minor Revisions** (confidence: medium)",
+        summary="",
         expert_profiles=[
             _profile("Dr Alice", "Robotics"),
             _profile("Dr Bob", "Statistics"),

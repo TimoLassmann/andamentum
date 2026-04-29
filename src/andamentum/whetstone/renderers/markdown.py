@@ -34,6 +34,7 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
+from ._panel_layout import body_markdown
 
 _TITLE = "# Whetstone Review"
 
@@ -56,7 +57,9 @@ def render_markdown(
 
     # ── Panel-mode sections (priority order) ─────────────────────────
     if result.panel_synthesis is not None:
-        sections.append(_render_panel_synthesis(result.panel_synthesis))
+        sections.append(
+            _render_panel_synthesis(result.panel_synthesis, result.expert_reviews)
+        )
 
     if result.expert_reviews:
         sections.append(_render_expert_reviews(result.expert_reviews))
@@ -183,45 +186,11 @@ def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-def _render_panel_synthesis(s: PanelSynthesis) -> str:
-    """Top-of-report panel synthesis."""
-    lines = [
-        "## Panel synthesis",
-        "",
-        f"**Recommendation: {s.overall_recommendation}** "
-        f"(confidence: {s.confidence_level})",
-        "",
-        f"Average score: **{s.average_overall_score:.1f}/10** "
-        f"(range: {s.score_range}, n={s.number_of_experts})",
-        "",
-        s.recommendation_justification,
-    ]
-    if s.review_summary.strip():
-        lines += ["", "### Review summary", "", s.review_summary.strip()]
-    if s.consensus_strengths:
-        lines += ["", "### Consensus strengths", ""]
-        lines += [f"- {item}" for item in s.consensus_strengths]
-    if s.consensus_weaknesses:
-        lines += ["", "### Consensus weaknesses", ""]
-        lines += [f"- {item}" for item in s.consensus_weaknesses]
-    if s.divergent_opinions:
-        lines += ["", "### Divergent opinions", ""]
-        lines += [f"- {item}" for item in s.divergent_opinions]
-    by_criterion = [
-        ("Scientific rigor", s.scientific_rigor_summary),
-        ("Methodology", s.methodology_summary),
-        ("Novelty", s.novelty_summary),
-        ("Clarity", s.clarity_summary),
-    ]
-    if any(body.strip() for _, body in by_criterion):
-        lines += ["", "### By criterion", ""]
-        for label, body in by_criterion:
-            if body.strip():
-                lines += [f"**{label}.** {body.strip()}", ""]
-    if s.key_decision_factors:
-        lines += ["### Key decision factors", ""]
-        lines += [f"- {item}" for item in s.key_decision_factors]
-    return "\n".join(lines).rstrip()
+def _render_panel_synthesis(
+    s: PanelSynthesis, reviews: list[ExpertReview]
+) -> str:
+    """Top-of-report panel synthesis with score table + consensus/divergence."""
+    return "## Panel synthesis\n\n" + body_markdown(s, reviews)
 
 
 def _render_expert_reviews(reviews: Iterable[ExpertReview]) -> str:

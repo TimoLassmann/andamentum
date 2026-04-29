@@ -25,6 +25,12 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
+from ._panel_layout import (
+    criterion_summary,
+    diverged_criteria,
+    headline_line,
+    reviewer_scores,
+)
 
 _TITLE = "Whetstone Review"
 _SUBTITLE = "Structured feedback on a draft"
@@ -61,7 +67,9 @@ def render_html(
 
     # ── Panel-mode atoms (priority order) ───────────────────────────
     if result.panel_synthesis is not None:
-        atoms.extend(_panel_synthesis_atoms(result.panel_synthesis))
+        atoms.extend(
+            _panel_synthesis_atoms(result.panel_synthesis, result.expert_reviews)
+        )
 
     if result.expert_reviews:
         atoms.extend(_expert_reviews_atoms(result.expert_reviews))
@@ -219,26 +227,36 @@ def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, 
     return out
 
 
-def _panel_synthesis_atoms(s: PanelSynthesis) -> list[dict[str, Any]]:
-    """Headline + recommendation card + per-criterion items."""
+def _panel_synthesis_atoms(
+    s: PanelSynthesis, reviews: list[ExpertReview]
+) -> list[dict[str, Any]]:
+    """BLUF: recommendation + score table + consensus/divergence + factors.
+
+    Layout follows the shared markdown body but emits typeset atoms so
+    HTML output retains visual hierarchy (callout for headline, items for
+    bullets, prose for the long-form synthesis).
+    """
     out: list[dict[str, Any]] = [
         {"kind": "heading", "content": "Panel synthesis", "level": 2},
-        {
-            "kind": "callout",
-            "tone": "note",
-            "content": (
-                f"**Recommendation: {s.overall_recommendation}** "
-                f"(confidence: {s.confidence_level}). "
-                f"Average score {s.average_overall_score:.1f}/10 "
-                f"(range: {s.score_range}, n={s.number_of_experts})."
-            ),
-        },
+        {"kind": "callout", "tone": "note", "content": headline_line(s)},
     ]
     if s.recommendation_justification.strip():
         out.append({"kind": "prose", "content": s.recommendation_justification})
-    if s.review_summary.strip():
-        out.append({"kind": "heading", "content": "Review summary", "level": 3})
-        out.append({"kind": "prose", "content": s.review_summary})
+
+    rows = reviewer_scores(reviews)
+    if rows:
+        out.append({"kind": "heading", "content": "Reviewer scores", "level": 3})
+        score_lines: list[str] = []
+        for row in rows:
+            per_expert = " · ".join(
+                f"{name} {score}" for name, score in row.per_expert
+            )
+            score_lines.append(
+                f"- **{row.name}:** {row.average:.1f} avg, range "
+                f"{row.range_str} · {per_expert}"
+            )
+        out.append({"kind": "prose", "content": "\n".join(score_lines)})
+
     if s.consensus_strengths:
         out.append(
             {"kind": "heading", "content": "Consensus strengths", "level": 3}
@@ -269,23 +287,19 @@ def _panel_synthesis_atoms(s: PanelSynthesis) -> list[dict[str, Any]]:
                 "entries": [{"label": "?", "body": x} for x in s.divergent_opinions],
             }
         )
-    by_criterion = [
-        ("Scientific rigor", s.scientific_rigor_summary),
-        ("Methodology", s.methodology_summary),
-        ("Novelty", s.novelty_summary),
-        ("Clarity", s.clarity_summary),
-    ]
-    if any(body.strip() for _, body in by_criterion):
-        out.append({"kind": "heading", "content": "By criterion", "level": 3})
-        for label, body in by_criterion:
-            if body.strip():
-                out.append(
-                    {
-                        "kind": "card",
-                        "content": f"**{label}**",
-                        "details": body,
-                    }
-                )
+
+    diverged = diverged_criteria(rows)
+    if diverged:
+        out.append(
+            {"kind": "heading", "content": "Where the panel diverged", "level": 3}
+        )
+        for row in diverged:
+            body = criterion_summary(row.name, s).strip()
+            content = f"**{row.name}** (range {row.range_str})."
+            if body:
+                content += f" {body}"
+            out.append({"kind": "prose", "content": content})
+
     if s.key_decision_factors:
         out.append(
             {"kind": "heading", "content": "Key decision factors", "level": 3}
@@ -298,6 +312,13 @@ def _panel_synthesis_atoms(s: PanelSynthesis) -> list[dict[str, Any]]:
                 ],
             }
         )
+
+    if s.review_summary.strip():
+        out.append(
+            {"kind": "heading", "content": "Detailed synthesis", "level": 3}
+        )
+        out.append({"kind": "prose", "content": s.review_summary})
+
     return out
 
 
