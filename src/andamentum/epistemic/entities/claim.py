@@ -93,6 +93,15 @@ class Claim(EpistemicEntity):
         default=None,
         description="Result of scrutiny: None, 'pass', 'fail', or 'needs_resolution'",
     )
+    scrutiny_fingerprint: Optional[str] = Field(
+        default=None,
+        description=(
+            "SHA-256 of the (claim, linked-evidence-set) inputs from the last "
+            "scrutiny pass. Identical fingerprint means scrutiny would re-derive "
+            "the same verdict, so the operation short-circuits without minting "
+            "fresh Uncertainty entities."
+        ),
+    )
 
     # Adversarial balance (computed by adversarial_balance.py)
     adversarial_balance: Optional[float] = Field(
@@ -106,6 +115,16 @@ class Claim(EpistemicEntity):
     )
     convergence_checked: bool = Field(
         default=False, description="Cross-domain convergence assessed"
+    )
+    convergence_verdict: Optional[str] = Field(
+        default=None,
+        description=(
+            "Outcome of convergence assessment when convergence_checked is True: "
+            "'CONVERGENT', 'WEAKLY_CONVERGENT', 'DIVERGENT', 'PARTIAL', "
+            "'SINGLE_DOMAIN', or 'NO_EVIDENCE'. Read by the graph as a "
+            "termination signal — a CONVERGENT verdict with no remaining "
+            "blocking uncertainties skips the resolve-uncertainties cycle."
+        ),
     )
     deductive_checked: bool = Field(
         default=False, description="Deductive validation complete"
@@ -235,6 +254,7 @@ class Claim(EpistemicEntity):
             self.scrutiny_verdict = None
             self.adversarial_checked = False
             self.convergence_checked = False
+            self.convergence_verdict = None
             self.deductive_checked = False
             self.computational_checked = False
             self.contrastive_checked = False
@@ -255,8 +275,10 @@ class Claim(EpistemicEntity):
             "uncertainty_ids": self.uncertainty_ids,
             "evidence_count": self.evidence_count,
             "scrutiny_verdict": self.scrutiny_verdict,
+            "scrutiny_fingerprint": self.scrutiny_fingerprint,
             "adversarial_checked": self.adversarial_checked,
             "convergence_checked": self.convergence_checked,
+            "convergence_verdict": self.convergence_verdict,
             "deductive_checked": self.deductive_checked,
             "computational_checked": self.computational_checked,
             "contrastive_checked": self.contrastive_checked,
@@ -316,8 +338,10 @@ class Claim(EpistemicEntity):
             investigation_count=metadata.get("investigation_count", 0),
             abandoned=metadata.get("abandoned", False),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
+            scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
             adversarial_checked=metadata.get("adversarial_checked", False),
             convergence_checked=metadata.get("convergence_checked", False),
+            convergence_verdict=metadata.get("convergence_verdict"),
             deductive_checked=metadata.get("deductive_checked", False),
             computational_checked=metadata.get("computational_checked", False),
             contrastive_checked=metadata.get("contrastive_checked", False),

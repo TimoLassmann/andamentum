@@ -72,6 +72,11 @@ class OperationResult:
         message: Human-readable status message
         created_entities: IDs of any new entities created
         validation_errors: Gate or validation errors that blocked success
+        did_work: Whether this call performed real work. False when an
+            operation short-circuited because the requested change was
+            already in place (e.g. uncertainty already resolved). Graph
+            nodes use this to avoid treating idempotent no-ops as fresh
+            state changes that should re-trigger downstream work.
     """
 
     success: bool
@@ -79,6 +84,7 @@ class OperationResult:
     message: str = ""
     created_entities: list[str] = field(default_factory=list)
     validation_errors: list[str] = field(default_factory=list)
+    did_work: bool = True
 
 
 # ══════════════════════════════════════════════════════════════════════════════

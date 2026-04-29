@@ -328,13 +328,22 @@ class AssessConvergenceOperation(BaseOperation):
         evidence_items: list[dict[str, Any]] = []
         classifications: list[DomainClassification] = []
 
+        # Gather all eligible representatives, then cap at LLM_PANEL_CAP
+        # by quality so the per-rep LLM classify and the O(N²) within-domain
+        # pairwise independence check stay bounded.
+        from .claims import LLM_PANEL_CAP, top_n_representatives
+
+        candidates: list[Evidence] = []
         for eid in claim.evidence_ids:
             ev = await self.repo.get("evidence", eid)
             if not isinstance(ev, Evidence) or not ev.extracted_content:
                 continue
             if ev.cluster_status in ("corroborative", "deferred"):
                 continue
+            candidates.append(ev)
 
+        for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+            eid = ev.entity_id
             content = ev.extracted_content
 
             if self.agent_runner:
@@ -434,6 +443,7 @@ class AssessConvergenceOperation(BaseOperation):
             await self.repo.save(uncertainty)
 
         claim.convergence_checked = True
+        claim.convergence_verdict = convergence.verdict
         await self.repo.save(claim)
 
         return OperationResult(
@@ -471,19 +481,27 @@ class ValidateDeductivelyOperation(BaseOperation):
             )
 
         if self.agent_runner:
-            # Build context from supporting evidence and assumptions
+            from .claims import LLM_PANEL_CAP, top_n_representatives
+
+            # Build context from supporting evidence and assumptions.
+            # Cap evidence inclusion at LLM_PANEL_CAP highest-quality reps so
+            # the prompt stays bounded as the underlying evidence base grows.
             context_parts: list[str] = []
             if claim.scope:
                 context_parts.append(f"Scope: {claim.scope}")
             if claim.assumptions:
                 context_parts.append(f"Assumptions: {'; '.join(claim.assumptions)}")
+            candidates: list[Evidence] = []
             for eid in claim.evidence_ids:
                 ev = await self.repo.get("evidence", eid)
-                if isinstance(ev, Evidence) and ev.extracted_content:
-                    if ev.cluster_status not in ("corroborative", "deferred"):
-                        context_parts.append(
-                            f"[{ev.source_type}] {ev.extracted_content}"
-                        )
+                if (
+                    isinstance(ev, Evidence)
+                    and ev.extracted_content
+                    and ev.cluster_status not in ("corroborative", "deferred")
+                ):
+                    candidates.append(ev)
+            for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+                context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
 
             result = await self.run_agent(
                 "epistemic_deductive_validation",
@@ -548,17 +566,24 @@ class VerifyComputationallyOperation(BaseOperation):
         is_verifiable = True
 
         if is_verifiable and self.agent_runner:
-            # Build context from supporting evidence
+            from .claims import LLM_PANEL_CAP, top_n_representatives
+
+            # Build context from supporting evidence. Cap inclusion at
+            # LLM_PANEL_CAP highest-quality reps so the prompt stays bounded.
             context_parts: list[str] = []
             if claim.scope:
                 context_parts.append(f"Scope: {claim.scope}")
+            candidates: list[Evidence] = []
             for eid in claim.evidence_ids:
                 ev = await self.repo.get("evidence", eid)
-                if isinstance(ev, Evidence) and ev.extracted_content:
-                    if ev.cluster_status not in ("corroborative", "deferred"):
-                        context_parts.append(
-                            f"[{ev.source_type}] {ev.extracted_content}"
-                        )
+                if (
+                    isinstance(ev, Evidence)
+                    and ev.extracted_content
+                    and ev.cluster_status not in ("corroborative", "deferred")
+                ):
+                    candidates.append(ev)
+            for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+                context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
 
             result = await self.run_agent(
                 "epistemic_verify_computationally",

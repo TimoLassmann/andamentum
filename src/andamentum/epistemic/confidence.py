@@ -50,11 +50,19 @@ class PosteriorReport(BaseModel):
 
     posterior: float = Field(description="Combined P(Y) in [0.0, 1.0]")
     log_odds: int = Field(description="Effective log-odds from combined posterior")
-    supporting_count: int = Field(
-        description="Total independent supporting evidence across active claims"
+    supporting_count: float = Field(
+        description=(
+            "Total weighted supporting evidence across active claims. Each "
+            "representative contributes ``1 + log(corroboration_count)``, "
+            "so a singleton cluster counts as 1 and larger clusters count "
+            "more (with diminishing returns). Float-valued."
+        )
     )
-    contradicting_count: int = Field(
-        description="Total independent contradicting evidence across active claims"
+    contradicting_count: float = Field(
+        description=(
+            "Total weighted contradicting evidence across active claims. "
+            "Same weighting scheme as supporting_count."
+        )
     )
     counting_posterior: float = Field(description="P(Y) from per-item counting alone")
     integration_verdict: str | None = Field(
@@ -140,9 +148,15 @@ async def compute_posterior(
     evidence = await repo.get_evidence_for_objective(objective_id)
     active_claims = [c for c in claims if not c.abandoned]
 
-    # 3. ALWAYS compute per-item counts (the inductive base)
-    supporting = 0
-    contradicting = 0
+    # 3. ALWAYS compute per-item weighted counts (the inductive base).
+    # Each representative contributes ``1 + log(corroboration_count)``: a
+    # singleton cluster counts as 1, a 10-member cluster counts as ~3.3, a
+    # 100-member cluster counts as ~5.6. This preserves the redundancy
+    # signal we paid to gather (clustering is an independence guard, not
+    # a "throw the rest away" instruction) while keeping any single cluster
+    # from dominating regardless of size.
+    supporting = 0.0
+    contradicting = 0.0
     for claim in active_claims:
         claim_evidence = [
             e
@@ -152,10 +166,12 @@ async def compute_posterior(
             and e.cluster_status not in ("corroborative", "deferred")
         ]
         for e in claim_evidence:
+            cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
+            weight = 1.0 + math.log(cluster_size)
             if e.support_judgment == "supports":
-                supporting += 1
+                supporting += weight
             elif e.support_judgment == "contradicts":
-                contradicting += 1
+                contradicting += weight
 
     # 4. Compute counting posterior
     counting_log_odds = supporting - contradicting
@@ -240,7 +256,8 @@ async def compute_posterior(
     parts = []
     parts.append(f"Posterior {posterior:.4f} for {question_type} question.")
     parts.append(
-        f"Per-item counting: {supporting} supporting vs {contradicting} contradicting "
+        f"Per-item counting (cluster-size weighted): "
+        f"{supporting:.2f} supporting vs {contradicting:.2f} contradicting "
         f"(counting posterior {counting_posterior:.4f})."
     )
     if integration_verdict is not None:

@@ -244,3 +244,90 @@ class PromoteAsRefutedOperation(BaseOperation):
             entity_id=claim.entity_id,
             message=f"[{claim.statement[:60]}] → supported (refuted: {n_con}⊥ / {n_sup}✓)",
         )
+
+
+class SoftPromoteOperation(BaseOperation):
+    """Promote a HYPOTHESIS claim to SUPPORTED with integrated_assessment="insufficient".
+
+    The middle path between PromoteAsRefutedOperation (strong contradicting
+    evidence) and AbandonStaleClaimOperation (no signal at all). Used when
+    refute-promotion declined but the linked evidence still carries
+    directional judgments — preserves those counts in the posterior instead
+    of erasing them via abandonment.
+
+    Returns success=False when n_supports + n_contradicts == 0 so the graph
+    falls through to abandon, which is the honest terminal when there is
+    genuinely nothing to say.
+    """
+
+    entity_type = "claim"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        from ..gates import count_support_contradict
+
+        claim = await self.repo.get("claim", work.entity_id)
+        if not isinstance(claim, Claim):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Claim",
+                did_work=False,
+            )
+        if claim.stage != ClaimStage.HYPOTHESIS:
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message=f"Soft-promote only runs on HYPOTHESIS, not {claim.stage.value}",
+                did_work=False,
+            )
+
+        n_sup, n_con = await count_support_contradict(claim, self.repo)
+        if n_sup + n_con == 0:
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message="No directional evidence; abandonment is appropriate",
+                did_work=False,
+            )
+
+        # Low confidence by design: the integration LLM did not run, we are
+        # only preserving the counting-mode signal. Cap at 0.5 so the value
+        # cannot be mistaken for a confident integrated verdict. The +1
+        # smoothing keeps tiny-N cases (e.g. 1/0) below the cap.
+        majority = max(n_sup, n_con)
+        confidence = min(0.5, majority / (n_sup + n_con + 1))
+
+        claim.promotion_history.append(
+            {
+                "from": claim.stage.value,
+                "to": ClaimStage.SUPPORTED.value,
+                "timestamp": datetime.now().isoformat(),
+                "justification": (
+                    f"Soft-promoted: refute threshold not met "
+                    f"({n_con} contradicts vs {n_sup} supports). "
+                    f"Counting signal preserved."
+                ),
+            }
+        )
+        claim.stage = ClaimStage.SUPPORTED
+        claim.integrated_assessment = "insufficient"
+        claim.integrated_confidence = confidence
+        claim.integrated_reasoning = (
+            f"Soft-promoted: refute threshold not met "
+            f"({n_con} contradicts vs {n_sup} supports). "
+            f"Integration LLM skipped; counting signal preserved for the posterior."
+        )
+        claim.confidence_score = confidence
+        await self.repo.save(claim)
+
+        await self.log_event(
+            "claim_soft_promoted",
+            claim.entity_id,
+            {"n_supports": n_sup, "n_contradicts": n_con, "confidence": confidence},
+        )
+
+        return OperationResult(
+            success=True,
+            entity_id=claim.entity_id,
+            message=f"[{claim.statement[:60]}] → supported (insufficient: {n_sup}✓ / {n_con}⊥)",
+        )

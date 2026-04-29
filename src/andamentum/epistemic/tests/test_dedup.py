@@ -235,8 +235,13 @@ class TestDedupIntegration:
         return Runner()
 
     @pytest.mark.asyncio
-    async def test_propose_claims_selects_top_k_clusters(self, repo):
-        """ProposeClaimsOperation should rank clusters by quality and select top-K."""
+    async def test_propose_claims_promotes_every_cluster_to_representatives(self, repo):
+        """ProposeClaimsOperation should give every cluster representatives.
+
+        The old top-K=5 cap was retired: clustering's job is to enforce
+        independence in the count, not to discard work. Cost-bounded LLM
+        consumers cap themselves locally with LLM_PANEL_CAP.
+        """
         obj = Objective(
             entity_id="obj-1",
             objective_id="obj-1",
@@ -337,15 +342,25 @@ class TestDedupIntegration:
         for e in all_evidence:
             statuses[e.entity_id] = e.cluster_status
 
-        # Top 5 clusters by quality: A(0.9), B(0.7), C(0.5), D(0.4), E(0.3)
-        # Cluster F (quality 0.2) should be deferred
+        # Every cluster contributes representatives; no items are deferred.
+        # The exact rep/corroborative split inside multi-member clusters
+        # depends on the best-quality augmentation step, which may add a
+        # second rep when quality ordering puts the medoid below another
+        # member. The robust contract is: every item is either rep or
+        # corroborative, and no item is deferred.
         representative_count = sum(
             1 for s in statuses.values() if s == "representative"
         )
         deferred_count = sum(1 for s in statuses.values() if s == "deferred")
+        corroborative_count = sum(
+            1 for s in statuses.values() if s == "corroborative"
+        )
 
-        assert representative_count >= 5  # At least 5 representatives from 5 clusters
-        assert deferred_count >= 1  # At least 1 deferred (cluster F)
+        # 6 clusters → at least 6 representatives (one per cluster).
+        assert representative_count >= 6
+        assert deferred_count == 0
+        # Every item lands in one of the two categories.
+        assert representative_count + corroborative_count == 8
 
     @pytest.mark.asyncio
     async def test_propose_claims_only_extracts_from_representatives(self, repo):
@@ -440,19 +455,15 @@ class TestDedupIntegration:
             )
             await op.execute(work)
 
-        # Extract calls: only representatives (not corroborative or deferred)
-        # Cluster [0,1]: reps = [0, 1] (0 is medoid, 1 augmented as best-quality since both same quality? Actually 0 has 0.9, 1 has 0.8, so 0 is best and already in reps)
-        # Wait: augmentation adds best quality if NOT already in reps. For cluster [0,1], best is idx 0 (0.9), already in reps.
-        # So reps for cluster [0,1] = [0] (medoid only, best quality already there)
-        # Singletons: each is its own rep
-        # Total representatives = 1 (from cluster) + 4 (singletons) = 5 reps from top-5 clusters
-        # But wait — member index 1 is corroborative in the selected cluster
+        # Extract calls fire on every representative. 7 clusters guarantees
+        # at least 7 reps; the size-2 cluster may augment to 2 reps (if the
+        # query order puts a non-medoid as best-quality), so the upper bound
+        # is 8. The contract: every cluster contributes, no corroborative is
+        # extracted.
         extract_calls = [
             c for c in runner.calls if c[0] == "epistemic_extract_assertion"
         ]
-        # 5 selected clusters -> their representatives are extracted
-        # Deferred items (indices 6, 7) must NOT be extracted
-        assert len(extract_calls) == 5
+        assert 7 <= len(extract_calls) <= 8
 
     @pytest.mark.asyncio
     async def test_best_quality_member_added_to_representatives(self, repo):

@@ -48,6 +48,8 @@ from .preplanning import (
 # ── Claims ──────────────────────────────────────────────────────────────
 from .claims import (
     EVIDENCE_TOP_K,
+    LLM_PANEL_CAP,
+    top_n_representatives,
     ProposeClaimsOperation,
     select_top_k_evidence,
 )
@@ -63,6 +65,7 @@ from .stage_management import (
     DemoteClaimOperation,
     PromoteAsRefutedOperation,
     PromoteClaimOperation,
+    SoftPromoteOperation,
 )
 
 # ── Verification ────────────────────────────────────────────────────────
@@ -148,6 +151,7 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "set_routing_defaults": SetRoutingDefaultsOperation,
     # Stage management
     "promote_as_refuted": PromoteAsRefutedOperation,
+    "soft_promote": SoftPromoteOperation,
     "promote_claim": PromoteClaimOperation,
     "demote_claim": DemoteClaimOperation,
     # Uncertainty
@@ -234,6 +238,8 @@ __all__ = [
     "_truncate_for_trace",
     # Claims
     "EVIDENCE_TOP_K",
+    "LLM_PANEL_CAP",
+    "top_n_representatives",
     "select_top_k_evidence",
     # Operations
     "ClarifyQuestionOperation",
@@ -245,6 +251,7 @@ __all__ = [
     "ScrutiniseClaimOperation",
     "PromoteClaimOperation",
     "PromoteAsRefutedOperation",
+    "SoftPromoteOperation",
     "DemoteClaimOperation",
     "AdversarialSearchOperation",
     "AssessConvergenceOperation",
