@@ -119,13 +119,11 @@ class FreezeSnapshotOperation(BaseOperation):
             objective_id=objective.entity_id,
             extracted=True,
         )
-        evidence_ids = [
-            e.entity_id
-            for e in evidence
-            if not e.invalidated
-            and getattr(e, "cluster_status", "unclustered")
-            not in ("corroborative", "deferred")
-        ]
+        # Snapshot includes all non-invalidated evidence. The synthesis
+        # consumer applies its own LLM_PANEL_CAP via top_n_representatives
+        # to bound the prompt; the snapshot itself is a complete record
+        # of the evidence base at freeze time, not a pre-filtered slice.
+        evidence_ids = [e.entity_id for e in evidence if not e.invalidated]
 
         # Get unresolved uncertainties
         uncertainties = await self.repo.query(

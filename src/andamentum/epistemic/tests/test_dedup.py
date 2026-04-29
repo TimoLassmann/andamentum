@@ -650,8 +650,13 @@ class TestDownstreamFiltering:
         assert "Representative finding" in summaries[0]
 
     @pytest.mark.asyncio
-    async def test_quality_weighted_sum_excludes_corroborative(self, repo):
-        """quality_weighted_evidence_sum should not count corroborative evidence."""
+    async def test_quality_weighted_sum_includes_corroborative(self, repo):
+        """quality_weighted_evidence_sum sums quality across ALL judged evidence.
+
+        Cluster_status no longer filters at the gate layer: clustering's role
+        is to inform posterior weighting, not to disqualify evidence from the
+        promote-time confidence calculation.
+        """
         from andamentum.epistemic.gates import quality_weighted_evidence_sum
 
         obj = Objective(description="test", phase="claims_proposed")
@@ -685,12 +690,18 @@ class TestDownstreamFiltering:
 
         total = await quality_weighted_evidence_sum(claim, repo)
 
-        # Should only count the representative (0.8), not corroborative (0.6)
-        assert abs(total - 0.8) < 1e-6
+        # Both items contribute their quality.
+        assert abs(total - (0.8 + 0.6)) < 1e-6
 
     @pytest.mark.asyncio
-    async def test_quality_weighted_sum_excludes_deferred(self, repo):
-        """quality_weighted_evidence_sum should not count deferred evidence."""
+    async def test_quality_weighted_sum_includes_deferred(self, repo):
+        """quality_weighted_evidence_sum counts deferred evidence too.
+
+        Existing databases may have evidence with the legacy `deferred`
+        cluster_status. After dropping the gate-layer filter, those still
+        contribute their quality (the `deferred` status is retired going
+        forward but live in old data).
+        """
         from andamentum.epistemic.gates import quality_weighted_evidence_sum
 
         obj = Objective(description="test", phase="claims_proposed")
@@ -724,12 +735,19 @@ class TestDownstreamFiltering:
 
         total = await quality_weighted_evidence_sum(claim, repo)
 
-        # Should only count the representative (0.8), not deferred (0.6)
-        assert abs(total - 0.8) < 1e-6
+        # Both items contribute.
+        assert abs(total - (0.8 + 0.6)) < 1e-6
 
     @pytest.mark.asyncio
-    async def test_freeze_snapshot_excludes_corroborative(self, repo):
-        """FreezeSnapshotOperation should not include corroborative evidence in snapshot."""
+    async def test_freeze_snapshot_includes_all_non_invalidated_evidence(self, repo):
+        """FreezeSnapshotOperation captures the full evidence base.
+
+        The snapshot is an audit record of the evidence at freeze time, not a
+        pre-filtered slice. Consumers (synthesize_report) apply their own
+        cap via top_n_representatives when building prompts, so a complete
+        snapshot is information-preserving for downstream readers without
+        bloating any LLM prompt.
+        """
         from andamentum.epistemic.operations import FreezeSnapshotOperation
         from andamentum.epistemic.operations.base import OperationInput
 
@@ -775,17 +793,15 @@ class TestDownstreamFiltering:
 
         assert result.success
 
-        # Load the snapshot and check evidence_ids
         snapshot_id = result.created_entities[0]
         from andamentum.epistemic.entities.snapshot import Snapshot
 
         snapshot = await repo.get("snapshot", snapshot_id)
         assert isinstance(snapshot, Snapshot)
 
-        # Corroborative evidence must not be in snapshot
-        assert ev_corr.entity_id not in snapshot.evidence_ids
-        # Representative and legacy (unclustered) must be included
+        # All three non-invalidated evidence items are in the snapshot.
         assert ev_rep.entity_id in snapshot.evidence_ids
+        assert ev_corr.entity_id in snapshot.evidence_ids
         assert ev_legacy.entity_id in snapshot.evidence_ids
 
     @pytest.mark.asyncio

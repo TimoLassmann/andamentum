@@ -349,6 +349,13 @@ async def quality_weighted_evidence_sum(
     Evidence without a quality_score is skipped (not counted toward the sum).
     This avoids inflating quality sums with hardcoded defaults.
 
+    No cluster_status filter: the gate-time question is "what is the total
+    weight of supporting evidence" — every piece of judged, non-invalidated
+    evidence contributes its quality. Filtering to representatives only
+    would systematically understate the supporting weight in proportion to
+    how aggressively HDBSCAN clustered the evidence base, which is unrelated
+    to the actual epistemic content.
+
     Args:
         claim: The claim to check
         repo: Repository for loading evidence
@@ -361,11 +368,6 @@ async def quality_weighted_evidence_sum(
         try:
             evidence = await repo.get("evidence", eid)
             if evidence.invalidated:
-                continue
-            if getattr(evidence, "cluster_status", "unclustered") in (
-                "corroborative",
-                "deferred",
-            ):
                 continue
             if evidence.quality_score is not None:
                 total += evidence.quality_score
@@ -391,33 +393,31 @@ async def _any_evidence_judged(claim: "Claim", repo: "EpistemicRepository") -> b
 
 
 async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") -> int:
-    """Count independent evidence clusters judged as 'supports' for this claim.
+    """Count evidence judged as 'supports' for this claim.
 
-    Only counts evidence that is:
-    - Not invalidated
-    - Representative (not corroborative or deferred)
-    - Judged as 'supports' by the evidence judge
+    Counts every non-invalidated, supports-judged evidence item. The gate
+    asks "is there support at all?" — clustering's role is to inform
+    posterior weighting (see compute_posterior), not to qualify or
+    disqualify evidence at the gate. Filtering by cluster_status here
+    caused real supports to disappear from the gate's view when HDBSCAN
+    grouped them with other items and picked a non-supports medoid as
+    the cluster's representative.
 
-    This is the domain-independent gate criterion: how many independent
-    sources actively support this claim?
+    Symmetrical with count_support_contradict, which never had the
+    cluster_status filter. The asymmetry was a bug.
 
     Args:
         claim: The claim to check
         repo: Repository for loading evidence
 
     Returns:
-        Count of supporting representative evidence items
+        Count of supporting evidence items, regardless of cluster_status
     """
     count = 0
     for eid in claim.evidence_ids:
         try:
             evidence = await repo.get("evidence", eid)
             if evidence.invalidated:
-                continue
-            if getattr(evidence, "cluster_status", "unclustered") in (
-                "corroborative",
-                "deferred",
-            ):
                 continue
             if getattr(evidence, "support_judgment", None) == "supports":
                 count += 1
