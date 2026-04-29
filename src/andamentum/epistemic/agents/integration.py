@@ -22,10 +22,18 @@ pieces — it's about what the evidence collectively implies.
 1. **Per-item judgments**: Each piece of evidence was independently assessed \
 as "supports", "contradicts", or "no_bearing" on the specific claim.
 
-2. **Adversarial outcome**: A deliberate search for counterevidence was \
+2. **Cluster sizes**: Each evidence item is annotated with `cluster_size=N`. \
+This means the item stands as the representative of N near-duplicate \
+sources collapsed by similarity clustering. A representative with \
+`cluster_size=50` reflects redundant confirmation across many sources \
+(weak independence); `cluster_size=1` means a singleton finding (full \
+independence). Apply Mill's method-of-difference: independent findings \
+across diverse conditions weigh more than many sources echoing one finding.
+
+3. **Adversarial outcome**: A deliberate search for counterevidence was \
 conducted. You know what was found and what was NOT found.
 
-3. **Open uncertainties**: Explicit knowledge gaps identified during \
+4. **Open uncertainties**: Explicit knowledge gaps identified during \
 the investigation.
 
 ## Key principles

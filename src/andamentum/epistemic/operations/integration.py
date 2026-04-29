@@ -63,7 +63,13 @@ class AbductiveIntegrationOperation(BaseOperation):
         no_bearing_items: list[str] = []
         for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
             content = ev.extracted_content or ""
-            summary = f"[{ev.source_type}] {content}"
+            cluster_size = max(1, getattr(ev, "corroboration_count", 1) or 1)
+            # cluster_size lets the agent apply Mill's method-of-difference
+            # reasoning directly: a representative standing for many similar
+            # sources is redundant confirmation, not independent evidence.
+            summary = (
+                f"[{ev.source_type}, cluster_size={cluster_size}] {content}"
+            )
             if ev.support_judgment == "supports":
                 supports_items.append(summary)
             elif ev.support_judgment == "contradicts":

@@ -1,15 +1,29 @@
-"""Posterior confidence calculator for completed epistemic inquiries.
+"""Posterior confidence reporter for completed epistemic inquiries.
 
-Computes posterior confidence by synthesizing two signals:
-  1. Per-item counting (induction): logistic(supporting - contradicting)
-  2. Integration assessment (abduction): verdict_to_probability(verdict, confidence)
+Reads the abductive integration agent's verdict on each active claim and
+maps it to a probability:
 
-The two signals are blended via weighted model averaging:
-  w = n_directional / (n_directional + K)  where K=5
-  posterior = w * counting_posterior + (1-w) * integration_posterior
+    supports   at confidence c → 0.5 + c/2
+    contradicts at confidence c → 0.5 - c/2
+    insufficient                → 0.5
 
-Integration "insufficient" abstains from the blend — counting runs alone.
-No LLM calls. No trained weights. Domain-independent by construction.
+Multi-claim objectives aggregate via confidence-weighted averaging. The
+abduction agent (epistemic_integrate_evidence) is Peirce-grounded — it
+already considers evidence convergence, adversarial outcome, and remaining
+uncertainties when forming its verdict. This module honours that verdict
+rather than re-deriving it from per-item counts.
+
+Counting only fires as a *fallback* when integration never ran for a
+claim (e.g. the pipeline aborted before reaching IntegrateEvidence).
+That's the only branch where supporting_count / contradicting_count
+materially affect the answer.
+
+The previous design blended a sigmoid-of-counts with the integration
+verdict via a tunable mixing constant. With cluster-size weighting (A4)
+the blend formula's behaviour shifted in ways the constant could no
+longer absorb honestly. Trusting the abduction step — which is where
+the philosophical work already lives — removes the constants we could
+not justify with held-out data.
 
 Architecture: Layer 1 (framework-agnostic, pure computation)
 
@@ -42,29 +56,38 @@ POSTERIOR_ELIGIBLE: set[str] = {"verificatory", "predictive"}
 class PosteriorReport(BaseModel):
     """Posterior probability P(Y) for a yes/no-style research objective.
 
-    Synthesizes per-item evidence counting with integration assessment
-    via weighted model averaging. Only meaningful for verificatory and
-    predictive questions. For other question types compute_posterior()
-    returns None.
+    Primary signal is the abduction agent's verdict (mode="abductive").
+    Counting is reported as a diagnostic field and only drives the
+    posterior when integration didn't run (mode="counting_fallback").
+    Only meaningful for verificatory and predictive questions; other
+    question types return None from compute_posterior().
     """
 
-    posterior: float = Field(description="Combined P(Y) in [0.0, 1.0]")
-    log_odds: int = Field(description="Effective log-odds from combined posterior")
+    posterior: float = Field(description="P(Y) in [0.0, 1.0]")
+    log_odds: int = Field(description="Effective log-odds from posterior")
     supporting_count: float = Field(
         description=(
-            "Total weighted supporting evidence across active claims. Each "
-            "representative contributes ``1 + log(corroboration_count)``, "
-            "so a singleton cluster counts as 1 and larger clusters count "
-            "more (with diminishing returns). Float-valued."
+            "Diagnostic: total weighted supporting evidence across active "
+            "claims. Each representative contributes "
+            "``1 + log(corroboration_count)``. Drives the posterior only "
+            "in counting_fallback mode (when no claim received an "
+            "integration verdict)."
         )
     )
     contradicting_count: float = Field(
         description=(
-            "Total weighted contradicting evidence across active claims. "
-            "Same weighting scheme as supporting_count."
+            "Diagnostic: total weighted contradicting evidence across "
+            "active claims. Same weighting as supporting_count."
         )
     )
-    counting_posterior: float = Field(description="P(Y) from per-item counting alone")
+    counting_posterior: float = Field(
+        description=(
+            "Diagnostic: P(Y) implied by counting alone "
+            "(sigmoid(supporting - contradicting)). For comparison with "
+            "the abduction-driven posterior; not used when the abduction "
+            "verdict is available."
+        )
+    )
     integration_verdict: str | None = Field(
         default=None,
         description="Integration assessment: 'supports', 'contradicts', 'insufficient', or None",
@@ -74,8 +97,13 @@ class PosteriorReport(BaseModel):
         description="Integration confidence 0.0-1.0, or None if not run",
     )
     mode: str = Field(
-        default="counting_only",
-        description="'counting_only' or 'synthesized'",
+        default="abductive",
+        description=(
+            "'abductive' when the posterior follows the integration "
+            "verdict; 'counting_fallback' when no claim received an "
+            "integration verdict and the posterior is the sigmoid of "
+            "weighted counts."
+        ),
     )
     terminal_state: Literal["completed", "retrieval_failed"] = Field(
         default="completed",
@@ -148,13 +176,9 @@ async def compute_posterior(
     evidence = await repo.get_evidence_for_objective(objective_id)
     active_claims = [c for c in claims if not c.abandoned]
 
-    # 3. ALWAYS compute per-item weighted counts (the inductive base).
-    # Each representative contributes ``1 + log(corroboration_count)``: a
-    # singleton cluster counts as 1, a 10-member cluster counts as ~3.3, a
-    # 100-member cluster counts as ~5.6. This preserves the redundancy
-    # signal we paid to gather (clustering is an independence guard, not
-    # a "throw the rest away" instruction) while keeping any single cluster
-    # from dominating regardless of size.
+    # 3. Diagnostic: weighted counts across active claims. These are reported
+    # for inspection and used only as the counting fallback when no claim
+    # received an integration verdict.
     supporting = 0.0
     contradicting = 0.0
     for claim in active_claims:
@@ -173,78 +197,79 @@ async def compute_posterior(
             elif e.support_judgment == "contradicts":
                 contradicting += weight
 
-    # 4. Compute counting posterior
     counting_log_odds = supporting - contradicting
     if abs(counting_log_odds) < 700:
         counting_posterior = 1.0 / (1.0 + math.exp(-counting_log_odds))
     else:
         counting_posterior = 1.0 if counting_log_odds > 0 else 0.0
 
-    # 5. Compute integration signal (when available)
+    # 4. Honour the abduction agent's verdict per claim and aggregate.
+    # Each integrated claim contributes a probability and a confidence
+    # weight; the objective-level posterior is the confidence-weighted
+    # average. "insufficient" verdicts contribute 0.5 with their own
+    # confidence weight (so a confidently-insufficient verdict pulls
+    # toward neutral; a low-confidence insufficient verdict barely moves
+    # the average).
     integrated_claims = [
         c for c in active_claims if c.integrated_assessment is not None
     ]
 
-    # Collect directional integration verdicts (skip "insufficient")
-    integration_verdict = None
-    integration_confidence = None
-    integration_posterior = None
+    integration_verdict: str | None = None
+    integration_confidence: float | None = None
 
-    directional = [
-        c
-        for c in integrated_claims
-        if c.integrated_assessment in ("supports", "contradicts")
-    ]
+    if integrated_claims:
+        # Per-claim probability + weight
+        weighted_sum = 0.0
+        weight_total = 0.0
+        verdict_counts: dict[str, int] = {
+            "supports": 0,
+            "contradicts": 0,
+            "insufficient": 0,
+        }
+        confidence_sum = 0.0
+        for c in integrated_claims:
+            verdict = c.integrated_assessment
+            confidence = c.integrated_confidence or 0.5
+            confidence = max(0.0, min(1.0, confidence))
+            confidence_sum += confidence
 
-    if directional:
-        # For multiple claims with integration, aggregate: each claim is one vote
-        int_supporting = sum(
-            1 for c in directional if c.integrated_assessment == "supports"
-        )
-        int_contradicting = sum(
-            1 for c in directional if c.integrated_assessment == "contradicts"
-        )
-        # Average confidence across directional claims
-        avg_confidence = sum(
-            (c.integrated_confidence or 0.5) for c in directional
-        ) / len(directional)
-        avg_confidence = max(0.0, min(1.0, avg_confidence))
+            if verdict == "supports":
+                claim_p = 0.5 + confidence / 2
+            elif verdict == "contradicts":
+                claim_p = 0.5 - confidence / 2
+            else:  # "insufficient"
+                claim_p = 0.5
 
-        # Net direction
-        if int_supporting > int_contradicting:
-            integration_verdict = "supports"
-            integration_confidence = avg_confidence
-            integration_posterior = 0.5 + avg_confidence / 2
-        elif int_contradicting > int_supporting:
-            integration_verdict = "contradicts"
-            integration_confidence = avg_confidence
-            integration_posterior = 0.5 - avg_confidence / 2
+            weighted_sum += claim_p * confidence
+            weight_total += confidence
+            if verdict in verdict_counts:
+                verdict_counts[verdict] += 1
+
+        # If all confidences were exactly 0, fall back to unweighted mean
+        # at 0.5 — we have integration verdicts but no information to weight
+        # them with.
+        if weight_total > 0:
+            posterior = weighted_sum / weight_total
         else:
-            # Equal directional votes — treat as insufficient
+            posterior = 0.5
+
+        # Surface a single objective-level verdict label: the modal
+        # directional verdict if one exists, otherwise insufficient.
+        if verdict_counts["supports"] > verdict_counts["contradicts"]:
+            integration_verdict = "supports"
+        elif verdict_counts["contradicts"] > verdict_counts["supports"]:
+            integration_verdict = "contradicts"
+        else:
             integration_verdict = "insufficient"
-            integration_confidence = avg_confidence
-            integration_posterior = None
-    elif integrated_claims:
-        # All claims had "insufficient" — record but don't blend
-        integration_verdict = "insufficient"
-        integration_confidence = sum(
-            (c.integrated_confidence or 0.5) for c in integrated_claims
-        ) / len(integrated_claims)
-        integration_posterior = None
-
-    # 6. Blend: weighted model averaging
-    n_directional = supporting + contradicting
-    MIXING_K = 5
-
-    if integration_posterior is not None:
-        w = n_directional / (n_directional + MIXING_K)
-        posterior = w * counting_posterior + (1.0 - w) * integration_posterior
-        mode = "synthesized"
+        integration_confidence = confidence_sum / len(integrated_claims)
+        mode = "abductive"
     else:
+        # No claim received an integration verdict — abduction never ran.
+        # Fall back to the counting signal as the only available input.
         posterior = counting_posterior
-        mode = "counting_only"
+        mode = "counting_fallback"
 
-    # 7. Compute effective log-odds from blended posterior (for report)
+    # 5. Compute effective log-odds for the report
     if posterior <= 0.0:
         log_odds = -700
     elif posterior >= 1.0:
@@ -252,39 +277,41 @@ async def compute_posterior(
     else:
         log_odds = round(math.log(posterior / (1.0 - posterior)))
 
-    # 8. Build explanation
-    parts = []
-    parts.append(f"Posterior {posterior:.4f} for {question_type} question.")
-    parts.append(
-        f"Per-item counting (cluster-size weighted): "
-        f"{supporting:.2f} supporting vs {contradicting:.2f} contradicting "
-        f"(counting posterior {counting_posterior:.4f})."
-    )
-    if integration_verdict is not None:
-        if integration_posterior is not None:
-            parts.append(
-                f"Integration: {integration_verdict} at confidence "
-                f"{integration_confidence:.2f} (integration posterior {integration_posterior:.4f}). "
-                f"Blended with counting weight {n_directional / (n_directional + MIXING_K):.2f}."
-            )
-        else:
-            parts.append(f"Integration: {integration_verdict} — abstained from blend.")
-
-    # Flag disagreement between counting and integration (Doyle TMS)
-    if integration_posterior is not None:
+    # 6. Build explanation
+    parts = [f"Posterior {posterior:.4f} for {question_type} question."]
+    if mode == "abductive":
+        parts.append(
+            f"Mode: abductive (driven by integration verdict). "
+            f"{len(integrated_claims)} claim(s) integrated; "
+            f"verdict={integration_verdict}, "
+            f"avg confidence {integration_confidence:.2f}."
+        )
+        # Diagnostic disclosure of the counting signal for transparency
+        # (Doyle TMS: surface disagreements between counting and abduction
+        # so a reader can see when the literature was split even though
+        # the abduction agent committed).
         counting_direction = (
             "supports"
             if counting_posterior > 0.5
             else ("contradicts" if counting_posterior < 0.5 else "neutral")
         )
         if (
-            integration_verdict != counting_direction
+            integration_verdict in ("supports", "contradicts")
             and counting_direction != "neutral"
+            and integration_verdict != counting_direction
         ):
             parts.append(
-                f"NOTE: Counting ({counting_direction}) and integration "
-                f"({integration_verdict}) disagree."
+                f"NOTE: counting diagnostic ({counting_direction}, "
+                f"{supporting:.2f} vs {contradicting:.2f}) disagrees with "
+                f"the abductive verdict ({integration_verdict}). The "
+                f"abduction step is authoritative; this is informational."
             )
+    else:
+        parts.append(
+            f"Mode: counting_fallback (no claim received an integration "
+            f"verdict). Per-item weighted counts: "
+            f"{supporting:.2f} supporting vs {contradicting:.2f} contradicting."
+        )
 
     explanation = " ".join(parts)
 
