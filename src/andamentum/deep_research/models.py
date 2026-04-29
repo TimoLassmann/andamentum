@@ -15,6 +15,7 @@ __all__ = [
     "FetchResults",
     "FetchPlan",
     "PageSummary",
+    "FetchSummary",
     "GapAnalysis",
     "EvidenceReport",
     "ResearchErrors",
@@ -116,6 +117,28 @@ class FetchResults(BaseModel):
         ..., description="Number of pages skipped (low relevance)"
     )
     error_count: int = Field(..., description="Number of fetch errors")
+
+
+# One-shot fetch (research-question-free counterpart of PageSummary)
+class FetchSummary(BaseModel):
+    """Structured summary of a single fetched page.
+
+    Returned by :func:`run_fetch`. Distinct from :class:`PageSummary`
+    (which carries a research-question relevance score) — this is the
+    research-question-free counterpart for one-shot URL summarisation.
+    """
+
+    url: str = Field(default="", description="Source URL")
+    title: str = Field(default="", description="Page title")
+    summary: str = Field(
+        ..., description="~200-word faithful summary of the page's main content"
+    )
+    key_points: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=5,
+        description="3-5 substantive points from the page",
+    )
 
 
 # Summary phase models

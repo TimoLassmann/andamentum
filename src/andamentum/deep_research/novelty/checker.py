@@ -1,7 +1,12 @@
-"""Core novelty checking logic — framework-agnostic.
+"""Core novelty checking logic.
 
-Accepts callable dependencies (research_fn, assess_fn) instead of importing
-framework code directly.
+Public entry point: :func:`run_novelty_check` — composes the deep-research
+pipeline with the novelty-assessor agent into a single one-shot.
+
+Internal helper :func:`_check_novelty_with_deps` accepts callable
+dependencies for ``research_fn`` and ``assess_fn`` so the failure-mode
+tests can exercise the orchestration logic with stubs (no live model,
+no SearXNG). Production code calls ``run_novelty_check``.
 """
 
 from typing import Any
@@ -21,12 +26,77 @@ class NoveltyAssessment(BaseModel):
     similar_works: list[dict[str, str]]  # title, url, relevance, summary
 
 
-# Type aliases for injectable dependencies
+# Type aliases for injectable dependencies (used by _check_novelty_with_deps).
 ResearchFn = Callable[..., Awaitable[dict[str, Any]]]
 AssessFn = Callable[[str, str, list[str], list[str]], Awaitable[NoveltyAssessment]]
 
 
-async def check_novelty(
+async def run_novelty_check(
+    claim: str,
+    *,
+    model: str,
+    search_depth: int = 2,
+    verbose: bool = False,
+) -> NoveltyReport:
+    """Check whether ``claim`` is novel by running web research + LLM assessment.
+
+    One-shot entry point. Internally:
+      1. Runs :func:`run_research` to retrieve evidence on the claim.
+      2. Runs the registered ``novelty_assessor`` agent on that evidence
+         to decide whether the claim is novel.
+      3. Returns a :class:`NoveltyReport` summarising the verdict, prior
+         work, and sources.
+
+    Args:
+        claim: The claim or statement to check for novelty.
+        model: pydantic-ai model identifier (e.g.
+            ``"anthropic:claude-haiku-4-5"``). Used for both the research
+            agents and the novelty-assessment agent.
+        search_depth: Number of search-analyze iterations. 1=quick,
+            2=balanced, 3=thorough.
+        verbose: Print progress.
+
+    Returns:
+        :class:`NoveltyReport` with verdict, prior work, and sources.
+    """
+    from ..orchestrator import run_research
+    from ..agents.novelty import build_assessment_prompt
+
+    async def research_fn(*, query: str, max_iterations: int, verbose: bool) -> dict[str, Any]:
+        result = await run_research(
+            query=query,
+            max_iterations=max_iterations,
+            model=model,
+            verbose=verbose,
+        )
+        return {"output": result.output}
+
+    async def assess_fn(
+        claim_text: str,
+        evidence_summary: str,
+        key_findings: list[str],
+        sources: list[str],
+    ) -> NoveltyAssessment:
+        prompt = build_assessment_prompt(
+            claim_text, evidence_summary, key_findings, sources
+        )
+        from andamentum.core.agents import build_pydantic_ai_agent
+        from ..agents import get_agent
+
+        agent = build_pydantic_ai_agent(get_agent("novelty_assessor"), model)
+        result = await agent.run(prompt)
+        return result.output  # type: ignore[no-any-return]
+
+    return await _check_novelty_with_deps(
+        claim=claim,
+        research_fn=research_fn,
+        assess_fn=assess_fn,
+        search_depth=search_depth,
+        verbose=verbose,
+    )
+
+
+async def _check_novelty_with_deps(
     claim: str,
     research_fn: ResearchFn,
     assess_fn: AssessFn,

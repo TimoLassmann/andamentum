@@ -36,7 +36,6 @@ from .lens import (
     build_lens_agent_definition,
     list_available_lenses,
 )
-from .novelty_assessor import NOVELTY_ASSESSOR_AGENT
 from .novelty_claim_extractor import (
     NOVELTY_CLAIM_EXTRACTOR_AGENT,
     NoveltyClaim,
@@ -64,9 +63,8 @@ _REGISTRY: dict[str, AgentDefinition] = {
     GUIDELINE_ITEM_EVALUATOR_AGENT.name: GUIDELINE_ITEM_EVALUATOR_AGENT,
     # Custom mode (output_model is built at call time)
     CUSTOM_REVIEWER_AGENT.name: CUSTOM_REVIEWER_AGENT,
-    # Novelty check
+    # Novelty check (assessor lives in deep_research)
     NOVELTY_CLAIM_EXTRACTOR_AGENT.name: NOVELTY_CLAIM_EXTRACTOR_AGENT,
-    NOVELTY_ASSESSOR_AGENT.name: NOVELTY_ASSESSOR_AGENT,
 }
 
 # Register every available lens under its lens.<name> key.
@@ -133,7 +131,6 @@ __all__ = [
     "EXTRACT_CHECKABLE_ITEMS_AGENT",
     "GUIDELINE_ITEM_EVALUATOR_AGENT",
     "CUSTOM_REVIEWER_AGENT",
-    "NOVELTY_ASSESSOR_AGENT",
     "NOVELTY_CLAIM_EXTRACTOR_AGENT",
     "NoveltyClaim",
     "NoveltyClaimList",

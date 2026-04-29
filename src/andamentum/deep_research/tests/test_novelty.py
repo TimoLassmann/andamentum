@@ -4,12 +4,12 @@ import pytest
 from types import SimpleNamespace
 
 from ..novelty import (
-    check_novelty,
     NoveltyReport,
     NoveltyAssessment,
     SimilarWork,
     Relevance,
 )
+from ..novelty.checker import _check_novelty_with_deps
 
 
 class TestNoveltyModels:
@@ -89,7 +89,7 @@ class TestCheckNovelty:
                 ],
             )
 
-        report = await check_novelty("test claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
         assert report.is_novel is False
         assert report.confidence == 0.9
         assert len(report.similar_work) == 1
@@ -105,7 +105,7 @@ class TestCheckNovelty:
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise AssertionError("Should not be called")
 
-        report = await check_novelty("novel claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("novel claim", research_fn, assess_fn)
         assert report.is_novel is True
         assert report.confidence == 0.3
 
@@ -119,7 +119,7 @@ class TestCheckNovelty:
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise AssertionError("Should not be called")
 
-        report = await check_novelty("test claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
         assert report.is_novel is True
         assert report.confidence == 0.2
         assert "Could not complete search" in report.assessment
@@ -139,7 +139,7 @@ class TestCheckNovelty:
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise RuntimeError("LLM error")
 
-        report = await check_novelty("test claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
         assert report.is_novel is False
         assert report.confidence == 0.6
         assert "prior work exists" in report.assessment.lower()
@@ -159,7 +159,7 @@ class TestCheckNovelty:
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise RuntimeError("LLM error")
 
-        report = await check_novelty("test claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
         assert report.is_novel is True
         assert report.confidence == 0.3
 
@@ -178,7 +178,7 @@ class TestCheckNovelty:
                 is_novel=True, confidence=1.5, assessment="a", similar_works=[]
             )
 
-        report = await check_novelty("test", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test", research_fn, assess_fn)
         assert report.confidence == 1.0
 
     @pytest.mark.asyncio
@@ -206,7 +206,7 @@ class TestCheckNovelty:
                 ],
             )
 
-        report = await check_novelty("test", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("test", research_fn, assess_fn)
         assert report.similar_work[0].relevance == Relevance.TANGENTIAL
 
     @pytest.mark.asyncio
@@ -219,6 +219,6 @@ class TestCheckNovelty:
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise AssertionError("Should not be called")
 
-        report = await check_novelty("my claim", research_fn, assess_fn)
+        report = await _check_novelty_with_deps("my claim", research_fn, assess_fn)
         assert len(report.search_queries_used) == 3
         assert any("my claim" in q for q in report.search_queries_used)

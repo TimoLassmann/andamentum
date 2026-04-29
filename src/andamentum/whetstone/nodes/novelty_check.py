@@ -2,7 +2,7 @@
 
 Reads the harvested markdown, extracts 3-5 explicit novelty claims via
 ``novelty_claim_extractor``, then routes each to deep_research's
-``check_novelty`` for literature-overlap discovery. Each NoveltyReport
+``run_novelty_check`` for literature-overlap discovery. Each NoveltyReport
 is adapted to a Finding so the result flows through the same renderers
 as everything else.
 
@@ -170,38 +170,11 @@ async def _check_one_claim(
             # Fall through and recompute
 
     # Lazy import deep_research so v2 doesn't pay the import cost when novelty is off
-    from andamentum.deep_research import check_novelty
-    from andamentum.deep_research.orchestrator import run_research
+    from andamentum.deep_research import run_novelty_check
 
-    async def research_fn(*, query: str, max_iterations: int, verbose: bool) -> dict[str, Any]:
-        result = await run_research(
-            query=query,
-            max_iterations=max_iterations,
-            model=deps.model,
-            verbose=verbose,
-        )
-        return {"output": result.output}
-
-    async def assess_fn(claim_text, evidence_summary, key_findings, sources):
-        from ..agents.novelty_assessor import NoveltyAssessment as NA  # type: ignore[attr-defined]
-        from ..agents import build_pydantic_ai_agent as build
-
-        prompt = (
-            f"CLAIM: {claim_text}\n\n"
-            f"EVIDENCE_SUMMARY:\n{evidence_summary}\n\n"
-            f"KEY_FINDINGS:\n"
-            + "\n".join(f"  - {f}" for f in key_findings)
-            + "\n\nSOURCES:\n"
-            + "\n".join(f"  - {s}" for s in sources)
-        )
-        agent = build("novelty_assessor", deps.model)
-        result = await agent.run(prompt)
-        return cast(NA, result.output)
-
-    report = await check_novelty(
+    report = await run_novelty_check(
         claim=claim.short_summary,
-        research_fn=research_fn,
-        assess_fn=assess_fn,
+        model=deps.model,
         search_depth=search_depth,
         verbose=False,
     )
