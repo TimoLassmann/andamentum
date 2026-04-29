@@ -88,8 +88,10 @@ class SeedClaimOperation(BaseOperation):
                     continue
                 if not ev.extracted_content:
                     continue
-                if ev.cluster_status in ("corroborative", "deferred"):
-                    continue
+                # No cluster_status filter: clustering hasn't run yet at
+                # seed-claim time (all items default to "unclustered"), so
+                # this filter would be a no-op — but if it ever did fire
+                # it would silently skip judging real evidence.
                 judgment = await _judge(
                     claim_statement=claim.statement,
                     claim_scope=claim.scope,
