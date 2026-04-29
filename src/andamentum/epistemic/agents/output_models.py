@@ -6,7 +6,7 @@ Field names MUST match what adapters.py accesses via attribute access.
 Architecture: Layer 1 (framework-agnostic, pure Pydantic)
 """
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -638,7 +638,13 @@ class ValidateGroupOutput(BaseModel):
 
 
 class IntegrationAssessment(BaseModel):
-    """Output of abductive integration: holistic evidence assessment."""
+    """Output of abductive integration: holistic evidence assessment.
+
+    Deprecated: kept for backwards-compat with snapshots from runs prior
+    to the IBE-decomposed integration. New runs use the 4-stage IBE
+    pipeline (NextCandidate, LovelinessScore, LikelinessScore,
+    SelectedExplanation).
+    """
 
     verdict: Literal["supports", "contradicts", "insufficient"] = Field(
         description="'supports', 'contradicts', or 'insufficient'. "
@@ -646,3 +652,150 @@ class IntegrationAssessment(BaseModel):
     )
     confidence: float = Field(description="0.0-1.0 confidence in the verdict")
     reasoning: str = Field(description="The evidential chain explaining the verdict")
+
+
+# ── IBE Integration (4-stage decomposition) ──────────────────────────
+#
+# The integration step is decomposed into Peirce-style generative
+# enumeration, two Lipton-style evaluative scoring agents (loveliness +
+# likeliness, applied independently per candidate), and a comparative
+# selection agent. Each agent's output schema is intentionally small
+# so local models can produce structured outputs reliably; sub-virtue
+# detail (mechanism / scope / parsimony) lives in prompt rubrics and
+# in the reasoning text rather than as structured fields.
+
+
+class NextCandidate(BaseModel):
+    """One candidate verdict from iterative Peircean enumeration.
+
+    Either ``done=True`` (no further meaningful candidate exists) or
+    a candidate is provided. The orchestrator assigns IDs (A, B, ...)
+    and runs this agent up to a hard cap; the agent never sees its own
+    prior outputs except as ``already_proposed`` context.
+    """
+
+    done: bool = Field(
+        description=(
+            "True if no further meaningful candidate verdict can be added "
+            "given the candidates already proposed. When True, verdict and "
+            "description should be omitted."
+        )
+    )
+    verdict: Optional[
+        Literal[
+            "supports",
+            "contradicts",
+            "insufficient",
+            "supports_refined",
+            "contradicts_refined",
+        ]
+    ] = Field(
+        default=None,
+        description=(
+            "The candidate verdict. Use 'supports_refined' or "
+            "'contradicts_refined' when the candidate is a directional "
+            "verdict that holds only under a narrower scope than the "
+            "claim's stated scope (e.g. 'true for one drug class only')."
+        ),
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description=(
+            "1-2 sentences explaining how this candidate would account for "
+            "the evidence pattern. Must be distinct from already-proposed "
+            "candidates."
+        ),
+    )
+
+
+class LovelinessScore(BaseModel):
+    """Lipton's loveliness: how good an explanation a candidate would be IF true.
+
+    Evaluates explanatory virtue independently of the other candidates'
+    scores (Kahneman independence). The agent sees one candidate at a
+    time and never another candidate's score.
+    """
+
+    loveliness: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Loveliness in [0, 1]. High loveliness means the candidate, "
+            "if true, would be a clean explanation: clear mechanism, "
+            "matching scope, parsimony, and unifying power across the "
+            "evidence pattern."
+        ),
+    )
+    reasoning: str = Field(
+        description=(
+            "One paragraph touching on each loveliness virtue (mechanism "
+            "clarity, scope match, parsimony, unifying power). The "
+            "reasoning is the audit trail for the score."
+        )
+    )
+
+
+class LikelinessScore(BaseModel):
+    """Lipton's likeliness: how well a candidate fits the actual evidence.
+
+    Evaluated independently of other candidates' scores (Kahneman
+    independence). The agent sees one candidate at a time alongside the
+    full evidence base and adversarial outcome; it does not see other
+    candidates' likeliness scores.
+    """
+
+    likeliness: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Likeliness in [0, 1]. High likeliness means the candidate "
+            "accounts for the supporting items, correctly handles or "
+            "dismisses the contradicting items, and is consistent with "
+            "the adversarial-search outcome."
+        ),
+    )
+    reasoning: str = Field(
+        description=(
+            "One paragraph naming which evidence pieces the candidate "
+            "explains and which it cannot account for. Specific is more "
+            "useful than vague."
+        )
+    )
+
+
+class SelectedExplanation(BaseModel):
+    """Lipton's comparative selection: best candidate by loveliness × likeliness.
+
+    The agent sees all scored candidates with their loveliness and
+    likeliness values + reasonings, and picks the best. Confidence
+    should reflect the *gap* to the runner-up: large gap → high
+    confidence; small gap → moderate confidence (the literature is
+    contested or the candidates are similarly defensible).
+    """
+
+    chosen_candidate_id: str = Field(
+        description="The candidate_id (e.g. 'A', 'B') of the best explanation."
+    )
+    runner_up_candidate_id: str = Field(
+        description=(
+            "The candidate_id of the second-best explanation. Required "
+            "even when the runner-up is much weaker — the gap between "
+            "best and runner-up is the basis for confidence calibration."
+        )
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Confidence in the chosen verdict. Calibrate against the gap "
+            "to the runner-up: large gap (chosen dominates on both "
+            "loveliness and likeliness) → high confidence (>0.8); small "
+            "gap (candidates similarly defensible) → moderate (0.4-0.6)."
+        ),
+    )
+    reasoning: str = Field(
+        description=(
+            "One paragraph explaining why the chosen candidate beats the "
+            "runner-up, and what the gap implies about confidence."
+        )
+    )

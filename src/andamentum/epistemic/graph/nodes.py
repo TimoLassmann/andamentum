@@ -820,7 +820,7 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["ResolveUncertainties", "IntegrateEvidence"]:
+    ) -> Union["ResolveUncertainties", "EnumerateCandidates"]:
         from ..operations.verification import (
             AdversarialSearchOperation,
             AssessConvergenceOperation,
@@ -947,7 +947,7 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
             )
             blocking_remaining = any(u.is_blocking for u in unresolved)
             if not blocking_remaining:
-                return IntegrateEvidence()
+                return EnumerateCandidates()
 
         return ResolveUncertainties()
 
@@ -973,7 +973,7 @@ class ResolveUncertainties(
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> Union[
-        "IntegrateEvidence", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"
+        "EnumerateCandidates", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"
     ]:
         from ..operations.uncertainty import ResolveUncertaintyOperation
         from ..operations.concerns import DeduplicateConcernsOperation
@@ -992,7 +992,7 @@ class ResolveUncertainties(
         if not blocking:
             if self.next_on_clear == "promote":
                 return PromoteToSupported()
-            return IntegrateEvidence()
+            return EnumerateCandidates()
 
         for unc in blocking:
             result = await _run_op(
@@ -1052,17 +1052,22 @@ class ResolveUncertainties(
 
         if self.next_on_clear == "promote":
             return PromoteToSupported()
-        return IntegrateEvidence()
+        return EnumerateCandidates()
 
 
 @dataclass
-class IntegrateEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Run abductive integration on each SUPPORTED claim."""
+class EnumerateCandidates(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+    """Stage 1 of IBE: enumerate candidate verdicts for each SUPPORTED claim.
+
+    Generative role (Peirce). Iterative single-candidate calls with the
+    running list as priors so each call diversifies away from prior
+    candidates. Idempotent — skips claims that already have candidates.
+    """
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> "PromoteSupported":
-        from ..operations.integration import AbductiveIntegrationOperation
+    ) -> "ScoreLoveliness":
+        from ..operations.integration import EnumerateCandidatesOperation
         from ..entities.claim import ClaimStage
 
         state = ctx.state
@@ -1076,14 +1081,139 @@ class IntegrateEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRe
             if (
                 claim.stage == ClaimStage.SUPPORTED
                 and claim.integrated_assessment is None
+                and not claim.integration_candidates
             ):
                 await _run_op(
-                    AbductiveIntegrationOperation,
+                    EnumerateCandidatesOperation,
                     deps,
                     state,
                     claim.entity_id,
                     "claim",
-                    "integrate_evidence",
+                    "enumerate_candidates",
+                )
+
+        return ScoreLoveliness()
+
+
+@dataclass
+class ScoreLoveliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+    """Stage 2 of IBE: score each candidate's explanatory virtue.
+
+    Evaluative role (Lipton). Per-candidate calls run in parallel inside
+    the operation. Each call sees only its candidate (Kahneman
+    independence). Idempotent.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> "ScoreLikeliness":
+        from ..operations.integration import ScoreLovelinessOperation
+        from ..entities.claim import ClaimStage
+
+        state = ctx.state
+        deps = ctx.deps
+
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+
+        for claim in all_claims:
+            if claim.abandoned:
+                continue
+            if (
+                claim.stage == ClaimStage.SUPPORTED
+                and claim.integrated_assessment is None
+                and claim.integration_candidates
+                and any(c.loveliness is None for c in claim.integration_candidates)
+            ):
+                await _run_op(
+                    ScoreLovelinessOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "score_loveliness",
+                )
+
+        return ScoreLikeliness()
+
+
+@dataclass
+class ScoreLikeliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+    """Stage 3 of IBE: score each candidate's fit-with-evidence.
+
+    Evaluative role (Lipton). Same pattern as ScoreLoveliness but on
+    likeliness. Idempotent.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> "SelectBestExplanation":
+        from ..operations.integration import ScoreLikelinessOperation
+        from ..entities.claim import ClaimStage
+
+        state = ctx.state
+        deps = ctx.deps
+
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+
+        for claim in all_claims:
+            if claim.abandoned:
+                continue
+            if (
+                claim.stage == ClaimStage.SUPPORTED
+                and claim.integrated_assessment is None
+                and claim.integration_candidates
+                and any(c.likeliness is None for c in claim.integration_candidates)
+            ):
+                await _run_op(
+                    ScoreLikelinessOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "score_likeliness",
+                )
+
+        return SelectBestExplanation()
+
+
+@dataclass
+class SelectBestExplanation(
+    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
+):
+    """Stage 4 of IBE: pick the best candidate, write the verdict.
+
+    Comparative role (Lipton). Sees all scored candidates; picks the
+    best and assigns gap-based confidence. Writes
+    integrated_assessment / integrated_confidence / integrated_reasoning
+    on the claim — the fields compute_posterior reads. Idempotent.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> "PromoteSupported":
+        from ..operations.integration import SelectBestExplanationOperation
+        from ..entities.claim import ClaimStage
+
+        state = ctx.state
+        deps = ctx.deps
+
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+
+        for claim in all_claims:
+            if claim.abandoned:
+                continue
+            if (
+                claim.stage == ClaimStage.SUPPORTED
+                and claim.integrated_assessment is None
+                and claim.integration_candidates
+            ):
+                await _run_op(
+                    SelectBestExplanationOperation,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    "select_best_explanation",
                 )
 
         return PromoteSupported()
@@ -1291,7 +1421,10 @@ epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Gr
         ClusterEvidence,
         RunVerification,
         ResolveUncertainties,
-        IntegrateEvidence,
+        EnumerateCandidates,
+        ScoreLoveliness,
+        ScoreLikeliness,
+        SelectBestExplanation,
         PromoteSupported,
         CheckCompletion,
         Synthesize,

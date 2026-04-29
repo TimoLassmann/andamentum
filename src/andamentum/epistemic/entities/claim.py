@@ -9,9 +9,47 @@ Architecture: Layer 1 (framework-agnostic)
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
+
+
+class CandidateRecord(BaseModel):
+    """One candidate verdict accumulated through the IBE pipeline.
+
+    Populated incrementally by the four IBE operations:
+      - EnumerateCandidatesOperation writes id, verdict, description
+      - ScoreLovelinessOperation fills loveliness + loveliness_reasoning
+      - ScoreLikelinessOperation fills likeliness + likeliness_reasoning
+      - SelectBestExplanationOperation marks chosen / runner_up and
+        writes the gap fields on the chosen record
+
+    Persisted as part of Claim.integration_candidates so the full
+    abductive deliberation trace survives in the database.
+    """
+
+    candidate_id: str = Field(description="Stable id assigned by enumeration: 'A', 'B', ...")
+    verdict: str = Field(
+        description=(
+            "One of supports / contradicts / insufficient / "
+            "supports_refined / contradicts_refined."
+        )
+    )
+    description: str = Field(description="1-2 sentences from the enumeration step.")
+    loveliness: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    loveliness_reasoning: Optional[str] = Field(default=None)
+    likeliness: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    likeliness_reasoning: Optional[str] = Field(default=None)
+    chosen: bool = Field(default=False)
+    runner_up: bool = Field(default=False)
+    gap_loveliness: Optional[float] = Field(
+        default=None,
+        description="Set on the chosen candidate: chosen.loveliness - runner_up.loveliness.",
+    )
+    gap_likeliness: Optional[float] = Field(
+        default=None,
+        description="Set on the chosen candidate: chosen.likeliness - runner_up.likeliness.",
+    )
 
 
 class ClaimStage(str, Enum):
@@ -194,6 +232,20 @@ class Claim(EpistemicEntity):
         description="Reasoning chain from integration assessment",
     )
 
+    # IBE deliberation trace. Populated by the 4-stage abductive
+    # integration pipeline (enumerate → score loveliness → score
+    # likeliness → select). Empty for claims that haven't reached
+    # integration yet, and for refute-promoted claims (which set
+    # integrated_assessment directly without going through IBE).
+    integration_candidates: list[CandidateRecord] = Field(
+        default_factory=list,
+        description=(
+            "Full per-candidate IBE record: verdict, description, "
+            "loveliness, likeliness, score reasonings, chosen / runner_up "
+            "flags, and gap-to-runner-up on the chosen candidate."
+        ),
+    )
+
     def model_post_init(self, __context: Any) -> None:
         """Update denormalized fields after initialization."""
         self.evidence_count = len(self.evidence_ids)
@@ -262,6 +314,7 @@ class Claim(EpistemicEntity):
             self.integrated_assessment = None
             self.integrated_confidence = None
             self.integrated_reasoning = None
+            self.integration_candidates = []
 
     def _extra_metadata(self) -> dict[str, Any]:
         """Add claim-specific metadata for filtering."""
@@ -294,6 +347,7 @@ class Claim(EpistemicEntity):
             "abandoned": self.abandoned,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
+            "integration_candidates": [c.model_dump() for c in self.integration_candidates],
         }
         if self.confidence_score is not None:
             meta["confidence_score"] = self.confidence_score
@@ -355,6 +409,10 @@ class Claim(EpistemicEntity):
             integrated_assessment=metadata.get("integrated_assessment"),
             integrated_confidence=metadata.get("integrated_confidence"),
             integrated_reasoning=metadata.get("integrated_reasoning"),
+            integration_candidates=[
+                CandidateRecord(**c)
+                for c in metadata.get("integration_candidates", [])
+            ],
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

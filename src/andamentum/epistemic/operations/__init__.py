@@ -88,8 +88,13 @@ from .synthesis import (
     SynthesizeReportOperation,
 )
 
-# ── Integration ─────────────────────────────────────────────────────────
-from .integration import AbductiveIntegrationOperation
+# ── Integration (4-stage IBE: Peirce + Lipton + Kahneman) ─────────────
+from .integration import (
+    EnumerateCandidatesOperation,
+    ScoreLikelinessOperation,
+    ScoreLovelinessOperation,
+    SelectBestExplanationOperation,
+)
 
 # ── Analysis ─────────────────────────────────────────────────────────────
 from .analysis import (
@@ -140,8 +145,11 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "assess_convergence": AssessConvergenceOperation,
     "validate_deductively": ValidateDeductivelyOperation,
     "verify_computationally": VerifyComputationallyOperation,
-    # Integration
-    "integrate_evidence": AbductiveIntegrationOperation,
+    # Integration (4-stage IBE)
+    "enumerate_candidates": EnumerateCandidatesOperation,
+    "score_loveliness": ScoreLovelinessOperation,
+    "score_likeliness": ScoreLikelinessOperation,
+    "select_best_explanation": SelectBestExplanationOperation,
     # Argument analysis
     "analyze_argument": AnalyzeArgumentOperation,
     # Pairwise claim operations
@@ -270,7 +278,10 @@ __all__ = [
     "RevalidateClaimOperation",
     "SetRoutingDefaultsOperation",
     "AbandonStaleClaimOperation",
-    "AbductiveIntegrationOperation",
+    "EnumerateCandidatesOperation",
+    "ScoreLovelinessOperation",
+    "ScoreLikelinessOperation",
+    "SelectBestExplanationOperation",
     # Registry
     "OPERATION_CLASSES",
     "create_operations",
