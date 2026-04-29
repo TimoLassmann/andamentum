@@ -261,7 +261,15 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
     ) -> None:
         # 3/2: refute threshold is n_con >= 2*max(1, n_sup) → 2 < 6, declines.
         # Directional signal exists (3+2 > 0), so soft-promote takes over
-        # instead of abandonment, preserving the counts for the posterior.
+        # instead of abandonment.
+        #
+        # SoftPromote no longer pre-sets the integration verdict — that was a
+        # pre-IBE optimization. After the IBE 4-stage refactor, the verdict
+        # is produced by the IBE chain (EnumerateCandidates → ... →
+        # SelectBestExplanation), so SoftPromote leaves
+        # integrated_assessment / integrated_confidence as None for IBE to
+        # populate. The IBE chain then runs against the SUPPORTED claim
+        # (no IBE in this fixture because agent_runner is None).
         claim, repo = await _setup_claim_with_evidence(tmp_path, 3, 2)
         claim.scrutiny_verdict = "needs_resolution"
         await repo.save(claim)
@@ -277,9 +285,9 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         reloaded = await repo.get("claim", claim.entity_id)
         assert reloaded.abandoned is False
         assert reloaded.stage == ClaimStage.SUPPORTED
-        assert reloaded.integrated_assessment == "insufficient"
-        assert reloaded.integrated_confidence is not None
-        assert reloaded.integrated_confidence <= 0.5
+        # SoftPromote does not pre-set the verdict; IBE will produce it.
+        assert reloaded.integrated_assessment is None
+        assert reloaded.integrated_confidence is None
         assert claim.entity_id in state.verification_done
         assert claim.entity_id not in state.terminal_claims
 
