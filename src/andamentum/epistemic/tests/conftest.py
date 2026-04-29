@@ -261,6 +261,28 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "confidence": 0.75,
         "reasoning": "Evidence collectively supports the claim through convergent indirect evidence",
     },
+    # IBE pipeline (4-stage decomposition replacing epistemic_integrate_evidence
+    # in active runs). Defaults are calibrated so a default run picks
+    # candidate A (supports) over B (contradicts) with moderate confidence.
+    "epistemic_propose_one_candidate": {
+        "done": True,  # default: trigger fallback to default 3-candidate set
+        "verdict": None,
+        "description": None,
+    },
+    "epistemic_score_candidate_loveliness": {
+        "loveliness": 0.7,
+        "reasoning": "Default mock: clean mechanism, scope match.",
+    },
+    "epistemic_score_candidate_likeliness": {
+        "likeliness": 0.7,
+        "reasoning": "Default mock: fits supporting evidence.",
+    },
+    "epistemic_select_best_explanation": {
+        "chosen_candidate_id": "A",
+        "runner_up_candidate_id": "B",
+        "confidence": 0.75,
+        "reasoning": "Default mock: A dominates B on combined loveliness × likeliness.",
+    },
     "epistemic_formulate_query": {
         "query": "spaced repetition effectiveness long-term memory",
         "rationale": "Query optimized for this provider's domain",
