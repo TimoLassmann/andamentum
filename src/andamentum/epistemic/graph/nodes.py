@@ -339,6 +339,14 @@ class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
         state.evidence_extracted = True
 
+        # Cross-provider duplicate sweep: when multiple providers return the
+        # same paper, mark all but one as invalidated so judging / scrutiny /
+        # gates don't pay LLM cost on redundant copies. Downstream filters
+        # already exclude invalidated evidence; this is purely cost reduction.
+        from ..dedupe_evidence import dedupe_evidence_by_source_ref
+
+        await dedupe_evidence_by_source_ref(deps.repo, state.objective_id)
+
         # If claims have not yet been created, go create them.
         # Otherwise we are re-entering after investigation — go back to scrutiny.
         if not state.claims_created:
@@ -523,6 +531,11 @@ class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
             extracted=False,
         )
 
+        # Pass 1: extraction only. Each extract_evidence call may create
+        # extras (gathered[1:]) — we collect them all before judging so
+        # the dedupe sweep runs in between and we don't pay LLM cost on
+        # cross-provider duplicates.
+        per_stub_results: list[tuple[Any, Any]] = []
         for ev in unextracted:
             result = await _run_op(
                 ExtractEvidenceOperation,
@@ -534,19 +547,27 @@ class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
             )
             updated_ev = await deps.repo.get("evidence", ev.entity_id)
             _update_retrieval_health(state, updated_ev)
+            per_stub_results.append((ev, result))
 
-            # Link newly created evidence to the same claim as the stub.
-            # Extraction from a single query may produce multiple Evidence
-            # entities (gathered[1:]). The original stub is linked to a
-            # claim via depends_on_claim_id, but the extras are orphans.
+        # Cross-provider duplicate sweep before judging fires. Dedupe runs
+        # on all evidence for the objective so it catches duplicates within
+        # this batch and against earlier-extracted evidence.
+        from ..dedupe_evidence import dedupe_evidence_by_source_ref
+
+        await dedupe_evidence_by_source_ref(deps.repo, state.objective_id)
+
+        # Pass 2: link new evidence to claims and judge. Invalidated items
+        # (marked by the dedupe sweep) are skipped — they were duplicates
+        # of evidence that's already represented and will be filtered out
+        # by all downstream consumers anyway.
+        for ev, result in per_stub_results:
             if not result.success:
                 continue
 
             created_ids = getattr(result, "created_entities", []) or []
             if len(created_ids) <= 1:
-                continue  # Only the original stub, nothing to link
+                continue
 
-            # Find the claim this stub was created for
             original = await deps.repo.get("evidence", ev.entity_id)
             claim_id = original.depends_on_claim_id
             if not claim_id:
@@ -556,22 +577,21 @@ class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
             if not isinstance(claim, Claim):
                 continue
 
-            # Link extras to the claim and judge all created entities.
-            # When the gatherer returns multiple results, ExtractEvidenceOperation
-            # returns early (before the judgment block) so the original stub is
-            # also unjudged. Judge every created entity that still lacks a verdict.
             extras_linked = 0
             for eid in created_ids:
                 entity_ev = await deps.repo.get("evidence", eid)
                 if not isinstance(entity_ev, Evidence):
                     continue
 
-                # Link to claim (extras are not linked; original already is)
+                # Skip linking + judging for items the dedupe sweep
+                # invalidated as cross-provider duplicates.
+                if entity_ev.invalidated:
+                    continue
+
                 if eid not in claim.evidence_ids:
                     claim.evidence_ids.append(eid)
                     extras_linked += 1
 
-                # Judge if not yet judged
                 if (
                     deps.agent_runner
                     and entity_ev.extracted_content
