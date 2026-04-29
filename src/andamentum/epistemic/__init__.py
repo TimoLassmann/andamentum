@@ -11,7 +11,7 @@ import from the submodule directly::
     from andamentum.epistemic.convergence_detector import detect_convergence
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # === Functions you can wrap as agent tools ===
 # `EpistemicRepository`, `BaseOperation`, `EvidenceGatherer`, `QualityScorer`
