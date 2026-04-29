@@ -555,15 +555,52 @@ class DraftClaimOutput(BaseModel):
 class EvidenceJudgmentOutput(BaseModel):
     """Output from epistemic_judge_evidence agent.
 
-    Focused three-way classification: does this evidence support,
-    contradict, or have no bearing on the claim?
+    Structured scope-then-direction decomposition. The agent first decides
+    whether the evidence falls within the claim's scope (population,
+    condition, context, qualifier match) and only then judges direction.
+    Surfacing the scope step makes failures debuggable: when the verdict is
+    wrong, the JSONL trace shows whether the scope check or the direction
+    check broke.
+
+    The pydantic schema enforces the decomposition — small models cannot
+    skip the scope reasoning by going straight to a verdict.
     """
 
+    claim_scope_summary: str = Field(
+        description=(
+            "Short phrase describing what the claim covers, including any "
+            "qualifiers or conditions. Examples: 'podocytes under injury', "
+            "'new TB drugs, lesion penetration', 'stage III NSCLC patients'."
+        )
+    )
+    evidence_scope_summary: str = Field(
+        description=(
+            "Short phrase describing what the evidence actually studies. "
+            "Examples: 'healthy mouse podocytes at baseline', 'BTZ-043 in "
+            "murine TB granulomas', 'all-comers cohort over 65'."
+        )
+    )
+    in_scope: bool = Field(
+        description=(
+            "True if the evidence's scope falls within (or is a specific "
+            "instance of) the claim's scope. False if topically related but "
+            "pertaining to a different population, condition, or context. "
+            "When False, the verdict MUST be 'no_bearing'."
+        )
+    )
     verdict: Literal["supports", "contradicts", "no_bearing"] = Field(
-        description='One of: "supports", "contradicts", "no_bearing"'
+        description=(
+            "If in_scope is False, MUST be 'no_bearing'. If in_scope is "
+            "True, judge direction: 'supports' (evidence makes the claim "
+            "more likely true) or 'contradicts' (evidence makes the claim "
+            "less likely true)."
+        )
     )
     reasoning: str = Field(
-        description="One sentence explaining why the evidence has this relationship to the claim"
+        description=(
+            "One sentence justifying the verdict, referencing the scope "
+            "analysis. For out-of-scope cases, name the scope mismatch."
+        )
     )
 
 
