@@ -1,12 +1,12 @@
 """Evidence-based novelty checking for research claims."""
 
 from .models import NoveltyReport, SimilarWork, Relevance
-from .checker import check_novelty, NoveltyAssessment
+from .checker import run_novelty_check, NoveltyAssessment
 
 __all__ = [
     "NoveltyReport",
     "SimilarWork",
     "Relevance",
-    "check_novelty",
+    "run_novelty_check",
     "NoveltyAssessment",
 ]
