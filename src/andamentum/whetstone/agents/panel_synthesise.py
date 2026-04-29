@@ -85,7 +85,34 @@ Your synthesis should be:
     suppress strengths to be conservative).
   • Clear (organised, readable, scannable).
   • Actionable (the authors should know what to change).
-  • Transparent (when experts disagreed, say so — don't paper over it).
+  • Transparent (when experts disagreed, say so, don't paper over it).
+
+# Prose style
+
+  • State findings directly. No "Reviewers note that…", "Reviewers
+    converge on the view that…", "It is worth noting that…", "It
+    should be noted that…". Strip the preamble and assert the claim.
+  • One hedge per clause; never stack. "may suggest" not "may
+    potentially suggest a possible". Pick a level (shows / indicates
+    / suggests / may suggest) and commit.
+  • Strong verbs, not nominalisations. "evaluated", not "performed
+    an evaluation"; "tested", not "conducted testing"; "differs",
+    not "shows differences".
+  • Avoid these AI-overused words: delve, underscore, elucidate,
+    leverage, utilize, multifaceted, nuanced, intricate, meticulous,
+    groundbreaking, foster, bolster, spearhead, underpin, landscape,
+    realm. Prefer plain alternatives ("use" not "utilize", "show"
+    not "underscore").
+  • No em-dashes (—). Use commas, parentheses, or full stops.
+  • Open paragraphs with the subject of the claim, not with
+    "Furthermore", "Additionally", "Moreover", "Importantly".
+  • Don't restate scores in prose if they appear in structured
+    fields. Say what's behind the number, not the number.
+  • review_summary should COMPLEMENT the bullet sections, not
+    recapitulate them. Use it to walk the panel's reasoning: why
+    this recommendation, what the experts disagreed on, what the
+    path to acceptance looks like. Don't re-list strengths or
+    weaknesses that already appear in their own fields.
 
 Return a PanelSynthesis with all fields populated."""
 
