@@ -126,11 +126,61 @@ class TestCombineSubVerdicts:
         assert c.combination_rule == "OR"
         assert c.verdict == "supports"
 
-    def test_weighted_and_returns_mean(self):
+    def test_weighted_and_returns_mean_with_no_weights(self):
         results = [_result(0.8), _result(0.6), _result(0.4)]
         c = combine_sub_verdicts(results, "WEIGHTED_AND")
         assert c.posterior == pytest.approx(0.6)
         assert c.verdict == "insufficient"
+
+    def test_weighted_and_with_weights_pulls_toward_heavy_child(self):
+        # Children at 0.9 and 0.3. Weight 0.9 at 3.0, 0.3 at 1.0:
+        # weighted mean = (0.9*3 + 0.3*1) / (3+1) = 3.0 / 4 = 0.75
+        results = [_result(0.9), _result(0.3)]
+        c = combine_sub_verdicts(results, "WEIGHTED_AND", weights=[3.0, 1.0])
+        assert c.posterior == pytest.approx(0.75)
+        assert c.verdict == "supports"
+
+    def test_weighted_and_equal_weights_equals_simple_mean(self):
+        results = [_result(0.8), _result(0.6), _result(0.4)]
+        c_weighted = combine_sub_verdicts(
+            results, "WEIGHTED_AND", weights=[1.0, 1.0, 1.0]
+        )
+        c_unweighted = combine_sub_verdicts(results, "WEIGHTED_AND")
+        assert c_weighted.posterior == pytest.approx(c_unweighted.posterior)
+
+    def test_weighted_and_zero_weight_drops_child_via_normalization(self):
+        # Child at 0.1 with weight 0.0 contributes nothing. Other child at 0.8
+        # with weight 1.0 dominates.
+        results = [_result(0.8), _result(0.1)]
+        c = combine_sub_verdicts(results, "WEIGHTED_AND", weights=[1.0, 0.0])
+        assert c.posterior == pytest.approx(0.8)
+
+    def test_weighted_and_all_zero_weights_falls_back_to_mean(self):
+        results = [_result(0.8), _result(0.4)]
+        c = combine_sub_verdicts(results, "WEIGHTED_AND", weights=[0.0, 0.0])
+        assert c.posterior == pytest.approx(0.6)  # simple mean
+        assert "all weights zero" in c.explanation
+
+    def test_weighted_and_negative_weight_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            combine_sub_verdicts(
+                [_result(0.8), _result(0.6)], "WEIGHTED_AND", weights=[1.0, -1.0]
+            )
+
+    def test_weighted_and_mismatched_weights_length_raises(self):
+        with pytest.raises(ValueError, match="length"):
+            combine_sub_verdicts(
+                [_result(0.8), _result(0.6)], "WEIGHTED_AND", weights=[1.0]
+            )
+
+    def test_weighted_and_drops_none_children_and_their_weights(self):
+        # Child indices 0 and 2 are numeric; index 1 is None. Weights
+        # should be sliced to match: (0.9*1 + 0.5*3) / (1+3) = 2.4/4 = 0.6.
+        results = [_result(0.9), _result(None), _result(0.5)]
+        c = combine_sub_verdicts(
+            results, "WEIGHTED_AND", weights=[1.0, 100.0, 3.0]
+        )
+        assert c.posterior == pytest.approx(0.6)
 
     def test_union_returns_none_posterior(self):
         results = [_result(0.8), _result(0.6)]
@@ -423,3 +473,75 @@ class TestDecomposedRunner:
                 decompose=True,
                 model=None,
             )
+
+    async def test_weights_from_decomposition_flow_through(
+        self, tmp_path, fake_runner, monkeypatch
+    ):
+        """Decomposer-emitted weights are persisted on the parent and
+        applied by the orchestrator when combining."""
+        await _seed_parent(tmp_path, "weighted_test", description="Q")
+        monkeypatch.setattr(
+            "andamentum.epistemic.runner.DefaultAgentRunner",
+            lambda **_kwargs: fake_runner,
+        )
+        monkeypatch.setattr(
+            "andamentum.core.models.resolve_embedding_model_from_args",
+            lambda: "test-embed",
+        )
+        # Decomposer emits two sub-investigations with weights 3 and 1
+        # under WEIGHTED_AND. Children's posteriors are 0.9 and 0.3 (set
+        # by the index stub below) → weighted mean = 0.75.
+        fake_runner._overrides["epistemic_decompose_question"] = {
+            "sub_investigations": [
+                {
+                    "id": "A",
+                    "seed_claim": "alpha",
+                    "rationale": "ra",
+                    "weight": 3.0,
+                },
+                {
+                    "id": "B",
+                    "seed_claim": "beta",
+                    "rationale": "rb",
+                    "weight": 1.0,
+                },
+            ],
+            "combination_rule": "WEIGHTED_AND",
+            "rationale": "alpha is more critical",
+        }
+
+        class _IndexStub:
+            def __init__(self, posts):
+                self.posts = posts
+                self.calls: list[dict[str, Any]] = []
+
+            async def __call__(self, **call_kwargs: Any) -> PipelineResult:
+                idx = len(self.calls)
+                self.calls.append(call_kwargs)
+                p = self.posts[idx]
+                return PipelineResult(
+                    objective_id=call_kwargs.get("objective_id", f"c{idx}"),
+                    iterations=5,
+                    successful=5,
+                    failed=0,
+                    status="ok",
+                    errors=[],
+                    posterior=_posterior(p),
+                    quarantined=[],
+                )
+
+        ix = _IndexStub([0.9, 0.3])
+        result = await run_research_question_decomposed(
+            "Q",
+            database_name="weighted_test",
+            model="test:stub",
+            embedding_model="t",
+            db_dir=str(tmp_path),
+            decompose=True,
+            _inner_runner=ix,  # type: ignore[arg-type]
+        )
+        assert isinstance(result, DecomposedPipelineResult)
+        assert result.combined.combination_rule == "WEIGHTED_AND"
+        assert result.combined.posterior == pytest.approx(0.75)
+        # Weights surface in the explanation for diagnostics.
+        assert "weights=" in result.combined.explanation

@@ -404,6 +404,7 @@ class DecomposeQuestionOperation(BaseOperation):
                     "id": s.id,
                     "seed_claim": s.seed_claim,
                     "rationale": s.rationale,
+                    "weight": getattr(s, "weight", 1.0),
                 }
                 for s in result.sub_investigations
             ],

@@ -432,10 +432,31 @@ above, with mechanism + observation + artifact-control.
 
 You must produce:
 - sub_investigations: 2-5 items, each with id (A, B, C, ...), seed_claim
-  (the testable / characterizable claim form), and rationale
+  (the testable / characterizable claim form), rationale, and weight
 - combination_rule: AND, OR, WEIGHTED_AND, or UNION (per question_type)
 - rationale: 1-2 sentences on why this decomposition captures the
   question's load-bearing structure
+
+## Weights
+
+Each sub-investigation has a `weight` (0-10, default 1.0). Weights only
+affect the **WEIGHTED_AND** combination — they are ignored for AND, OR,
+and UNION. For AND / OR / UNION, leave weights at the default 1.0.
+
+For WEIGHTED_AND, set weights so the relative importance of each
+sub-investigation is encoded. Examples:
+
+- "X is causally linked to Y" decomposed into (a) association is
+  observed and (b) association is not explained by a confound. Weight
+  the confound check at 2.0 (load-bearing for causality) and the
+  association at 1.0.
+- "Drug A is better than Drug B" decomposed by efficacy / safety /
+  cost. If the user prioritizes safety, weight safety at 2.0 and the
+  others at 1.0.
+
+If you have no clear differential importance, use 1.0 for all sub-
+investigations and pick AND or OR instead — using WEIGHTED_AND with
+all-equal weights is the same as a simple mean and adds no information.
 
 Now decompose the given question."""
 
