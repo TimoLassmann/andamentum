@@ -518,7 +518,6 @@ class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
             updated_ev = await deps.repo.get("evidence", ev.entity_id)
             _update_retrieval_health(state, updated_ev)
 
-        state.evidence_extracted = True
 
         # Cross-provider duplicate sweep: when multiple providers return the
         # same paper, mark all but one as invalidated so judging / scrutiny /

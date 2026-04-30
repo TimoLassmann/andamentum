@@ -58,11 +58,11 @@ class EpistemicGraphState:
     # graph runs share a DocumentStore (decomposed runs, re-runs).
     run_id: str = field(default_factory=_new_run_id)
 
-    # ── Evidence collection ─────────────────────────────────────
-    evidence_extracted: bool = False
-
     # ── Claim creation ──────────────────────────────────────────
     claims_created: bool = False
+    # Tracks the entity_ids of active (non-abandoned) claims at the end
+    # of CreateClaims. Diagnostic / test-observation field — production
+    # routing reads claims directly from the repo, not from this list.
     claim_ids: list[str] = field(default_factory=list)
 
     # ── Per-claim tracking ──────────────────────────────────────
@@ -72,7 +72,10 @@ class EpistemicGraphState:
     # Claims that have completed verification + integration
     verification_done: set[str] = field(default_factory=set)
 
-    # Claims that have been abandoned or reached terminal stage
+    # Claims marked terminal by PromoteToSupported / PromoteSupported
+    # (cycle_capped, abandoned-stale, refute-promoted, etc.). Diagnostic
+    # / test-observation set — production routing reads claim flags
+    # directly from the repo, not from this set.
     terminal_claims: set[str] = field(default_factory=set)
 
     # ── Retrieval health ────────────────────────────────────────
