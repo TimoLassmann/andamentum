@@ -311,3 +311,84 @@ class PlanTaskOperation(BaseOperation):
             message=f"Plan created with {len(created_evidence)} evidence sources: {', '.join(providers)}",
             created_entities=created_evidence,
         )
+
+
+class DecomposeQuestionOperation(BaseOperation):
+    """Top-down decomposition of the research question into sub-investigations.
+
+    Calls ``epistemic_decompose_question`` to produce 2-5 sub-investigations
+    whose outcomes together settle (or characterize) the question. The
+    result is returned via OperationResult; downstream graph wiring (which
+    spawns sub-objectives and runs each through the per-claim pipeline) is
+    deferred to Phase 2-3.
+
+    Phase 1 use: call this operation standalone to inspect what
+    decompositions the agent produces. Useful for prompt iteration before
+    committing to graph integration.
+
+    Replaces the bottom-up ``ProposeClaimsOperation`` flow for verificatory,
+    explanatory, exploratory, comparative, predictive, compositional, and
+    normative questions. ``seed_claim`` mode (when ``claim_to_verify`` is
+    set on the objective) bypasses decomposition entirely — there is one
+    claim and no decomposition is needed.
+
+    Idempotent at the agent-call level: re-running stores the latest
+    decomposition on the objective's metadata via the same pattern other
+    preplanning operations use.
+    """
+
+    entity_type = "objective"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        objective = await self.repo.get("objective", work.entity_id)
+
+        if not isinstance(objective, Objective):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Objective",
+                did_work=False,
+            )
+
+        if objective.claim_to_verify:
+            # seed_claim mode: no decomposition needed.
+            return OperationResult(
+                success=True,
+                entity_id=work.entity_id,
+                message=(
+                    "Skipped: objective has claim_to_verify (seed_claim mode "
+                    "bypasses top-down decomposition)"
+                ),
+                did_work=False,
+            )
+
+        if not self.agent_runner:
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="No agent_runner configured; decomposition requires an LLM",
+                did_work=False,
+            )
+
+        question = objective.clarified_question or objective.description
+        question_type = objective.question_type or "verificatory"
+
+        result = await self.run_agent(
+            "epistemic_decompose_question",
+            question=question,
+            question_type=question_type,
+        )
+
+        sub_count = len(result.sub_investigations)
+        sub_summary = ", ".join(
+            f"{s.id}: {s.seed_claim[:60]}" for s in result.sub_investigations
+        )
+
+        return OperationResult(
+            success=True,
+            entity_id=objective.entity_id,
+            message=(
+                f"Decomposed into {sub_count} sub-investigations "
+                f"(combination={result.combination_rule}). {sub_summary}"
+            ),
+        )

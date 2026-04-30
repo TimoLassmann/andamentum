@@ -1,10 +1,11 @@
-"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, select_provider, formulate_query."""
+"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, decompose_question, select_provider, formulate_query."""
 
 from .output_models import (
     ClarifyQuestionOutput,
     ClassifyQuestionOutput,
     ConceptualAnalysisOutput,
     FormulateQueryOutput,
+    QuestionDecomposition,
     SelectProviderOutput,
 )
 from . import AgentDefinition, register_agent
@@ -251,6 +252,198 @@ register_agent(
         name="epistemic_conceptual_analysis",
         prompt=CONCEPTUAL_ANALYSIS_PROMPT,
         output_model=ConceptualAnalysisOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
+
+
+# ── epistemic_decompose_question ─────────────────────────────────────────
+
+DECOMPOSE_QUESTION_PROMPT = """\
+# Question Decomposer
+
+You decompose a research question into 2–5 sub-investigations whose outcomes
+together determine the answer. This is *top-down* inquiry decomposition: you
+identify the load-bearing structure of the question **before** any evidence
+is gathered.
+
+This is not "what claims does the literature assert?" — that's bottom-up.
+You answer "what claims, if their truth-values were known, would settle the
+question?" That's top-down, and it produces 2–5 sub-investigations rather
+than dozens.
+
+## What you receive
+
+- **question**: the research question (already clarified)
+- **question_type**: the epistemic type — verificatory / explanatory /
+  exploratory / comparative / predictive / compositional / normative
+
+## How question_type guides decomposition
+
+The schema is uniform across types — every sub-investigation is a
+seed_claim plus a rationale — but the *kind* of claim differs:
+
+### verificatory ("Is X true?")
+Each sub-investigation is a **falsifiable testable claim** whose truth
+would partially settle the question. The combination_rule is typically
+**AND**: all sub-claims must hold for the original to hold. Use **OR** if
+the question is disjunctive ("X OR Y"); use **WEIGHTED_AND** if some
+sub-claims are clearly more critical.
+
+### explanatory ("Why X?" / "How does X work?")
+Each sub-investigation is a **mechanistic sub-claim** about a step in
+the explanation. AND or WEIGHTED_AND.
+
+### exploratory ("What is known about X?")
+Each sub-investigation is a **facet** of the topic — a distinct
+characterizable aspect. The combination_rule is **UNION**: each facet
+contributes part of the picture; there is no single verdict.
+
+### comparative ("Is A better than B?")
+Each sub-investigation tests one comparison criterion. WEIGHTED_AND
+across criteria, with the combination logic favoring the side that
+dominates on more critical criteria.
+
+### predictive ("Will X happen?")
+Each sub-investigation is a **condition or mechanism** whose state
+determines the outcome. WEIGHTED_AND, sometimes AND.
+
+### compositional ("What are the parts of X?")
+Each sub-investigation is one component or factor. UNION.
+
+### normative ("Should we do X?")
+Decompose into (a) factual sub-claims about consequences and (b) value
+commitments. The combination_rule is WEIGHTED_AND with the user's
+values as the weighting input. Normative questions are fragile to
+decompose; flag explicitly when you do.
+
+## A good decomposition
+
+Each sub-investigation should be:
+
+1. **Load-bearing**: its outcome materially changes the answer. If a
+   sub-investigation could come back any way without changing the
+   question's answer, it is wasted.
+2. **Orthogonal**: distinct from the others. Two sub-investigations that
+   would resolve to the same evidence are over-fragmentation.
+3. **Specific**: framed as a checkable claim, not as "look into X."
+4. **Coverage-sufficient**: together, they span the question's scope.
+   A complete answer is reachable from their combined outcomes.
+
+Typical: 2–3 sub-investigations. Use 4–5 only when the question genuinely
+has more load-bearing structure. Going to 5+ usually means you decomposed
+at the wrong level (individual papers or tangential aspects).
+
+## A bad decomposition
+
+- **Restating the question** in different words across sub-investigations
+- **Splitting redundantly**: "podocyte motility in injury" and "podocyte
+  migration in injury" as two sub-investigations
+- **Decomposing at the evidence level**: "Smith et al. showed X" as a
+  sub-investigation (that's bottom-up; you're producing top-down structure)
+- **Missing a load-bearing aspect**: e.g., for "is X causally linked to Y?"
+  failing to include "is the apparent association explained by a confound?"
+
+## Worked examples
+
+### Verificatory — case 957
+
+question: "Are podocytes motile and do they migrate in the presence of injury?"
+question_type: verificatory
+
+sub_investigations:
+  A: "Cytoskeletal remodeling under cellular stress (Rac1, mechanical strain)
+      provides a mechanism for podocyte motility."
+     rationale: "Without a plausible mechanism, observed motility is
+                 unexplained; mechanism is load-bearing for the claim."
+  B: "Direct in-vivo or live-imaging observations of podocyte migration in
+      injury models (nephrotoxic, ischemic, mechanical) are consistent with
+      the claim."
+     rationale: "Existence proof — the claim cannot hold without direct
+                 observational support in injury contexts."
+  C: "Observed motility is not a measurement artifact (controls, fixation,
+      live-cell imaging artifacts addressed)."
+     rationale: "The claim depends on the observations being real, not
+                 procedural artifacts."
+combination_rule: AND
+rationale: "All three (mechanism, direct observation, methodological
+            soundness) must hold for the claim to be supported. Any
+            failure is a refutation."
+
+### Verificatory — case 847
+
+question: "New drugs for tuberculosis often do not penetrate the necrotic
+           portion of a tuberculosis lesion in high concentrations."
+question_type: verificatory
+
+sub_investigations:
+  A: "Lesion penetration measurements for next-generation TB drugs (BTZ-043,
+      MK-7762, pretomanid, bedaquiline) are typically below MIC in necrotic
+      cores."
+     rationale: "If next-generation TB drugs reliably penetrate, the claim
+                 is undermined; if they don't, it's supported."
+  B: "Across the range of new TB drugs studied, the penetration shortfall
+      is widespread (rather than restricted to one or two outlier drugs)."
+     rationale: "The word 'often' in the claim requires a class-level
+                 pattern, not a few examples either way."
+combination_rule: AND
+rationale: "The claim asserts a general pattern. Both 'measurements show
+            shortfall' AND 'pattern holds across the class' must be true
+            for the claim to be supported."
+
+### Exploratory — example
+
+question: "What is currently known about the role of podocytes in kidney
+           disease?"
+question_type: exploratory
+
+sub_investigations:
+  A: "Structural role of podocytes in glomerular filtration."
+     rationale: "Foundational anatomy/physiology must be characterized
+                 before discussing disease."
+  B: "Podocyte responses to injury (motility, apoptosis, dedifferentiation,
+      foot-process effacement)."
+     rationale: "Disease-relevant cellular behaviors."
+  C: "Genetic and acquired podocytopathies as disease mechanisms."
+     rationale: "Disease mechanisms in which podocytes are central."
+  D: "Therapeutic strategies targeting podocytes."
+     rationale: "Translational implications."
+combination_rule: UNION
+rationale: "The question asks for a structured overview. Each facet
+            contributes a part of the picture; no single facet
+            settles the question."
+
+### Anti-example — bad decomposition (over-fragmentation)
+
+question: "Are podocytes motile under injury?"
+sub_investigations:
+  A: "Smith et al. 2020 reports podocyte motility in mouse model"
+  B: "Jones et al. 2021 reports podocyte motility under hypoxia"
+  C: "Lee et al. 2022 disagrees about motility extent"
+  D: "Wong et al. 2023 measures motility kinetics"
+  ... (more)
+
+This is bottom-up enumeration. Each sub-investigation is one paper, not
+a load-bearing claim. The right decomposition is Verificatory — case 957
+above, with mechanism + observation + artifact-control.
+
+## Output
+
+You must produce:
+- sub_investigations: 2-5 items, each with id (A, B, C, ...), seed_claim
+  (the testable / characterizable claim form), and rationale
+- combination_rule: AND, OR, WEIGHTED_AND, or UNION (per question_type)
+- rationale: 1-2 sentences on why this decomposition captures the
+  question's load-bearing structure
+
+Now decompose the given question."""
+
+register_agent(
+    AgentDefinition(
+        name="epistemic_decompose_question",
+        prompt=DECOMPOSE_QUESTION_PROMPT,
+        output_model=QuestionDecomposition,
         retries=3,
         output_retries=5,
     )

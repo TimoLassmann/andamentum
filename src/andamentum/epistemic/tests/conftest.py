@@ -307,6 +307,30 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "relevant": True,
         "reasoning": "Provider is relevant for this question type",
     },
+    # Phase 1 of top-down decomposition: returns a verificatory-style
+    # decomposition with 3 sub-investigations combined via AND. Tests
+    # exercising specific decomposition shapes should pass overrides.
+    "epistemic_decompose_question": {
+        "sub_investigations": [
+            {
+                "id": "A",
+                "seed_claim": "There is a plausible mechanism for the claim.",
+                "rationale": "Mechanism is load-bearing for the claim.",
+            },
+            {
+                "id": "B",
+                "seed_claim": "Direct empirical observation is consistent with the claim.",
+                "rationale": "Existence proof — required for the claim to hold.",
+            },
+            {
+                "id": "C",
+                "seed_claim": "The observed effect is not a methodological artifact.",
+                "rationale": "Methodological soundness check.",
+            },
+        ],
+        "combination_rule": "AND",
+        "rationale": "Mechanism + observation + artifact-control jointly settle the question.",
+    },
 }
 
 
