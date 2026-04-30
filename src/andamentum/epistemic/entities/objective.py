@@ -177,6 +177,33 @@ class Objective(EpistemicEntity):
         """Number of buffered concerns — used by pattern matching."""
         return len(self.pending_concerns)
 
+    def is_verification_task(self) -> bool:
+        """True when this Objective is verifying specific claim(s).
+
+        Two cases qualify:
+
+        * ``claim_to_verify`` set: single-seed mode (``SeedClaimOperation``
+          mints one claim from the user's text).
+        * ``decomposition`` set: multi-seed mode
+          (``MultiSeedClaimOperation`` mints N claims, one per
+          sub-investigation).
+
+        Both are binary verification by construction — each minted
+        claim has a defined yes/no answer regardless of how the
+        Objective itself was classified by the LLM. Routing and
+        posterior eligibility key off this method to force the
+        verificatory profile in these modes, preventing classifier
+        misclassifications (e.g. "explanatory" on a SciFact-style
+        declarative claim) from cascading into wrong routing.
+        """
+        if self.claim_to_verify:
+            return True
+        if self.decomposition is not None:
+            sub_investigations = self.decomposition.get("sub_investigations") or []
+            if sub_investigations:
+                return True
+        return False
+
     def _extra_metadata(self) -> dict[str, Any]:
         """Add objective-specific metadata for filtering."""
         meta: dict[str, Any] = {
