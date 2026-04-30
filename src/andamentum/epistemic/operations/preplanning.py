@@ -498,12 +498,17 @@ class SpawnSubObjectivesOperation(BaseOperation):
         for sub in sub_investigations:
             sub_id = sub.get("id", "?")
             seed_claim = sub.get("seed_claim", "")
+            # phase="analyzed" so the graph's PrepareObjective short-circuits
+            # the preplanning ops on the child — clarify/classify/analyze
+            # have nothing to add: the seed_claim is already a clarified
+            # claim sentence and question_type is inherited from the parent.
             child = Objective(
                 description=seed_claim,
                 question_type=objective.question_type,
                 claim_to_verify=seed_claim,
                 parent_objective_id=objective.entity_id,
                 sub_investigation_id=sub_id,
+                phase="analyzed",
             )
             # Make objective_id self-referential so repo.get_objective works.
             child.objective_id = child.entity_id
