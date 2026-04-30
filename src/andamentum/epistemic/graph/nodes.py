@@ -1075,29 +1075,64 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
         # revalidation.
         await _run_tms_sweep(deps, state)
 
-        # Convergence-driven termination: if the convergence track returned
-        # CONVERGENT for any active SUPPORTED claim AND no blocking
-        # uncertainties remain, the evidence base has stabilised and there
-        # is no resolution work left to do. Skip ResolveUncertainties and
-        # go straight to integration. Without this edge the verdict is
-        # informational only and the graph keeps cycling through resolve
-        # even when convergence has already fired.
+        # Convergence-driven termination: if every active SUPPORTED claim
+        # has its convergence track terminal AND at least one is CONVERGENT
+        # AND no blocking uncertainties remain, the evidence base has
+        # stabilised and there is no resolution work left to do. Skip
+        # ResolveUncertainties and go straight to integration.
+        #
+        # Multi-seed-claim correction (Phase 2): the previous gate fired on
+        # *any* claim being CONVERGENT, which under N-claim runs would
+        # short-circuit even when sibling SUPPORTED claims still had
+        # unfinished verification tracks — dragging them into IBE with
+        # half-checked routing. Now requires *all* active SUPPORTED claims
+        # to have a terminal convergence verdict (CONVERGENT, or one of
+        # the other definitive outcomes).
+        #
+        # Behaviour under routing profiles where convergence is SKIP or
+        # SECONDARY-but-skipped: those claims have ``convergence_verdict ==
+        # None``, which is not in the terminal set, so the gate never
+        # fires. This is intentional — A2 is convergence-track-driven; if
+        # the inquiry doesn't run convergence, there's no convergence
+        # signal to short-circuit on, and the run terminates through the
+        # regular ResolveUncertainties → integration path. Under multi-
+        # seed-claim with Phase-3-forced verificatory routing, convergence
+        # is PRIMARY and the gate fires correctly.
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        any_converged = any(
-            not c.abandoned
-            and c.stage == ClaimStage.SUPPORTED
-            and c.convergence_verdict == "CONVERGENT"
+        active_supported = [
+            c
             for c in all_claims
-        )
-        if any_converged:
-            unresolved = await deps.repo.query(
-                "uncertainty",
-                objective_id=state.objective_id,
-                resolution=None,
+            if not c.abandoned and c.stage == ClaimStage.SUPPORTED
+        ]
+        if active_supported:
+            # Terminal convergence verdicts that count as "this claim is
+            # done with the convergence track". CONVERGENT is the
+            # positive case; the others are definitive too (the track
+            # ran and reached a stable verdict, not "we never checked").
+            terminal_convergence = {
+                "CONVERGENT",
+                "WEAKLY_CONVERGENT",
+                "DIVERGENT",
+                "PARTIAL",
+                "SINGLE_DOMAIN",
+                "NO_EVIDENCE",
+            }
+            all_terminal = all(
+                c.convergence_verdict in terminal_convergence
+                for c in active_supported
             )
-            blocking_remaining = any(u.is_blocking for u in unresolved)
-            if not blocking_remaining:
-                return EnumerateCandidates()
+            any_positive = any(
+                c.convergence_verdict == "CONVERGENT" for c in active_supported
+            )
+            if all_terminal and any_positive:
+                unresolved = await deps.repo.query(
+                    "uncertainty",
+                    objective_id=state.objective_id,
+                    resolution=None,
+                )
+                blocking_remaining = any(u.is_blocking for u in unresolved)
+                if not blocking_remaining:
+                    return EnumerateCandidates()
 
         return ResolveUncertainties()
 
