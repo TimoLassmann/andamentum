@@ -282,28 +282,84 @@ class PlanTaskOperation(BaseOperation):
         # Step 2: Formulate queries — one narrow agent call per provider.
         # Each call receives the provider's enriched description so the
         # agent can tailor the query to the provider's strengths.
+        #
+        # Multi-seed-claim branching: when objective.decomposition is set,
+        # formulate queries per (sub_investigation, provider) using each
+        # sub-investigation's seed_claim as the question. Tag every
+        # Evidence stub with sub_investigation_id so MultiSeedClaim can
+        # link evidence per-claim later. This is the Option-2 design from
+        # the multi-seed-claim audit: each Claim ends up with its OWN
+        # evidence subset, avoiding the support_judgment-collision
+        # problem (single scalar field can't represent "supports A,
+        # contradicts B" simultaneously).
         created_evidence: list[str] = []
 
-        for provider in providers:
-            query = clarified  # fallback if no agent_runner
-
-            if self.agent_runner:
-                result = await self.run_agent(
-                    "epistemic_formulate_query",
-                    question=clarified,
-                    provider=provider,
-                    provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
-                )
-                query = result.query
-
-            evidence = Evidence(
-                objective_id=objective.entity_id,
-                source_ref=query,
-                source_type=provider,
-                extracted=False,
+        sub_investigations: list[dict[str, Any]] = []
+        if objective.decomposition:
+            sub_investigations = (
+                objective.decomposition.get("sub_investigations") or []
             )
-            await self.repo.save(evidence)
-            created_evidence.append(evidence.entity_id)
+
+        if sub_investigations:
+            # Per-(sub_investigation, provider) query formulation.
+            for sub in sub_investigations:
+                sub_id = sub.get("id")
+                seed_claim_text = sub.get("seed_claim", "")
+                question_text = seed_claim_text or clarified
+                for provider in providers:
+                    query = question_text  # fallback if no agent_runner
+                    if self.agent_runner:
+                        result = await self.run_agent(
+                            "epistemic_formulate_query",
+                            question=question_text,
+                            provider=provider,
+                            provider_description=PROVIDER_DESCRIPTIONS.get(
+                                provider, ""
+                            ),
+                        )
+                        query = result.query
+
+                    evidence = Evidence(
+                        objective_id=objective.entity_id,
+                        source_ref=query,
+                        source_type=provider,
+                        extracted=False,
+                        sub_investigation_id=sub_id,
+                    )
+                    await self.repo.save(evidence)
+                    created_evidence.append(evidence.entity_id)
+
+            plan_msg = (
+                f"Plan created with {len(created_evidence)} evidence sources "
+                f"across {len(sub_investigations)} sub-investigations × "
+                f"{len(providers)} providers: {', '.join(providers)}"
+            )
+        else:
+            # Original per-objective behavior (no decomposition).
+            for provider in providers:
+                query = clarified  # fallback if no agent_runner
+                if self.agent_runner:
+                    result = await self.run_agent(
+                        "epistemic_formulate_query",
+                        question=clarified,
+                        provider=provider,
+                        provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
+                    )
+                    query = result.query
+
+                evidence = Evidence(
+                    objective_id=objective.entity_id,
+                    source_ref=query,
+                    source_type=provider,
+                    extracted=False,
+                )
+                await self.repo.save(evidence)
+                created_evidence.append(evidence.entity_id)
+
+            plan_msg = (
+                f"Plan created with {len(created_evidence)} evidence sources: "
+                f"{', '.join(providers)}"
+            )
 
         objective.phase = "planned"
         await self.repo.save(objective)
@@ -311,7 +367,7 @@ class PlanTaskOperation(BaseOperation):
         return OperationResult(
             success=True,
             entity_id=objective.entity_id,
-            message=f"Plan created with {len(created_evidence)} evidence sources: {', '.join(providers)}",
+            message=plan_msg,
             created_entities=created_evidence,
         )
 
