@@ -296,17 +296,25 @@ class TestPosteriorClaimFiltering:
 
 
 class TestPosteriorQuestionTypeEligibility:
-    """Tests that only eligible question types produce a PosteriorReport."""
+    """Tests that only eligible question types produce a PosteriorReport.
 
-    async def test_explanatory_returns_none(self, repo):
-        """Explanatory questions should return None."""
+    Eligibility has two paths:
+      (a) question_type is verificatory or predictive
+      (b) the objective is in seed_claim mode (claim_to_verify is set)
+
+    The non-seed cases below pin path (a)'s narrowness; the
+    TestPosteriorSeedClaimMode class below pins path (b).
+    """
+
+    async def test_explanatory_without_seed_returns_none(self, repo):
+        """Explanatory parent without seed_claim mode → None preserved."""
         obj = _make_objective(question_type="explanatory")
         await repo.save(obj)
         result = await compute_posterior(repo, OBJ_ID)
         assert result is None
 
-    async def test_exploratory_returns_none(self, repo):
-        """Exploratory questions should return None."""
+    async def test_exploratory_without_seed_returns_none(self, repo):
+        """Exploratory parent without seed_claim mode → None preserved."""
         obj = _make_objective(question_type="exploratory")
         await repo.save(obj)
         result = await compute_posterior(repo, OBJ_ID)
@@ -343,6 +351,107 @@ class TestPosteriorQuestionTypeEligibility:
         result = await compute_posterior(repo, OBJ_ID)
         assert isinstance(result, PosteriorReport)
         assert result.question_type == "predictive"
+
+
+# =========================================================================
+# Seed-claim mode eligibility (the smoke_v12_decompose case 54 fix)
+# =========================================================================
+
+
+class TestPosteriorSeedClaimMode:
+    """When an objective is in seed_claim mode (claim_to_verify is set),
+    compute_posterior must compute a posterior regardless of question_type.
+
+    Bug context: smoke_v12_decompose case 54 was misclassified as
+    explanatory; all 7 spawned children inherited that question_type,
+    silently dropped their integration verdicts via the eligibility
+    filter, and the harness saw posterior=None for every child despite
+    valid IBE outcomes in the DB. The fix lets seed-claim children
+    bypass the question_type filter — the seed claim's verification is
+    binary by construction regardless of how the parent was classified.
+    """
+
+    async def test_explanatory_parent_seed_claim_child_returns_report(
+        self, repo
+    ):
+        """The headline case: explanatory question_type with claim_to_verify
+        set must produce a posterior, not None."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="seed claim text",
+            question_type="explanatory",
+            claim_to_verify="seed claim text",
+        )
+        await repo.save(obj)
+        # An IBE-style verdict on the underlying claim drives the posterior.
+        claim = _make_claim()
+        claim.integrated_assessment = "contradicts"
+        claim.integrated_confidence = 0.75
+        await repo.save(claim)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert isinstance(result, PosteriorReport)
+        # contradicts at 0.75 confidence → posterior = 0.5 - 0.75/2 = 0.125.
+        assert result.posterior == pytest.approx(0.125)
+        assert result.integration_verdict == "contradicts"
+
+    async def test_comparative_parent_seed_claim_child_returns_report(
+        self, repo
+    ):
+        """A comparative parent decomposed into binary seed claims:
+        each child verifies a specific claim, so seed-claim mode opens
+        up posterior computation even though comparative parents
+        themselves don't admit a P(Y)."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="seed claim",
+            question_type="comparative",
+            claim_to_verify="seed claim",
+        )
+        await repo.save(obj)
+        claim = _make_claim()
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.6
+        await repo.save(claim)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert isinstance(result, PosteriorReport)
+        # supports at 0.6 → posterior = 0.5 + 0.6/2 = 0.8.
+        assert result.posterior == pytest.approx(0.8)
+
+    async def test_no_question_type_with_seed_claim_returns_report(self, repo):
+        """Edge: question_type is None (rare — classifier didn't run) but
+        claim_to_verify is set. The seed-claim escape covers this; the
+        report's question_type defaults to 'verificatory'."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="seed claim",
+            question_type=None,
+            claim_to_verify="seed claim",
+        )
+        await repo.save(obj)
+        result = await compute_posterior(repo, OBJ_ID)
+        assert isinstance(result, PosteriorReport)
+        assert result.question_type == "verificatory"
+
+    async def test_explanatory_without_seed_still_returns_none(self, repo):
+        """Sanity: the seed-claim escape doesn't accidentally open the
+        gate for non-seed explanatory parents — posterior P(Y) for a
+        genuinely explanatory question is still semantically fuzzy and
+        we keep returning None."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="why does X happen",
+            question_type="explanatory",
+            claim_to_verify=None,
+        )
+        await repo.save(obj)
+        result = await compute_posterior(repo, OBJ_ID)
+        assert result is None
 
 
 # =========================================================================
