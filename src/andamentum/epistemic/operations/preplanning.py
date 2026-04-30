@@ -370,6 +370,20 @@ class DecomposeQuestionOperation(BaseOperation):
                 did_work=False,
             )
 
+        # Idempotence: skip if already decomposed.
+        if objective.decomposition is not None:
+            existing = objective.decomposition
+            sub_count = len(existing.get("sub_investigations", []))
+            return OperationResult(
+                success=True,
+                entity_id=objective.entity_id,
+                message=(
+                    f"Already decomposed into {sub_count} sub-investigations "
+                    f"(combination={existing.get('combination_rule')})"
+                ),
+                did_work=False,
+            )
+
         question = objective.clarified_question or objective.description
         question_type = objective.question_type or "verificatory"
 
@@ -378,6 +392,26 @@ class DecomposeQuestionOperation(BaseOperation):
             question=question,
             question_type=question_type,
         )
+
+        # Persist on the parent objective so SpawnSubObjectivesOperation
+        # can read it. Stored as a plain dict so entities/ stays free of
+        # dependencies on agents/output_models.py — and so the same code
+        # path works for pydantic models in production and for
+        # SimpleNamespace-shaped mocks in tests.
+        objective.decomposition = {
+            "sub_investigations": [
+                {
+                    "id": s.id,
+                    "seed_claim": s.seed_claim,
+                    "rationale": s.rationale,
+                }
+                for s in result.sub_investigations
+            ],
+            "combination_rule": result.combination_rule,
+            "rationale": result.rationale,
+        }
+        objective.combination_rule = result.combination_rule
+        await self.repo.save(objective)
 
         sub_count = len(result.sub_investigations)
         sub_summary = ", ".join(
@@ -391,4 +425,97 @@ class DecomposeQuestionOperation(BaseOperation):
                 f"Decomposed into {sub_count} sub-investigations "
                 f"(combination={result.combination_rule}). {sub_summary}"
             ),
+        )
+
+
+class SpawnSubObjectivesOperation(BaseOperation):
+    """Spawn one child Objective per sub-investigation in the parent's decomposition.
+
+    Reads ``parent.decomposition`` (set by DecomposeQuestionOperation) and
+    creates a child Objective for each sub-investigation. Each child has:
+
+    - ``parent_objective_id`` set to the parent's entity_id
+    - ``sub_investigation_id`` set to the decomposition's "A"/"B"/"C" tag
+    - ``claim_to_verify`` populated from the sub-investigation's seed_claim
+      (so each child runs in seed_claim mode — no further decomposition)
+    - ``question_type`` inherited from the parent
+    - ``description`` set to the seed_claim for human-readability
+
+    The parent's ``sub_objective_ids`` is updated with the children's ids.
+
+    Idempotent: if ``parent.sub_objective_ids`` is already populated, the
+    operation is a no-op.
+
+    Phase 2 only — graph wiring (which then runs each child Objective
+    through the existing per-claim pipeline) is deferred to Phase 3.
+    """
+
+    entity_type = "objective"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        objective = await self.repo.get("objective", work.entity_id)
+
+        if not isinstance(objective, Objective):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Objective",
+                did_work=False,
+            )
+
+        if objective.decomposition is None:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message=(
+                    "No decomposition on this objective — run "
+                    "DecomposeQuestionOperation first"
+                ),
+                did_work=False,
+            )
+
+        if objective.sub_objective_ids:
+            return OperationResult(
+                success=True,
+                entity_id=objective.entity_id,
+                message=(
+                    f"Already spawned {len(objective.sub_objective_ids)} "
+                    f"sub-objectives"
+                ),
+                did_work=False,
+            )
+
+        sub_investigations = objective.decomposition.get("sub_investigations", [])
+        if not sub_investigations:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message="Decomposition has no sub_investigations to spawn",
+                did_work=False,
+            )
+
+        spawned_ids: list[str] = []
+        for sub in sub_investigations:
+            sub_id = sub.get("id", "?")
+            seed_claim = sub.get("seed_claim", "")
+            child = Objective(
+                description=seed_claim,
+                question_type=objective.question_type,
+                claim_to_verify=seed_claim,
+                parent_objective_id=objective.entity_id,
+                sub_investigation_id=sub_id,
+            )
+            # Make objective_id self-referential so repo.get_objective works.
+            child.objective_id = child.entity_id
+            await self.repo.save(child)
+            spawned_ids.append(child.entity_id)
+
+        objective.sub_objective_ids = spawned_ids
+        await self.repo.save(objective)
+
+        return OperationResult(
+            success=True,
+            entity_id=objective.entity_id,
+            message=f"Spawned {len(spawned_ids)} sub-objectives from decomposition",
+            created_entities=spawned_ids,
         )
