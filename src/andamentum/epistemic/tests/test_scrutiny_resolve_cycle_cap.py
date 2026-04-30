@@ -40,7 +40,6 @@ from pathlib import Path
 
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.confidence import compute_posterior
-from andamentum.epistemic.decomposed_runner import combine_sub_verdicts
 from andamentum.epistemic.entities import Claim, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.uncertainty import UncertaintyType
@@ -52,7 +51,6 @@ from andamentum.epistemic.graph.nodes import (
     Scrutinize,
 )
 from andamentum.epistemic.graph.state import EpistemicGraphState
-from andamentum.epistemic.operations_runner import PipelineResult
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -439,68 +437,17 @@ class TestComputePosteriorOscillationDetected:
         assert report.terminal_state == "completed"
 
 
-class TestCombineSubVerdictsOscillationPropagation:
-    def _make_pipeline_result(
-        self, posterior_value: float | None, terminal_state: str
-    ) -> PipelineResult:
-        from andamentum.epistemic.confidence import PosteriorReport
-
-        if posterior_value is None:
-            posterior = None
-        else:
-            posterior = PosteriorReport(
-                posterior=posterior_value,
-                log_odds=0,
-                supporting_count=0,
-                contradicting_count=0,
-                counting_posterior=posterior_value,
-                mode="abductive",
-                terminal_state=terminal_state,  # type: ignore[arg-type]
-                objective_id="child",
-                question_type="verificatory",
-                explanation="stub",
-            )
-        return PipelineResult(
-            objective_id="child",
-            iterations=1,
-            successful=1,
-            failed=0,
-            status="ok",
-            posterior=posterior,
-        )
-
-    def test_oscillation_child_excluded_from_numeric_combination(self) -> None:
-        """A child with terminal_state=oscillation_detected drops from the
-        AND/OR/WEIGHTED_AND numeric combination — its posterior of 0.5 is
-        uninformative and shouldn't bias the bound."""
-        results = [
-            self._make_pipeline_result(0.85, "completed"),
-            self._make_pipeline_result(0.5, "oscillation_detected"),
-            self._make_pipeline_result(0.8, "completed"),
-        ]
-        combined = combine_sub_verdicts(results, "AND")
-        # min over numeric children only (0.85, 0.8) → 0.8.
-        # Without exclusion, min would be 0.5 from the capped child.
-        assert combined.posterior == 0.8
-
-    def test_oscillation_child_propagates_terminal_state(self) -> None:
-        results = [
-            self._make_pipeline_result(0.85, "completed"),
-            self._make_pipeline_result(0.5, "oscillation_detected"),
-        ]
-        combined = combine_sub_verdicts(results, "AND")
-        assert combined.terminal_state == "oscillation_detected"
-
-    def test_retrieval_failed_takes_precedence_over_oscillation(self) -> None:
-        """If multiple children fail differently, retrieval_failed wins —
-        no evidence at all is a deeper failure than 'evidence but no
-        convergence'."""
-        results = [
-            self._make_pipeline_result(0.5, "retrieval_failed"),
-            self._make_pipeline_result(0.5, "oscillation_detected"),
-            self._make_pipeline_result(0.85, "completed"),
-        ]
-        combined = combine_sub_verdicts(results, "AND")
-        assert combined.terminal_state == "retrieval_failed"
+# NOTE: Under v0.3 multi-seed-claim, terminal_state propagation
+# (retrieval_failed, oscillation_detected) at the combiner level is no
+# longer a thing — the v0.2 architecture had per-child PipelineResults
+# each with their own terminal_state, which the orchestrator combiner
+# propagated. With one graph run per Objective, the terminal_state lives
+# on the objective-level PosteriorReport (compute_posterior). The
+# claim-level combiner (combine_claim_verdicts) operates over Claims
+# which carry cycle_capped/abandoned flags, and it surfaces those as
+# n_capped/n_abandoned diagnostics rather than terminal_state values.
+# The v0.2 propagation tests for that path were removed when
+# decomposed_runner was deleted — see test_combine_claim_verdicts.py
+# (TestCombineClaimVerdicts) for the new shape.
 
 
