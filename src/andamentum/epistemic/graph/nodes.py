@@ -1445,7 +1445,7 @@ class PromoteSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRes
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> "CheckCompletion":
+    ) -> "CombineClaimVerdicts":
         from ..operations.stage_management import PromoteClaimOperation
         from ..operations.investigation import (
             GeneratePredictionOperation,
@@ -1508,6 +1508,137 @@ class PromoteSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRes
                     )
 
             state.verification_done.add(claim.entity_id)
+
+        return CombineClaimVerdicts()
+
+
+@dataclass
+class CombineClaimVerdicts(
+    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
+):
+    """Apply the decomposition's combination_rule over per-claim integration
+    verdicts and stash the result on the parent Objective for Synthesize.
+
+    Phase 4 of the multi-seed-claim refactor. The combination logic was
+    previously in ``decomposed_runner.combine_sub_verdicts`` (operating
+    on per-child PipelineResults). Under multi-seed-claim it operates on
+    the Objective's claims directly, since "child" sub-investigations
+    are now Claim entities on a single Objective.
+
+    Behaviour:
+
+    * If the Objective has no decomposition (open-research run), this
+      node is a no-op — nothing to combine. Synthesize handles the
+      multi-claim narrative without a rule-aware verdict.
+    * If decomposition is set, combine via
+      ``combine_claim_verdicts(claims, rule, weights)``. Stash the
+      ``CombinedVerdict`` (serialized) on the parent Objective for
+      Synthesize to read later via the snapshot.
+
+    The combined verdict is stored on Objective.decomposition (under
+    a new "combined_verdict" key) so it travels through FreezeSnapshot
+    → SynthesizeReport without needing a separate field.
+
+    Pure / deterministic — no LLM call. Safe to re-enter.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> "CheckCompletion":
+        from .combination import (
+            combine_claim_verdicts,
+            extract_weights_from_decomposition,
+        )
+        from ..entities.objective import Objective
+
+        state = ctx.state
+        deps = ctx.deps
+
+        objective = await deps.repo.get("objective", state.objective_id)
+        if not isinstance(objective, Objective) or not objective.decomposition:
+            # Open-research run with no decomposition. Nothing to combine.
+            return CheckCompletion()
+
+        # Pull claims in decomposition order so the weight alignment is
+        # correct. Multi-seed-claim sets sub_investigation_id on each
+        # Claim; we sort by the order in decomposition.sub_investigations.
+        sub_ids_in_order = [
+            s.get("id")
+            for s in (objective.decomposition.get("sub_investigations") or [])
+        ]
+        all_claims = await deps.repo.query(
+            "claim", objective_id=state.objective_id
+        )
+        claims_by_sub: dict[str, Any] = {
+            c.sub_investigation_id: c
+            for c in all_claims
+            if c.sub_investigation_id is not None
+        }
+        ordered_claims = [
+            claims_by_sub[sid]
+            for sid in sub_ids_in_order
+            if sid in claims_by_sub
+        ]
+        # Orphan diagnostic: claims that exist but have no matching sub-id
+        # in the current decomposition (sub-investigation removed by a
+        # later reflection round, or claim minted without sub_investigation_id).
+        # Without this surfacing, the combiner would silently exclude them.
+        n_orphan = sum(
+            1
+            for c in all_claims
+            if c.sub_investigation_id is None
+            or c.sub_investigation_id not in sub_ids_in_order
+        )
+        if not ordered_claims:
+            if n_orphan and deps.verbose:
+                logger.warning(
+                    "CombineClaimVerdicts: no claims matched decomposition "
+                    "(%d orphans dropped); skipping",
+                    n_orphan,
+                )
+            return CheckCompletion()
+
+        rule = objective.combination_rule or "AND"
+        weights = extract_weights_from_decomposition(
+            objective.decomposition, ordered_claims
+        )
+        combined = combine_claim_verdicts(ordered_claims, rule, weights=weights)
+
+        # Append orphan count to the combiner's explanation if any were
+        # dropped. The combiner's own diagnostic only sees the claims it
+        # was given; orphans are excluded one level above.
+        explanation = combined.explanation
+        if n_orphan:
+            explanation = (
+                f"{explanation} ({n_orphan} orphan claim(s) dropped — "
+                "sub_investigation_id not in current decomposition)"
+            )
+
+        # Stash the serialized CombinedVerdict on the Objective so the
+        # snapshot freeze step picks it up. Using a dict keyed under
+        # "combined_verdict" inside decomposition keeps the existing
+        # decomposition shape (no new top-level Objective field).
+        objective.decomposition["combined_verdict"] = {
+            "posterior": combined.posterior,
+            "verdict": combined.verdict,
+            "combination_rule": combined.combination_rule,
+            "claim_posteriors": combined.claim_posteriors,
+            "n_capped": combined.n_capped,
+            "n_no_verdict": combined.n_no_verdict,
+            "n_abandoned": combined.n_abandoned,
+            "n_orphan": n_orphan,
+            "explanation": explanation,
+        }
+        await deps.repo.save(objective)
+
+        if deps.verbose:
+            logger.info(
+                "Combined verdict: %s (posterior=%s, rule=%s, orphans=%d)",
+                combined.verdict,
+                combined.posterior,
+                combined.combination_rule,
+                n_orphan,
+            )
 
         return CheckCompletion()
 
@@ -1646,6 +1777,7 @@ epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Gr
         ScoreLikeliness,
         SelectBestExplanation,
         PromoteSupported,
+        CombineClaimVerdicts,
         CheckCompletion,
         Synthesize,
     ],
