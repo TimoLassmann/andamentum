@@ -151,8 +151,14 @@ async def compute_posterior(
     if retrieval_failed:
         objective = await repo.get_objective(objective_id)
         qt = objective.question_type
-        is_seed_claim_mode = bool(getattr(objective, "claim_to_verify", None))
-        if not is_seed_claim_mode and (qt is None or qt not in POSTERIOR_ELIGIBLE):
+        # Multi-seed-claim aware: ``is_verification_task()`` covers BOTH
+        # single-seed mode (claim_to_verify set) AND multi-seed mode
+        # (decomposition with sub-investigations). Without this, a
+        # decomposed run where the parent was classified explanatory
+        # would silently drop its retrieval_failed report — same shape as
+        # the case-54 silent-loss bug we fixed for single-seed mode.
+        is_verification_mode = objective.is_verification_task()
+        if not is_verification_mode and (qt is None or qt not in POSTERIOR_ELIGIBLE):
             return None
         return PosteriorReport(
             posterior=0.5,
@@ -194,8 +200,13 @@ async def compute_posterior(
     # so they pass via (b).
     objective = await repo.get_objective(objective_id)
     question_type = objective.question_type
-    is_seed_claim_mode = bool(getattr(objective, "claim_to_verify", None))
-    if not is_seed_claim_mode and (
+    # Multi-seed-claim aware (Phase 8 follow-up): ``is_verification_task()``
+    # is True for both single-seed mode (claim_to_verify set) AND multi-
+    # seed mode (decomposition with sub-investigations). Each branch is
+    # binary verification by construction; the parent's classifier output
+    # is irrelevant to per-claim posterior eligibility.
+    is_verification_mode = objective.is_verification_task()
+    if not is_verification_mode and (
         question_type is None or question_type not in POSTERIOR_ELIGIBLE
     ):
         return None

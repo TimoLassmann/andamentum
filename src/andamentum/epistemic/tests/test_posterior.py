@@ -453,6 +453,42 @@ class TestPosteriorSeedClaimMode:
         result = await compute_posterior(repo, OBJ_ID)
         assert result is None
 
+    async def test_explanatory_parent_with_decomposition_returns_report(
+        self, repo
+    ):
+        """Multi-seed-claim mode: parent classified explanatory but has
+        decomposition with sub-investigations. is_verification_task()
+        is True (decomposition is set with non-empty sub_investigations);
+        eligibility should pass. This is the case-54 silent-loss bug
+        replicated for multi-seed-claim — pre-fix, eligibility only
+        checked claim_to_verify and would return None here."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="parent",
+            question_type="explanatory",
+            decomposition={
+                "sub_investigations": [
+                    {"id": "A", "seed_claim": "alpha", "rationale": "ra"},
+                    {"id": "B", "seed_claim": "beta", "rationale": "rb"},
+                ],
+                "combination_rule": "AND",
+                "rationale": "both must hold",
+            },
+        )
+        await repo.save(obj)
+        # A claim with an integration verdict so the report has content.
+        claim = _make_claim()
+        claim.integrated_assessment = "contradicts"
+        claim.integrated_confidence = 0.75
+        await repo.save(claim)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert isinstance(result, PosteriorReport)
+        # contradicts at 0.75 → posterior = 0.5 - 0.75/2 = 0.125.
+        assert result.posterior == pytest.approx(0.125)
+        assert result.integration_verdict == "contradicts"
+
 
 # =========================================================================
 # Multi-claim aggregation tests

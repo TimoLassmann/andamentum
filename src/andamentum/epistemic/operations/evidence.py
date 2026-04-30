@@ -84,7 +84,14 @@ class ExtractEvidenceOperation(BaseOperation):
                     evidence.quality_score,
                 )
 
-                # Create new Evidence entities for remaining items
+                # Create new Evidence entities for remaining items.
+                # Propagate sub_investigation_id from the originating stub so
+                # multi-seed-claim's per-claim evidence pool (filter on
+                # sub_investigation_id at multi_seed_claim.py:126) sees ALL
+                # the gatherer's results, not just the first one. Without
+                # this, gatherer-extras silently drop out of the per-claim
+                # pool — each sub-investigation would see only the 1 stub-
+                # tied result per provider instead of the full hit set.
                 created_ids = [evidence.entity_id]
                 for g in gathered[1:]:
                     new_ev = Evidence(
@@ -92,6 +99,7 @@ class ExtractEvidenceOperation(BaseOperation):
                         source_type=g.source_type or evidence.source_type,
                         source_ref=g.source_ref,
                         extracted=True,
+                        sub_investigation_id=evidence.sub_investigation_id,
                     )
                     self._fill_evidence_from_gathered(new_ev, g)
                     await self._score_evidence(new_ev, g)
