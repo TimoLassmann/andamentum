@@ -25,13 +25,22 @@ keep their evidence and reasoning isolated so the combination is over
 verdicts, not internals. Phase 4-5 will add reflection-driven gap
 detection across siblings.
 
-Combination semantics for Phase 3 are conservative bounds, not joint
-probabilities:
+Combination semantics are conservative bounds, not joint probabilities:
   * AND          → min of child posteriors (weakest-link bound)
   * OR           → max of child posteriors (best-evidence bound)
-  * WEIGHTED_AND → mean of child posteriors (Phase 5 will add weights)
-  * UNION        → posterior=None; combined view is set-collection
-                   (Phase 5 will define semantics)
+  * WEIGHTED_AND → weighted mean of child posteriors using per-sub
+                   weights from the decomposition. With all-equal weights
+                   this degenerates to a simple mean. Decomposer guidance
+                   (in DECOMPOSE_QUESTION_PROMPT): only assign non-equal
+                   weights when there is genuine differential importance;
+                   otherwise pick AND or OR.
+  * UNION        → posterior=None (no scalar verdict); the combined view
+                   is the set of children's verdicts. Used for
+                   exploratory / compositional questions where each
+                   sub-investigation contributes a facet rather than a
+                   value to be averaged. Renderers / callers iterate
+                   ``DecomposedPipelineResult.sub_results`` for the full
+                   structured answer.
 """
 
 from __future__ import annotations
@@ -80,7 +89,9 @@ def _verdict_label(p: float) -> str:
 
 
 def combine_sub_verdicts(
-    child_results: list[PipelineResult], combination_rule: str
+    child_results: list[PipelineResult],
+    combination_rule: str,
+    weights: list[float] | None = None,
 ) -> CombinedVerdict:
     """Aggregate per-child posteriors into a combined verdict.
 
@@ -90,11 +101,19 @@ def combine_sub_verdicts(
 
     For AND / OR / WEIGHTED_AND, when no child contributed a numeric
     posterior the combined verdict is "no_data" with posterior=None. For
-    UNION, posterior is intentionally None — Phase 5 will define
-    set-collection semantics.
+    UNION, posterior is None by design (set-collection semantics).
 
     If any child terminated with ``retrieval_failed``, the combined
     terminal_state is ``retrieval_failed``.
+
+    Args:
+        child_results: per-child PipelineResults in decomposition order.
+        combination_rule: AND / OR / WEIGHTED_AND / UNION (case-insensitive).
+        weights: per-child weights, same length as ``child_results``, only
+            consumed by WEIGHTED_AND. None or all-equal weights make
+            WEIGHTED_AND degenerate to a simple mean. Weights for
+            children with posterior=None are dropped from the
+            normalization. Negative weights raise ValueError.
     """
     rule = combination_rule.upper()
 
@@ -113,9 +132,9 @@ def combine_sub_verdicts(
     terminal_state = "retrieval_failed" if any_retrieval_failed else "completed"
 
     if rule == "UNION":
-        # Phase 5 will define set-collection semantics. For now we
-        # surface a no-numeric-combination signal so callers can render
-        # children individually.
+        # Set-collection semantics: each child contributes a facet rather
+        # than a value to be averaged. The scalar posterior is None by
+        # design; callers iterate sub_results for the full answer.
         return CombinedVerdict(
             posterior=None,
             verdict="union",
@@ -123,8 +142,8 @@ def combine_sub_verdicts(
             child_posteriors=child_posteriors,
             terminal_state=terminal_state,
             explanation=(
-                "UNION combination is a Phase 5 stub. Render the "
-                f"{len(child_posteriors)} child verdicts individually."
+                f"UNION over {len(child_posteriors)} children: render each "
+                "child's findings individually; there is no scalar verdict."
             ),
         )
 
@@ -145,8 +164,7 @@ def combine_sub_verdicts(
         combined = max(numeric)
         method = "max (best-evidence bound on disjunction)"
     elif rule == "WEIGHTED_AND":
-        combined = sum(numeric) / len(numeric)
-        method = "mean (Phase 5 will add explicit weights)"
+        combined, method = _weighted_mean(child_posteriors, weights)
     else:
         # Unknown rule: be loud rather than silently picking a default.
         raise ValueError(
@@ -164,6 +182,49 @@ def combine_sub_verdicts(
             f"{rule} over {len(numeric)} child posteriors via {method}: "
             f"{[round(p, 3) for p in numeric]} → {round(combined, 3)}"
         ),
+    )
+
+
+def _weighted_mean(
+    child_posteriors: list[float | None], weights: list[float] | None
+) -> tuple[float, str]:
+    """Compute a weighted mean over the numeric child posteriors.
+
+    Children with posterior=None are dropped along with their weight.
+    If weights is None, falls back to a simple mean. If all weights for
+    numeric children are zero, also falls back to a simple mean (the
+    decomposer signaled no preference).
+
+    Returns (combined, method-description-for-explanation).
+    """
+    if weights is None:
+        numeric = [p for p in child_posteriors if p is not None]
+        return sum(numeric) / len(numeric), "mean (no weights provided)"
+
+    if len(weights) != len(child_posteriors):
+        raise ValueError(
+            f"weights length {len(weights)} does not match "
+            f"child_results length {len(child_posteriors)}"
+        )
+    if any(w < 0 for w in weights):
+        raise ValueError("weights must be non-negative")
+
+    paired = [
+        (p, w)
+        for p, w in zip(child_posteriors, weights, strict=True)
+        if p is not None
+    ]
+    weight_sum = sum(w for _, w in paired)
+    if weight_sum == 0.0:
+        # Decomposer assigned all-zero weights to numeric children. Fall
+        # back to a simple mean rather than dividing by zero.
+        numeric = [p for p, _ in paired]
+        return sum(numeric) / len(numeric), "mean (all weights zero)"
+
+    weighted = sum(p * w for p, w in paired) / weight_sum
+    return (
+        weighted,
+        f"weighted mean (weights={[round(w, 2) for _, w in paired]})",
     )
 
 
@@ -472,7 +533,8 @@ async def run_research_question_decomposed(
 
     # 5. Combine.
     rule = parent_objective.combination_rule or "AND"
-    combined = combine_sub_verdicts(sub_results, rule)
+    weights = _extract_weights(parent_objective, len(sub_results))
+    combined = combine_sub_verdicts(sub_results, rule, weights=weights)
     if verbose:
         logger.info(
             "Combined verdict over %d children (%s): %s",
@@ -486,6 +548,26 @@ async def run_research_question_decomposed(
         sub_results=sub_results,
         combined=combined,
     )
+
+
+def _extract_weights(parent_objective: Any, expected_count: int) -> list[float] | None:
+    """Pull per-sub weights from the parent's decomposition in spawn order.
+
+    Returns None if the decomposition is missing weights or its length
+    doesn't match the spawned children — the combiner then falls back to
+    an unweighted mean for WEIGHTED_AND. The shape mismatch case is
+    permissive on purpose: a future reflection round may grow the
+    decomposition, and a length-aware fallback is safer than crashing
+    here.
+    """
+    decomposition = getattr(parent_objective, "decomposition", None)
+    if not decomposition:
+        return None
+    subs = decomposition.get("sub_investigations") or []
+    if len(subs) != expected_count:
+        return None
+    weights = [float(s.get("weight", 1.0)) for s in subs]
+    return weights
 
 
 __all__ = [

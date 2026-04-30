@@ -847,6 +847,20 @@ class SubInvestigation(BaseModel):
             "another sub-investigation's outcome wouldn't?"
         )
     )
+    weight: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Relative importance of this sub-investigation to the question's "
+            "answer, on a 0-10 scale. Used by the WEIGHTED_AND combination "
+            "rule (weighted mean of child posteriors). For AND / OR / UNION "
+            "the weight is ignored. Default 1.0 makes WEIGHTED_AND degenerate "
+            "to a simple mean. Use values like 2.0 / 0.5 to express 'this "
+            "sub-investigation is twice as critical / half as critical' as "
+            "the others."
+        ),
+    )
 
 
 class QuestionDecomposition(BaseModel):
