@@ -91,56 +91,36 @@ class Objective(EpistemicEntity):
 
     # ── Top-down decomposition fields ─────────────────────────────────
     #
-    # These support the unified inquiry architecture (Phase 2 of the
-    # decomposition + reflection refactor). On the parent objective:
-    # decomposition + sub_objective_ids + combination_rule are populated
-    # after DecomposeQuestion runs and SpawnSubObjectives spawns children.
-    # On a sub-objective: parent_objective_id + sub_investigation_id are
-    # set so the run can traverse upward.
+    # Multi-seed-claim mode (v0.3): when the user asks for decomposition
+    # (--decompose CLI flag), DecomposeQuestionOperation populates
+    # ``decomposition`` and ``combination_rule`` on this Objective.
+    # The graph's CreateClaims node then routes to MultiSeedClaim, which
+    # mints N Claims (one per sub-investigation) on the SAME Objective —
+    # no child Objectives are spawned. The per-sub-investigation tag
+    # lives on the minted Claim's ``sub_investigation_id`` field, not
+    # here.
     #
-    # All fields default empty so existing databases load cleanly. The
-    # decomposition is stored as a serialized dict (model_dump) rather
-    # than a typed QuestionDecomposition to avoid coupling entities/ to
-    # agents/output_models.py — operations reconstruct the typed form
-    # when needed.
+    # ``decomposition`` is stored as a serialized dict (model_dump)
+    # rather than a typed QuestionDecomposition to avoid coupling
+    # entities/ to agents/output_models.py — operations reconstruct the
+    # typed form when needed.
 
-    parent_objective_id: Optional[str] = Field(
-        default=None,
-        description=(
-            "On a sub-objective spawned from a decomposition: the parent "
-            "objective's entity_id. None for root objectives."
-        ),
-    )
-    sub_investigation_id: Optional[str] = Field(
-        default=None,
-        description=(
-            "On a sub-objective: the 'A'/'B'/'C' tag from the parent's "
-            "decomposition. Lets the parent collect verdicts back into "
-            "the right slots when combining results."
-        ),
-    )
     decomposition: Optional[dict[str, Any]] = Field(
         default=None,
         description=(
-            "On a parent objective: the serialized QuestionDecomposition "
-            "produced by DecomposeQuestionOperation. Operations that "
-            "consume this reconstruct the typed form via "
-            "QuestionDecomposition(**objective.decomposition)."
-        ),
-    )
-    sub_objective_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "On a parent objective: the entity_ids of sub-objectives "
-            "spawned from the decomposition, in decomposition order."
+            "Serialized QuestionDecomposition produced by "
+            "DecomposeQuestionOperation. After CombineClaimVerdicts "
+            "runs, this dict also gains a ``combined_verdict`` key "
+            "carrying the rule-aware aggregate; FreezeSnapshot promotes "
+            "that onto Snapshot.combined_verdict."
         ),
     )
     combination_rule: Optional[str] = Field(
         default=None,
         description=(
-            "On a parent objective: the combination rule from the "
-            "decomposition (AND / OR / WEIGHTED_AND / UNION). Used by "
-            "the future Combine step to aggregate sub-investigation "
+            "The combination rule from the decomposition "
+            "(AND / OR / WEIGHTED_AND / UNION). Used by "
+            "CombineClaimVerdicts to aggregate per-Claim integration "
             "verdicts into the question's final answer."
         ),
     )
@@ -220,14 +200,8 @@ class Objective(EpistemicEntity):
             meta["clarified_question"] = self.clarified_question
         if self.key_terms:
             meta["key_terms"] = self.key_terms
-        if self.parent_objective_id:
-            meta["parent_objective_id"] = self.parent_objective_id
-        if self.sub_investigation_id:
-            meta["sub_investigation_id"] = self.sub_investigation_id
         if self.decomposition is not None:
             meta["decomposition"] = self.decomposition
-        if self.sub_objective_ids:
-            meta["sub_objective_ids"] = self.sub_objective_ids
         if self.combination_rule:
             meta["combination_rule"] = self.combination_rule
         if self.reflection_rounds:
@@ -255,10 +229,7 @@ class Objective(EpistemicEntity):
             snapshot_id=metadata.get("snapshot_id"),
             artefact_id=metadata.get("artefact_id"),
             status=metadata.get("status", "active"),
-            parent_objective_id=metadata.get("parent_objective_id"),
-            sub_investigation_id=metadata.get("sub_investigation_id"),
             decomposition=metadata.get("decomposition"),
-            sub_objective_ids=metadata.get("sub_objective_ids", []),
             combination_rule=metadata.get("combination_rule"),
             reflection_rounds=metadata.get("reflection_rounds", 0),
             reflection_history=metadata.get("reflection_history", []),
