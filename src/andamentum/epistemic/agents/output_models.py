@@ -799,3 +799,91 @@ class SelectedExplanation(BaseModel):
             "runner-up, and what the gap implies about confidence."
         )
     )
+
+
+# ── Question Decomposition (top-down inquiry structure) ──────────────────
+#
+# Replaces the bottom-up assertion-clustering path of ProposeClaimsOperation
+# for verificatory / exploratory / predictive questions. The decomposition
+# step identifies the load-bearing structure of a research question
+# *before* gathering evidence — what 2-5 sub-investigations would, together,
+# settle or characterize the question. Each sub-investigation then runs
+# through the per-claim pipeline.
+#
+# Schema deliberately slim (3 fields per sub-investigation, 3 fields at
+# the top level) so local models can produce structured outputs reliably.
+# Question-type-specific framing (testable claim vs facet vs predictive
+# condition) lives in the prompt; the schema is uniform across types.
+
+
+class SubInvestigation(BaseModel):
+    """One sub-investigation in a top-down question decomposition.
+
+    Each sub-investigation has the form of a checkable claim — testable
+    for verificatory questions, characterizable for exploratory questions,
+    or condition-like for predictive questions. The pipeline treats each
+    one the same way (seed_claim flow), so the uniform schema is correct
+    even when the question-type semantics differ.
+    """
+
+    id: str = Field(
+        description="Stable identifier for this sub-investigation: 'A', 'B', 'C', ..."
+    )
+    seed_claim: str = Field(
+        description=(
+            "The sub-investigation expressed as a testable / characterizable "
+            "claim. For verificatory questions, this is a falsifiable sub-claim "
+            "whose truth would partially settle the original question. For "
+            "exploratory questions, this is a facet-claim (e.g. 'X is well-"
+            "characterized in dimension Y'). For predictive questions, this "
+            "is a condition-claim. The pipeline runs the same machinery "
+            "regardless."
+        )
+    )
+    rationale: str = Field(
+        description=(
+            "One sentence: why this sub-investigation is load-bearing for "
+            "the original question. What does its outcome tell us that "
+            "another sub-investigation's outcome wouldn't?"
+        )
+    )
+
+
+class QuestionDecomposition(BaseModel):
+    """Top-down decomposition of a research question into sub-investigations.
+
+    A good decomposition has 2-5 sub-investigations that are:
+    - Load-bearing (each one's outcome materially affects the answer)
+    - Roughly orthogonal (investigating one doesn't trivialize another)
+    - Cover the question's scope (a complete answer is reachable from
+      their combined outcomes)
+
+    The combination_rule tells downstream synthesis how to aggregate
+    sub-investigation verdicts into the final answer for the question.
+    """
+
+    sub_investigations: list[SubInvestigation] = Field(
+        description=(
+            "2-5 sub-investigations. Fewer than 2 means the decomposition "
+            "didn't actually decompose; more than 5 typically means "
+            "over-fragmentation."
+        ),
+        min_length=2,
+        max_length=5,
+    )
+    combination_rule: Literal["AND", "OR", "WEIGHTED_AND", "UNION"] = Field(
+        description=(
+            "How sub-investigation outcomes combine into the question's "
+            "answer. AND: all must support for the question to support. "
+            "OR: any one supports. WEIGHTED_AND: each contributes by "
+            "importance. UNION: each contributes a piece of the answer "
+            "(typical for exploratory questions where there is no single "
+            "verdict, just a structured characterization)."
+        )
+    )
+    rationale: str = Field(
+        description=(
+            "1-2 sentences explaining why this decomposition captures the "
+            "question's load-bearing structure."
+        )
+    )
