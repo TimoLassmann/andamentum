@@ -609,22 +609,25 @@ class ReflectOnGapsOperation(BaseOperation):
     """Reflect on the current decomposition's verdicts and add sub-investigations
     when a load-bearing gap is found.
 
-    Runs after children have been scored and combined. Reads each
-    child's posterior, summarizes the children's state for the agent,
-    and asks ``epistemic_reflect_on_gaps`` whether the current children
-    are adequate. When the agent declares a gap, the operation appends
-    new sub-investigations to ``parent.decomposition`` (re-keyed with
-    deterministic IDs ``D``, ``E``, ...) and bumps ``reflection_rounds``.
+    Runs after the graph has scored and combined per-claim verdicts (i.e.
+    after CombineClaimVerdicts has run). Reads each Claim's integration
+    verdict directly from the parent Objective, summarizes the per-claim
+    state for the agent, and asks ``epistemic_reflect_on_gaps`` whether
+    the current claims are adequate. When the agent declares a gap, the
+    operation appends new sub-investigations to ``parent.decomposition``
+    (re-keyed with deterministic IDs ``D``, ``E``, ...) and bumps
+    ``reflection_rounds``. The graph's CreateClaims node will mint the
+    new claims via MultiSeedClaim on a subsequent pass.
 
-    Reflection is corrective, not search-like: the orchestrator caps the
-    number of rounds (default 1). The operation is idempotent at the
-    agent-call level — re-running after a sufficient verdict is a
-    did_work=False no-op.
+    Reflection is corrective, not search-like: callers cap the number of
+    rounds (default 1). The operation is idempotent at the agent-call
+    level — re-running after a sufficient verdict is a did_work=False
+    no-op.
 
-    Phase 4 of the unified architecture. The orchestrator
-    (``run_research_question_decomposed``) decides *when* to call this op
-    (e.g. only when the combined verdict is insufficient or any child
-    flagged retrieval_failed); the op decides *what* to add.
+    Phase 6 of the v0.3 multi-seed-claim refactor. The v0.2 design
+    iterated child Objectives (``parent.sub_objective_ids``) and called
+    ``compute_posterior`` per-child; v0.3 reads the per-Claim
+    integration verdicts directly off the parent Objective's claims.
     """
 
     entity_type = "objective"
@@ -651,13 +654,46 @@ class ReflectOnGapsOperation(BaseOperation):
                 did_work=False,
             )
 
-        if not objective.sub_objective_ids:
+        # Multi-seed-claim model: the parent's sub-investigations are
+        # represented as Claims on this Objective (linked via
+        # ``Claim.sub_investigation_id``), not as child Objectives. Pull
+        # them in decomposition order so the per-claim summary mirrors
+        # what the user / decomposer expects.
+        from ..entities.claim import Claim
+
+        all_claims_raw = await self.repo.query(
+            "claim", objective_id=objective.entity_id
+        )
+        all_claims: list[Claim] = [
+            c for c in all_claims_raw if isinstance(c, Claim)
+        ]
+        # Defensive: in normal MultiSeedClaim flows there's exactly one
+        # Claim per sub_investigation_id, but if duplicates exist (e.g.
+        # a previous run partly rolled back) we want to know about it
+        # rather than silently last-wins. Not fatal — keep the most
+        # recently saved one (highest in iteration order) as the
+        # representative.
+        claims_by_sub: dict[str, Claim] = {}
+        for c in all_claims:
+            if c.sub_investigation_id is None:
+                continue
+            if c.sub_investigation_id in claims_by_sub:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "ReflectOnGaps: duplicate Claim for sub_investigation_id="
+                    "%s on objective %s; keeping later one",
+                    c.sub_investigation_id,
+                    objective.entity_id[:12],
+                )
+            claims_by_sub[c.sub_investigation_id] = c
+        if not claims_by_sub:
             return OperationResult(
                 success=False,
                 entity_id=objective.entity_id,
                 message=(
-                    "No spawned children — SpawnSubObjectivesOperation must "
-                    "run before reflection"
+                    "No claims with sub_investigation_id on this objective — "
+                    "MultiSeedClaimOperation must run before reflection"
                 ),
                 did_work=False,
             )
@@ -670,51 +706,65 @@ class ReflectOnGapsOperation(BaseOperation):
                 did_work=False,
             )
 
-        # Build the per-child summary the agent consumes. Each child's
-        # posterior is recomputed from repo state (cheap; a pure function
-        # of stored evidence + claims). When compute_posterior returns
-        # None — e.g. the child's question_type is ineligible for
-        # posterior reporting — we surface "n/a" rather than crashing.
-        from ..confidence import compute_posterior
-
         question = objective.clarified_question or objective.description
         rule = objective.combination_rule or "AND"
 
+        # Per-claim summary for the agent: one line per sub-investigation
+        # in decomposition order, showing the seed_claim and its IBE
+        # outcome (integrated_assessment + integrated_confidence). For
+        # claims that didn't reach IBE (still HYPOTHESIS, abandoned,
+        # cycle_capped without verdict), surface that state explicitly so
+        # the agent can decide whether to add a tie-breaker.
+        sub_investigations = (
+            objective.decomposition.get("sub_investigations") or []
+        )
         child_lines: list[str] = []
-        for child_id in objective.sub_objective_ids:
-            try:
-                child = await self.repo.get("objective", child_id)
-            except Exception:
-                child_lines.append(f"- (child {child_id[:8]}: lookup failed)")
+        for sub in sub_investigations:
+            sub_id = sub.get("id", "?")
+            seed_claim_text = sub.get("seed_claim", "")
+            claim = claims_by_sub.get(sub_id)
+            if claim is None:
+                child_lines.append(
+                    f"- {sub_id}: {seed_claim_text} → (no claim minted)"
+                )
                 continue
-            sub_id = child.sub_investigation_id or "?"
-            seed_claim = child.claim_to_verify or child.description or ""
-            try:
-                report = await compute_posterior(self.repo, child_id)
-            except Exception:
-                report = None
-            if report is None:
-                verdict_str = "n/a"
-                p_str = "n/a"
-                terminal = "n/a"
+            if claim.cycle_capped:
+                child_lines.append(
+                    f"- {sub_id}: {seed_claim_text} → cycle_capped "
+                    f"(persistent_concerns={len(claim.persistent_concerns)})"
+                )
+                continue
+            if claim.abandoned:
+                child_lines.append(
+                    f"- {sub_id}: {seed_claim_text} → abandoned"
+                )
+                continue
+            if claim.integrated_assessment is None:
+                child_lines.append(
+                    f"- {sub_id}: {seed_claim_text} → (no integration verdict; "
+                    f"stage={claim.stage.value})"
+                )
+                continue
+            confidence = claim.integrated_confidence or 0.0
+            if claim.integrated_assessment == "supports":
+                p = 0.5 + confidence / 2
+            elif claim.integrated_assessment == "contradicts":
+                p = 0.5 - confidence / 2
             else:
-                verdict_str = report.integration_verdict or "n/a"
-                p_str = f"{report.posterior:.2f}"
-                terminal = report.terminal_state
+                p = 0.5
             child_lines.append(
-                f"- {sub_id}: {seed_claim} → {verdict_str} (p={p_str}, "
-                f"terminal_state={terminal})"
+                f"- {sub_id}: {seed_claim_text} → "
+                f"{claim.integrated_assessment} (p={p:.2f}, "
+                f"confidence={confidence:.2f})"
             )
         current_decomposition = "\n".join(child_lines)
 
         # Combined view: read the stashed verdict from
         # objective.decomposition["combined_verdict"] (set by the graph's
-        # CombineClaimVerdicts node under multi-seed-claim mode). When the
-        # operation runs from outside the graph (legacy v0.2 spawning
-        # path that was removed in Phase 5), the stash is absent and we
-        # fall back to "n/a" — Phase 6 will rewire reflection into the
-        # graph after CombineClaimVerdicts so the verdict is always
-        # present at reflection time.
+        # CombineClaimVerdicts node). When the operation runs from
+        # outside the graph context (e.g. ad-hoc CLI invocation before
+        # CombineClaimVerdicts has fired), the stash is absent and we
+        # fall back to "n/a".
         combined_view = (
             (objective.decomposition or {}).get("combined_verdict") or {}
         )
