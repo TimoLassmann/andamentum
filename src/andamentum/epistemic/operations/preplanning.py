@@ -707,43 +707,23 @@ class ReflectOnGapsOperation(BaseOperation):
             )
         current_decomposition = "\n".join(child_lines)
 
-        # Combined view derived from the same posteriors. We import here
-        # to avoid creating a top-level dep cycle between
-        # operations/preplanning.py and decomposed_runner.py.
-        from ..decomposed_runner import combine_sub_verdicts
-        from ..operations_runner import PipelineResult
-
-        # Build minimal PipelineResult stand-ins so we can reuse
-        # combine_sub_verdicts here without a parallel implementation.
-        proxy_results: list[PipelineResult] = []
-        for child_id in objective.sub_objective_ids:
-            try:
-                report = await compute_posterior(self.repo, child_id)
-            except Exception:
-                report = None
-            proxy_results.append(
-                PipelineResult(
-                    objective_id=child_id,
-                    iterations=0,
-                    successful=1 if report else 0,
-                    failed=0,
-                    status="ok",
-                    posterior=report,
-                )
-            )
-        weights_list = [
-            float(s.get("weight", 1.0))
-            for s in objective.decomposition.get("sub_investigations", [])
-        ]
-        # Length mismatch (e.g. mid-reflection state where children
-        # haven't all been spawned yet) → fall back to no weights so the
-        # combiner doesn't raise.
-        weights_arg = (
-            weights_list if len(weights_list) == len(proxy_results) else None
+        # Combined view: read the stashed verdict from
+        # objective.decomposition["combined_verdict"] (set by the graph's
+        # CombineClaimVerdicts node under multi-seed-claim mode). When the
+        # operation runs from outside the graph (legacy v0.2 spawning
+        # path that was removed in Phase 5), the stash is absent and we
+        # fall back to "n/a" — Phase 6 will rewire reflection into the
+        # graph after CombineClaimVerdicts so the verdict is always
+        # present at reflection time.
+        combined_view = (
+            (objective.decomposition or {}).get("combined_verdict") or {}
         )
-        combined = combine_sub_verdicts(proxy_results, rule, weights=weights_arg)
+        combined_verdict_label = combined_view.get("verdict", "n/a")
+        combined_posterior_value = combined_view.get("posterior")
         combined_p_str = (
-            f"{combined.posterior:.2f}" if combined.posterior is not None else "n/a"
+            f"{combined_posterior_value:.2f}"
+            if isinstance(combined_posterior_value, (int, float))
+            else "n/a"
         )
 
         result = await self.run_agent(
@@ -751,7 +731,7 @@ class ReflectOnGapsOperation(BaseOperation):
             question=question,
             combination_rule=rule,
             current_decomposition=current_decomposition,
-            combined_verdict=combined.verdict,
+            combined_verdict=combined_verdict_label,
             combined_posterior=combined_p_str,
         )
 
