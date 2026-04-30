@@ -10,17 +10,28 @@ seed text reliably produces one *novel* uncertainty per scrutiny pass
 still loops, because each genuine resolution legitimately marks the
 claim for rescrutiny.
 
-The fix: a per-claim counter ``state.scrutiny_resolve_cycles`` capped at
-``SCRUTINY_RESOLVE_CYCLE_CAP``. Mirrors the existing investigation cap.
-Two enforcement points:
+The fix has two parts:
 
-1. ``ResolveUncertainties.run`` refuses to add a claim to
-   ``claims_needing_rescrutiny`` once cycles have reached the cap
-   (primary loop-breaker).
-2. ``Scrutinize.run`` discards capped claims from the rescrutiny set
-   without rerunning scrutiny (defense in depth).
+1. *Runtime guardrail* — a per-claim counter
+   ``state.scrutiny_resolve_cycles`` capped at
+   ``SCRUTINY_RESOLVE_CYCLE_CAP``. Mirrors the existing investigation
+   cap. Two enforcement points:
+   - ``ResolveUncertainties.run`` refuses to add a claim to
+     ``claims_needing_rescrutiny`` once cycles reach the cap
+     (primary loop-breaker).
+   - ``Scrutinize.run`` discards capped claims from the rescrutiny set
+     without rerunning scrutiny (defense in depth).
 
-Tests below pin both enforcement points.
+2. *Cycle-as-signal* (Option 1 of the architectural follow-up) — when
+   the cap fires, ``Claim.cycle_capped`` is set and
+   ``Claim.persistent_concerns`` snapshots the blocking uncertainties at
+   that moment. ``PromoteToSupported`` skips cycle-capped claims, so
+   the IBE chain doesn't fabricate a verdict for a claim whose inquiry
+   didn't converge. ``compute_posterior`` detects cycle-capped active
+   claims and emits ``terminal_state="oscillation_detected"`` with
+   posterior=0.5 — a distinct terminal state from
+   ``"completed"`` and ``"retrieval_failed"``. The decomposed combiner
+   propagates this terminal state.
 """
 
 from __future__ import annotations
@@ -28,16 +39,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from andamentum.document_store import DocumentStore
+from andamentum.epistemic.confidence import compute_posterior
+from andamentum.epistemic.decomposed_runner import combine_sub_verdicts
 from andamentum.epistemic.entities import Claim, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.uncertainty import UncertaintyType
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     SCRUTINY_RESOLVE_CYCLE_CAP,
+    PromoteToSupported,
     ResolveUncertainties,
     Scrutinize,
 )
 from andamentum.epistemic.graph.state import EpistemicGraphState
+from andamentum.epistemic.operations_runner import PipelineResult
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -112,6 +127,10 @@ class TestScrutinizeRespectsCap:
         reloaded = await repo.get("claim", claim.entity_id)
         assert reloaded.scrutiny_verdict == "pass"
         assert reloaded.scrutiny_fingerprint == "some-fingerprint"
+        # Option 1: cap-firing marks the claim cycle_capped so downstream
+        # (PromoteToSupported, compute_posterior) routes it to a terminal
+        # state instead of fabricating a verdict.
+        assert reloaded.cycle_capped is True
         # Counter is unchanged at the cap (no further increment after
         # the skip).
         assert (
@@ -247,6 +266,9 @@ class TestResolveUncertaintiesRespectsCap:
         assert reloaded_unc.resolution is not None
         # Cap blocks the rescrutiny add — this is the primary loop-breaker.
         assert claim.entity_id not in state.claims_needing_rescrutiny
+        # Option 1: claim is marked cycle_capped at the cap-firing site.
+        reloaded_claim = await repo.get("claim", claim.entity_id)
+        assert reloaded_claim.cycle_capped is True
 
     async def test_below_cap_adds_to_rescrutiny(
         self, tmp_path: Path, fake_runner
@@ -332,5 +354,153 @@ class TestLoopTermination:
         assert rescrutiny_requests <= SCRUTINY_RESOLVE_CYCLE_CAP
         # Final state: no pending rescrutiny.
         assert claim.entity_id not in state.claims_needing_rescrutiny
+
+
+# ── Option 1: cycle-as-signal routing ─────────────────────────────────
+
+
+class TestPromoteToSupportedSkipsCycleCapped:
+    async def test_cycle_capped_claim_is_not_promoted(self, tmp_path: Path) -> None:
+        """A cycle-capped HYPOTHESIS claim with verdict=pass would normally
+        be promoted to SUPPORTED. With Option 1, it stays at HYPOTHESIS
+        and is added to terminal_claims so the IBE chain never sees it."""
+        claim, repo = await _setup_objective_and_claim(
+            tmp_path, "promote_skip_cycle_capped"
+        )
+        claim.cycle_capped = True
+        await repo.save(claim)
+
+        state = EpistemicGraphState(objective_id=claim.objective_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+        ctx = _FakeRunContext(state, deps)
+        await PromoteToSupported().run(ctx)  # type: ignore[arg-type]
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        # Stage stays at HYPOTHESIS — not promoted.
+        assert reloaded.stage == ClaimStage.HYPOTHESIS
+        # State marks it terminal so CheckCompletion / IBE skip it.
+        assert claim.entity_id in state.terminal_claims
+
+    async def test_non_capped_claim_not_added_to_terminal_set(
+        self, tmp_path: Path
+    ) -> None:
+        """Sanity: a non-capped claim is not put into terminal_claims by
+        PromoteToSupported (the new branch only triggers on cycle_capped).
+        Whether the claim actually promotes depends on gate validation —
+        that's covered by the wider PromoteClaimOperation test suite."""
+        claim, repo = await _setup_objective_and_claim(
+            tmp_path, "promote_no_terminal_for_uncapped"
+        )
+        # cycle_capped defaults to False.
+
+        state = EpistemicGraphState(objective_id=claim.objective_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+        ctx = _FakeRunContext(state, deps)
+        await PromoteToSupported().run(ctx)  # type: ignore[arg-type]
+
+        # The Option-1 routing branch did not fire — the claim wasn't
+        # marked terminal by the cycle-capped path.
+        assert claim.entity_id not in state.terminal_claims
+
+
+class TestComputePosteriorOscillationDetected:
+    async def test_cycle_capped_claim_yields_oscillation_terminal_state(
+        self, tmp_path: Path
+    ) -> None:
+        """compute_posterior detects active cycle_capped claims and emits
+        terminal_state='oscillation_detected' with posterior=0.5,
+        symmetric to the retrieval_failed short-circuit."""
+        claim, repo = await _setup_objective_and_claim(
+            tmp_path, "posterior_oscillation"
+        )
+        claim.cycle_capped = True
+        claim.persistent_concerns = ["unc-1", "unc-2"]
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, claim.objective_id)
+        assert report is not None
+        assert report.terminal_state == "oscillation_detected"
+        assert report.posterior == 0.5
+        # The explanation references the snapshot count.
+        assert "2 persistent concerns" in report.explanation
+
+    async def test_no_cycle_capped_claims_means_normal_posterior(
+        self, tmp_path: Path
+    ) -> None:
+        """Sanity: compute_posterior's normal path is unchanged for runs
+        with no cycle-capped claims."""
+        claim, repo = await _setup_objective_and_claim(
+            tmp_path, "posterior_normal"
+        )
+        # cycle_capped defaults to False.
+
+        report = await compute_posterior(repo, claim.objective_id)
+        assert report is not None
+        assert report.terminal_state == "completed"
+
+
+class TestCombineSubVerdictsOscillationPropagation:
+    def _make_pipeline_result(
+        self, posterior_value: float | None, terminal_state: str
+    ) -> PipelineResult:
+        from andamentum.epistemic.confidence import PosteriorReport
+
+        if posterior_value is None:
+            posterior = None
+        else:
+            posterior = PosteriorReport(
+                posterior=posterior_value,
+                log_odds=0,
+                supporting_count=0,
+                contradicting_count=0,
+                counting_posterior=posterior_value,
+                mode="abductive",
+                terminal_state=terminal_state,  # type: ignore[arg-type]
+                objective_id="child",
+                question_type="verificatory",
+                explanation="stub",
+            )
+        return PipelineResult(
+            objective_id="child",
+            iterations=1,
+            successful=1,
+            failed=0,
+            status="ok",
+            posterior=posterior,
+        )
+
+    def test_oscillation_child_excluded_from_numeric_combination(self) -> None:
+        """A child with terminal_state=oscillation_detected drops from the
+        AND/OR/WEIGHTED_AND numeric combination — its posterior of 0.5 is
+        uninformative and shouldn't bias the bound."""
+        results = [
+            self._make_pipeline_result(0.85, "completed"),
+            self._make_pipeline_result(0.5, "oscillation_detected"),
+            self._make_pipeline_result(0.8, "completed"),
+        ]
+        combined = combine_sub_verdicts(results, "AND")
+        # min over numeric children only (0.85, 0.8) → 0.8.
+        # Without exclusion, min would be 0.5 from the capped child.
+        assert combined.posterior == 0.8
+
+    def test_oscillation_child_propagates_terminal_state(self) -> None:
+        results = [
+            self._make_pipeline_result(0.85, "completed"),
+            self._make_pipeline_result(0.5, "oscillation_detected"),
+        ]
+        combined = combine_sub_verdicts(results, "AND")
+        assert combined.terminal_state == "oscillation_detected"
+
+    def test_retrieval_failed_takes_precedence_over_oscillation(self) -> None:
+        """If multiple children fail differently, retrieval_failed wins —
+        no evidence at all is a deeper failure than 'evidence but no
+        convergence'."""
+        results = [
+            self._make_pipeline_result(0.5, "retrieval_failed"),
+            self._make_pipeline_result(0.5, "oscillation_detected"),
+            self._make_pipeline_result(0.85, "completed"),
+        ]
+        combined = combine_sub_verdicts(results, "AND")
+        assert combined.terminal_state == "retrieval_failed"
 
 

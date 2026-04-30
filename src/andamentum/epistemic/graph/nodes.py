@@ -41,6 +41,61 @@ _EMPTY_EXTRACTION_THRESHOLD = 3
 SCRUTINY_RESOLVE_CYCLE_CAP = 3
 
 
+async def _mark_cycle_capped(
+    deps: "EpistemicDeps", claim_id: str, source: str
+) -> None:
+    """Mark a claim as cycle-capped and snapshot its current blocking
+    uncertainties as forensic evidence.
+
+    Idempotent: ``Claim.cycle_capped`` is set True (no-op if already
+    True) and ``persistent_concerns`` is captured *only on first cap
+    firing* — the first-firing snapshot is the diagnostic input for
+    deciding follow-up architecture (cluster-dedup vs reformulation).
+    Subsequent cap firings on the same claim leave the snapshot alone.
+
+    The cap fires from two sites — ResolveUncertainties (primary
+    loop-breaker, blocks the rescrutiny add) and Scrutinize (defense
+    in depth, discards a stale rescrutiny flag). Both call this
+    helper so the consequence is uniform.
+    """
+    from ..entities import Claim, Uncertainty
+
+    claim = await deps.repo.get("claim", claim_id)
+    if not isinstance(claim, Claim):
+        return
+    if claim.cycle_capped:
+        # Already marked on a prior cap firing — keep first-firing snapshot.
+        return
+    claim.cycle_capped = True
+    # Snapshot the currently-blocking uncertainties on this claim, if any.
+    # Used post-hoc to decide whether the cycle was driven by persistent
+    # concern variants (→ cluster-dedup is the right follow-up) or by
+    # genuinely orthogonal concerns (→ claim reformulation is the right
+    # follow-up). Empty snapshot is fine — it just means there were no
+    # active blocking uncertainties at cap-firing time, which is itself
+    # a diagnostic observation.
+    snapshot: list[str] = []
+    for uid in claim.uncertainty_ids:
+        try:
+            unc = await deps.repo.get("uncertainty", uid)
+        except Exception:
+            continue
+        if (
+            isinstance(unc, Uncertainty)
+            and unc.is_blocking
+            and unc.resolution is None
+        ):
+            snapshot.append(unc.entity_id)
+    claim.persistent_concerns = snapshot
+    await deps.repo.save(claim)
+    logger.info(
+        "Claim %s cycle-capped via %s (snapshot=%d concerns)",
+        claim_id[:12],
+        source,
+        len(snapshot),
+    )
+
+
 def _update_retrieval_health(state: EpistemicGraphState, evidence: Any) -> None:
     """Update retrieval-health counters based on one extraction outcome.
 
@@ -443,15 +498,19 @@ class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
                 if cycles >= SCRUTINY_RESOLVE_CYCLE_CAP:
                     # Defense in depth: ResolveUncertainties is the primary
                     # gate, but if anything else added the claim to the set
-                    # post-cap, refuse here too. The claim keeps its
-                    # current verdict; categorisation below decides what
-                    # to do with it.
+                    # post-cap, refuse here too. The claim is marked
+                    # cycle_capped so downstream (PromoteToSupported,
+                    # compute_posterior) can route it to a terminal state
+                    # rather than promoting it as if inquiry converged.
                     logger.warning(
                         "Claim %s hit scrutiny-resolve cycle cap (%d); "
                         "skipping rescrutiny, retaining verdict=%s",
                         claim.entity_id[:12],
                         SCRUTINY_RESOLVE_CYCLE_CAP,
                         claim.scrutiny_verdict,
+                    )
+                    await _mark_cycle_capped(
+                        deps, claim.entity_id, "Scrutinize-defense-in-depth"
                     )
                     state.claims_needing_rescrutiny.discard(claim.entity_id)
                     continue
@@ -788,6 +847,16 @@ class PromoteToSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
         for claim in all_claims:
             if claim.abandoned:
                 continue
+            if claim.cycle_capped:
+                # Inquiry didn't converge — don't promote this claim, and
+                # mark it terminal so CheckCompletion sees no pending work.
+                # The claim stays at HYPOTHESIS; compute_posterior will
+                # surface the oscillation via terminal_state, and the
+                # IBE chain (which only runs on SUPPORTED claims) won't
+                # fabricate a verdict. This is the principled completion
+                # of the runtime cycle cap.
+                state.terminal_claims.add(claim.entity_id)
+                continue
             if (
                 claim.stage == ClaimStage.HYPOTHESIS
                 and claim.scrutiny_verdict == "pass"
@@ -1089,6 +1158,9 @@ class ResolveUncertainties(
                                 "(%d); not requesting further rescrutiny",
                                 cid[:12],
                                 SCRUTINY_RESOLVE_CYCLE_CAP,
+                            )
+                            await _mark_cycle_capped(
+                                deps, cid, "ResolveUncertainties-primary"
                             )
                             continue
                         state.claims_needing_rescrutiny.add(cid)
