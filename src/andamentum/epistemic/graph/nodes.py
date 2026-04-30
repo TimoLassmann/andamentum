@@ -29,6 +29,17 @@ logger = logging.getLogger(__name__)
 
 _EMPTY_EXTRACTION_THRESHOLD = 3
 
+# Cap on Scrutinize ↔ ResolveUncertainties oscillation per claim.
+# Each pass of Scrutinize on a marked-for-rescrutiny claim counts as
+# one cycle. Once a claim hits this many cycles, Scrutinize stops
+# rescrutinizing and ResolveUncertainties stops requesting rescrutiny.
+# The claim retains its current verdict — analogous to the
+# investigation cap of 3. The bug this prevents: claims whose seed
+# text produces a reliably-novel-but-near-duplicate uncertainty per
+# scrutiny pass loop forever, since the genuine resolution per round
+# keeps marking the claim for rescrutiny.
+SCRUTINY_RESOLVE_CYCLE_CAP = 3
+
 
 def _update_retrieval_health(state: EpistemicGraphState, evidence: Any) -> None:
     """Update retrieval-health counters based on one extraction outcome.
@@ -423,24 +434,44 @@ class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
                 claim.scrutiny_verdict is None
                 or claim.entity_id in state.claims_needing_rescrutiny
             )
-            if needs_scrutiny:
+            if not needs_scrutiny:
+                continue
+
+            is_rescrutiny = claim.entity_id in state.claims_needing_rescrutiny
+            if is_rescrutiny:
+                cycles = state.scrutiny_resolve_cycles.get(claim.entity_id, 0)
+                if cycles >= SCRUTINY_RESOLVE_CYCLE_CAP:
+                    # Defense in depth: ResolveUncertainties is the primary
+                    # gate, but if anything else added the claim to the set
+                    # post-cap, refuse here too. The claim keeps its
+                    # current verdict; categorisation below decides what
+                    # to do with it.
+                    logger.warning(
+                        "Claim %s hit scrutiny-resolve cycle cap (%d); "
+                        "skipping rescrutiny, retaining verdict=%s",
+                        claim.entity_id[:12],
+                        SCRUTINY_RESOLVE_CYCLE_CAP,
+                        claim.scrutiny_verdict,
+                    )
+                    state.claims_needing_rescrutiny.discard(claim.entity_id)
+                    continue
+                state.scrutiny_resolve_cycles[claim.entity_id] = cycles + 1
                 # Reset verdict for re-scrutiny so the operation runs.
                 # Clearing scrutiny_fingerprint alongside the verdict tells
                 # the operation that this is an intentional re-pass, not a
                 # spontaneous re-entry on unchanged inputs.
-                if claim.entity_id in state.claims_needing_rescrutiny:
-                    claim.scrutiny_verdict = None
-                    claim.scrutiny_fingerprint = None
-                    await deps.repo.save(claim)
-                    state.claims_needing_rescrutiny.discard(claim.entity_id)
-                await _run_op(
-                    ScrutiniseClaimOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "scrutinise_claim",
-                )
+                claim.scrutiny_verdict = None
+                claim.scrutiny_fingerprint = None
+                await deps.repo.save(claim)
+                state.claims_needing_rescrutiny.discard(claim.entity_id)
+            await _run_op(
+                ScrutiniseClaimOperation,
+                deps,
+                state,
+                claim.entity_id,
+                "claim",
+                "scrutinise_claim",
+            )
 
         # Re-read claims after scrutiny
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
@@ -1044,6 +1075,22 @@ class ResolveUncertainties(
                 unc_updated = await deps.repo.get("uncertainty", unc.entity_id)
                 if unc_updated.is_blocking and unc_updated.resolution is not None:
                     for cid in unc_updated.affected_claim_ids:
+                        # Cycle cap: once a claim has been through
+                        # SCRUTINY_RESOLVE_CYCLE_CAP rescrutiny passes,
+                        # stop requesting more. The loop driver is
+                        # 'genuine resolution → rescrutiny → fresh
+                        # uncertainty → genuine resolution …' and the
+                        # cap is what breaks it. The claim keeps its
+                        # current verdict and the graph proceeds.
+                        cycles = state.scrutiny_resolve_cycles.get(cid, 0)
+                        if cycles >= SCRUTINY_RESOLVE_CYCLE_CAP:
+                            logger.info(
+                                "Claim %s hit scrutiny-resolve cycle cap "
+                                "(%d); not requesting further rescrutiny",
+                                cid[:12],
+                                SCRUTINY_RESOLVE_CYCLE_CAP,
+                            )
+                            continue
                         state.claims_needing_rescrutiny.add(cid)
 
         # Deduplicate concerns on the objective
