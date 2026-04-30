@@ -278,6 +278,7 @@ class SynthesizeReportOperation(BaseOperation):
             convergence_by_claim,
             evidence_index,
             quality_signals,
+            combined_verdict=getattr(snapshot, "combined_verdict", None),
         )
 
         # Writer-validator loop
@@ -413,6 +414,7 @@ class SynthesizeReportOperation(BaseOperation):
         convergence_by_claim: dict[str, Any],
         evidence_index: dict[str, int],
         quality_signals: dict[str, Any],
+        combined_verdict: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build data summaries for writer and validator agents.
 
@@ -519,6 +521,34 @@ class SynthesizeReportOperation(BaseOperation):
             if not u.is_blocking and u.resolution is None
         ]
 
+        # Combined verdict (multi-seed-claim runs only). Surfaces the
+        # rule-aware aggregate verdict so the writer agent can frame its
+        # answer around AND/OR/WEIGHTED_AND/UNION semantics rather than
+        # narrating per-claim verdicts in isolation. The combiner has
+        # already applied the decomposition's combination_rule; without
+        # this the writer might produce prose that disagrees with the
+        # structured combined verdict on the snapshot.
+        combined_verdict_summary = "Not applicable (no decomposition)."
+        if combined_verdict:
+            posterior = combined_verdict.get("posterior")
+            verdict_label = combined_verdict.get("verdict", "n/a")
+            rule = combined_verdict.get("combination_rule", "n/a")
+            n_capped = combined_verdict.get("n_capped", 0)
+            n_no_verdict = combined_verdict.get("n_no_verdict", 0)
+            n_abandoned = combined_verdict.get("n_abandoned", 0)
+            posterior_str = (
+                f"{posterior:.3f}" if isinstance(posterior, (int, float)) else "n/a"
+            )
+            combined_verdict_summary = (
+                f"Combination rule: {rule}; combined verdict: "
+                f"{verdict_label}; combined posterior: {posterior_str}. "
+                f"Diagnostic counts: capped={n_capped}, no_verdict="
+                f"{n_no_verdict}, abandoned={n_abandoned}. "
+                "(This aggregate honours the decomposition rule. Frame "
+                "your answer around it; per-claim verdicts above are "
+                "supporting detail.)"
+            )
+
         return {
             "claims": claim_summaries,
             "evidence": evidence_summaries,
@@ -531,6 +561,7 @@ class SynthesizeReportOperation(BaseOperation):
             "blocking_uncertainties": blocking if blocking else ["None."],
             "non_blocking_uncertainties": non_blocking if non_blocking else ["None."],
             "quality_signals": quality_signals,
+            "combined_verdict": combined_verdict_summary,
         }
 
     @staticmethod
