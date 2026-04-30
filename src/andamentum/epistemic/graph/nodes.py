@@ -230,19 +230,53 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
     )
 
     # Step 1: Cascade invalidated evidence → affected claims
+    #
+    # Performance fix (TMS-storm — was 21 ops per ~3-evidence run):
+    # ``InvalidateEvidenceOperation`` does real DB work even when an
+    # invalidated evidence has no downstream effect (zero claims
+    # reference it, no derived evidence depends on it). Most invalidations
+    # come from Layer-1 dedup of duplicate URLs that never made it into
+    # any claim's evidence_ids — true no-op cascades. Pre-filter those
+    # and just flip ``invalidation_cascaded=True`` directly, skipping the
+    # full op + execution_step trace per item. This was a 7×-amplification
+    # in a 3-evidence run.
     all_evidence = await deps.repo.query("evidence", objective_id=state.objective_id)
     had_cascades = False
+    pending: list[Evidence] = []
     for ev in all_evidence:
         if isinstance(ev, Evidence) and ev.invalidated and not ev.invalidation_cascaded:
-            await _run_op(
-                InvalidateEvidenceOperation,
-                deps,
-                state,
-                ev.entity_id,
-                "evidence",
-                "invalidate_evidence",
-            )
+            pending.append(ev)
+
+    referenced_ids: set[str] = set()
+    if pending:
+        all_claims_pre = await deps.repo.query(
+            "claim", objective_id=state.objective_id
+        )
+        # Build a fast lookup: which evidence IDs are referenced by any claim?
+        for c in all_claims_pre:
+            if isinstance(c, Claim):
+                for eid in c.evidence_ids:
+                    referenced_ids.add(eid)
+
+    for ev in pending:
+        # No-op cascade: nothing references this evidence and no derived
+        # evidence depends on it. Mark cascaded directly.
+        no_claim_ref = ev.entity_id not in referenced_ids
+        no_derived = ev.depends_on_claim_id is None
+        if no_claim_ref and no_derived:
+            ev.invalidation_cascaded = True
+            await deps.repo.save(ev)
             had_cascades = True
+            continue
+        await _run_op(
+            InvalidateEvidenceOperation,
+            deps,
+            state,
+            ev.entity_id,
+            "evidence",
+            "invalidate_evidence",
+        )
+        had_cascades = True
 
     # Step 2: Revalidate all non-abandoned claims above HYPOTHESIS after cascade.
     # RevalidateClaimOperation checks the gate and only demotes if it fails,
@@ -265,10 +299,22 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                     "claim",
                     "revalidate_claim",
                 )
-                # If TMS demoted the claim, remove from verification_done
-                # so PromoteToSupported re-routes it through verification
+                # If TMS demoted the claim:
+                # - Remove from verification_done so PromoteToSupported
+                #   re-routes it through verification.
+                # - ALSO add to claims_needing_rescrutiny so the demoted
+                #   claim is re-scrutinised before the next promotion
+                #   attempt. ``record_demotion`` clears
+                #   ``scrutiny_verdict`` to None; without rescrutiny,
+                #   PromoteClaimOperation rejects the claim with
+                #   "Scrutiny not passed (verdict: None)" and the claim
+                #   stays stuck at HYPOTHESIS forever (the
+                #   demote-can't-repromote trap). ResolveUncertainties
+                #   reads claims_needing_rescrutiny and routes back to
+                #   Scrutinize when non-empty, restoring the verdict.
                 if result.success and "demoted" in (result.message or "").lower():
                     state.verification_done.discard(claim.entity_id)
+                    state.claims_needing_rescrutiny.add(claim.entity_id)
 
     # Step 3: Process claims flagged for TMS by graph nodes
     for cid in list(state.claims_needing_tms):
@@ -1120,6 +1166,15 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
             for c in all_claims
             if not c.abandoned and c.stage == ClaimStage.SUPPORTED
         ]
+        # If TMS just demoted any claims and added them to the rescrutiny
+        # set, don't fast-path to IBE — those claims need their scrutiny
+        # verdict re-established first. Falling through to
+        # ResolveUncertainties routes us back to Scrutinize via the
+        # rescrutiny set, restoring the verdict. Without this guard, the
+        # demote-can't-repromote trap kicks in (record_demotion cleared
+        # scrutiny_verdict; PromoteClaim rejects None-verdict claims).
+        if state.claims_needing_rescrutiny:
+            return ResolveUncertainties()
         if active_supported:
             # Terminal convergence verdicts that count as "this claim is
             # done with the convergence track". CONVERGENT is the
