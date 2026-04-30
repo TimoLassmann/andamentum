@@ -12,10 +12,23 @@ Architecture: Layer 1 (framework-agnostic, pure dataclass)
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from .quarantine import QuarantineRecord
+
+
+def _new_run_id() -> str:
+    """Fresh per-graph-run identifier.
+
+    Used to disambiguate execution-trace ``file_path`` entries when
+    multiple graph runs share one DocumentStore — e.g. the decomposed
+    orchestrator running N children, or a re-run of the same objective.
+    Without this disambiguator, ``execution_step_<step>`` collides on
+    the documents.file_path UNIQUE index.
+    """
+    return uuid.uuid4().hex[:12]
 
 
 @dataclass
@@ -31,6 +44,12 @@ class EpistemicGraphState:
     question: str = ""
     question_type: str | None = None
     skip_preplanning: bool = False
+
+    # ── Run identity ─────────────────────────────────────────────
+    # Per-graph-run disambiguator. Each fresh state gets a new id;
+    # used to keep execution-trace file_paths unique when multiple
+    # graph runs share a DocumentStore (decomposed runs, re-runs).
+    run_id: str = field(default_factory=_new_run_id)
 
     # ── Evidence collection ─────────────────────────────────────
     evidence_extracted: bool = False
