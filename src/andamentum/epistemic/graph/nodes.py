@@ -983,12 +983,28 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
             CrossClaimConsistencyOperation,
         )
         from ..entities.claim import ClaimStage
+        from ..entities.objective import Objective
         from ..routing import get_routing_profile, TrackActivation
 
         state = ctx.state
         deps = ctx.deps
 
-        question_type = state.question_type or "verificatory"
+        # Phase 3 multi-seed-claim correction: when the Objective is a
+        # verification task (claim_to_verify or decomposition set),
+        # route as verificatory regardless of the LLM classifier's
+        # output. Each minted claim is binary verification by
+        # construction; the parent's classification (e.g. "explanatory"
+        # for a declarative SciFact claim) doesn't apply to per-claim
+        # routing. Without this override, misclassification cascades
+        # into convergence=SECONDARY, A2 doesn't fire, scrutiny ↔
+        # resolve loops are bounded only by the runtime cap. With it,
+        # verificatory routing ensures convergence is PRIMARY and the
+        # convergence-driven termination path is reachable.
+        objective = await deps.repo.get("objective", state.objective_id)
+        if isinstance(objective, Objective) and objective.is_verification_task():
+            question_type = "verificatory"
+        else:
+            question_type = state.question_type or "verificatory"
 
         try:
             profile = get_routing_profile(question_type)
