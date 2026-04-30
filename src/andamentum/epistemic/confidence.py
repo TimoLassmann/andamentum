@@ -211,14 +211,23 @@ async def compute_posterior(
     evidence = await repo.get_evidence_for_objective(objective_id)
     active_claims = [c for c in claims if not c.abandoned]
 
-    # Oscillation short-circuit: if any active claim hit the cycle cap,
-    # the inquiry didn't converge and the posterior is honestly
-    # uninformative. Emit terminal_state="oscillation_detected" so
-    # callers can distinguish "system reached a 0.5 verdict by balanced
-    # evidence" from "system gave up after bounded rescrutiny". Same
-    # shape as the retrieval_failed short-circuit above.
+    # Oscillation handling (Phase 2 of multi-seed-claim refactor):
+    #
+    # Previous semantic: ANY capped claim short-circuited the entire
+    # posterior to oscillation_detected, discarding healthy verdicts on
+    # sibling claims. That broke multi-seed-claim's resilience promise —
+    # one cycling claim shouldn't take 4 healthy claims down with it.
+    #
+    # New semantic: filter capped claims out of aggregation. Only emit
+    # the all-or-nothing oscillation_detected report when every active
+    # claim is capped (nothing left to aggregate). Otherwise, drop the
+    # capped subset, aggregate the rest normally, and surface the
+    # oscillation as a diagnostic in the explanation. The combiner
+    # (CombineClaimVerdicts in Phase 4) will receive the partial signal
+    # and apply the combination_rule over the non-capped claims.
     capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
-    if capped:
+    if capped and len(capped) == len(active_claims) and active_claims:
+        # All-capped: no signal to aggregate. Honest oscillation_detected.
         concern_total = sum(len(c.persistent_concerns) for c in capped)
         capped_summary = ", ".join(
             f"{c.entity_id[:8]}:{len(c.persistent_concerns)}c" for c in capped
@@ -233,16 +242,26 @@ async def compute_posterior(
             objective_id=objective_id,
             question_type=question_type,
             explanation=(
-                f"Oscillation detected: {len(capped)} claim(s) hit the "
-                f"scrutiny-resolve cycle cap with {concern_total} persistent "
-                f"concerns total ({capped_summary}). Posterior defaults to "
-                "0.5 (uninformative); terminal_state='oscillation_detected'. "
-                "The inquiry did not converge — diagnose by inspecting "
-                "claim.persistent_concerns to decide whether cluster-dedup "
-                "or claim reformulation is the right architectural follow-up."
+                f"Oscillation detected: ALL {len(capped)} active claim(s) hit "
+                f"the scrutiny-resolve cycle cap with {concern_total} "
+                f"persistent concerns total ({capped_summary}). Posterior "
+                "defaults to 0.5 (uninformative); "
+                "terminal_state='oscillation_detected'. The inquiry did not "
+                "converge — diagnose by inspecting claim.persistent_concerns "
+                "to decide whether cluster-dedup or claim reformulation is "
+                "the right architectural follow-up."
             ),
             terminal_state="oscillation_detected",
         )
+
+    # Partial-cap: some claims capped, others have verdicts. Aggregate
+    # over the non-capped subset; remember the capped count for the
+    # report's explanation.
+    n_capped_partial = len(capped)
+    if n_capped_partial:
+        active_claims = [
+            c for c in active_claims if not getattr(c, "cycle_capped", False)
+        ]
 
     # 3. Diagnostic: weighted counts across active claims. These are reported
     # for inspection and used only as the counting fallback when no claim
@@ -347,6 +366,12 @@ async def compute_posterior(
 
     # 6. Build explanation
     parts = [f"Posterior {posterior:.4f} for {question_type} question."]
+    if n_capped_partial:
+        parts.append(
+            f"NOTE: {n_capped_partial} claim(s) hit the scrutiny-resolve "
+            "cycle cap and were excluded from aggregation. Aggregation is "
+            "over the non-capped subset only."
+        )
     if mode == "abductive":
         parts.append(
             f"Mode: abductive (driven by integration verdict). "
