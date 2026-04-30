@@ -453,6 +453,116 @@ class TestPosteriorSeedClaimMode:
         result = await compute_posterior(repo, OBJ_ID)
         assert result is None
 
+    async def test_compute_posterior_honors_AND_rule(self, repo):
+        """Multi-seed-claim with AND combination_rule: compute_posterior
+        delegates to combine_claim_verdicts and returns the weakest-link
+        bound (min over per-claim posteriors), not the confidence-weighted
+        average. Matches what the user actually asked for via
+        decomposition."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="parent",
+            question_type="explanatory",
+            decomposition={
+                "sub_investigations": [
+                    {"id": "A", "seed_claim": "alpha", "rationale": "ra"},
+                    {"id": "B", "seed_claim": "beta", "rationale": "rb"},
+                ],
+                "combination_rule": "AND",
+                "rationale": "both must hold",
+            },
+            combination_rule="AND",
+        )
+        await repo.save(obj)
+        # Two claims with sub_investigation_id matching the decomposition.
+        from andamentum.epistemic.entities.claim import ClaimStage as _CS
+
+        claim_a = Claim(
+            objective_id=OBJ_ID,
+            statement="A",
+            scope="ra",
+            stage=_CS.SUPPORTED,
+            sub_investigation_id="A",
+            integrated_assessment="supports",
+            integrated_confidence=0.8,
+        )
+        await repo.save(claim_a)
+        claim_b = Claim(
+            objective_id=OBJ_ID,
+            statement="B",
+            scope="rb",
+            stage=_CS.SUPPORTED,
+            sub_investigation_id="B",
+            integrated_assessment="contradicts",
+            integrated_confidence=0.7,
+        )
+        await repo.save(claim_b)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert result is not None
+        # AND over [supports@0.8 → 0.9, contradicts@0.7 → 0.15]
+        # min = 0.15 → contradicts. Pre-fix: confidence-weighted average
+        # would yield (0.9*0.8 + 0.15*0.7) / 1.5 ≈ 0.55 (insufficient).
+        assert result.posterior == pytest.approx(0.15)
+        assert result.integration_verdict == "contradicts"
+        assert result.mode == "rule_aware_and"
+
+    async def test_compute_posterior_honors_OR_rule(self, repo):
+        """OR combination: max over per-claim posteriors."""
+        obj = Objective(
+            entity_id=OBJ_ID,
+            objective_id=OBJ_ID,
+            description="parent",
+            question_type="verificatory",
+            decomposition={
+                "sub_investigations": [
+                    {"id": "A", "seed_claim": "alpha", "rationale": "ra"},
+                    {"id": "B", "seed_claim": "beta", "rationale": "rb"},
+                ],
+                "combination_rule": "OR",
+                "rationale": "either suffices",
+            },
+            combination_rule="OR",
+        )
+        await repo.save(obj)
+        from andamentum.epistemic.entities.claim import ClaimStage as _CS
+
+        for sub_id, verdict, conf in (("A", "contradicts", 0.5), ("B", "supports", 0.85)):
+            c = Claim(
+                objective_id=OBJ_ID,
+                statement=sub_id,
+                scope="x",
+                stage=_CS.SUPPORTED,
+                sub_investigation_id=sub_id,
+                integrated_assessment=verdict,
+                integrated_confidence=conf,
+            )
+            await repo.save(c)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert result is not None
+        # OR over [contradicts@0.5 → 0.25, supports@0.85 → 0.925]
+        # max = 0.925 → supports.
+        assert result.posterior == pytest.approx(0.925)
+        assert result.integration_verdict == "supports"
+        assert result.mode == "rule_aware_or"
+
+    async def test_no_combination_rule_uses_weighted_average(self, repo):
+        """Sanity: when no combination_rule is set (open-research /
+        ProposeClaims path), the rule-blind confidence-weighted average
+        path remains in place."""
+        obj = _make_objective(question_type="verificatory")
+        await repo.save(obj)
+        claim = _make_claim()
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.8
+        await repo.save(claim)
+
+        result = await compute_posterior(repo, OBJ_ID)
+        assert result is not None
+        assert result.mode == "abductive"
+
     async def test_explanatory_parent_with_decomposition_returns_report(
         self, repo
     ):

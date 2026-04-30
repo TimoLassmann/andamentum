@@ -315,8 +315,76 @@ async def compute_posterior(
     integration_verdict: str | None = None
     integration_confidence: float | None = None
 
-    if integrated_claims:
-        # Per-claim probability + weight
+    # Multi-seed-claim aware aggregation (post-audit Commit B):
+    # When the Objective has a decomposition with a combination_rule, the
+    # headline posterior must honour the rule (AND→min, OR→max,
+    # WEIGHTED_AND→weighted mean over per-claim posteriors). The previous
+    # confidence-weighted average ignored the rule and could disagree
+    # with the rule-aware verdict in CombineClaimVerdicts (e.g. AND over
+    # [0.9, 0.35] gives min=0.35 but weighted-average ≈ 0.75 — opposite
+    # directions). Now ``compute_posterior`` delegates to
+    # ``combine_claim_verdicts`` for decomposed runs so callers see one
+    # consistent number.
+    decomposition = getattr(objective, "decomposition", None) or {}
+    combination_rule = (
+        getattr(objective, "combination_rule", None)
+        or decomposition.get("combination_rule")
+    )
+    use_rule_aware = bool(integrated_claims) and bool(combination_rule)
+
+    if use_rule_aware:
+        from .graph.combination import (
+            combine_claim_verdicts,
+            extract_weights_from_decomposition,
+        )
+
+        # Order claims by sub_investigation_id per the decomposition so
+        # weights align — same alignment CombineClaimVerdicts uses.
+        sub_ids_in_order = [
+            s.get("id")
+            for s in (decomposition.get("sub_investigations") or [])
+        ]
+        claims_by_sub = {
+            c.sub_investigation_id: c
+            for c in integrated_claims
+            if c.sub_investigation_id is not None
+        }
+        ordered = [
+            claims_by_sub[sid]
+            for sid in sub_ids_in_order
+            if sid in claims_by_sub
+        ]
+        # Fall back to the integrated_claims list if no sub_investigation_id
+        # alignment is possible (e.g. ProposeClaims path that happened to
+        # have a combination_rule from a prior decomposition).
+        if not ordered:
+            ordered = integrated_claims
+            weights = None
+        else:
+            weights = extract_weights_from_decomposition(
+                decomposition, ordered
+            )
+        combined = combine_claim_verdicts(ordered, combination_rule, weights=weights)
+
+        if combined.posterior is not None:
+            posterior = combined.posterior
+            integration_verdict = combined.verdict
+            # Average confidence as before — the per-claim confidences
+            # remain the diagnostic signal; the rule decides which claims
+            # dominate via the combination operation.
+            integration_confidence = sum(
+                c.integrated_confidence or 0.0 for c in integrated_claims
+            ) / len(integrated_claims)
+            # combination_rule is non-None inside this branch (the
+            # use_rule_aware predicate guarantees it).
+            mode = f"rule_aware_{(combination_rule or 'unknown').lower()}"
+        else:
+            # UNION or no_data: no scalar verdict. Fall back to counting.
+            posterior = counting_posterior
+            mode = "counting_fallback"
+    elif integrated_claims:
+        # Per-claim probability + weight (rule-blind path: open-research
+        # multi-claim or seed-claim runs without a combination_rule).
         weighted_sum = 0.0
         weight_total = 0.0
         verdict_counts: dict[str, int] = {
