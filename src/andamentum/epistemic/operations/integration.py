@@ -56,8 +56,11 @@ async def _build_evidence_brief(
     no_bearing_count. Same shape the old monolithic prompt consumed.
 
     Filters to representative evidence, caps at LLM_PANEL_CAP top-quality
-    reps, and annotates each with cluster_size so downstream prompts can
-    apply Mill's method-of-difference at the agent layer.
+    reps, and annotates each with ``cluster_size`` so the agent can read
+    cluster size as a corroboration signal in its reasoning. (The
+    aggregation, comparison, and difference-method-style reasoning all
+    happen inside the agent prompt, not in this code; we provide the
+    structured input.)
     """
     from .claims import LLM_PANEL_CAP, top_n_representatives
 

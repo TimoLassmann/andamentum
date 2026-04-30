@@ -312,6 +312,20 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 #   demote-can't-repromote trap). ResolveUncertainties
                 #   reads claims_needing_rescrutiny and routes back to
                 #   Scrutinize when non-empty, restoring the verdict.
+                #
+                # COUPLING NOTE (defense-in-depth): the TMS-induced
+                # demote→re-promote→adversarial→demote loop is bounded
+                # only INDIRECTLY by ``SCRUTINY_RESOLVE_CYCLE_CAP``. Each
+                # demote routes the claim back through Scrutinize via
+                # the rescrutiny set, where ``state.scrutiny_resolve_cycles``
+                # increments. After CAP rounds the claim is cycle_capped
+                # → terminal. If a future refactor ever bypasses
+                # Scrutinize on the demote→re-promote path (e.g. a
+                # "fast revalidation" optimization that goes straight
+                # back to verification), this loop loses its bound.
+                # Either keep all TMS-demote paths going through
+                # Scrutinize, or add a per-claim ``tms_demotion_counts``
+                # state field with its own cap.
                 if result.success and "demoted" in (result.message or "").lower():
                     state.verification_done.discard(claim.entity_id)
                     state.claims_needing_rescrutiny.add(claim.entity_id)
