@@ -86,6 +86,20 @@ class EpistemicGraphState:
     # claims with scrutiny_verdict=None.
     claims_needing_rescrutiny: set[str] = field(default_factory=set)
 
+    # Per-claim counter for the Scrutinize ↔ ResolveUncertainties
+    # oscillation. Each pass through Scrutinize on a claim that was
+    # marked for rescrutiny increments this. Once a claim's count hits
+    # ``SCRUTINY_RESOLVE_CYCLE_CAP`` (defined in nodes.py),
+    # ResolveUncertainties stops marking it for further rescrutiny and
+    # Scrutinize stops accepting new rescrutiny requests for it. The
+    # claim retains its current scrutiny_verdict and the graph proceeds
+    # — analogous to ``investigation_counts`` capping the investigate
+    # loop at 3. Without this cap, claims whose seed-text reliably
+    # produces a single novel-but-near-duplicate uncertainty per
+    # scrutiny pass would oscillate forever (decomposed cases hit this
+    # in the wild on smoke_v12).
+    scrutiny_resolve_cycles: dict[str, int] = field(default_factory=dict)
+
     # Claims needing TMS revalidation after evidence changes.
     # Populated by graph nodes, consumed by _run_tms_sweep.
     claims_needing_tms: set[str] = field(default_factory=set)
