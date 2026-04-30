@@ -855,6 +855,7 @@ async def handle_ask(
     trace: TraceMode = "timeline",
     evidence_agent: Optional[str] = None,
     force_quick: bool = False,
+    decompose: bool = False,
     research_config: Optional[ResearchConfig] = None,
     output_path: Optional[str] = None,
     provider: str = "all",
@@ -975,6 +976,7 @@ async def handle_ask(
             provider=provider,
             db_dir=db_dir,
             quality_scorer=OpenAlexQualityScorer(),
+            decompose=decompose,
         )
 
         console.print()
