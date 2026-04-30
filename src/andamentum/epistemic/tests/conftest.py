@@ -307,6 +307,14 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "relevant": True,
         "reasoning": "Provider is relevant for this question type",
     },
+    # Phase 4 reflection default: declare sufficiency. Tests that
+    # exercise the gap-filling path override with sufficient=False.
+    "epistemic_reflect_on_gaps": {
+        "sufficient": True,
+        "gap_description": "",
+        "additional_sub_investigations": [],
+        "rationale": "Default mock: current decomposition is adequate.",
+    },
     # Phase 1 of top-down decomposition: returns a verificatory-style
     # decomposition with 3 sub-investigations combined via AND. Tests
     # exercising specific decomposition shapes should pass overrides.

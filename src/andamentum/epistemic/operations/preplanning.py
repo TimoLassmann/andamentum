@@ -1,13 +1,16 @@
-"""Preplanning operations (Phases 0-2).
+"""Preplanning operations (Phases 0-2 + Phase 4 reflection).
 
 Clarify the research question, classify its epistemic type, perform
-conceptual analysis, and plan evidence collection strategy. These
-operations transform a raw Objective into a well-formed research plan
-with provider-specific evidence stubs.
+conceptual analysis, plan evidence collection strategy, and reflect on
+decomposition gaps after children run. These operations transform a raw
+Objective into a well-formed research plan with provider-specific
+evidence stubs and (when needed) refined sub-investigations.
 
 Depends on: base (BaseOperation, OperationResult)
 Operates on: Objective, Evidence entities
 """
+
+from typing import Any
 
 from .base import BaseOperation, OperationInput, OperationResult
 
@@ -475,7 +478,35 @@ class SpawnSubObjectivesOperation(BaseOperation):
                 did_work=False,
             )
 
-        if objective.sub_objective_ids:
+        sub_investigations = objective.decomposition.get("sub_investigations", [])
+        if not sub_investigations:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message="Decomposition has no sub_investigations to spawn",
+                did_work=False,
+            )
+
+        # Delta-spawn: figure out which sub-investigation IDs already
+        # have a child, and only spawn the rest. This keeps Phase-2
+        # idempotence (re-running on a fully-spawned parent is a no-op)
+        # while letting Phase-4 reflection-driven additions land
+        # incrementally.
+        existing_sub_ids: set[str] = set()
+        for child_id in objective.sub_objective_ids:
+            try:
+                child = await self.repo.get("objective", child_id)
+            except Exception:
+                continue
+            if child.sub_investigation_id:
+                existing_sub_ids.add(child.sub_investigation_id)
+
+        to_spawn = [
+            sub
+            for sub in sub_investigations
+            if sub.get("id", "?") not in existing_sub_ids
+        ]
+        if not to_spawn:
             return OperationResult(
                 success=True,
                 entity_id=objective.entity_id,
@@ -486,17 +517,8 @@ class SpawnSubObjectivesOperation(BaseOperation):
                 did_work=False,
             )
 
-        sub_investigations = objective.decomposition.get("sub_investigations", [])
-        if not sub_investigations:
-            return OperationResult(
-                success=False,
-                entity_id=objective.entity_id,
-                message="Decomposition has no sub_investigations to spawn",
-                did_work=False,
-            )
-
         spawned_ids: list[str] = []
-        for sub in sub_investigations:
+        for sub in to_spawn:
             sub_id = sub.get("id", "?")
             seed_claim = sub.get("seed_claim", "")
             # phase="analyzed" so the graph's PrepareObjective short-circuits
@@ -516,7 +538,7 @@ class SpawnSubObjectivesOperation(BaseOperation):
             await self.repo.save(child)
             spawned_ids.append(child.entity_id)
 
-        objective.sub_objective_ids = spawned_ids
+        objective.sub_objective_ids = list(objective.sub_objective_ids) + spawned_ids
         await self.repo.save(objective)
 
         return OperationResult(
@@ -524,4 +546,251 @@ class SpawnSubObjectivesOperation(BaseOperation):
             entity_id=objective.entity_id,
             message=f"Spawned {len(spawned_ids)} sub-objectives from decomposition",
             created_entities=spawned_ids,
+        )
+
+
+class ReflectOnGapsOperation(BaseOperation):
+    """Reflect on the current decomposition's verdicts and add sub-investigations
+    when a load-bearing gap is found.
+
+    Runs after children have been scored and combined. Reads each
+    child's posterior, summarizes the children's state for the agent,
+    and asks ``epistemic_reflect_on_gaps`` whether the current children
+    are adequate. When the agent declares a gap, the operation appends
+    new sub-investigations to ``parent.decomposition`` (re-keyed with
+    deterministic IDs ``D``, ``E``, ...) and bumps ``reflection_rounds``.
+
+    Reflection is corrective, not search-like: the orchestrator caps the
+    number of rounds (default 1). The operation is idempotent at the
+    agent-call level — re-running after a sufficient verdict is a
+    did_work=False no-op.
+
+    Phase 4 of the unified architecture. The orchestrator
+    (``run_research_question_decomposed``) decides *when* to call this op
+    (e.g. only when the combined verdict is insufficient or any child
+    flagged retrieval_failed); the op decides *what* to add.
+    """
+
+    entity_type = "objective"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        objective = await self.repo.get("objective", work.entity_id)
+
+        if not isinstance(objective, Objective):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Objective",
+                did_work=False,
+            )
+
+        if objective.decomposition is None:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message=(
+                    "No decomposition on this objective — "
+                    "DecomposeQuestionOperation must run before reflection"
+                ),
+                did_work=False,
+            )
+
+        if not objective.sub_objective_ids:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message=(
+                    "No spawned children — SpawnSubObjectivesOperation must "
+                    "run before reflection"
+                ),
+                did_work=False,
+            )
+
+        if not self.agent_runner:
+            return OperationResult(
+                success=False,
+                entity_id=objective.entity_id,
+                message="No agent_runner configured; reflection requires an LLM",
+                did_work=False,
+            )
+
+        # Build the per-child summary the agent consumes. Each child's
+        # posterior is recomputed from repo state (cheap; a pure function
+        # of stored evidence + claims). When compute_posterior returns
+        # None — e.g. the child's question_type is ineligible for
+        # posterior reporting — we surface "n/a" rather than crashing.
+        from ..confidence import compute_posterior
+
+        question = objective.clarified_question or objective.description
+        rule = objective.combination_rule or "AND"
+
+        child_lines: list[str] = []
+        for child_id in objective.sub_objective_ids:
+            try:
+                child = await self.repo.get("objective", child_id)
+            except Exception:
+                child_lines.append(f"- (child {child_id[:8]}: lookup failed)")
+                continue
+            sub_id = child.sub_investigation_id or "?"
+            seed_claim = child.claim_to_verify or child.description or ""
+            try:
+                report = await compute_posterior(self.repo, child_id)
+            except Exception:
+                report = None
+            if report is None:
+                verdict_str = "n/a"
+                p_str = "n/a"
+                terminal = "n/a"
+            else:
+                verdict_str = report.integration_verdict or "n/a"
+                p_str = f"{report.posterior:.2f}"
+                terminal = report.terminal_state
+            child_lines.append(
+                f"- {sub_id}: {seed_claim} → {verdict_str} (p={p_str}, "
+                f"terminal_state={terminal})"
+            )
+        current_decomposition = "\n".join(child_lines)
+
+        # Combined view derived from the same posteriors. We import here
+        # to avoid creating a top-level dep cycle between
+        # operations/preplanning.py and decomposed_runner.py.
+        from ..decomposed_runner import combine_sub_verdicts
+        from ..operations_runner import PipelineResult
+
+        # Build minimal PipelineResult stand-ins so we can reuse
+        # combine_sub_verdicts here without a parallel implementation.
+        proxy_results: list[PipelineResult] = []
+        for child_id in objective.sub_objective_ids:
+            try:
+                report = await compute_posterior(self.repo, child_id)
+            except Exception:
+                report = None
+            proxy_results.append(
+                PipelineResult(
+                    objective_id=child_id,
+                    iterations=0,
+                    successful=1 if report else 0,
+                    failed=0,
+                    status="ok",
+                    posterior=report,
+                )
+            )
+        weights_list = [
+            float(s.get("weight", 1.0))
+            for s in objective.decomposition.get("sub_investigations", [])
+        ]
+        # Length mismatch (e.g. mid-reflection state where children
+        # haven't all been spawned yet) → fall back to no weights so the
+        # combiner doesn't raise.
+        weights_arg = (
+            weights_list if len(weights_list) == len(proxy_results) else None
+        )
+        combined = combine_sub_verdicts(proxy_results, rule, weights=weights_arg)
+        combined_p_str = (
+            f"{combined.posterior:.2f}" if combined.posterior is not None else "n/a"
+        )
+
+        result = await self.run_agent(
+            "epistemic_reflect_on_gaps",
+            question=question,
+            combination_rule=rule,
+            current_decomposition=current_decomposition,
+            combined_verdict=combined.verdict,
+            combined_posterior=combined_p_str,
+        )
+
+        round_num = objective.reflection_rounds + 1
+
+        if result.sufficient:
+            objective.reflection_history.append(
+                {
+                    "round": round_num,
+                    "sufficient": True,
+                    "gap_description": "",
+                    "added_count": 0,
+                    "rationale": result.rationale,
+                }
+            )
+            objective.reflection_rounds = round_num
+            await self.repo.save(objective)
+            return OperationResult(
+                success=True,
+                entity_id=objective.entity_id,
+                message=f"Sufficient at round {round_num}: {result.rationale}",
+                did_work=False,
+            )
+
+        # Sufficient=False — append new sub-investigations, re-keying
+        # ids deterministically so they don't collide with existing ones.
+        existing_ids: set[str] = {
+            s.get("id", "")
+            for s in objective.decomposition.get("sub_investigations", [])
+        }
+        next_ord = ord("A")
+        if existing_ids:
+            valid_ords = [
+                ord(i) for i in existing_ids if len(i) == 1 and i.isalpha()
+            ]
+            if valid_ords:
+                next_ord = max(valid_ords) + 1
+
+        new_subs: list[dict[str, Any]] = []
+        for s in result.additional_sub_investigations or []:
+            new_id = chr(next_ord)
+            next_ord += 1
+            new_subs.append(
+                {
+                    "id": new_id,
+                    "seed_claim": s.seed_claim,
+                    "rationale": s.rationale,
+                    "weight": getattr(s, "weight", 1.0),
+                }
+            )
+
+        if not new_subs:
+            # Agent said sufficient=False but added no sub-investigations.
+            # Treat as a no-op decision and record it.
+            objective.reflection_history.append(
+                {
+                    "round": round_num,
+                    "sufficient": False,
+                    "gap_description": result.gap_description,
+                    "added_count": 0,
+                    "rationale": result.rationale,
+                }
+            )
+            objective.reflection_rounds = round_num
+            await self.repo.save(objective)
+            return OperationResult(
+                success=True,
+                entity_id=objective.entity_id,
+                message=(
+                    f"Round {round_num}: gap reported but no sub-investigations "
+                    f"proposed: {result.gap_description}"
+                ),
+                did_work=False,
+            )
+
+        objective.decomposition["sub_investigations"] = (
+            objective.decomposition.get("sub_investigations", []) + new_subs
+        )
+        objective.reflection_history.append(
+            {
+                "round": round_num,
+                "sufficient": False,
+                "gap_description": result.gap_description,
+                "added_count": len(new_subs),
+                "rationale": result.rationale,
+            }
+        )
+        objective.reflection_rounds = round_num
+        await self.repo.save(objective)
+
+        return OperationResult(
+            success=True,
+            entity_id=objective.entity_id,
+            message=(
+                f"Round {round_num}: added {len(new_subs)} sub-investigations "
+                f"to close gap: {result.gap_description}"
+            ),
         )

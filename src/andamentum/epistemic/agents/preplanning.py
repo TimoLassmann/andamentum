@@ -6,6 +6,7 @@ from .output_models import (
     ConceptualAnalysisOutput,
     FormulateQueryOutput,
     QuestionDecomposition,
+    ReflectOnGapsOutput,
     SelectProviderOutput,
 )
 from . import AgentDefinition, register_agent
@@ -465,6 +466,129 @@ register_agent(
         name="epistemic_decompose_question",
         prompt=DECOMPOSE_QUESTION_PROMPT,
         output_model=QuestionDecomposition,
+        retries=3,
+        output_retries=5,
+    )
+)
+
+
+# ── epistemic_reflect_on_gaps ────────────────────────────────────────────
+
+REFLECT_ON_GAPS_PROMPT = """\
+# Decomposition Gap Reflector
+
+You receive a parent question, its current decomposition with each
+sub-investigation's verdict and posterior probability, and the combined
+verdict. Your job: decide whether the current sub-investigations are
+adequate to settle the parent question, or whether a gap remains that
+additional sub-investigations should close.
+
+This is **corrective reflection**, not unbounded search. The orchestrator
+caps reflection rounds. Add at most 3 sub-investigations, and only when
+they materially close a gap. When in doubt, declare sufficiency.
+
+## What you receive
+
+- **question**: the original (clarified) research question.
+- **combination_rule**: AND / OR / WEIGHTED_AND / UNION — how the
+  children's verdicts combine.
+- **current_decomposition**: the existing sub-investigations with id,
+  seed_claim, rationale, weight, child verdict, posterior, terminal_state.
+- **combined_verdict**: the aggregate over the children.
+- **combined_posterior**: the scalar probability when applicable.
+
+## When to add sub-investigations
+
+Add only when ONE of these is true:
+
+1. **A load-bearing sub-claim is missing.** Example: the children verify
+   that a phenomenon is observed and has a mechanism, but no
+   sub-investigation tests whether the observation is robust to
+   confounders. Adding one closes a real gap.
+2. **A child reported retrieval_failed.** Evidence wasn't reachable.
+   A reformulation of the same sub-claim from a different angle (e.g.
+   different terminology, different evidence type) may help.
+3. **Children's verdicts conflict structurally.** Two children point
+   in opposite directions and a tie-breaker sub-investigation could
+   resolve them. (Be cautious — not every conflict needs a tie-breaker.)
+
+## When NOT to add
+
+- The combined verdict is decisive (clear supports or contradicts) and
+  the children all agree. Declare sufficiency.
+- The gap you're tempted to add overlaps with an existing
+  sub-investigation. That's redundant work, not a real gap.
+- The question is exploratory (UNION) and you'd be adding a facet that
+  is tangential. Exploratory questions don't need exhaustive coverage —
+  they need *load-bearing* facets.
+- You only have a vague feeling that "more evidence would be better".
+  Reflection is for specific, named gaps. Vague unease is not a gap.
+
+## Output format
+
+- **sufficient**: true if no addition is needed; false otherwise.
+- **gap_description**: 1-2 sentences naming the gap when sufficient is
+  false. Empty when sufficient is true.
+- **additional_sub_investigations**: 0-3 new sub-investigations when
+  sufficient is false. Each has the same schema as the original
+  decomposition. Use the placeholder id "?" — the operation reassigns
+  ids deterministically (D, E, F, ...) before spawning.
+- **rationale**: 1-2 sentences on why these additions close the gap, or
+  why the current children are sufficient.
+
+## Worked example — verificatory, gap detected
+
+question: "Does intermittent fasting reduce all-cause mortality?"
+combination_rule: AND
+children:
+  A: "RCT evidence shows intermittent fasting reduces a hard mortality
+      endpoint." → contradicts (p=0.30)
+  B: "Mechanistic evidence supports a survival benefit from intermittent
+      fasting." → supports (p=0.75)
+combined_verdict: insufficient (p=0.30, weakest-link)
+
+reflection:
+  sufficient: false
+  gap_description: "The children test mechanism (B) and direct RCT
+                    evidence (A), but say nothing about whether the
+                    apparent absence of an RCT effect is due to
+                    insufficient follow-up duration or underpowered
+                    studies. That's a load-bearing alternative
+                    explanation."
+  additional_sub_investigations:
+    - id: "?", seed_claim: "Existing intermittent-fasting RCTs are
+        powered to detect a clinically meaningful mortality reduction
+        within their follow-up windows.", rationale: "If the RCTs are
+        underpowered, A's contradiction is uninformative, not
+        decisive.", weight: 1.0
+  rationale: "Adding a power/follow-up sub-investigation determines
+              whether A's negative result reflects no effect or just
+              insufficient data."
+
+## Worked example — sufficiency
+
+question: "Are podocytes motile under injury?"
+combination_rule: AND
+children:
+  A: mechanism → supports (p=0.85)
+  B: direct observation → supports (p=0.80)
+  C: artifact-control → supports (p=0.90)
+combined_verdict: supports (p=0.80)
+
+reflection:
+  sufficient: true
+  gap_description: ""
+  additional_sub_investigations: []
+  rationale: "All three load-bearing aspects support the claim with high
+              and convergent posteriors. No gap to close."
+
+Now reflect on the given decomposition."""
+
+register_agent(
+    AgentDefinition(
+        name="epistemic_reflect_on_gaps",
+        prompt=REFLECT_ON_GAPS_PROMPT,
+        output_model=ReflectOnGapsOutput,
         retries=3,
         output_retries=5,
     )
