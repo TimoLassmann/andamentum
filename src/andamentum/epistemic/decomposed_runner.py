@@ -335,6 +335,7 @@ async def run_research_question_decomposed(
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
     decompose: bool = True,
+    max_reflection_rounds: int = 1,
     _inner_runner: Optional[InnerRunner] = None,
 ) -> DecomposedPipelineResult | PipelineResult:
     """Run a research question through top-down decomposition.
@@ -342,7 +343,8 @@ async def run_research_question_decomposed(
     When ``decompose=True`` (default):
         Creates a parent Objective, runs preplanning + decomposition +
         spawning, then runs each spawned child through
-        ``run_epistemic_graph`` and combines the results.
+        ``run_epistemic_graph`` and combines the results. Optionally
+        runs a corrective reflection loop (Phase 4) after combination.
 
     When ``decompose=False``:
         Delegates directly to ``run_epistemic_graph`` for an
@@ -353,12 +355,25 @@ async def run_research_question_decomposed(
         - decomposition produced no sub-investigations (empty children)
           — falls back to a single graph run on the parent
 
+    Reflection loop (Phase 4):
+        After the initial combine, while ``reflection_rounds <
+        max_reflection_rounds`` AND the verdict is non-decisive
+        (combined.verdict in {insufficient, no_data} OR
+        terminal_state=retrieval_failed), runs
+        ReflectOnGapsOperation. The op may declare sufficiency (loop
+        exits) or append new sub-investigations to the decomposition.
+        If new sub-investigations were added, the orchestrator delta-
+        spawns them, runs the new children, and re-combines.
+
     Args:
         question: The research question.
         database_name, verbose, model, embedding_model, progress_callback,
         provider, providers, quality_scorer, db_dir: forwarded to
             ``run_epistemic_graph``.
         decompose: Set False to disable decomposition entirely.
+        max_reflection_rounds: Cap on corrective reflection rounds.
+            Default 1 (one corrective pass max). Set 0 to disable
+            reflection entirely.
         _inner_runner: Test-injection point for the inner graph runner.
             Defaults to ``run_epistemic_graph``.
 
@@ -374,6 +389,7 @@ async def run_research_question_decomposed(
         ClassifyQuestionOperation,
         ConceptualAnalysisOperation,
         DecomposeQuestionOperation,
+        ReflectOnGapsOperation,
         SpawnSubObjectivesOperation,
     )
     from .operations.base import OperationInput
@@ -512,36 +528,78 @@ async def run_research_question_decomposed(
     # and CreateClaims uses SeedClaimOperation. We pass skip_preplanning
     # for clarity; the per-op idempotence guards would catch it anyway.
     sub_results: list[PipelineResult] = []
-    for child_id in parent_objective.sub_objective_ids:
-        if verbose:
-            logger.info("Running graph on sub-objective %s", child_id)
-        child_result = await _inner_runner(
-            question=question,  # not used when objective_id is set
-            database_name=database_name,
-            verbose=verbose,
-            skip_preplanning=True,
-            model=model,
-            embedding_model=embedding_model,
-            progress_callback=progress_callback,
-            provider=provider,
-            providers=providers,
-            quality_scorer=quality_scorer,
-            db_dir=db_dir,
-            objective_id=child_id,
-        )
-        sub_results.append(child_result)
 
-    # 5. Combine.
-    rule = parent_objective.combination_rule or "AND"
-    weights = _extract_weights(parent_objective, len(sub_results))
-    combined = combine_sub_verdicts(sub_results, rule, weights=weights)
+    async def _run_unrun_children_and_combine() -> CombinedVerdict:
+        """Run any spawned-but-unrun children and re-combine. Reused by
+        the initial pass and by each reflection round."""
+        nonlocal sub_results
+        latest_parent = await repo.get("objective", parent_id)
+        already_run = {r.objective_id for r in sub_results}
+        for child_id in latest_parent.sub_objective_ids:
+            if child_id in already_run:
+                continue
+            if verbose:
+                logger.info("Running graph on sub-objective %s", child_id)
+            child_result = await _inner_runner(
+                question=question,  # not used when objective_id is set
+                database_name=database_name,
+                verbose=verbose,
+                skip_preplanning=True,
+                model=model,
+                embedding_model=embedding_model,
+                progress_callback=progress_callback,
+                provider=provider,
+                providers=providers,
+                quality_scorer=quality_scorer,
+                db_dir=db_dir,
+                objective_id=child_id,
+            )
+            sub_results.append(child_result)
+        rule = latest_parent.combination_rule or "AND"
+        weights = _extract_weights(latest_parent, len(sub_results))
+        return combine_sub_verdicts(sub_results, rule, weights=weights)
+
+    combined = await _run_unrun_children_and_combine()
     if verbose:
         logger.info(
-            "Combined verdict over %d children (%s): %s",
+            "Combined verdict over %d children: %s",
             len(sub_results),
-            rule,
             combined.explanation,
         )
+
+    # 6. Reflection loop (Phase 4). Trigger only when the combined
+    # verdict is non-decisive — clear supports/contradicts skip
+    # reflection. Cap at max_reflection_rounds (default 1).
+    for _ in range(max_reflection_rounds):
+        needs_reflection = (
+            combined.verdict in ("insufficient", "no_data")
+            or combined.terminal_state == "retrieval_failed"
+        )
+        if not needs_reflection:
+            break
+        if verbose:
+            logger.info(
+                "Reflecting on gaps (verdict=%s, terminal=%s)",
+                combined.verdict,
+                combined.terminal_state,
+            )
+        reflection_result = await _run(ReflectOnGapsOperation, "reflect_on_gaps")
+        if not reflection_result.success or not reflection_result.did_work:
+            # Agent declared sufficiency, proposed no additions, or the op
+            # failed. Either way, no new children to run.
+            if verbose:
+                logger.info("Reflection terminated: %s", reflection_result.message)
+            break
+        # New sub-investigations were appended to parent.decomposition.
+        # Delta-spawn fills in the missing children.
+        await _run(SpawnSubObjectivesOperation, "spawn_sub_objectives")
+        combined = await _run_unrun_children_and_combine()
+        if verbose:
+            logger.info(
+                "Post-reflection combined verdict over %d children: %s",
+                len(sub_results),
+                combined.explanation,
+            )
 
     return DecomposedPipelineResult(
         parent_objective_id=parent_id,

@@ -474,6 +474,220 @@ class TestDecomposedRunner:
                 model=None,
             )
 
+    async def test_reflection_skipped_when_verdict_is_decisive(
+        self, tmp_path, fake_runner, monkeypatch
+    ):
+        """Combined verdict 'supports' → no reflection, agent untouched."""
+        await _seed_parent(tmp_path, "skip_test", description="Q")
+        monkeypatch.setattr(
+            "andamentum.epistemic.runner.DefaultAgentRunner",
+            lambda **_kwargs: fake_runner,
+        )
+        monkeypatch.setattr(
+            "andamentum.core.models.resolve_embedding_model_from_args",
+            lambda: "test-embed",
+        )
+        # 3 children at 0.85 → AND → 0.85 → supports → no reflection.
+        stub = _StubInnerRunner({})  # default 0.7 isn't enough for >0.66; bump
+        # Actually default 0.7 gives "supports" already (>0.66). Use that.
+
+        await run_research_question_decomposed(
+            "Q",
+            database_name="skip_test",
+            model="test:stub",
+            embedding_model="t",
+            db_dir=str(tmp_path),
+            decompose=True,
+            max_reflection_rounds=1,
+            _inner_runner=stub,  # type: ignore[arg-type]
+        )
+        # Reflection agent should not have been called.
+        reflect_calls = [
+            c for c in fake_runner.calls if c[0] == "epistemic_reflect_on_gaps"
+        ]
+        assert reflect_calls == []
+
+    async def test_reflection_triggers_on_insufficient_verdict(
+        self, tmp_path, fake_runner, monkeypatch
+    ):
+        """Combined verdict 'insufficient' → reflection runs once."""
+        await _seed_parent(tmp_path, "trigger_test", description="Q")
+        monkeypatch.setattr(
+            "andamentum.epistemic.runner.DefaultAgentRunner",
+            lambda **_kwargs: fake_runner,
+        )
+        monkeypatch.setattr(
+            "andamentum.core.models.resolve_embedding_model_from_args",
+            lambda: "test-embed",
+        )
+        # 3 children at 0.5 → AND → 0.5 → "insufficient" → reflection fires.
+        # Default fake says sufficient=True so no new sub-investigations
+        # are added; the loop exits cleanly after one reflection call.
+
+        class _AllInsufficientStub:
+            def __init__(self):
+                self.calls: list[dict[str, Any]] = []
+
+            async def __call__(self, **call_kwargs: Any) -> PipelineResult:
+                self.calls.append(call_kwargs)
+                return PipelineResult(
+                    objective_id=call_kwargs.get("objective_id", "x"),
+                    iterations=5,
+                    successful=5,
+                    failed=0,
+                    status="ok",
+                    posterior=_posterior(0.5),
+                )
+
+        stub = _AllInsufficientStub()
+        result = await run_research_question_decomposed(
+            "Q",
+            database_name="trigger_test",
+            model="test:stub",
+            embedding_model="t",
+            db_dir=str(tmp_path),
+            decompose=True,
+            max_reflection_rounds=1,
+            _inner_runner=stub,  # type: ignore[arg-type]
+        )
+        assert isinstance(result, DecomposedPipelineResult)
+        # Reflection agent fired exactly once.
+        reflect_calls = [
+            c for c in fake_runner.calls if c[0] == "epistemic_reflect_on_gaps"
+        ]
+        assert len(reflect_calls) == 1
+        # No new children spawned (default fake says sufficient).
+        assert len(stub.calls) == 3
+
+    async def test_max_reflection_rounds_zero_disables_reflection(
+        self, tmp_path, fake_runner, monkeypatch
+    ):
+        await _seed_parent(tmp_path, "disable_test", description="Q")
+        monkeypatch.setattr(
+            "andamentum.epistemic.runner.DefaultAgentRunner",
+            lambda **_kwargs: fake_runner,
+        )
+        monkeypatch.setattr(
+            "andamentum.core.models.resolve_embedding_model_from_args",
+            lambda: "test-embed",
+        )
+
+        class _Stub:
+            def __init__(self):
+                self.calls: list[dict[str, Any]] = []
+
+            async def __call__(self, **call_kwargs: Any) -> PipelineResult:
+                self.calls.append(call_kwargs)
+                return PipelineResult(
+                    objective_id=call_kwargs.get("objective_id", "x"),
+                    iterations=5,
+                    successful=5,
+                    failed=0,
+                    status="ok",
+                    posterior=_posterior(0.5),  # would normally trigger reflection
+                )
+
+        stub = _Stub()
+        await run_research_question_decomposed(
+            "Q",
+            database_name="disable_test",
+            model="test:stub",
+            embedding_model="t",
+            db_dir=str(tmp_path),
+            decompose=True,
+            max_reflection_rounds=0,
+            _inner_runner=stub,  # type: ignore[arg-type]
+        )
+        reflect_calls = [
+            c for c in fake_runner.calls if c[0] == "epistemic_reflect_on_gaps"
+        ]
+        assert reflect_calls == []
+
+    async def test_reflection_adds_children_runs_them_recombines(
+        self, tmp_path, fake_runner, monkeypatch
+    ):
+        """End-to-end: insufficient verdict → reflection → new
+        sub-investigation spawned → new child run → re-combined."""
+        await _seed_parent(tmp_path, "add_test", description="Q")
+        monkeypatch.setattr(
+            "andamentum.epistemic.runner.DefaultAgentRunner",
+            lambda **_kwargs: fake_runner,
+        )
+        monkeypatch.setattr(
+            "andamentum.core.models.resolve_embedding_model_from_args",
+            lambda: "test-embed",
+        )
+        # Initial decomposition: 2 children. Override fake to use 2-child
+        # AND so we can predict the verdict.
+        fake_runner._overrides["epistemic_decompose_question"] = {
+            "sub_investigations": [
+                {"id": "A", "seed_claim": "alpha", "rationale": "ra", "weight": 1.0},
+                {"id": "B", "seed_claim": "beta", "rationale": "rb", "weight": 1.0},
+            ],
+            "combination_rule": "AND",
+            "rationale": "two pillars",
+        }
+        # First two children → 0.5 each (insufficient). New child from
+        # reflection → 0.9. AND with 3 children at [0.5, 0.5, 0.9] → min = 0.5.
+        # Reflection adds C with high weight; new combined still 0.5.
+        # The test verifies the loop ran, not that the verdict improved.
+        fake_runner._overrides["epistemic_reflect_on_gaps"] = {
+            "sufficient": False,
+            "gap_description": "Confounder check missing.",
+            "additional_sub_investigations": [
+                {
+                    "id": "?",
+                    "seed_claim": "Confounders ruled out.",
+                    "rationale": "Causality requires this.",
+                    "weight": 1.0,
+                },
+            ],
+            "rationale": "Adding the confounder check.",
+        }
+
+        class _IndexStub:
+            def __init__(self, posts):
+                self.posts = posts
+                self.calls: list[dict[str, Any]] = []
+
+            async def __call__(self, **call_kwargs: Any) -> PipelineResult:
+                idx = len(self.calls)
+                self.calls.append(call_kwargs)
+                p = self.posts[idx]
+                return PipelineResult(
+                    objective_id=call_kwargs.get("objective_id", f"c{idx}"),
+                    iterations=5,
+                    successful=5,
+                    failed=0,
+                    status="ok",
+                    posterior=_posterior(p),
+                )
+
+        ix = _IndexStub([0.5, 0.5, 0.9])  # third call is the reflection-added child
+        result = await run_research_question_decomposed(
+            "Q",
+            database_name="add_test",
+            model="test:stub",
+            embedding_model="t",
+            db_dir=str(tmp_path),
+            decompose=True,
+            max_reflection_rounds=1,
+            _inner_runner=ix,  # type: ignore[arg-type]
+        )
+        assert isinstance(result, DecomposedPipelineResult)
+        # Three children total (2 initial + 1 from reflection).
+        assert len(result.sub_results) == 3
+        assert len(ix.calls) == 3
+        # The reflection-added child is the last call, with a fresh objective_id.
+        assert ix.calls[2]["objective_id"] is not None
+        assert ix.calls[2]["objective_id"] != ix.calls[0]["objective_id"]
+        assert ix.calls[2]["objective_id"] != ix.calls[1]["objective_id"]
+        # Reflection agent fired once.
+        reflect_calls = [
+            c for c in fake_runner.calls if c[0] == "epistemic_reflect_on_gaps"
+        ]
+        assert len(reflect_calls) == 1
+
     async def test_weights_from_decomposition_flow_through(
         self, tmp_path, fake_runner, monkeypatch
     ):
