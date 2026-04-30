@@ -112,13 +112,23 @@ async def _run_op(
     backend = getattr(deps.repo, "store", None)
     if backend is not None:
         step_number = len(state.operations_log)
+        # Disambiguate file_path across concurrent graph runs sharing a
+        # DocumentStore: the decomposed orchestrator runs N children
+        # against one DB, and re-runs of the same objective also share
+        # the DB. ``state.run_id`` is unique per graph run; without it,
+        # two children both write "execution_step_1" and crash on the
+        # documents.file_path UNIQUE index. step_number stays in
+        # metadata so execution-step queries remain orderable.
         await backend.add(
-            file_path=f"execution_step_{step_number}",
+            file_path=(
+                f"execution_step_{state.run_id}_{step_number:04d}"
+            ),
             content=result.message or "",
             title=f"{operation} on {entity_id[:12]}",
             metadata={
                 "epistemic_type": "execution_step",
                 "step_number": step_number,
+                "run_id": state.run_id,
                 "operation": operation,
                 "entity_id": entity_id,
                 "entity_type": entity_type,
