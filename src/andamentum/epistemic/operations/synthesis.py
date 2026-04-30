@@ -133,6 +133,15 @@ class FreezeSnapshotOperation(BaseOperation):
         )
         uncertainty_ids = [u.entity_id for u in uncertainties]
 
+        # Carry the combined verdict from CombineClaimVerdicts (Phase 4)
+        # onto the snapshot so SynthesizeReport can present a rule-aware
+        # combined view alongside the per-claim narrative. Stored under
+        # objective.decomposition["combined_verdict"] by the graph node;
+        # promoted to a top-level snapshot field here.
+        combined_verdict = None
+        if objective.decomposition:
+            combined_verdict = objective.decomposition.get("combined_verdict")
+
         # Create snapshot
         snapshot = Snapshot(
             objective_id=objective.entity_id,
@@ -140,6 +149,7 @@ class FreezeSnapshotOperation(BaseOperation):
             evidence_ids=evidence_ids,
             uncertainty_ids=uncertainty_ids,
             snapshot_type="final",
+            combined_verdict=combined_verdict,
         )
         await self.repo.save(snapshot)
 

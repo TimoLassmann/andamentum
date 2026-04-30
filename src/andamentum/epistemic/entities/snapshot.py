@@ -63,6 +63,23 @@ class Snapshot(EpistemicEntity):
         default=True, description="Snapshots are immutable once created"
     )
 
+    # Multi-seed-claim Phase 4: stores the combined verdict from the
+    # CombineClaimVerdicts graph node, which applies the decomposition's
+    # combination_rule (AND/OR/WEIGHTED_AND/UNION) over per-claim
+    # integration verdicts. SynthesizeReportOperation reads this so the
+    # writer agent can present a rule-aware combined verdict alongside
+    # the per-claim narrative. None when no combination ran (open-research
+    # snapshots without decomposition).
+    combined_verdict: Optional[dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Serialized CombinedVerdict from CombineClaimVerdicts: "
+            "{posterior, verdict, combination_rule, claim_posteriors, "
+            "n_capped, n_no_verdict, n_abandoned, explanation}. None when "
+            "the snapshot wasn't decomposed."
+        ),
+    )
+
     @property
     def snapshot_id(self) -> str:
         """Backward-compatible alias for entity_id."""
@@ -70,7 +87,7 @@ class Snapshot(EpistemicEntity):
 
     def _extra_metadata(self) -> dict[str, Any]:
         """Add snapshot-specific metadata for filtering."""
-        return {
+        meta: dict[str, Any] = {
             "claim_ids": self.claim_ids,
             "uncertainty_ids": self.uncertainty_ids,
             "evidence_ids": self.evidence_ids,
@@ -80,6 +97,9 @@ class Snapshot(EpistemicEntity):
             "artefact_id": self.artefact_id,
             "frozen": self.frozen,
         }
+        if self.combined_verdict is not None:
+            meta["combined_verdict"] = self.combined_verdict
+        return meta
 
     @classmethod
     def _from_metadata(cls, content: str, metadata: dict[str, Any]) -> "Snapshot":
@@ -98,6 +118,7 @@ class Snapshot(EpistemicEntity):
             snapshot_type=metadata.get("snapshot_type", "checkpoint"),
             artefact_id=metadata.get("artefact_id"),
             frozen=metadata.get("frozen", True),
+            combined_verdict=metadata.get("combined_verdict"),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),
