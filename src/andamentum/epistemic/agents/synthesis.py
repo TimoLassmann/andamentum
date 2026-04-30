@@ -34,6 +34,7 @@ You will receive:
 - **blocking_uncertainties**: Issues that prevent stronger conclusions
 - **non_blocking_uncertainties**: Caveats to keep in mind
 - **quality_signals**: Overall quality metrics (confidence level, scrutiny pass rate, etc.)
+- **combined_verdict**: For decomposed inquiries (multi-seed-claim mode), the rule-aware aggregate verdict produced by applying the decomposition's combination rule (AND / OR / WEIGHTED_AND / UNION) over per-claim integration verdicts. When present (i.e. the field doesn't say "Not applicable"), this is the headline verdict the user should see; per-claim verdicts above are supporting detail. Frame your answer around it.
 
 If this is a revision, you will also receive:
 - **previous_answer**: Your prior answer
