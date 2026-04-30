@@ -36,11 +36,18 @@ async def run_epistemic_graph(
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
+    objective_id: Optional[str] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
     Same interface as the old run_research_question, but uses a
     pydantic-graph DAG instead of the pattern scheduler.
+
+    Args:
+        objective_id: Target a specific existing objective (e.g. a
+            sub-objective spawned by the decomposed runner). When None,
+            falls back to resume-first-objective-or-create behaviour
+            from ``question``.
 
     Returns:
         PipelineResult (backward compatible)
@@ -60,25 +67,38 @@ async def run_epistemic_graph(
     await store.initialize()
     repo = EpistemicRepository(store)
 
-    # Resume if an objective already exists, otherwise create one
-    existing_objectives = await repo.query("objective")
-    if existing_objectives:
-        objective_id = existing_objectives[0].objective_id
+    if objective_id is not None:
+        # Targeted run: load the specified objective directly. Used by the
+        # decomposed runner to dispatch each spawned sub-objective through
+        # the graph without colliding on the resume-first-objective rule.
+        target = await repo.get("objective", objective_id)
+        if target is None:
+            raise ValueError(f"Objective {objective_id} not found in {database_name}")
         if verbose:
-            phase = getattr(existing_objectives[0], "phase", "unknown")
-            logger.info(f"Resuming objective: {objective_id} (phase={phase})")
+            phase = getattr(target, "phase", "unknown")
+            logger.info(f"Targeted objective: {objective_id} (phase={phase})")
     else:
-        objective_id = f"obj_{uuid.uuid4().hex[:12]}"
-        starting_phase = "analyzed" if skip_preplanning else "new"
-        objective = Objective(
-            entity_id=objective_id,
-            objective_id=objective_id,
-            description=question,
-            phase=starting_phase,
-        )
-        await repo.save(objective)
-        if verbose:
-            logger.info(f"Created objective: {objective_id} (phase={starting_phase})")
+        # Resume if an objective already exists, otherwise create one
+        existing_objectives = await repo.query("objective")
+        if existing_objectives:
+            objective_id = existing_objectives[0].objective_id
+            if verbose:
+                phase = getattr(existing_objectives[0], "phase", "unknown")
+                logger.info(f"Resuming objective: {objective_id} (phase={phase})")
+        else:
+            objective_id = f"obj_{uuid.uuid4().hex[:12]}"
+            starting_phase = "analyzed" if skip_preplanning else "new"
+            objective = Objective(
+                entity_id=objective_id,
+                objective_id=objective_id,
+                description=question,
+                phase=starting_phase,
+            )
+            await repo.save(objective)
+            if verbose:
+                logger.info(
+                    f"Created objective: {objective_id} (phase={starting_phase})"
+                )
 
     # Create agent runner and evidence gatherer
     if not model:
