@@ -197,6 +197,40 @@ class Claim(EpistemicEntity):
         description="Claim abandoned after exhausting investigation attempts",
     )
 
+    # ── Scrutinise ↔ Resolve oscillation termination ──────────────────
+    #
+    # Set when the Scrutinise/Resolve cycle cap fires for this claim
+    # (graph/nodes.py:SCRUTINY_RESOLVE_CYCLE_CAP). Cycle-capped claims
+    # are NOT promoted to SUPPORTED — the inquiry didn't converge, so
+    # forcing a verdict via the IBE chain would misrepresent the
+    # epistemic state. compute_posterior detects this flag on any
+    # active claim and emits terminal_state="oscillation_detected"
+    # with posterior=0.5, distinguishing "system reached a verdict"
+    # from "system gave up after bounded inquiry".
+    #
+    # This is downstream of the runtime cap in graph state — the cap
+    # bounds work; this field communicates the consequence honestly.
+    cycle_capped: bool = Field(
+        default=False,
+        description=(
+            "True if this claim hit the Scrutinise ↔ Resolve cycle cap. "
+            "Cycle-capped claims terminate at HYPOTHESIS without IBE; "
+            "compute_posterior surfaces them via "
+            "terminal_state='oscillation_detected'."
+        ),
+    )
+    persistent_concerns: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Forensic snapshot: entity_ids of the blocking uncertainties "
+            "active on this claim at the moment the cycle cap first "
+            "fired. Captured once and not overwritten on subsequent "
+            "cap firings — the first-firing concerns are the diagnostic "
+            "input for deciding whether cluster-dedup or claim "
+            "reformulation is the right architectural follow-up."
+        ),
+    )
+
     # Operation completion flags
     argument_analyzed: bool = Field(
         default=False, description="Argument structure analysis complete"
@@ -345,6 +379,8 @@ class Claim(EpistemicEntity):
             "modification_count": self.modification_count,
             "investigation_count": self.investigation_count,
             "abandoned": self.abandoned,
+            "cycle_capped": self.cycle_capped,
+            "persistent_concerns": self.persistent_concerns,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
             "integration_candidates": [c.model_dump() for c in self.integration_candidates],
@@ -391,6 +427,8 @@ class Claim(EpistemicEntity):
             modification_timestamps=metadata.get("modification_timestamps", []),
             investigation_count=metadata.get("investigation_count", 0),
             abandoned=metadata.get("abandoned", False),
+            cycle_capped=metadata.get("cycle_capped", False),
+            persistent_concerns=metadata.get("persistent_concerns", []),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
             adversarial_checked=metadata.get("adversarial_checked", False),

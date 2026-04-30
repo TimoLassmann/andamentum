@@ -105,12 +105,17 @@ class PosteriorReport(BaseModel):
             "weighted counts."
         ),
     )
-    terminal_state: Literal["completed", "retrieval_failed"] = Field(
+    terminal_state: Literal[
+        "completed", "retrieval_failed", "oscillation_detected"
+    ] = Field(
         default="completed",
         description=(
             "How the investigation terminated. 'completed' for normal runs; "
             "'retrieval_failed' when evidence extraction kept returning empty "
-            "content, meaning the posterior is based on insufficient data."
+            "content, meaning the posterior is based on insufficient data; "
+            "'oscillation_detected' when one or more claims hit the "
+            "scrutinise/resolve cycle cap before converging — the posterior "
+            "is 0.5 (genuinely uncertain) and the inquiry did not fix belief."
         ),
     )
     objective_id: str
@@ -175,6 +180,39 @@ async def compute_posterior(
     claims = await repo.get_claims_for_objective(objective_id)
     evidence = await repo.get_evidence_for_objective(objective_id)
     active_claims = [c for c in claims if not c.abandoned]
+
+    # Oscillation short-circuit: if any active claim hit the cycle cap,
+    # the inquiry didn't converge and the posterior is honestly
+    # uninformative. Emit terminal_state="oscillation_detected" so
+    # callers can distinguish "system reached a 0.5 verdict by balanced
+    # evidence" from "system gave up after bounded rescrutiny". Same
+    # shape as the retrieval_failed short-circuit above.
+    capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
+    if capped:
+        concern_total = sum(len(c.persistent_concerns) for c in capped)
+        capped_summary = ", ".join(
+            f"{c.entity_id[:8]}:{len(c.persistent_concerns)}c" for c in capped
+        )
+        return PosteriorReport(
+            posterior=0.5,
+            log_odds=0,
+            supporting_count=0,
+            contradicting_count=0,
+            counting_posterior=0.5,
+            mode="counting_only",
+            objective_id=objective_id,
+            question_type=question_type,
+            explanation=(
+                f"Oscillation detected: {len(capped)} claim(s) hit the "
+                f"scrutiny-resolve cycle cap with {concern_total} persistent "
+                f"concerns total ({capped_summary}). Posterior defaults to "
+                "0.5 (uninformative); terminal_state='oscillation_detected'. "
+                "The inquiry did not converge — diagnose by inspecting "
+                "claim.persistent_concerns to decide whether cluster-dedup "
+                "or claim reformulation is the right architectural follow-up."
+            ),
+            terminal_state="oscillation_detected",
+        )
 
     # 3. Diagnostic: weighted counts across active claims. These are reported
     # for inspection and used only as the counting fallback when no claim

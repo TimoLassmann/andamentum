@@ -48,7 +48,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 from .confidence import PosteriorReport
 from .graph.quarantine import QuarantineRecord
@@ -118,18 +118,41 @@ def combine_sub_verdicts(
     rule = combination_rule.upper()
 
     # Collect per-child posteriors and terminal-state propagation.
+    # Children with terminal_state in {retrieval_failed,
+    # oscillation_detected} contribute their numeric posterior (0.5) to
+    # the diagnostic ``child_posteriors`` list but are excluded from the
+    # numeric combination — both states represent uninformative outcomes.
+    # Terminal-state precedence: retrieval_failed (no evidence at all)
+    # outranks oscillation_detected (evidence but no convergence) when
+    # multiple children fail differently. Either still beats completed.
     child_posteriors: list[float | None] = []
     any_retrieval_failed = False
-    for r in child_results:
+    any_oscillation = False
+    excluded_indices: set[int] = set()
+    for idx, r in enumerate(child_results):
         if r.posterior is None:
             child_posteriors.append(None)
+            excluded_indices.add(idx)
             continue
         child_posteriors.append(r.posterior.posterior)
         if r.posterior.terminal_state == "retrieval_failed":
             any_retrieval_failed = True
+            excluded_indices.add(idx)
+        elif r.posterior.terminal_state == "oscillation_detected":
+            any_oscillation = True
+            excluded_indices.add(idx)
 
-    numeric = [p for p in child_posteriors if p is not None]
-    terminal_state = "retrieval_failed" if any_retrieval_failed else "completed"
+    numeric = [
+        p
+        for i, p in enumerate(child_posteriors)
+        if p is not None and i not in excluded_indices
+    ]
+    if any_retrieval_failed:
+        terminal_state = "retrieval_failed"
+    elif any_oscillation:
+        terminal_state = "oscillation_detected"
+    else:
+        terminal_state = "completed"
 
     if rule == "UNION":
         # Set-collection semantics: each child contributes a facet rather
@@ -295,6 +318,19 @@ class DecomposedPipelineResult:
             if r.posterior is not None:
                 qt = r.posterior.question_type
                 break
+        # Propagate the terminal_state from the combiner so callers can
+        # distinguish converged decomposed answers from "one or more
+        # children failed retrieval / hit the cycle cap". The Literal
+        # narrowing satisfies pydantic's PosteriorReport schema.
+        ts = self.combined.terminal_state
+        if ts == "retrieval_failed":
+            propagated_ts: Literal[
+                "completed", "retrieval_failed", "oscillation_detected"
+            ] = "retrieval_failed"
+        elif ts == "oscillation_detected":
+            propagated_ts = "oscillation_detected"
+        else:
+            propagated_ts = "completed"
         return PosteriorReport(
             posterior=self.combined.posterior,
             log_odds=0,
@@ -304,9 +340,7 @@ class DecomposedPipelineResult:
             integration_verdict=self.combined.verdict,
             integration_confidence=None,
             mode="decomposed",
-            terminal_state="retrieval_failed"
-            if self.combined.terminal_state == "retrieval_failed"
-            else "completed",
+            terminal_state=propagated_ts,
             objective_id=self.parent_objective_id,
             question_type=qt,
             explanation=self.combined.explanation,
