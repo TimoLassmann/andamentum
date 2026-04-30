@@ -113,6 +113,7 @@ from .investigation import (
     RecordDecisionOperation,
 )
 from .seed_claim import SeedClaimOperation
+from .multi_seed_claim import MultiSeedClaimOperation
 
 # ── Cleanup ─────────────────────────────────────────────────────────────
 from .cleanup import AbandonStaleClaimOperation
@@ -142,6 +143,7 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "plan_task": PlanTaskOperation,
     "propose_claims": ProposeClaimsOperation,
     "seed_claim": SeedClaimOperation,
+    "multi_seed_claim": MultiSeedClaimOperation,
     # Evidence
     "extract_evidence": ExtractEvidenceOperation,
     # Scrutiny, investigation, and verification
@@ -264,6 +266,7 @@ __all__ = [
     "ReflectOnGapsOperation",
     "PlanTaskOperation",
     "ProposeClaimsOperation",
+    "MultiSeedClaimOperation",
     "ExtractEvidenceOperation",
     "ScrutiniseClaimOperation",
     "PromoteClaimOperation",

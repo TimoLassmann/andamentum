@@ -54,6 +54,21 @@ class Evidence(EpistemicEntity):
         description="If source_type='prior_claim', the claim ID this derives from",
     )
 
+    # Multi-seed-claim mode: which sub-investigation's queries fetched this.
+    # Set at PlanEvidence time (before Claims exist); read at MultiSeedClaim
+    # time to link this Evidence to the specific Claim minted for this
+    # sub-investigation. Each Claim then has its OWN evidence subset, which
+    # avoids the support_judgment-collision problem (single scalar field;
+    # can't represent "supports claim A, contradicts claim B" simultaneously).
+    sub_investigation_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "ID of the sub-investigation whose queries fetched this evidence "
+            "(matches one of objective.decomposition.sub_investigations[i].id). "
+            "Used in multi-seed-claim mode to link evidence per-claim."
+        ),
+    )
+
     # Quality scoring
     quality_score: Optional[float] = Field(
         default=None, description="Source quality 0.0-1.0 from OpenAlex or heuristic"
@@ -124,8 +139,10 @@ class Evidence(EpistemicEntity):
             "invalidated": self.invalidated,
             "invalidation_cascaded": self.invalidation_cascaded,
             "depends_on_claim_id": self.depends_on_claim_id,
+            "sub_investigation_id": self.sub_investigation_id,
             "created_by": self.created_by,
             "support_judgment": self.support_judgment,
+            "judgment_reasoning": self.judgment_reasoning,
         }
         if self.invalidation_reason is not None:
             meta["invalidation_reason"] = self.invalidation_reason
@@ -171,6 +188,7 @@ class Evidence(EpistemicEntity):
             experimental_context=metadata.get("experimental_context"),
             limitations=metadata.get("limitations", []),
             depends_on_claim_id=metadata.get("depends_on_claim_id"),
+            sub_investigation_id=metadata.get("sub_investigation_id"),
             quality_score=metadata.get("quality_score"),
             quality_metadata=metadata.get("quality_metadata"),
             extracted=metadata.get("extracted", False),
@@ -179,6 +197,8 @@ class Evidence(EpistemicEntity):
             invalidation_reason=metadata.get("invalidation_reason"),
             invalidation_cascaded=metadata.get("invalidation_cascaded", False),
             created_by=metadata.get("created_by", "system"),
+            support_judgment=metadata.get("support_judgment"),
+            judgment_reasoning=metadata.get("judgment_reasoning"),
             cluster_status=metadata.get("cluster_status", "unclustered"),
             cluster_id=metadata.get("cluster_id"),
             corroboration_count=metadata.get("corroboration_count", 1),

@@ -219,6 +219,18 @@ class Claim(EpistemicEntity):
             "terminal_state='oscillation_detected'."
         ),
     )
+
+    # Multi-seed-claim mode: which sub-investigation this claim is the seed for.
+    # Set when MultiSeedClaimOperation mints the claim from the parent's
+    # decomposition; matches Evidence.sub_investigation_id for linkage.
+    sub_investigation_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "When this claim was minted from the parent's decomposition "
+            "as the seed for sub-investigation X, this is X. Matches "
+            "Evidence.sub_investigation_id for per-claim evidence linkage."
+        ),
+    )
     persistent_concerns: list[str] = Field(
         default_factory=list,
         description=(
@@ -381,6 +393,7 @@ class Claim(EpistemicEntity):
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
             "persistent_concerns": self.persistent_concerns,
+            "sub_investigation_id": self.sub_investigation_id,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
             "integration_candidates": [c.model_dump() for c in self.integration_candidates],
@@ -429,6 +442,7 @@ class Claim(EpistemicEntity):
             abandoned=metadata.get("abandoned", False),
             cycle_capped=metadata.get("cycle_capped", False),
             persistent_concerns=metadata.get("persistent_concerns", []),
+            sub_investigation_id=metadata.get("sub_investigation_id"),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
             adversarial_checked=metadata.get("adversarial_checked", False),

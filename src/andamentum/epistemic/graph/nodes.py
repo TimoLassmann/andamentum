@@ -432,12 +432,23 @@ class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 @dataclass
 class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Create claims — seed_claim (verification) or propose_claims (research)."""
+    """Create claims — three branches:
+
+    1. ``claim_to_verify`` set → SeedClaim (one claim from user's text)
+    2. ``decomposition`` set → MultiSeedClaim (N claims from
+       sub-investigations, per-claim evidence pools)
+    3. otherwise → ProposeClaims (claims discovered from evidence)
+
+    Multi-seed-claim is the v0.3 collapse of decomposition spawning into
+    the v0.1 multi-claim shape: one Objective hosts N Claims, the graph
+    runs once over them, multi-claim convergence dynamics apply.
+    """
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> "Scrutinize":
         from ..operations.seed_claim import SeedClaimOperation
+        from ..operations.multi_seed_claim import MultiSeedClaimOperation
         from ..operations.claims import ProposeClaimsOperation
 
         state = ctx.state
@@ -448,6 +459,15 @@ class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
         if obj.claim_to_verify:
             await _run_op(
                 SeedClaimOperation, deps, state, oid, "objective", "seed_claim"
+            )
+        elif obj.decomposition:
+            await _run_op(
+                MultiSeedClaimOperation,
+                deps,
+                state,
+                oid,
+                "objective",
+                "multi_seed_claim",
             )
         else:
             await _run_op(
