@@ -151,7 +151,8 @@ async def compute_posterior(
     if retrieval_failed:
         objective = await repo.get_objective(objective_id)
         qt = objective.question_type
-        if qt is None or qt not in POSTERIOR_ELIGIBLE:
+        is_seed_claim_mode = bool(getattr(objective, "claim_to_verify", None))
+        if not is_seed_claim_mode and (qt is None or qt not in POSTERIOR_ELIGIBLE):
             return None
         return PosteriorReport(
             posterior=0.5,
@@ -161,7 +162,7 @@ async def compute_posterior(
             counting_posterior=0.5,
             mode="counting_only",
             objective_id=objective_id,
-            question_type=qt,
+            question_type=qt or "verificatory",
             explanation=(
                 "Retrieval failed: evidence extraction returned empty content "
                 "at least 3 times consecutively. Posterior defaults to 0.5 "
@@ -171,10 +172,39 @@ async def compute_posterior(
         )
 
     # 1. Load objective, check eligibility
+    #
+    # Eligibility has two paths:
+    #   (a) question_type is verificatory or predictive — the parent
+    #       question's answer is binary, P(Y) maps cleanly.
+    #   (b) the objective is in seed_claim mode (claim_to_verify is set) —
+    #       the objective is verifying ONE specific claim binary-by-
+    #       construction regardless of the parent question_type. This
+    #       is the decomposed-children case: a parent classified as
+    #       explanatory/exploratory/etc. spawns N seed-claim children,
+    #       each of which runs binary verification on its seed. Without
+    #       this branch, decomposed runs whose parent was misclassified
+    #       (or genuinely non-binary at the parent level) silently lose
+    #       their per-child posteriors — caught on smoke_v12_decompose
+    #       case 54 where the parent was classified explanatory and
+    #       compute_posterior dropped 7 valid integration verdicts.
+    #
+    # comparative is intentionally excluded from (a) because it has 3+
+    # outcomes (A better / B better / equivalent). In seed_claim mode a
+    # comparative parent's children still verify specific seed claims,
+    # so they pass via (b).
     objective = await repo.get_objective(objective_id)
     question_type = objective.question_type
-    if question_type is None or question_type not in POSTERIOR_ELIGIBLE:
+    is_seed_claim_mode = bool(getattr(objective, "claim_to_verify", None))
+    if not is_seed_claim_mode and (
+        question_type is None or question_type not in POSTERIOR_ELIGIBLE
+    ):
         return None
+    # PosteriorReport.question_type is required (str). For seed-claim
+    # objectives whose parent didn't classify (rare but possible),
+    # default to "verificatory" for the report — it's the binary
+    # operation the seed-claim machinery is performing.
+    if question_type is None:
+        question_type = "verificatory"
 
     # 2. Load claims and evidence
     claims = await repo.get_claims_for_objective(objective_id)
