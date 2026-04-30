@@ -37,6 +37,7 @@ async def run_epistemic_graph(
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
     objective_id: Optional[str] = None,
+    decompose: bool = False,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -131,6 +132,7 @@ async def run_epistemic_graph(
         objective_id=objective_id,
         question=question,
         skip_preplanning=skip_preplanning,
+        decompose=decompose,
     )
     deps = EpistemicDeps(
         repo=repo,

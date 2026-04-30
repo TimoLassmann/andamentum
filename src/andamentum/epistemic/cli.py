@@ -57,6 +57,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip preplanning (clarification + conceptual analysis)",
     )
     ask_parser.add_argument(
+        "--decompose",
+        action="store_true",
+        help=(
+            "Run top-down decomposition (multi-seed-claim mode): the "
+            "system splits the question into N load-bearing sub-claims, "
+            "verifies each as a Claim on one Objective, and combines "
+            "the per-claim verdicts via the decomposition's "
+            "combination_rule (AND / OR / WEIGHTED_AND / UNION). Without "
+            "this flag, the system runs the open-research path "
+            "(claims emerge from evidence via ProposeClaims)."
+        ),
+    )
+    ask_parser.add_argument(
         "--trace",
         default="timeline",
         choices=["timeline", "flow", "claims", "all", "none"],
@@ -242,6 +255,7 @@ async def _ask(args: argparse.Namespace) -> None:
         verbose=args.verbose,
         trace=args.trace,
         force_quick=args.quick,
+        decompose=args.decompose,
         provider=args.provider,
         output_path=args.output,
     )

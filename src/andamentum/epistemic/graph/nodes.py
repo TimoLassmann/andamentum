@@ -342,7 +342,7 @@ class PrepareObjective(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRes
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> "PlanEvidence":
+    ) -> "Decompose":
         from ..operations.preplanning import (
             ClarifyQuestionOperation,
             ClassifyQuestionOperation,
@@ -398,6 +398,51 @@ class PrepareObjective(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRes
             if obj.question_type:
                 state.question_type = obj.question_type
 
+        return Decompose()
+
+
+@dataclass
+class Decompose(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+    """Optionally run DecomposeQuestionOperation before PlanEvidence.
+
+    Gated by ``state.decompose``: when False (the default open-research
+    path), this node is a no-op pass-through. When True, runs
+    ``DecomposeQuestionOperation`` to populate
+    ``objective.decomposition`` so:
+
+    * ``PlanTaskOperation`` formulates queries per sub-investigation
+      (per-claim evidence pool, Option-2).
+    * ``CreateClaims`` routes to ``MultiSeedClaimOperation`` (one Claim
+      per sub-investigation, sub_investigation_id-tagged).
+    * ``CombineClaimVerdicts`` applies the decomposition's
+      ``combination_rule`` (AND / OR / WEIGHTED_AND / UNION) over the
+      per-Claim integration verdicts.
+    * ``compute_posterior`` honours the rule via the rule-aware
+      delegation path (see confidence.py).
+
+    Idempotent: ``DecomposeQuestionOperation`` short-circuits if
+    ``objective.decomposition`` is already set.
+    """
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> "PlanEvidence":
+        state = ctx.state
+        deps = ctx.deps
+
+        if not state.decompose:
+            return PlanEvidence()
+
+        from ..operations.preplanning import DecomposeQuestionOperation
+
+        await _run_op(
+            DecomposeQuestionOperation,
+            deps,
+            state,
+            state.objective_id,
+            "objective",
+            "decompose_question",
+        )
         return PlanEvidence()
 
 
@@ -1816,6 +1861,7 @@ class Synthesize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
 epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Graph(
     nodes=[
         PrepareObjective,
+        Decompose,
         PlanEvidence,
         ExtractEvidence,
         CreateClaims,

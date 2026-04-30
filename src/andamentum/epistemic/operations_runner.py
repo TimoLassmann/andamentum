@@ -84,6 +84,7 @@ async def run_research_question(
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
+    decompose: bool = False,
 ) -> PipelineResult:
     """Run a research question through the epistemic pipeline.
 
@@ -129,4 +130,5 @@ async def run_research_question(
         providers=providers,
         quality_scorer=quality_scorer,
         db_dir=db_dir,
+        decompose=decompose,
     )
