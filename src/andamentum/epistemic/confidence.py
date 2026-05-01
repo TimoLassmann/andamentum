@@ -325,7 +325,7 @@ async def compute_posterior(
     # directions). Now ``compute_posterior`` delegates to
     # ``combine_claim_verdicts`` for decomposed runs so callers see one
     # consistent number.
-    decomposition = getattr(objective, "decomposition", None) or {}
+    decomposition = getattr(objective, "decomposition", None)
     from .graph.combination import resolve_combination_rule
 
     combination_rule = resolve_combination_rule(objective)
@@ -339,9 +339,12 @@ async def compute_posterior(
 
         # Order claims by sub_investigation_id per the decomposition so
         # weights align — same alignment CombineClaimVerdicts uses.
+        # Phase 6 of the Move-3 plan: typed Decomposition access.
         sub_ids_in_order = [
-            s.get("id")
-            for s in (decomposition.get("sub_investigations") or [])
+            s.id
+            for s in (
+                decomposition.sub_investigations if decomposition else []
+            )
         ]
         claims_by_sub = {
             c.sub_investigation_id: c

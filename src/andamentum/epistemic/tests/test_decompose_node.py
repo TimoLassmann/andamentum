@@ -86,7 +86,7 @@ class TestDecomposeNode:
         assert isinstance(next_node, PlanEvidence)
         reloaded = await repo.get("objective", obj.entity_id)
         assert reloaded.decomposition is not None
-        assert len(reloaded.decomposition["sub_investigations"]) == 3
+        assert len(reloaded.decomposition.sub_investigations) == 3
         assert reloaded.combination_rule == "AND"
         decompose_ops = [
             op for op in state.operations_log if op["operation"] == "decompose_question"
@@ -111,7 +111,7 @@ class TestDecomposeNode:
         reloaded = await repo.get("objective", obj.entity_id)
         # Still 3 sub-investigations (not 6 — the op short-circuits).
         assert reloaded.decomposition is not None
-        assert len(reloaded.decomposition["sub_investigations"]) == 3
+        assert len(reloaded.decomposition.sub_investigations) == 3
         # Two op records but the second was a did_work=False short-circuit.
         decompose_calls = [
             c for c in fake_runner.calls if c[0] == "epistemic_decompose_question"

@@ -69,9 +69,8 @@ class MultiSeedClaimOperation(BaseOperation):
                 did_work=False,
             )
 
-        sub_investigations = (
-            objective.decomposition.get("sub_investigations") or []
-        )
+        # Phase 6 of the Move-3 plan: typed Decomposition access.
+        sub_investigations = objective.decomposition.sub_investigations
         if not sub_investigations:
             return OperationResult(
                 success=False,
@@ -105,15 +104,15 @@ class MultiSeedClaimOperation(BaseOperation):
         skipped_existing = 0
 
         for sub in sub_investigations:
-            sub_id = sub.get("id")
+            sub_id = sub.id
             if not sub_id:
                 continue
             if sub_id in existing_sub_ids:
                 skipped_existing += 1
                 continue
 
-            seed_claim_text = sub.get("seed_claim", "")
-            rationale = sub.get("rationale", "")
+            seed_claim_text = sub.seed_claim
+            rationale = sub.rationale
             if not seed_claim_text:
                 continue
 

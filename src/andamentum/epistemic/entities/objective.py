@@ -11,6 +11,7 @@ from typing import Any, Optional
 from pydantic import Field
 
 from .base import EpistemicEntity
+from .decomposition import Decomposition
 
 
 class Objective(EpistemicEntity):
@@ -100,19 +101,21 @@ class Objective(EpistemicEntity):
     # lives on the minted Claim's ``sub_investigation_id`` field, not
     # here.
     #
-    # ``decomposition`` is stored as a serialized dict (model_dump)
-    # rather than a typed QuestionDecomposition to avoid coupling
-    # entities/ to agents/output_models.py — operations reconstruct the
-    # typed form when needed.
+    # Phase 6 of the Move-3 plan: this field used to be a raw
+    # ``dict[str, Any]`` to avoid coupling entities/ to
+    # agents/output_models.py. It's now a typed ``Decomposition``
+    # model (defined in entities/decomposition.py) so consumers
+    # access fields by name rather than via ``dict.get(...)``.
+    # Bug C from the post-audit-2 fix queue was the divergent-lookup
+    # failure mode this typing prevents.
 
-    decomposition: Optional[dict[str, Any]] = Field(
+    decomposition: Optional[Decomposition] = Field(
         default=None,
         description=(
-            "Serialized QuestionDecomposition produced by "
-            "DecomposeQuestionOperation. After CombineClaimVerdicts "
-            "runs, this dict also gains a ``combined_verdict`` key "
-            "carrying the rule-aware aggregate; FreezeSnapshot promotes "
-            "that onto Snapshot.combined_verdict."
+            "Top-down decomposition produced by DecomposeQuestionOperation. "
+            "After CombineClaimVerdicts runs, ``combined_verdict`` is "
+            "populated in-place; FreezeSnapshot then promotes that onto "
+            "Snapshot.combined_verdict."
         ),
     )
     combination_rule: Optional[str] = Field(
@@ -152,8 +155,7 @@ class Objective(EpistemicEntity):
         if self.claim_to_verify:
             return True
         if self.decomposition is not None:
-            sub_investigations = self.decomposition.get("sub_investigations") or []
-            if sub_investigations:
+            if self.decomposition.sub_investigations:
                 return True
         return False
 
@@ -174,7 +176,7 @@ class Objective(EpistemicEntity):
         if self.key_terms:
             meta["key_terms"] = self.key_terms
         if self.decomposition is not None:
-            meta["decomposition"] = self.decomposition
+            meta["decomposition"] = self.decomposition.model_dump()
         if self.combination_rule:
             meta["combination_rule"] = self.combination_rule
         return meta
@@ -198,7 +200,7 @@ class Objective(EpistemicEntity):
             snapshot_id=metadata.get("snapshot_id"),
             artefact_id=metadata.get("artefact_id"),
             status=metadata.get("status", "active"),
-            decomposition=metadata.get("decomposition"),
+            decomposition=Decomposition.from_dict(metadata.get("decomposition")),
             combination_rule=metadata.get("combination_rule"),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())

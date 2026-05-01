@@ -19,6 +19,7 @@ import pytest
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.entities import Claim, Objective, Snapshot
 from andamentum.epistemic.entities.claim import ClaimStage
+from andamentum.epistemic.entities.decomposition import Decomposition
 from andamentum.epistemic.graph.combination import (
     CombinedVerdict,
     combine_claim_verdicts,
@@ -172,13 +173,32 @@ class TestCombineClaimVerdicts:
 
 class TestExtractWeights:
     def test_pulls_weights_in_claim_order(self) -> None:
-        decomposition = {
-            "sub_investigations": [
-                {"id": "A", "weight": 1.0},
-                {"id": "B", "weight": 2.0},
-                {"id": "C", "weight": 0.5},
-            ]
-        }
+        decomposition = Decomposition.model_validate(
+            {
+                "sub_investigations": [
+                    {
+                        "id": "A",
+                        "seed_claim": "a",
+                        "rationale": "r",
+                        "weight": 1.0,
+                    },
+                    {
+                        "id": "B",
+                        "seed_claim": "b",
+                        "rationale": "r",
+                        "weight": 2.0,
+                    },
+                    {
+                        "id": "C",
+                        "seed_claim": "c",
+                        "rationale": "r",
+                        "weight": 0.5,
+                    },
+                ],
+                "combination_rule": "WEIGHTED_AND",
+                "rationale": "r",
+            }
+        )
         claims = [
             _make_claim(sub_id="A"),
             _make_claim(sub_id="B"),
@@ -190,12 +210,26 @@ class TestExtractWeights:
     def test_returns_none_when_unmatched_claim(self) -> None:
         """Defensive: if any claim has a sub_id not in the decomposition,
         fall back to no-weights (caller uses simple mean)."""
-        decomposition = {
-            "sub_investigations": [
-                {"id": "A", "weight": 1.0},
-                {"id": "B", "weight": 2.0},
-            ]
-        }
+        decomposition = Decomposition.model_validate(
+            {
+                "sub_investigations": [
+                    {
+                        "id": "A",
+                        "seed_claim": "a",
+                        "rationale": "r",
+                        "weight": 1.0,
+                    },
+                    {
+                        "id": "B",
+                        "seed_claim": "b",
+                        "rationale": "r",
+                        "weight": 2.0,
+                    },
+                ],
+                "combination_rule": "WEIGHTED_AND",
+                "rationale": "r",
+            }
+        )
         claims = [
             _make_claim(sub_id="A"),
             _make_claim(sub_id="B"),
@@ -205,9 +239,14 @@ class TestExtractWeights:
         assert weights is None
 
     def test_returns_none_when_no_decomposition(self) -> None:
+        """Phase 6 of the Move-3 plan: extract_weights now takes a typed
+        Decomposition. The "empty dict" sentinel is replaced by an empty
+        sub_investigations list on a real Decomposition; both paths
+        correctly return None."""
         claims = [_make_claim(sub_id=None)]
         assert extract_weights_from_decomposition(None, claims) is None
-        assert extract_weights_from_decomposition({}, claims) is None
+        empty = Decomposition(sub_investigations=[], combination_rule="AND")
+        assert extract_weights_from_decomposition(empty, claims) is None
 
 
 # ── Snapshot.combined_verdict round-trip ──────────────────────────────
@@ -327,11 +366,13 @@ class TestCombineClaimVerdictsNode:
 
         reloaded = await repo.get("objective", obj.entity_id)
         assert reloaded.decomposition is not None
-        cv = reloaded.decomposition["combined_verdict"]
-        assert cv["combination_rule"] == "AND"
+        # Phase 6 of the Move-3 plan: typed CombinedVerdictData access.
+        cv = reloaded.decomposition.combined_verdict
+        assert cv is not None
+        assert cv.combination_rule == "AND"
         # min over [0.9 (A), 0.8 (B)] = 0.8
-        assert cv["posterior"] == pytest.approx(0.8)
-        assert cv["verdict"] == "supports"
+        assert cv.posterior == pytest.approx(0.8)
+        assert cv.verdict == "supports"
 
     async def test_orders_claims_by_decomposition(
         self, tmp_path: Path
@@ -373,10 +414,12 @@ class TestCombineClaimVerdictsNode:
 
         reloaded = await repo.get("objective", obj.entity_id)
         assert reloaded.decomposition is not None
-        cv = reloaded.decomposition["combined_verdict"]
+        # Phase 6 of the Move-3 plan: typed CombinedVerdictData access.
+        cv = reloaded.decomposition.combined_verdict
+        assert cv is not None
         # A has weight 3 and posterior 0.9; B has weight 1 and 0.7.
         # weighted = (0.9*3 + 0.7*1) / 4 = 3.4/4 = 0.85.
-        assert cv["posterior"] == pytest.approx(0.85)
+        assert cv.posterior == pytest.approx(0.85)
 
 
 class TestCombinedVerdictType:

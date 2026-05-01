@@ -38,9 +38,12 @@ keeping the two entry points consistent.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..entities.claim import Claim
+
+if TYPE_CHECKING:
+    from ..entities.decomposition import Decomposition
 
 
 @dataclass
@@ -239,26 +242,30 @@ def resolve_combination_rule(objective: Any) -> str | None:
     """Single source of truth for the combination_rule lookup.
 
     Reads from BOTH ``objective.combination_rule`` (the dedicated
-    Objective field) AND ``objective.decomposition["combination_rule"]``
-    (the rule the decomposer wrote into the decomposition dict).
+    Objective field) AND ``objective.decomposition.combination_rule``
+    (the rule the decomposer wrote into the typed Decomposition).
     Returns the first non-None value, or None if neither is set.
 
     Used by both ``CombineClaimVerdicts`` (graph node) and
     ``compute_posterior`` (confidence.py) so the two paths can never
-    disagree on which rule to apply. Without this helper, one path
-    might default to "AND" while the other reads OR/WEIGHTED_AND/UNION
-    from the decomposition dict — silently producing different
-    posteriors on the same claims.
+    disagree on which rule to apply.
+
+    Phase 6 of the Move-3 plan: the dict-based dual lookup is now a
+    typed attribute lookup; the helper still exists because the
+    "objective field wins, decomposition fallback" fallback logic
+    is the cross-cutting invariant.
     """
     rule = getattr(objective, "combination_rule", None)
     if rule:
         return rule
-    decomposition = getattr(objective, "decomposition", None) or {}
-    return decomposition.get("combination_rule")
+    decomposition = getattr(objective, "decomposition", None)
+    if decomposition is None:
+        return None
+    return getattr(decomposition, "combination_rule", None)
 
 
 def extract_weights_from_decomposition(
-    decomposition: dict | None, claims: list[Claim]
+    decomposition: "Decomposition | None", claims: list[Claim]
 ) -> list[float] | None:
     """Pull per-claim weights from the decomposition's sub_investigations.
 
@@ -268,13 +275,17 @@ def extract_weights_from_decomposition(
     * a claim's sub_investigation_id has no matching entry
 
     Returned list aligns with ``claims`` (same length, same order).
+
+    Phase 6 of the Move-3 plan: takes a typed Decomposition (not a
+    raw dict) so callers access fields by attribute. None input is
+    still permitted for the open-research path.
     """
-    if not decomposition:
+    if decomposition is None:
         return None
-    subs = decomposition.get("sub_investigations") or []
+    subs = decomposition.sub_investigations
     if not subs:
         return None
-    sub_weights = {s.get("id"): float(s.get("weight", 1.0)) for s in subs}
+    sub_weights = {s.id: float(s.weight) for s in subs}
     weights: list[float] = []
     for c in claims:
         sid = c.sub_investigation_id
