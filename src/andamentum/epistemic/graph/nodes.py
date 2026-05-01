@@ -615,8 +615,27 @@ class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
 
 
 @dataclass
-class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Run scrutiny on claims that have not yet been scrutinised."""
+class Scrutinize(Node):
+    """Run scrutiny on claims that have not yet been scrutinised.
+
+    Phase 3 of the Move-3 plan. Successors live in the run() return
+    annotation. post_invariants is empty: this node is mid-flight,
+    not terminal.
+    """
+
+    reads = frozenset(
+        {
+            "objective_id",
+            "claims_needing_rescrutiny",
+            "scrutiny_resolve_cycles",
+            "investigation_counts",
+        }
+    )
+    writes = frozenset(
+        {"scrutiny_resolve_cycles", "claims_needing_rescrutiny"}
+    )
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -715,8 +734,24 @@ class Scrutinize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
 
 
 @dataclass
-class Investigate(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Run investigation on claims needing more evidence."""
+class Investigate(Node):
+    """Run investigation on claims needing more evidence.
+
+    Phase 3 of the Move-3 plan. The single successor (ExtractNewEvidence)
+    lives in the return annotation. post_invariants is empty: this
+    node is mid-flight, not terminal.
+    """
+
+    reads = frozenset({"objective_id", "investigation_counts"})
+    writes = frozenset(
+        {
+            "investigation_counts",
+            "claims_needing_rescrutiny",
+            "claims_needing_tms",
+        }
+    )
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1375,9 +1410,7 @@ class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class ResolveUncertainties(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class ResolveUncertainties(Node):
     """Resolve blocking uncertainties, then deduplicate concerns.
 
     Appears in TWO places in the graph:
@@ -1387,10 +1420,35 @@ class ResolveUncertainties(
     This matches the old pattern scheduler where resolve_uncertainty had
     higher priority than promote and ran first whenever blocking
     uncertainties existed.
+
+    Phase 3 of the Move-3 plan. This node is one of the routing hubs
+    where the IBE-skip path may live (per the Phase 2 benchmark
+    investigation): when adversarial evidence challenges a claim,
+    revalidation may demote it back to HYPOTHESIS, and the resulting
+    re-cycle through Scrutinize → AbandonOrDemote can leave claims
+    cycle-capped and terminate via CheckCompletion before the IBE
+    chain ever runs. Making the contracts explicit here is the first
+    step toward catching that.
+
+    post_invariants is empty: this node is mid-flight; the cycle-cap
+    invariant lives at terminal nodes.
     """
 
     depth: int = 0
     next_on_clear: str = "integrate"  # "promote" or "integrate"
+
+    reads = frozenset(
+        {
+            "objective_id",
+            "claims_needing_rescrutiny",
+            "scrutiny_resolve_cycles",
+        }
+    )
+    writes = frozenset(
+        {"claims_needing_rescrutiny", "scrutiny_resolve_cycles"}
+    )
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2027,11 +2085,23 @@ from ..operations.cleanup import AbandonStaleClaimOperation  # noqa: E402
 from ..operations.belief_maintenance import (  # noqa: E402
     SetRoutingDefaultsOperation,
 )
+from ..operations.concerns import (  # noqa: E402
+    DeduplicateConcernsOperation,
+)
+from ..operations.investigation import (  # noqa: E402
+    InvestigateClaimOperation,
+)
+from ..operations.scrutiny import (  # noqa: E402
+    ScrutiniseClaimOperation,
+)
 from ..operations.stage_management import (  # noqa: E402
     DemoteClaimOperation,
     PromoteAsRefutedOperation,
     PromoteClaimOperation,
     SoftPromoteOperation,
+)
+from ..operations.uncertainty import (  # noqa: E402
+    ResolveUncertaintyOperation,
 )
 
 
@@ -2050,4 +2120,15 @@ PromoteToSupported.operations = frozenset(
         PromoteClaimOperation,
         SetRoutingDefaultsOperation,
     }
+)
+
+
+Scrutinize.operations = frozenset({ScrutiniseClaimOperation})
+
+
+Investigate.operations = frozenset({InvestigateClaimOperation})
+
+
+ResolveUncertainties.operations = frozenset(
+    {ResolveUncertaintyOperation, DeduplicateConcernsOperation}
 )
