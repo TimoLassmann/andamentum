@@ -15,6 +15,7 @@ from typing import Any, Union
 
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
+from .base import Node
 from .state import EpistemicGraphState
 from .deps import EpistemicDeps
 from .result import EpistemicResult
@@ -868,8 +869,26 @@ class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
 
 
 @dataclass
-class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Abandon HYPOTHESIS claims that exhausted investigation; demote SUPPORTED+ claims."""
+class AbandonOrDemote(Node):
+    """Abandon HYPOTHESIS claims that exhausted investigation; demote SUPPORTED+ claims.
+
+    Phase 2 of the Move-3 plan: this is one of the two recurring-bug
+    routing hubs. Successors live in the run() return annotation
+    (Union["Scrutinize", "PromoteToSupported"]) — pyright + pydantic-graph
+    enforce them, and test_topology.py asserts CheckCompletion is
+    explicitly NOT in that set.
+
+    post_invariants is empty: this node is mid-flight, not terminal.
+    Soft-promoted claims legitimately leave this node in the "stranded"
+    state because PromoteToSupported (the next node) routes them to
+    ClusterEvidence → IBE. The no_stranded_claims invariant only
+    applies at terminal nodes (Synthesize will get it in Phase 1).
+    """
+
+    reads = frozenset({"investigation_counts", "objective_id"})
+    writes = frozenset({"terminal_claims", "verification_done"})
+    operations = frozenset()  # populated below after operations imports resolve
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1010,7 +1029,7 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class PromoteToSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class PromoteToSupported(Node):
     """Promote HYPOTHESIS claims and route SUPPORTED claims to verification.
 
     This is a routing hub that checks actual claim state:
@@ -1021,7 +1040,28 @@ class PromoteToSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicR
     This correctly handles re-entry after uncertainty resolution:
     a claim at SUPPORTED that was re-scrutinized goes through
     verification again instead of being skipped.
+
+    Phase 2 of the Move-3 plan: this is the second of the two
+    recurring-bug routing hubs. Its successor set
+    (Union["ClusterEvidence", "CheckCompletion"]) intentionally
+    INCLUDES CheckCompletion — that's the legitimate idempotent
+    terminal when no SUPPORTED claim needs verification.
+    PromoteToSupported is the dispatcher that AbandonOrDemote
+    delegates residual routing to; this node is allowed to
+    terminate where the upstream node is not.
+
+    post_invariants is empty: this node is mid-flight when it
+    routes to ClusterEvidence (claims may legitimately be in the
+    "stranded" state about to enter IBE); when it routes to
+    CheckCompletion, no_stranded_claims would be the right
+    invariant to enforce — but that's the post-condition for
+    CheckCompletion → Synthesize, not for this node directly.
     """
+
+    reads = frozenset({"objective_id", "verification_done"})
+    writes = frozenset({"terminal_claims"})
+    operations = frozenset()  # populated below after operations imports resolve
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1965,4 +2005,49 @@ epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Gr
         Synthesize,
     ],
     name="epistemic_pipeline",
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONTRACT METADATA — populated after class definitions
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Phase 2 of the Move-3 plan. Contract metadata for nodes inheriting
+# from ``Node`` (in ``base.py``) — populated here, after class
+# definitions, so the operations imports can stay lazy at the run()
+# call sites and avoid circular imports.
+#
+# Pattern: each class declared a metadata field with an empty
+# frozenset() default; we replace it here with the populated set
+# referencing the actual operation classes.
+#
+# When more nodes migrate in later phases, this block grows.
+
+from ..operations.cleanup import AbandonStaleClaimOperation  # noqa: E402
+from ..operations.belief_maintenance import (  # noqa: E402
+    SetRoutingDefaultsOperation,
+)
+from ..operations.stage_management import (  # noqa: E402
+    DemoteClaimOperation,
+    PromoteAsRefutedOperation,
+    PromoteClaimOperation,
+    SoftPromoteOperation,
+)
+
+
+AbandonOrDemote.operations = frozenset(
+    {
+        PromoteAsRefutedOperation,
+        SoftPromoteOperation,
+        AbandonStaleClaimOperation,
+        DemoteClaimOperation,
+    }
+)
+
+
+PromoteToSupported.operations = frozenset(
+    {
+        PromoteClaimOperation,
+        SetRoutingDefaultsOperation,
+    }
 )
