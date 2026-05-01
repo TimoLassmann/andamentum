@@ -1,5 +1,6 @@
 """Synthesis agents — write_answer, validate_answer, record_decision,
-classify_prediction, identify_testable_aspect, specify_prediction, define_falsification."""
+classify_prediction, identify_testable_aspect, specify_prediction,
+define_falsification, check_synthesis_demand."""
 
 from .output_models import (
     WriteAnswerOutput,
@@ -10,6 +11,7 @@ from .output_models import (
     SpecifyPredictionOutput,
     DefineFalsificationOutput,
 )
+from ..demand import Demand
 from . import AgentDefinition, register_agent
 
 # ── epistemic_write_answer ───────────────────────────────────────────────
@@ -500,6 +502,89 @@ register_agent(
         name="epistemic_define_falsification",
         prompt=DEFINE_FALSIFICATION_PROMPT,
         output_model=DefineFalsificationOutput,
+        retries=3,
+        output_retries=5,
+    )
+)
+
+
+# ── epistemic_check_synthesis_demand ─────────────────────────────────────
+
+CHECK_SYNTHESIS_DEMAND_PROMPT = """\
+# Synthesis Demand Check
+
+Given a research question and the system's current verdict, decide
+whether the answer is well-supported enough to deliver to the user, or
+whether something specific is still missing that more investigation
+could find.
+
+## Your role
+
+This is a satisfaction check — the LAZY ESCALATION principle. The
+system has already done some work (gathered evidence, scrutinized
+claims, run verification, integrated via IBE) and produced a verdict.
+You decide whether that verdict is good enough or whether more work
+should happen.
+
+You are NOT the writer. You don't write the answer. You only judge
+whether the system has done enough work yet.
+
+## What "satisfied" looks like
+
+Mark `needs_more=false` when:
+
+- The verdict is decisive in one direction (clearly supports or clearly
+  contradicts) AND backed by evidence the system has actually examined.
+- The verdict is honestly "we don't know" (insufficient / no_data) AND
+  the gap is genuine — i.e. the kind of question where more evidence
+  wouldn't realistically change the answer (e.g. "Cochrane explicitly
+  reports no included studies addressed this outcome").
+- All non-abandoned claims have integration verdicts (the system
+  actually reasoned about them, vs. just bailing).
+
+## What "needs more" looks like
+
+Mark `needs_more=true` when:
+
+- The verdict is hedged because of *specific* missing evidence the
+  system could plausibly have found (e.g. "we found mechanistic data
+  but no direct mortality outcomes").
+- The combined posterior is in a wishy-washy middle (~0.4-0.6) AND
+  the per-claim verdicts are mixed in a way that suggests one more
+  piece of evidence could tip the balance.
+- A specific counterevidence avenue wasn't tried (e.g. didn't check
+  contradicting registries / replication studies / etc.).
+
+When `needs_more=true`, your `justification` should name the
+specific gap — concretely enough that a downstream investigator can
+target it. Bad: "more evidence needed". Good: "we have RCT mortality
+data but no observational follow-up to check whether the effect
+persists in real-world populations".
+
+When `needs_more=true`, `target_hint` should suggest where to look
+when you can — provider type, evidence shape, claim aspect. Empty
+when no specific suggestion makes sense.
+
+## Output
+
+A `Demand`:
+
+- needs_more: bool
+- justification: 1-3 sentences explaining your judgment.
+- target_hint: optional, may be empty.
+
+Be CONSERVATIVE about saying needs_more=true. The system has
+expensive iteration; we want to escalate only when there's a
+concrete, plausible improvement path. Hedging-for-its-own-sake is
+not a reason to escalate.
+
+Now decide."""
+
+register_agent(
+    AgentDefinition(
+        name="epistemic_check_synthesis_demand",
+        prompt=CHECK_SYNTHESIS_DEMAND_PROMPT,
+        output_model=Demand,
         retries=3,
         output_retries=5,
     )

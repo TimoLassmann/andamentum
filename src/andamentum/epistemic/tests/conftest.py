@@ -123,6 +123,15 @@ class MalformedOutputRunner:
 # Default canned responses matching actual agent manifest output_model fields.
 # The adapters use attribute access, so field names must be exact.
 _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "epistemic_check_synthesis_demand": {
+        # Phase 1 of lazy-escalation: default to needs_more=False so
+        # tests that incidentally exercise this agent get a satisfied
+        # demand without further setup. Tests that want to exercise the
+        # needs_more=True path can override per-test via fake_runner.
+        "needs_more": False,
+        "justification": "Default fake_runner output: satisfied.",
+        "target_hint": "",
+    },
     "epistemic_clarify_question": {
         "clarified_question": "What is spaced repetition and does it work?",
         "key_terms": ["spaced repetition", "memory"],
