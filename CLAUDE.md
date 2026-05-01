@@ -16,6 +16,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.figures` — publication-quality scientific figure generation: 9 chart types, 7 journal palettes, journal-matched sizing, auto chart-kind selection. `scribe_glue.insert_figure` renders + inserts into a scribe section in one call. Absorbed from the standalone `mosaic-figures` package.
 - `andamentum.chunker` — structural-first semantic chunking of long markdown into 2k–10k char self-contained units. Stage 1: split at markdown headings. Stage 2: embedding-based split for over-budget sections. Stage 3 (optional): small-LLM judge for grey-zone boundaries. The LLM is never the primary segmenter.
 - `andamentum.harvest` — universal source → markdown extraction. Single async API: `extract(source: str | Path) -> str`. Detects format (PDF / HTML / DOCX / PPTX / Markdown / plain) and dispatches to the best backend; for HTML, sniffs `og:type` / JSON-LD `@type` and routes article-like pages to trafilatura, index/listing pages to Docling, and races both extractors when the page metadata is ambiguous (picks the higher-scoring output by structural quality).
+- `andamentum.vision_critique` — bounded vision critique of rendered figures. Single async API: `await critique_figure(image, *, model) -> FigureCritique`. Image is bytes / Path / http(s) URL; model is any pydantic-ai multimodal id (Ollama, Anthropic, OpenAI). Schema is a tight pydantic model with close-set enums (`label_overlap`, `labels_legible`, `legend_blocks_data`, `aspect_ratio_issue`, `suggested_fixes` from a fixed `Literal` set, `confidence`, `one_line_summary`) so small local vision models can fill it reliably. Validated default: `ollama:gemma4:e4b-it-q4_K_M` (passes the calibration fixture; `gemma4:e2b` confidently fails it). Used standalone, by `figures` for figure refinement, or by other modules that want to lint rendered output.
 - `andamentum.typeset` — standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules for rendering
 - `andamentum.core` — shared model-resolution, `AgentRunner`, and (future) embedding infrastructure used by all sub-modules
 
@@ -60,18 +61,34 @@ The canonical green state: **pyright 0 errors, ruff clean, pytest 1560 passing (
 
 ## CLIs
 
-Six scripts installed by the package:
+Eight scripts installed by the package. Run `--help` on any binary for the exhaustive flag reference; the table below is the at-a-glance map of what to reach for.
+
+| Script | What it does | LLM? |
+|---|---|---|
+| `andamentum-epistemic` | Formal-epistemology pipeline — ask a question, get a graph-evaluated answer with structured evidence, claims, and uncertainty tracking | required |
+| `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearxNG | required |
+| `andamentum-whetstone` | Multi-lens review of your own draft → markdown / HTML / .docx with track changes. Also exposes a patch-only mode (`--apply-patches PATCHES.json INPUT.docx --out OUTPUT.docx`) that applies a pre-built JSON list of `DocumentPatch` objects to a .docx — no LLM, no review pipeline | required for review (or `--no-llm` for deterministic-only); `--apply-patches` needs no model |
+| `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
+| `andamentum-figures` | Publication-quality scientific figures (9 chart types, 7 journal palettes, journal-matched sizing) | none |
+| `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
+| `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected; for ambiguous HTML, races trafilatura and Docling and picks the better-structured output) | none |
+| `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON (label overlap, legibility, legend placement, aspect-ratio, suggested fixes from a fixed set, confidence). Validated local default: `ollama:gemma4:e4b-it-q4_K_M` | required (multimodal) |
+
+`andamentum-epistemic`, `andamentum-research`, and `andamentum-chunker` resolve their LLM via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone` and `andamentum-vision-critique` take `--model` directly (any pydantic-ai model id; vision-critique requires a multimodal one). `andamentum-scribe`, `andamentum-figures`, and `andamentum-harvest` have no LLM dependency.
+
+### Patch-only mode for `andamentum-whetstone`
+
+The patch-only path is the analogue of a standalone "apply review patches to a Word file" script: feed it a .docx and a JSON array of `DocumentPatch` objects (the type defined in `whetstone/models.py`) and it produces a tracked-changes .docx. The renderer reuses the same `whetstone.docx.finalization.finalize_reviewed_document` machinery the full review pipeline uses, so output is byte-identical to running a review that produced those same patches.
 
 ```bash
-andamentum-epistemic --help
-andamentum-research --help
-andamentum-whetstone --help
-andamentum-scribe --help
-andamentum-figures --help
-andamentum-chunker --help
+andamentum-whetstone draft.docx \
+    --apply-patches patches.json \
+    --out draft.reviewed.docx \
+    --patch-author "Claude" \
+    --patch-report review-summary.md   # optional markdown to prepend
 ```
 
-`andamentum-epistemic`, `andamentum-research`, and `andamentum-chunker` require a model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone` takes `--model` directly (any pydantic-ai model id) and supports a `--no-llm` flag for the deterministic-only path. `andamentum-scribe` and `andamentum-figures` have no LLM dependency.
+`patches.json` is a JSON array; each element is a `DocumentPatch` with `patch_type` ∈ {`text_edit`, `comment`, `document_analysis`}. `text_edit` requires `text_pattern` + `new_text` + `explanation`; `comment` requires `text_pattern` + `comment_text` + `explanation`. This is the foundation for AI-driven draft → review → revise loops where Claude (or another agent) drafts patches separately and then applies them in one tracked-changes pass.
 
 ## Architectural conventions
 
@@ -89,6 +106,7 @@ andamentum-chunker --help
 - `figures` depends only on matplotlib + numpy + pydantic. The optional `figures.scribe_glue` submodule is the ONLY place where `scribe` is imported; the rest of `figures` MUST NOT touch `scribe`. `figures` MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `typeset`, or `core`.
 - `chunker` depends only on `core` (for `AgentRunner`, model resolution) and `rapidfuzz` (for tiered anchor matching). MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, or `typeset`. Other modules MAY depend on `chunker` (e.g. whetstone for section-by-section review on huge documents, document_store for embedding-quality chunks).
 - `harvest` depends only on `httpx`, `trafilatura`, `docling`, and stdlib. MUST NOT depend on any other andamentum sub-module — it's a leaf service. Other modules MAY depend on `harvest` to convert URLs/files to markdown before further processing (e.g. chunker, whetstone, future deep_research consolidation).
+- `vision_critique` depends on `core` (for `resolve_model`) and `pydantic` / `pydantic-ai` / `httpx`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, `typeset`, `chunker`, or `harvest`. Other modules MAY depend on `vision_critique` (e.g. `figures` for refinement loops, `whetstone` for figure review during manuscript checking).
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` additionally re-exports from `public.py` — that module is the authoritative public surface for document_store (10 functions: `ingest`, `search`, `find_by_metadata`, `update_metadata`, `delete`, `restore`, `purge`, `list_deleted`, `repair`, `find_duplicates`).
 

@@ -44,6 +44,7 @@ andamentum-scribe       = "andamentum.scribe.cli:main"
 andamentum-figures      = "andamentum.figures.cli:main"
 andamentum-chunker      = "andamentum.chunker.cli:main"
 andamentum-harvest      = "andamentum.harvest.cli:main"
+andamentum-vision-critique = "andamentum.vision_critique.cli:main"
 
 [project.optional-dependencies]
 dev = [
