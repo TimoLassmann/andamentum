@@ -868,12 +868,34 @@ async def handle_ask(
     1. Reads what it needs from the database
     2. Runs its agent with appropriate context
     3. Writes results back to the database
-    4. Creates follow-up workitems as needed
+    4. Schedules follow-up work via graph edges, not by mutating
+       sibling entities (P1/P2 architectural principles).
 
-    The full pipeline:
-        CLARIFY_QUESTION → CONCEPTUAL_ANALYSIS → PLAN_TASK → COLLECT_EVIDENCE →
-        EXTRACT_EVIDENCE → PROPOSE_CLAIMS → SCRUTINISE_CLAIM → [verification] →
-        PROMOTE_CLAIM → FREEZE_SNAPSHOT → SYNTHESIZE_REPORT
+    Pipeline (v0.3 multi-seed-claim graph):
+
+        Preplanning:
+            CLARIFY_QUESTION → CLASSIFY_QUESTION → CONCEPTUAL_ANALYSIS
+            → [DECOMPOSE_QUESTION (when ``decompose=True``)] → PLAN_TASK
+
+        Evidence + claim minting:
+            COLLECT_EVIDENCE → EXTRACT_EVIDENCE
+            → [MULTI_SEED_CLAIM (when objective.decomposition is set)
+               | PROPOSE_CLAIMS (open-research path)]
+
+        Scrutiny + verification (per Claim, Peirce inquiry cycling):
+            SCRUTINISE_CLAIM
+            → [INVESTIGATE_CLAIM | ADVERSARIAL_SEARCH | ASSESS_CONVERGENCE
+               | VALIDATE_DEDUCTIVELY | VERIFY_COMPUTATIONALLY]
+            → SOFT_PROMOTE / PROMOTE_CLAIM / DEMOTE_CLAIM / PROMOTE_AS_REFUTED
+
+        Integration (4-stage IBE; Lipton + Kahneman):
+            ENUMERATE_CANDIDATES → SCORE_LOVELINESS → SCORE_LIKELINESS
+            → SELECT_BEST_EXPLANATION
+
+        Aggregation + synthesis:
+            [COMBINE_CLAIM_VERDICTS (when decomposition is set, applies
+             AND/OR/WEIGHTED_AND/UNION over per-claim posteriors)]
+            → FREEZE_SNAPSHOT → SYNTHESIZE_REPORT
 
     Args:
         question: Research question to investigate
@@ -884,6 +906,10 @@ async def handle_ask(
         trace: Trace visualization mode (timeline, flow, claims, all, none)
         evidence_agent: (Legacy, ignored) Evidence agent override
         force_quick: Skip preplanning (clarification + conceptual analysis)
+        decompose: Run DECOMPOSE_QUESTION before claim minting; switches
+            the claim-minting branch to MULTI_SEED_CLAIM (one Claim per
+            sub-investigation). Without this, the open-research path
+            runs PROPOSE_CLAIMS off the gathered evidence.
         research_config: (Legacy, ignored) Research configuration
         output_path: Path to save HTML report
 
