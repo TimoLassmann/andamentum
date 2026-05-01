@@ -11,7 +11,13 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-from .advisor import check_banned, recommend_kind, validate_kind
+from .advisor import (
+    check_banned,
+    recommend_horizontal_bars,
+    recommend_kind,
+    recommend_label_rotation,
+    validate_kind,
+)
 from .auto import detect_column_roles, detect_log_scale, recommend_sort
 from .legend import generate_legend
 from .palettes import get_palette
@@ -52,6 +58,7 @@ def figure(
     dpi: int = 300,
     log_scale: str | None = None,
     sort: str | None = None,
+    horizontal: bool | None = None,
     output: str | Path = "figure.pdf",
 ) -> FigureResult:
     """Generate a publication-quality figure from data.
@@ -80,6 +87,11 @@ def figure(
         dpi: Resolution.
         log_scale: "x", "y", "both", or None (auto-detect).
         sort: "value", "name", or None (auto-detect for bar/box).
+        horizontal: For bar charts only. True forces horizontal bars,
+            False forces vertical, None (default) auto-decides based on
+            label count and length. Many bars with long labels become
+            illegible mush in vertical orientation; the auto-decider
+            picks horizontal for those cases and emits an advisor note.
         output: Output file path.
 
     Returns:
@@ -131,7 +143,26 @@ def figure(
     if resolved_sort is None:
         resolved_sort = recommend_sort(table, x_col, resolved_kind)
 
-    # ── 10. Create figure and plot ───────────────────────────────────────
+    # ── 10. Decide bar orientation (auto-pick horizontal for long labels) ──
+    effective_horizontal = horizontal
+    bar_categories: list[str] | None = None
+    if resolved_kind == "bar" and x_col and table.is_categorical(x_col):
+        bar_categories = [str(v) for v in dict.fromkeys(table.columns[x_col])]
+        should_h, reason = recommend_horizontal_bars(bar_categories)
+        if effective_horizontal is None:
+            effective_horizontal = should_h
+            if should_h and reason:
+                advisor_notes.append(
+                    f"Auto-selected horizontal bars: {reason}. "
+                    "Pass horizontal=False to override."
+                )
+        elif effective_horizontal is False and should_h and reason:
+            advisor_notes.append(
+                f"Bar chart uses vertical orientation but {reason}. "
+                "Consider horizontal=True."
+            )
+
+    # ── 11. Create figure and plot ───────────────────────────────────────
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
     if title:
@@ -150,25 +181,45 @@ def figure(
         x_label=x_label,
         y_label=y_label,
         resolved_sort=resolved_sort,
+        horizontal=bool(effective_horizontal),
     )
 
-    # ── 11. Apply log scale ──────────────────────────────────────────────
+    # ── 11b. Auto-rotate x-tick labels for vertical bars with long labels ──
+    if (
+        resolved_kind == "bar"
+        and bar_categories is not None
+        and not effective_horizontal
+    ):
+        rotation = recommend_label_rotation(bar_categories)
+        if rotation:
+            ha = "right" if rotation < 90 else "center"
+            for label in ax.get_xticklabels():
+                label.set_rotation(rotation)
+                label.set_horizontalalignment(ha)
+
+    # ── 12. Apply log scale ──────────────────────────────────────────────
     if resolved_log in ("y", "both"):
         ax.set_yscale("log")
     if resolved_log in ("x", "both"):
         ax.set_xscale("log")
 
-    # ── 12. Set axis labels (default to column names if not explicitly provided) ──
-    # Heatmaps use tick labels instead of axis labels, so skip auto-labeling
+    # ── 13. Set axis labels (default to column names if not explicitly provided) ──
+    # Heatmaps use tick labels instead of axis labels, so skip auto-labeling.
+    # For horizontal bars the visual axes are flipped: values are on x, categories
+    # on y, so the category column labels the y-axis and the value column labels x.
     if resolved_kind != "heatmap":
-        effective_x_label = x_label or x_col
-        effective_y_label = y_label or (y_cols[0] if len(y_cols) == 1 else None)
+        category_label = x_label or x_col
+        value_label = y_label or (y_cols[0] if len(y_cols) == 1 else None)
+        if effective_horizontal and resolved_kind == "bar":
+            effective_x_label, effective_y_label = value_label, category_label
+        else:
+            effective_x_label, effective_y_label = category_label, value_label
         if effective_x_label and not ax.get_xlabel():
             ax.set_xlabel(effective_x_label)
         if effective_y_label and not ax.get_ylabel():
             ax.set_ylabel(effective_y_label)
 
-    # ── 13. Generate legend text ─────────────────────────────────────────
+    # ── 14. Generate legend text ─────────────────────────────────────────
     aggregation_desc: str | None = None
     data_summary = _data_summary(table, x_col, y_cols, resolved_kind)
 
@@ -202,7 +253,7 @@ def figure(
         aggregation=aggregation_desc,
     )
 
-    # ── 14. Save figure ──────────────────────────────────────────────────
+    # ── 15. Save figure ──────────────────────────────────────────────────
     output_path = savefig(fig, output, dpi=dpi)
 
     return FigureResult(
@@ -234,6 +285,7 @@ def _dispatch_plot(
     x_label: str | None,
     y_label: str | None,
     resolved_sort: str | None,
+    horizontal: bool = False,
 ) -> None:
     """Dispatch to the appropriate plot function based on kind."""
     sort_by_value = resolved_sort == "value"
@@ -322,6 +374,7 @@ def _dispatch_plot(
                     ylabel=y_label,
                     error_values=error_values,
                     sort_by_value=sort_by_value,
+                    horizontal=horizontal,
                 )
             else:
                 # Auto-aggregate
@@ -337,6 +390,7 @@ def _dispatch_plot(
                     ylabel=y_label,
                     error_values=errors,
                     sort_by_value=sort_by_value,
+                    horizontal=horizontal,
                 )
             return
 
@@ -372,6 +426,7 @@ def _dispatch_plot(
         colors=colors,
         ylabel=y_label,
         sort_by_value=sort_by_value,
+        horizontal=horizontal,
     )
 
 
