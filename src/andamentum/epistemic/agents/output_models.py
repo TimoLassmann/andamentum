@@ -863,51 +863,6 @@ class SubInvestigation(BaseModel):
     )
 
 
-class ReflectOnGapsOutput(BaseModel):
-    """Output from epistemic_reflect_on_gaps agent.
-
-    After running the initial decomposition's children and combining
-    their verdicts, this agent decides whether the current children
-    are adequate to settle the parent question, or whether additional
-    sub-investigations are needed to close gaps revealed by the
-    children's outcomes.
-
-    Reflection is bounded by a per-run cap (default 1 round) — this is
-    a corrective mechanism for under-decomposition, not a search loop.
-    """
-
-    sufficient: bool = Field(
-        description=(
-            "True if the current sub-investigations and their verdicts are "
-            "adequate to settle the parent question. False if a gap remains."
-        )
-    )
-    gap_description: str = Field(
-        description=(
-            "When sufficient=False: one to two sentences naming the gap that "
-            "the additional sub-investigations are intended to close. When "
-            "sufficient=True: empty string."
-        )
-    )
-    additional_sub_investigations: list[SubInvestigation] = Field(
-        default_factory=list,
-        description=(
-            "Up to 3 new sub-investigations to spawn. Each follows the same "
-            "schema as the original decomposition: id (assigned by the "
-            "operation, not the agent — leave as a placeholder), seed_claim, "
-            "rationale, weight. Empty when sufficient=True. Do not duplicate "
-            "any existing sub-investigation; the goal is to *complement*."
-        ),
-        max_length=3,
-    )
-    rationale: str = Field(
-        description=(
-            "1-2 sentences explaining how the proposed additions (or the "
-            "decision to add nothing) close the gap or confirm sufficiency."
-        )
-    )
-
-
 class QuestionDecomposition(BaseModel):
     """Top-down decomposition of a research question into sub-investigations.
 
