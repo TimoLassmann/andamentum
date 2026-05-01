@@ -322,6 +322,16 @@ class InvestigateClaimOperation(BaseOperation):
                 if not query:
                     continue
 
+                # Propagate sub_investigation_id from the originating
+                # Claim. Mirrors the gatherer-extras propagation in
+                # ExtractEvidenceOperation: under multi-seed-claim, every
+                # Evidence belonging to a sub-investigation must carry
+                # the sub_investigation_id tag so MultiSeedClaim's
+                # per-claim filter sees it on later passes (e.g. after a
+                # future reflection round adds new sub-investigations).
+                # Without this, investigation-derived evidence for a
+                # tagged claim is silently invisible to the per-claim
+                # pool.
                 evidence_stub = Evidence(
                     objective_id=claim.objective_id,
                     source_type=source_type,
@@ -329,6 +339,7 @@ class InvestigateClaimOperation(BaseOperation):
                     extracted=False,
                     created_by="investigate_claim",
                     depends_on_claim_id=claim.entity_id,
+                    sub_investigation_id=claim.sub_investigation_id,
                 )
                 await self.repo.save(evidence_stub)
 

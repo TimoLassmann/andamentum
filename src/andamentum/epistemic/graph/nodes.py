@@ -573,6 +573,28 @@ class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
                 "objective",
                 "multi_seed_claim",
             )
+            # Degenerate-decomposition fallback: if MultiSeedClaim minted
+            # zero claims (e.g. DecomposeQuestion produced no usable
+            # sub_investigations, or every sub had empty seed_claim), the
+            # graph would otherwise proceed with no claims at all and
+            # produce a silent empty report. Fall back to ProposeClaims —
+            # the v0.1 open-research path — so the inquiry still has
+            # something to verify.
+            claims_after = await deps.repo.query("claim", objective_id=oid)
+            if not [c for c in claims_after if not c.abandoned]:
+                logger.warning(
+                    "MultiSeedClaim minted no claims for objective %s; "
+                    "falling back to ProposeClaims to avoid empty inquiry",
+                    oid[:12],
+                )
+                await _run_op(
+                    ProposeClaimsOperation,
+                    deps,
+                    state,
+                    oid,
+                    "objective",
+                    "propose_claims",
+                )
         else:
             await _run_op(
                 ProposeClaimsOperation, deps, state, oid, "objective", "propose_claims"
@@ -1661,6 +1683,7 @@ class CombineClaimVerdicts(
         from .combination import (
             combine_claim_verdicts,
             extract_weights_from_decomposition,
+            resolve_combination_rule,
         )
         from ..entities.objective import Objective
 
@@ -1711,7 +1734,7 @@ class CombineClaimVerdicts(
                 )
             return CheckCompletion()
 
-        rule = objective.combination_rule or "AND"
+        rule = resolve_combination_rule(objective) or "AND"
         weights = extract_weights_from_decomposition(
             objective.decomposition, ordered_claims
         )

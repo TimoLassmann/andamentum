@@ -326,10 +326,9 @@ async def compute_posterior(
     # ``combine_claim_verdicts`` for decomposed runs so callers see one
     # consistent number.
     decomposition = getattr(objective, "decomposition", None) or {}
-    combination_rule = (
-        getattr(objective, "combination_rule", None)
-        or decomposition.get("combination_rule")
-    )
+    from .graph.combination import resolve_combination_rule
+
+    combination_rule = resolve_combination_rule(objective)
     use_rule_aware = bool(integrated_claims) and bool(combination_rule)
 
     if use_rule_aware:
@@ -364,6 +363,7 @@ async def compute_posterior(
             weights = extract_weights_from_decomposition(
                 decomposition, ordered
             )
+        assert combination_rule is not None  # guarded by use_rule_aware
         combined = combine_claim_verdicts(ordered, combination_rule, weights=weights)
 
         if combined.posterior is not None:

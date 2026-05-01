@@ -38,6 +38,7 @@ keeping the two entry points consistent.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from ..entities.claim import Claim
 
@@ -232,6 +233,28 @@ def _weighted_mean(
         weighted,
         f"weighted mean (weights={[round(w, 2) for _, w in paired]})",
     )
+
+
+def resolve_combination_rule(objective: Any) -> str | None:
+    """Single source of truth for the combination_rule lookup.
+
+    Reads from BOTH ``objective.combination_rule`` (the dedicated
+    Objective field) AND ``objective.decomposition["combination_rule"]``
+    (the rule the decomposer wrote into the decomposition dict).
+    Returns the first non-None value, or None if neither is set.
+
+    Used by both ``CombineClaimVerdicts`` (graph node) and
+    ``compute_posterior`` (confidence.py) so the two paths can never
+    disagree on which rule to apply. Without this helper, one path
+    might default to "AND" while the other reads OR/WEIGHTED_AND/UNION
+    from the decomposition dict — silently producing different
+    posteriors on the same claims.
+    """
+    rule = getattr(objective, "combination_rule", None)
+    if rule:
+        return rule
+    decomposition = getattr(objective, "decomposition", None) or {}
+    return decomposition.get("combination_rule")
 
 
 def extract_weights_from_decomposition(
