@@ -1388,14 +1388,19 @@ class RunVerification(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
-        # Phase 2b of the efficiency plan: enumerate all (claim, track)
-        # work items first, then dispatch them concurrently. Each track
-        # writes only to its own claim's fields — even the pairwise
-        # tracks (contrastive, consistency) read siblings but write self
-        # — so the work items are independent and safe to gather. The
-        # AgentRunner's global semaphore bounds in-flight LLM calls
-        # (defaults: 1 for Ollama, 8 for cloud).
-        work_items: list[tuple[type, str, str]] = []  # (op_class, claim_id, op_name)
+        # Phase 2b of the efficiency plan REVERTED: tracks run serially
+        # per claim, not concurrently. The parallelization caused a
+        # quality regression — running all (claim, track) pairs
+        # concurrently lets adversarial counter-evidence accumulate
+        # before any single track's TMS sweep can fire, which cascades
+        # into more revalidate→demote→re-promote cycles. The serial
+        # version naturally paces this: each track runs, its post-state
+        # is observed, the next track sees the post-state. Parallel
+        # versions all see the pre-state and cumulatively over-invalidate.
+        # The fix isn't impossible (e.g. group tracks that don't write
+        # claim state vs those that do), but it's a non-trivial design
+        # change; reverting to serial keeps the system correct while we
+        # think about how to safely re-introduce concurrency here.
 
         for claim in all_claims:
             if claim.abandoned or claim.stage != ClaimStage.SUPPORTED:
@@ -1423,15 +1428,14 @@ class RunVerification(Node):
                 if getattr(claim, checked_field, False):
                     continue
 
-                work_items.append((op_class, claim.entity_id, op_name))
-
-        if work_items:
-            await asyncio.gather(
-                *(
-                    _run_op(op_class, deps, state, claim_id, "claim", op_name)
-                    for op_class, claim_id, op_name in work_items
+                await _run_op(
+                    op_class,
+                    deps,
+                    state,
+                    claim.entity_id,
+                    "claim",
+                    op_name,
                 )
-            )
 
         # TMS sweep: adversarial search may have created contradicting
         # evidence that invalidates existing evidence or triggers claim
