@@ -664,7 +664,7 @@ async def validate_promotion(
             reasons.append(
                 "Falsification criteria required but no predictions generated"
             )
-        elif not any(p.get("failure_criteria") for p in claim.predictions):
+        elif not any(p.failure_criteria for p in claim.predictions):
             reasons.append("Predictions exist but none have falsification criteria")
 
     if overrides.get("requires_fact_value_separation"):

@@ -107,18 +107,23 @@ class GeneratePredictionOperation(BaseOperation):
                     claim_statement=claim.statement,
                 )
 
-                prediction_dict = {
-                    "statement": spec_result.expected_observation,
-                    "type": class_result.prediction_type,
-                    "specificity": float(class_result.specificity),
-                    "success_criteria": spec_result.expected_observation,
-                    "failure_criteria": fals_result.falsification_criterion,
-                    "time_horizon": spec_result.timeframe,
-                    "conditions": spec_result.conditions,
-                    "measurability": spec_result.measurability,
-                    "observation_type": aspect.observation_type,
-                }
-                claim.predictions.append(prediction_dict)
+                # Phase 6 (deferred) of the Move-3 plan: typed Prediction
+                # replaces the previous list-of-dicts shape.
+                from ..entities.prediction import Prediction
+
+                claim.predictions.append(
+                    Prediction(
+                        statement=spec_result.expected_observation,
+                        type=class_result.prediction_type,
+                        specificity=float(class_result.specificity),
+                        success_criteria=spec_result.expected_observation,
+                        failure_criteria=fals_result.falsification_criterion,
+                        time_horizon=spec_result.timeframe,
+                        conditions=spec_result.conditions,
+                        measurability=spec_result.measurability,
+                        observation_type=aspect.observation_type,
+                    )
+                )
 
         claim.predictions_generated = True
         await self.repo.save(claim)
