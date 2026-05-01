@@ -20,6 +20,18 @@ from ..entities import (
 )
 
 
+# Phase 1 of the efficiency plan: cap adversarial queries per claim.
+# Total = MAX_ADVERSARIAL_TEMPLATES (deterministic, free) +
+#         MAX_ADVERSARIAL_FRAMINGS (LLM-generated, paid).
+# Each query is then sent through the gatherer and each hit is
+# evaluated by an LLM, so total downstream cost scales with the sum
+# of these. Splitting 3 + 2 = 5 keeps both deterministic coverage of
+# common counter-evidence patterns AND LLM-driven diversity, while
+# halving downstream evaluation cost vs. the previous 5+3 = 8.
+MAX_ADVERSARIAL_TEMPLATES = 3
+MAX_ADVERSARIAL_FRAMINGS = 2
+
+
 class AdversarialSearchOperation(BaseOperation):
     """Seek disconfirming evidence for a claim.
 
@@ -62,23 +74,30 @@ class AdversarialSearchOperation(BaseOperation):
                 message="Already checked",
             )
 
-        # Step 1: Generate template-based adversarial queries (deterministic)
+        # Step 1: Generate template-based adversarial queries (deterministic).
+        # Capped at MAX_ADVERSARIAL_TEMPLATES per Phase 1 of the
+        # efficiency plan.
         template_queries = generate_adversarial_queries(
             claim.statement,
-            max_queries=5,
+            max_queries=MAX_ADVERSARIAL_TEMPLATES,
         )
 
-        # Step 2: Generate agent-based adversarial queries (narrow agent, 3 framings)
-        # Each framing runs independently in parallel — no shared context between
-        # calls. Diversity comes from the different framings, not from seeing prior
-        # outputs (which would create anchoring per Kahneman's independence principle).
+        # Step 2: Generate agent-based adversarial queries (narrow agent).
+        # Each framing runs independently in parallel — no shared context
+        # between calls. Diversity comes from the different framings, not
+        # from seeing prior outputs (which would create anchoring per
+        # Kahneman's independence principle). Phase 1 of the efficiency
+        # plan reduces from 3 framings to MAX_ADVERSARIAL_FRAMINGS=2 to
+        # halve downstream evaluation cost; the two retained framings
+        # (contradicting_evidence, alternative_explanations) cover the
+        # most common counter-argument shapes.
         agent_queries: list[str] = []
         if self.agent_runner:
             framings = [
                 "contradicting_evidence",
                 "alternative_explanations",
                 "replication_failures",
-            ]
+            ][:MAX_ADVERSARIAL_FRAMINGS]
 
             async def _generate_one(framing: str) -> str:
                 cq_result = await self.run_agent(

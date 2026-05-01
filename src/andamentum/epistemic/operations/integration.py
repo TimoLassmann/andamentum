@@ -138,7 +138,16 @@ async def _build_evidence_brief(
 # ── Stage 1: Enumerate candidates (Peirce, generative) ───────────────
 
 
-_CANDIDATE_IDS = ["A", "B", "C", "D", "E"]
+# Phase 1 of the efficiency plan: cap IBE candidates from 5 to 3.
+# Three is enough to support the IBE chain's comparative role
+# (Lipton): {supports / contradicts / insufficient} as default seeds,
+# or up to three LLM-enumerated candidates that diversify those
+# directions. The 4th and 5th slots historically produced minor
+# variations on already-explored options, so the marginal explanatory
+# value per LLM call drops sharply at slot 4. Each surviving candidate
+# is scored on loveliness + likeliness (2 LLM calls per candidate per
+# claim), so the cap halves the IBE chain cost.
+_CANDIDATE_IDS = ["A", "B", "C"]
 _MIN_VIABLE_CANDIDATES = 2
 
 
