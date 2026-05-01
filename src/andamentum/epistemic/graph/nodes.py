@@ -1543,6 +1543,19 @@ class ResolveUncertainties(Node):
         blocking = [u for u in all_uncertainties if u.is_blocking]
 
         if not blocking:
+            # Rescrutiny check FIRST — must run before the early return
+            # to EnumerateCandidates / PromoteToSupported. Without this
+            # ordering, claims that TMS demoted (e.g. soft-promoted
+            # claim → adversarial counter-evidence → revalidate demote
+            # → claims_needing_rescrutiny.add()) are stranded: the
+            # subsequent EnumerateCandidates / PromoteToSupported
+            # filters require ``stage == SUPPORTED``, which the demoted
+            # claim no longer satisfies. The claim never re-enters the
+            # inquiry cycle, never gets re-promoted, and the IBE chain
+            # never runs on it. This is the IBE-skip bug surfaced in
+            # the Phase 2 benchmark of the Move-3 graph contracts work.
+            if state.claims_needing_rescrutiny:
+                return Scrutinize()
             if self.next_on_clear == "promote":
                 return PromoteToSupported()
             return EnumerateCandidates()
