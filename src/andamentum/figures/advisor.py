@@ -190,6 +190,66 @@ def validate_kind(
     return warnings
 
 
+def recommend_horizontal_bars(categories: list[str]) -> tuple[bool, str]:
+    """Decide whether a bar chart with these category labels should be horizontal.
+
+    Long categorical labels in vertical bars overlap into illegible mush —
+    the canonical "label soup" problem. Horizontal bars put labels at the
+    end of each bar where they have room to breathe.
+
+    Heuristics (any one triggers horizontal):
+      - 7+ categories AND any label ≥ 10 chars
+      - any label ≥ 20 chars (long labels never lay out well vertically)
+
+    Args:
+        categories: The category labels for the bar chart.
+
+    Returns:
+        ``(should_use_horizontal, reason)``. ``reason`` is a human-readable
+        explanation when ``should_use_horizontal`` is True (suitable for
+        an advisor note); empty string otherwise.
+    """
+    n = len(categories)
+    max_chars = max((len(c) for c in categories), default=0)
+
+    if n >= 7 and max_chars >= 10:
+        return True, (
+            f"{n} categories with labels up to {max_chars} chars — "
+            "horizontal bars avoid label overlap"
+        )
+    if max_chars >= 20:
+        return True, (
+            f"category labels up to {max_chars} chars — horizontal bars "
+            "give long labels room to breathe"
+        )
+    return False, ""
+
+
+def recommend_label_rotation(categories: list[str]) -> float:
+    """Decide x-tick label rotation (degrees) for vertical bar charts.
+
+    Only relevant when bars are vertical. Returns 0 when no rotation is
+    needed; 30° for moderate label lengths or counts; 45° for tight cases.
+
+    Args:
+        categories: The category labels.
+
+    Returns:
+        Rotation in degrees (0, 30, or 45).
+    """
+    n = len(categories)
+    max_chars = max((len(c) for c in categories), default=0)
+
+    # Already-tight case where horizontal would be even better, but caller
+    # asked for vertical — rotate hard.
+    if max_chars >= 12 or n >= 8:
+        return 45.0
+    # Moderate case — rotate enough to stop overlap on most fonts.
+    if max_chars >= 6 or n >= 5:
+        return 30.0
+    return 0.0
+
+
 def _n_per_group(table: DataTable, cat_col: str, val_col: str) -> int:
     """Median number of values per category."""
     grouped = table.values_per_category(cat_col, val_col)
