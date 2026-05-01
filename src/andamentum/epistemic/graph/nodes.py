@@ -1961,9 +1961,9 @@ class CombineClaimVerdicts(Node):
         # Pull claims in decomposition order so the weight alignment is
         # correct. Multi-seed-claim sets sub_investigation_id on each
         # Claim; we sort by the order in decomposition.sub_investigations.
+        # Phase 6 of the Move-3 plan: typed Decomposition access.
         sub_ids_in_order = [
-            s.get("id")
-            for s in (objective.decomposition.get("sub_investigations") or [])
+            s.id for s in objective.decomposition.sub_investigations
         ]
         all_claims = await deps.repo.query(
             "claim", objective_id=state.objective_id
@@ -2013,21 +2013,22 @@ class CombineClaimVerdicts(Node):
                 "sub_investigation_id not in current decomposition)"
             )
 
-        # Stash the serialized CombinedVerdict on the Objective so the
-        # snapshot freeze step picks it up. Using a dict keyed under
-        # "combined_verdict" inside decomposition keeps the existing
-        # decomposition shape (no new top-level Objective field).
-        objective.decomposition["combined_verdict"] = {
-            "posterior": combined.posterior,
-            "verdict": combined.verdict,
-            "combination_rule": combined.combination_rule,
-            "claim_posteriors": combined.claim_posteriors,
-            "n_capped": combined.n_capped,
-            "n_no_verdict": combined.n_no_verdict,
-            "n_abandoned": combined.n_abandoned,
-            "n_orphan": n_orphan,
-            "explanation": explanation,
-        }
+        # Stash the CombinedVerdict on the Decomposition so the
+        # snapshot freeze step picks it up. Phase 6 of the Move-3 plan:
+        # typed CombinedVerdictData replaces the previous dict shape.
+        from ..entities.decomposition import CombinedVerdictData
+
+        objective.decomposition.combined_verdict = CombinedVerdictData(
+            posterior=combined.posterior,
+            verdict=combined.verdict,
+            combination_rule=combined.combination_rule,
+            claim_posteriors=combined.claim_posteriors,
+            n_capped=combined.n_capped,
+            n_no_verdict=combined.n_no_verdict,
+            n_abandoned=combined.n_abandoned,
+            n_orphan=n_orphan,
+            explanation=explanation,
+        )
         await deps.repo.save(objective)
 
         if deps.verbose:

@@ -136,11 +136,13 @@ class FreezeSnapshotOperation(BaseOperation):
         # Carry the combined verdict from CombineClaimVerdicts (Phase 4)
         # onto the snapshot so SynthesizeReport can present a rule-aware
         # combined view alongside the per-claim narrative. Stored under
-        # objective.decomposition["combined_verdict"] by the graph node;
-        # promoted to a top-level snapshot field here.
+        # objective.decomposition.combined_verdict by the graph node;
+        # promoted to a top-level snapshot field here. Serialised to
+        # dict for the snapshot's persistence layer.
+        # Phase 6 of the Move-3 plan: typed Decomposition access.
         combined_verdict = None
-        if objective.decomposition:
-            combined_verdict = objective.decomposition.get("combined_verdict")
+        if objective.decomposition and objective.decomposition.combined_verdict:
+            combined_verdict = objective.decomposition.combined_verdict.model_dump()
 
         # Create snapshot
         snapshot = Snapshot(

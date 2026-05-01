@@ -10,8 +10,6 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Objective, Evidence entities
 """
 
-from typing import Any
-
 from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
@@ -294,17 +292,18 @@ class PlanTaskOperation(BaseOperation):
         # contradicts B" simultaneously).
         created_evidence: list[str] = []
 
-        sub_investigations: list[dict[str, Any]] = []
-        if objective.decomposition:
-            sub_investigations = (
-                objective.decomposition.get("sub_investigations") or []
-            )
+        # Phase 6 of the Move-3 plan: typed Decomposition access.
+        sub_investigations = (
+            objective.decomposition.sub_investigations
+            if objective.decomposition
+            else []
+        )
 
         if sub_investigations:
             # Per-(sub_investigation, provider) query formulation.
             for sub in sub_investigations:
-                sub_id = sub.get("id")
-                seed_claim_text = sub.get("seed_claim", "")
+                sub_id = sub.id
+                seed_claim_text = sub.seed_claim
                 question_text = seed_claim_text or clarified
                 for provider in providers:
                     query = question_text  # fallback if no agent_runner
@@ -452,24 +451,27 @@ class DecomposeQuestionOperation(BaseOperation):
             question_type=question_type,
         )
 
-        # Persist on the parent objective so SpawnSubObjectivesOperation
-        # can read it. Stored as a plain dict so entities/ stays free of
-        # dependencies on agents/output_models.py — and so the same code
-        # path works for pydantic models in production and for
-        # SimpleNamespace-shaped mocks in tests.
-        objective.decomposition = {
-            "sub_investigations": [
-                {
-                    "id": s.id,
-                    "seed_claim": s.seed_claim,
-                    "rationale": s.rationale,
-                    "weight": getattr(s, "weight", 1.0),
-                }
+        # Persist a typed Decomposition on the parent objective. Phase 6
+        # of the Move-3 plan: this used to be a raw dict; now it's a
+        # Decomposition pydantic model so consumers access fields by name
+        # rather than via dict.get(...). The conversion mirrors the
+        # agent-output schema (QuestionDecomposition) into the entity
+        # data model (Decomposition) — same shape, separate concerns.
+        from ..entities.decomposition import Decomposition, SubInvestigation
+
+        objective.decomposition = Decomposition(
+            sub_investigations=[
+                SubInvestigation(
+                    id=s.id,
+                    seed_claim=s.seed_claim,
+                    rationale=s.rationale,
+                    weight=getattr(s, "weight", 1.0),
+                )
                 for s in result.sub_investigations
             ],
-            "combination_rule": result.combination_rule,
-            "rationale": result.rationale,
-        }
+            combination_rule=result.combination_rule,
+            rationale=result.rationale,
+        )
         objective.combination_rule = result.combination_rule
         await self.repo.save(objective)
 
