@@ -18,13 +18,30 @@ Architecture: shared infrastructure, lazy pydantic-ai imports
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# Global concurrency caps for in-flight LLM calls per AgentRunner.
+# Local models (Ollama) serialise inference per-process anyway — sending
+# concurrent requests just queues them upstream and risks timeout
+# cascades; the conservative default of 1 forces strict serial execution
+# matching the upstream behaviour. Cloud models can sustain real
+# concurrency, so the default is higher; tune via the env var below for
+# specific tier limits or testing.
+#
+# Override with ``ANDAMENTUM_LLM_CONCURRENCY`` (integer). Applies to all
+# AgentRunner instances created after the env var is set.
+_DEFAULT_LOCAL_CONCURRENCY = 1
+_DEFAULT_CLOUD_CONCURRENCY = 8
+_CONCURRENCY_ENV_VAR = "ANDAMENTUM_LLM_CONCURRENCY"
 
 
 @dataclass(frozen=True)
@@ -62,6 +79,47 @@ class AgentRunner:
         self._model_input = model  # original spec, kept for introspection
         self.model = resolve_model(model) if isinstance(model, str) else model
         self._cache: dict[str, Any] = {}
+
+        # Global semaphore bounding in-flight LLM calls. Auto-sized
+        # based on whether the model is local (Ollama) or cloud:
+        # local defaults to 1 (strict serial — Ollama serialises
+        # inference anyway), cloud defaults to 8 (sustainable for most
+        # cloud tiers). Override with $ANDAMENTUM_LLM_CONCURRENCY for
+        # specific limits.
+        env_override = os.environ.get(_CONCURRENCY_ENV_VAR)
+        if env_override is not None:
+            try:
+                concurrency = max(1, int(env_override))
+            except ValueError:
+                logger.warning(
+                    "Invalid %s=%r; falling back to auto-detected default",
+                    _CONCURRENCY_ENV_VAR,
+                    env_override,
+                )
+                concurrency = (
+                    _DEFAULT_LOCAL_CONCURRENCY
+                    if self.is_local
+                    else _DEFAULT_CLOUD_CONCURRENCY
+                )
+        else:
+            concurrency = (
+                _DEFAULT_LOCAL_CONCURRENCY
+                if self.is_local
+                else _DEFAULT_CLOUD_CONCURRENCY
+            )
+        self._concurrency = concurrency
+        self._semaphore = asyncio.Semaphore(concurrency)
+        logger.info(
+            "AgentRunner initialised with concurrency=%d (model=%s, local=%s)",
+            concurrency,
+            self._model_input,
+            self.is_local,
+        )
+
+    @property
+    def concurrency(self) -> int:
+        """Maximum in-flight LLM calls. Read-only."""
+        return self._concurrency
 
     @property
     def is_local(self) -> bool:
@@ -122,15 +180,18 @@ class AgentRunner:
                     agent.output_validator(v)
             self._cache[defn.name] = agent
 
-        try:
-            result = await self._cache[defn.name].run(user_message)
-            return result.output
-        except (UnexpectedModelBehavior, ModelHTTPError):
-            logger.info(
-                "Agent %s: tool-based output failed, falling back to PromptedOutput",
-                defn.name,
-            )
-            return await self._run_prompted_fallback(defn, user_message, validators)
+        async with self._semaphore:
+            try:
+                result = await self._cache[defn.name].run(user_message)
+                return result.output
+            except (UnexpectedModelBehavior, ModelHTTPError):
+                logger.info(
+                    "Agent %s: tool-based output failed, falling back to PromptedOutput",
+                    defn.name,
+                )
+                return await self._run_prompted_fallback(
+                    defn, user_message, validators
+                )
 
     async def _run_prompted_fallback(
         self,

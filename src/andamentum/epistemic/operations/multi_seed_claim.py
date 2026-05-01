@@ -142,27 +142,38 @@ class MultiSeedClaimOperation(BaseOperation):
             # Evidence is linked to exactly ONE claim under per-claim
             # pool semantics, so support_judgment-as-single-scalar is
             # correct here.
-            if self.agent_runner:
-                for ev in claim_evidence:
-                    if ev.support_judgment is not None:
-                        # Judgment may already be set (e.g. from a prior
-                        # mint of this sub-investigation that got rolled
-                        # back). Skip — re-judging would just incur an
-                        # LLM call without changing semantics.
-                        continue
-                    if not ev.extracted_content:
-                        continue
+            #
+            # Phase 2a of the efficiency plan: judges across the
+            # claim_evidence pool are independent (each writes a
+            # different Evidence entity), so they run concurrently
+            # via asyncio.gather. The AgentRunner's global semaphore
+            # bounds in-flight calls (defaults: 1 for Ollama, 8 for
+            # cloud) so we don't hammer local servers.
+            if self.agent_runner is not None:
+                import asyncio
+
+                runner = self.agent_runner  # narrow for closure
+                evs_to_judge = [
+                    ev
+                    for ev in claim_evidence
+                    if ev.support_judgment is None and ev.extracted_content
+                ]
+
+                async def _judge_one(ev: Evidence) -> None:
                     judgment = await _judge(
                         claim_statement=claim.statement,
                         claim_scope=claim.scope,
                         evidence_content=ev.extracted_content,
                         evidence_source=f"{ev.source_type}: {ev.source_ref}",
-                        runner=self.agent_runner,
+                        runner=runner,
                     )
                     ev.support_judgment = judgment.verdict
                     ev.judgment_reasoning = judgment.reasoning
                     await self.repo.save(ev)
-                    judged_total += 1
+
+                if evs_to_judge:
+                    await asyncio.gather(*(_judge_one(ev) for ev in evs_to_judge))
+                    judged_total += len(evs_to_judge)
 
         # Mark objective as having claims proposed (same contract as
         # SeedClaim / ProposeClaims) so CreateClaims can advance.
