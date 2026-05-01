@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
+from .prediction import Prediction
 
 
 class CandidateRecord(BaseModel):
@@ -254,10 +255,16 @@ class Claim(EpistemicEntity):
         default=False, description="Decision recorded for this actionable claim"
     )
 
-    # Prediction storage
-    predictions: list[dict[str, Any]] = Field(
+    # Prediction storage. Phase 6 of the Move-3 plan: previously
+    # ``list[dict[str, Any]]``; now a typed ``list[Prediction]`` so
+    # consumers (gates.py, render, audit) access fields by attribute
+    # rather than via ``dict.get(...)``.
+    predictions: list[Prediction] = Field(
         default_factory=list,
-        description="Generated testable predictions: [{statement, type, time_horizon, specificity}]",
+        description=(
+            "Generated testable predictions, one per call to "
+            "GeneratePredictionOperation."
+        ),
     )
 
     # Abductive integration (Peirce + Kahneman).
@@ -385,7 +392,7 @@ class Claim(EpistemicEntity):
             "argument_analyzed": self.argument_analyzed,
             "predictions_generated": self.predictions_generated,
             "decision_recorded": self.decision_recorded,
-            "predictions": self.predictions,
+            "predictions": [p.model_dump() for p in self.predictions],
             "supersedes_id": self.supersedes_id,
             "superseded_by_id": self.superseded_by_id,
             "modification_count": self.modification_count,
@@ -457,7 +464,9 @@ class Claim(EpistemicEntity):
             argument_analyzed=metadata.get("argument_analyzed", False),
             predictions_generated=metadata.get("predictions_generated", False),
             decision_recorded=metadata.get("decision_recorded", False),
-            predictions=metadata.get("predictions", []),
+            predictions=[
+                Prediction.from_dict(p) for p in metadata.get("predictions", [])
+            ],
             integrated_assessment=metadata.get("integrated_assessment"),
             integrated_confidence=metadata.get("integrated_confidence"),
             integrated_reasoning=metadata.get("integrated_reasoning"),
