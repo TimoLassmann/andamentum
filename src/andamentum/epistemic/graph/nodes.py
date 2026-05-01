@@ -13,9 +13,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Union
 
-from pydantic_graph import BaseNode, End, Graph, GraphRunContext
+from pydantic_graph import End, Graph, GraphRunContext
 
 from .base import Node
+from .invariants import no_stranded_claims
 from .state import EpistemicGraphState
 from .deps import EpistemicDeps
 from .result import EpistemicResult
@@ -352,8 +353,16 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
 
 
 @dataclass
-class PrepareObjective(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Run clarification, classification, and conceptual analysis on the objective."""
+class PrepareObjective(Node):
+    """Run clarification, classification, and conceptual analysis on the objective.
+
+    Phase 5 of the Move-3 plan. The graph entry point.
+    """
+
+    reads = frozenset({"objective_id", "skip_preplanning"})
+    writes = frozenset({"question_type"})
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -417,7 +426,7 @@ class PrepareObjective(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicRes
 
 
 @dataclass
-class Decompose(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class Decompose(Node):
     """Optionally run DecomposeQuestionOperation before PlanEvidence.
 
     Gated by ``state.decompose``: when False (the default open-research
@@ -437,7 +446,14 @@ class Decompose(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
 
     Idempotent: ``DecomposeQuestionOperation`` short-circuits if
     ``objective.decomposition`` is already set.
+
+    Phase 5 of the Move-3 plan.
     """
+
+    reads = frozenset({"objective_id", "decompose"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -462,8 +478,16 @@ class Decompose(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
 
 
 @dataclass
-class PlanEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Create evidence stubs via plan_task."""
+class PlanEvidence(Node):
+    """Create evidence stubs via plan_task.
+
+    Phase 5 of the Move-3 plan.
+    """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -490,8 +514,18 @@ class PlanEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
 
 
 @dataclass
-class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Extract content from all unextracted evidence stubs."""
+class ExtractEvidence(Node):
+    """Extract content from all unextracted evidence stubs.
+
+    Phase 5 of the Move-3 plan. Writes
+    ``consecutive_empty_extractions`` and ``retrieval_failed`` via the
+    ``_update_retrieval_health`` helper.
+    """
+
+    reads = frozenset({"objective_id", "claims_created"})
+    writes = frozenset({"consecutive_empty_extractions", "retrieval_failed"})
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -536,7 +570,7 @@ class ExtractEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class CreateClaims(Node):
     """Create claims — three branches:
 
     1. ``claim_to_verify`` set → SeedClaim (one claim from user's text)
@@ -547,7 +581,14 @@ class CreateClaims(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
     Multi-seed-claim is the v0.3 collapse of decomposition spawning into
     the v0.1 multi-claim shape: one Objective hosts N Claims, the graph
     runs once over them, multi-claim convergence dynamics apply.
+
+    Phase 5 of the Move-3 plan.
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset({"claim_ids", "claims_created"})
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -794,8 +835,18 @@ class Investigate(Node):
 
 
 @dataclass
-class ExtractNewEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Extract content from newly created evidence stubs, then re-enter scrutiny."""
+class ExtractNewEvidence(Node):
+    """Extract content from newly created evidence stubs, then re-enter scrutiny.
+
+    Phase 5 of the Move-3 plan. Writes
+    ``consecutive_empty_extractions`` and ``retrieval_failed`` via the
+    ``_update_retrieval_health`` helper.
+    """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset({"consecutive_empty_extractions", "retrieval_failed"})
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1854,9 +1905,7 @@ class PromoteSupported(Node):
 
 
 @dataclass
-class CombineClaimVerdicts(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class CombineClaimVerdicts(Node):
     """Apply the decomposition's combination_rule over per-claim integration
     verdicts and stash the result on the parent Objective for Synthesize.
 
@@ -1881,7 +1930,15 @@ class CombineClaimVerdicts(
     → SynthesizeReport without needing a separate field.
 
     Pure / deterministic — no LLM call. Safe to re-enter.
+
+    Phase 5 of the Move-3 plan. Empty operations: this node uses
+    ``combine_claim_verdicts`` directly as a function, not via _run_op.
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1986,8 +2043,29 @@ class CombineClaimVerdicts(
 
 
 @dataclass
-class CheckCompletion(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Check whether any non-abandoned claims remain and route accordingly."""
+class CheckCompletion(Node):
+    """Check whether any non-abandoned claims remain and route accordingly.
+
+    Phase 5 of the Move-3 plan. Read-only: this node inspects state
+    and dispatches no operations. Many state fields are read because
+    it constructs the EpistemicResult terminal value when no claims
+    remain.
+    """
+
+    reads = frozenset(
+        {
+            "retrieval_failed",
+            "objective_id",
+            "successful",
+            "failed",
+            "errors",
+            "operations_log",
+            "quarantined",
+        }
+    )
+    writes = frozenset()
+    operations = frozenset()
+    post_invariants = (no_stranded_claims,)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2038,8 +2116,31 @@ class CheckCompletion(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class Synthesize(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Freeze snapshot and synthesize the final report."""
+class Synthesize(Node):
+    """Freeze snapshot and synthesize the final report.
+
+    Phase 5 of the Move-3 plan. The terminal node before End[...].
+    Carries the load-bearing ``no_stranded_claims`` invariant: by the
+    time the graph reaches Synthesize, no Claim should be at SUPPORTED
+    with integrated_assessment=None and not in verification_done.
+    Violation means the IBE chain was bypassed for a claim that
+    should have entered it — the recurring routing-bug class.
+    """
+
+    reads = frozenset(
+        {
+            "objective_id",
+            "successful",
+            "failed",
+            "errors",
+            "operations_log",
+            "quarantined",
+            "retrieval_failed",
+        }
+    )
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = (no_stranded_claims,)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2255,4 +2356,67 @@ PromoteSupported.operations = frozenset(
         GeneratePredictionOperation,
         RecordDecisionOperation,
     }
+)
+
+
+# ── Phase 5: pre-claim phases + terminals ────────────────────────────
+
+from ..operations.preplanning import (  # noqa: E402
+    ClarifyQuestionOperation,
+    ClassifyQuestionOperation,
+    ConceptualAnalysisOperation,
+    DecomposeQuestionOperation,
+    PlanTaskOperation,
+)
+from ..operations.evidence import (  # noqa: E402
+    ExtractEvidenceOperation,
+)
+from ..operations.seed_claim import SeedClaimOperation  # noqa: E402
+from ..operations.multi_seed_claim import (  # noqa: E402
+    MultiSeedClaimOperation,
+)
+from ..operations.claims import ProposeClaimsOperation  # noqa: E402
+from ..operations.synthesis import (  # noqa: E402
+    FreezeSnapshotOperation,
+    SynthesizeReportOperation,
+)
+
+
+PrepareObjective.operations = frozenset(
+    {
+        ClarifyQuestionOperation,
+        ClassifyQuestionOperation,
+        ConceptualAnalysisOperation,
+    }
+)
+
+
+Decompose.operations = frozenset({DecomposeQuestionOperation})
+
+
+PlanEvidence.operations = frozenset({PlanTaskOperation})
+
+
+ExtractEvidence.operations = frozenset({ExtractEvidenceOperation})
+
+
+CreateClaims.operations = frozenset(
+    {
+        SeedClaimOperation,
+        MultiSeedClaimOperation,
+        ProposeClaimsOperation,
+    }
+)
+
+
+ExtractNewEvidence.operations = frozenset({ExtractEvidenceOperation})
+
+
+# CombineClaimVerdicts has empty operations — it uses
+# combine_claim_verdicts() as a direct function call, not _run_op.
+
+# CheckCompletion has empty operations — it's read-only routing logic.
+
+Synthesize.operations = frozenset(
+    {FreezeSnapshotOperation, SynthesizeReportOperation}
 )
