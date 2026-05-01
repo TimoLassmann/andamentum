@@ -192,25 +192,35 @@ class TestOpenAlexQualityScorerSmoke:
         assert result is None, f"Unknown DOI should return None, got: {result}"
 
     async def test_scorer_class_extracts_doi(self):
-        """OpenAlexQualityScorer should extract DOI from source_ref and score it."""
+        """OpenAlexQualityScorer should accept pre-extracted identifiers
+        and look them up. Phase 3 of the efficiency plan moved
+        identifier extraction upstream — the scorer no longer does its
+        own primitive string parsing."""
+        from andamentum.epistemic.operations.identifier_extraction import (
+            extract_identifiers,
+        )
         from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
 
         scorer = OpenAlexQualityScorer()
-        result = await scorer.score("doi:10.1038/nature12373", "openalex")
+        identifiers = extract_identifiers("doi:10.1038/nature12373")
+        assert identifiers.doi == "10.1038/nature12373"
+        result = await scorer.score(identifiers, "doi:10.1038/nature12373", "openalex")
 
         if result is not None:
             assert 0.0 <= result.score <= 1.0, f"Score {result.score} out of range"
             assert result.cited_by_count >= 0
 
     async def test_scorer_class_handles_no_identifier(self):
-        """OpenAlexQualityScorer with no DOI/PMID in source_ref should return None."""
+        """OpenAlexQualityScorer with no DOI/PMID in identifiers should return None."""
+        from andamentum.epistemic.operations.identifier_extraction import Identifiers
         from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
 
         scorer = OpenAlexQualityScorer()
-        result = await scorer.score("some random text with no doi", "web_search")
+        identifiers = Identifiers()  # all None
+        result = await scorer.score(identifiers, "some random text", "web_search")
 
         assert result is None, (
-            "Should return None when no DOI/PMID is found in source_ref"
+            "Should return None when identifiers are all None"
         )
 
 

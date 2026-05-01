@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ..operations.identifier_extraction import Identifiers
     from ..preflight import CheckResult
 
 from ..operations import GatheredEvidence
@@ -136,42 +137,36 @@ class OpenAlexQualityScorer:
 
     Implements the QualityScorer protocol from andamentum.epistemic.operations.
     Looks up DOI/PMID via OpenAlex API and returns quality score.
+
+    Phase 3 of the efficiency plan: identifiers are now extracted
+    upstream by ``operations.identifier_extraction.extract_identifiers``
+    and passed in directly. The scorer no longer does its own primitive
+    string-based extraction (which missed DOIs in URL paths, content
+    bodies, and non-standard formats); the upstream regex-based
+    extractor handles those cases.
     """
 
-    async def score(self, source_ref: str, source_type: str) -> "QualityScore | None":
+    async def score(
+        self,
+        identifiers: "Identifiers",
+        source_ref: str,
+        source_type: str,
+    ) -> "QualityScore | None":
         """Score a source's quality via OpenAlex.
 
-        Extracts DOI/PMID from source_ref if present.
-
         Args:
-            source_ref: Source reference string (may contain DOI/PMID)
-            source_type: Source type (for logging context)
+            identifiers: Pre-extracted DOI / PMID / arXiv identifiers.
+                When all are None, returns None without calling the API.
+            source_ref: Source reference string (kept for logging context).
+            source_type: Source type (kept for logging context).
 
         Returns:
-            QualityScore from OpenAlex, or None if no DOI/PMID or lookup fails
+            QualityScore from OpenAlex, or None if no identifier resolved
+            or lookup failed.
         """
-        doi = None
-        pmid = None
-
-        # Try to extract DOI from source_ref
-        if "doi:" in source_ref.lower() or "10." in source_ref:
-            for part in source_ref.split():
-                cleaned = part.removeprefix("doi:").removeprefix("https://doi.org/")
-                if cleaned.startswith("10."):
-                    doi = cleaned
-                    break
-
-        # Try to extract PMID
-        if "pmid:" in source_ref.lower() or "PMID:" in source_ref:
-            for part in source_ref.split():
-                cleaned = part.removeprefix("pmid:").removeprefix("PMID:").strip("()")
-                if cleaned.isdigit():
-                    pmid = cleaned
-                    break
-
         return await score_source(
-            doi=doi,
-            pmid=pmid,
+            doi=identifiers.doi,
+            pmid=identifiers.pmid,
             source_ref=source_ref,
             source_type=source_type,
         )

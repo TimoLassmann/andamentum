@@ -245,18 +245,41 @@ class ExtractEvidenceOperation(BaseOperation):
             gathered is not None,
         )
 
-        # Path 1: Try OpenAlex if we have a DOI or PMID identifier
+        # Path 1: Try the bibliometric resolver (currently OpenAlex)
+        # if we can extract a DOI / PMID / arXiv identifier.
+        #
+        # Phase 3 of the efficiency plan: extraction is now done here
+        # against BOTH source_ref AND extracted_content[:1000], not
+        # just source_ref. Many evidence items have a DOI in their
+        # content body but not in the URL; the upstream extraction
+        # routes them to Path 1 (free OpenAlex lookup) instead of
+        # Path 2 (LLM-based quality assessment), saving an LLM call
+        # per item.
         if self.quality_scorer:
+            from .identifier_extraction import extract_identifiers
+
+            content_window = (
+                evidence.extracted_content[:1000]
+                if evidence.extracted_content
+                else None
+            )
+            identifiers = extract_identifiers(
+                evidence.source_ref, content_window
+            )
             qs = await self.quality_scorer.score(
-                evidence.source_ref, evidence.source_type
+                identifiers, evidence.source_ref, evidence.source_type
             )
             if qs is not None and qs.source != "needs_assessment":
                 evidence.quality_score = qs.score
                 evidence.quality_metadata = qs.raw_metadata
                 _log.info(
-                    "[_score_evidence] PATH1 OpenAlex %s score=%s",
+                    "[_score_evidence] PATH1 OpenAlex %s score=%s "
+                    "(identifiers=doi=%s, pmid=%s, arxiv=%s)",
                     evidence.entity_id,
                     qs.score,
+                    identifiers.doi,
+                    identifiers.pmid,
+                    identifiers.arxiv,
                 )
                 return
 
