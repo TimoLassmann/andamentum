@@ -887,7 +887,6 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         demoted_any = False
-        soft_promoted_any = False
 
         for claim in all_claims:
             if claim.abandoned:
@@ -946,7 +945,6 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
                         "soft_promote",
                     )
                     if soft_result.success:
-                        soft_promoted_any = True
                         continue
 
                     # Fall through: no directional signal at all, abandon
@@ -974,18 +972,32 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
                     demoted_any = True
 
         if demoted_any:
-            # Re-scrutinise demoted claims
+            # Re-scrutinise demoted claims.
             return Scrutinize()
 
-        if soft_promoted_any:
-            # Soft-promoted claims are now SUPPORTED with no integration
-            # verdict. Route through PromoteToSupported so they enter the
-            # ClusterEvidence → RunVerification → IBE chain and get a
-            # calibrated verdict, rather than terminating with no posterior.
-            return PromoteToSupported()
-
-        # All problematic claims abandoned — check if anything is left
-        return CheckCompletion()
+        # Default: route through PromoteToSupported. This node has loaded
+        # only the failed-scrutiny claims into refute / soft-promote /
+        # abandon — but a sibling claim may have passed scrutiny in the
+        # same Scrutinize round and is sitting at HYPOTHESIS waiting for
+        # promote_claim. PromoteToSupported is the dispatcher that
+        # handles all such residual work:
+        #
+        #   * HYPOTHESIS with scrutiny_verdict="pass" → promote_claim
+        #   * SUPPORTED needing verification → ClusterEvidence → IBE chain
+        #   * Soft-promoted (SUPPORTED, integrated_assessment=None,
+        #     not in verification_done) → ClusterEvidence → IBE chain
+        #   * Nothing residual → CheckCompletion
+        #
+        # Returning CheckCompletion here directly was the bug: when
+        # Scrutinize found a mixed pass/abandon set it routed to
+        # AbandonOrDemote (priority on abandonment), which then
+        # short-circuited past PromoteToSupported. The pass-verdict
+        # claims were stranded at HYPOTHESIS, never promoted, never
+        # entered IBE. Same shape as the soft-promote routing bug
+        # found one commit earlier — same root cause (this node
+        # over-claimed terminality) and same fix (delegate residual
+        # routing to PromoteToSupported, which is idempotent).
+        return PromoteToSupported()
 
 
 @dataclass

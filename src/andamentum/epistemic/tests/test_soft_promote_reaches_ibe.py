@@ -152,14 +152,102 @@ async def test_soft_promote_routes_to_promote_to_supported(
     )
 
 
+async def test_mixed_pass_and_abandon_routes_to_promote_to_supported(
+    tmp_path: Path, fake_runner
+) -> None:
+    """The sibling routing bug: when Scrutinize finds a mixed set —
+    some claims with verdict=pass, some that exhausted investigation
+    and need abandonment — it routes to AbandonOrDemote (priority on
+    abandonment). AbandonOrDemote handles the abandonable ones. But
+    the pass-verdict claims are silently skipped through its loop and
+    must still reach PromoteToSupported (which runs PromoteClaimOperation)
+    or they sit at HYPOTHESIS forever.
+
+    Found by running the system on a real query (the second
+    intermittent-fasting run): 4 claims, 2 passed scrutiny in round 3,
+    2 abandoned. The pass claims never got promoted, never reached
+    IBE, and the report rendered "0 of 2 claims established" with the
+    headline posterior at the no-data 0.5 fallback.
+
+    Same root cause as the soft-promote routing bug fixed in the same
+    commit: AbandonOrDemote's CheckCompletion fall-through over-claimed
+    terminality and short-circuited the residual-work dispatcher
+    (PromoteToSupported).
+    """
+    store = DocumentStore.for_database("mixed_pass_abandon", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    # Claim A: passed scrutiny in this round, sitting at HYPOTHESIS
+    # waiting for promote_claim. Should reach PromoteToSupported.
+    pass_claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim that passed scrutiny",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        scrutiny_verdict="pass",
+    )
+    await repo.save(pass_claim)
+
+    # Claim B: scrutiny needs_resolution, 3 investigations exhausted,
+    # zero directional evidence → refute and soft-promote both decline,
+    # claim is abandoned. This is what AbandonOrDemote DOES handle.
+    abandon_claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim that exhausted investigation",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        scrutiny_verdict="needs_resolution",
+    )
+    await repo.save(abandon_claim)
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    state.investigation_counts[abandon_claim.entity_id] = 3
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
+
+    ctx = _FakeRunContext(state, deps)
+    next_node = await AbandonOrDemote().run(ctx)  # type: ignore[arg-type]
+
+    # The abandonable claim was handled.
+    abandon_calls = [
+        op
+        for op in state.operations_log
+        if op["operation"] == "abandon_stale_claim"
+    ]
+    assert len(abandon_calls) == 1
+
+    # Critical: AbandonOrDemote routes to PromoteToSupported, not
+    # CheckCompletion — otherwise the pass-verdict claim would never
+    # reach PromoteClaimOperation.
+    assert isinstance(next_node, PromoteToSupported), (
+        f"AbandonOrDemote returned {type(next_node).__name__}; "
+        "expected PromoteToSupported. Direct CheckCompletion routing "
+        "strands HYPOTHESIS-with-pass claims at HYPOTHESIS forever — "
+        "they never reach PromoteClaimOperation, never reach IBE, and "
+        "the synthesised report shows 0 claims established despite "
+        "scrutiny having passed."
+    )
+
+    # The pass claim is unchanged at this point (AbandonOrDemote
+    # doesn't touch pass-verdict claims; PromoteToSupported is the
+    # node that promotes them).
+    reloaded_pass = await repo.get("claim", pass_claim.entity_id)
+    assert isinstance(reloaded_pass, Claim)
+    assert reloaded_pass.stage == ClaimStage.HYPOTHESIS
+    assert reloaded_pass.scrutiny_verdict == "pass"
+    assert not reloaded_pass.abandoned
+
+
 async def test_refute_promote_still_skips_verification(
     tmp_path: Path, fake_runner
 ) -> None:
     """Sibling assertion: the refute-promote path's verification_done
     flag is correct (the claim has a verdict already, IBE shouldn't
     overwrite it). The fix to soft-promote must not break this."""
-    from andamentum.epistemic.graph.nodes import CheckCompletion
-
     store = DocumentStore.for_database("refute_skip_verify", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
@@ -214,6 +302,10 @@ async def test_refute_promote_still_skips_verification(
         op["operation"] == "soft_promote" for op in state.operations_log
     )
 
-    # Routing: nothing soft-promoted → CheckCompletion (terminal),
-    # not PromoteToSupported.
-    assert isinstance(next_node, CheckCompletion)
+    # Routing: AbandonOrDemote always routes to PromoteToSupported by
+    # default now (it's idempotent — for a refute-promoted claim with
+    # verification_done set, PromoteToSupported sees nothing to do and
+    # itself routes to CheckCompletion). The previous direct-to-
+    # CheckCompletion routing was the same shape of bug as the
+    # soft-promote one — over-claimed terminality.
+    assert isinstance(next_node, PromoteToSupported)
