@@ -873,7 +873,7 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["Scrutinize", "CheckCompletion"]:
+    ) -> Union["Scrutinize", "PromoteToSupported", "CheckCompletion"]:
         from ..operations.cleanup import AbandonStaleClaimOperation
         from ..operations.stage_management import (
             DemoteClaimOperation,
@@ -887,6 +887,7 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         demoted_any = False
+        soft_promoted_any = False
 
         for claim in all_claims:
             if claim.abandoned:
@@ -916,9 +917,26 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
                     # Refute declined. If the linked evidence still carries
                     # directional judgments, soft-promote: SUPPORTED with
-                    # integrated_assessment="insufficient" preserves the
-                    # counts in the posterior instead of erasing them
-                    # via abandonment.
+                    # integrated_assessment=None so the IBE chain can
+                    # produce a calibrated verdict from the directional
+                    # evidence (instead of erasing it via abandonment).
+                    #
+                    # Critically: do NOT add this claim to
+                    # ``verification_done``. SoftPromoteOperation
+                    # deliberately leaves ``integrated_assessment=None``
+                    # (see its docstring) and the IBE chain is the only
+                    # thing that will populate it. Marking verification
+                    # done would short-circuit the verification path
+                    # whose terminal step is EnumerateCandidates → the
+                    # IBE chain, leaving the claim stranded at SUPPORTED
+                    # with no integration verdict and ``compute_posterior``
+                    # falling back to the no-data 0.5 prior.
+                    #
+                    # Refute-promotion above DOES set verification_done
+                    # because that path pre-sets
+                    # ``integrated_assessment="contradicts"`` and IBE
+                    # would just overwrite it. The two branches diverge
+                    # on this point.
                     soft_result = await _run_op(
                         SoftPromoteOperation,
                         deps,
@@ -928,7 +946,7 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
                         "soft_promote",
                     )
                     if soft_result.success:
-                        state.verification_done.add(claim.entity_id)
+                        soft_promoted_any = True
                         continue
 
                     # Fall through: no directional signal at all, abandon
@@ -958,6 +976,13 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
         if demoted_any:
             # Re-scrutinise demoted claims
             return Scrutinize()
+
+        if soft_promoted_any:
+            # Soft-promoted claims are now SUPPORTED with no integration
+            # verdict. Route through PromoteToSupported so they enter the
+            # ClusterEvidence → RunVerification → IBE chain and get a
+            # calibrated verdict, rather than terminating with no posterior.
+            return PromoteToSupported()
 
         # All problematic claims abandoned — check if anything is left
         return CheckCompletion()

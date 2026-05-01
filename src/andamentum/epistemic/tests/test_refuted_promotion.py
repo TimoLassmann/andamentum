@@ -263,13 +263,22 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         # Directional signal exists (3+2 > 0), so soft-promote takes over
         # instead of abandonment.
         #
-        # SoftPromote no longer pre-sets the integration verdict — that was a
+        # SoftPromote does not pre-set the integration verdict — that was a
         # pre-IBE optimization. After the IBE 4-stage refactor, the verdict
         # is produced by the IBE chain (EnumerateCandidates → ... →
         # SelectBestExplanation), so SoftPromote leaves
         # integrated_assessment / integrated_confidence as None for IBE to
-        # populate. The IBE chain then runs against the SUPPORTED claim
-        # (no IBE in this fixture because agent_runner is None).
+        # populate.
+        #
+        # CRITICAL: the soft-promoted claim must NOT be added to
+        # ``verification_done``, and AbandonOrDemote must return
+        # PromoteToSupported (not CheckCompletion) to route the claim
+        # through ClusterEvidence → RunVerification → IBE. An earlier
+        # version of this test asserted ``in state.verification_done``,
+        # which baked the IBE-unreachability bug into the suite — see
+        # test_soft_promote_reaches_ibe.py for the full diagnosis.
+        from andamentum.epistemic.graph.nodes import PromoteToSupported
+
         claim, repo = await _setup_claim_with_evidence(tmp_path, 3, 2)
         claim.scrutiny_verdict = "needs_resolution"
         await repo.save(claim)
@@ -280,7 +289,7 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
 
         node = AbandonOrDemote()
         ctx = _FakeRunContext(state, deps)
-        await node.run(ctx)  # type: ignore[arg-type]
+        next_node = await node.run(ctx)  # type: ignore[arg-type]
 
         reloaded = await repo.get("claim", claim.entity_id)
         assert reloaded.abandoned is False
@@ -288,8 +297,10 @@ class TestAbandonOrDemoteRoutesToRefutedPromotion:
         # SoftPromote does not pre-set the verdict; IBE will produce it.
         assert reloaded.integrated_assessment is None
         assert reloaded.integrated_confidence is None
-        assert claim.entity_id in state.verification_done
+        # Verification path must remain open so the claim reaches IBE.
+        assert claim.entity_id not in state.verification_done
         assert claim.entity_id not in state.terminal_claims
+        assert isinstance(next_node, PromoteToSupported)
 
 
 class TestPosteriorIncludesRefuted:
