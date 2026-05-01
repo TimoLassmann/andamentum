@@ -17,6 +17,17 @@ from ..entities import (
 )
 
 
+# Phase 1 of the efficiency plan: cap "extras" per stub. When a single
+# query returns N papers, take the top-MAX_EXTRAS_PER_STUB after the
+# primary hit; the remainder are not extracted. The marginal information
+# from items beyond ~3 within a single query is low (high redundancy
+# from the same provider on the same query), and the system has 3
+# inquiry rounds — items missed at position 4+ in round 1 will likely
+# surface from a different query in round 2 or 3 (which queries
+# different angles each round).
+MAX_EXTRAS_PER_STUB = 3
+
+
 class ExtractEvidenceOperation(BaseOperation):
     """Extract content from an evidence source.
 
@@ -84,16 +95,30 @@ class ExtractEvidenceOperation(BaseOperation):
                     evidence.quality_score,
                 )
 
-                # Create new Evidence entities for remaining items.
-                # Propagate sub_investigation_id from the originating stub so
-                # multi-seed-claim's per-claim evidence pool (filter on
-                # sub_investigation_id at multi_seed_claim.py:126) sees ALL
-                # the gatherer's results, not just the first one. Without
-                # this, gatherer-extras silently drop out of the per-claim
-                # pool — each sub-investigation would see only the 1 stub-
-                # tied result per provider instead of the full hit set.
+                # Create new Evidence entities for remaining items, capped
+                # at MAX_EXTRAS_PER_STUB. Propagate sub_investigation_id
+                # from the originating stub so multi-seed-claim's per-claim
+                # evidence pool sees the gatherer's results.
+                #
+                # The cap (Phase 1 of the efficiency plan) bounds the
+                # multiplicative explosion: gatherers can return 5-10
+                # items per query, and with 12+ stubs per round across 3
+                # rounds, an unbounded cap means the system extracts +
+                # quality-scores + judges 60+ evidence items per round.
+                # Capping at the top 3 extras keeps the primary + 3 best
+                # while pacing the work across rounds.
+                extras = gathered[1 : 1 + MAX_EXTRAS_PER_STUB]
+                if len(gathered) > 1 + MAX_EXTRAS_PER_STUB:
+                    _extract_log.info(
+                        "[extract_evidence] stub %s gatherer returned %d "
+                        "items; capping extras at %d (skipped %d)",
+                        evidence.entity_id,
+                        len(gathered),
+                        MAX_EXTRAS_PER_STUB,
+                        len(gathered) - 1 - MAX_EXTRAS_PER_STUB,
+                    )
                 created_ids = [evidence.entity_id]
-                for g in gathered[1:]:
+                for g in extras:
                     new_ev = Evidence(
                         objective_id=evidence.objective_id,
                         source_type=g.source_type or evidence.source_type,
