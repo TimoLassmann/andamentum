@@ -125,33 +125,6 @@ class Objective(EpistemicEntity):
         ),
     )
 
-    # ── Phase 4: reflection state ─────────────────────────────────────
-    #
-    # On a parent objective only. Reflection is the corrective loop
-    # ReflectOnGapsOperation runs after children are scored and combined:
-    # if a load-bearing gap remains, it appends new sub-investigations to
-    # ``decomposition`` for the orchestrator to spawn. The cap is
-    # enforced by the orchestrator (default 1 round) so reflection
-    # remains corrective rather than search-like.
-
-    reflection_rounds: int = Field(
-        default=0,
-        description=(
-            "On a parent objective: number of reflection rounds completed "
-            "so far. Bumped by ReflectOnGapsOperation each time it adds "
-            "new sub-investigations. Compared against the orchestrator's "
-            "cap to decide whether to reflect again."
-        ),
-    )
-    reflection_history: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description=(
-            "On a parent objective: per-round audit trail of reflection "
-            "decisions. Each entry: {round, sufficient, gap_description, "
-            "added_count, rationale}. Append-only."
-        ),
-    )
-
     @property
     def pending_concerns_count(self) -> int:
         """Number of buffered concerns — used by pattern matching."""
@@ -204,10 +177,6 @@ class Objective(EpistemicEntity):
             meta["decomposition"] = self.decomposition
         if self.combination_rule:
             meta["combination_rule"] = self.combination_rule
-        if self.reflection_rounds:
-            meta["reflection_rounds"] = self.reflection_rounds
-        if self.reflection_history:
-            meta["reflection_history"] = self.reflection_history
         return meta
 
     @classmethod
@@ -231,8 +200,6 @@ class Objective(EpistemicEntity):
             status=metadata.get("status", "active"),
             decomposition=metadata.get("decomposition"),
             combination_rule=metadata.get("combination_rule"),
-            reflection_rounds=metadata.get("reflection_rounds", 0),
-            reflection_history=metadata.get("reflection_history", []),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

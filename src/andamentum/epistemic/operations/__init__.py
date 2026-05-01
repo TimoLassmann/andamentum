@@ -44,7 +44,6 @@ from .preplanning import (
     ConceptualAnalysisOperation,
     DecomposeQuestionOperation,
     PlanTaskOperation,
-    ReflectOnGapsOperation,
 )
 
 # ── Claims ──────────────────────────────────────────────────────────────
@@ -137,7 +136,6 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "classify_question": ClassifyQuestionOperation,
     "conceptual_analysis": ConceptualAnalysisOperation,
     "decompose_question": DecomposeQuestionOperation,
-    "reflect_on_gaps": ReflectOnGapsOperation,
     "plan_task": PlanTaskOperation,
     "propose_claims": ProposeClaimsOperation,
     "seed_claim": SeedClaimOperation,
@@ -260,7 +258,6 @@ __all__ = [
     "ClassifyQuestionOperation",
     "ConceptualAnalysisOperation",
     "DecomposeQuestionOperation",
-    "ReflectOnGapsOperation",
     "PlanTaskOperation",
     "ProposeClaimsOperation",
     "MultiSeedClaimOperation",
