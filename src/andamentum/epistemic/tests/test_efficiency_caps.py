@@ -11,7 +11,6 @@ Each test pins a specific cap so that:
 
 from __future__ import annotations
 
-from andamentum.epistemic.operations.evidence import MAX_EXTRAS_PER_STUB
 from andamentum.epistemic.operations.integration import _CANDIDATE_IDS
 from andamentum.epistemic.operations.verification import (
     MAX_ADVERSARIAL_FRAMINGS,
@@ -20,15 +19,16 @@ from andamentum.epistemic.operations.verification import (
 
 
 # ── Cap values are the contract ──────────────────────────────────────
-
-
-def test_max_extras_per_stub_is_three() -> None:
-    """The per-stub extras cap is 3. Each gatherer query may return many
-    items; we keep the primary plus the top-3 extras and skip the rest.
-    Items missed at position 4+ in round 1 surface from different
-    queries in rounds 2 and 3.
-    """
-    assert MAX_EXTRAS_PER_STUB == 3
+#
+# An earlier iteration of this plan also capped MAX_EXTRAS_PER_STUB
+# at 3 in operations/evidence.py. The Phase 1 benchmark showed that
+# cap was too aggressive: with extras capped at 3 per stub on EVERY
+# round's extraction, the system systematically lost evidence breadth
+# across all rounds (rather than recovering it from later rounds, as
+# the plan's open-decision #1 had assumed). All 3 claims abandoned,
+# IBE never ran, posterior fell back to the no-data 0.5 fallback.
+# The cap was reverted; if revisited, formulate as a per-claim total
+# cap rather than a per-stub cap.
 
 
 def test_adversarial_query_count_is_five() -> None:
@@ -92,22 +92,3 @@ def test_adversarial_framings_list_truncated_to_max() -> None:
     )
 
 
-def test_extract_evidence_uses_max_extras_constant() -> None:
-    """Same shape: ensure the evidence extraction loop actually
-    references MAX_EXTRAS_PER_STUB. Catches refactors that move the
-    constant but don't slice the gatherer output.
-    """
-    from pathlib import Path
-
-    src = (
-        Path(__file__).parent.parent
-        / "operations"
-        / "evidence.py"
-    ).read_text()
-    assert "MAX_EXTRAS_PER_STUB" in src
-    # The slice pattern should bound the iteration over `gathered`.
-    assert "1 + MAX_EXTRAS_PER_STUB" in src, (
-        "ExtractEvidenceOperation no longer slices gatherer.gathered "
-        "by MAX_EXTRAS_PER_STUB. The constant exists but isn't being "
-        "applied to bound the per-stub extra count."
-    )
