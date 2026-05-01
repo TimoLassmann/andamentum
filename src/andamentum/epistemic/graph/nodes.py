@@ -1164,7 +1164,7 @@ class PromoteToSupported(Node):
 
 
 @dataclass
-class ClusterEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class ClusterEvidence(Node):
     """Cluster evidence into representatives before verification.
 
     Deterministic (embedding-based, no LLM). Runs HDBSCAN on evidence
@@ -1173,7 +1173,15 @@ class ClusterEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
     Separated into its own node to distinguish deterministic steps from
     LLM-calling steps in the graph topology.
+
+    Phase 4 of the Move-3 plan. Empty operations set: this node calls
+    ``select_top_k_evidence`` directly (a function, not via ``_run_op``).
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1208,12 +1216,26 @@ class ClusterEvidence(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class RunVerification(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class RunVerification(Node):
     """Run verification tracks on SUPPORTED claims based on routing profile.
 
     LLM-heavy: adversarial search, convergence, deductive validation,
     computational verification, argument analysis, contrastive evaluation.
+
+    Phase 4 of the Move-3 plan. Operations metadata covers the direct
+    ``_run_op`` dispatches in the body; the TMS sweep helper
+    (``_run_tms_sweep``) dispatches InvalidateEvidence / RevalidateClaim
+    operations indirectly — those are side effects via a helper function
+    and would require inter-procedural AST analysis to validate. For
+    now the validator only sees direct dispatches.
     """
+
+    reads = frozenset(
+        {"objective_id", "question_type", "claims_needing_rescrutiny"}
+    )
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1555,13 +1577,20 @@ class ResolveUncertainties(Node):
 
 
 @dataclass
-class EnumerateCandidates(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class EnumerateCandidates(Node):
     """Stage 1 of IBE: enumerate candidate verdicts for each SUPPORTED claim.
 
     Generative role (Peirce). Iterative single-candidate calls with the
     running list as priors so each call diversifies away from prior
     candidates. Idempotent — skips claims that already have candidates.
+
+    Phase 4 of the Move-3 plan.
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1595,13 +1624,20 @@ class EnumerateCandidates(BaseNode[EpistemicGraphState, EpistemicDeps, Epistemic
 
 
 @dataclass
-class ScoreLoveliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class ScoreLoveliness(Node):
     """Stage 2 of IBE: score each candidate's explanatory virtue.
 
     Evaluative role (Lipton). Per-candidate calls run in parallel inside
     the operation. Each call sees only its candidate (Kahneman
     independence). Idempotent.
+
+    Phase 4 of the Move-3 plan.
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1636,12 +1672,19 @@ class ScoreLoveliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class ScoreLikeliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
+class ScoreLikeliness(Node):
     """Stage 3 of IBE: score each candidate's fit-with-evidence.
 
     Evaluative role (Lipton). Same pattern as ScoreLoveliness but on
     likeliness. Idempotent.
+
+    Phase 4 of the Move-3 plan.
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1676,16 +1719,25 @@ class ScoreLikeliness(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
 
 @dataclass
-class SelectBestExplanation(
-    BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]
-):
+class SelectBestExplanation(Node):
     """Stage 4 of IBE: pick the best candidate, write the verdict.
 
     Comparative role (Lipton). Sees all scored candidates; picks the
     best and assigns gap-based confidence. Writes
     integrated_assessment / integrated_confidence / integrated_reasoning
     on the claim — the fields compute_posterior reads. Idempotent.
+
+    Phase 4 of the Move-3 plan. After this node, ``compute_posterior``
+    can produce a real posterior for any claim that reaches here. The
+    no_stranded_claims invariant becomes statically satisfiable for
+    every claim that successfully traverses this stage (it gets a
+    verdict).
     """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -1719,8 +1771,18 @@ class SelectBestExplanation(
 
 
 @dataclass
-class PromoteSupported(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResult]):
-    """Try advancing claims beyond SUPPORTED: S->P, P->R, R->A, then record decisions."""
+class PromoteSupported(Node):
+    """Try advancing claims beyond SUPPORTED: S->P, P->R, R->A, then record decisions.
+
+    Phase 4 of the Move-3 plan. Marks each processed claim as
+    verification_done so PromoteToSupported's idempotency check
+    short-circuits on re-entry.
+    """
+
+    reads = frozenset({"objective_id"})
+    writes = frozenset({"verification_done"})
+    operations = frozenset()  # populated below
+    post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2131,4 +2193,66 @@ Investigate.operations = frozenset({InvestigateClaimOperation})
 
 ResolveUncertainties.operations = frozenset(
     {ResolveUncertaintyOperation, DeduplicateConcernsOperation}
+)
+
+
+# ── Phase 4: verification + IBE chain ────────────────────────────────
+
+from ..operations.verification import (  # noqa: E402
+    AdversarialSearchOperation,
+    AssessConvergenceOperation,
+    ValidateDeductivelyOperation,
+    VerifyComputationallyOperation,
+)
+from ..operations.analysis import (  # noqa: E402
+    AnalyzeArgumentOperation,
+    ContrastiveEvaluationOperation,
+    CrossClaimConsistencyOperation,
+)
+from ..operations.integration import (  # noqa: E402
+    EnumerateCandidatesOperation,
+    ScoreLikelinessOperation,
+    ScoreLovelinessOperation,
+    SelectBestExplanationOperation,
+)
+from ..operations.investigation import (  # noqa: E402
+    GeneratePredictionOperation,
+    RecordDecisionOperation,
+)
+
+
+# ClusterEvidence has no _run_op dispatches (uses select_top_k_evidence
+# directly as a function); leaves operations as the empty frozenset.
+
+RunVerification.operations = frozenset(
+    {
+        AdversarialSearchOperation,
+        AssessConvergenceOperation,
+        ValidateDeductivelyOperation,
+        VerifyComputationallyOperation,
+        AnalyzeArgumentOperation,
+        ContrastiveEvaluationOperation,
+        CrossClaimConsistencyOperation,
+    }
+)
+
+
+EnumerateCandidates.operations = frozenset({EnumerateCandidatesOperation})
+
+
+ScoreLoveliness.operations = frozenset({ScoreLovelinessOperation})
+
+
+ScoreLikeliness.operations = frozenset({ScoreLikelinessOperation})
+
+
+SelectBestExplanation.operations = frozenset({SelectBestExplanationOperation})
+
+
+PromoteSupported.operations = frozenset(
+    {
+        PromoteClaimOperation,
+        GeneratePredictionOperation,
+        RecordDecisionOperation,
+    }
 )
