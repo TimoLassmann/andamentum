@@ -65,39 +65,19 @@ class _FakeRunContext:
 
 
 # ── Invariant: no claim is "stranded" ─────────────────────────────────
+#
+# The invariant logic moved to ``andamentum.epistemic.graph.invariants``
+# in Phase 0 of the Move-3 plan so nodes can reference it via their
+# ``post_invariants`` declarations. This thin wrapper preserves the
+# (claims, state) argument order this file's tests use.
 
 
 def _stranded_claims(claims: list[Claim], state: EpistemicGraphState) -> list[Claim]:
-    """A stranded claim is one that has been promoted past HYPOTHESIS,
-    has no integration verdict, and is NOT marked verification_done.
+    """Wrapper around ``invariants.stranded_claims`` keeping the
+    (claims, state) argument order this test file uses."""
+    from andamentum.epistemic.graph.invariants import stranded_claims
 
-    Such a claim should still reach the IBE chain to receive a calibrated
-    verdict. If the graph routes it to a terminal in this state, the
-    posterior falls back to no-data 0.5 and the report is silently
-    miscalibrated.
-
-    Refute-promoted claims have ``integrated_assessment="contradicts"``
-    set by the operation and ARE marked verification_done — the IBE
-    chain shouldn't overwrite that pre-set verdict. Soft-promoted
-    claims have ``integrated_assessment=None`` and are NOT marked
-    verification_done — IBE is exactly what should populate the verdict.
-
-    Cycle-capped and abandoned claims are excluded — both are
-    legitimate terminal states where no integration verdict is
-    expected.
-    """
-    stranded = []
-    for c in claims:
-        if c.abandoned or getattr(c, "cycle_capped", False):
-            continue
-        if c.stage == ClaimStage.HYPOTHESIS:
-            continue  # not promoted, not eligible for IBE yet
-        if c.integrated_assessment is not None:
-            continue  # IBE ran (or refute pre-set the verdict)
-        if c.entity_id in state.verification_done:
-            continue  # explicitly excluded from IBE (e.g. refute path)
-        stranded.append(c)
-    return stranded
+    return stranded_claims(claims, state)
 
 
 # ── Helpers to build state patterns ───────────────────────────────────

@@ -873,7 +873,16 @@ class AbandonOrDemote(BaseNode[EpistemicGraphState, EpistemicDeps, EpistemicResu
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["Scrutinize", "PromoteToSupported", "CheckCompletion"]:
+    ) -> Union["Scrutinize", "PromoteToSupported"]:
+        # Successor set is intentionally narrower than it was before
+        # the routing fix in commit d280573. CheckCompletion was
+        # removed from the annotation because the body no longer
+        # returns it directly — terminal routing now goes through
+        # PromoteToSupported (which itself decides whether to route
+        # to ClusterEvidence or CheckCompletion). Re-introducing
+        # CheckCompletion here would resurrect the recurring routing
+        # bug class — the topology test in test_topology.py asserts
+        # it stays out.
         from ..operations.cleanup import AbandonStaleClaimOperation
         from ..operations.stage_management import (
             DemoteClaimOperation,
