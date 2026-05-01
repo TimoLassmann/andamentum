@@ -47,6 +47,20 @@ OUTPUTS
                        otherwise a clean .docx is generated from the
                        harvested text and patches are applied to that.
 
+PATCH-ONLY MODE
+    --apply-patches PATH       Skip the review pipeline entirely and apply
+                               a pre-built JSON patch list to a .docx.
+                               INPUT must be a local .docx and there must
+                               be exactly one --out FILE ending in .docx.
+                               PATH is a JSON file containing an array of
+                               DocumentPatch objects (patch_type one of
+                               text_edit | comment | document_analysis).
+                               --model is not required.
+    --patch-author NAME        Author name for the track-changes
+                               attribution (default: Reviewer).
+    --patch-report PATH        Optional markdown file prepended to the
+                               output as a review summary section.
+
 REVIEW OPTIONS
     --mode {review,panel,guidelines,custom}
                                Pipeline to run.
@@ -117,6 +131,11 @@ _HELP_EXAMPLES = """\
 EXAMPLES
     # Quick deterministic-only check (no LLM, no cost)
     andamentum-whetstone paper.pdf --no-llm --out review.md
+
+    # Apply a pre-built JSON patch list to a .docx (no LLM)
+    andamentum-whetstone draft.docx \\
+        --apply-patches patches.json --out draft.reviewed.docx \\
+        --patch-author "Claude" --patch-report review.md
 
     # Full critical review of a PDF, output in three formats
     andamentum-whetstone paper.pdf \\
@@ -288,6 +307,33 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--apply-patches",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Skip the review pipeline; apply a pre-built JSON patch list "
+            "to INPUT (which must be a local .docx). PATH points to a "
+            "JSON array of DocumentPatch objects."
+        ),
+    )
+    parser.add_argument(
+        "--patch-author",
+        default="Reviewer",
+        metavar="NAME",
+        help="Author name for track-changes when --apply-patches is used. Default: Reviewer.",
+    )
+    parser.add_argument(
+        "--patch-report",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Optional markdown file prepended as a review-summary section "
+            "when --apply-patches is used."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -301,6 +347,15 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     Raises ``SystemExit(1)`` with a friendly message on any violation.
     """
+    if args.apply_patches is not None:
+        _validate_apply_patches_args(args)
+        return
+
+    if args.patch_report is not None:
+        _die(1, "--patch-report is only valid with --apply-patches.")
+    if args.patch_author != "Reviewer":
+        _die(1, "--patch-author is only valid with --apply-patches.")
+
     if not args.no_llm and not args.model:
         _die(
             1,
@@ -341,8 +396,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     if args.mode == "custom" and not args.criteria:
         _die(
             1,
-            "--mode custom requires --criteria (semicolon-separated or "
-            "repeated).",
+            "--mode custom requires --criteria (semicolon-separated or repeated).",
         )
     if args.mode != "guidelines" and args.guidelines:
         _die(
@@ -353,8 +407,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     if args.mode != "custom" and args.criteria:
         _die(
             1,
-            f"--criteria is only valid with --mode custom (got --mode "
-            f"{args.mode}).",
+            f"--criteria is only valid with --mode custom (got --mode {args.mode}).",
         )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
@@ -368,6 +421,32 @@ def _validate_args(args: argparse.Namespace) -> None:
                 f"Unsupported output extension {ext!r} for {out}. "
                 f"Supported: {', '.join(sorted(_SUPPORTED_OUT_EXTENSIONS))}",
             )
+
+
+def _validate_apply_patches_args(args: argparse.Namespace) -> None:
+    """Validate the patch-only path. ``--apply-patches`` is set."""
+    input_path = Path(args.input)
+    if _is_url(args.input) or not input_path.exists():
+        _die(
+            1,
+            "--apply-patches requires INPUT to be a local .docx file "
+            f"(got {args.input!r}).",
+        )
+    if input_path.suffix.lower() != ".docx":
+        _die(
+            1,
+            "--apply-patches requires INPUT to be a .docx file "
+            f"(got {input_path.suffix!r}).",
+        )
+    if len(args.out) != 1 or args.out[0].suffix.lower() != ".docx":
+        _die(
+            1,
+            "--apply-patches requires exactly one --out FILE ending in .docx.",
+        )
+    if not args.apply_patches.exists():
+        _die(1, f"patches file not found: {args.apply_patches}")
+    if args.patch_report is not None and not args.patch_report.exists():
+        _die(1, f"patch report file not found: {args.patch_report}")
 
 
 def _die(code: int, message: str) -> NoReturn:
@@ -452,7 +531,9 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         # Distinguish "couldn't load the input" from "review crashed"
         # so users know whether to fix their input or their config.
         msg = str(exc)
-        if any(t in msg.lower() for t in ("fetch", "harvest", "no such file", "not found")):
+        if any(
+            t in msg.lower() for t in ("fetch", "harvest", "no such file", "not found")
+        ):
             _die(2, f"could not load input {args.input!r}: {exc}")
         else:
             _die(3, f"review pipeline failed: {exc}")
@@ -529,9 +610,7 @@ def _log_run_config(
     console.print(Panel(table, title="whetstone v2", border_style="cyan"))
 
 
-def _print_summary(
-    console: Console, result, written: list[Path]
-) -> None:
+def _print_summary(console: Console, result, written: list[Path]) -> None:
     """Render a Rich summary table after the run completes."""
     m = result.metrics
     table = Table(show_header=False, box=None, padding=(0, 1))
@@ -623,9 +702,86 @@ def main(argv: Sequence[str] | None = None) -> None:
     _configure_logging(console, args.verbose)
 
     try:
-        asyncio.run(_run(args, console))
+        if args.apply_patches is not None:
+            _apply_patches_only(args, console)
+        else:
+            asyncio.run(_run(args, console))
     except KeyboardInterrupt:
         _die(1, "interrupted")
+
+
+def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
+    """Patch-only path: load JSON patches and apply to INPUT.docx → OUT.docx.
+
+    No LLM, no review pipeline. Reuses ``finalize_reviewed_document`` so
+    the output is byte-identical to what the full review pipeline would
+    produce given the same patches.
+    """
+    import json
+
+    from .docx.finalization import finalize_reviewed_document
+    from .models import DocumentPatch
+
+    raw = json.loads(args.apply_patches.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        _die(
+            1,
+            f"patches file must contain a JSON array, got {type(raw).__name__}.",
+        )
+
+    try:
+        patches = [DocumentPatch(**p) for p in raw]
+    except Exception as exc:
+        _die(1, f"invalid patch in {args.apply_patches}: {exc}")
+
+    review_summary = ""
+    if args.patch_report is not None:
+        review_summary = args.patch_report.read_text(encoding="utf-8")
+
+    output_path: Path = args.out[0]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        _, patch_result = finalize_reviewed_document(
+            original_file_path=Path(args.input),
+            patches=patches,
+            review_summary=review_summary,
+            issues_count=len(patches),
+            output_path=output_path,
+            author=args.patch_author,
+            use_patch_authors=False,
+        )
+    except Exception as exc:
+        _die(3, f"patch application failed: {exc}")
+
+    _print_apply_patches_summary(console, patch_result, output_path)
+
+
+def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:
+    """Render a Rich summary table after a patch-only run."""
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="bold cyan", justify="right")
+    table.add_column()
+    table.add_row("total patches:", str(result.total_patches))
+    table.add_row(
+        "applied:",
+        f"{result.applied_patches} "
+        f"({result.applied_edits} edits, {result.applied_comments} comments)",
+    )
+    table.add_row("failed:", str(len(result.failed_patches)))
+    table.add_row("success rate:", f"{result.success_rate:.1f}%")
+    table.add_row("output:", str(output_path))
+    border = "yellow" if result.failed_patches else "green"
+    console.print(Panel(table, title="patches applied", border_style=border))
+
+    if result.failed_patches:
+        console.print(
+            f"[yellow]warning:[/yellow] {len(result.failed_patches)} "
+            f"patch(es) could not be applied:"
+        )
+        for p in result.failed_patches:
+            label = (p.text_pattern or p.patch_type)[:60]
+            console.print(f"  • [{p.patch_type}] {label}")
 
 
 def _configure_logging(console: Console, verbose: bool) -> None:
