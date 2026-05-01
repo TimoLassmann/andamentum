@@ -9,6 +9,7 @@ Architecture: Layer 2 (pydantic-graph, depends on operations + entities)
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, Union
@@ -911,6 +912,7 @@ class ExtractNewEvidence(Node):
                 continue
 
             extras_linked = 0
+            evidence_to_judge: list[Evidence] = []
             for eid in created_ids:
                 entity_ev = await deps.repo.get("evidence", eid)
                 if not isinstance(entity_ev, Evidence):
@@ -930,12 +932,23 @@ class ExtractNewEvidence(Node):
                     and entity_ev.extracted_content
                     and entity_ev.support_judgment is None
                 ):
+                    evidence_to_judge.append(entity_ev)
+
+            # Phase 2a of the efficiency plan: judge the new evidence
+            # extras concurrently. Each judgment writes a different
+            # Evidence entity, so the calls are independent. The
+            # AgentRunner's global semaphore bounds in-flight calls
+            # (defaults: 1 for Ollama, 8 for cloud).
+            if evidence_to_judge and deps.agent_runner is not None:
+                runner = deps.agent_runner
+
+                async def _judge_extra(entity_ev: Evidence) -> None:
                     judgment = await judge_evidence(
                         claim_statement=claim.statement,
                         claim_scope=claim.scope or "",
                         evidence_content=entity_ev.extracted_content,
                         evidence_source=f"{entity_ev.source_type}: {entity_ev.source_ref}",
-                        runner=deps.agent_runner,
+                        runner=runner,
                     )
                     verdict = judgment.verdict.lower().strip()
                     if verdict not in ("supports", "contradicts", "no_bearing"):
@@ -943,6 +956,10 @@ class ExtractNewEvidence(Node):
                     entity_ev.support_judgment = verdict
                     entity_ev.judgment_reasoning = judgment.reasoning
                     await deps.repo.save(entity_ev)
+
+                await asyncio.gather(
+                    *(_judge_extra(ev) for ev in evidence_to_judge)
+                )
 
             if extras_linked > 0:
                 claim.evidence_count = len(claim.evidence_ids)
