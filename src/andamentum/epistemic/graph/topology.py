@@ -82,6 +82,7 @@ def topology(
     """
     if nodes is None:
         from . import nodes as nodes_module
+        from .base import Node as _NodeBase
 
         nodes = [
             cls
@@ -89,6 +90,14 @@ def topology(
             if isinstance(cls := getattr(nodes_module, name), type)
             and issubclass(cls, BaseNode)
             and cls is not BaseNode
+            # Skip abstract bases (BaseNode subclasses that don't
+            # define a concrete graph node themselves). Currently
+            # this is just our own ``Node`` class from base.py;
+            # any future intermediate base classes should be added
+            # to this exclusion. A class is treated as "abstract"
+            # if its run() method is inherited rather than defined.
+            and cls is not _NodeBase
+            and "run" in cls.__dict__
         ]
 
     out: dict[type[BaseNode], frozenset[type[BaseNode]]] = {}
