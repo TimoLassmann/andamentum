@@ -1388,6 +1388,15 @@ class RunVerification(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
+        # Phase 2b of the efficiency plan: enumerate all (claim, track)
+        # work items first, then dispatch them concurrently. Each track
+        # writes only to its own claim's fields — even the pairwise
+        # tracks (contrastive, consistency) read siblings but write self
+        # — so the work items are independent and safe to gather. The
+        # AgentRunner's global semaphore bounds in-flight LLM calls
+        # (defaults: 1 for Ollama, 8 for cloud).
+        work_items: list[tuple[type, str, str]] = []  # (op_class, claim_id, op_name)
+
         for claim in all_claims:
             if claim.abandoned or claim.stage != ClaimStage.SUPPORTED:
                 continue
@@ -1414,14 +1423,15 @@ class RunVerification(Node):
                 if getattr(claim, checked_field, False):
                     continue
 
-                await _run_op(
-                    op_class,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    op_name,
+                work_items.append((op_class, claim.entity_id, op_name))
+
+        if work_items:
+            await asyncio.gather(
+                *(
+                    _run_op(op_class, deps, state, claim_id, "claim", op_name)
+                    for op_class, claim_id, op_name in work_items
                 )
+            )
 
         # TMS sweep: adversarial search may have created contradicting
         # evidence that invalidates existing evidence or triggers claim
@@ -1684,22 +1694,33 @@ class EnumerateCandidates(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
-        for claim in all_claims:
-            if claim.abandoned:
-                continue
-            if (
-                claim.stage == ClaimStage.SUPPORTED
-                and claim.integrated_assessment is None
-                and not claim.integration_candidates
-            ):
-                await _run_op(
-                    EnumerateCandidatesOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "enumerate_candidates",
+        # Phase 2c of the efficiency plan: enumerate candidates per
+        # claim concurrently. Each claim's enumeration writes only its
+        # own ``integration_candidates`` field — no cross-claim
+        # interference. The AgentRunner's global semaphore bounds
+        # in-flight LLM calls (1 for Ollama, 8 for cloud).
+        eligible_ids = [
+            c.entity_id
+            for c in all_claims
+            if not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.integrated_assessment is None
+            and not c.integration_candidates
+        ]
+        if eligible_ids:
+            await asyncio.gather(
+                *(
+                    _run_op(
+                        EnumerateCandidatesOperation,
+                        deps,
+                        state,
+                        cid,
+                        "claim",
+                        "enumerate_candidates",
+                    )
+                    for cid in eligible_ids
                 )
+            )
 
         return ScoreLoveliness()
 
@@ -1731,23 +1752,33 @@ class ScoreLoveliness(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
-        for claim in all_claims:
-            if claim.abandoned:
-                continue
-            if (
-                claim.stage == ClaimStage.SUPPORTED
-                and claim.integrated_assessment is None
-                and claim.integration_candidates
-                and any(c.loveliness is None for c in claim.integration_candidates)
-            ):
-                await _run_op(
-                    ScoreLovelinessOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "score_loveliness",
+        # Phase 2c of the efficiency plan: score loveliness per claim
+        # concurrently. Within a claim, candidates are already scored
+        # in parallel (asyncio.gather inside ScoreLovelinessOperation);
+        # this lifts that to the across-claims layer too.
+        eligible_ids = [
+            c.entity_id
+            for c in all_claims
+            if not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.integrated_assessment is None
+            and c.integration_candidates
+            and any(cand.loveliness is None for cand in c.integration_candidates)
+        ]
+        if eligible_ids:
+            await asyncio.gather(
+                *(
+                    _run_op(
+                        ScoreLovelinessOperation,
+                        deps,
+                        state,
+                        cid,
+                        "claim",
+                        "score_loveliness",
+                    )
+                    for cid in eligible_ids
                 )
+            )
 
         return ScoreLikeliness()
 
@@ -1778,23 +1809,31 @@ class ScoreLikeliness(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
-        for claim in all_claims:
-            if claim.abandoned:
-                continue
-            if (
-                claim.stage == ClaimStage.SUPPORTED
-                and claim.integrated_assessment is None
-                and claim.integration_candidates
-                and any(c.likeliness is None for c in claim.integration_candidates)
-            ):
-                await _run_op(
-                    ScoreLikelinessOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "score_likeliness",
+        # Phase 2c of the efficiency plan: same parallelization
+        # pattern as ScoreLoveliness — across-claims gather.
+        eligible_ids = [
+            c.entity_id
+            for c in all_claims
+            if not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.integrated_assessment is None
+            and c.integration_candidates
+            and any(cand.likeliness is None for cand in c.integration_candidates)
+        ]
+        if eligible_ids:
+            await asyncio.gather(
+                *(
+                    _run_op(
+                        ScoreLikelinessOperation,
+                        deps,
+                        state,
+                        cid,
+                        "claim",
+                        "score_likeliness",
+                    )
+                    for cid in eligible_ids
                 )
+            )
 
         return SelectBestExplanation()
 
@@ -1831,22 +1870,30 @@ class SelectBestExplanation(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
-        for claim in all_claims:
-            if claim.abandoned:
-                continue
-            if (
-                claim.stage == ClaimStage.SUPPORTED
-                and claim.integrated_assessment is None
-                and claim.integration_candidates
-            ):
-                await _run_op(
-                    SelectBestExplanationOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "select_best_explanation",
+        # Phase 2c of the efficiency plan: same across-claims
+        # parallelization as the other IBE stages.
+        eligible_ids = [
+            c.entity_id
+            for c in all_claims
+            if not c.abandoned
+            and c.stage == ClaimStage.SUPPORTED
+            and c.integrated_assessment is None
+            and c.integration_candidates
+        ]
+        if eligible_ids:
+            await asyncio.gather(
+                *(
+                    _run_op(
+                        SelectBestExplanationOperation,
+                        deps,
+                        state,
+                        cid,
+                        "claim",
+                        "select_best_explanation",
+                    )
+                    for cid in eligible_ids
                 )
+            )
 
         return PromoteSupported()
 
