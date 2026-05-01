@@ -59,15 +59,25 @@ from conftest import (  # noqa: E402  # type: ignore[import-not-found]
 
 
 class MockQualityScorer:
-    """Quality scorer that can be configured to succeed or fail."""
+    """Quality scorer that can be configured to succeed or fail.
+
+    Phase 3 of the efficiency plan changed the QualityScorer protocol
+    to take pre-extracted ``Identifiers`` as the first argument; the
+    mock follows the new signature."""
 
     def __init__(self, score: QualityScore | None = None, fail: bool = False):
         self._score = score
         self._fail = fail
-        self.calls: list[tuple[str, str]] = []
+        # Each entry: (identifiers, source_ref, source_type)
+        self.calls: list[tuple[Any, str, str]] = []
 
-    async def score(self, source_ref: str, source_type: str) -> QualityScore:
-        self.calls.append((source_ref, source_type))
+    async def score(
+        self,
+        identifiers: Any,
+        source_ref: str,
+        source_type: str,
+    ) -> QualityScore:
+        self.calls.append((identifiers, source_ref, source_type))
         if self._fail:
             raise RuntimeError("Scorer failed")
         if self._score is not None:

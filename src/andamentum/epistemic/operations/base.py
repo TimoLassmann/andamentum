@@ -16,6 +16,7 @@ from ..adapters import ADAPTERS
 
 if TYPE_CHECKING:
     from ..repository import EpistemicRepository
+    from .identifier_extraction import Identifiers
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -159,21 +160,42 @@ class QualityScore:
 
 
 class QualityScorer(Protocol):
-    """Scores evidence source quality via OpenAlex (DOI/PMID lookup).
+    """Scores evidence source quality via a bibliometric resolver.
 
-    Injected via create_operations(). When None or when lookup fails,
-    evidence quality is assessed by the epistemic_assess_evidence_quality agent.
+    Currently implemented by ``OpenAlexQualityScorer``. Future
+    Crossref or Semantic Scholar implementations would slot in via
+    the same Protocol.
+
+    Injected via ``create_operations()``. When the scorer returns
+    None (no identifiers found, or lookup failed), evidence quality
+    falls through to LLM-based assessment in
+    ``ExtractEvidenceOperation._score_evidence`` Path 2.
     """
 
-    async def score(self, source_ref: str, source_type: str) -> QualityScore:
-        """Score a source's quality.
+    async def score(
+        self,
+        identifiers: "Identifiers",
+        source_ref: str,
+        source_type: str,
+    ) -> QualityScore:
+        """Score a source's quality from pre-extracted identifiers.
+
+        Phase 3 of the efficiency plan: identifiers are extracted
+        upstream (via ``operations.identifier_extraction.extract_identifiers``)
+        from both the source_ref and the evidence content body, so the
+        scorer has more context than just the source_ref. The scorer
+        no longer does identifier extraction itself.
 
         Args:
-            source_ref: Source reference (DOI, URL, database ID)
-            source_type: Type of source (e.g., "openalex", "web_search")
+            identifiers: Pre-extracted DOI / PMID / arXiv identifiers.
+                When all are None, the scorer should return None.
+            source_ref: Source reference (kept for logging context).
+            source_type: Source type, e.g. "openalex", "web_search"
+                (kept for logging context).
 
         Returns:
-            QualityScore with composite score and metadata
+            QualityScore with composite score and metadata, or None
+            when no identifier resolved.
         """
         ...
 
