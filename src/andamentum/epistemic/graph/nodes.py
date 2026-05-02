@@ -2225,32 +2225,39 @@ class CheckCompletion(Node):
 
 @dataclass
 class CheckSynthesisDemand(Node):
-    """Phase 1 of the lazy-escalation plan: ASK whether the synthesised
-    verdict is satisfying enough to deliver to the user, or whether
-    something specific is still missing that more investigation could
-    find.
+    """Phase 4 of the lazy-escalation plan: ASK whether the synthesised
+    verdict is satisfying, and if not, LOOP BACK to investigation.
 
-    Phase 1 is **logging-only**. The demand is computed and logged but
-    the graph continues to ``Synthesize`` regardless of the result.
-    This is the safety design: we get to observe whether the
-    satisfaction LLM's judgment is reliable before Phase 4 trusts it
-    as control flow. If the LLM's calibration looks shaky in the logs,
-    we recalibrate before Phase 4.
+    Phase 1 shipped this node in logging-only mode (always returned
+    Synthesize). Phase 4 activates the loop-back: when the demand
+    says ``needs_more=True`` AND there are claims that could benefit
+    from more investigation, the node adds them to
+    ``state.claims_needing_rescrutiny`` and routes back to Scrutinize.
+    Otherwise it continues to Synthesize.
+
+    Infinite-loop prevention: only claims that are non-abandoned,
+    non-cycle-capped, AND haven't hit the per-claim
+    ``SCRUTINY_RESOLVE_CYCLE_CAP`` are added to the rescrutiny set.
+    When all eligible claims are terminal, no claims are added; the
+    node falls through to Synthesize regardless of the demand. This
+    means the loop-back terminates as soon as no claim can make
+    progress, even if the satisfaction LLM keeps saying needs_more.
 
     Deterministic gates run first as cheap pre-filters; the LLM call
     only fires when the deterministic checks don't already determine
-    satisfaction. This is the uniform deterministic-then-LLM pattern
-    from the lazy-escalation plan.
+    satisfaction.
     """
 
-    reads = frozenset({"objective_id"})
-    writes = frozenset()
+    reads = frozenset(
+        {"objective_id", "claims_needing_rescrutiny", "scrutiny_resolve_cycles"}
+    )
+    writes = frozenset({"claims_needing_rescrutiny"})
     operations = frozenset()  # uses agent_runner directly, not _run_op
     post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> "Synthesize":
+    ) -> Union["Synthesize", "Scrutinize"]:
         from ..demand import Demand
         from ..entities.objective import Objective
 
@@ -2263,9 +2270,13 @@ class CheckSynthesisDemand(Node):
         )
         active_claims = [c for c in all_claims if not c.abandoned]
 
-        # ── Deterministic gates ──────────────────────────────────────
-        # Each cheap-gate path returns a Demand directly so we can log
-        # it without an LLM call.
+        # ── Compute the demand ──────────────────────────────────────
+        # Every path below produces a ``demand`` variable. The single
+        # loop-back decision at the end of this method consumes it.
+        # This keeps Phase 4's "needs_more → loop back" logic in one
+        # place rather than scattered across each gate.
+
+        demand: Any = None  # set by exactly one branch below
 
         # Gate 1: no decomposition at all (open-research mode). The
         # combined-verdict satisfaction check doesn't apply; the
@@ -2287,8 +2298,7 @@ class CheckSynthesisDemand(Node):
 
         # Gate 2: combine_claim_verdicts didn't produce a verdict (no
         # claims aggregated; usually means orphan claims or a fully-
-        # abandoned set). The writer will produce a "we don't know"
-        # answer; that's the system being honest, not satisfying-yet.
+        # abandoned set).
         if combined is None:
             demand = Demand.needs(
                 justification=(
@@ -2298,14 +2308,10 @@ class CheckSynthesisDemand(Node):
                     "the headline answer is the no-data fallback."
                 )
             )
-            self._log_demand(demand, deps)
-            return Synthesize()
-
         # Gate 3: stranded claims present (the load-bearing invariant
         # caught by no_stranded_claims). Defensive — this should never
-        # happen at synthesis if upstream routing is correct, but if
-        # it does we can't pretend the answer is satisfying.
-        if combined.n_no_verdict > 0:
+        # happen at synthesis if upstream routing is correct.
+        elif combined.n_no_verdict > 0:
             demand = Demand.needs(
                 justification=(
                     f"{combined.n_no_verdict} claim(s) reached synthesis "
@@ -2319,15 +2325,8 @@ class CheckSynthesisDemand(Node):
                     "regression."
                 ),
             )
-            self._log_demand(demand, deps)
-            return Synthesize()
-
         # Gate 4: decisive posterior (≥0.85 supports OR ≤0.15 contradicts).
-        # When the combined posterior is far from the insufficient band,
-        # the answer direction is clear — no need for an LLM to opine.
-        # We still synthesize so the writer can produce the report;
-        # this gate just decides "satisfied without LLM call."
-        if combined.posterior is not None and (
+        elif combined.posterior is not None and (
             combined.posterior >= 0.85 or combined.posterior <= 0.15
         ):
             direction = "supports" if combined.posterior >= 0.85 else "contradicts"
@@ -2341,13 +2340,10 @@ class CheckSynthesisDemand(Node):
                     "to change the headline."
                 )
             )
-            self._log_demand(demand, deps)
-            return Synthesize()
-
         # ── LLM judgment ─────────────────────────────────────────────
         # Deterministic gates didn't determine the answer — ask the
         # check_synthesis_demand agent for a judgment.
-        if deps.agent_runner is None:
+        elif deps.agent_runner is None:
             # No runner — can't ask the LLM. Default to satisfied so we
             # don't block synthesis. The deterministic gates above
             # already caught the load-bearing cases.
@@ -2355,61 +2351,124 @@ class CheckSynthesisDemand(Node):
                 justification="No agent runner available for LLM satisfaction check; "
                 "deterministic gates passed."
             )
-            self._log_demand(demand, deps)
-            return Synthesize()
 
-        # Build a compact picture for the agent. Per-claim summaries
-        # plus the combined verdict. Keep it short — the agent's job is
-        # judgment, not re-reading every detail.
-        claim_summaries: list[str] = []
-        for c in active_claims:
-            verdict = c.integrated_assessment or "no-verdict"
-            confidence = (
-                f"{c.integrated_confidence:.2f}"
-                if c.integrated_confidence is not None
-                else "—"
-            )
-            claim_summaries.append(
-                f"  [{c.sub_investigation_id or '-'}] "
-                f"verdict={verdict} (conf={confidence}): {c.statement[:120]}"
-            )
+        else:
+            # Build a compact picture for the agent. Per-claim summaries
+            # plus the combined verdict. Keep it short — the agent's
+            # job is judgment, not re-reading every detail.
+            claim_summaries: list[str] = []
+            for c in active_claims:
+                verdict = c.integrated_assessment or "no-verdict"
+                confidence = (
+                    f"{c.integrated_confidence:.2f}"
+                    if c.integrated_confidence is not None
+                    else "—"
+                )
+                claim_summaries.append(
+                    f"  [{c.sub_investigation_id or '-'}] "
+                    f"verdict={verdict} (conf={confidence}): {c.statement[:120]}"
+                )
 
-        try:
-            demand = await deps.agent_runner.run(
-                "epistemic_check_synthesis_demand",
-                research_question=(
-                    objective.clarified_question or objective.description
-                ),
-                combined_verdict_label=combined.verdict,
-                combined_posterior=(
-                    f"{combined.posterior:.3f}"
-                    if combined.posterior is not None
-                    else "n/a (UNION rule or no aggregated claims)"
-                ),
-                combination_rule=combined.combination_rule,
-                claim_count=len(active_claims),
-                claims_summary="\n".join(claim_summaries) or "(none)",
-                combiner_explanation=combined.explanation,
-            )
-        except Exception as e:
-            # Agent failed — log and treat as satisfied (don't block
-            # synthesis on a satisfaction-check failure).
-            logger.warning(
-                "CheckSynthesisDemand agent failed (%s: %s); treating "
-                "as satisfied to not block synthesis",
-                type(e).__name__,
-                e,
-            )
-            demand = Demand.satisfied(
-                justification=f"Satisfaction agent failed: {type(e).__name__}"
-            )
+            try:
+                demand = await deps.agent_runner.run(
+                    "epistemic_check_synthesis_demand",
+                    research_question=(
+                        objective.clarified_question or objective.description
+                    ),
+                    combined_verdict_label=combined.verdict,
+                    combined_posterior=(
+                        f"{combined.posterior:.3f}"
+                        if combined.posterior is not None
+                        else "n/a (UNION rule or no aggregated claims)"
+                    ),
+                    combination_rule=combined.combination_rule,
+                    claim_count=len(active_claims),
+                    claims_summary="\n".join(claim_summaries) or "(none)",
+                    combiner_explanation=combined.explanation,
+                )
+            except Exception as e:
+                # Agent failed — log and treat as satisfied (don't block
+                # synthesis on a satisfaction-check failure).
+                logger.warning(
+                    "CheckSynthesisDemand agent failed (%s: %s); treating "
+                    "as satisfied to not block synthesis",
+                    type(e).__name__,
+                    e,
+                )
+                demand = Demand.satisfied(
+                    justification=f"Satisfaction agent failed: {type(e).__name__}"
+                )
 
         self._log_demand(demand, deps)
 
-        # Phase 1 of the lazy-escalation plan: LOGGING-ONLY mode.
-        # We always continue to Synthesize, regardless of the demand.
-        # Phase 4 will activate the loop-back when demand=needs_more.
-        return Synthesize()
+        # Phase 4 of the lazy-escalation plan: ACTIVATE the loop-back.
+        # When demand says needs_more, identify claims that could
+        # benefit from more investigation and route back to Scrutinize
+        # via the rescrutiny set. When no claim can make progress
+        # (all eligible claims are terminal or at the per-claim cap),
+        # accept the current state and synthesize.
+        if not demand.needs_more:
+            return Synthesize()
+
+        return self._maybe_loop_back(demand, active_claims, state)
+
+    def _maybe_loop_back(
+        self,
+        demand: Any,
+        active_claims: list[Any],
+        state: EpistemicGraphState,
+    ) -> Union["Synthesize", "Scrutinize"]:
+        """Decide whether to route back to Scrutinize for another
+        round of investigation, or accept the current state and
+        synthesize.
+
+        We loop back when there's at least one claim that's
+        non-abandoned, non-cycle-capped, and hasn't hit the per-claim
+        ``SCRUTINY_RESOLVE_CYCLE_CAP``. Those are the claims for which
+        another round of inquiry could plausibly change the outcome.
+
+        Per-claim cap is the load-bearing safety: even if the
+        satisfaction LLM keeps saying needs_more, claims that are at
+        cap don't get re-added to rescrutiny, so when ALL eligible
+        claims hit cap, this method returns Synthesize and the loop
+        terminates. No global "give up after N rounds" cap — the
+        per-claim cap composes correctly under the synthesis loop.
+        """
+        eligible_claim_ids: list[str] = []
+        for c in active_claims:
+            if getattr(c, "cycle_capped", False):
+                continue
+            cycles = state.scrutiny_resolve_cycles.get(c.entity_id, 0)
+            if cycles >= SCRUTINY_RESOLVE_CYCLE_CAP:
+                continue
+            eligible_claim_ids.append(c.entity_id)
+
+        if not eligible_claim_ids:
+            # All non-abandoned claims are either cycle-capped or at
+            # cap. No re-investigation can make progress. Accept the
+            # current state.
+            logger.warning(
+                "[synthesis_demand] needs_more=True but all "
+                "non-abandoned claims have hit per-claim cap; "
+                "synthesizing anyway. (Existing safety: per-claim "
+                "cap is the loop-bound; no global give-up budget.)"
+            )
+            return Synthesize()
+
+        # Add the eligible claims to the rescrutiny set so Scrutinize
+        # picks them up. This composes with the existing scrutiny ↔
+        # resolve loop, which already has its own cycle cap (incremented
+        # in Scrutinize's predicate when the claim is dequeued).
+        for cid in eligible_claim_ids:
+            state.claims_needing_rescrutiny.add(cid)
+
+        logger.warning(
+            "[synthesis_demand] looping back to Scrutinize on %d "
+            "eligible claim(s); justification: %s",
+            len(eligible_claim_ids),
+            demand.justification,
+        )
+        return Scrutinize()
 
     @staticmethod
     def _log_demand(demand: Any, deps: EpistemicDeps) -> None:
