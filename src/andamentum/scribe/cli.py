@@ -2,20 +2,27 @@
 
 Subcommands mirror document-tools:doc-draft so users can swap mental
 models 1:1:
-  init           Create an empty document (optionally from a scaffold).
-  list-sections  Print sections with block and word counts.
-  read-section   Print the content of a named section.
-  write-section  Replace a named section's body with content from a file.
-  insert-figure  Append a figure block (or insert into a named section).
-  insert-table   Append a table block (or insert into a named section)
-                 from a CSV file.
-  render         Render the document to .docx.
+  init             Create an empty document (optionally from a scaffold).
+  list-sections    Print sections with block and word counts.
+  read-section     Print the content of a named section.
+  write-section    Replace a named section's body with content from a file.
+  insert-figure    Append a figure block (or insert into a named section).
+  insert-table     Append a table block (or insert into a named section)
+                   from a CSV file.
+  add-reference    Attach a bibliographic reference (cite key + optional
+                   BibTeX entry).
+  list-references  Print all references attached to the document.
+  list-citations   Print all citation keys used in paragraph blocks.
+  validate         Run structural validators (missing citations, missing
+                   figure files, unresolved markers).
+  render           Render the document to .docx.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -79,12 +86,66 @@ def _build_parser() -> argparse.ArgumentParser:
         help="If set, append the table as the last block of this section",
     )
 
+    addref = sub.add_parser(
+        "add-reference",
+        help="Attach a bibliographic reference (cite key + optional BibTeX)",
+    )
+    addref.add_argument("--database", required=True)
+    addref.add_argument("--id", required=True)
+    addref.add_argument("--cite-key", required=True)
+    addref.add_argument(
+        "--bibtex",
+        default=None,
+        help="BibTeX entry text (literal). Mutually exclusive with --bibtex-file.",
+    )
+    addref.add_argument(
+        "--bibtex-file",
+        default=None,
+        help="Path to a file containing the BibTeX entry. Mutually exclusive with --bibtex.",
+    )
+    addref.add_argument(
+        "--metadata-json",
+        default=None,
+        help="Optional JSON object with extra reference metadata",
+    )
+
+    lrefs = sub.add_parser("list-references", help="List bibliographic references")
+    lrefs.add_argument("--database", required=True)
+    lrefs.add_argument("--id", required=True)
+
+    lcites = sub.add_parser(
+        "list-citations",
+        help="List unique citation keys used in paragraph blocks",
+    )
+    lcites.add_argument("--database", required=True)
+    lcites.add_argument("--id", required=True)
+
+    val = sub.add_parser(
+        "validate",
+        help="Run structural validators (missing cites, missing figures, …)",
+    )
+    val.add_argument("--database", required=True)
+    val.add_argument("--id", required=True)
+
     render = sub.add_parser("render", help="Render document to .docx")
     render.add_argument("--database", required=True)
     render.add_argument("--id", required=True)
     render.add_argument("--output", required=True)
 
     return parser
+
+
+def _resolve_bibtex(literal: str | None, path: str | None) -> str | None:
+    """Pick whichever of --bibtex or --bibtex-file was supplied."""
+    if literal is not None and path is not None:
+        print(
+            "error: pass either --bibtex or --bibtex-file, not both",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if path is not None:
+        return Path(path).read_text(encoding="utf-8")
+    return literal
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,6 +227,40 @@ def main(argv: list[str] | None = None) -> int:
             bid = doc.append(spec)
         print(bid)
         return 0
+
+    if args.cmd == "add-reference":
+        doc = Document.open(args.id, database=args.database)
+        bibtex = _resolve_bibtex(args.bibtex, args.bibtex_file)
+        metadata = json.loads(args.metadata_json) if args.metadata_json else None
+        rid = doc.add_reference(
+            cite_key=args.cite_key, bibtex=bibtex, metadata=metadata
+        )
+        print(rid)
+        return 0
+
+    if args.cmd == "list-references":
+        doc = Document.open(args.id, database=args.database)
+        for ref in doc.references():
+            preview = (ref.bibtex_entry or "").split("\n", 1)[0][:80]
+            print(f"{ref.cite_key:30s}  {preview}")
+        return 0
+
+    if args.cmd == "list-citations":
+        doc = Document.open(args.id, database=args.database)
+        for key in doc.citations():
+            print(key)
+        return 0
+
+    if args.cmd == "validate":
+        doc = Document.open(args.id, database=args.database)
+        issues = doc.validate()
+        if not issues:
+            print("ok: no validation issues")
+            return 0
+        for issue in issues:
+            print(f"[{issue.severity:7s}] {issue.location}: {issue.message}")
+        # Non-zero exit only if any error-severity issues present
+        return 1 if any(i.severity == "error" for i in issues) else 0
 
     if args.cmd == "render":
         doc = Document.open(args.id, database=args.database)
