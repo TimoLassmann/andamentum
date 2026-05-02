@@ -1215,10 +1215,19 @@ class PromoteToSupported(Node):
                     )
 
         # Step 2: Check if any SUPPORTED claims need verification
-        # Re-read after promotions
+        # Re-read after promotions.
+        #
+        # Cycle-capped claims are excluded: cycle-capped means the
+        # inquiry loop didn't converge cleanly, so any verification
+        # work would feed an IBE chain whose verdict will be discarded
+        # by combine_claim_verdicts (which excludes cycle-capped
+        # claims from aggregation). Save the LLM cost AND keep
+        # cycle-cap's "this claim's inquiry didn't converge"
+        # semantics consistent.
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         needs_verification = any(
             not c.abandoned
+            and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
             and c.entity_id not in state.verification_done
             for c in all_claims
@@ -1466,10 +1475,16 @@ class RunVerification(Node):
         # seed-claim with Phase-3-forced verificatory routing, convergence
         # is PRIMARY and the gate fires correctly.
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+        # Exclude cycle_capped — same rationale as PromoteToSupported's
+        # needs_verification filter: cycle-capped means inquiry didn't
+        # converge, so don't pull verification or IBE work that the
+        # combiner will discard anyway.
         active_supported = [
             c
             for c in all_claims
-            if not c.abandoned and c.stage == ClaimStage.SUPPORTED
+            if not c.abandoned
+            and not c.cycle_capped
+            and c.stage == ClaimStage.SUPPORTED
         ]
         # If TMS just demoted any claims and added them to the rescrutiny
         # set, don't fast-path to IBE — those claims need their scrutiny
@@ -1703,10 +1718,15 @@ class EnumerateCandidates(Node):
         # own ``integration_candidates`` field — no cross-claim
         # interference. The AgentRunner's global semaphore bounds
         # in-flight LLM calls (1 for Ollama, 8 for cloud).
+        # Cycle-capped claims excluded: combine_claim_verdicts will
+        # discard their verdict regardless, so don't spend LLM calls
+        # on the IBE chain for them. Keeps cycle-cap's "inquiry didn't
+        # converge" semantics consistent across the pipeline.
         eligible_ids = [
             c.entity_id
             for c in all_claims
             if not c.abandoned
+            and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
             and c.integrated_assessment is None
             and not c.integration_candidates
@@ -1760,10 +1780,12 @@ class ScoreLoveliness(Node):
         # concurrently. Within a claim, candidates are already scored
         # in parallel (asyncio.gather inside ScoreLovelinessOperation);
         # this lifts that to the across-claims layer too.
+        # See EnumerateCandidates filter — same cycle-capped exclusion.
         eligible_ids = [
             c.entity_id
             for c in all_claims
             if not c.abandoned
+            and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
             and c.integrated_assessment is None
             and c.integration_candidates
@@ -1815,10 +1837,12 @@ class ScoreLikeliness(Node):
 
         # Phase 2c of the efficiency plan: same parallelization
         # pattern as ScoreLoveliness — across-claims gather.
+        # See EnumerateCandidates filter — same cycle-capped exclusion.
         eligible_ids = [
             c.entity_id
             for c in all_claims
             if not c.abandoned
+            and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
             and c.integrated_assessment is None
             and c.integration_candidates
@@ -1876,10 +1900,12 @@ class SelectBestExplanation(Node):
 
         # Phase 2c of the efficiency plan: same across-claims
         # parallelization as the other IBE stages.
+        # See EnumerateCandidates filter — same cycle-capped exclusion.
         eligible_ids = [
             c.entity_id
             for c in all_claims
             if not c.abandoned
+            and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
             and c.integrated_assessment is None
             and c.integration_candidates
