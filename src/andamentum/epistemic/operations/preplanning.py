@@ -300,38 +300,64 @@ class PlanTaskOperation(BaseOperation):
         )
 
         if sub_investigations:
-            # Per-(sub_investigation, provider) query formulation.
+            # Phase 2 of lazy-escalation: per-sub-claim, pick the
+            # SINGLE BEST provider via LLM rank (instead of querying
+            # all providers in parallel). Round 1 starts narrow; later
+            # rounds (driven by demand from scrutiny) will pull other
+            # providers from the candidate list via InvestigateClaim
+            # operation.
+            #
+            # If the ranker can't pick (no agent_runner, or LLM
+            # output doesn't match a candidate), fall back to the
+            # first relevant provider — keeps the pipeline alive
+            # but loses the lazy-escalation benefit for that sub.
             for sub in sub_investigations:
                 sub_id = sub.id
                 seed_claim_text = sub.seed_claim
                 question_text = seed_claim_text or clarified
-                for provider in providers:
-                    query = question_text  # fallback if no agent_runner
-                    if self.agent_runner:
-                        result = await self.run_agent(
-                            "epistemic_formulate_query",
-                            question=question_text,
-                            provider=provider,
-                            provider_description=PROVIDER_DESCRIPTIONS.get(
-                                provider, ""
-                            ),
-                        )
-                        query = result.query
 
-                    evidence = Evidence(
-                        objective_id=objective.entity_id,
-                        source_ref=query,
-                        source_type=provider,
-                        extracted=False,
-                        sub_investigation_id=sub_id,
+                chosen_provider = providers[0] if providers else "web_search"
+                if self.agent_runner and len(providers) > 1:
+                    candidates_text = "\n".join(
+                        f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}"
+                        for p in providers
                     )
-                    await self.repo.save(evidence)
-                    created_evidence.append(evidence.entity_id)
+                    rank_result = await self.run_agent(
+                        "epistemic_rank_providers",
+                        sub_claim=question_text,
+                        candidates=candidates_text,
+                    )
+                    if rank_result.chosen_provider in providers:
+                        chosen_provider = rank_result.chosen_provider
+                    # else: fall back to providers[0] (already set)
+
+                # Formulate query for the chosen provider only.
+                query = question_text  # fallback if no agent_runner
+                if self.agent_runner:
+                    result = await self.run_agent(
+                        "epistemic_formulate_query",
+                        question=question_text,
+                        provider=chosen_provider,
+                        provider_description=PROVIDER_DESCRIPTIONS.get(
+                            chosen_provider, ""
+                        ),
+                    )
+                    query = result.query
+
+                evidence = Evidence(
+                    objective_id=objective.entity_id,
+                    source_ref=query,
+                    source_type=chosen_provider,
+                    extracted=False,
+                    sub_investigation_id=sub_id,
+                )
+                await self.repo.save(evidence)
+                created_evidence.append(evidence.entity_id)
 
             plan_msg = (
                 f"Plan created with {len(created_evidence)} evidence sources "
-                f"across {len(sub_investigations)} sub-investigations × "
-                f"{len(providers)} providers: {', '.join(providers)}"
+                f"across {len(sub_investigations)} sub-investigations "
+                f"(round-1 lazy: one provider per sub-claim, ranked)"
             )
         else:
             # Original per-objective behavior (no decomposition).

@@ -123,6 +123,14 @@ class MalformedOutputRunner:
 # Default canned responses matching actual agent manifest output_model fields.
 # The adapters use attribute access, so field names must be exact.
 _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "epistemic_rank_providers": {
+        # Phase 2 of lazy-escalation: tests don't have to thread real
+        # provider lists through; the default is "web_search" since
+        # that's universally available. Tests that need to verify
+        # specific provider choices override per-test.
+        "chosen_provider": "web_search",
+        "reasoning": "Default fake_runner output: web_search.",
+    },
     "epistemic_check_synthesis_demand": {
         # Phase 1 of lazy-escalation: default to needs_more=False so
         # tests that incidentally exercise this agent get a satisfied
