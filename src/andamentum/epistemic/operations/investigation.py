@@ -300,6 +300,47 @@ class InvestigateClaimOperation(BaseOperation):
         created_entities: list[str] = []
 
         if self.agent_runner:
+            # Phase 3 of lazy-escalation: pick the NEXT unused provider
+            # for this sub-claim's escalation. The investigate operation
+            # is the system's "the demand from scrutiny says we need
+            # more — go pull a different angle" handler. Different
+            # provider = different angle.
+            #
+            # Provider tracking is derived from existing Evidence
+            # entities: we already loaded them above as part of the
+            # context-gathering step (source_types_seen). The unused
+            # set is everything in the provider registry minus that.
+            from ..providers import PROVIDER_REGISTRY
+
+            all_providers = sorted(PROVIDER_REGISTRY)
+            unused_providers = [
+                p for p in all_providers if p not in source_types_seen
+            ]
+            chosen_provider: str | None = None
+            if len(unused_providers) >= 2:
+                # Rank unused candidates and pick the best.
+                from ..providers import PROVIDER_DESCRIPTIONS
+
+                candidates_text = "\n".join(
+                    f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}"
+                    for p in unused_providers
+                )
+                rank_result = await self.run_agent(
+                    "epistemic_rank_providers",
+                    sub_claim=claim.statement,
+                    candidates=candidates_text,
+                )
+                if rank_result.chosen_provider in unused_providers:
+                    chosen_provider = rank_result.chosen_provider
+            elif len(unused_providers) == 1:
+                # Only one unused provider — no rank needed.
+                chosen_provider = unused_providers[0]
+            # If no unused providers (chosen_provider is None), the
+            # agent generates queries with its own source_type
+            # choices. This is the "we've been everywhere" fallback —
+            # the investigation loop will eventually hit its budget
+            # cap and the claim either soft-promotes or abandons.
+
             result = await self.run_agent(
                 "epistemic_investigate_claim",
                 claim_statement=claim.statement,
@@ -318,11 +359,18 @@ class InvestigateClaimOperation(BaseOperation):
 
             # Create evidence stubs from agent output
             for eq in result.evidence_queries:
-                source_type = (
-                    eq.get("source_type", "web_search")
-                    if isinstance(eq, dict)
-                    else "web_search"
-                )
+                # When chosen_provider was set by the ranker, override
+                # the agent's source_type — we've made the provider
+                # decision externally for lazy-escalation. When None,
+                # honor whatever the agent chose.
+                if chosen_provider is not None:
+                    source_type = chosen_provider
+                else:
+                    source_type = (
+                        eq.get("source_type", "web_search")
+                        if isinstance(eq, dict)
+                        else "web_search"
+                    )
                 query = eq.get("query", "") if isinstance(eq, dict) else str(eq)
                 if not query:
                     continue
@@ -332,11 +380,7 @@ class InvestigateClaimOperation(BaseOperation):
                 # ExtractEvidenceOperation: under multi-seed-claim, every
                 # Evidence belonging to a sub-investigation must carry
                 # the sub_investigation_id tag so MultiSeedClaim's
-                # per-claim filter sees it on later passes (e.g. after a
-                # future reflection round adds new sub-investigations).
-                # Without this, investigation-derived evidence for a
-                # tagged claim is silently invisible to the per-claim
-                # pool.
+                # per-claim filter sees it on later passes.
                 evidence_stub = Evidence(
                     objective_id=claim.objective_id,
                     source_type=source_type,
