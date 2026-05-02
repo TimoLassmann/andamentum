@@ -359,19 +359,24 @@ class InvestigateClaimOperation(BaseOperation):
 
             # Create evidence stubs from agent output
             for eq in result.evidence_queries:
+                # eq is normally an InvestigateClaimQueryItem (pydantic
+                # model with .source_type / .query attributes). Some
+                # tests pass a dict, and the legacy fake_runner default
+                # returns plain strings — handle all three shapes.
+                if isinstance(eq, dict):
+                    agent_source_type = eq.get("source_type", "web_search")
+                    query = eq.get("query", "")
+                elif isinstance(eq, str):
+                    agent_source_type = "web_search"
+                    query = eq
+                else:
+                    agent_source_type = getattr(eq, "source_type", "web_search")
+                    query = getattr(eq, "query", "")
                 # When chosen_provider was set by the ranker, override
                 # the agent's source_type — we've made the provider
                 # decision externally for lazy-escalation. When None,
                 # honor whatever the agent chose.
-                if chosen_provider is not None:
-                    source_type = chosen_provider
-                else:
-                    source_type = (
-                        eq.get("source_type", "web_search")
-                        if isinstance(eq, dict)
-                        else "web_search"
-                    )
-                query = eq.get("query", "") if isinstance(eq, dict) else str(eq)
+                source_type = chosen_provider if chosen_provider is not None else agent_source_type
                 if not query:
                     continue
 
