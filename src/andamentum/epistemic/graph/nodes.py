@@ -2387,10 +2387,18 @@ class CheckSynthesisDemand(Node):
 
     @staticmethod
     def _log_demand(demand: Any, deps: EpistemicDeps) -> None:
-        """Emit the synthesis demand at INFO level so it shows in
-        verbose runs and the operation log. Phase 4 will route on
-        the demand; Phase 1 just observes."""
-        logger.info(
+        """Emit the synthesis demand at WARNING level so it shows
+        through the CLI's verbose-mode log filter (which suppresses
+        INFO during runs to keep the rich-progress output clean).
+        Phase 4 will route on the demand; Phase 1 is logging-only,
+        and the entire purpose of the logs in Phase 1 is post-hoc
+        audit to validate calibration before Phase 4 trusts the
+        check as control flow — they MUST be visible.
+
+        The log level isn't a "this is alarming" signal; it's just
+        the only level the CLI keeps during runs. When the CLI's
+        logging policy changes, this can drop back to INFO."""
+        logger.warning(
             "[synthesis_demand] needs_more=%s | %s%s",
             demand.needs_more,
             demand.justification,
