@@ -491,6 +491,34 @@ class SelectProviderOutput(BaseModel):
     )
 
 
+class RankProvidersOutput(BaseModel):
+    """Output from epistemic_rank_providers agent.
+
+    Phase 2 of the lazy-escalation plan: pick the SINGLE best provider
+    for a sub-claim from a list of candidates. Used in round 1 of the
+    inquiry loop to narrow eager broad-search to lazy escalation —
+    later rounds (driven by demand) can pull additional providers from
+    the candidate list.
+
+    Flat schema for small-LLM compatibility (single string + reasoning).
+    """
+
+    chosen_provider: str = Field(
+        description=(
+            "Name of the single best provider for this sub-claim, "
+            "chosen from the provided candidate list. Must match one "
+            "of the candidate names exactly (no paraphrasing)."
+        )
+    )
+    reasoning: str = Field(
+        description=(
+            "One-sentence justification: why this provider is most "
+            "likely to give a high-information-density answer for the "
+            "specific sub-claim being investigated."
+        )
+    )
+
+
 class FormulateQueryOutput(BaseModel):
     """Output from epistemic_formulate_query agent.
 

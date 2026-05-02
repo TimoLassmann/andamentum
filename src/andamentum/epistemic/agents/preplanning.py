@@ -6,6 +6,7 @@ from .output_models import (
     ConceptualAnalysisOutput,
     FormulateQueryOutput,
     QuestionDecomposition,
+    RankProvidersOutput,
     SelectProviderOutput,
 )
 from . import AgentDefinition, register_agent
@@ -497,6 +498,67 @@ register_agent(
         name="epistemic_select_provider",
         prompt=SELECT_PROVIDER_PROMPT,
         output_model=SelectProviderOutput,
+        retries=2,
+        output_retries=3,
+    )
+)
+
+
+# ── epistemic_rank_providers ──────────────────────────────────────────────
+
+RANK_PROVIDERS_PROMPT = """\
+# Provider Ranker
+
+You decide which single evidence provider is most likely to give a
+high-information-density answer for a specific sub-claim.
+
+## Phase 2 of lazy escalation
+
+The system used to query ALL relevant providers for every sub-claim,
+in parallel, in round 1. That's wasteful: a clinical-RCT question
+about mortality is best answered by Cochrane reviews; querying 6
+providers in parallel just adds noise.
+
+This agent picks the SINGLE best provider for round 1. If round 1's
+evidence is insufficient, later rounds (driven by demand) will pull
+additional providers from the candidate list.
+
+## Your task
+
+You will see:
+- A sub-claim (the falsifiable / characterizable statement under
+  investigation)
+- A list of CANDIDATE providers, each with a description
+
+Pick the SINGLE provider most likely to give a high-density answer
+to the sub-claim.
+
+## Guidelines
+
+- Prefer providers that yield **high-information-per-call**: a Cochrane
+  systematic review is denser than 5 individual primary studies on the
+  same topic.
+- Prefer providers whose **domain matches the claim's structure**:
+  - Mortality / RCT outcome questions → Cochrane, ClinicalTrials, PubMed
+  - Mechanism / biology questions → PubMed, Europe PMC
+  - Recent debates / ongoing trials → web_search, ClinicalTrials
+  - Bibliometric / citation-graph questions → OpenAlex
+- Web search is the universal fallback — pick it when no specialist
+  provider is a clear match, but prefer specialists when one is.
+- Pick exactly ONE; do not list multiples.
+
+## Output
+
+- chosen_provider: one of the candidate names, exactly as given.
+- reasoning: one sentence on why this provider over the others.
+
+Now pick."""
+
+register_agent(
+    AgentDefinition(
+        name="epistemic_rank_providers",
+        prompt=RANK_PROVIDERS_PROMPT,
+        output_model=RankProvidersOutput,
         retries=2,
         output_retries=3,
     )
