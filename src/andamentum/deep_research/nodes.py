@@ -45,12 +45,12 @@ logger = logging.getLogger(__name__)
 # ``state.cycle.target_count`` and proceeds to the next slot (or to
 # ``ParallelSearch`` if the lowered target is already met).
 #
-# Phase 1 of the efficiency plan: lowered from 3 to 2. Each retry costs
-# 2 LLM calls (generate + verify), so the cap directly bounds wasted
-# work on slots where the first attempt was poor. The skip-and-tighten
-# fallback still fires; we just skip after one bad retry instead of
-# two.
-MAX_SLOT_RETRIES = 2
+# A previous Phase-1-efficiency cut reduced this to 2 to halve
+# wasted retries. Reverted (2026-05-02) — gave the generator one
+# fewer chance to recover from a bad first draft, contributing to
+# fewer validated queries reaching ParallelSearch and weaker
+# evidence pools downstream.
+MAX_SLOT_RETRIES = 3
 
 
 def _build_agent(

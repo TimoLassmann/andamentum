@@ -383,7 +383,7 @@ async def test_generator_prompt_includes_validated_queries_for_diversity():
     assert "validated_queries: q1" in captured_prompts[1]
 
 
-@pytest.mark.parametrize("rejection_count", [1])
+@pytest.mark.parametrize("rejection_count", [1, 2])
 async def test_slot_attempts_increments_on_rejection_below_budget(
     rejection_count: int,
 ):

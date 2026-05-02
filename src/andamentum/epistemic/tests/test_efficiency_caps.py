@@ -1,12 +1,23 @@
-"""Tests for the per-step work caps from Phase 1 of the efficiency plan.
+"""Tests pinning the adversarial / IBE / slot-retry budgets.
 
-Each test pins a specific cap so that:
-  1. The cap value is documented as a contract, not just a constant.
-  2. Future changes to the cap surface as test failures, prompting a
-     re-benchmark rather than a silent drift in cost.
-  3. The cap is exercised at the actual call site, not just unit-tested
-     against the constant — so refactors that move the constant but
-     don't apply it in the new location get caught.
+History:
+
+* An earlier version of this file pinned reduced budgets from
+  Phase 1 of the (now-reverted) efficiency plan:
+  ``MAX_ADVERSARIAL_TEMPLATES=3``, ``MAX_ADVERSARIAL_FRAMINGS=2``,
+  ``_CANDIDATE_IDS=["A","B","C"]``, ``MAX_SLOT_RETRIES=2``.
+
+* Two reverts happened:
+  - ``MAX_EXTRAS_PER_STUB=3`` (per-stub extras cap) — reverted because
+    it stripped evidence breadth across rounds, causing all-claims-
+    abandoned outcomes.
+  - The four budgets above — reverted (2026-05-02) because benchmark
+    runs showed convergence degradation: claims more often hit cycle
+    caps before IBE could fire. Restored to the pre-Phase-1 values.
+
+These tests now pin the restored (pre-Phase-1) values so a future
+optimization attempt that re-cuts these budgets without first
+proving convergence is preserved fails this test loud.
 """
 
 from __future__ import annotations
@@ -18,77 +29,59 @@ from andamentum.epistemic.operations.verification import (
 )
 
 
-# ── Cap values are the contract ──────────────────────────────────────
-#
-# An earlier iteration of this plan also capped MAX_EXTRAS_PER_STUB
-# at 3 in operations/evidence.py. The Phase 1 benchmark showed that
-# cap was too aggressive: with extras capped at 3 per stub on EVERY
-# round's extraction, the system systematically lost evidence breadth
-# across all rounds (rather than recovering it from later rounds, as
-# the plan's open-decision #1 had assumed). All 3 claims abandoned,
-# IBE never ran, posterior fell back to the no-data 0.5 fallback.
-# The cap was reverted; if revisited, formulate as a per-claim total
-# cap rather than a per-stub cap.
-
-
-def test_adversarial_query_count_is_five() -> None:
-    """Adversarial search generates 3 deterministic templates and
-    2 LLM-generated framings = 5 queries total per claim. Each query's
-    hits are evaluated by an LLM; the cap halves downstream evaluation
-    cost vs. the previous 5+3=8 split.
+def test_adversarial_query_count_is_eight() -> None:
+    """Adversarial search generates 5 deterministic templates and
+    3 LLM-generated framings = 8 queries total per claim. Reducing
+    these (we tried 3+2=5 in the reverted Phase 1 efficiency cut)
+    causes convergence degradation: less counter-evidence diversity
+    → claims more often hit cycle caps before IBE.
     """
-    assert MAX_ADVERSARIAL_TEMPLATES == 3
-    assert MAX_ADVERSARIAL_FRAMINGS == 2
-    assert MAX_ADVERSARIAL_TEMPLATES + MAX_ADVERSARIAL_FRAMINGS == 5
+    assert MAX_ADVERSARIAL_TEMPLATES == 5
+    assert MAX_ADVERSARIAL_FRAMINGS == 3
+    assert MAX_ADVERSARIAL_TEMPLATES + MAX_ADVERSARIAL_FRAMINGS == 8
 
 
-def test_ibe_candidates_capped_at_three() -> None:
-    """The IBE chain enumerates up to 3 candidates per claim. Each
-    candidate is then scored on loveliness + likeliness (2 LLM calls
-    each), so the cap halves IBE cost vs. the previous K=5.
-    """
-    assert len(_CANDIDATE_IDS) == 3
-    # The IDs themselves are the IBE chain's slot keys; the contract
-    # is that they're stable across the chain so each operation's
-    # filter logic stays valid.
-    assert _CANDIDATE_IDS == ["A", "B", "C"]
+def test_ibe_candidates_at_five() -> None:
+    """IBE chain enumerates up to 5 candidates per claim. The
+    reverted Phase 1 cut to K=3 reduced abductive diversity such
+    that the IBE chain more often produced wishy-washy verdicts.
+    Five gives enough comparative breadth to make the chain's
+    "best explanation" judgment meaningful."""
+    assert len(_CANDIDATE_IDS) == 5
+    assert _CANDIDATE_IDS == ["A", "B", "C", "D", "E"]
 
 
-def test_max_slot_retries_is_two() -> None:
-    """The deep_research per-slot generate→verify retry budget is 2.
-    Each retry costs 2 LLM calls (generate + verify), so capping at 2
-    bounds wasted work on slots where the first attempt was poor. The
-    skip-and-tighten fallback still fires after the budget is exhausted.
+def test_max_slot_retries_is_three() -> None:
+    """The deep_research per-slot generate→verify retry budget is 3.
+    The reverted Phase 1 cut to 2 gave the generator one fewer
+    chance to recover from a poor first draft, contributing to
+    weaker validated-query pools.
     """
     from andamentum.deep_research.nodes import MAX_SLOT_RETRIES
 
-    assert MAX_SLOT_RETRIES == 2
+    assert MAX_SLOT_RETRIES == 3
 
 
-# ── Caps actually fire at the call site ──────────────────────────────
+# ── Caps still applied at the call site ──────────────────────────────
 
 
 def test_adversarial_framings_list_truncated_to_max() -> None:
-    """The framings list is sliced to MAX_ADVERSARIAL_FRAMINGS at the
-    call site. If a future refactor moves the constant but forgets to
-    apply the slice, this test fails — the constant alone isn't enough.
+    """The framings list is sliced to MAX_ADVERSARIAL_FRAMINGS at
+    the call site. If a future refactor moves the constant but
+    forgets to apply the slice, this test fails — the constant
+    alone isn't enough.
 
-    Reads the source rather than running the operation (which needs a
-    full agent runner). The assertion is structural: the constant and
-    the slice both refer to the same number.
+    Reads the source rather than running the operation (which needs
+    a full agent runner). The assertion is structural: the slice
+    pattern uses the constant.
     """
     from pathlib import Path
 
     src = (
-        Path(__file__).parent.parent
-        / "operations"
-        / "verification.py"
+        Path(__file__).parent.parent / "operations" / "verification.py"
     ).read_text()
-    # Look for the slice pattern at the framings list literal.
     assert "][:MAX_ADVERSARIAL_FRAMINGS]" in src, (
         "AdversarialSearchOperation no longer slices its framings list "
         "by MAX_ADVERSARIAL_FRAMINGS. The constant exists but isn't "
         "being applied — the cap is silently inert."
     )
-
-

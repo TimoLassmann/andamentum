@@ -20,16 +20,19 @@ from ..entities import (
 )
 
 
-# Phase 1 of the efficiency plan: cap adversarial queries per claim.
-# Total = MAX_ADVERSARIAL_TEMPLATES (deterministic, free) +
-#         MAX_ADVERSARIAL_FRAMINGS (LLM-generated, paid).
-# Each query is then sent through the gatherer and each hit is
-# evaluated by an LLM, so total downstream cost scales with the sum
-# of these. Splitting 3 + 2 = 5 keeps both deterministic coverage of
-# common counter-evidence patterns AND LLM-driven diversity, while
-# halving downstream evaluation cost vs. the previous 5+3 = 8.
-MAX_ADVERSARIAL_TEMPLATES = 3
-MAX_ADVERSARIAL_FRAMINGS = 2
+# Adversarial-search query budget: total = MAX_ADVERSARIAL_TEMPLATES
+# (deterministic, free) + MAX_ADVERSARIAL_FRAMINGS (LLM-generated,
+# paid). Each query is then sent through the gatherer and each hit
+# is evaluated by an LLM.
+#
+# A previous Phase-1-efficiency cut reduced these to 3 + 2 = 5 to
+# halve downstream evaluation cost. Reverted (2026-05-02) after
+# benchmark runs showed convergence degradation: with fewer
+# adversarial queries, claims more often hit cycle caps before
+# IBE could fire. Restored to 5 + 3 = 8 to recover Lakatos
+# coverage.
+MAX_ADVERSARIAL_TEMPLATES = 5
+MAX_ADVERSARIAL_FRAMINGS = 3
 
 
 class AdversarialSearchOperation(BaseOperation):
