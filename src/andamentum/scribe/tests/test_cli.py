@@ -31,6 +31,10 @@ def test_help_lists_subcommands():
         "write-section",
         "insert-figure",
         "insert-table",
+        "add-reference",
+        "list-references",
+        "list-citations",
+        "validate",
         "render",
     ):
         assert sub in result.stdout
@@ -148,3 +152,128 @@ def test_render_unknown_doc_exits_nonzero(tmp_path):
         env=env,
     )
     assert result.returncode != 0
+
+
+# ---------------------------------------------------------------------------
+# Reference + validation subcommands
+# ---------------------------------------------------------------------------
+
+
+def _init_doc(env):
+    """Create a scaffolded article doc and return its id."""
+    create = _run(
+        ["init", "--database", "t", "--title", "P", "--scaffold", "article"],
+        env=env,
+    )
+    assert create.returncode == 0, create.stderr
+    return create.stdout.strip()
+
+
+def test_add_reference_and_list_references(tmp_path):
+    env = _envwith(tmp_path)
+    doc_id = _init_doc(env)
+
+    add = _run(
+        [
+            "add-reference",
+            "--database", "t",
+            "--id", doc_id,
+            "--cite-key", "Smith2023",
+            "--bibtex", "@article{Smith2023, title={A paper}, year={2023}}",
+        ],
+        env=env,
+    )
+    assert add.returncode == 0, add.stderr
+    assert add.stdout.strip()  # ref id is non-empty
+
+    listed = _run(
+        ["list-references", "--database", "t", "--id", doc_id], env=env
+    )
+    assert listed.returncode == 0
+    assert "Smith2023" in listed.stdout
+
+
+def test_add_reference_reads_bibtex_from_file(tmp_path):
+    env = _envwith(tmp_path)
+    doc_id = _init_doc(env)
+
+    bib = tmp_path / "ref.bib"
+    bib.write_text("@article{Doe2024, title={Another paper}, year={2024}}")
+
+    add = _run(
+        [
+            "add-reference",
+            "--database", "t",
+            "--id", doc_id,
+            "--cite-key", "Doe2024",
+            "--bibtex-file", str(bib),
+        ],
+        env=env,
+    )
+    assert add.returncode == 0, add.stderr
+
+    listed = _run(
+        ["list-references", "--database", "t", "--id", doc_id], env=env
+    )
+    assert "Doe2024" in listed.stdout
+    assert "Another paper" in listed.stdout
+
+
+def test_list_citations_returns_dedup_keys_from_paragraph(tmp_path):
+    env = _envwith(tmp_path)
+    doc_id = _init_doc(env)
+
+    intro = tmp_path / "intro.md"
+    intro.write_text("This builds on [@Smith2023] and [@Doe2024]; also [@Smith2023].")
+    _run(
+        [
+            "write-section",
+            "--database", "t",
+            "--id", doc_id,
+            "--section", "Introduction",
+            "--content-file", str(intro),
+        ],
+        env=env,
+    )
+
+    listed = _run(
+        ["list-citations", "--database", "t", "--id", doc_id], env=env
+    )
+    assert listed.returncode == 0
+    keys = listed.stdout.strip().splitlines()
+    assert "Smith2023" in keys
+    assert "Doe2024" in keys
+    # deduped
+    assert keys.count("Smith2023") == 1
+
+
+def test_validate_flags_missing_reference_as_error(tmp_path):
+    env = _envwith(tmp_path)
+    doc_id = _init_doc(env)
+
+    intro = tmp_path / "intro.md"
+    intro.write_text("Citing [@Ghost2099] without defining it.")
+    _run(
+        [
+            "write-section",
+            "--database", "t",
+            "--id", doc_id,
+            "--section", "Introduction",
+            "--content-file", str(intro),
+        ],
+        env=env,
+    )
+
+    val = _run(["validate", "--database", "t", "--id", doc_id], env=env)
+    # Missing-citation issues are error-severity, so exit code is non-zero.
+    assert val.returncode != 0
+    assert "Ghost2099" in val.stdout
+
+
+def test_validate_clean_doc_returns_ok(tmp_path):
+    env = _envwith(tmp_path)
+    doc_id = _init_doc(env)
+
+    val = _run(["validate", "--database", "t", "--id", doc_id], env=env)
+    assert val.returncode == 0
+    assert "ok" in val.stdout.lower()
