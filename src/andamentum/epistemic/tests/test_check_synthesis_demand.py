@@ -1,15 +1,16 @@
-"""Tests for CheckSynthesisDemand — Phase 1 of the lazy-escalation plan.
+"""Tests for CheckSynthesisDemand — deterministic gates.
 
-Phase 1 ships the satisfaction check in **logging-only** mode: the
-node computes a Demand and logs it, but always returns Synthesize
-regardless of the Demand's value. The tests pin:
+These tests exercise the cheap deterministic gates of the satisfaction
+check that fire without an LLM call. Phase 4's loop-back behavior is
+tested separately in ``test_phase4_synthesis_loop_back.py``; here we
+only pin:
 
-  1. The deterministic gates fire correctly without an LLM call.
-  2. The node ALWAYS returns Synthesize (Phase 1 contract).
-  3. The Demand is logged with the right shape so future audit can
+  1. The deterministic gates produce the correct Demand shape.
+  2. Their justification text is structured so future audits can
      reconstruct what the system thought.
 
-Phase 4 will activate loop-back; tests for that go elsewhere.
+The tests below have no claims saved so the loop-back falls through
+to Synthesize; they don't probe the Phase 4 routing.
 """
 
 from __future__ import annotations
@@ -112,11 +113,15 @@ async def test_no_combined_verdict_gates_to_needs_more(
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
-    assert isinstance(next_node, Synthesize)  # Phase 1 always continues
+    # No claims saved → no eligible claims → loop-back falls through
+    # to Synthesize with the "synthesizing anyway" safety log.
+    assert isinstance(next_node, Synthesize)
     msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
-    assert len(msgs) == 1
-    assert "needs_more=True" in msgs[0]
-    assert "no combined verdict" in msgs[0].lower() or "abandoned" in msgs[0].lower()
+    # Find the gate's demand log (the first one), separate from any
+    # loop-back safety log.
+    gate_msgs = [m for m in msgs if "no combined verdict" in m.lower() or "abandoned" in m.lower()]
+    assert gate_msgs, f"Expected gate to log a 'no combined verdict' demand. Got: {msgs}"
+    assert "needs_more=True" in gate_msgs[0]
 
 
 # ── Deterministic gate: stranded claims (n_no_verdict > 0) ───────────
@@ -157,12 +162,14 @@ async def test_stranded_claims_gates_to_needs_more(
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
+    # No claims → loop-back falls through to Synthesize.
     assert isinstance(next_node, Synthesize)
     msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
-    assert len(msgs) == 1
-    assert "needs_more=True" in msgs[0]
+    gate_msgs = [m for m in msgs if "without an integration verdict" in m]
+    assert gate_msgs, f"Expected stranded-claims gate log. Got: {msgs}"
+    assert "needs_more=True" in gate_msgs[0]
     # Justification should specifically mention the stranded claim count.
-    assert "1" in msgs[0] and "without an integration verdict" in msgs[0]
+    assert "1" in gate_msgs[0]
 
 
 # ── Deterministic gate: decisive posterior ───────────────────────────
@@ -293,19 +300,17 @@ async def test_no_agent_runner_falls_through_to_satisfied(
     assert "no agent runner" in msgs[0].lower()
 
 
-# ── Phase 1 always returns Synthesize ────────────────────────────────
+# ── Phase 4: satisfaction-default returns Synthesize ─────────────────
 
 
-async def test_always_returns_synthesize_phase_1(
+async def test_default_satisfied_path_returns_synthesize(
     tmp_path: Path, fake_runner
 ) -> None:
-    """Phase 1 contract: the node ALWAYS returns Synthesize, regardless
-    of whether the demand says needs_more or not. Phase 4 will activate
-    the loop-back; in Phase 1 we only LOG.
-
-    This test pins the contract so a future PR that prematurely
-    activates loop-back gets caught before merge."""
-    store = DocumentStore.for_database("phase_1_contract", db_dir=tmp_path)
+    """When the satisfaction LLM returns ``needs_more=False`` (the
+    fake_runner default), the node continues to Synthesize. This is
+    the common case: the deterministic gates passed and the LLM
+    confirmed the verdict is good enough."""
+    store = DocumentStore.for_database("phase_4_default", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
@@ -317,7 +322,7 @@ async def test_always_returns_synthesize_phase_1(
             ],
             combination_rule="AND",
             combined_verdict=CombinedVerdictData(
-                posterior=0.5,  # ambiguous — would trigger LLM
+                posterior=0.5,  # ambiguous — triggers LLM judgment
                 verdict="insufficient",
                 combination_rule="AND",
                 claim_posteriors=[0.5],
@@ -334,12 +339,4 @@ async def test_always_returns_synthesize_phase_1(
     )
 
     next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
-
-    # No matter what the agent returned (fake_runner gives a
-    # configurable demand), Phase 1 always continues to Synthesize.
-    assert isinstance(next_node, Synthesize), (
-        "Phase 1 of the lazy-escalation plan is logging-only — the node "
-        "MUST always return Synthesize. If this test fails, someone has "
-        "prematurely activated Phase 4's loop-back without a separate "
-        "design review."
-    )
+    assert isinstance(next_node, Synthesize)
