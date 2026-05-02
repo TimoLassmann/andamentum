@@ -457,13 +457,13 @@ class DecomposeQuestionOperation(BaseOperation):
         # Idempotence: skip if already decomposed.
         if objective.decomposition is not None:
             existing = objective.decomposition
-            sub_count = len(existing.get("sub_investigations", []))
+            sub_count = len(existing.sub_investigations)
             return OperationResult(
                 success=True,
                 entity_id=objective.entity_id,
                 message=(
                     f"Already decomposed into {sub_count} sub-investigations "
-                    f"(combination={existing.get('combination_rule')})"
+                    f"(combination={existing.combination_rule})"
                 ),
                 did_work=False,
             )

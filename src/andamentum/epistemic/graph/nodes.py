@@ -2475,14 +2475,17 @@ class CheckSynthesisDemand(Node):
         """Emit the synthesis demand at WARNING level so it shows
         through the CLI's verbose-mode log filter (which suppresses
         INFO during runs to keep the rich-progress output clean).
-        Phase 4 will route on the demand; Phase 1 is logging-only,
-        and the entire purpose of the logs in Phase 1 is post-hoc
-        audit to validate calibration before Phase 4 trusts the
-        check as control flow — they MUST be visible.
+        These logs are also the audit trail for the satisfaction
+        check's calibration — they MUST be visible.
 
         The log level isn't a "this is alarming" signal; it's just
         the only level the CLI keeps during runs. When the CLI's
-        logging policy changes, this can drop back to INFO."""
+        logging policy changes, this can drop back to INFO.
+
+        ``deps`` is unused today but kept on the signature so future
+        per-run instrumentation (e.g. write the demand to a trace
+        file in deps) doesn't change every call site."""
+        del deps  # currently unused; reserved for trace-file emission
         logger.warning(
             "[synthesis_demand] needs_more=%s | %s%s",
             demand.needs_more,
