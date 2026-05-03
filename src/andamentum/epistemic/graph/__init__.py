@@ -39,6 +39,7 @@ async def run_epistemic_graph(
     objective_id: Optional[str] = None,
     decompose: bool = False,
     stop_after: Optional[type] = None,
+    start_at: Optional[type] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -150,9 +151,10 @@ async def run_epistemic_graph(
     if verbose:
         logger.info(f"Starting epistemic graph for objective {objective_id}")
 
+    entry_node = (start_at or PrepareObjective)()
     if stop_after is None:
         graph_result = await epistemic_graph.run(
-            PrepareObjective(),
+            entry_node,
             state=state,
             deps=deps,
         )
@@ -163,7 +165,7 @@ async def run_epistemic_graph(
         # checkpoint; callers resume by passing start_at on a later
         # invocation. See docs/superpowers/plans/2026-05-03-stage-runners.md.
         async with epistemic_graph.iter(
-            PrepareObjective(), state=state, deps=deps
+            entry_node, state=state, deps=deps
         ) as run:
             while run.result is None:
                 next_node = run.next_node

@@ -76,6 +76,74 @@ async def test_stop_after_prepare_objective_writes_question_type(
 
 
 # Note: there is no explicit "stop_after=None preserves existing
+# behavior" test. The existing 1854 tests run with stop_after=None
+# (the default), so the no-change path is tested by every other
+# call site implicitly.
+
+
+async def test_start_at_skips_to_named_node(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``start_at`` resumes the graph from a named node instead of
+    PrepareObjective. The DB must already contain the prerequisite
+    state (in this case, an Objective). Combined with ``stop_after``
+    on a single-node window, this is the test that pins the
+    save-and-resume contract: running with start_at=X stop_after=X
+    executes exactly node X and nothing else."""
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    from andamentum.epistemic.graph.nodes import Decompose
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    # Stage 1: run only PrepareObjective. DB now has Objective with
+    # question_type set, but no decomposition.
+    r1 = await run_epistemic_graph(
+        question="Is exercise good for cardiovascular health?",
+        database_name="stage_resume",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        stop_after=PrepareObjective,
+    )
+    assert r1.status == "stopped_after:PrepareObjective"
+
+    # Stage 2: resume from Decompose. objective_id is auto-resumed
+    # from the DB (existing_objectives path).
+    r2 = await run_epistemic_graph(
+        question="(ignored — DB has objective)",
+        database_name="stage_resume",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        start_at=Decompose,
+        stop_after=Decompose,
+    )
+    assert r2.status == "stopped_after:Decompose"
+    assert r2.objective_id == r1.objective_id, (
+        "Resumed run must reuse the saved objective; if a new one "
+        "was created, the DB-as-checkpoint contract is broken."
+    )
+
+    store = DocumentStore.for_database("stage_resume", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+    obj = await repo.get("objective", r1.objective_id)
+    assert obj is not None
+    assert obj.decomposition is not None, (
+        "Decompose is the unique writer of Objective.decomposition; "
+        "if it's still None after stage 2, start_at didn't actually "
+        "execute the named node."
+    )
+
+
+# Note: there is no explicit "stop_after=None preserves existing
 # behavior" test. The existing 1848 tests run with stop_after=None
 # (the default), so the no-change path is tested by every other
 # call site implicitly. Adding a redundant 60s end-to-end run here
