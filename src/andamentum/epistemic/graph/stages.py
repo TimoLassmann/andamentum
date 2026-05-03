@@ -110,7 +110,7 @@ async def _check_integration(state: Any, repo: Any) -> bool:
 
 async def _check_synthesis(state: Any, repo: Any) -> bool:
     obj = await _objective(repo, state)
-    return obj is not None and getattr(obj, "report", None) is not None
+    return obj is not None and obj.artefact_id is not None
 
 
 STAGES: dict[str, StageDef] = {
