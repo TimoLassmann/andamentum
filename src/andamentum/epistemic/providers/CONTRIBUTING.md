@@ -276,10 +276,18 @@ from .your_provider import YourProvider
 register_provider(
     "your_provider",
     YourProvider,
-    (
+    description=(
         "Description of what this provider searches and when to use it. "
         "Be specific about the domain. Include 3-4 example queries. "
         "Example queries: 'query one', 'query two', 'query three'."
+    ),
+    query_guidance=(
+        "How the query reaches the API (e.g., goes to `/search` `q` "
+        "parameter). Native syntax supported (Boolean, field operators, "
+        "phrase quoting, IDs). Catalogue of 5-7 syntactically distinct "
+        "query styles that all work — frame as 'all of these work', not "
+        "'this is optimal', so the formulator varies its output across "
+        "calls. Note any operators that are silently ignored."
     ),
 )
 ```
