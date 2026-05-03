@@ -192,6 +192,110 @@ async def test_output_dir_emits_three_artifacts(
     assert "Total:" in timing and "PrepareObjective:" in timing
 
 
+async def test_stage_invariant_satisfied_no_crash(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When stop_after matches a known stage exit and the invariant
+    holds, the run completes cleanly. ``Decompose`` is the
+    ``preplanning`` stage's exit; with decompose=True the agent emits
+    a real decomposition and the invariant passes."""
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    from andamentum.epistemic.graph.nodes import Decompose
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    result = await run_epistemic_graph(
+        question="Is exercise good for cardiovascular health?",
+        database_name="stage_invariant_ok",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        stop_after=Decompose,
+    )
+    assert result.status == "stopped_after:Decompose"
+
+
+async def test_stage_invariant_violation_crashes_loudly(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Critical: a leaky stage boundary MUST crash, not silently pass
+    half-finished state forward. Patch the preplanning invariant to
+    return False and confirm the runner raises StageInvariantError
+    naming the stage and the leaky exit node."""
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    from andamentum.epistemic.graph.nodes import Decompose
+    from andamentum.epistemic.graph.stages import StageInvariantError, STAGES
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    async def _always_false(_state, _repo):
+        return False
+
+    # StageDef is frozen, so swap the entry instead of mutating fields.
+    from dataclasses import replace
+
+    monkeypatch.setitem(
+        STAGES,
+        "preplanning",
+        replace(STAGES["preplanning"], exit_invariant=_always_false),
+    )
+
+    with pytest.raises(StageInvariantError) as excinfo:
+        await run_epistemic_graph(
+            question="any question",
+            database_name="stage_invariant_fail",
+            db_dir=str(tmp_path),
+            model="fake:test-model",
+            embedding_model="fake-embeddings",
+            decompose=True,
+            stop_after=Decompose,
+        )
+    assert "preplanning" in str(excinfo.value)
+    assert "Decompose" in str(excinfo.value)
+
+
+async def test_stop_after_unknown_node_skips_invariant_check(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Mid-pipeline debugging stop points (e.g. stop_after=PlanEvidence,
+    not a stage exit) skip the invariant lookup. The runner doesn't
+    have an opinion on non-stage stops; user is on their own."""
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    from andamentum.epistemic.graph.nodes import PlanEvidence
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    # PlanEvidence isn't an exit_after of any stage. The runner should
+    # NOT crash even though the post-state is "in the middle of"
+    # initial_evidence.
+    result = await run_epistemic_graph(
+        question="any question",
+        database_name="stage_unknown_stop",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        stop_after=PlanEvidence,
+    )
+    assert result.status == "stopped_after:PlanEvidence"
+
+
 # Note: there is no explicit "stop_after=None preserves existing
 # behavior" test. The existing 1848 tests run with stop_after=None
 # (the default), so the no-change path is tested by every other
