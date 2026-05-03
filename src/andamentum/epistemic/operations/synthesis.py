@@ -717,3 +717,221 @@ class SynthesizeReportOperation(BaseOperation):
             if linked:
                 trace[claim.entity_id] = linked
         return trace
+
+
+class SynthesizeInsufficientReportOperation(BaseOperation):
+    """Synthesise an artefact for the structurally-insufficient case.
+
+    Companion to ``SynthesizeReportOperation``. Same input shape (a
+    snapshot id), same output shape (an Artefact stamped onto the
+    Objective), but no LLM call. The body is templated deterministically
+    from the snapshot's structural counts and the synthesis-demand
+    diagnosis the gate produced (carried on
+    ``EpistemicGraphState.synthesis_insufficient_reason``).
+
+    The artefact's ``artefact_type`` is ``"insufficient"`` so downstream
+    consumers (CLI, tests, exporters) can distinguish a structural
+    "we suspended judgment" from a directional verdict by reading a
+    typed field rather than parsing prose. The verdict string is
+    fixed: "Insufficient evidence to answer." — Peirce's fallibilism
+    encoded in the system's topology, not delegated to an LLM prompt.
+    """
+
+    entity_type = "snapshot"
+
+    INSUFFICIENT_VERDICT = "Insufficient evidence to answer."
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        snapshot = await self.repo.get("snapshot", work.entity_id)
+
+        if not isinstance(snapshot, Snapshot):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Snapshot",
+            )
+
+        if snapshot.artefact_id is not None:
+            return OperationResult(
+                success=True,
+                entity_id=work.entity_id,
+                message="Artefact already compiled",
+            )
+
+        objective = await self.repo.get("objective", snapshot.objective_id)
+
+        claims: list[Claim] = []
+        for cid in snapshot.claim_ids:
+            c = await self.repo.get("claim", cid)
+            if isinstance(c, Claim):
+                claims.append(c)
+        claims.sort(key=lambda c: -STAGE_HIERARCHY.get(c.stage, -1))
+
+        evidence: list[Evidence] = []
+        for eid in snapshot.evidence_ids:
+            e = await self.repo.get("evidence", eid)
+            if isinstance(e, Evidence) and not e.invalidated:
+                evidence.append(e)
+
+        uncertainties: list[Uncertainty] = []
+        for uid in snapshot.uncertainty_ids:
+            u = await self.repo.get("uncertainty", uid)
+            if isinstance(u, Uncertainty):
+                uncertainties.append(u)
+
+        question = (
+            objective.description
+            if isinstance(objective, Objective)
+            else "Research question"
+        )
+
+        quality_signals = SynthesizeReportOperation._compute_quality_signals(
+            claims, evidence, uncertainties
+        )
+
+        # The structural reason the gate routed here. None when the
+        # operation is invoked outside the normal CheckSynthesisDemand
+        # path (e.g., in a test that constructs the Snapshot directly);
+        # in that case we still produce a coherent insufficient artefact
+        # but the body lacks the demand-level diagnosis.
+        reason = work.metadata.get("synthesis_insufficient_reason") or ""
+
+        title = self._build_title(question)
+        content = self._build_markdown(
+            title=title,
+            question=question,
+            claims=claims,
+            evidence=evidence,
+            quality_signals=quality_signals,
+            reason=reason,
+            include_quality_signals=True,
+        )
+        content_body = self._build_markdown(
+            title=title,
+            question=question,
+            claims=claims,
+            evidence=evidence,
+            quality_signals=quality_signals,
+            reason=reason,
+            include_quality_signals=False,
+        )
+
+        trace = SynthesizeReportOperation._build_trace(claims, evidence)
+
+        artefact = Artefact(
+            objective_id=snapshot.objective_id,
+            snapshot_id=snapshot.entity_id,
+            artefact_type="insufficient",
+            audience_profile=work.metadata.get("audience", "general"),
+            content=content,
+            content_body=content_body,
+            trace=trace,
+        )
+        await self.repo.save(artefact)
+
+        snapshot.artefact_id = artefact.entity_id
+        await self.repo.save(snapshot)
+
+        if isinstance(objective, Objective):
+            objective.artefact_id = artefact.entity_id
+            objective.phase = "complete"
+            await self.repo.save(objective)
+
+        return OperationResult(
+            success=True,
+            entity_id=artefact.entity_id,
+            message=f"Synthesised insufficient artefact ({len(content)} chars)",
+            created_entities=[artefact.entity_id],
+        )
+
+    @staticmethod
+    def _build_title(question: str) -> str:
+        truncated = question.strip()
+        if len(truncated) > 80:
+            truncated = truncated[:77].rstrip() + "..."
+        return f"Insufficient Evidence: {truncated}"
+
+    @classmethod
+    def _build_markdown(
+        cls,
+        *,
+        title: str,
+        question: str,
+        claims: list["Claim"],
+        evidence: list["Evidence"],
+        quality_signals: dict[str, Any],
+        reason: str,
+        include_quality_signals: bool,
+    ) -> str:
+        """Deterministic templated body. No LLM. Surfaces structural
+        counts plus the gate's diagnosis so the artefact reads as a
+        coherent "system suspended judgment, here's why" — not a
+        directional verdict invented from no data."""
+        n_claims = quality_signals.get("claims_total", 0)
+        n_abandoned = quality_signals.get("claims_abandoned", 0)
+        n_capped = sum(1 for c in claims if getattr(c, "cycle_capped", False))
+        n_no_verdict = sum(
+            1
+            for c in claims
+            if not c.abandoned
+            and not getattr(c, "cycle_capped", False)
+            and c.integrated_assessment is None
+        )
+        n_evidence = len(evidence)
+        n_blocking = quality_signals.get("blocking_uncertainties", 0)
+
+        sections: list[str] = []
+        sections.append(f"# {title}\n")
+        sections.append(f"> **Research Question:** {question}")
+        if include_quality_signals:
+            sections.append(
+                f"> **Evidence Sources:** {n_evidence} | "
+                f"**Claims Established:** 0 of {n_claims}"
+            )
+        sections.append("")
+        sections.append(f"> **Verdict:** {cls.INSUFFICIENT_VERDICT}")
+        sections.append("")
+        sections.append(
+            "The investigation completed without reaching an integration "
+            "verdict. The system suspends judgment on this question rather "
+            "than producing a directional answer the evidence does not "
+            "support."
+        )
+        sections.append("")
+
+        sections.append("## What the system attempted")
+        sections.append("")
+        sections.append(f"- {n_claims} claim(s) investigated.")
+        if n_abandoned:
+            sections.append(
+                f"- {n_abandoned} claim(s) abandoned (no actionable evidence found)."
+            )
+        if n_capped:
+            sections.append(
+                f"- {n_capped} claim(s) reached the per-claim investigation cap."
+            )
+        if n_no_verdict:
+            sections.append(
+                f"- {n_no_verdict} claim(s) had no integration verdict."
+            )
+        sections.append(f"- {n_evidence} evidence item(s) gathered overall.")
+        if n_blocking:
+            sections.append(
+                f"- {n_blocking} blocking uncertainty(ies) identified."
+            )
+        sections.append("")
+
+        if reason:
+            sections.append("## Why no directional verdict is offered")
+            sections.append("")
+            sections.append(reason)
+            sections.append("")
+
+        sections.append(
+            "A directional answer (\"yes\" or \"no\") would not be "
+            "supported by the evidence base assembled. Further "
+            "investigation — different sources, different framing, or "
+            "human expert review — is the appropriate next step."
+        )
+
+        return "\n".join(sections)

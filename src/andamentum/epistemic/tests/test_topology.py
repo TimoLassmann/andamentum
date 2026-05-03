@@ -29,8 +29,10 @@ from __future__ import annotations
 from andamentum.epistemic.graph.nodes import (
     AbandonOrDemote,
     CheckCompletion,
+    CheckSynthesisDemand,
     PrepareObjective,
     Synthesize,
+    SynthesizeInsufficient,
 )
 from andamentum.epistemic.graph.topology import (
     all_nodes,
@@ -93,6 +95,38 @@ def test_synthesize_terminates_at_end() -> None:
     assert successors == frozenset(), (
         f"Synthesize should terminate at End[...] only; got successors "
         f"{sorted(s.__name__ for s in successors)}"
+    )
+
+
+def test_synthesize_insufficient_terminates_at_end() -> None:
+    """``SynthesizeInsufficient`` is the structural fallibilism terminal:
+    reached when ``CheckSynthesisDemand`` finds the demand unsatisfied
+    AND no claim is eligible for further work. Like ``Synthesize``, it
+    must terminate at ``End[...]`` only — not loop back into the graph
+    (the per-claim cap already drained eligibility, so a second
+    loop-back would be unbounded)."""
+    topo = topology()
+    successors = topo[SynthesizeInsufficient]
+    assert successors == frozenset(), (
+        f"SynthesizeInsufficient should terminate at End[...] only; "
+        f"got successors {sorted(s.__name__ for s in successors)}"
+    )
+
+
+def test_check_synthesis_demand_routes_to_insufficient() -> None:
+    """Maximal-B topology contract. ``CheckSynthesisDemand`` must be
+    able to route to ``SynthesizeInsufficient`` — that's the
+    architectural "system suspends judgment" path. Without this edge
+    the writer agent gets called on no-data state and invents a
+    directional verdict (the K3 failure)."""
+    topo = topology()
+    successors = topo[CheckSynthesisDemand]
+    assert SynthesizeInsufficient in successors, (
+        f"CheckSynthesisDemand must include SynthesizeInsufficient as a "
+        f"successor; got {sorted(s.__name__ for s in successors)}. If "
+        "this edge is missing, the gate's no-eligible-claims branch "
+        "falls through to Synthesize and the writer fabricates a "
+        "verdict from absent evidence."
     )
 
 

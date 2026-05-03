@@ -27,7 +27,11 @@ from andamentum.epistemic.entities.decomposition import (
     SubInvestigation,
 )
 from andamentum.epistemic.graph.deps import EpistemicDeps
-from andamentum.epistemic.graph.nodes import CheckSynthesisDemand, Synthesize
+from andamentum.epistemic.graph.nodes import (
+    CheckSynthesisDemand,
+    Synthesize,
+    SynthesizeInsufficient,
+)
 from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.repository import EpistemicRepository
 
@@ -113,9 +117,11 @@ async def test_no_combined_verdict_gates_to_needs_more(
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
-    # No claims saved → no eligible claims → loop-back falls through
-    # to Synthesize with the "synthesizing anyway" safety log.
-    assert isinstance(next_node, Synthesize)
+    # No claims saved → no eligible claims → routes to the
+    # structurally-explicit insufficient terminal (Maximal B). The
+    # graph refuses to invent a directional verdict from no-data
+    # state — Peirce's fallibilism encoded in the topology.
+    assert isinstance(next_node, SynthesizeInsufficient)
     msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
     # Find the gate's demand log (the first one), separate from any
     # loop-back safety log.
@@ -162,8 +168,11 @@ async def test_stranded_claims_gates_to_needs_more(
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
-    # No claims → loop-back falls through to Synthesize.
-    assert isinstance(next_node, Synthesize)
+    # No claims → no eligible loop-back → routes to insufficient
+    # terminal (Maximal B). Stranded-claim demands are needs_more,
+    # and with no claims to investigate further the graph suspends
+    # judgment rather than fabricating a verdict.
+    assert isinstance(next_node, SynthesizeInsufficient)
     msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
     gate_msgs = [m for m in msgs if "without an integration verdict" in m]
     assert gate_msgs, f"Expected stranded-claims gate log. Got: {msgs}"

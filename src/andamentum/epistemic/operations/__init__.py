@@ -86,6 +86,7 @@ from .concerns import DeduplicateConcernsOperation
 # ── Synthesis ──────────────────────────────────────────────────────────
 from .synthesis import (
     FreezeSnapshotOperation,
+    SynthesizeInsufficientReportOperation,
     SynthesizeReportOperation,
 )
 
@@ -181,6 +182,7 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     # Synthesis
     "freeze_snapshot": FreezeSnapshotOperation,
     "synthesize_report": SynthesizeReportOperation,
+    "synthesize_insufficient": SynthesizeInsufficientReportOperation,
 }
 
 
@@ -274,6 +276,7 @@ __all__ = [
     "ResolveUncertaintyOperation",
     "FreezeSnapshotOperation",
     "SynthesizeReportOperation",
+    "SynthesizeInsufficientReportOperation",
     "AnalyzeArgumentOperation",
     "ContrastiveEvaluationOperation",
     "CrossClaimConsistencyOperation",

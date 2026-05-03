@@ -114,6 +114,14 @@ class EpistemicGraphState:
     # Populated by graph nodes, consumed by _run_tms_sweep.
     claims_needing_tms: set[str] = field(default_factory=set)
 
+    # Set by CheckSynthesisDemand when it routes to SynthesizeInsufficient
+    # (demand=needs_more, no eligible claims for loop-back). Carries the
+    # structural diagnosis from the gate to the deterministic synthesis
+    # operation so the artefact body can surface *why* the system
+    # suspended judgment. None on every other path — Synthesize doesn't
+    # read it.
+    synthesis_insufficient_reason: str | None = None
+
     # ── Operation trace ─────────────────────────────────────────
     # Lightweight log for the progress callback and final stats
     operations_log: list[dict[str, Any]] = field(default_factory=list)

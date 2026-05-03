@@ -129,12 +129,20 @@ def _make_op(op_class: type, deps: EpistemicDeps) -> Any:
     )
 
 
-def _op_input(entity_id: str, entity_type: str, operation: str) -> Any:
+def _op_input(
+    entity_id: str,
+    entity_type: str,
+    operation: str,
+    metadata: dict[str, Any] | None = None,
+) -> Any:
     """Create an OperationInput for operation execution."""
     from ..operations.base import OperationInput
 
     return OperationInput(
-        entity_id=entity_id, entity_type=entity_type, operation=operation
+        entity_id=entity_id,
+        entity_type=entity_type,
+        operation=operation,
+        metadata=metadata or {},
     )
 
 
@@ -145,6 +153,7 @@ async def _run_op(
     entity_id: str,
     entity_type: str,
     operation: str,
+    metadata: dict[str, Any] | None = None,
 ) -> Any:
     """Instantiate an operation, execute it, log the result, and return it.
 
@@ -157,7 +166,7 @@ async def _run_op(
     from ..operations.base import OperationResult
 
     op = _make_op(op_class, deps)
-    work = _op_input(entity_id, entity_type, operation)
+    work = _op_input(entity_id, entity_type, operation, metadata)
     try:
         result = await op.execute(work)
     except Exception as e:
@@ -2257,7 +2266,7 @@ class CheckSynthesisDemand(Node):
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["Synthesize", "Scrutinize"]:
+    ) -> Union["Synthesize", "Scrutinize", "SynthesizeInsufficient"]:
         from ..demand import Demand
         from ..entities.objective import Objective
 
@@ -2417,22 +2426,28 @@ class CheckSynthesisDemand(Node):
         demand: Any,
         active_claims: list[Any],
         state: EpistemicGraphState,
-    ) -> Union["Synthesize", "Scrutinize"]:
+    ) -> Union["Synthesize", "Scrutinize", "SynthesizeInsufficient"]:
         """Decide whether to route back to Scrutinize for another
-        round of investigation, or accept the current state and
-        synthesize.
+        round of investigation, or accept the current state.
 
         We loop back when there's at least one claim that's
         non-abandoned, non-cycle-capped, and hasn't hit the per-claim
         ``SCRUTINY_RESOLVE_CYCLE_CAP``. Those are the claims for which
         another round of inquiry could plausibly change the outcome.
 
-        Per-claim cap is the load-bearing safety: even if the
-        satisfaction LLM keeps saying needs_more, claims that are at
-        cap don't get re-added to rescrutiny, so when ALL eligible
-        claims hit cap, this method returns Synthesize and the loop
-        terminates. No global "give up after N rounds" cap — the
-        per-claim cap composes correctly under the synthesis loop.
+        When NO claim can make progress (all eligible claims are
+        terminal or at the per-claim cap) AND the demand still says
+        ``needs_more``, the rational structural response is *not* to
+        invent a directional verdict — it's to synthesise an
+        insufficient artefact. Route to ``SynthesizeInsufficient``
+        rather than ``Synthesize``. The demand justification is
+        carried via state so the deterministic body can surface the
+        gate's diagnosis. This is the system's fallibilism mode: it
+        suspends judgment instead of fabricating one.
+
+        Per-claim cap is the load-bearing safety on the loop-back
+        side: claims that are at cap don't get re-added to rescrutiny,
+        so we always reach a terminal state.
         """
         eligible_claim_ids: list[str] = []
         for c in active_claims:
@@ -2445,15 +2460,17 @@ class CheckSynthesisDemand(Node):
 
         if not eligible_claim_ids:
             # All non-abandoned claims are either cycle-capped or at
-            # cap. No re-investigation can make progress. Accept the
-            # current state.
+            # cap. No re-investigation can make progress. Route to
+            # the structurally-explicit "insufficient" terminal
+            # rather than asking the writer to invent a verdict.
             logger.warning(
                 "[synthesis_demand] needs_more=True but all "
                 "non-abandoned claims have hit per-claim cap; "
-                "synthesizing anyway. (Existing safety: per-claim "
-                "cap is the loop-bound; no global give-up budget.)"
+                "routing to SynthesizeInsufficient. justification: %s",
+                demand.justification,
             )
-            return Synthesize()
+            state.synthesis_insufficient_reason = demand.justification
+            return SynthesizeInsufficient()
 
         # Add the eligible claims to the rescrutiny set so Scrutinize
         # picks them up. This composes with the existing scrutiny ↔
@@ -2576,6 +2593,111 @@ class Synthesize(Node):
         )
 
 
+@dataclass
+class SynthesizeInsufficient(Node):
+    """Terminal node for the structurally-insufficient case.
+
+    Companion to ``Synthesize``. Reached when ``CheckSynthesisDemand``
+    determines that more work is needed (``demand.needs_more=True``)
+    but no claim is eligible for further investigation (per-claim cap
+    fired across the board). The system has structural visibility that
+    a directional verdict would be invented; routing here makes that
+    visibility a topology property rather than relying on the writer
+    agent's prompt to produce a coherent "insufficient" answer.
+
+    Encodes Peirce's fallibilism, AGM's contraction operation, and
+    Lipton's IBE precondition (no candidates → no inference) as a
+    first-class graph state. Downstream consumers distinguish this
+    from a directional verdict by reading ``Artefact.artefact_type``
+    (``"insufficient"`` vs ``"summary"``) and ``EpistemicResult.status``
+    (``"insufficient"`` vs ``"complete"``) — typed signals, not parsed
+    prose.
+
+    Carries the same ``no_stranded_claims`` invariant as ``Synthesize``:
+    a stranded claim is a routing bug regardless of which terminal the
+    graph reaches.
+    """
+
+    reads = frozenset(
+        {
+            "objective_id",
+            "successful",
+            "failed",
+            "errors",
+            "operations_log",
+            "quarantined",
+            "retrieval_failed",
+            "synthesis_insufficient_reason",
+        }
+    )
+    writes = frozenset()
+    operations = frozenset()  # populated below
+    post_invariants = (no_stranded_claims,)
+
+    async def run(
+        self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
+    ) -> End[EpistemicResult]:
+        from ..operations.synthesis import (
+            FreezeSnapshotOperation,
+            SynthesizeInsufficientReportOperation,
+        )
+
+        state = ctx.state
+        deps = ctx.deps
+        oid = state.objective_id
+
+        await _run_op(
+            FreezeSnapshotOperation,
+            deps,
+            state,
+            oid,
+            "objective",
+            "freeze_snapshot",
+        )
+
+        obj = await deps.repo.get("objective", oid)
+
+        if obj.snapshot_id:
+            # The deterministic builder reads the structural diagnosis
+            # off the operation's metadata bag — the gate wrote it onto
+            # state.synthesis_insufficient_reason before routing here.
+            # Carrying it through metadata keeps the operation a pure
+            # transform: same input shape every time, the body just
+            # varies with the supplied reason.
+            await _run_op(
+                SynthesizeInsufficientReportOperation,
+                deps,
+                state,
+                obj.snapshot_id,
+                "snapshot",
+                "synthesize_insufficient",
+                metadata={
+                    "synthesis_insufficient_reason": (
+                        state.synthesis_insufficient_reason or ""
+                    ),
+                },
+            )
+
+        obj = await deps.repo.get("objective", oid)
+        obj.phase = "complete"
+        obj.status = "completed"
+        await deps.repo.save(obj)
+
+        return End(
+            EpistemicResult(
+                objective_id=oid,
+                status="insufficient",
+                successful=state.successful,
+                failed=state.failed,
+                errors=state.errors,
+                operations_log=state.operations_log,
+                termination_reason="insufficient_evidence",
+                quarantined=state.quarantined,
+                retrieval_failed=state.retrieval_failed,
+            )
+        )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # GRAPH ASSEMBLY
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2604,6 +2726,7 @@ epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Gr
         CheckCompletion,
         CheckSynthesisDemand,
         Synthesize,
+        SynthesizeInsufficient,
     ],
     name="epistemic_pipeline",
 )
@@ -2758,6 +2881,7 @@ from ..operations.multi_seed_claim import (  # noqa: E402
 from ..operations.claims import ProposeClaimsOperation  # noqa: E402
 from ..operations.synthesis import (  # noqa: E402
     FreezeSnapshotOperation,
+    SynthesizeInsufficientReportOperation,
     SynthesizeReportOperation,
 )
 
@@ -2799,4 +2923,9 @@ ExtractNewEvidence.operations = frozenset({ExtractEvidenceOperation})
 
 Synthesize.operations = frozenset(
     {FreezeSnapshotOperation, SynthesizeReportOperation}
+)
+
+
+SynthesizeInsufficient.operations = frozenset(
+    {FreezeSnapshotOperation, SynthesizeInsufficientReportOperation}
 )
