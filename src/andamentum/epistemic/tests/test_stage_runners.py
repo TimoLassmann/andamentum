@@ -143,6 +143,55 @@ async def test_start_at_skips_to_named_node(
     )
 
 
+async def test_output_dir_emits_three_artifacts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When output_dir is set the runner writes run.jsonl, diff.json,
+    and timing.txt next to the DB. These are the only observability
+    surface stages need; everything else is derived from the DB."""
+    import json
+
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    artifacts = tmp_path / "artifacts"
+    result = await run_epistemic_graph(
+        question="Is exercise good?",
+        database_name="stage_artifacts",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        stop_after=PrepareObjective,
+        output_dir=artifacts,
+    )
+    assert result.status == "stopped_after:PrepareObjective"
+
+    run_jsonl = (artifacts / "run.jsonl").read_text().strip().splitlines()
+    diff = json.loads((artifacts / "diff.json").read_text())
+    timing = (artifacts / "timing.txt").read_text()
+
+    # run.jsonl: one line per node visit, JSON-decodable.
+    assert len(run_jsonl) >= 1
+    visit_0 = json.loads(run_jsonl[0])
+    assert visit_0["node"] == "PrepareObjective"
+    assert "ms" in visit_0 and "ts" in visit_0
+
+    # diff.json: keyed deltas relative to a fresh objective.
+    assert diff["objective_id"] == result.objective_id
+    assert diff["claims"] == 0  # no claims yet (stopped before initial_evidence)
+    assert diff["decomposition_present"] is False  # stopped before Decompose
+
+    # timing.txt: human-readable, total + per-node.
+    assert "Total:" in timing and "PrepareObjective:" in timing
+
+
 # Note: there is no explicit "stop_after=None preserves existing
 # behavior" test. The existing 1848 tests run with stop_after=None
 # (the default), so the no-change path is tested by every other

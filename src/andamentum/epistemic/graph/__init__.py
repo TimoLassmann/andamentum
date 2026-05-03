@@ -17,11 +17,70 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+async def _emit_artifacts(
+    output_dir: Path,
+    visits: list[dict[str, Any]],
+    repo: Any,
+    objective_id: str,
+) -> None:
+    """Write run.jsonl, diff.json, timing.txt to output_dir.
+
+    The DB at the end of the run is the canonical state — these files
+    are derived views of it, intended to be greppable, diffable, and
+    committable as test fixtures. See
+    docs/superpowers/plans/2026-05-03-stage-runners.md.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    (output_dir / "run.jsonl").write_text(
+        "\n".join(json.dumps(v) for v in visits) + "\n"
+    )
+
+    objs = await repo.query("objective")
+    claims = await repo.query("claim")
+    evidence = await repo.query("evidence")
+    obj = next((o for o in objs if o.objective_id == objective_id), None)
+    decomp = obj.decomposition if obj is not None else None
+    cv = decomp.combined_verdict if decomp is not None else None
+    diff = {
+        "objective_id": objective_id,
+        "claims": len(claims),
+        "evidence": len(evidence),
+        "evidence_with_content": sum(
+            1
+            for e in evidence
+            if (e.extracted_content or "") and len(e.extracted_content) > 200
+        ),
+        "decomposition_present": decomp is not None,
+        "combined_verdict": cv.verdict if cv is not None else None,
+        "combined_posterior": cv.posterior if cv is not None else None,
+        "claims_terminal": sum(
+            1 for c in claims if c.cycle_capped or c.abandoned
+        ),
+        "claims_with_integrated_assessment": sum(
+            1 for c in claims if c.integrated_assessment is not None
+        ),
+    }
+    (output_dir / "diff.json").write_text(json.dumps(diff, indent=2) + "\n")
+
+    by_node: dict[str, float] = {}
+    for v in visits:
+        by_node[v["node"]] = by_node.get(v["node"], 0.0) + v["ms"]
+    total_ms = sum(v["ms"] for v in visits)
+    lines = [f"Total: {total_ms / 1000:.2f}s ({len(visits)} node visits)\n"]
+    for n, ms in sorted(by_node.items(), key=lambda kv: -kv[1]):
+        lines.append(f"  {n}: {ms / 1000:.2f}s\n")
+    (output_dir / "timing.txt").write_text("".join(lines))
 
 
 async def run_epistemic_graph(
@@ -40,6 +99,7 @@ async def run_epistemic_graph(
     decompose: bool = False,
     stop_after: Optional[type] = None,
     start_at: Optional[type] = None,
+    output_dir: Optional[Path] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -152,7 +212,9 @@ async def run_epistemic_graph(
         logger.info(f"Starting epistemic graph for objective {objective_id}")
 
     entry_node = (start_at or PrepareObjective)()
-    if stop_after is None:
+    if stop_after is None and output_dir is None:
+        # Fast path: no stop, no instrumentation — let pydantic-graph
+        # drive the run in one shot.
         graph_result = await epistemic_graph.run(
             entry_node,
             state=state,
@@ -160,10 +222,12 @@ async def run_epistemic_graph(
         )
         result = graph_result.output
     else:
-        # Stage-runner mode: drive the graph node-by-node and break
-        # after the requested node's run() completes. The DB is the
-        # checkpoint; callers resume by passing start_at on a later
-        # invocation. See docs/superpowers/plans/2026-05-03-stage-runners.md.
+        # Stage-runner mode: drive the graph node-by-node so we can
+        # break after a named node and/or record visit timings. The
+        # DB is the checkpoint; callers resume by passing start_at
+        # on a later invocation. See
+        # docs/superpowers/plans/2026-05-03-stage-runners.md.
+        visits: list[dict[str, Any]] = []
         async with epistemic_graph.iter(
             entry_node, state=state, deps=deps
         ) as run:
@@ -172,10 +236,22 @@ async def run_epistemic_graph(
                 if next_node is None:
                     break
                 node_class = type(next_node)
+                t0 = time.monotonic()
                 await run.next()
-                if node_class is stop_after:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                if output_dir is not None:
+                    visits.append(
+                        {
+                            "ts": time.time(),
+                            "node": node_class.__name__,
+                            "ms": elapsed_ms,
+                        }
+                    )
+                if stop_after is not None and node_class is stop_after:
                     break
         result = run.result.output if run.result is not None else None
+        if output_dir is not None:
+            await _emit_artifacts(output_dir, visits, repo, objective_id)
 
     if verbose:
         if result is not None:
