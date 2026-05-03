@@ -27,6 +27,53 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+class DegenerateQuestionError(ValueError):
+    """Raised when the question can't plausibly be a research question.
+
+    K5 from the 2026-05-03 freeze sheet: ``--question Q`` was accepted
+    silently, producing 4 sub-investigations of nothing meaningful and
+    burning API budget on a degenerate decomposition. Loud refusal at
+    the entry point prevents that whole class of accidental run.
+
+    The validator is intentionally permissive — it rejects what is
+    obviously NOT a research question, not what is suboptimal. Borderline
+    inputs ("Why?", "Is X?") are accepted; the user is the one judging
+    whether their question is good enough to investigate. We just refuse
+    obvious garbage.
+    """
+
+
+def _validate_research_question(question: str) -> None:
+    """Reject obviously degenerate research questions.
+
+    Rules (intentionally minimal):
+      * non-empty after stripping whitespace
+      * at least 10 characters
+      * at least 2 words
+
+    A "real" research question almost always exceeds all three; "Q",
+    "?", "x y" all fail at least one. Borderline inputs like "Is X
+    safe?" pass — the system isn't a question-quality grader, it's a
+    guard against accidentally typing a single character into the CLI
+    and getting a 4-investigation decomposition out the other side.
+    """
+    stripped = (question or "").strip()
+    if not stripped:
+        raise DegenerateQuestionError(
+            "Question is empty. Pass a real research question."
+        )
+    if len(stripped) < 10:
+        raise DegenerateQuestionError(
+            f"Question too short ({len(stripped)} chars; need ≥10): {stripped!r}. "
+            "Pass a real research question, not a placeholder."
+        )
+    if len(stripped.split()) < 2:
+        raise DegenerateQuestionError(
+            f"Question is a single token: {stripped!r}. "
+            "A research question needs at least a subject and a predicate."
+        )
+
+
 async def _check_stage_invariant(
     exit_node: type,
     state: Any,
@@ -173,6 +220,14 @@ async def run_epistemic_graph(
                 phase = getattr(existing_objectives[0], "phase", "unknown")
                 logger.info(f"Resuming objective: {objective_id} (phase={phase})")
         else:
+            # Fresh objective from the question — this is the only path
+            # where the question text is used. K5 guard fires here so
+            # resume / targeted runs (which ignore the question) aren't
+            # blocked by the validator. Stage-runner callers passing
+            # "(resumed)" never reach this branch when the DB has an
+            # existing objective; they only reach it on a fresh DB,
+            # where the placeholder string would correctly fail.
+            _validate_research_question(question)
             objective_id = f"obj_{uuid.uuid4().hex[:12]}"
             starting_phase = "analyzed" if skip_preplanning else "new"
             objective = Objective(
