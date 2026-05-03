@@ -1,4 +1,4 @@
-"""RAG internals - chunk storage, embedding search, and reranking.
+"""RAG internals — chunk storage and embedding search.
 
 For document management, use DocumentStore:
 
@@ -11,20 +11,15 @@ For document management, use DocumentStore:
 
 This module provides internal components for:
 - Chunk and embedding storage (sqlite-vec)
-- Vector similarity search
-- Cross-encoder reranking
+- Vector similarity search (BM25 + dense, RRF-fused)
 """
 
 from .database import (
     delete_chunks_for_document,
-    get_document_stats,
     search_chunks,
     store_chunk_for_document,
 )
-from .embeddings import (
-    generate_embedding,
-    generate_embeddings,
-)
+from .embeddings import generate_embedding
 from .search import (
     SearchConfig,
     SearchResult,
@@ -34,7 +29,6 @@ from .search import (
 __all__ = [
     # Database operations
     "search_chunks",
-    "get_document_stats",
     "store_chunk_for_document",
     "delete_chunks_for_document",
     # Search
@@ -43,5 +37,4 @@ __all__ = [
     "SearchResult",
     # Embeddings
     "generate_embedding",
-    "generate_embeddings",
 ]

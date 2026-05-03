@@ -164,19 +164,12 @@ def _invalidate_cluster_cache(db_path: str | None = None) -> None:
 def _get_production_search_config() -> SearchConfig:
     """Get production-quality search configuration.
 
-    Enables all quality-enhancing features by default:
-    - BM25 hybrid search (50/50 semantic/keyword balance)
-    - Re-ranking disabled: RRF fusion across 4 signals provides sufficient ranking
-    - Re-rank top 50 candidates for good coverage
-
-    Returns:
-        SearchConfig with production defaults
+    BM25 hybrid search (50/50 semantic/keyword balance). RRF fusion across
+    the four top-level signals provides ranking; no per-result reranker.
     """
     return SearchConfig(
         include_bm25=True,
         bm25_weight=0.5,
-        enable_reranking=False,  # RRF fusion sufficient; re-ranking costs 200-800ms
-        reranking_top_k=50,  # Re-rank top 50 candidates
     )
 
 
@@ -311,8 +304,6 @@ async def _run_chunk_search(
         features = []
         if config.include_bm25:
             features.append(f"BM25({config.bm25_weight:.0%})")
-        if config.enable_reranking:
-            features.append(f"rerank(top-{config.reranking_top_k})")
         if query_embedding:
             features.append("semantic")
         logger.info(

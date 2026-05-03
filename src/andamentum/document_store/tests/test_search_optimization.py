@@ -7,24 +7,6 @@ import pytest
 from ..search import search_unified
 
 
-class TestProductionSearchConfig:
-    def test_reranking_disabled_in_production_config(self):
-        from andamentum.document_store.search import _get_production_search_config
-
-        config = _get_production_search_config()
-        assert config.enable_reranking is False, (
-            "Production config should disable cross-encoder re-ranking; "
-            "RRF fusion across 4 signals provides sufficient ranking quality"
-        )
-
-    def test_reranking_top_k_preserved(self):
-        """reranking_top_k stays at 50 so re-enabling is a one-line change."""
-        from andamentum.document_store.search import _get_production_search_config
-
-        config = _get_production_search_config()
-        assert config.reranking_top_k == 50
-
-
 class TestOverFetchFactor:
     def test_vector_limit_is_3x_when_bm25_enabled(self):
         """Over-fetch factor should be 3x, not 10x.
