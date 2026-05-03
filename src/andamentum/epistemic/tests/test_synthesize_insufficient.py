@@ -233,3 +233,164 @@ async def test_idempotent_when_artefact_exists(repo) -> None:
     assert "already compiled" in r2.message
     artefacts = await repo.query("artefact", objective_id="obj-insuf")
     assert len(artefacts) == 1
+
+
+# ── CheckCompletion routes all "system can't conclude" paths ─────────
+#
+# Maximal B (extended): every End() bypass that used to exit without
+# producing an artefact now routes through SynthesizeInsufficient.
+# These tests pin the three previously-bypassed paths:
+#
+#   1. retrieval_failed — evidence extraction kept returning empty.
+#   2. no_claims — decomposition / claim-creation produced nothing.
+#   3. partial — claims existed but were all abandoned during scrutiny.
+#
+# All three must now produce an artefact and route to
+# SynthesizeInsufficient (not End directly), with a reason text that
+# names the specific cause.
+
+
+async def _setup_check_completion_state(repo, objective_id: str = "obj-cc"):
+    """Build the minimal entities CheckCompletion needs to make its
+    routing decision."""
+    from andamentum.epistemic.entities import Objective
+    from andamentum.epistemic.graph.deps import EpistemicDeps
+    from andamentum.epistemic.graph.state import EpistemicGraphState
+
+    obj = Objective(
+        entity_id=objective_id,
+        objective_id=objective_id,
+        description="test question",
+        question_type="verificatory",
+    )
+    await repo.save(obj)
+
+    state = EpistemicGraphState(objective_id=objective_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
+    return state, deps
+
+
+class _FakeRunContext:
+    def __init__(self, state, deps):
+        self.state = state
+        self.deps = deps
+
+
+async def test_check_completion_routes_retrieval_failed_to_insufficient(repo) -> None:
+    """The retrieval_failed short-circuit no longer exits to End; it
+    routes through SynthesizeInsufficient with a reason that names
+    the retrieval failure. The retrieval_failed BOOL is still
+    available downstream via state."""
+    from andamentum.epistemic.graph.nodes import (
+        CheckCompletion,
+        SynthesizeInsufficient,
+    )
+
+    state, deps = await _setup_check_completion_state(repo)
+    state.retrieval_failed = True
+
+    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, SynthesizeInsufficient), (
+        "retrieval_failed must route to SynthesizeInsufficient (Maximal "
+        "B extended), not exit to End. Without an artefact the user "
+        "gets ambiguous output that looks like a research report but "
+        "isn't."
+    )
+    assert state.synthesis_insufficient_reason is not None
+    assert "retrieval failed" in state.synthesis_insufficient_reason.lower()
+    # The retrieval_failed BOOL is preserved for downstream consumers
+    # (confidence.compute_posterior, typeset_report) that branch on it.
+    assert state.retrieval_failed is True
+
+
+async def test_check_completion_routes_no_claims_to_insufficient(repo) -> None:
+    """No claims at all: the decomposition / claim-creation step
+    produced nothing investigable. Route through SynthesizeInsufficient
+    so the user gets a structurally honest "no claims" artefact."""
+    from andamentum.epistemic.graph.nodes import (
+        CheckCompletion,
+        SynthesizeInsufficient,
+    )
+
+    state, deps = await _setup_check_completion_state(repo)
+    # No claims saved.
+
+    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, SynthesizeInsufficient)
+    assert state.synthesis_insufficient_reason is not None
+    assert "no claims" in state.synthesis_insufficient_reason.lower()
+
+
+async def test_check_completion_routes_all_abandoned_to_insufficient(repo) -> None:
+    """All claims abandoned during scrutiny: structurally a "the
+    system tried but couldn't" outcome. Route through
+    SynthesizeInsufficient so the user gets an artefact rather than
+    a silent exit."""
+    from andamentum.epistemic.entities import Claim, ClaimStage
+    from andamentum.epistemic.graph.nodes import (
+        CheckCompletion,
+        SynthesizeInsufficient,
+    )
+
+    state, deps = await _setup_check_completion_state(repo, objective_id="obj-aban")
+
+    # Two claims, both abandoned.
+    for i in range(2):
+        c = Claim(
+            objective_id="obj-aban",
+            statement=f"claim {i}",
+            scope="x",
+            stage=ClaimStage.HYPOTHESIS,
+            abandoned=True,
+        )
+        await repo.save(c)
+
+    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, SynthesizeInsufficient)
+    assert state.synthesis_insufficient_reason is not None
+    reason = state.synthesis_insufficient_reason.lower()
+    assert "abandoned" in reason
+    # The reason should mention how many claims were abandoned (the
+    # operator-level diagnostic the user reads off the artefact).
+    assert "2" in state.synthesis_insufficient_reason
+
+
+async def test_check_completion_routes_active_claims_to_synthesis_demand(
+    repo,
+) -> None:
+    """Sanity: when there ARE non-abandoned claims, CheckCompletion
+    still routes to CheckSynthesisDemand (the existing happy path).
+    Maximal B's extension only changes the bypass paths."""
+    from andamentum.epistemic.entities import Claim, ClaimStage
+    from andamentum.epistemic.graph.nodes import (
+        CheckCompletion,
+        CheckSynthesisDemand,
+    )
+
+    state, deps = await _setup_check_completion_state(
+        repo, objective_id="obj-active"
+    )
+
+    # One active (non-abandoned) claim.
+    c = Claim(
+        objective_id="obj-active",
+        statement="active claim",
+        scope="x",
+        stage=ClaimStage.SUPPORTED,
+        scrutiny_verdict="pass",
+        abandoned=False,
+    )
+    await repo.save(c)
+
+    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, CheckSynthesisDemand), (
+        "When there are active claims the existing routing must hold; "
+        "Maximal B's extension only catches the bypass paths."
+    )
+    # CheckCompletion didn't write a synthesis_insufficient_reason on
+    # this path — the demand check might still ask for it later.
+    assert state.synthesis_insufficient_reason is None

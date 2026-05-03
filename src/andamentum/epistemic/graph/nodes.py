@@ -2180,34 +2180,48 @@ class CheckCompletion(Node):
             "quarantined",
         }
     )
-    writes = frozenset()
+    writes = frozenset({"synthesis_insufficient_reason"})
     operations = frozenset()
     post_invariants = (no_stranded_claims,)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["CheckSynthesisDemand", End[EpistemicResult]]:
+    ) -> Union["CheckSynthesisDemand", "SynthesizeInsufficient"]:
         state = ctx.state
         deps = ctx.deps
 
-        # Short-circuit on retrieval failure: evidence extraction kept
-        # returning empty content, so there's nothing to synthesize.
-        # Terminate with a distinct status so the posterior/report can
-        # surface retrieval_failed as the terminal state.
+        # Maximal B (extended): every "system can't conclude" path
+        # routes through SynthesizeInsufficient so a structurally honest
+        # artefact is always produced. Three exit paths into the
+        # fallibilism terminal:
+        #
+        #   1. retrieval_failed — evidence extraction kept returning
+        #      empty content; we have nothing fresh to chew on.
+        #   2. no_claims — decomposition / claim-creation produced
+        #      nothing investigable.
+        #   3. partial — claims existed but were all abandoned during
+        #      scrutiny.
+        #
+        # The retrieval_failed BOOL on EpistemicResult is preserved
+        # (downstream confidence + report consumers branch on it), so
+        # operational distinction survives even though the status field
+        # is uniform "insufficient" across all SynthesizeInsufficient
+        # exits. The artefact body surfaces the cause via the reason
+        # text written below.
+
         if state.retrieval_failed:
-            return End(
-                EpistemicResult(
-                    objective_id=state.objective_id,
-                    status="retrieval_failed",
-                    successful=state.successful,
-                    failed=state.failed,
-                    errors=state.errors,
-                    operations_log=state.operations_log,
-                    termination_reason="retrieval_failed",
-                    quarantined=state.quarantined,
-                    retrieval_failed=True,
-                )
+            state.synthesis_insufficient_reason = (
+                "Retrieval failed: evidence extraction returned empty "
+                "content for several consecutive attempts. The system "
+                "could not gather fresh evidence to advance any claim, "
+                "so synthesis would be invented from absent data. "
+                "Likely causes: search providers returned no new results "
+                "for the formulated queries; the question's evidence "
+                "base is sparser than the providers can surface; or "
+                "every newly-found item was a duplicate of evidence "
+                "already invalidated upstream."
             )
+            return SynthesizeInsufficient()
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         non_abandoned = [c for c in all_claims if not c.abandoned]
@@ -2215,21 +2229,26 @@ class CheckCompletion(Node):
         if non_abandoned:
             return CheckSynthesisDemand()
 
-        # All claims abandoned or no claims exist
-        reason = "partial" if all_claims else "no_claims"
-        return End(
-            EpistemicResult(
-                objective_id=state.objective_id,
-                status=reason,
-                successful=state.successful,
-                failed=state.failed,
-                errors=state.errors,
-                operations_log=state.operations_log,
-                termination_reason=reason,
-                quarantined=state.quarantined,
-                retrieval_failed=state.retrieval_failed,
+        if all_claims:
+            # All claims abandoned: scrutiny found none of the candidate
+            # claims investigable / supportable. The system DID produce
+            # claims and DID work on them; the work just didn't survive.
+            state.synthesis_insufficient_reason = (
+                f"All {len(all_claims)} candidate claim(s) were abandoned "
+                "during scrutiny. The system did not find any "
+                "actionable evidence for any sub-investigation, so no "
+                "directional verdict is supportable."
             )
-        )
+        else:
+            # No claims at all: decomposition / claim-creation produced
+            # nothing to investigate. Probably the question didn't
+            # decompose into anything meaningful.
+            state.synthesis_insufficient_reason = (
+                "No claims were created from the question. The "
+                "decomposition / claim-creation step produced nothing "
+                "investigable, so there is nothing to synthesize."
+            )
+        return SynthesizeInsufficient()
 
 
 @dataclass
