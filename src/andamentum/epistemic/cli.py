@@ -116,6 +116,70 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
+    # Subcommand: stage — run a single named pipeline stage
+    from .graph.stages import stage_names
+
+    stage_parser = sub.add_parser(
+        "stage",
+        help="Run a single pipeline stage (preplanning, scrutiny_and_investigation, ...)",
+    )
+    stage_parser.add_argument("name", choices=stage_names(), help="Stage to run")
+    stage_parser.add_argument(
+        "--question",
+        default=None,
+        help="Research question (required if --from-db has no Objective)",
+    )
+    stage_parser.add_argument(
+        "--from-db",
+        default=None,
+        help="Resume from a saved database (read by db_dir lookup)",
+    )
+    stage_parser.add_argument(
+        "--db",
+        default="stage_run",
+        help="Database name (default: 'stage_run')",
+    )
+    stage_parser.add_argument(
+        "--db-dir",
+        default=None,
+        help="Database directory (default: ~/.local/share/document-store/)",
+    )
+    stage_parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    stage_parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help="Ollama embedding model (default: embeddinggemma:latest)",
+    )
+    stage_parser.add_argument(
+        "--decompose",
+        action="store_true",
+        help="Multi-seed-claim decomposition mode",
+    )
+    stage_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for run.jsonl / diff.json / timing.txt artifacts",
+    )
+
+    # Subcommand: inspect — print structured state of a saved DB
+    inspect_parser = sub.add_parser(
+        "inspect",
+        help="Print structured state of a saved epistemic DB",
+    )
+    inspect_parser.add_argument(
+        "db",
+        help="Database name (looked up under --db-dir or default location)",
+    )
+    inspect_parser.add_argument(
+        "--db-dir",
+        default=None,
+        help="Database directory (default: ~/.local/share/document-store/)",
+    )
+
     # Subcommand: confidence
     conf_parser = sub.add_parser(
         "confidence", help="Compute post-hoc confidence for a completed epistemic run"
@@ -290,6 +354,113 @@ async def _run(args: argparse.Namespace) -> None:
         print(result)
 
 
+async def _stage(args: argparse.Namespace) -> None:
+    """Run a single named pipeline stage. The DB is the checkpoint —
+    chain stages by re-running with the same --db on later
+    invocations."""
+    from pathlib import Path
+
+    from .graph import run_epistemic_graph
+    from .graph.stages import get_stage
+
+    stage = get_stage(args.name)
+    model = _resolve_model(args)
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    db_name = args.from_db or args.db
+    result = await run_epistemic_graph(
+        question=args.question or "(resumed)",
+        database_name=db_name,
+        db_dir=args.db_dir,
+        model=model,
+        embedding_model=args.embedding_model,
+        decompose=args.decompose,
+        start_at=stage.entry,
+        stop_after=stage.exit_after,
+        output_dir=output_dir,
+    )
+
+    print(f"Stage {stage.name!r} complete.")
+    print(f"  status:       {result.status}")
+    print(f"  objective_id: {result.objective_id}")
+    if output_dir is not None:
+        print(f"  artifacts:    {output_dir}/")
+
+
+async def _inspect(args: argparse.Namespace) -> None:
+    """Print a structured snapshot of a saved DB. No LLM, no graph
+    work — just read the entities and summarise."""
+    from andamentum.document_store import DocumentStore
+
+    from .repository import EpistemicRepository
+
+    db_dir = args.db_dir
+    store = DocumentStore.for_database(args.db, db_dir=db_dir)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    objs = await repo.query("objective")
+    claims = await repo.query("claim")
+    evidence = await repo.query("evidence")
+
+    if not objs:
+        print(f"DB {args.db!r}: no objectives. Empty database.")
+        return
+
+    for obj in objs:
+        print(f"Objective {obj.entity_id}")
+        print(f"  question_type: {obj.question_type}")
+        print(f"  description:   {(obj.description or '')[:120]}")
+        decomp = obj.decomposition
+        if decomp is not None:
+            print(
+                f"  decomposition: {len(decomp.sub_investigations)} sub-investigations "
+                f"(rule={decomp.combination_rule})"
+            )
+            cv = decomp.combined_verdict
+            if cv is not None:
+                post = (
+                    f"{cv.posterior:.3f}" if cv.posterior is not None else "n/a"
+                )
+                print(
+                    f"  combined:      verdict={cv.verdict} posterior={post} "
+                    f"n_no_verdict={cv.n_no_verdict}"
+                )
+            else:
+                print("  combined:      <none>")
+        else:
+            print("  decomposition: <none>")
+
+    print(f"\n{len(claims)} claims:")
+    for c in sorted(claims, key=lambda x: x.sub_investigation_id or ""):
+        stage = c.stage.value if hasattr(c.stage, "value") else c.stage
+        ia = c.integrated_assessment
+        ic = (
+            f"{c.integrated_confidence:.3f}"
+            if c.integrated_confidence is not None
+            else "—"
+        )
+        print(
+            f"  [{c.sub_investigation_id or '-'}] stage={stage} "
+            f"verdict={ia} conf={ic} "
+            f"cycle_capped={c.cycle_capped} abandoned={c.abandoned} "
+            f"ev={c.evidence_count}"
+        )
+        print(f"    {(c.statement or '')[:140]}")
+
+    real = sum(
+        1
+        for e in evidence
+        if (e.extracted_content or "") and len(e.extracted_content) > 200
+    )
+    by_provider: dict[str, int] = {}
+    for e in evidence:
+        by_provider[e.source_type] = by_provider.get(e.source_type, 0) + 1
+    print(f"\n{len(evidence)} evidence items ({real} with content >200 chars)")
+    for prov, n in sorted(by_provider.items()):
+        print(f"  {prov}: {n}")
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -334,6 +505,30 @@ def main() -> None:
             print(f"Error: {e}", file=sys.stderr)
             if "--verbose" in sys.argv:
                 traceback.print_exc()
+            sys.exit(1)
+        return
+
+    if args.command == "stage":
+        try:
+            asyncio.run(_stage(args))
+        except KeyboardInterrupt:
+            print("\nCancelled.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            if "--verbose" in sys.argv:
+                traceback.print_exc()
+            sys.exit(1)
+        return
+
+    if args.command == "inspect":
+        try:
+            asyncio.run(_inspect(args))
+        except KeyboardInterrupt:
+            print("\nCancelled.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
         return
 

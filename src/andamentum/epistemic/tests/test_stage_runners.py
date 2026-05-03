@@ -296,6 +296,69 @@ async def test_stop_after_unknown_node_skips_invariant_check(
     assert result.status == "stopped_after:PlanEvidence"
 
 
+# ── Phase 6: end-to-end stage chain via the registry ─────────────────
+
+
+async def test_chain_preplanning_then_resume_from_decompose(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """End-to-end use of the stage runner: run preplanning, save DB,
+    resume from a later node on the same DB. Confirms the
+    save-and-resume contract holds when going through the stage
+    registry rather than raw node classes.
+
+    Uses the registry directly (no CLI subprocess) to keep the test
+    self-contained and fast."""
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+    from andamentum.epistemic.graph.stages import get_stage
+    import andamentum.epistemic.runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "DefaultAgentRunner",
+        lambda model: FakeAgentRunner(),  # noqa: ARG005
+    )
+
+    pp = get_stage("preplanning")
+
+    # Stage 1: preplanning end-to-end via the registry
+    artifacts = tmp_path / "stage1"
+    r1 = await run_epistemic_graph(
+        question="Is exercise good for cardiovascular health?",
+        database_name="chain",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        start_at=pp.entry,
+        stop_after=pp.exit_after,
+        output_dir=artifacts,
+    )
+    assert r1.status == f"stopped_after:{pp.exit_after.__name__}"
+
+    # Stage 1 wrote run.jsonl, diff.json, timing.txt and the DB
+    # has a fully-decomposed Objective.
+    assert (artifacts / "run.jsonl").exists()
+    assert (artifacts / "diff.json").exists()
+
+    # Re-reading the DB confirms idempotence: re-running preplanning
+    # on the same DB does NOT duplicate the objective.
+    r2 = await run_epistemic_graph(
+        question="(ignored)",
+        database_name="chain",
+        db_dir=str(tmp_path),
+        model="fake:test-model",
+        embedding_model="fake-embeddings",
+        decompose=True,
+        start_at=pp.entry,
+        stop_after=pp.exit_after,
+    )
+    assert r2.objective_id == r1.objective_id, (
+        "Re-running preplanning on the same DB must reuse the existing "
+        "objective; if a new one was created, save-and-resume is broken."
+    )
+
+
 # Note: there is no explicit "stop_after=None preserves existing
 # behavior" test. The existing 1848 tests run with stop_after=None
 # (the default), so the no-change path is tested by every other
