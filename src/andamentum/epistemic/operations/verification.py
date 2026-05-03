@@ -257,15 +257,67 @@ class AdversarialSearchOperation(BaseOperation):
                 ):
                     best_per_source[ref] = (ca, reasoning)
 
-            for ca, reasoning in best_per_source.values():
+            # Adversarial search's job is to LOOK FOR potential
+            # counter-evidence; JUDGING whether the found item actually
+            # contradicts the claim is the impartial judge's job.
+            # Hard-coding support_judgment="contradicts" here used to
+            # double-count: a Cochrane review whose limitations section
+            # the adversarial agent harvested ended up stamped as
+            # evidence-against-itself, even when its overall finding
+            # supported the claim. The metformin/HbA1c failure
+            # (probe B4) was the canonical instance — CD012906, the
+            # supporting Cochrane review, was found via adversarial
+            # web_search and labeled "contradicts".
+            #
+            # Fix: route every adversarial-found item through the same
+            # judge_evidence agent the regular evidence flow uses. Let
+            # the impartial judge decide supports / contradicts /
+            # no_bearing. Preserve the adversarial provenance in the
+            # reasoning text so downstream readers can still see the
+            # path the evidence travelled.
+            from ..judge import judge_evidence as _judge
+
+            # Capture agent_runner locally so pyright can narrow the
+            # closure away from Optional. The enclosing
+            # ``if self.agent_runner:`` block already guarantees
+            # non-None at runtime.
+            judge_runner = self.agent_runner
+
+            async def _judge_one(
+                ca: CounterargumentModel,
+                adversarial_reasoning: str,
+            ) -> tuple[CounterargumentModel, str, str]:
+                """Run the impartial judge on an adversarial-found item.
+                Raises on judge failure — caller relies on
+                asyncio.gather to propagate (no silent failures)."""
+                judgment = await _judge(
+                    claim_statement=claim.statement,
+                    claim_scope=claim.scope,
+                    evidence_content=ca.summary,
+                    evidence_source=f"web_search: {ca.source_ref}",
+                    runner=judge_runner,
+                )
+                combined_reasoning = (
+                    f"{adversarial_reasoning} | judge: {judgment.reasoning}"
+                )
+                return ca, judgment.verdict, combined_reasoning
+
+            judged = await asyncio.gather(
+                *[
+                    _judge_one(ca, reasoning)
+                    for ca, reasoning in best_per_source.values()
+                ]
+            )
+
+            for ca, verdict, combined_reasoning in judged:
                 adv_evidence = Evidence(
                     objective_id=claim.objective_id,
                     source_type="web_search",
                     source_ref=ca.source_ref,
                     extracted_content=ca.summary,
                     extracted=True,
-                    support_judgment="contradicts",
-                    judgment_reasoning=reasoning,
+                    support_judgment=verdict,
+                    judgment_reasoning=combined_reasoning,
                     cluster_status="representative",
                 )
                 await self.repo.save(adv_evidence)
