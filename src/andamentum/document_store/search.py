@@ -22,10 +22,10 @@ if TYPE_CHECKING:
 
 import aiosqlite
 
+from .chunks_search import RRF_K, SearchConfig
 from .database import get_async_connection
+from .embeddings import EmbeddingService
 from .hybrid_search import multi_strategy_search
-from .rag.embeddings import generate_embedding
-from .rag.search import RRF_K, SearchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -448,9 +448,13 @@ async def search_unified(
     # Generate embedding first — gates signals 2-4
     if query_embedding is None and embedding_model is not None:
         try:
-            query_embedding = await generate_embedding(
-                query, model=embedding_model, text_type="query"
-            )
+            embed_svc = EmbeddingService(model=embedding_model)
+            try:
+                query_embedding = await embed_svc.embed_text(
+                    query, text_type="query"
+                )
+            finally:
+                await embed_svc.close()
             logger.debug(f"Generated embedding with {len(query_embedding)} dimensions")
         except Exception as e:
             logger.warning(f"Embedding generation failed: {type(e).__name__}: {e}")
