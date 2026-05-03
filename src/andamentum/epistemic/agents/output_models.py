@@ -141,10 +141,10 @@ class IdentifySingleIssueOutput(BaseModel):
         "perspectival",
     ] = Field(
         description=(
-            'Issue classification. Empty string when has_issue is false. '
+            "Issue classification. Empty string when has_issue is false. "
             '"evidence_corrupted" is a sentinel that triggers evidence '
-            'invalidation rather than uncertainty creation; all other values '
-            'map to UncertaintyType members.'
+            "invalidation rather than uncertainty creation; all other values "
+            "map to UncertaintyType members."
         )
     )
 
@@ -525,11 +525,9 @@ class FormulateQueryOutput(BaseModel):
     Narrow agent: produces one search query optimized for a specific provider.
     """
 
-    query: str = Field(
-        description="Search query optimized for this provider (5-15 words)"
-    )
+    query: str = Field(description="Search query in the provider's native syntax")
     rationale: str = Field(
-        description="One sentence: why this query is appropriate for this provider"
+        description="One sentence: why this query style fits this question and provider"
     )
 
 

@@ -254,7 +254,11 @@ class PlanTaskOperation(BaseOperation):
         # is relevant to this question. This is a narrow binary judgment
         # (yes/no), run once per provider. The agent sees the provider's
         # full description so it can reason about domain coverage.
-        from ..providers import PROVIDER_DESCRIPTIONS, PROVIDER_REGISTRY
+        from ..providers import (
+            PROVIDER_DESCRIPTIONS,
+            PROVIDER_QUERY_GUIDANCE,
+            PROVIDER_REGISTRY,
+        )
 
         clarified = objective.clarified_question or objective.description
 
@@ -319,8 +323,7 @@ class PlanTaskOperation(BaseOperation):
                 chosen_provider = providers[0] if providers else "web_search"
                 if self.agent_runner and len(providers) > 1:
                     candidates_text = "\n".join(
-                        f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}"
-                        for p in providers
+                        f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}" for p in providers
                     )
                     rank_result = await self.run_agent(
                         "epistemic_rank_providers",
@@ -341,6 +344,7 @@ class PlanTaskOperation(BaseOperation):
                         provider_description=PROVIDER_DESCRIPTIONS.get(
                             chosen_provider, ""
                         ),
+                        query_guidance=PROVIDER_QUERY_GUIDANCE.get(chosen_provider, ""),
                     )
                     query = result.query
 
@@ -369,6 +373,7 @@ class PlanTaskOperation(BaseOperation):
                         question=clarified,
                         provider=provider,
                         provider_description=PROVIDER_DESCRIPTIONS.get(provider, ""),
+                        query_guidance=PROVIDER_QUERY_GUIDANCE.get(provider, ""),
                     )
                     query = result.query
 
@@ -514,4 +519,3 @@ class DecomposeQuestionOperation(BaseOperation):
                 f"(combination={result.combination_rule}). {sub_summary}"
             ),
         )
-

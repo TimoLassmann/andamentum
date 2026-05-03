@@ -570,22 +570,44 @@ register_agent(
 FORMULATE_QUERY_PROMPT = """\
 # Search Query Formulator
 
-You write one search query optimized for a specific evidence provider.
+You write one search query in the native syntax of a specific evidence
+provider.
 
-## Your Task
-Given a research question, a provider name, and a description of what
-that provider contains, write one focused search query that will
-retrieve a representative sample of the relevant evidence — including
-findings that both support AND challenge the question's premise.
+## Inputs
+- question: the research question / sub-claim under investigation
+- provider: the provider name
+- query_guidance: the provider's native query language plus a catalogue
+  of valid query styles
+- provider_description: what content this provider contains (for context;
+  query syntax is in query_guidance)
 
-## Guidelines
-- Use the provider description to understand what this source contains
-  and what query style works best for it
-- Keep it 5-15 words
-- Frame the query around the TOPIC, not around one side of the argument
-- Avoid phrasing that presupposes a particular answer
+## Your task
+Read query_guidance carefully. The catalogue lists multiple syntactically
+different forms — all of them work. Choose the form whose strengths best
+target the question's specific information need:
 
-Now write a query for the given provider."""
+- For a topic-shaped question, plain text or short Boolean usually
+  suffices.
+- For a question that names a specific intervention, condition, outcome,
+  gene, drug, or trial, prefer the field-restricted or ID-based form when
+  the provider supports one.
+- For a question constrained by year, journal, author, or study type, use
+  the corresponding field qualifier.
+- Respect operators that the guidance flags as unsupported.
+
+Do NOT mechanically copy one style across all queries. Different
+sub-claims warrant different forms.
+
+Frame the query around the TOPIC, not around one side of the argument.
+Avoid phrasing that presupposes a particular answer.
+
+## Output
+- query: one query string in the provider's native syntax, no surrounding
+  prose.
+- rationale: one sentence on why this style fits this question and this
+  provider.
+
+Now write the query."""
 
 register_agent(
     AgentDefinition(
