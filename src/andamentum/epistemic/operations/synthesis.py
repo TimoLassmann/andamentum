@@ -360,7 +360,9 @@ class SynthesizeReportOperation(BaseOperation):
         Returns:
             (title, verdict, answer) tuple
         """
+        import json
         import logging
+        import time
 
         logger = logging.getLogger(__name__)
 
@@ -368,6 +370,23 @@ class SynthesizeReportOperation(BaseOperation):
         verdict = ""
         answer = ""
         prior_feedback: list[str] = []
+
+        # K4 instrumentation: capture per-round LLM-call timing so we
+        # can SEE where the synthesis 90s actually goes (writer vs.
+        # validator, single round vs. many rounds, prompt size). Logged
+        # at WARNING so the CLI's verbose-mode log filter doesn't drop
+        # them. Cheap (a few timestamps + dict-size); no behavior change.
+        loop_t0 = time.monotonic()
+        round_num = 0
+        # Approximate input size for the writer/validator prompts.
+        # JSON-serialise the data_context to get a stable byte count;
+        # this is the input the model has to read on every round.
+        try:
+            data_context_bytes = len(
+                json.dumps(data_context, default=str, ensure_ascii=False)
+            )
+        except Exception:
+            data_context_bytes = -1
 
         for round_num in range(1, self.MAX_VALIDATION_ROUNDS + 1):
             # Writer: produce answer
@@ -379,31 +398,64 @@ class SynthesizeReportOperation(BaseOperation):
                 writer_kwargs["previous_answer"] = answer
                 writer_kwargs["validator_feedback"] = prior_feedback
 
+            writer_t0 = time.monotonic()
             result = await self.run_agent("epistemic_write_answer", **writer_kwargs)
+            writer_ms = (time.monotonic() - writer_t0) * 1000
             title = result.title or title
             verdict = getattr(result, "verdict", "") or ""
             answer = result.answer or ""
+            answer_chars = len(answer)
 
             if not answer:
+                logger.warning(
+                    "[synthesis.writer] round=%d writer_ms=%d "
+                    "data_ctx_bytes=%d answer_chars=0 — empty answer, "
+                    "breaking",
+                    round_num,
+                    int(writer_ms),
+                    data_context_bytes,
+                )
                 break
 
             # Validator: check faithfulness
+            validator_t0 = time.monotonic()
             validation = await self.run_agent(
                 "epistemic_validate_answer",
                 answer=answer,
                 research_question=question,
                 **data_context,
             )
+            validator_ms = (time.monotonic() - validator_t0) * 1000
 
             approved = validation.approved
             feedback = validation.feedback
 
+            logger.warning(
+                "[synthesis.writer] round=%d writer_ms=%d validator_ms=%d "
+                "data_ctx_bytes=%d answer_chars=%d approved=%s feedback=%d",
+                round_num,
+                int(writer_ms),
+                int(validator_ms),
+                data_context_bytes,
+                answer_chars,
+                approved,
+                len(feedback),
+            )
+
             if approved or not feedback:
-                logger.info(f"Answer approved after {round_num} round(s)")
                 break
 
-            logger.info(f"Validation round {round_num}: {len(feedback)} issue(s) found")
             prior_feedback = feedback
+
+        loop_total_s = time.monotonic() - loop_t0
+        logger.warning(
+            "[synthesis.writer] DONE total=%.2fs rounds=%d "
+            "max_rounds=%d data_ctx_bytes=%d",
+            loop_total_s,
+            round_num,
+            self.MAX_VALIDATION_ROUNDS,
+            data_context_bytes,
+        )
 
         return title, verdict, answer
 
