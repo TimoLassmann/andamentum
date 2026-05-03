@@ -38,6 +38,7 @@ async def run_epistemic_graph(
     db_dir: Optional[str] = None,
     objective_id: Optional[str] = None,
     decompose: bool = False,
+    stop_after: Optional[type] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -149,35 +150,64 @@ async def run_epistemic_graph(
     if verbose:
         logger.info(f"Starting epistemic graph for objective {objective_id}")
 
-    graph_result = await epistemic_graph.run(
-        PrepareObjective(),
-        state=state,
-        deps=deps,
-    )
-
-    result = graph_result.output
+    if stop_after is None:
+        graph_result = await epistemic_graph.run(
+            PrepareObjective(),
+            state=state,
+            deps=deps,
+        )
+        result = graph_result.output
+    else:
+        # Stage-runner mode: drive the graph node-by-node and break
+        # after the requested node's run() completes. The DB is the
+        # checkpoint; callers resume by passing start_at on a later
+        # invocation. See docs/superpowers/plans/2026-05-03-stage-runners.md.
+        async with epistemic_graph.iter(
+            PrepareObjective(), state=state, deps=deps
+        ) as run:
+            while run.result is None:
+                next_node = run.next_node
+                if next_node is None:
+                    break
+                node_class = type(next_node)
+                await run.next()
+                if node_class is stop_after:
+                    break
+        result = run.result.output if run.result is not None else None
 
     if verbose:
-        logger.info(
-            f"Graph complete: {result.successful} successful, {result.failed} failed"
-        )
+        if result is not None:
+            logger.info(
+                f"Graph complete: {result.successful} successful, {result.failed} failed"
+            )
+        else:
+            assert stop_after is not None
+            logger.info(f"Graph stopped after {stop_after.__name__}")
 
-    # Compute posterior confidence (deterministic, no LLM).
-    # No fallback: if posterior raises, the caller sees the real error.
-    # Pass retrieval_failed so compute_posterior can emit a
-    # terminal_state="retrieval_failed" report instead of counting
-    # over empty evidence.
+    # Compute posterior confidence only on a complete graph traversal.
     posterior_report = None
-    if result.successful > 0:
+    if result is not None and result.successful > 0:
         from ..confidence import compute_posterior
 
         posterior_report = await compute_posterior(
             repo, objective_id, retrieval_failed=result.retrieval_failed
         )
 
-    # Return backward-compatible result
     from ..operations_runner import PipelineResult
 
+    if result is None:
+        assert stop_after is not None
+        return PipelineResult(
+            objective_id=objective_id,
+            iterations=len(state.operations_log),
+            successful=0,
+            failed=0,
+            status=f"stopped_after:{stop_after.__name__}",
+            errors=[],
+            posterior=None,
+            quarantined=[],
+            retrieval_failed=False,
+        )
     return PipelineResult(
         objective_id=objective_id,
         iterations=len(state.operations_log),
