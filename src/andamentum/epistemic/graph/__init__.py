@@ -27,6 +27,30 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+async def _check_stage_invariant(
+    exit_node: type,
+    state: Any,
+    repo: Any,
+) -> None:
+    """If ``exit_node`` is a known stage exit, enforce that stage's
+    invariant. Failing invariant = loud crash, by design — see
+    docs/superpowers/plans/2026-05-03-stage-runners.md (the
+    "unforeseen edge cases" mitigation)."""
+    from .stages import StageInvariantError, stage_for_exit_node
+
+    stage = stage_for_exit_node(exit_node)
+    if stage is None:
+        return
+    ok = await stage.exit_invariant(state, repo)
+    if not ok:
+        raise StageInvariantError(
+            f"Stage {stage.name!r} exited at {exit_node.__name__} but "
+            "its invariant is unsatisfied. The boundary is leaky — "
+            "downstream stages would inherit half-finished work. See "
+            f"src/andamentum/epistemic/graph/stages.py for the contract."
+        )
+
+
 async def _emit_artifacts(
     output_dir: Path,
     visits: list[dict[str, Any]],
@@ -252,6 +276,8 @@ async def run_epistemic_graph(
         result = run.result.output if run.result is not None else None
         if output_dir is not None:
             await _emit_artifacts(output_dir, visits, repo, objective_id)
+        if stop_after is not None:
+            await _check_stage_invariant(stop_after, state, repo)
 
     if verbose:
         if result is not None:
