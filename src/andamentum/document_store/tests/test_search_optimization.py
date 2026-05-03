@@ -14,7 +14,7 @@ class TestOverFetchFactor:
         With limit=10, this means 30 vector candidates instead of 100.
         Reduces BM25 index build cost with minimal quality impact.
         """
-        from andamentum.document_store.rag.search import SearchConfig
+        from andamentum.document_store.chunks_search import SearchConfig
 
         config = SearchConfig(include_bm25=True)
         limit = 10
@@ -23,7 +23,7 @@ class TestOverFetchFactor:
         assert vector_limit == 30
 
     def test_vector_limit_equals_limit_when_bm25_disabled(self):
-        from andamentum.document_store.rag.search import SearchConfig
+        from andamentum.document_store.chunks_search import SearchConfig
 
         config = SearchConfig(include_bm25=False)
         limit = 10

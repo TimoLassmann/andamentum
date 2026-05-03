@@ -5,7 +5,7 @@ from typing import List, Optional, Literal
 from pathlib import Path
 
 from .connection import get_connection, DEFAULT_DB_PATH
-from .rag.search import (
+from .chunks_search import (
     SearchResult,
     SearchConfig,
     semantic_search,
