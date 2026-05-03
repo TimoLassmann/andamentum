@@ -85,16 +85,43 @@ def test_every_node_reachable_from_prepare_objective() -> None:
 
 
 def test_synthesize_terminates_at_end() -> None:
-    """Synthesize is the only non-CheckCompletion path to End[...]
-    in the current topology. Its successor set should not include any
-    BaseNode subclasses — only End[...] (which the topology helper
-    filters out, so the set is empty).
-    """
+    """Synthesize terminates at End[...] only — its successor set has
+    no BaseNode subclasses (the topology helper filters End[] out)."""
     topo = topology()
     successors = topo[Synthesize]
     assert successors == frozenset(), (
         f"Synthesize should terminate at End[...] only; got successors "
         f"{sorted(s.__name__ for s in successors)}"
+    )
+
+
+def test_check_completion_routes_to_insufficient_not_end() -> None:
+    """Maximal-B-extended contract: CheckCompletion must NOT terminate
+    at End[...] directly. Every "system can't conclude" exit
+    (retrieval_failed, no_claims, all-abandoned) must route through
+    SynthesizeInsufficient so a structurally honest artefact is always
+    produced. If this test fires, someone re-introduced a bypass-
+    synthesis path."""
+    topo = topology()
+    successors = topo[CheckCompletion]
+    assert SynthesizeInsufficient in successors, (
+        "CheckCompletion must include SynthesizeInsufficient as a "
+        f"successor; got {sorted(s.__name__ for s in successors)}. "
+        "Without this edge the retrieval_failed / no_claims / "
+        "all-abandoned bypass paths exit silently and the user gets "
+        "no artefact (the K6-class bug surfaced by probe B3)."
+    )
+    # CheckCompletion's two valid successors are CheckSynthesisDemand
+    # (active claims continue) and SynthesizeInsufficient (every "can't
+    # conclude" path). It must NOT terminate at End directly anymore —
+    # that bypassed synthesis entirely.
+    assert successors == frozenset(
+        {CheckSynthesisDemand, SynthesizeInsufficient}
+    ), (
+        "CheckCompletion's successor set should be exactly "
+        f"{{CheckSynthesisDemand, SynthesizeInsufficient}}; got "
+        f"{sorted(s.__name__ for s in successors)}. If End[...] is "
+        "in this set, a bypass path has been re-introduced."
     )
 
 
