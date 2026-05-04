@@ -61,6 +61,23 @@ directional — fallibilism). The cap firing is the second; the previous
 all-capped → 0.5 rule conflated the two."""
 
 
+RETRIEVAL_FAILED_CONFIDENCE_PENALTY = 0.7
+"""Multiplier pulling the aggregated posterior toward 0.5 when the
+inquiry's ``retrieval_failed`` flag is set (evidence extraction
+returned empty content for several consecutive attempts). The flag
+prevents *more* extraction work from running, but the IBE chain that
+fired beforehand produced a legitimate verdict on the evidence already
+gathered. Surface that signal with a confidence penalty rather than
+zeroing it — same anti-pattern as the cycle-cap fix at the output
+layer (see SciFact case 54 v14).
+
+Applied as a pull-toward-neutral on the aggregated posterior:
+``new_p = 0.5 + (old_p - 0.5) * RETRIEVAL_FAILED_CONFIDENCE_PENALTY``.
+Equivalent to multiplying confidence by 0.7 in the per-claim mapping;
+applied at the outer level to handle both rule-blind and rule-aware
+aggregation paths uniformly."""
+
+
 # Question types where posterior P(Y) is meaningful.
 # Comparative is excluded: "Is A better than B?" has three outcomes
 # (A better, B better, equivalent), not two. The posterior's binary
@@ -157,40 +174,26 @@ async def compute_posterior(
     Returns:
         PosteriorReport, or None for ineligible question types.
     """
-    # Retrieval-failed short-circuit: the pipeline flagged that evidence
-    # extraction kept returning empty content. Emit an explicit
-    # terminal_state report so callers don't mistake an uninformative
-    # 0.5 for a "genuinely balanced evidence" conclusion. Still scoped
-    # to POSTERIOR_ELIGIBLE question types — for ineligible types,
-    # posterior is N/A regardless.
-    if retrieval_failed:
-        objective = await repo.get_objective(objective_id)
-        qt = objective.question_type
-        # Multi-seed-claim aware: ``is_verification_task()`` covers BOTH
-        # single-seed mode (claim_to_verify set) AND multi-seed mode
-        # (decomposition with sub-investigations). Without this, a
-        # decomposed run where the parent was classified explanatory
-        # would silently drop its retrieval_failed report — same shape as
-        # the case-54 silent-loss bug we fixed for single-seed mode.
-        is_verification_mode = objective.is_verification_task()
-        if not is_verification_mode and (qt is None or qt not in POSTERIOR_ELIGIBLE):
-            return None
-        return PosteriorReport(
-            posterior=0.5,
-            log_odds=0,
-            supporting_count=0,
-            contradicting_count=0,
-            counting_posterior=0.5,
-            mode="counting_only",
-            objective_id=objective_id,
-            question_type=qt or "verificatory",
-            explanation=(
-                "Retrieval failed: evidence extraction returned empty content "
-                "at least 3 times consecutively. Posterior defaults to 0.5 "
-                "(uninformative); terminal_state='retrieval_failed'."
-            ),
-            terminal_state="retrieval_failed",
-        )
+    # Retrieval-failed handling: the pipeline flagged that evidence
+    # extraction kept returning empty content. The flag prevents *more*
+    # extraction work from running, but any IBE chain that fired
+    # beforehand produced a legitimate verdict on the evidence already
+    # gathered.
+    #
+    # The previous design short-circuited here to posterior=0.5 with
+    # terminal_state="retrieval_failed", discarding any signal already
+    # acquired. That repeated the cycle-cap output-layer anti-pattern —
+    # the v14 SciFact case 54 was a textbook instance: claim reached
+    # SUPPORTED with integrated_assessment="contradicts" at 0.857
+    # confidence, then retrieval failed during a later investigation
+    # cycle, and the short-circuit zeroed the verdict to 0.5.
+    #
+    # New rule: let the function run normally, then at the end pull the
+    # aggregated posterior toward neutral with
+    # RETRIEVAL_FAILED_CONFIDENCE_PENALTY and stamp
+    # terminal_state="retrieval_failed". Genuine no-signal runs (no
+    # claims, no IA, no evidence) still produce posterior=0.5 by the
+    # normal flow.
 
     # 1. Load objective, check eligibility
     #
@@ -420,7 +423,24 @@ async def compute_posterior(
         posterior = counting_posterior
         mode = "counting_fallback"
 
-    # 5. Compute effective log-odds for the report
+    # 5. Apply retrieval_failed pull-toward-neutral.
+    #
+    # The flag signals that evidence extraction kept returning empty
+    # content, so the inquiry was prevented from gathering more.
+    # Whatever verdict the IBE chain produced beforehand is provisional
+    # but directional — surface it with a confidence penalty rather
+    # than zeroing it. (See SciFact case 54 v14: integrated_assessment
+    # was contradicts at 0.857 but the old short-circuit returned
+    # posterior=0.5, discarding the verdict.)
+    if retrieval_failed:
+        posterior = 0.5 + (posterior - 0.5) * RETRIEVAL_FAILED_CONFIDENCE_PENALTY
+        if integration_confidence is not None:
+            integration_confidence = max(
+                0.0,
+                min(1.0, integration_confidence * RETRIEVAL_FAILED_CONFIDENCE_PENALTY),
+            )
+
+    # 6. Compute effective log-odds for the report
     if posterior <= 0.0:
         log_odds = -700
     elif posterior >= 1.0:
@@ -428,7 +448,12 @@ async def compute_posterior(
     else:
         log_odds = round(math.log(posterior / (1.0 - posterior)))
 
-    # 6. Decide terminal_state.
+    # 7. Decide terminal_state.
+    #
+    # Precedence: retrieval_failed > oscillation_detected > completed.
+    # retrieval_failed wins because it's a process-level signal about
+    # the inquiry's evidence base, not a statement about the verdict's
+    # stability — the verdict itself may still be directional (case 54).
     #
     # Genuine oscillation = ALL active claims are capped AND none have
     # an integrated_assessment AND the counting signal is essentially
@@ -443,12 +468,24 @@ async def compute_posterior(
         and not integrated_claims
         and is_balanced_count
     )
-    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
-        "oscillation_detected" if all_capped_no_signal else "completed"
-    )
+    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"]
+    if retrieval_failed:
+        terminal_state = "retrieval_failed"
+    elif all_capped_no_signal:
+        terminal_state = "oscillation_detected"
+    else:
+        terminal_state = "completed"
 
-    # 7. Build explanation
+    # 8. Build explanation
     parts = [f"Posterior {posterior:.4f} for {question_type} question."]
+    if retrieval_failed:
+        parts.append(
+            "Retrieval failed: evidence extraction returned empty content "
+            "for several consecutive attempts. Posterior reflects signal "
+            f"acquired before the failure, with confidence penalty "
+            f"{RETRIEVAL_FAILED_CONFIDENCE_PENALTY} (further inquiry was "
+            "prevented). terminal_state='retrieval_failed'."
+        )
     if all_capped_no_signal:
         concern_total = sum(len(c.persistent_concerns) for c in capped)
         parts.append(
