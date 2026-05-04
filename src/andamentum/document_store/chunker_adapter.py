@@ -6,13 +6,16 @@ expects ``section_path`` like ``"Methods > ODE Solver"``. This module
 recovers that breadcrumb by walking the chunker's own section tree, then
 maps each ``Unit`` into a document_store ``Chunk``.
 
-No new dependencies; everything used here already lives in
-``andamentum.chunker.structural`` and ``andamentum.document_store.chunking``.
+The ``Chunk`` dataclass itself lives here because the adapter is now its
+only producer — ``_run_phase2`` consumes ``Chunk`` records to feed
+``store.store_chunk()`` and that's it. Internal type, not part of the
+public API.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from andamentum.chunker.structural import (
     Section,
@@ -21,9 +24,22 @@ from andamentum.chunker.structural import (
 )
 from andamentum.chunker.types import Unit
 
-from .chunking import Chunk
-
 _PATH_SEP = " > "
+
+
+@dataclass
+class Chunk:
+    """In-memory hand-off record between the chunker adapter and store_chunk.
+
+    Not stored as-is — ``_run_phase2`` unpacks the fields into the
+    chunks-table columns via ``store.store_chunk()``.
+    """
+
+    text: str
+    section_path: str = ""
+    chunk_index: int = 0
+    start_char: int = 0
+    end_char: int = 0
 
 
 def _path_for_offset(roots: list[Section], offset: int) -> list[str]:

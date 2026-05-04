@@ -240,7 +240,7 @@ async def _run_phase2(
     chunk-level metadata extractor's ``topics`` / ``has_decision`` /
     ``has_action_item`` fields, which were validated on ~2k char chunks.
     """
-    from .chunking import Chunk
+    from .chunker_adapter import Chunk
     from .embeddings import EmbeddingService
 
     # Delete any existing chunks (idempotent for repair)
