@@ -496,7 +496,9 @@ class TestAdversarialSearchFailure:
             ]
         )
 
-        op = AdversarialSearchOperation(repo, failing_runner, evidence_gatherer=gatherer)
+        op = AdversarialSearchOperation(
+            repo, failing_runner, evidence_gatherer=gatherer
+        )
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
@@ -561,6 +563,83 @@ class TestAdversarialSearchFailure:
 
 
 # ── 4. Writer-Validator Loop ─────────────────────────────────────────────────
+
+
+class TestFeedbackOverlapRatio:
+    """Pin the threshold semantics for the feedback-shrinkage early
+    exit. The function returns the fraction of current items that
+    share substantial token overlap with at least one prior item.
+    Threshold for "substantial" is Jaccard ≥ 0.4 on tokens of length
+    ≥ 4 (deliberately loose to catch paraphrase, not just verbatim)."""
+
+    def test_empty_returns_zero(self) -> None:
+        from andamentum.epistemic.operations.synthesis import (
+            _feedback_overlap_ratio,
+        )
+
+        assert _feedback_overlap_ratio([], ["something"]) == 0.0
+        assert _feedback_overlap_ratio(["something"], []) == 0.0
+        assert _feedback_overlap_ratio([], []) == 0.0
+
+    def test_identical_returns_one(self) -> None:
+        from andamentum.epistemic.operations.synthesis import (
+            _feedback_overlap_ratio,
+        )
+
+        assert (
+            _feedback_overlap_ratio(
+                ["the answer overstates supporting evidence"],
+                ["the answer overstates supporting evidence"],
+            )
+            == 1.0
+        )
+
+    def test_paraphrase_above_threshold(self) -> None:
+        """Paraphrases with shared content tokens should match."""
+        from andamentum.epistemic.operations.synthesis import (
+            _feedback_overlap_ratio,
+        )
+
+        ratio = _feedback_overlap_ratio(
+            ["answer overstates the supporting evidence pool"],
+            ["the answer is overstating supporting evidence available"],
+        )
+        # Shared content tokens (≥4 chars): {answer, overstates/overstating[differ],
+        # supporting, evidence}. Jaccard around 0.4-0.5; should match.
+        assert ratio == 1.0
+
+    def test_distinct_content_returns_zero(self) -> None:
+        """Truly distinct feedback should not be flagged as repeated."""
+        from andamentum.epistemic.operations.synthesis import (
+            _feedback_overlap_ratio,
+        )
+
+        assert (
+            _feedback_overlap_ratio(
+                ["fabricates statistical confidence intervals"],
+                ["verdict omits adversarial counterargument"],
+            )
+            == 0.0
+        )
+
+    def test_partial_match(self) -> None:
+        """Two of three current items match prior; ratio is 2/3."""
+        from andamentum.epistemic.operations.synthesis import (
+            _feedback_overlap_ratio,
+        )
+
+        ratio = _feedback_overlap_ratio(
+            current=[
+                "answer overstates supporting evidence",  # matches prior[0]
+                "fabricates statistical confidence intervals",  # no match
+                "verdict omits adversarial counterargument balance",  # matches prior[1]
+            ],
+            prior=[
+                "answer is overstating supporting evidence",
+                "verdict skips adversarial counterargument balance metric",
+            ],
+        )
+        assert abs(ratio - 2 / 3) < 0.01
 
 
 class TestWriterValidatorLoop:
@@ -647,7 +726,20 @@ class TestWriterValidatorLoop:
 
     @pytest.mark.asyncio
     async def test_validator_rejects_all_rounds(self, tmp_path):
-        """Validator rejects all rounds -> best effort answer used."""
+        """Validator never approves -> loop terminates cleanly (best-
+        effort answer used).
+
+        Two valid termination modes (whichever fires first):
+
+        * Identical feedback across rounds → feedback-shrinkage exit at
+          round 2+ (the v15 case 439 anti-stickiness fix).
+        * Distinct feedback every round → cap fires at
+          ``MAX_VALIDATION_ROUNDS`` (last-ditch safety belt).
+
+        The test only asserts that the loop terminates without crashing
+        and that at most ``MAX_VALIDATION_ROUNDS`` validator calls
+        happen — not the exact count, since the early-exit is the
+        intended behaviour for a stuck validator."""
 
         class AlwaysRejectRunner(FakeAgentRunner):
             async def run(self, agent_name: str, **kwargs: Any) -> Any:
@@ -665,12 +757,55 @@ class TestWriterValidatorLoop:
         op = SynthesizeReportOperation(repo, runner)
         result = await op.execute(work)
 
-        # Should still succeed with best-effort answer
+        # Should still succeed with best-effort answer.
         assert result.success
-        # Verify all 10 rounds were attempted
+        # Loop terminates within the cap. Identical feedback triggers
+        # the round-2 shrinkage exit, so this should be exactly 2.
         validate_calls = [
             c for c in runner.calls if c[0] == "epistemic_validate_answer"
         ]
+        assert (
+            1 <= len(validate_calls) <= SynthesizeReportOperation.MAX_VALIDATION_ROUNDS
+        )
+
+    @pytest.mark.asyncio
+    async def test_validator_rejects_with_distinct_feedback_hits_cap(self, tmp_path):
+        """Validator rejects with DIFFERENT feedback each round → no
+        shrinkage exit → loop runs to MAX_VALIDATION_ROUNDS cap."""
+
+        feedback_per_round = [
+            ["fabricates statistical confidence intervals nowhere supplied"],
+            ["numbers contradict gathered evidence section three"],
+            ["verdict omits adversarial counterargument balance metric"],
+        ]
+
+        class DistinctRejectRunner(FakeAgentRunner):
+            def __init__(self) -> None:
+                super().__init__()
+                self.round = 0
+
+            async def run(self, agent_name: str, **kwargs: Any) -> Any:
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_validate_answer":
+                    msg = feedback_per_round[
+                        min(self.round, len(feedback_per_round) - 1)
+                    ]
+                    self.round += 1
+                    return _to_namespace({"approved": False, "feedback": msg})
+                raw = _FAKE_DEFAULTS.get(agent_name, {})
+                return _to_namespace(raw)
+
+        runner = DistinctRejectRunner()
+        repo, snapshot, work = await self._setup_synthesis(runner, tmp_path)
+
+        op = SynthesizeReportOperation(repo, runner)
+        result = await op.execute(work)
+
+        assert result.success
+        validate_calls = [
+            c for c in runner.calls if c[0] == "epistemic_validate_answer"
+        ]
+        # Distinct feedback → no shrinkage exit → cap fires.
         assert len(validate_calls) == SynthesizeReportOperation.MAX_VALIDATION_ROUNDS
 
     @pytest.mark.asyncio

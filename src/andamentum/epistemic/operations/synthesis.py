@@ -31,6 +31,46 @@ from ..entities import (
 from ..gates import STAGE_HIERARCHY
 
 
+def _tokens(text: str) -> set[str]:
+    """Lowercase content tokens, trivially split. Tokens shorter than
+    4 chars are dropped to filter out function words and noise that
+    would falsely inflate overlap scores."""
+    return {t for t in text.lower().split() if len(t) >= 4}
+
+
+def _feedback_overlap_ratio(current: list[str], prior: list[str]) -> float:
+    """Fraction of current feedback items that have substantial token
+    overlap with at least one item from the prior round.
+
+    Used by ``_writer_validator_loop`` to detect when the validator is
+    repeating itself across rounds — a signal that the writer cannot
+    address the residual feedback with the available data, so further
+    iteration produces marginal-or-zero quality improvement at full
+    LLM cost. Threshold for "substantial" overlap is Jaccard ≥ 0.4
+    on tokens of length ≥ 4 (deliberately loose; we want to catch
+    paraphrased recurrence, not just verbatim repeats).
+
+    Returns 0.0 when either list is empty.
+    """
+    if not current or not prior:
+        return 0.0
+    prior_token_sets = [_tokens(p) for p in prior]
+    matched = 0
+    for cur_text in current:
+        cur_tokens = _tokens(cur_text)
+        if not cur_tokens:
+            continue
+        for prior_tokens in prior_token_sets:
+            if not prior_tokens:
+                continue
+            inter = len(cur_tokens & prior_tokens)
+            union = len(cur_tokens | prior_tokens)
+            if union and inter / union >= 0.4:
+                matched += 1
+                break
+    return matched / len(current)
+
+
 class FreezeSnapshotOperation(BaseOperation):
     """Create immutable snapshot of epistemic state."""
 
@@ -190,7 +230,16 @@ class SynthesizeReportOperation(BaseOperation):
 
     entity_type = "snapshot"
 
-    MAX_VALIDATION_ROUNDS = 10
+    # Tightened from 10 → 3 (2026-05-04) after K4 instrumentation
+    # observed validator-stickiness on real cases (case 439 v15 hit
+    # round 10 without ever being approved, total 70.7s on the loop
+    # alone). The validator's prompt was simultaneously narrowed to
+    # focus on faithfulness rather than nit-finding, and given memory
+    # of prior rounds to prevent contradiction-oscillation. With those
+    # two changes plus a feedback-shrinkage early-exit at round 2+,
+    # the cap should rarely fire — it's now a hard cost ceiling, not
+    # a regularly-firing mechanism.
+    MAX_VALIDATION_ROUNDS = 3
 
     async def execute(self, work: OperationInput) -> OperationResult:
         snapshot = await self.repo.get("snapshot", work.entity_id)
@@ -431,13 +480,20 @@ class SynthesizeReportOperation(BaseOperation):
                 )
                 break
 
-            # Validator: check faithfulness
+            # Validator: check faithfulness. Pass prior_validator_feedback
+            # so the validator can avoid contradicting itself across rounds
+            # (B from the 2026-05-04 anti-stickiness changes).
             validator_t0 = time.monotonic()
+            validator_kwargs: dict[str, Any] = {
+                "answer": answer,
+                "research_question": question,
+                **data_context,
+            }
+            if prior_feedback:
+                validator_kwargs["prior_validator_feedback"] = prior_feedback
             validation = await self.run_agent(
                 "epistemic_validate_answer",
-                answer=answer,
-                research_question=question,
-                **data_context,
+                **validator_kwargs,
             )
             validator_ms = (time.monotonic() - validator_t0) * 1000
 
@@ -475,6 +531,27 @@ class SynthesizeReportOperation(BaseOperation):
 
             if approved or not feedback:
                 break
+
+            # Feedback-shrinkage early exit (D). At round 2+, if the
+            # validator's complaints overlap heavily with the prior
+            # round's, the writer is in a no-win position — keep
+            # iterating produces marginal-or-zero improvement at full
+            # LLM cost. Accept the current answer with the cap-as-
+            # safety semantics. Threshold: ≥50% of current items have
+            # significant token overlap with some prior item.
+            if round_num >= 2 and prior_feedback:
+                overlap = _feedback_overlap_ratio(feedback, prior_feedback)
+                if overlap >= 0.5:
+                    logger.warning(
+                        "[synthesis.writer] obj=%s round=%d feedback "
+                        "overlap=%.2f with prior round; converging early "
+                        "(writer cannot address residual items with "
+                        "available data)",
+                        oid_tag,
+                        round_num,
+                        overlap,
+                    )
+                    break
 
             prior_feedback = feedback
 
