@@ -5,7 +5,7 @@ from typing import List, Optional
 from pathlib import Path
 
 from .connection import get_connection, DEFAULT_DB_PATH
-from .rag.search import SearchResult
+from .chunks_search import SearchResult
 
 
 def fts_search(

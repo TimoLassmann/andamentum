@@ -1,0 +1,192 @@
+{
+  "source_chars": 24265,
+  "chunk_count": 21,
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery",
+      "start_char": 0,
+      "end_char": 69,
+      "text_chars": 67,
+      "text_preview": "# GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery"
+    },
+    {
+      "chunk_index": 1,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Abstract",
+      "start_char": 69,
+      "end_char": 1326,
+      "text_chars": 1254,
+      "text_preview": "## Abstract Antibody discovery against new targets is dominated by two failure m..."
+    },
+    {
+      "chunk_index": 2,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Introduction",
+      "start_char": 1326,
+      "end_char": 3326,
+      "text_chars": 2000,
+      "text_preview": "## Introduction Therapeutic antibody discovery has been transformed in the past ..."
+    },
+    {
+      "chunk_index": 3,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Introduction",
+      "start_char": 3126,
+      "end_char": 4796,
+      "text_chars": 1670,
+      "text_preview": "versity optimisation, introduced by Mouret and Clune as the MAP-Elites algorithm..."
+    },
+    {
+      "chunk_index": 4,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Related work",
+      "start_char": 4799,
+      "end_char": 6799,
+      "text_chars": 2000,
+      "text_preview": "## Related work The use of evolutionary algorithms for antibody discovery dates ..."
+    },
+    {
+      "chunk_index": 5,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Related work",
+      "start_char": 6599,
+      "end_char": 7002,
+      "text_chars": 403,
+      "text_preview": "leagues on protein-level quality-diversity has demonstrated the feasibility of M..."
+    },
+    {
+      "chunk_index": 6,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods",
+      "start_char": 7005,
+      "end_char": 7303,
+      "text_chars": 295,
+      "text_preview": "## Methods GROVE is a MAP-Elites implementation specialised for antibody lead di..."
+    },
+    {
+      "chunk_index": 7,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Candidate representation",
+      "start_char": 7303,
+      "end_char": 8892,
+      "text_chars": 1586,
+      "text_preview": "### Candidate representation A GROVE candidate is a triple (heavy-chain CDR-H3 s..."
+    },
+    {
+      "chunk_index": 8,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Affinity scoring function",
+      "start_char": 8892,
+      "end_char": 10025,
+      "text_chars": 1130,
+      "text_preview": "### Affinity scoring function Affinity is scored using a deep-learning model bas..."
+    },
+    {
+      "chunk_index": 9,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Developability scoring function",
+      "start_char": 10025,
+      "end_char": 12025,
+      "text_chars": 2000,
+      "text_preview": "### Developability scoring function Developability is scored using a custom ense..."
+    },
+    {
+      "chunk_index": 10,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Developability scoring function",
+      "start_char": 11825,
+      "end_char": 12048,
+      "text_chars": 223,
+      "text_preview": ", moving to a higher-dimensional behaviour space would require either a coarser ..."
+    },
+    {
+      "chunk_index": 11,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Selection-and-mutation loop",
+      "start_char": 12051,
+      "end_char": 14025,
+      "text_chars": 1971,
+      "text_preview": "### Selection-and-mutation loop The MAP-Elites selection-and-mutation loop is st..."
+    },
+    {
+      "chunk_index": 12,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Archive structure",
+      "start_char": 14025,
+      "end_char": 14824,
+      "text_chars": 796,
+      "text_preview": "### Archive structure The MAP-Elites archive is a 32\u00d732 grid partitioning the (a..."
+    },
+    {
+      "chunk_index": 13,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Implementation and reproducibility",
+      "start_char": 14824,
+      "end_char": 15506,
+      "text_chars": 679,
+      "text_preview": "### Implementation and reproducibility GROVE is implemented in Python 3.13 using..."
+    },
+    {
+      "chunk_index": 14,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Benchmark \u2014 SAbDab reference complexes",
+      "start_char": 15506,
+      "end_char": 17506,
+      "text_chars": 2000,
+      "text_preview": "## Benchmark \u2014 SAbDab reference complexes We benchmarked GROVE on nine antibody-..."
+    },
+    {
+      "chunk_index": 15,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Benchmark \u2014 SAbDab reference complexes",
+      "start_char": 17306,
+      "end_char": 17638,
+      "text_chars": 332,
+      "text_preview": "t merely recapitulating the published candidates but is producing alternative ca..."
+    },
+    {
+      "chunk_index": 16,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Archive growth \u2014 week 1 results",
+      "start_char": 17641,
+      "end_char": 19641,
+      "text_chars": 2000,
+      "text_preview": "## Archive growth \u2014 week 1 results We have run GROVE continuously for one week a..."
+    },
+    {
+      "chunk_index": 17,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Archive growth \u2014 week 1 results",
+      "start_char": 19441,
+      "end_char": 20286,
+      "text_chars": 845,
+      "text_preview": "diversity in the high-affinity / low-developability quadrant is lower than in th..."
+    },
+    {
+      "chunk_index": 18,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Discussion",
+      "start_char": 20289,
+      "end_char": 22289,
+      "text_chars": 2000,
+      "text_preview": "## Discussion GROVE demonstrates that quality-diversity optimisation is a useful..."
+    },
+    {
+      "chunk_index": 19,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Discussion",
+      "start_char": 22089,
+      "end_char": 23480,
+      "text_chars": 1391,
+      "text_preview": "effective improvement. The cost of training the operator is small compared to th..."
+    },
+    {
+      "chunk_index": 20,
+      "section_path": "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Conclusion",
+      "start_char": 23483,
+      "end_char": 24265,
+      "text_chars": 780,
+      "text_preview": "## Conclusion We have presented GROVE, a quality-diversity optimisation framewor..."
+    }
+  ],
+  "covered_chars": 25447,
+  "unique_section_paths": [
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Abstract",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Archive growth \u2014 week 1 results",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Benchmark \u2014 SAbDab reference complexes",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Conclusion",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Discussion",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Introduction",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Affinity scoring function",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Archive structure",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Candidate representation",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Developability scoring function",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Implementation and reproducibility",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Methods > Selection-and-mutation loop",
+    "GROVE: Quality-Diversity Optimisation for Antibody Lead Discovery > Related work"
+  ]
+}
