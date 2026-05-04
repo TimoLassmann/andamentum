@@ -292,6 +292,7 @@ class SynthesizeReportOperation(BaseOperation):
             title, verdict, answer = await self._writer_validator_loop(
                 question,
                 data_context,
+                objective_id=snapshot.objective_id,
             )
 
         # Build markdown report (deterministic — everything except answer)
@@ -354,8 +355,16 @@ class SynthesizeReportOperation(BaseOperation):
         self,
         question: str,
         data_context: dict[str, Any],
+        *,
+        objective_id: str = "",
     ) -> tuple[str, str, str]:
         """Run writer-validator loop until answer is faithful or max rounds reached.
+
+        ``objective_id`` is included in K4 log lines as a per-case
+        attribution tag — when 5 SciFact cases run in parallel under
+        snakemake their stderr interleaves into one log file, and the
+        tag is the only way to attribute a 9-round-cap session to a
+        specific case after the fact.
 
         Returns:
             (title, verdict, answer) tuple
@@ -365,6 +374,10 @@ class SynthesizeReportOperation(BaseOperation):
         import time
 
         logger = logging.getLogger(__name__)
+
+        # Short tag for log attribution — first 12 chars of the
+        # objective_id keep grep-friendliness while remaining unique.
+        oid_tag = objective_id[:12] if objective_id else "????????????"
 
         title = "Research Summary"
         verdict = ""
@@ -408,9 +421,10 @@ class SynthesizeReportOperation(BaseOperation):
 
             if not answer:
                 logger.warning(
-                    "[synthesis.writer] round=%d writer_ms=%d "
+                    "[synthesis.writer] obj=%s round=%d writer_ms=%d "
                     "data_ctx_bytes=%d answer_chars=0 — empty answer, "
                     "breaking",
+                    oid_tag,
                     round_num,
                     int(writer_ms),
                     data_context_bytes,
@@ -431,8 +445,9 @@ class SynthesizeReportOperation(BaseOperation):
             feedback = validation.feedback
 
             logger.warning(
-                "[synthesis.writer] round=%d writer_ms=%d validator_ms=%d "
+                "[synthesis.writer] obj=%s round=%d writer_ms=%d validator_ms=%d "
                 "data_ctx_bytes=%d answer_chars=%d approved=%s feedback=%d",
+                oid_tag,
                 round_num,
                 int(writer_ms),
                 int(validator_ms),
@@ -441,6 +456,22 @@ class SynthesizeReportOperation(BaseOperation):
                 approved,
                 len(feedback),
             )
+            # Observation B: log the actual feedback content so we can
+            # see WHY the validator keeps rejecting. Each feedback item
+            # gets its own line so grep -F "[synthesis.feedback] obj=<id>"
+            # gives the full rejection trace for one case.
+            for i, item in enumerate(feedback):
+                # Truncate to keep one line per feedback item (~280 chars
+                # is a comfortable terminal-line limit).
+                truncated = item[:280] + ("…" if len(item) > 280 else "")
+                logger.warning(
+                    "[synthesis.feedback] obj=%s round=%d item=%d/%d: %s",
+                    oid_tag,
+                    round_num,
+                    i + 1,
+                    len(feedback),
+                    truncated,
+                )
 
             if approved or not feedback:
                 break
@@ -449,12 +480,14 @@ class SynthesizeReportOperation(BaseOperation):
 
         loop_total_s = time.monotonic() - loop_t0
         logger.warning(
-            "[synthesis.writer] DONE total=%.2fs rounds=%d "
-            "max_rounds=%d data_ctx_bytes=%d",
+            "[synthesis.writer] obj=%s DONE total=%.2fs rounds=%d "
+            "max_rounds=%d data_ctx_bytes=%d hit_cap=%s",
+            oid_tag,
             loop_total_s,
             round_num,
             self.MAX_VALIDATION_ROUNDS,
             data_context_bytes,
+            round_num >= self.MAX_VALIDATION_ROUNDS,
         )
 
         return title, verdict, answer
@@ -963,14 +996,10 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
                 f"- {n_capped} claim(s) reached the per-claim investigation cap."
             )
         if n_no_verdict:
-            sections.append(
-                f"- {n_no_verdict} claim(s) had no integration verdict."
-            )
+            sections.append(f"- {n_no_verdict} claim(s) had no integration verdict.")
         sections.append(f"- {n_evidence} evidence item(s) gathered overall.")
         if n_blocking:
-            sections.append(
-                f"- {n_blocking} blocking uncertainty(ies) identified."
-            )
+            sections.append(f"- {n_blocking} blocking uncertainty(ies) identified.")
         sections.append("")
 
         if reason:
@@ -980,7 +1009,7 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
             sections.append("")
 
         sections.append(
-            "A directional answer (\"yes\" or \"no\") would not be "
+            'A directional answer ("yes" or "no") would not be '
             "supported by the evidence base assembled. Further "
             "investigation — different sources, different framing, or "
             "human expert review — is the appropriate next step."

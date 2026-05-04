@@ -2302,7 +2302,7 @@ class CheckSynthesisDemand(Node):
                     "frame the answer over per-claim verdicts directly."
                 )
             )
-            self._log_demand(demand, deps)
+            self._log_demand(demand, deps, state.objective_id)
             return Synthesize()
 
         combined = objective.decomposition.combined_verdict
@@ -2410,7 +2410,7 @@ class CheckSynthesisDemand(Node):
                     justification=f"Satisfaction agent failed: {type(e).__name__}"
                 )
 
-        self._log_demand(demand, deps)
+        self._log_demand(demand, deps, state.objective_id)
 
         # Phase 4 of the lazy-escalation plan: ACTIVATE the loop-back.
         # When demand says needs_more, identify claims that could
@@ -2466,9 +2466,10 @@ class CheckSynthesisDemand(Node):
             # the structurally-explicit "insufficient" terminal
             # rather than asking the writer to invent a verdict.
             logger.warning(
-                "[synthesis_demand] needs_more=True but all "
+                "[synthesis_demand] obj=%s needs_more=True but all "
                 "non-abandoned claims have hit per-claim cap; "
                 "routing to SynthesizeInsufficient. justification: %s",
+                state.objective_id[:12] if state.objective_id else "????????????",
                 demand.justification,
             )
             state.synthesis_insufficient_reason = demand.justification
@@ -2482,15 +2483,16 @@ class CheckSynthesisDemand(Node):
             state.claims_needing_rescrutiny.add(cid)
 
         logger.warning(
-            "[synthesis_demand] looping back to Scrutinize on %d "
+            "[synthesis_demand] obj=%s looping back to Scrutinize on %d "
             "eligible claim(s); justification: %s",
+            state.objective_id[:12] if state.objective_id else "????????????",
             len(eligible_claim_ids),
             demand.justification,
         )
         return Scrutinize()
 
     @staticmethod
-    def _log_demand(demand: Any, deps: EpistemicDeps) -> None:
+    def _log_demand(demand: Any, deps: EpistemicDeps, objective_id: str = "") -> None:
         """Emit the synthesis demand at WARNING level so it shows
         through the CLI's verbose-mode log filter (which suppresses
         INFO during runs to keep the rich-progress output clean).
@@ -2501,12 +2503,19 @@ class CheckSynthesisDemand(Node):
         the only level the CLI keeps during runs. When the CLI's
         logging policy changes, this can drop back to INFO.
 
+        ``objective_id`` is logged as a per-case attribution tag —
+        when N cases run in parallel under snakemake their stderr
+        interleaves into one log file, and the tag is the only way
+        to attribute a demand to a specific case after the fact.
+
         ``deps`` is unused today but kept on the signature so future
         per-run instrumentation (e.g. write the demand to a trace
         file in deps) doesn't change every call site."""
         del deps  # currently unused; reserved for trace-file emission
+        oid_tag = objective_id[:12] if objective_id else "????????????"
         logger.warning(
-            "[synthesis_demand] needs_more=%s | %s%s",
+            "[synthesis_demand] obj=%s needs_more=%s | %s%s",
+            oid_tag,
             demand.needs_more,
             demand.justification,
             f" | hint: {demand.target_hint}" if demand.target_hint else "",
