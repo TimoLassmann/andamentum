@@ -196,6 +196,102 @@ class TestComputePosteriorRetrievalFailed:
         assert posterior is not None
         assert posterior.terminal_state == "completed"
 
+    async def test_retrieval_failed_with_integrated_assessment_uses_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """SciFact case 54 v14 shape: retrieval_failed=True but the claim
+        already has an integrated_assessment="contradicts" at high
+        confidence. Pre-fix: posterior=0.5 (verdict discarded). Post-fix:
+        posterior reflects the verdict with retrieval-failed penalty."""
+        from andamentum.epistemic.entities import Claim
+        from andamentum.epistemic.entities.claim import ClaimStage
+
+        repo = await _make_repo(tmp_path)
+        obj = Objective(
+            description="AMPK activation increases inflammation-related fibrosis.",
+            clarified_question="AMPK activation increases inflammation-related fibrosis.",
+            question_type="verificatory",
+            claim_to_verify="AMPK activation increases inflammation-related fibrosis.",
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="AMPK activation increases inflammation-related fibrosis.",
+            scope="lung tissue",
+            stage=ClaimStage.SUPPORTED,
+            integrated_assessment="contradicts",
+            integrated_confidence=0.857,
+        )
+        await repo.save(claim)
+
+        report = await compute_posterior(
+            repo, objective_id=obj.entity_id, retrieval_failed=True
+        )
+        assert report is not None
+        # contradicts at 0.857, no cap, with retrieval-failed pull (0.7):
+        # raw posterior = 0.5 - 0.857/2 = 0.0715.
+        # Pulled toward neutral: 0.5 + (0.0715 - 0.5)*0.7 = 0.200.
+        assert 0.15 < report.posterior < 0.25
+        assert report.terminal_state == "retrieval_failed"
+        assert report.integration_verdict == "contradicts"
+        assert "Retrieval failed" in report.explanation
+        assert "0.7" in report.explanation  # penalty value surfaced
+
+    async def test_retrieval_failed_with_one_sided_evidence_uses_counting(
+        self, tmp_path: Path
+    ) -> None:
+        """retrieval_failed=True, claim has no integrated_assessment but
+        the evidence already extracted is one-sided. Counting fallback
+        should surface that signal, with retrieval-failed pull."""
+        from andamentum.epistemic.entities import Claim
+        from andamentum.epistemic.entities.claim import ClaimStage
+
+        repo = await _make_repo(tmp_path)
+        obj = Objective(
+            description="Q",
+            clarified_question="Q",
+            question_type="verificatory",
+            claim_to_verify="claim X is true",
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="claim X is true",
+            scope="scope",
+            stage=ClaimStage.HYPOTHESIS,
+        )
+        await repo.save(claim)
+
+        ev_ids: list[str] = []
+        for i in range(10):
+            ev = Evidence(
+                objective_id=obj.entity_id,
+                source_type="pubmed",
+                source_ref=f"https://pubmed/sup_{i}",
+                extracted_content="content",
+                extracted=True,
+                support_judgment="supports",
+            )
+            await repo.save(ev)
+            ev_ids.append(ev.entity_id)
+        claim.evidence_ids = ev_ids
+        claim.evidence_count = len(ev_ids)
+        await repo.save(claim)
+
+        report = await compute_posterior(
+            repo, objective_id=obj.entity_id, retrieval_failed=True
+        )
+        assert report is not None
+        # 10 supports, 0 contradicts → counting_posterior ≈ 1.0.
+        # Pulled toward neutral: 0.5 + (1.0 - 0.5)*0.7 = 0.85.
+        assert 0.75 < report.posterior < 0.92
+        assert report.terminal_state == "retrieval_failed"
+        assert report.mode == "counting_fallback"
+
 
 class TestConfidenceScoresTerminalState:
     def test_default_terminal_state_is_completed(self) -> None:
