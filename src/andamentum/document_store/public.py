@@ -26,8 +26,11 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
 
+from andamentum.chunker import extract_units
+from andamentum.core.embeddings import make_ollama_embedder
+
 from .api import DocumentStore
-from .chunking import chunk_markdown
+from .chunker_adapter import units_to_chunks
 from .extraction import extract_chunk_metadata, extract_document_metadata
 
 logger = logging.getLogger(__name__)
@@ -231,6 +234,11 @@ async def _run_phase2(
 
     Separated so repair() can re-run this for incomplete documents.
     Idempotent: deletes existing chunks before re-storing.
+
+    Chunking uses ``andamentum.chunker.extract_units`` with
+    ``target_max_chars=4000`` — paragraph-of-paragraphs sizing tuned for the
+    chunk-level metadata extractor's ``topics`` / ``has_decision`` /
+    ``has_action_item`` fields, which were validated on ~2k char chunks.
     """
     from .chunking import Chunk
     from .embeddings import EmbeddingService
@@ -238,8 +246,16 @@ async def _run_phase2(
     # Delete any existing chunks (idempotent for repair)
     await store.delete_chunks(doc_id)
 
-    # Chunk
-    chunks = chunk_markdown(content, max_tokens=500, overlap_tokens=50)
+    # Stage-2 semantic split (when needed) re-uses the same Ollama embedder
+    # the chunk-level loop uses below.
+    embedder = make_ollama_embedder(model=embedding_model)
+    chunking = await extract_units(
+        content,
+        target_min_chars=1500,
+        target_max_chars=4000,
+        embedding_fn=embedder,
+    )
+    chunks = units_to_chunks(content, chunking.units)
     if not chunks:
         chunks = [
             Chunk(
