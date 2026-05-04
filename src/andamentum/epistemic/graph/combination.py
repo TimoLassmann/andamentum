@@ -81,10 +81,21 @@ def _claim_posterior(claim: Claim) -> float | None:
     Returns None when the claim has no integration verdict — IBE
     didn't run on it (e.g. it's still HYPOTHESIS, abandoned, or
     cycle-capped before promotion).
+
+    For cycle-capped claims with a verdict (IBE ran, then cap fired
+    later), apply ``CYCLE_CAP_CONFIDENCE_PENALTY`` to the confidence —
+    the verdict is provisional because inquiry didn't converge cleanly,
+    but it carries directional signal worth surfacing rather than
+    discarding. See
+    docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md.
     """
     if claim.integrated_assessment is None:
         return None
     confidence = claim.integrated_confidence or 0.0
+    if getattr(claim, "cycle_capped", False):
+        from ..confidence import CYCLE_CAP_CONFIDENCE_PENALTY
+
+        confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
     if claim.integrated_assessment == "supports":
         return 0.5 + confidence / 2
     if claim.integrated_assessment == "contradicts":
@@ -123,10 +134,14 @@ def combine_claim_verdicts(
             n_abandoned += 1
             claim_posteriors.append(None)
             continue
+        # Cycle-capped claims: count them for diagnostics, but include
+        # their integrated_assessment (penalised in _claim_posterior)
+        # in the aggregation. Discarding capped-with-verdict claims
+        # silently nullifies signal that's already been acquired —
+        # the precise bug case 54 hit (see plan
+        # docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md).
         if getattr(c, "cycle_capped", False):
             n_capped += 1
-            claim_posteriors.append(None)
-            continue
         p = _claim_posterior(c)
         claim_posteriors.append(p)
         if p is None:
@@ -223,9 +238,7 @@ def _weighted_mean(
         raise ValueError("weights must be non-negative")
 
     paired = [
-        (p, w)
-        for p, w in zip(claim_posteriors, weights, strict=True)
-        if p is not None
+        (p, w) for p, w in zip(claim_posteriors, weights, strict=True) if p is not None
     ]
     weight_sum = sum(w for _, w in paired)
     if weight_sum == 0.0:

@@ -46,6 +46,21 @@ from .repository import EpistemicRepository
 logger = logging.getLogger(__name__)
 
 
+CYCLE_CAP_CONFIDENCE_PENALTY = 0.7
+"""Multiplier applied to a cycle-capped claim's ``integrated_confidence``
+when it contributes to the aggregated posterior. The cap fired meaning
+inquiry didn't reach a stable terminal state; the verdict is provisional
+even within the IBE-certified range. 0.7 leaves directional signal
+intact but pulls the contribution toward neutral so the final number
+reflects the cap's provenance.
+
+See docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md
+for the principled distinction between *verdict instability* (suspend
+judgment — Peirce) and *inquiry inexhaustibility* (provisional but
+directional — fallibilism). The cap firing is the second; the previous
+all-capped → 0.5 rule conflated the two."""
+
+
 # Question types where posterior P(Y) is meaningful.
 # Comparative is excluded: "Is A better than B?" has three outcomes
 # (A better, B better, equivalent), not two. The posterior's binary
@@ -105,18 +120,18 @@ class PosteriorReport(BaseModel):
             "weighted counts."
         ),
     )
-    terminal_state: Literal[
-        "completed", "retrieval_failed", "oscillation_detected"
-    ] = Field(
-        default="completed",
-        description=(
-            "How the investigation terminated. 'completed' for normal runs; "
-            "'retrieval_failed' when evidence extraction kept returning empty "
-            "content, meaning the posterior is based on insufficient data; "
-            "'oscillation_detected' when one or more claims hit the "
-            "scrutinise/resolve cycle cap before converging — the posterior "
-            "is 0.5 (genuinely uncertain) and the inquiry did not fix belief."
-        ),
+    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
+        Field(
+            default="completed",
+            description=(
+                "How the investigation terminated. 'completed' for normal runs; "
+                "'retrieval_failed' when evidence extraction kept returning empty "
+                "content, meaning the posterior is based on insufficient data; "
+                "'oscillation_detected' when one or more claims hit the "
+                "scrutinise/resolve cycle cap before converging — the posterior "
+                "is 0.5 (genuinely uncertain) and the inquiry did not fix belief."
+            ),
+        )
     )
     objective_id: str
     question_type: str
@@ -222,57 +237,26 @@ async def compute_posterior(
     evidence = await repo.get_evidence_for_objective(objective_id)
     active_claims = [c for c in claims if not c.abandoned]
 
-    # Oscillation handling (Phase 2 of multi-seed-claim refactor):
+    # Cycle-capped handling — three-way rule (2026-05-04):
     #
-    # Previous semantic: ANY capped claim short-circuited the entire
-    # posterior to oscillation_detected, discarding healthy verdicts on
-    # sibling claims. That broke multi-seed-claim's resilience promise —
-    # one cycling claim shouldn't take 4 healthy claims down with it.
+    # Cycle_capped is an inquiry-layer safety belt that stops more LLM
+    # work on a non-converging claim. The output layer should still
+    # surface the signal that was acquired before the cap fired, with
+    # provenance flagged in the explanation:
     #
-    # New semantic: filter capped claims out of aggregation. Only emit
-    # the all-or-nothing oscillation_detected report when every active
-    # claim is capped (nothing left to aggregate). Otherwise, drop the
-    # capped subset, aggregate the rest normally, and surface the
-    # oscillation as a diagnostic in the explanation. The combiner
-    # (CombineClaimVerdicts in Phase 4) will receive the partial signal
-    # and apply the combination_rule over the non-capped claims.
+    #   1. capped + integrated_assessment → contribute the verdict with
+    #      a confidence penalty (CYCLE_CAP_CONFIDENCE_PENALTY).
+    #   2. capped + no IA, evidence one-sided → counting path surfaces
+    #      it (no special handling needed; we just stop filtering).
+    #   3. capped + no IA, balanced → terminal_state="oscillation_detected"
+    #      via the no-signal terminal at the end of this function.
+    #
+    # The previous all-capped → 0.5 short-circuit conflated "inquiry
+    # didn't converge" with "verdict is unstable" — distinct epistemic
+    # situations. See
+    # docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md.
     capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
-    if capped and len(capped) == len(active_claims) and active_claims:
-        # All-capped: no signal to aggregate. Honest oscillation_detected.
-        concern_total = sum(len(c.persistent_concerns) for c in capped)
-        capped_summary = ", ".join(
-            f"{c.entity_id[:8]}:{len(c.persistent_concerns)}c" for c in capped
-        )
-        return PosteriorReport(
-            posterior=0.5,
-            log_odds=0,
-            supporting_count=0,
-            contradicting_count=0,
-            counting_posterior=0.5,
-            mode="counting_only",
-            objective_id=objective_id,
-            question_type=question_type,
-            explanation=(
-                f"Oscillation detected: ALL {len(capped)} active claim(s) hit "
-                f"the scrutiny-resolve cycle cap with {concern_total} "
-                f"persistent concerns total ({capped_summary}). Posterior "
-                "defaults to 0.5 (uninformative); "
-                "terminal_state='oscillation_detected'. The inquiry did not "
-                "converge — diagnose by inspecting claim.persistent_concerns "
-                "to decide whether cluster-dedup or claim reformulation is "
-                "the right architectural follow-up."
-            ),
-            terminal_state="oscillation_detected",
-        )
-
-    # Partial-cap: some claims capped, others have verdicts. Aggregate
-    # over the non-capped subset; remember the capped count for the
-    # report's explanation.
     n_capped_partial = len(capped)
-    if n_capped_partial:
-        active_claims = [
-            c for c in active_claims if not getattr(c, "cycle_capped", False)
-        ]
 
     # 3. Diagnostic: weighted counts across active claims. These are reported
     # for inspection and used only as the counting fallback when no claim
@@ -341,10 +325,7 @@ async def compute_posterior(
         # weights align — same alignment CombineClaimVerdicts uses.
         # Phase 6 of the Move-3 plan: typed Decomposition access.
         sub_ids_in_order = [
-            s.id
-            for s in (
-                decomposition.sub_investigations if decomposition else []
-            )
+            s.id for s in (decomposition.sub_investigations if decomposition else [])
         ]
         claims_by_sub = {
             c.sub_investigation_id: c
@@ -352,9 +333,7 @@ async def compute_posterior(
             if c.sub_investigation_id is not None
         }
         ordered = [
-            claims_by_sub[sid]
-            for sid in sub_ids_in_order
-            if sid in claims_by_sub
+            claims_by_sub[sid] for sid in sub_ids_in_order if sid in claims_by_sub
         ]
         # Fall back to the integrated_claims list if no sub_investigation_id
         # alignment is possible (e.g. ProposeClaims path that happened to
@@ -363,9 +342,7 @@ async def compute_posterior(
             ordered = integrated_claims
             weights = None
         else:
-            weights = extract_weights_from_decomposition(
-                decomposition, ordered
-            )
+            weights = extract_weights_from_decomposition(decomposition, ordered)
         assert combination_rule is not None  # guarded by use_rule_aware
         combined = combine_claim_verdicts(ordered, combination_rule, weights=weights)
 
@@ -400,6 +377,11 @@ async def compute_posterior(
             verdict = c.integrated_assessment
             confidence = c.integrated_confidence or 0.5
             confidence = max(0.0, min(1.0, confidence))
+            # Cycle-cap penalty: a capped claim's IBE-certified verdict
+            # still informs the headline, just with reduced weight to
+            # reflect the non-converged inquiry that produced it.
+            if getattr(c, "cycle_capped", False):
+                confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
             confidence_sum += confidence
 
             if verdict == "supports":
@@ -446,13 +428,44 @@ async def compute_posterior(
     else:
         log_odds = round(math.log(posterior / (1.0 - posterior)))
 
-    # 6. Build explanation
+    # 6. Decide terminal_state.
+    #
+    # Genuine oscillation = ALL active claims are capped AND none have
+    # an integrated_assessment AND the counting signal is essentially
+    # balanced. That's the case the original design was trying to
+    # catch — the inquiry oscillated without ever producing a
+    # directional verdict OR a one-sided evidence pool. Anything else
+    # has signal worth surfacing, so terminal_state stays "completed".
+    is_balanced_count = abs(counting_log_odds) < 1.0
+    all_capped_no_signal = (
+        n_capped_partial > 0
+        and n_capped_partial == len(active_claims)
+        and not integrated_claims
+        and is_balanced_count
+    )
+    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
+        "oscillation_detected" if all_capped_no_signal else "completed"
+    )
+
+    # 7. Build explanation
     parts = [f"Posterior {posterior:.4f} for {question_type} question."]
-    if n_capped_partial:
+    if all_capped_no_signal:
+        concern_total = sum(len(c.persistent_concerns) for c in capped)
+        parts.append(
+            f"Oscillation detected: ALL {n_capped_partial} active claim(s) "
+            f"hit the scrutiny-resolve cycle cap, none produced an integration "
+            f"verdict, and counting is balanced ({concern_total} persistent "
+            "concerns total). Posterior at 0.5 is the honest outcome."
+        )
+    elif n_capped_partial:
+        # Provenance: cap fired, but signal exists (either via integrated
+        # verdicts on capped claims or via one-sided counting). Surface
+        # the cap in the explanation rather than zeroing the number.
         parts.append(
             f"NOTE: {n_capped_partial} claim(s) hit the scrutiny-resolve "
-            "cycle cap and were excluded from aggregation. Aggregation is "
-            "over the non-capped subset only."
+            f"cycle cap; their signal is included with confidence penalty "
+            f"{CYCLE_CAP_CONFIDENCE_PENALTY} (verdict acquired under non-"
+            "converged inquiry — provisional but directional)."
         )
     if mode == "abductive":
         parts.append(
@@ -490,6 +503,12 @@ async def compute_posterior(
 
     explanation = " ".join(parts)
 
+    # Force posterior to exactly 0.5 in the genuine-oscillation terminal
+    # so callers comparing on the value still see the canonical neutral.
+    if all_capped_no_signal:
+        posterior = 0.5
+        log_odds = 0
+
     return PosteriorReport(
         posterior=round(posterior, 6),
         log_odds=log_odds,
@@ -506,4 +525,5 @@ async def compute_posterior(
         objective_id=objective_id,
         question_type=question_type,
         explanation=explanation,
+        terminal_state=terminal_state,
     )
