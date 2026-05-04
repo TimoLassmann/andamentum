@@ -347,14 +347,85 @@ class TestSciFactCase957Shape:
 
         report = await compute_posterior(repo, obj.entity_id)
         assert report is not None
-        # Pre-fix: posterior=0.5 oscillation_detected (capped → discarded).
-        # Post-fix: integrated_claims is empty (no IA), so mode falls
-        # to counting_fallback over the capped claim's evidence:
-        # log_odds = 23 - 5 = 18 → posterior ≈ 1.0.
-        assert report.posterior > 0.95
+        # Pre-cycle-cap-fix: posterior=0.5 (oscillation_detected discarded
+        # the capped claim's signal entirely).
+        # Pre-counting-path-fix: posterior ≈ 1.0 (counting fallback ran
+        # at full strength on the capped claim's evidence).
+        # Post-counting-path-fix: counting fallback runs but the cap
+        # penalty pulls the posterior toward neutral. log_odds = 18
+        # → counting_posterior ≈ 1.0; pulled by 0.7 → 0.5 + 0.5*0.7 = 0.85.
+        # Still directionally correct (SUP) but reflects the cap's
+        # provenance.
+        assert 0.80 < report.posterior < 0.90
         assert report.terminal_state == "completed"
         assert report.mode == "counting_fallback"
         # Provenance: cap fired, signal came via counting.
+        assert "cycle cap" in report.explanation
+        assert "counting_posterior pulled toward neutral" in report.explanation
+
+
+class TestSciFactCase439V15Shape:
+    """Cycle-capped, no integrated_assessment, small one-sided evidence
+    pool. Reproduces the v15 case 439 regression: cluster weighting
+    amplified 2 raw supports to weighted 4.20, producing posterior 0.985
+    (confident SUP) on a gold-NEI claim. The counting-path cap penalty
+    pulls this toward neutral so the posterior reflects the cap's
+    provenance — still wrong direction (gold is NEI) but less
+    confidently wrong, awaiting a future small-N dampener."""
+
+    async def test_capped_small_pool_dampens_confidence(self, tmp_path: Path) -> None:
+        store = DocumentStore.for_database("scifact_439_v15", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(
+            description="Fz/PCP-dependent Pk localizes to the anterior membrane.",
+            clarified_question=(
+                "Fz/PCP-dependent Pk localizes to the anterior membrane."
+            ),
+            question_type="verificatory",
+            claim_to_verify=("Fz/PCP-dependent Pk localizes to the anterior membrane."),
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement=("Fz/PCP-dependent Pk localizes to the anterior membrane."),
+            scope="zebrafish neurulation",
+            stage=ClaimStage.HYPOTHESIS,
+            cycle_capped=True,
+            scrutiny_verdict="pass",
+        )
+        await repo.save(claim)
+
+        # 2 supports / 0 contradicts (case 439 v15's exact shape, with
+        # corroboration_count to mimic cluster weighting).
+        ev_ids: list[str] = []
+        for i in range(2):
+            ev = Evidence(
+                objective_id=obj.entity_id,
+                source_type="open_targets",
+                source_ref=f"https://opentargets/{i}",
+                extracted_content="content",
+                extracted=True,
+                support_judgment="supports",
+                corroboration_count=4,
+            )
+            await repo.save(ev)
+            ev_ids.append(ev.entity_id)
+        claim.evidence_ids = ev_ids
+        claim.evidence_count = len(ev_ids)
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, obj.entity_id)
+        assert report is not None
+        # Pre-counting-path-fix: posterior ≈ 0.985 (cluster weighting
+        # amplified 2 supports to weighted 4.20, log_odds 4.20).
+        # Post-fix: counting_posterior unchanged (~0.985), but pulled
+        # by 0.7 → 0.5 + 0.485*0.7 = 0.840.
+        assert 0.80 < report.posterior < 0.88
+        assert report.terminal_state == "completed"
+        assert report.mode == "counting_fallback"
         assert "cycle cap" in report.explanation
 
 

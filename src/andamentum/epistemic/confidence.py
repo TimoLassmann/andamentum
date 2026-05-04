@@ -423,7 +423,28 @@ async def compute_posterior(
         posterior = counting_posterior
         mode = "counting_fallback"
 
-    # 5. Apply retrieval_failed pull-toward-neutral.
+    # 5a. Cycle-cap penalty for the counting-fallback path.
+    #
+    # The integration paths above (rule_blind and rule_aware via
+    # combine_claim_verdicts) already apply CYCLE_CAP_CONFIDENCE_PENALTY
+    # per-claim when a capped claim has an integrated_assessment.
+    # The counting-fallback path is the gap: when a capped claim
+    # contributes signal via support_judgment counts only (because
+    # PromoteToSupported's cycle_capped filter prevented IBE from
+    # running), its raw counts run at full strength. SciFact case 439
+    # v15 was the demonstration: cycle_capped=True, no IA, 2 supports
+    # in a thin pool → cluster weighting amplified to log_odds 4.20,
+    # posterior 0.985 — confident SUP on a gold-NEI claim.
+    #
+    # The principle is the same as the integration-path penalty:
+    # capped means inquiry didn't converge cleanly; whatever signal
+    # we have is provisional, surface it with reduced weight. Pulling
+    # the counting_posterior toward neutral mirrors the per-claim
+    # confidence pull in the integration path.
+    if mode == "counting_fallback" and n_capped_partial > 0:
+        posterior = 0.5 + (posterior - 0.5) * CYCLE_CAP_CONFIDENCE_PENALTY
+
+    # 5b. Apply retrieval_failed pull-toward-neutral.
     #
     # The flag signals that evidence extraction kept returning empty
     # content, so the inquiry was prevented from gathering more.
@@ -432,6 +453,10 @@ async def compute_posterior(
     # than zeroing it. (See SciFact case 54 v14: integrated_assessment
     # was contradicts at 0.857 but the old short-circuit returned
     # posterior=0.5, discarding the verdict.)
+    #
+    # Stacks multiplicatively with 5a when both apply: a cycle-capped
+    # claim under retrieval_failed conditions is doubly provisional,
+    # and 0.7 × 0.7 = 0.49 reflects that.
     if retrieval_failed:
         posterior = 0.5 + (posterior - 0.5) * RETRIEVAL_FAILED_CONFIDENCE_PENALTY
         if integration_confidence is not None:
@@ -498,11 +523,19 @@ async def compute_posterior(
         # Provenance: cap fired, but signal exists (either via integrated
         # verdicts on capped claims or via one-sided counting). Surface
         # the cap in the explanation rather than zeroing the number.
+        # The penalty path differs by mode: integration paths apply it
+        # per-claim inside the verdict aggregation; counting_fallback
+        # pulls the final posterior toward neutral (5a above).
+        applied_at = (
+            "counting_posterior pulled toward neutral"
+            if mode == "counting_fallback"
+            else "per-claim confidence reduced"
+        )
         parts.append(
             f"NOTE: {n_capped_partial} claim(s) hit the scrutiny-resolve "
             f"cycle cap; their signal is included with confidence penalty "
-            f"{CYCLE_CAP_CONFIDENCE_PENALTY} (verdict acquired under non-"
-            "converged inquiry — provisional but directional)."
+            f"{CYCLE_CAP_CONFIDENCE_PENALTY} ({applied_at}; verdict acquired "
+            "under non-converged inquiry — provisional but directional)."
         )
     if mode == "abductive":
         parts.append(
