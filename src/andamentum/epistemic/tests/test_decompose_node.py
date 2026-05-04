@@ -1,17 +1,19 @@
-"""Tests for the Decompose graph node and the --decompose CLI flag.
-
-Phase D of the post-audit fix queue. Without this, multi-seed-claim
-mode was unreachable in production: ``DecomposeQuestionOperation`` had
-no graph caller and no CLI invocation, so ``objective.decomposition``
-was always None at CreateClaims time and the third branch
-(MultiSeedClaim) never fired.
+"""Tests for the Decompose graph node.
 
 The Decompose node sits between PrepareObjective and PlanEvidence,
-gated by ``state.decompose``. With ``decompose=True``,
-DecomposeQuestionOperation runs and populates
-``objective.decomposition``; downstream PlanEvidence picks the
-per-claim query formulation branch and CreateClaims routes to
-MultiSeedClaim.
+gated by ``obj.claim_to_verify``: when set (verify mode — the user
+named the exact claim), the node is a no-op pass-through. Otherwise
+(research mode), DecomposeQuestionOperation runs and populates
+``objective.decomposition``; downstream PlanEvidence picks the per-claim
+query formulation branch and CreateClaims routes to MultiSeedClaim. If
+the decomposer produces no usable sub-investigations, the
+MultiSeedClaim → ProposeClaims fallback in CreateClaims kicks in — the
+open-research path emerges naturally without a separate flag.
+
+History: the gate was originally ``state.decompose`` (a function
+argument propagated into graph state). The 2026-05-04 entry-point
+consolidation flipped it to ``obj.claim_to_verify`` so callers no longer
+have two parallel ways to declare mode.
 """
 
 from __future__ import annotations
@@ -33,7 +35,11 @@ class _FakeRunContext:
 
 
 async def _setup_objective(
-    tmp_path: Path, db_name: str, *, phase: str = "analyzed"
+    tmp_path: Path,
+    db_name: str,
+    *,
+    phase: str = "analyzed",
+    claim_to_verify: str | None = None,
 ) -> tuple[Objective, EpistemicRepository]:
     store = DocumentStore.for_database(db_name, db_dir=tmp_path)
     await store.initialize()
@@ -43,6 +49,7 @@ async def _setup_objective(
         clarified_question="Are podocytes motile in injury?",
         question_type="verificatory",
         phase=phase,
+        claim_to_verify=claim_to_verify,
     )
     obj.objective_id = obj.entity_id
     await repo.save(obj)
@@ -50,13 +57,16 @@ async def _setup_objective(
 
 
 class TestDecomposeNode:
-    async def test_decompose_false_is_passthrough(self, tmp_path: Path) -> None:
-        """When state.decompose is False (the default open-research
-        path), Decompose returns PlanEvidence without running
-        DecomposeQuestionOperation. The objective's decomposition
-        stays None."""
-        obj, repo = await _setup_objective(tmp_path, "decompose_passthrough")
-        state = EpistemicGraphState(objective_id=obj.entity_id, decompose=False)
+    async def test_claim_to_verify_passthrough(self, tmp_path: Path) -> None:
+        """When obj.claim_to_verify is set (verify mode), Decompose
+        returns PlanEvidence without running DecomposeQuestionOperation.
+        The objective's decomposition stays None."""
+        obj, repo = await _setup_objective(
+            tmp_path,
+            "decompose_passthrough",
+            claim_to_verify="Podocytes are motile in injury.",
+        )
+        state = EpistemicGraphState(objective_id=obj.entity_id)
         deps = EpistemicDeps(repo=repo, agent_runner=None)
         ctx = _FakeRunContext(state, deps)
         next_node = await Decompose().run(ctx)  # type: ignore[arg-type]
@@ -69,18 +79,15 @@ class TestDecomposeNode:
         ]
         assert decompose_ops == []
 
-    async def test_decompose_true_runs_decomposition(
+    async def test_research_mode_runs_decomposition(
         self, tmp_path: Path, fake_runner
     ) -> None:
-        """With state.decompose=True, the node runs
-        DecomposeQuestionOperation and populates
-        objective.decomposition with the conftest fake's 3 sub-
-        investigations."""
+        """Without claim_to_verify (research mode), the node runs
+        DecomposeQuestionOperation and populates objective.decomposition
+        with the conftest fake's 3 sub-investigations."""
         obj, repo = await _setup_objective(tmp_path, "decompose_active")
-        state = EpistemicGraphState(objective_id=obj.entity_id, decompose=True)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
         ctx = _FakeRunContext(state, deps)
         next_node = await Decompose().run(ctx)  # type: ignore[arg-type]
         assert isinstance(next_node, PlanEvidence)
@@ -93,17 +100,13 @@ class TestDecomposeNode:
         ]
         assert len(decompose_ops) == 1
 
-    async def test_decompose_true_idempotent(
-        self, tmp_path: Path, fake_runner
-    ) -> None:
+    async def test_research_mode_idempotent(self, tmp_path: Path, fake_runner) -> None:
         """Re-running Decompose on an objective that already has a
         decomposition is a did_work=False short-circuit (the underlying
         DecomposeQuestionOperation is idempotent)."""
         obj, repo = await _setup_objective(tmp_path, "decompose_idempotent")
-        state = EpistemicGraphState(objective_id=obj.entity_id, decompose=True)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
         ctx = _FakeRunContext(state, deps)
         await Decompose().run(ctx)  # type: ignore[arg-type]
         # Second pass.
@@ -117,12 +120,3 @@ class TestDecomposeNode:
             c for c in fake_runner.calls if c[0] == "epistemic_decompose_question"
         ]
         assert len(decompose_calls) == 1
-
-
-class TestStateDecomposeFieldDefault:
-    def test_default_is_false(self) -> None:
-        """Sanity: the new state field defaults to False so existing
-        callers (open-research path) get unchanged behavior without
-        opt-in."""
-        s = EpistemicGraphState()
-        assert s.decompose is False

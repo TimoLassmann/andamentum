@@ -44,9 +44,7 @@ _EMPTY_EXTRACTION_THRESHOLD = 3
 SCRUTINY_RESOLVE_CYCLE_CAP = 3
 
 
-async def _mark_cycle_capped(
-    deps: "EpistemicDeps", claim_id: str, source: str
-) -> None:
+async def _mark_cycle_capped(deps: "EpistemicDeps", claim_id: str, source: str) -> None:
     """Mark a claim as cycle-capped and snapshot its current blocking
     uncertainties as forensic evidence.
 
@@ -83,11 +81,7 @@ async def _mark_cycle_capped(
             unc = await deps.repo.get("uncertainty", uid)
         except Exception:
             continue
-        if (
-            isinstance(unc, Uncertainty)
-            and unc.is_blocking
-            and unc.resolution is None
-        ):
+        if isinstance(unc, Uncertainty) and unc.is_blocking and unc.resolution is None:
             snapshot.append(unc.entity_id)
     claim.persistent_concerns = snapshot
     await deps.repo.save(claim)
@@ -198,9 +192,7 @@ async def _run_op(
         # documents.file_path UNIQUE index. step_number stays in
         # metadata so execution-step queries remain orderable.
         await backend.add(
-            file_path=(
-                f"execution_step_{state.run_id}_{step_number:04d}"
-            ),
+            file_path=(f"execution_step_{state.run_id}_{step_number:04d}"),
             content=result.message or "",
             title=f"{operation} on {entity_id[:12]}",
             metadata={
@@ -261,9 +253,7 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
 
     referenced_ids: set[str] = set()
     if pending:
-        all_claims_pre = await deps.repo.query(
-            "claim", objective_id=state.objective_id
-        )
+        all_claims_pre = await deps.repo.query("claim", objective_id=state.objective_id)
         # Build a fast lookup: which evidence IDs are referenced by any claim?
         for c in all_claims_pre:
             if isinstance(c, Claim):
@@ -437,12 +427,12 @@ class PrepareObjective(Node):
 
 @dataclass
 class Decompose(Node):
-    """Optionally run DecomposeQuestionOperation before PlanEvidence.
+    """Run DecomposeQuestionOperation before PlanEvidence in research mode.
 
-    Gated by ``state.decompose``: when False (the default open-research
-    path), this node is a no-op pass-through. When True, runs
-    ``DecomposeQuestionOperation`` to populate
-    ``objective.decomposition`` so:
+    Skipped only when ``obj.claim_to_verify`` is set (verify mode — the
+    user named the exact claim, no decomposition needed). Otherwise runs
+    ``DecomposeQuestionOperation`` to populate ``objective.decomposition``
+    so:
 
     * ``PlanTaskOperation`` formulates queries per sub-investigation
       (per-claim evidence pool, Option-2).
@@ -454,13 +444,20 @@ class Decompose(Node):
     * ``compute_posterior`` honours the rule via the rule-aware
       delegation path (see confidence.py).
 
+    When the decomposer produces no usable sub-investigations, the
+    fallback in ``CreateClaims`` (graph/nodes.py:635-649) routes to
+    ``ProposeClaims`` — the open-research path emerges naturally without
+    a separate flag.
+
     Idempotent: ``DecomposeQuestionOperation`` short-circuits if
     ``objective.decomposition`` is already set.
 
-    Phase 5 of the Move-3 plan.
+    Phase 5 of the Move-3 plan; gate flipped 2026-05-04 for the
+    entry-point consolidation (see
+    docs/superpowers/plans/2026-05-04-entry-point-consolidation.md).
     """
 
-    reads = frozenset({"objective_id", "decompose"})
+    reads = frozenset({"objective_id"})
     writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
@@ -471,7 +468,8 @@ class Decompose(Node):
         state = ctx.state
         deps = ctx.deps
 
-        if not state.decompose:
+        obj = await deps.repo.get("objective", state.objective_id)
+        if obj.claim_to_verify:
             return PlanEvidence()
 
         from ..operations.preplanning import DecomposeQuestionOperation
@@ -562,7 +560,6 @@ class ExtractEvidence(Node):
             )
             updated_ev = await deps.repo.get("evidence", ev.entity_id)
             _update_retrieval_health(state, updated_ev)
-
 
         # Cross-provider duplicate sweep: when multiple providers return the
         # same paper, mark all but one as invalidated so judging / scrutiny /
@@ -682,9 +679,7 @@ class Scrutinize(Node):
             "investigation_counts",
         }
     )
-    writes = frozenset(
-        {"scrutiny_resolve_cycles", "claims_needing_rescrutiny"}
-    )
+    writes = frozenset({"scrutiny_resolve_cycles", "claims_needing_rescrutiny"})
     operations = frozenset()  # populated below
     post_invariants = ()
 
@@ -966,9 +961,7 @@ class ExtractNewEvidence(Node):
                     entity_ev.judgment_reasoning = judgment.reasoning
                     await deps.repo.save(entity_ev)
 
-                await asyncio.gather(
-                    *(_judge_extra(ev) for ev in evidence_to_judge)
-                )
+                await asyncio.gather(*(_judge_extra(ev) for ev in evidence_to_judge))
 
             if extras_linked > 0:
                 claim.evidence_count = len(claim.evidence_ids)
@@ -1316,9 +1309,7 @@ class RunVerification(Node):
     now the validator only sees direct dispatches.
     """
 
-    reads = frozenset(
-        {"objective_id", "question_type", "claims_needing_rescrutiny"}
-    )
+    reads = frozenset({"objective_id", "question_type", "claims_needing_rescrutiny"})
     writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
@@ -1518,8 +1509,7 @@ class RunVerification(Node):
                 "NO_EVIDENCE",
             }
             all_terminal = all(
-                c.convergence_verdict in terminal_convergence
-                for c in active_supported
+                c.convergence_verdict in terminal_convergence for c in active_supported
             )
             any_positive = any(
                 c.convergence_verdict == "CONVERGENT" for c in active_supported
@@ -1572,16 +1562,17 @@ class ResolveUncertainties(Node):
             "scrutiny_resolve_cycles",
         }
     )
-    writes = frozenset(
-        {"claims_needing_rescrutiny", "scrutiny_resolve_cycles"}
-    )
+    writes = frozenset({"claims_needing_rescrutiny", "scrutiny_resolve_cycles"})
     operations = frozenset()  # populated below
     post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> Union[
-        "EnumerateCandidates", "PromoteToSupported", "Scrutinize", "ResolveUncertainties"
+        "EnumerateCandidates",
+        "PromoteToSupported",
+        "Scrutinize",
+        "ResolveUncertainties",
     ]:
         from ..operations.uncertainty import ResolveUncertaintyOperation
         from ..operations.concerns import DeduplicateConcernsOperation
@@ -2078,21 +2069,15 @@ class CombineClaimVerdicts(Node):
         # correct. Multi-seed-claim sets sub_investigation_id on each
         # Claim; we sort by the order in decomposition.sub_investigations.
         # Phase 6 of the Move-3 plan: typed Decomposition access.
-        sub_ids_in_order = [
-            s.id for s in objective.decomposition.sub_investigations
-        ]
-        all_claims = await deps.repo.query(
-            "claim", objective_id=state.objective_id
-        )
+        sub_ids_in_order = [s.id for s in objective.decomposition.sub_investigations]
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         claims_by_sub: dict[str, Any] = {
             c.sub_investigation_id: c
             for c in all_claims
             if c.sub_investigation_id is not None
         }
         ordered_claims = [
-            claims_by_sub[sid]
-            for sid in sub_ids_in_order
-            if sid in claims_by_sub
+            claims_by_sub[sid] for sid in sub_ids_in_order if sid in claims_by_sub
         ]
         # Orphan diagnostic: claims that exist but have no matching sub-id
         # in the current decomposition (sub-investigation removed by a
@@ -2293,9 +2278,7 @@ class CheckSynthesisDemand(Node):
         deps = ctx.deps
 
         objective = await deps.repo.get("objective", state.objective_id)
-        all_claims = await deps.repo.query(
-            "claim", objective_id=state.objective_id
-        )
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         active_claims = [c for c in all_claims if not c.abandoned]
 
         # ── Compute the demand ──────────────────────────────────────
@@ -2940,9 +2923,7 @@ ExtractNewEvidence.operations = frozenset({ExtractEvidenceOperation})
 
 # CheckCompletion has empty operations — it's read-only routing logic.
 
-Synthesize.operations = frozenset(
-    {FreezeSnapshotOperation, SynthesizeReportOperation}
-)
+Synthesize.operations = frozenset({FreezeSnapshotOperation, SynthesizeReportOperation})
 
 
 SynthesizeInsufficient.operations = frozenset(

@@ -44,13 +44,6 @@ class EpistemicGraphState:
     question: str = ""
     question_type: str | None = None
     skip_preplanning: bool = False
-    # When True, the Decompose graph node runs DecomposeQuestionOperation
-    # before PlanEvidence. Decomposition triggers the multi-seed-claim
-    # path: the graph mints N Claims (one per sub-investigation) instead
-    # of running ProposeClaims, and CombineClaimVerdicts applies the
-    # decomposition's combination_rule before Synthesize. False → v0.1
-    # open-research path (single-claim or ProposeClaims-driven).
-    decompose: bool = False
 
     # ── Run identity ─────────────────────────────────────────────
     # Per-graph-run disambiguator. Each fresh state gets a new id;

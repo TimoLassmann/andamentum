@@ -855,7 +855,7 @@ async def handle_ask(
     trace: TraceMode = "timeline",
     evidence_agent: Optional[str] = None,
     force_quick: bool = False,
-    decompose: bool = False,
+    mode: Literal["verify", "research"] = "research",
     research_config: Optional[ResearchConfig] = None,
     output_path: Optional[str] = None,
     provider: str = "all",
@@ -875,7 +875,8 @@ async def handle_ask(
 
         Preplanning:
             CLARIFY_QUESTION → CLASSIFY_QUESTION → CONCEPTUAL_ANALYSIS
-            → [DECOMPOSE_QUESTION (when ``decompose=True``)] → PLAN_TASK
+            → [DECOMPOSE_QUESTION (skipped only in ``mode="verify"``)]
+            → PLAN_TASK
 
         Evidence + claim minting:
             COLLECT_EVIDENCE → EXTRACT_EVIDENCE
@@ -906,10 +907,12 @@ async def handle_ask(
         trace: Trace visualization mode (timeline, flow, claims, all, none)
         evidence_agent: (Legacy, ignored) Evidence agent override
         force_quick: Skip preplanning (clarification + conceptual analysis)
-        decompose: Run DECOMPOSE_QUESTION before claim minting; switches
-            the claim-minting branch to MULTI_SEED_CLAIM (one Claim per
-            sub-investigation). Without this, the open-research path
-            runs PROPOSE_CLAIMS off the gathered evidence.
+        mode: ``"research"`` (default) attempts decomposition; if the
+            decomposer produces no usable sub-investigations, the
+            ``MultiSeedClaim → ProposeClaims`` fallback in CreateClaims
+            routes to the open-research path. ``"verify"`` treats
+            ``question`` as a single claim text and seeds exactly one
+            Claim via SeedClaim, skipping decomposition.
         research_config: (Legacy, ignored) Research configuration
         output_path: Path to save HTML report
 
@@ -994,6 +997,7 @@ async def handle_ask(
         run_result = await run_research_question(
             question=question,
             database_name=name,
+            mode=mode,
             verbose=verbose,
             skip_preplanning=force_quick,
             model=model,
@@ -1002,7 +1006,6 @@ async def handle_ask(
             provider=provider,
             db_dir=db_dir,
             quality_scorer=OpenAlexQualityScorer(),
-            decompose=decompose,
         )
 
         console.print()

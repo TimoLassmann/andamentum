@@ -22,7 +22,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +135,7 @@ async def _emit_artifacts(
         "decomposition_present": decomp is not None,
         "combined_verdict": cv.verdict if cv is not None else None,
         "combined_posterior": cv.posterior if cv is not None else None,
-        "claims_terminal": sum(
-            1 for c in claims if c.cycle_capped or c.abandoned
-        ),
+        "claims_terminal": sum(1 for c in claims if c.cycle_capped or c.abandoned),
         "claims_with_integrated_assessment": sum(
             1 for c in claims if c.integrated_assessment is not None
         ),
@@ -154,9 +152,13 @@ async def _emit_artifacts(
     (output_dir / "timing.txt").write_text("".join(lines))
 
 
+Mode = Literal["verify", "research"]
+
+
 async def run_epistemic_graph(
     question: str,
     database_name: str = "epistemic_research",
+    mode: Mode = "research",
     verbose: bool = False,
     skip_preplanning: bool = False,
     model: Optional[str] = None,
@@ -167,15 +169,22 @@ async def run_epistemic_graph(
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
     objective_id: Optional[str] = None,
-    decompose: bool = False,
     stop_after: Optional[type] = None,
     start_at: Optional[type] = None,
     output_dir: Optional[Path] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
-    Same interface as the old run_research_question, but uses a
-    pydantic-graph DAG instead of the pattern scheduler.
+    Two modes, picked by ``mode``:
+
+    * ``"research"`` (default): ``question`` is a research question. The
+      graph attempts decomposition; if the decomposer produces no usable
+      sub-investigations, the ``MultiSeedClaim → ProposeClaims`` fallback
+      in ``CreateClaims`` routes to the open-research path. Either way,
+      the same downstream verification pipeline runs.
+    * ``"verify"``: ``question`` is a single claim to verify (SciFact-
+      style). The graph skips decomposition and seeds exactly one Claim
+      from the user-provided text via ``SeedClaim``.
 
     Args:
         objective_id: Target a specific existing objective (e.g. a
@@ -235,11 +244,18 @@ async def run_epistemic_graph(
                 objective_id=objective_id,
                 description=question,
                 phase=starting_phase,
+                # mode="verify" seeds claim_to_verify so the Decompose node
+                # (graph/nodes.py) skips and CreateClaims routes to
+                # SeedClaim. mode="research" leaves it None; Decompose
+                # runs and CreateClaims routes to MultiSeedClaim, with
+                # the empty-decomposition fallback to ProposeClaims.
+                claim_to_verify=question if mode == "verify" else None,
             )
             await repo.save(objective)
             if verbose:
                 logger.info(
-                    f"Created objective: {objective_id} (phase={starting_phase})"
+                    f"Created objective: {objective_id} (mode={mode}, "
+                    f"phase={starting_phase})"
                 )
 
     # Create agent runner and evidence gatherer
@@ -273,7 +289,6 @@ async def run_epistemic_graph(
         objective_id=objective_id,
         question=question,
         skip_preplanning=skip_preplanning,
-        decompose=decompose,
     )
     deps = EpistemicDeps(
         repo=repo,
@@ -307,9 +322,7 @@ async def run_epistemic_graph(
         # on a later invocation. See
         # docs/superpowers/plans/2026-05-03-stage-runners.md.
         visits: list[dict[str, Any]] = []
-        async with epistemic_graph.iter(
-            entry_node, state=state, deps=deps
-        ) as run:
+        async with epistemic_graph.iter(entry_node, state=state, deps=deps) as run:
             while run.result is None:
                 next_node = run.next_node
                 if next_node is None:

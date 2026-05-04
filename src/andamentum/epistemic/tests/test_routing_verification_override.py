@@ -15,6 +15,8 @@ lookup, regardless of the LLM's classification of the parent's text.
 
 from __future__ import annotations
 
+import pytest
+
 from andamentum.epistemic.entities import Objective
 
 
@@ -26,9 +28,7 @@ class TestObjectiveIsVerificationTask:
 
     def test_claim_to_verify_set_returns_true(self) -> None:
         """Single-seed mode is verification."""
-        obj = Objective(
-            description="dummy", claim_to_verify="X is true"
-        )
+        obj = Objective(description="dummy", claim_to_verify="X is true")
         assert obj.is_verification_task() is True
 
     def test_decomposition_with_subs_returns_true(self) -> None:
@@ -61,21 +61,26 @@ class TestObjectiveIsVerificationTask:
         )
         assert obj.is_verification_task() is False
 
-    def test_both_claim_and_decomposition_returns_true(self) -> None:
-        """Defensive: if both are set, single-claim mode wins. The
-        important property is that we route as verificatory."""
-        obj = Objective(
-            description="parent",
-            claim_to_verify="X is true",
-            decomposition={
-                "sub_investigations": [
-                    {"id": "A", "seed_claim": "alpha", "rationale": "ra"},
-                ],
-                "combination_rule": "AND",
-                "rationale": "ignored",
-            },
-        )
-        assert obj.is_verification_task() is True
+    def test_both_claim_and_decomposition_rejected(self) -> None:
+        """Construction-time invariant: claim_to_verify and decomposition
+        are mutually exclusive. Earlier behaviour silently picked single-
+        claim mode and discarded the decomposition; the validator on
+        Objective now refuses the bad state at construction time so the
+        precedence rule is documented in the error."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            Objective(
+                description="parent",
+                claim_to_verify="X is true",
+                decomposition={
+                    "sub_investigations": [
+                        {"id": "A", "seed_claim": "alpha", "rationale": "ra"},
+                    ],
+                    "combination_rule": "AND",
+                    "rationale": "ignored",
+                },
+            )
 
 
 class TestRoutingOverrideSemantics:
@@ -95,8 +100,11 @@ class TestRoutingOverrideSemantics:
             question_type="explanatory",
             decomposition={
                 "sub_investigations": [
-                    {"id": "A", "seed_claim": "AMPK has cytokine effects",
-                     "rationale": "mechanism"},
+                    {
+                        "id": "A",
+                        "seed_claim": "AMPK has cytokine effects",
+                        "rationale": "mechanism",
+                    },
                 ],
                 "combination_rule": "AND",
                 "rationale": "verify mechanism",
@@ -137,10 +145,16 @@ class TestRoutingOverrideSemantics:
             question_type="comparative",
             decomposition={
                 "sub_investigations": [
-                    {"id": "A", "seed_claim": "A is more effective",
-                     "rationale": "efficacy"},
-                    {"id": "B", "seed_claim": "A has fewer side effects",
-                     "rationale": "safety"},
+                    {
+                        "id": "A",
+                        "seed_claim": "A is more effective",
+                        "rationale": "efficacy",
+                    },
+                    {
+                        "id": "B",
+                        "seed_claim": "A has fewer side effects",
+                        "rationale": "safety",
+                    },
                 ],
                 "combination_rule": "WEIGHTED_AND",
                 "rationale": "verify each criterion",

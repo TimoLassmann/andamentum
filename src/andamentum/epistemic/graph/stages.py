@@ -72,10 +72,15 @@ async def _check_preplanning(state: Any, repo: Any) -> bool:
     obj = await _objective(repo, state)
     if obj is None or obj.question_type is None:
         return False
-    if state.decompose:
-        decomp = obj.decomposition
-        return decomp is not None and len(decomp.sub_investigations) >= 1
-    return True
+    # Verify mode (claim_to_verify set) skips Decompose entirely; the
+    # preplanning exit is reached as soon as the question is classified.
+    # Research mode requires a decomposition to have been produced (or
+    # to fail loudly so the empty-decomposition fallback in CreateClaims
+    # surfaces it) — at preplanning exit the decomposition must be set.
+    if obj.claim_to_verify:
+        return True
+    decomp = obj.decomposition
+    return decomp is not None and len(decomp.sub_investigations) >= 1
 
 
 async def _check_initial_evidence(_state: Any, repo: Any) -> bool:
@@ -86,23 +91,24 @@ async def _check_initial_evidence(_state: Any, repo: Any) -> bool:
 async def _check_scrutiny(state: Any, repo: Any) -> bool:
     claims = await _claims(repo)
     active = [c for c in claims if not c.abandoned and not c.cycle_capped]
-    return all(
-        c.scrutiny_verdict in {"pass", "fail"} for c in active
-    ) and len(state.claims_needing_rescrutiny) == 0
+    return (
+        all(c.scrutiny_verdict in {"pass", "fail"} for c in active)
+        and len(state.claims_needing_rescrutiny) == 0
+    )
 
 
 async def _check_verification(_state: Any, repo: Any) -> bool:
     claims = await _claims(repo)
-    return all(
-        c.verification_done or c.cycle_capped or c.abandoned for c in claims
-    )
+    return all(c.verification_done or c.cycle_capped or c.abandoned for c in claims)
 
 
 async def _check_integration(state: Any, repo: Any) -> bool:
     claims = await _claims(repo)
     obj = await _objective(repo, state)
-    decomp_ok = obj is None or obj.decomposition is None or (
-        obj.decomposition.combined_verdict is not None
+    decomp_ok = (
+        obj is None
+        or obj.decomposition is None
+        or (obj.decomposition.combined_verdict is not None)
     )
     active = [c for c in claims if not c.cycle_capped and not c.abandoned]
     return decomp_ok and all(c.integrated_assessment is not None for c in active)
@@ -185,7 +191,5 @@ def stage_names() -> list[str]:
 
 def get_stage(name: str) -> StageDef:
     if name not in STAGES:
-        raise ValueError(
-            f"Unknown stage {name!r}. Known stages: {sorted(STAGES)}."
-        )
+        raise ValueError(f"Unknown stage {name!r}. Known stages: {sorted(STAGES)}.")
     return STAGES[name]
