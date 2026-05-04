@@ -156,9 +156,7 @@ class TestPlanEvidenceMultiSeed:
         assert all_evidence  # at least one stub per (sub, provider)
         # Every stub carries a sub_investigation_id from {A, B, C}.
         sub_ids = {ev.sub_investigation_id for ev in all_evidence}
-        assert sub_ids == {"A", "B", "C"}, (
-            f"Expected sub_ids={{A,B,C}}, got {sub_ids}"
-        )
+        assert sub_ids == {"A", "B", "C"}, f"Expected sub_ids={{A,B,C}}, got {sub_ids}"
         # Same provider may produce multiple stubs (one per sub) — expected.
 
     async def test_no_decomposition_falls_back_to_per_objective(
@@ -411,27 +409,3 @@ class TestCreateClaimsThirdBranch:
         # Graph state advanced.
         assert state.claims_created is True
         assert len(state.claim_ids) == 2
-
-    async def test_claim_to_verify_takes_priority_over_decomposition(
-        self, tmp_path: Path, fake_runner
-    ) -> None:
-        """If both claim_to_verify and decomposition are set (shouldn't
-        happen in production but defensive), claim_to_verify wins so we
-        get one seeded claim, not N."""
-        obj, repo = await _setup_objective_with_decomposition(
-            tmp_path, "create_claims_priority", n_subs=2
-        )
-        obj.claim_to_verify = "user-supplied verification target"
-        await repo.save(obj)
-
-        state = EpistemicGraphState(objective_id=obj.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="test"
-        )
-        ctx = _FakeRunContext(state, deps)
-        await CreateClaims().run(ctx)  # type: ignore[arg-type]
-
-        claims = await repo.query("claim", objective_id=obj.entity_id)
-        assert len(claims) == 1
-        assert claims[0].statement == "user-supplied verification target"
-        assert claims[0].sub_investigation_id is None

@@ -8,7 +8,7 @@ Architecture: Layer 2 (pydantic-graph)
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from .confidence import PosteriorReport
@@ -75,6 +75,7 @@ class PipelineResult:
 async def run_research_question(
     question: str,
     database_name: str = "epistemic_research",
+    mode: Literal["verify", "research"] = "research",
     verbose: bool = False,
     skip_preplanning: bool = False,
     model: Optional[str] = None,
@@ -84,23 +85,33 @@ async def run_research_question(
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
-    decompose: bool = False,
 ) -> PipelineResult:
     """Run a research question through the epistemic pipeline.
 
     Delegates to the pydantic-graph DAG scheduler. The graph makes
-    operation dependencies explicit and type-checked, replacing the
-    pattern-based scheduler.
+    operation dependencies explicit and type-checked.
+
+    Two modes (``mode`` parameter):
+
+    * ``"research"`` (default): ``question`` is a research question. The
+      graph attempts decomposition; if the decomposer produces no usable
+      sub-investigations, the ``MultiSeedClaim → ProposeClaims`` fallback
+      in ``CreateClaims`` routes to the open-research path.
+    * ``"verify"``: ``question`` is a single claim to verify (SciFact-
+      style). The graph skips decomposition and seeds exactly one Claim
+      from the user-provided text.
 
     Full pipeline:
-        PrepareObjective -> PlanEvidence -> ExtractEvidence ->
-        CreateClaims -> Scrutinize -> [investigation cycle] ->
+        PrepareObjective -> Decompose -> PlanEvidence -> ExtractEvidence
+        -> CreateClaims -> Scrutinize -> [investigation cycle] ->
         PromoteToSupported -> RunVerification -> ResolveUncertainties ->
         IntegrateEvidence -> PromoteSupported -> Synthesize
 
     Args:
-        question: The research question to investigate
+        question: The research question or (in verify mode) the claim text
         database_name: Name of the database to use
+        mode: "research" attempts decomposition; "verify" treats `question`
+            as a single claim and skips decomposition.
         verbose: Print detailed output
         skip_preplanning: Skip CLARIFY_QUESTION and CONCEPTUAL_ANALYSIS
         model: Optional LLM model to use (e.g., "openai:gpt-4o-mini")
@@ -121,6 +132,7 @@ async def run_research_question(
     return await run_epistemic_graph(
         question=question,
         database_name=database_name,
+        mode=mode,
         verbose=verbose,
         skip_preplanning=skip_preplanning,
         model=model,
@@ -130,5 +142,4 @@ async def run_research_question(
         providers=providers,
         quality_scorer=quality_scorer,
         db_dir=db_dir,
-        decompose=decompose,
     )

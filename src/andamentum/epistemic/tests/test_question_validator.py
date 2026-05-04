@@ -89,10 +89,12 @@ async def test_run_graph_rejects_q_single_letter(tmp_path: Path, monkeypatch) ->
             db_dir=str(tmp_path),
             model="fake:test-model",
             embedding_model="fake-embeddings",
-            decompose=True,
             stop_after=PrepareObjective,
         )
-    assert "too short" in str(excinfo.value).lower() or "single token" in str(excinfo.value).lower()
+    assert (
+        "too short" in str(excinfo.value).lower()
+        or "single token" in str(excinfo.value).lower()
+    )
 
 
 async def test_run_graph_accepts_real_question_then_resumes_without_check(
@@ -118,7 +120,6 @@ async def test_run_graph_accepts_real_question_then_resumes_without_check(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=PrepareObjective,
     )
     assert r1.objective_id is not None
@@ -131,7 +132,6 @@ async def test_run_graph_accepts_real_question_then_resumes_without_check(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=PrepareObjective,
     )
     assert r2.objective_id == r1.objective_id, (

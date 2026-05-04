@@ -56,19 +56,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip preplanning (clarification + conceptual analysis)",
     )
-    ask_parser.add_argument(
-        "--decompose",
-        action="store_true",
-        help=(
-            "Run top-down decomposition (multi-seed-claim mode): the "
-            "system splits the question into N load-bearing sub-claims, "
-            "verifies each as a Claim on one Objective, and combines "
-            "the per-claim verdicts via the decomposition's "
-            "combination_rule (AND / OR / WEIGHTED_AND / UNION). Without "
-            "this flag, the system runs the open-research path "
-            "(claims emerge from evidence via ProposeClaims)."
-        ),
-    )
+    # ``ask`` always runs in research mode. Decomposition is attempted
+    # automatically; if the question doesn't decompose cleanly, the
+    # MultiSeedClaim → ProposeClaims fallback in CreateClaims routes to
+    # the open-research path. To verify a known single claim (SciFact-
+    # style), use the ``verify`` subcommand instead.
     ask_parser.add_argument(
         "--trace",
         default="timeline",
@@ -77,6 +69,61 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ask_parser.add_argument("--output", default=None, help="Path to save HTML report")
     ask_parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
+
+    # Subcommand: verify (claim-verification mode — SciFact-style)
+    verify_parser = sub.add_parser(
+        "verify",
+        help=(
+            "Verify a single claim. The system seeds exactly one Claim "
+            "from the provided text and skips decomposition (use this "
+            "for SciFact-style benchmarks where the claim text is "
+            "already known)."
+        ),
+    )
+    verify_parser.add_argument("claim", help="Claim text to verify")
+    verify_parser.add_argument(
+        "--model",
+        default=None,
+        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+    )
+    verify_parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help=(
+            "Ollama embedding model for semantic provider routing and passage "
+            "extraction (default: embeddinggemma:latest, or set "
+            "$ANDAMENTUM_EMBEDDING_MODEL)"
+        ),
+    )
+    verify_parser.add_argument(
+        "--keep", action="store_true", help="Keep project database after completion"
+    )
+    verify_parser.add_argument(
+        "--name", default=None, help="Project name (auto-generated if not specified)"
+    )
+    verify_parser.add_argument(
+        "--provider",
+        default="all",
+        choices=["all", "web_search"],
+        help="Evidence provider (default: all)",
+    )
+    verify_parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip preplanning (clarification + conceptual analysis)",
+    )
+    verify_parser.add_argument(
+        "--trace",
+        default="timeline",
+        choices=["timeline", "flow", "claims", "all", "none"],
+        help="Trace visualization mode",
+    )
+    verify_parser.add_argument(
+        "--output", default=None, help="Path to save HTML report"
+    )
+    verify_parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
     )
 
@@ -155,9 +202,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Ollama embedding model (default: embeddinggemma:latest)",
     )
     stage_parser.add_argument(
-        "--decompose",
+        "--verify",
         action="store_true",
-        help="Multi-seed-claim decomposition mode",
+        help=(
+            "Treat --question as a single claim (verify mode); skip "
+            "decomposition. Default is research mode."
+        ),
     )
     stage_parser.add_argument(
         "--output-dir",
@@ -297,6 +347,13 @@ async def _confidence(args: argparse.Namespace) -> None:
 
 
 async def _ask(args: argparse.Namespace) -> None:
+    """Run ``ask`` (research mode) or ``verify`` (verify mode).
+
+    Both subcommands share the same handler. Verify mode passes the
+    claim text via ``args.claim`` and signals ``mode="verify"``; ask
+    mode passes the question via ``args.question`` and defaults to
+    ``mode="research"``.
+    """
     try:
         from .cli_handlers import handle_ask
     except ImportError:
@@ -310,8 +367,13 @@ async def _ask(args: argparse.Namespace) -> None:
 
     model = _resolve_model(args)
     embedding_model = resolve_embedding_model_from_args(args.embedding_model)
+
+    # The verify subcommand uses ``args.claim``; ask uses ``args.question``.
+    text = getattr(args, "claim", None) or args.question
+    mode = "verify" if hasattr(args, "claim") else "research"
+
     result = await handle_ask(
-        question=args.question,
+        question=text,
         name=args.name,
         model=model,
         embedding_model=embedding_model,
@@ -319,7 +381,7 @@ async def _ask(args: argparse.Namespace) -> None:
         verbose=args.verbose,
         trace=args.trace,
         force_quick=args.quick,
-        decompose=args.decompose,
+        mode=mode,
         provider=args.provider,
         output_path=args.output,
     )
@@ -368,13 +430,17 @@ async def _stage(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir) if args.output_dir else None
 
     db_name = args.from_db or args.db
+    # Stage runners read mode from the saved DB's Objective on resume; on
+    # fresh stage runs the user can set --verify to mint the Objective in
+    # verify mode (matches the ask/verify subcommands).
+    mode = "verify" if getattr(args, "verify", False) else "research"
     result = await run_epistemic_graph(
         question=args.question or "(resumed)",
         database_name=db_name,
         db_dir=args.db_dir,
         model=model,
         embedding_model=args.embedding_model,
-        decompose=args.decompose,
+        mode=mode,
         start_at=stage.entry,
         stop_after=stage.exit_after,
         output_dir=output_dir,
@@ -419,9 +485,7 @@ async def _inspect(args: argparse.Namespace) -> None:
             )
             cv = decomp.combined_verdict
             if cv is not None:
-                post = (
-                    f"{cv.posterior:.3f}" if cv.posterior is not None else "n/a"
-                )
+                post = f"{cv.posterior:.3f}" if cv.posterior is not None else "n/a"
                 print(
                     f"  combined:      verdict={cv.verdict} posterior={post} "
                     f"n_no_verdict={cv.n_no_verdict}"
@@ -469,7 +533,7 @@ def main() -> None:
         _list_agents()
         return
 
-    if args.command == "ask":
+    if args.command in ("ask", "verify"):
         try:
             asyncio.run(_ask(args))
         except KeyboardInterrupt:

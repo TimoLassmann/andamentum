@@ -42,7 +42,7 @@ full flag reference.
 
 | Command | What it does |
 |---|---|
-| `andamentum-epistemic` | Formal-epistemology pipeline — ask a question, get a graph-evaluated answer with evidence, claims, and uncertainty tracking |
+| `andamentum-epistemic` | Formal-epistemology pipeline. Two modes: `ask "<question>"` (research mode — system attempts decomposition, falls back to open research if the question doesn't decompose) or `verify "<claim>"` (single-claim verification, SciFact-style) |
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) |
 | `andamentum-whetstone` | Multi-lens review of your own draft → markdown / HTML / .docx with track changes. `--apply-patches PATCHES.json` applies a pre-built JSON patch list to a .docx (no LLM) |
 | `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx |

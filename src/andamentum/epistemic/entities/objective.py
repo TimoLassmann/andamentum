@@ -8,7 +8,7 @@ Architecture: Layer 1 (framework-agnostic)
 
 from datetime import datetime
 from typing import Any, Optional
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .base import EpistemicEntity
 from .decomposition import Decomposition
@@ -127,6 +127,30 @@ class Objective(EpistemicEntity):
             "verdicts into the question's final answer."
         ),
     )
+
+    @model_validator(mode="after")
+    def _check_seed_modes_exclusive(self) -> "Objective":
+        """Refuse Objectives that try to be both single-seed and multi-seed.
+
+        ``CreateClaims`` (graph/nodes.py) branches on ``claim_to_verify``
+        first, then ``decomposition``, then falls through to
+        ``ProposeClaims``. Setting both fields silently picks single-seed
+        and discards the decomposition — a footgun for programmatic
+        consumers (the SciFact harness hit it). Refuse loudly at
+        construction time so the precedence rule is documented in the
+        error rather than buried in node code.
+        """
+        if self.claim_to_verify and self.decomposition is not None:
+            raise ValueError(
+                "Objective cannot have both claim_to_verify and "
+                "decomposition set — they are mutually exclusive seed "
+                "modes. CreateClaims branches on claim_to_verify first, "
+                "so decomposition would be silently ignored. Pick one: "
+                "single-seed (claim_to_verify) for known-claim "
+                "verification, or multi-seed (decomposition) for "
+                "decomposed research."
+            )
+        return self
 
     @property
     def pending_concerns_count(self) -> int:

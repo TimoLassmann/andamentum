@@ -55,7 +55,6 @@ async def test_stop_after_prepare_objective_writes_question_type(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=False,
         stop_after=PrepareObjective,
     )
 
@@ -81,9 +80,7 @@ async def test_stop_after_prepare_objective_writes_question_type(
 # call site implicitly.
 
 
-async def test_start_at_skips_to_named_node(
-    tmp_path: Path, monkeypatch
-) -> None:
+async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None:
     """``start_at`` resumes the graph from a named node instead of
     PrepareObjective. The DB must already contain the prerequisite
     state (in this case, an Objective). Combined with ``stop_after``
@@ -108,7 +105,6 @@ async def test_start_at_skips_to_named_node(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=PrepareObjective,
     )
     assert r1.status == "stopped_after:PrepareObjective"
@@ -121,7 +117,6 @@ async def test_start_at_skips_to_named_node(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         start_at=Decompose,
         stop_after=Decompose,
     )
@@ -143,9 +138,7 @@ async def test_start_at_skips_to_named_node(
     )
 
 
-async def test_output_dir_emits_three_artifacts(
-    tmp_path: Path, monkeypatch
-) -> None:
+async def test_output_dir_emits_three_artifacts(tmp_path: Path, monkeypatch) -> None:
     """When output_dir is set the runner writes run.jsonl, diff.json,
     and timing.txt next to the DB. These are the only observability
     surface stages need; everything else is derived from the DB."""
@@ -167,7 +160,6 @@ async def test_output_dir_emits_three_artifacts(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=PrepareObjective,
         output_dir=artifacts,
     )
@@ -192,13 +184,11 @@ async def test_output_dir_emits_three_artifacts(
     assert "Total:" in timing and "PrepareObjective:" in timing
 
 
-async def test_stage_invariant_satisfied_no_crash(
-    tmp_path: Path, monkeypatch
-) -> None:
+async def test_stage_invariant_satisfied_no_crash(tmp_path: Path, monkeypatch) -> None:
     """When stop_after matches a known stage exit and the invariant
     holds, the run completes cleanly. ``Decompose`` is the
-    ``preplanning`` stage's exit; with decompose=True the agent emits
-    a real decomposition and the invariant passes."""
+    ``preplanning`` stage's exit; in research mode the agent emits a
+    real decomposition and the invariant passes."""
     from andamentum.epistemic.tests.conftest import FakeAgentRunner
     from andamentum.epistemic.graph.nodes import Decompose
     import andamentum.epistemic.runner as runner_mod
@@ -215,7 +205,6 @@ async def test_stage_invariant_satisfied_no_crash(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=Decompose,
     )
     assert result.status == "stopped_after:Decompose"
@@ -258,7 +247,6 @@ async def test_stage_invariant_violation_crashes_loudly(
             db_dir=str(tmp_path),
             model="fake:test-model",
             embedding_model="fake-embeddings",
-            decompose=True,
             stop_after=Decompose,
         )
     assert "preplanning" in str(excinfo.value)
@@ -290,7 +278,6 @@ async def test_stop_after_unknown_node_skips_invariant_check(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         stop_after=PlanEvidence,
     )
     assert result.status == "stopped_after:PlanEvidence"
@@ -329,7 +316,6 @@ async def test_chain_preplanning_then_resume_from_decompose(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         start_at=pp.entry,
         stop_after=pp.exit_after,
         output_dir=artifacts,
@@ -349,7 +335,6 @@ async def test_chain_preplanning_then_resume_from_decompose(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
-        decompose=True,
         start_at=pp.entry,
         stop_after=pp.exit_after,
     )
