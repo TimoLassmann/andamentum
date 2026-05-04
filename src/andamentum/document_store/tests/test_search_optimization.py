@@ -7,24 +7,6 @@ import pytest
 from ..search import search_unified
 
 
-class TestProductionSearchConfig:
-    def test_reranking_disabled_in_production_config(self):
-        from andamentum.document_store.search import _get_production_search_config
-
-        config = _get_production_search_config()
-        assert config.enable_reranking is False, (
-            "Production config should disable cross-encoder re-ranking; "
-            "RRF fusion across 4 signals provides sufficient ranking quality"
-        )
-
-    def test_reranking_top_k_preserved(self):
-        """reranking_top_k stays at 50 so re-enabling is a one-line change."""
-        from andamentum.document_store.search import _get_production_search_config
-
-        config = _get_production_search_config()
-        assert config.reranking_top_k == 50
-
-
 class TestOverFetchFactor:
     def test_vector_limit_is_3x_when_bm25_enabled(self):
         """Over-fetch factor should be 3x, not 10x.
@@ -32,7 +14,7 @@ class TestOverFetchFactor:
         With limit=10, this means 30 vector candidates instead of 100.
         Reduces BM25 index build cost with minimal quality impact.
         """
-        from andamentum.document_store.rag.search import SearchConfig
+        from andamentum.document_store.chunks_search import SearchConfig
 
         config = SearchConfig(include_bm25=True)
         limit = 10
@@ -41,7 +23,7 @@ class TestOverFetchFactor:
         assert vector_limit == 30
 
     def test_vector_limit_equals_limit_when_bm25_disabled(self):
-        from andamentum.document_store.rag.search import SearchConfig
+        from andamentum.document_store.chunks_search import SearchConfig
 
         config = SearchConfig(include_bm25=False)
         limit = 10

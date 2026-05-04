@@ -271,7 +271,7 @@ class DocumentStore:
         Returns:
             Chunk integer ID
         """
-        from .rag.database import store_chunk_for_document
+        from .chunks import store_chunk_for_document
 
         return store_chunk_for_document(
             doc_uuid=doc_id,
@@ -293,7 +293,7 @@ class DocumentStore:
         Returns:
             Number of chunks deleted
         """
-        from .rag.database import delete_chunks_for_document
+        from .chunks import delete_chunks_for_document
 
         return delete_chunks_for_document(
             doc_uuid=doc_id,

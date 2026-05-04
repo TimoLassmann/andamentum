@@ -47,7 +47,6 @@ Requires:
 # The 10 module-level functions below (ingest/search/etc.) are an alternative
 # higher-level API that doesn't require holding a DocumentStore instance.
 from .api import DocumentStore
-from .chunking import chunk_markdown
 from .extraction import extract_chunk_metadata, extract_document_metadata
 from .lifecycle import (
     database_exists,
@@ -71,7 +70,6 @@ from .public import (
 from .search import search_multi_database, search_unified
 
 # === Result/data types (returned by the above; not tools themselves) ===
-from .chunking import Chunk
 from .metadata_models import (
     ChunkLLMFields,
     ChunkMetadataFields,
@@ -100,7 +98,6 @@ from .search import (
 __all__ = [
     # Functions / callables
     "DocumentStore",
-    "chunk_markdown",
     "database_exists",
     "delete",
     "delete_database",
@@ -121,7 +118,6 @@ __all__ = [
     "search_unified",
     "update_metadata",
     # Data types
-    "Chunk",
     "ChunkLLMFields",
     "ChunkMetadataFields",
     "Document",
