@@ -234,3 +234,205 @@ class TestCase54Reproduction:
         assert report.terminal_state == "completed"
         assert "2 claim" in report.explanation
         assert report.integration_verdict == "contradicts"
+
+
+class TestSciFactCase54Shape:
+    """Single-claim verify mode with cycle_capped=True AND an
+    integrated_assessment. Reproduces the SciFact case 54 shape: the
+    actual production failure was that compute_posterior returned 0.500
+    even though the claim had verdict=contradicts conf=0.727 (gold=CON,
+    refute correct). Three-way rule should now use the verdict with
+    a confidence penalty rather than discard it."""
+
+    async def test_capped_with_contradicts_verdict_returns_low_posterior(
+        self, tmp_path: Path
+    ) -> None:
+        store = DocumentStore.for_database("scifact_54", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(
+            description="AMPK activation increases inflammation-related fibrosis.",
+            clarified_question="AMPK activation increases inflammation-related fibrosis.",
+            question_type="verificatory",
+            claim_to_verify="AMPK activation increases inflammation-related fibrosis.",
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="AMPK activation increases inflammation-related fibrosis.",
+            scope="lung tissue",
+            stage=ClaimStage.SUPPORTED,
+            cycle_capped=True,
+            integrated_assessment="contradicts",
+            integrated_confidence=0.727,
+        )
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, obj.entity_id)
+        assert report is not None
+        # Pre-fix: posterior=0.5 oscillation_detected (cap discarded
+        # the verdict). Post-fix: contradicts at 0.727 with cap penalty
+        # 0.7 → effective conf 0.509 → claim_p = 0.246. Posterior
+        # ≈ 0.25 — directional, correctly leaning CON.
+        assert report.posterior < 0.30
+        assert report.posterior > 0.15
+        assert report.terminal_state == "completed"
+        assert report.integration_verdict == "contradicts"
+        # Provenance must surface the cap.
+        assert "cycle cap" in report.explanation
+        assert "penalty" in report.explanation
+
+
+class TestSciFactCase957Shape:
+    """Single-claim verify mode with cycle_capped=True, NO
+    integrated_assessment, but evidence one-sided. Reproduces the
+    SciFact case 957 shape: evidence pool was 23 supports / 5 contradicts
+    (gold=SUP) but cycle_capped suppressed the counting signal,
+    returning 0.500. Three-way rule routes to the counting fallback."""
+
+    async def test_capped_no_verdict_one_sided_evidence_uses_counting(
+        self, tmp_path: Path
+    ) -> None:
+        store = DocumentStore.for_database("scifact_957", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(
+            description="Podocytes are motile and migrate in the presence of injury.",
+            clarified_question="Podocytes are motile and migrate in the presence of injury.",
+            question_type="verificatory",
+            claim_to_verify="Podocytes are motile and migrate in the presence of injury.",
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="Podocytes are motile and migrate in the presence of injury.",
+            scope="kidney injury",
+            stage=ClaimStage.HYPOTHESIS,
+            cycle_capped=True,
+            scrutiny_verdict="pass",
+        )
+        await repo.save(claim)
+
+        # Mimic the case 957 evidence shape: 23 supports / 5 contradicts.
+        evidence_ids: list[str] = []
+        for i in range(23):
+            ev = Evidence(
+                objective_id=obj.entity_id,
+                source_type="pubmed",
+                source_ref=f"https://pubmed/sup_{i}",
+                extracted_content="supportive content",
+                extracted=True,
+                support_judgment="supports",
+            )
+            await repo.save(ev)
+            evidence_ids.append(ev.entity_id)
+        for i in range(5):
+            ev = Evidence(
+                objective_id=obj.entity_id,
+                source_type="pubmed",
+                source_ref=f"https://pubmed/con_{i}",
+                extracted_content="contradicting content",
+                extracted=True,
+                support_judgment="contradicts",
+            )
+            await repo.save(ev)
+            evidence_ids.append(ev.entity_id)
+        claim.evidence_ids = evidence_ids
+        claim.evidence_count = len(evidence_ids)
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, obj.entity_id)
+        assert report is not None
+        # Pre-fix: posterior=0.5 oscillation_detected (capped → discarded).
+        # Post-fix: integrated_claims is empty (no IA), so mode falls
+        # to counting_fallback over the capped claim's evidence:
+        # log_odds = 23 - 5 = 18 → posterior ≈ 1.0.
+        assert report.posterior > 0.95
+        assert report.terminal_state == "completed"
+        assert report.mode == "counting_fallback"
+        # Provenance: cap fired, signal came via counting.
+        assert "cycle cap" in report.explanation
+
+
+class TestGenuineOscillation:
+    """Single capped claim with NO integrated_assessment AND essentially
+    balanced counting (or empty evidence) is the case the original
+    all-capped → 0.5 rule was trying to catch. The three-way rule still
+    fires oscillation_detected here, just on much narrower grounds."""
+
+    async def test_capped_no_verdict_no_evidence_emits_oscillation(
+        self, tmp_path: Path
+    ) -> None:
+        store = DocumentStore.for_database("genuine_osc", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(
+            description="parent",
+            clarified_question="parent",
+            question_type="verificatory",
+            claim_to_verify="claim X is true",
+        )
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="claim X is true",
+            scope="scope",
+            stage=ClaimStage.HYPOTHESIS,
+            cycle_capped=True,
+            persistent_concerns=["unc-1", "unc-2"],
+        )
+        await repo.save(claim)
+
+        report = await compute_posterior(repo, obj.entity_id)
+        assert report is not None
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
+        assert "Oscillation detected" in report.explanation
+
+
+class TestCapPenaltyEffect:
+    """The same integrated verdict with vs without cycle_capped should
+    yield different posteriors (the capped one closer to neutral),
+    confirming the confidence penalty actually fires."""
+
+    async def test_capped_pulls_toward_neutral(self, tmp_path: Path) -> None:
+        async def _run(cycle_capped: bool, db_name: str) -> float:
+            store = DocumentStore.for_database(db_name, db_dir=tmp_path)
+            await store.initialize()
+            repo = EpistemicRepository(store)
+            obj = Objective(
+                description="d",
+                clarified_question="d",
+                question_type="verificatory",
+                claim_to_verify="claim X is true",
+            )
+            obj.objective_id = obj.entity_id
+            await repo.save(obj)
+            claim = Claim(
+                objective_id=obj.entity_id,
+                statement="claim X is true",
+                scope="scope",
+                stage=ClaimStage.SUPPORTED,
+                cycle_capped=cycle_capped,
+                integrated_assessment="supports",
+                integrated_confidence=0.8,
+            )
+            await repo.save(claim)
+            report = await compute_posterior(repo, obj.entity_id)
+            assert report is not None
+            return report.posterior
+
+        p_uncapped = await _run(False, "cap_off")
+        p_capped = await _run(True, "cap_on")
+
+        # Uncapped: supports at 0.8 → 0.5 + 0.4 = 0.9.
+        # Capped:   supports at 0.8 * 0.7 (penalty) = 0.56 → 0.5 + 0.28 = 0.78.
+        assert p_uncapped > p_capped
+        assert p_uncapped > 0.85
+        assert 0.70 < p_capped < 0.85
