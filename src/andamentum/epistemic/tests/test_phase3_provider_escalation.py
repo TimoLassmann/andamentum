@@ -1,13 +1,20 @@
-"""Tests for Phase 3 of the lazy-escalation plan.
+"""Tests for round 2+ provider escalation (lazy-escalation Phase 3).
 
-Phase 3 changes ``InvestigateClaimOperation`` so that when the
-inquiry loop comes back around (scrutiny said "needs_resolution"),
-investigation pulls the NEXT unused provider for the sub-claim
-instead of regenerating queries against the same providers.
+When the inquiry loop comes back around (scrutiny said
+"needs_resolution"), ``InvestigateClaimOperation`` pulls the
+NEXT unused provider for the sub-claim instead of regenerating
+queries against the same providers.
 
-Round 1 (Phase 2): one provider per sub-claim.
-Round 2+ (Phase 3): each round adds a different provider, escalating
-breadth on demand.
+Round 1 (post-2026-05-05 K8 Bug #1 fix): K=2 providers per
+sub-claim via per-objective tournament — see
+``test_phase2_lazy_planning.py``.
+Round 2+: each round adds a different (still-unused) provider per
+sub-claim, escalating breadth on demand.
+
+This file tests round 2+ logic and is independent of how many
+providers were used in round 1 (the test setup writes the
+``used_providers`` set explicitly). The K8 fix doesn't change
+investigation-time behaviour.
 
 These tests pin:
   1. When unused providers exist, the investigation operation runs
@@ -170,9 +177,7 @@ async def test_phase3_no_rank_call_when_one_unused_provider(
                 "reasoning": "test sentinel",
             },
             "epistemic_investigate_claim": {
-                "evidence_queries": [
-                    {"source_type": "web_search", "query": "q"}
-                ],
+                "evidence_queries": [{"source_type": "web_search", "query": "q"}],
                 "reasoning": "r",
             },
         }
