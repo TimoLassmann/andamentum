@@ -118,16 +118,6 @@ class Objective(EpistemicEntity):
             "Snapshot.combined_verdict."
         ),
     )
-    combination_rule: Optional[str] = Field(
-        default=None,
-        description=(
-            "The combination rule from the decomposition "
-            "(AND / OR / WEIGHTED_AND / UNION). Used by "
-            "CombineClaimVerdicts to aggregate per-Claim integration "
-            "verdicts into the question's final answer."
-        ),
-    )
-
     @model_validator(mode="after")
     def _check_seed_modes_exclusive(self) -> "Objective":
         """Refuse Objectives that try to be both single-seed and multi-seed.
@@ -201,8 +191,6 @@ class Objective(EpistemicEntity):
             meta["key_terms"] = self.key_terms
         if self.decomposition is not None:
             meta["decomposition"] = self.decomposition.model_dump()
-        if self.combination_rule:
-            meta["combination_rule"] = self.combination_rule
         return meta
 
     @classmethod
@@ -225,7 +213,6 @@ class Objective(EpistemicEntity):
             artefact_id=metadata.get("artefact_id"),
             status=metadata.get("status", "active"),
             decomposition=Decomposition.from_dict(metadata.get("decomposition")),
-            combination_rule=metadata.get("combination_rule"),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

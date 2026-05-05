@@ -493,7 +493,6 @@ class TestPosteriorSeedClaimMode:
                 "combination_rule": "AND",
                 "rationale": "both must hold",
             },
-            combination_rule="AND",
         )
         await repo.save(obj)
         # Two claims with sub_investigation_id matching the decomposition.
@@ -544,7 +543,6 @@ class TestPosteriorSeedClaimMode:
                 "combination_rule": "OR",
                 "rationale": "either suffices",
             },
-            combination_rule="OR",
         )
         await repo.save(obj)
         from andamentum.epistemic.entities.claim import ClaimStage as _CS

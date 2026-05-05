@@ -124,24 +124,14 @@ class TestInvestigationPropagatesSubInvestigationId:
 
 
 class TestCombinationRuleResolution:
-    def test_reads_objective_combination_rule_first(self) -> None:
+    def test_reads_decomposition_rule(self) -> None:
         obj = Objective(
             description="x",
-            combination_rule="OR",
-            decomposition={"combination_rule": "AND"},
-        )
-        # Objective.combination_rule wins.
-        assert resolve_combination_rule(obj) == "OR"
-
-    def test_falls_back_to_decomposition_dict(self) -> None:
-        obj = Objective(
-            description="x",
-            combination_rule=None,
             decomposition={"combination_rule": "WEIGHTED_AND"},
         )
         assert resolve_combination_rule(obj) == "WEIGHTED_AND"
 
-    def test_returns_none_when_neither_set(self) -> None:
+    def test_returns_none_when_no_decomposition(self) -> None:
         obj = Objective(description="x")
         assert resolve_combination_rule(obj) is None
 

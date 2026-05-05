@@ -598,7 +598,6 @@ class DecomposeQuestionOperation(BaseOperation):
             combination_rule=result.combination_rule,
             rationale=result.rationale,
         )
-        objective.combination_rule = result.combination_rule
         await self.repo.save(objective)
 
         sub_count = len(result.sub_investigations)

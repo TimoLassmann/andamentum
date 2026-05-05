@@ -72,7 +72,6 @@ async def _setup_objective_with_decomposition(
             "combination_rule": "AND",
             "rationale": "all must hold",
         },
-        combination_rule="AND",
     )
     obj.objective_id = obj.entity_id
     await repo.save(obj)
