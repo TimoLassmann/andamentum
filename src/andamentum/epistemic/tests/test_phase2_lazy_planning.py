@@ -1,15 +1,19 @@
-"""Tests for Phase 2 of the lazy-escalation plan.
+"""Tests for the K8 Bug #1 fix — provider tournament wiring in PlanTask.
 
-Phase 2 changes ``PlanTaskOperation`` so that in multi-seed-claim
-mode, round 1 picks ONE provider per sub-claim (via ``epistemic_rank_providers``)
-instead of querying all relevant providers in parallel. Phase 3 (a
-follow-up) will then have ``InvestigateClaimOperation`` consume demand
-from scrutiny and pick the next-most-promising UNUSED provider.
+Previously these tests pinned "one Evidence stub per sub-claim in
+round 1" (the lazy-escalation Phase 2 behaviour from 2026-05-02).
+That behaviour was changed by the K8 Bug #1 fix on 2026-05-05
+(see docs/superpowers/plans/2026-05-05-k8-bug1-provider-tournament.md):
+PlanTask now picks K=RESEARCH_MODE_PROVIDER_K providers via an
+iterative tournament and creates one stub per (sub-claim, provider)
+pair. The lazy-escalation principle (round 1 narrow, escalate on
+demand) is preserved — round 1 still narrows to a small subset of
+providers, just K of them rather than 1, to enable per-sub-claim
+cross-domain convergence detection.
 
-These tests pin:
-  1. Per-sub-claim evidence stubs are produced one-per-sub (not
-     N-per-sub × M-providers).
-  2. The chosen provider matches what the ranker agent returned.
+These tests pin the post-fix behaviour:
+  1. Stubs created in round 1 = K × N (K providers per N sub-claims).
+  2. Each sub_id appears K times across stubs, once per picked provider.
   3. The fallback path (no agent_runner) still produces stubs.
 """
 
@@ -24,7 +28,10 @@ from andamentum.epistemic.entities.decomposition import (
     SubInvestigation,
 )
 from andamentum.epistemic.operations.base import OperationInput
-from andamentum.epistemic.operations.preplanning import PlanTaskOperation
+from andamentum.epistemic.operations.preplanning import (
+    RESEARCH_MODE_PROVIDER_K,
+    PlanTaskOperation,
+)
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -57,20 +64,24 @@ async def _make_objective_with_decomposition(
     return obj, repo
 
 
-async def test_phase2_creates_one_stub_per_sub_claim(
+async def test_round_1_creates_k_stubs_per_sub_claim(
     tmp_path: Path, fake_runner
 ) -> None:
-    """The defining behaviour of Phase 2: one Evidence stub per
-    sub-claim in round 1, not N stubs (one per relevant provider).
+    """The defining behaviour of the K8 Bug #1 fix: one Evidence stub
+    per (sub-claim, provider) pair, where K providers are picked
+    once via iterative tournament for the whole objective.
 
-    Pre-Phase-2: 4 sub-claims × ~6 relevant providers = ~24 stubs.
-    Post-Phase-2: 4 sub-claims × 1 chosen provider = 4 stubs.
+    Pre-K8-fix (lazy-escalation Phase 2): 4 sub-claims × 1 chosen
+    provider = 4 stubs. Same provider for every sub-claim due to the
+    ranker collapse bug.
 
-    Cost reduction: query formulation drops from ~24 LLM calls to
-    ~4, plus the downstream extraction + scoring + judging chain
-    is bounded proportionally.
+    Post-K8-fix: 4 sub-claims × K (=2 by default) providers = 8 stubs.
+    The K providers come from a per-objective tournament; every
+    sub-claim queries all of them. This unlocks per-sub-claim
+    cross-domain convergence detection.
     """
-    obj, repo = await _make_objective_with_decomposition(tmp_path, n_subs=3)
+    n_subs = 3
+    obj, repo = await _make_objective_with_decomposition(tmp_path, n_subs=n_subs)
 
     op = PlanTaskOperation(
         repo=repo,
@@ -85,20 +96,26 @@ async def test_phase2_creates_one_stub_per_sub_claim(
     result = await op.execute(work)
     assert result.success
 
-    # Exactly N evidence stubs total (one per sub-claim).
+    # Exactly K * N evidence stubs total (K providers × N sub-claims).
     all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
-    assert len(all_evidence) == 3, (
-        f"Expected 1 evidence stub per sub-claim (3 total); got "
-        f"{len(all_evidence)}. Phase 2 round-1 narrowing isn't firing."
+    expected = RESEARCH_MODE_PROVIDER_K * n_subs
+    assert len(all_evidence) == expected, (
+        f"Expected K * N = {RESEARCH_MODE_PROVIDER_K} × {n_subs} = "
+        f"{expected} stubs (one per (sub-claim, provider) pair); got "
+        f"{len(all_evidence)}. The K8 tournament wiring isn't producing "
+        "the right shape."
     )
 
 
-async def test_phase2_each_sub_gets_its_own_stub_with_correct_id(
+async def test_each_sub_gets_k_stubs_with_correct_id_and_distinct_providers(
     tmp_path: Path, fake_runner
 ) -> None:
-    """Each sub-claim's stub is tagged with the right sub_investigation_id
-    (so the per-claim filter in MultiSeedClaim still works) and the
-    provider matches what the ranker chose."""
+    """Each sub-claim's K stubs are tagged with the right
+    sub_investigation_id (so the per-claim filter in MultiSeedClaim
+    still works), and the K providers across them are distinct (the
+    tournament guarantee — once a provider is picked, it's removed
+    from the pool, so the second pick is necessarily different).
+    """
     obj, repo = await _make_objective_with_decomposition(tmp_path, n_subs=3)
 
     op = PlanTaskOperation(
@@ -120,22 +137,38 @@ async def test_phase2_each_sub_gets_its_own_stub_with_correct_id(
         f"({{'A','B','C'}}); got {sub_ids}"
     )
 
-    # Conftest fake_runner returns chosen_provider="web_search" by
-    # default (see test_phase2 default in conftest._FAKE_DEFAULTS).
+    # Group stubs by sub_id and check each group has K distinct providers.
+    by_sub: dict[str, set[str]] = {}
     for ev in all_evidence:
-        assert ev.source_type == "web_search", (
-            f"Stub for sub {ev.sub_investigation_id} has source_type="
-            f"{ev.source_type!r}; conftest fake_runner returns "
-            "'web_search' for epistemic_rank_providers, so all stubs "
-            "should reflect that choice."
+        by_sub.setdefault(ev.sub_investigation_id, set()).add(ev.source_type)
+    for sub_id, provider_set in by_sub.items():
+        assert len(provider_set) == RESEARCH_MODE_PROVIDER_K, (
+            f"Sub-claim {sub_id} has providers {sorted(provider_set)}; "
+            f"expected exactly {RESEARCH_MODE_PROVIDER_K} distinct providers "
+            f"(tournament should guarantee no duplicates within a sub-claim)."
         )
 
+    # All sub-claims should get the SAME set of K providers (per-objective
+    # tournament — every sub queries the same K).
+    provider_sets_seen = {frozenset(s) for s in by_sub.values()}
+    assert len(provider_sets_seen) == 1, (
+        "All sub-claims should query the same K providers; got divergent "
+        f"sets: {provider_sets_seen}"
+    )
 
-async def test_phase2_fallback_when_no_agent_runner(tmp_path: Path) -> None:
+
+async def test_fallback_when_no_agent_runner(tmp_path: Path) -> None:
     """When agent_runner is None, the operation can't run the
-    ranker. It should fall back to the first available provider —
-    pipeline still alive but lazy-escalation benefit lost for that
-    run. This is the documented fallback path."""
+    ranker. The tournament path is skipped; the fallback uses the
+    first ``RESEARCH_MODE_PROVIDER_K`` candidates from the providers
+    list. Pipeline still alive but the diversification benefit is
+    lost for that run.
+
+    Without agent_runner, no select_provider step runs, so the only
+    provider that survives is ``web_search`` (the universal
+    fallback). picked_providers[:K] then yields just web_search; one
+    stub per sub-claim.
+    """
     obj, repo = await _make_objective_with_decomposition(tmp_path, n_subs=2)
 
     op = PlanTaskOperation(
@@ -152,7 +185,9 @@ async def test_phase2_fallback_when_no_agent_runner(tmp_path: Path) -> None:
     assert result.success
 
     all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
-    # Without agent_runner, the relevance filter doesn't run either —
-    # only "web_search" survives as the universal fallback. So one
-    # stub per sub-claim (not multiple).
+    # Without agent_runner only ``web_search`` is in providers; the K=2
+    # tournament fallback clips to whatever's available, so all stubs
+    # use web_search and we get exactly N (one per sub).
     assert len(all_evidence) == 2
+    for ev in all_evidence:
+        assert ev.source_type == "web_search"
