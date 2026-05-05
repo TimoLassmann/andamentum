@@ -124,10 +124,18 @@ class MalformedOutputRunner:
 # The adapters use attribute access, so field names must be exact.
 _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
     "epistemic_rank_providers": {
-        # Phase 2 of lazy-escalation: tests don't have to thread real
-        # provider lists through; the default is "web_search" since
-        # that's universally available. Tests that need to verify
-        # specific provider choices override per-test.
+        # Tests don't have to thread real provider lists through; the
+        # default pick is "web_search" since that's universally
+        # available. Tests that need to verify specific provider
+        # choices override per-test.
+        #
+        # Note: PlanTask now runs an iterative tournament (K calls,
+        # K=RESEARCH_MODE_PROVIDER_K=2 by default), so a default-
+        # responding fake_runner returns "web_search" on the first
+        # call → web_search is picked → removed from pool → next
+        # call also returns "web_search" → not in remaining → falls
+        # back to remaining[0] (first non-web_search provider).
+        # See _run_provider_tournament in operations/preplanning.py.
         "chosen_provider": "web_search",
         "reasoning": "Default fake_runner output: web_search.",
     },
