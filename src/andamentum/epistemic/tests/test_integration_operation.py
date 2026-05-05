@@ -191,3 +191,124 @@ class TestIBEIntegrationPipeline:
         assert claim.integrated_confidence is None
         assert claim.integrated_reasoning is None
         assert claim.integration_candidates == []
+
+
+class TestAdversarialConfidenceCap:
+    """Unit tests for ``_adversarial_confidence_cap``.
+
+    Three zones (Option A — soft tri-state). The cap is what
+    ``SelectBestExplanationOperation`` enforces on
+    ``integrated_confidence`` so the IBE chain's verdict cannot
+    over-commit when adversarial search found non-trivial counter-
+    evidence.
+    """
+
+    def test_no_adversarial_signal_no_cap(self) -> None:
+        from ..operations.integration import _adversarial_confidence_cap
+
+        assert _adversarial_confidence_cap(None) == 1.0
+
+    def test_survived_zone_no_cap(self) -> None:
+        from ..operations.integration import _adversarial_confidence_cap
+
+        # At and above 0.7 → no cap.
+        assert _adversarial_confidence_cap(0.7) == 1.0
+        assert _adversarial_confidence_cap(0.85) == 1.0
+        assert _adversarial_confidence_cap(1.0) == 1.0
+
+    def test_refuted_zone_hard_cap(self) -> None:
+        from ..operations.integration import _adversarial_confidence_cap
+
+        # Below 0.3 → hard cap at 0.5. Refuted claims should normally
+        # be demoted before reaching IBE; the cap is the safety net.
+        assert _adversarial_confidence_cap(0.0) == 0.5
+        assert _adversarial_confidence_cap(0.15) == 0.5
+        assert _adversarial_confidence_cap(0.29) == 0.5
+
+    def test_contested_zone_linear_interpolation(self) -> None:
+        from ..operations.integration import _adversarial_confidence_cap
+
+        # Linear from 0.5 (at refuted threshold 0.3) to 1.0 (at
+        # survived threshold 0.7).
+        assert _adversarial_confidence_cap(0.3) == 0.5
+        # Midpoint of contested band: balance=0.5 → cap=0.75
+        assert _adversarial_confidence_cap(0.5) == 0.75
+        # 1/4 of the way through the band: balance=0.4 → cap=0.625
+        assert _adversarial_confidence_cap(0.4) == 0.625
+        # Just below survived: balance=0.69 → cap≈0.9875
+        assert abs(_adversarial_confidence_cap(0.69) - 0.9875) < 1e-9
+
+
+class TestSelectBestExplanationAppliesCap:
+    """Integration tests: the cap actually clips ``integrated_confidence``.
+
+    The fake runner returns confidence=0.75 from
+    ``epistemic_select_best_explanation`` (see conftest.py). Combined
+    with adversarial_balance values across the three zones, this
+    exercises whether the cap clips correctly end-to-end through
+    ``SelectBestExplanationOperation.execute``.
+    """
+
+    async def test_survived_balance_does_not_clip(
+        self, repo, fake_runner
+    ) -> None:
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=[],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.8,  # SURVIVED — no cap
+        )
+        await repo.save(claim)
+
+        updated = await _run_full_ibe(repo, fake_runner)
+        # Fake runner returns 0.75; no cap applied.
+        assert updated.integrated_confidence == 0.75
+        assert "Adversarial cap applied" not in (
+            updated.integrated_reasoning or ""
+        )
+
+    async def test_contested_balance_clips_below_runner_confidence(
+        self, repo, fake_runner
+    ) -> None:
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=[],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.4,  # CONTESTED — cap=0.625
+        )
+        await repo.save(claim)
+
+        updated = await _run_full_ibe(repo, fake_runner)
+        # Fake runner returns 0.75; cap at 0.625 clips it.
+        assert updated.integrated_confidence == 0.625
+        assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
+
+    async def test_refuted_balance_hard_caps(
+        self, repo, fake_runner
+    ) -> None:
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=[],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.15,  # REFUTED — hard cap at 0.5
+        )
+        await repo.save(claim)
+
+        updated = await _run_full_ibe(repo, fake_runner)
+        assert updated.integrated_confidence == 0.5
+        assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
