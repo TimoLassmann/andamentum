@@ -148,6 +148,69 @@ class AdversarialSearchOperation(BaseOperation):
             for hits in gathered_lists:
                 search_hits.extend(hits)
 
+        # Step 3.5: Embedding rerank — decouple "which query found this
+        # hit" from "which evidence the judge actually evaluates".
+        # Adversarial query phrasing is LLM-stochastic; the search
+        # engine amplifies small phrasing differences into very different
+        # result pools (case 847 v19b: 8 vs 47 vs 70 candidates across
+        # 5 replicates of the same claim). The CLAIM is the stable
+        # signal — embedding similarity to the claim filters the pool
+        # toward semantically robust evidence regardless of which query
+        # surfaced it. Reduces run-to-run variance in the judge's input.
+        #
+        # K = max(8, ceil(n_queries × 2)): at least 2 candidates per
+        # query as a fairness floor; floor of 8 so low-yield runs (where
+        # the gatherer returned ~one hit per query) pass through
+        # unchanged. Runs that yielded many candidates get clipped to a
+        # comparable pool size.
+        if (
+            self.embedding_model
+            and len(search_hits) > 0
+            and all_queries
+        ):
+            import math
+
+            from ..embeddings import embed_texts
+            from ..similarity import cosine_similarity
+
+            top_k = max(8, math.ceil(len(all_queries) * 2))
+            if len(search_hits) > top_k:
+                hit_texts = [text for text, _ref in search_hits]
+                # One batch: claim + every candidate hit. Truncation
+                # is handled inside embed_texts (DEFAULT_MAX_EMBED_CHARS).
+                try:
+                    embeddings = await embed_texts(
+                        [claim.statement] + hit_texts,
+                        model=self.embedding_model,
+                    )
+                    claim_emb = embeddings[0]
+                    hit_embs = embeddings[1:]
+                    scored = sorted(
+                        zip(
+                            search_hits,
+                            (cosine_similarity(claim_emb, h) for h in hit_embs),
+                        ),
+                        key=lambda pair: pair[1],
+                        reverse=True,
+                    )
+                    n_before = len(search_hits)
+                    search_hits = [hit for hit, _score in scored[:top_k]]
+                    logger.debug(
+                        "Adversarial rerank: %d candidates → %d after "
+                        "top-%d embedding filter (claim=%s)",
+                        n_before,
+                        len(search_hits),
+                        top_k,
+                        claim.entity_id[:8],
+                    )
+                except RuntimeError as e:
+                    # Embedding model unreachable — proceed with the
+                    # unfiltered pool. Better to evaluate everything
+                    # than to silently drop adversarial signal.
+                    logger.warning(
+                        "Adversarial rerank skipped (embedding failure): %s", e
+                    )
+
         # Step 4: Evaluate each search result as a potential counterargument.
         # Evaluations run in parallel (bounded concurrency) to avoid a sequential
         # chain of LLM roundtrips that previously dominated wall time.
