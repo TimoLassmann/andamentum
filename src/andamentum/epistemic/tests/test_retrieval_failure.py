@@ -239,12 +239,16 @@ class TestComputePosteriorRetrievalFailed:
         assert "Retrieval failed" in report.explanation
         assert "0.7" in report.explanation  # penalty value surfaced
 
-    async def test_retrieval_failed_with_one_sided_evidence_uses_counting(
+    async def test_retrieval_failed_no_ia_suspends_with_retrieval_terminal(
         self, tmp_path: Path
     ) -> None:
-        """retrieval_failed=True, claim has no integrated_assessment but
-        the evidence already extracted is one-sided. Counting fallback
-        should surface that signal, with retrieval-failed pull."""
+        """retrieval_failed=True, claim has no integrated_assessment.
+        Under the no-certified-verdict gate (added 2026-05-05), counting
+        on uncertified evidence is structurally unsafe — both signals
+        (writer prose, posterior number) suspend rather than commit.
+        Terminal state is ``retrieval_failed`` (the more specific
+        diagnostic) when the retrieval flag is set; would be
+        ``oscillation_detected`` otherwise."""
         from andamentum.epistemic.entities import Claim
         from andamentum.epistemic.entities.claim import ClaimStage
 
@@ -286,11 +290,17 @@ class TestComputePosteriorRetrievalFailed:
             repo, objective_id=obj.entity_id, retrieval_failed=True
         )
         assert report is not None
-        # 10 supports, 0 contradicts → counting_posterior ≈ 1.0.
-        # Pulled toward neutral: 0.5 + (1.0 - 0.5)*0.7 = 0.85.
-        assert 0.75 < report.posterior < 0.92
+        # No-certified-verdict gate fires; posterior suspends.
+        # retrieval_failed wins precedence over the default
+        # oscillation_detected terminal because it's more specific.
+        assert report.posterior == 0.5
         assert report.terminal_state == "retrieval_failed"
-        assert report.mode == "counting_fallback"
+        assert report.mode == "counting_only"
+        # Diagnostic counts still exposed.
+        assert report.supporting_count > report.contradicting_count
+        assert report.counting_posterior > 0.5
+        assert "Retrieval failed" in report.explanation
+        assert "IBE certification" in report.explanation
 
 
 class TestConfidenceScoresTerminalState:

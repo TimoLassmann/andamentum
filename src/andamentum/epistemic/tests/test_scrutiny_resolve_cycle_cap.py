@@ -132,22 +132,15 @@ class TestScrutinizeRespectsCap:
         # Counter is unchanged at the cap (no further increment after
         # the skip).
         assert (
-            state.scrutiny_resolve_cycles[claim.entity_id]
-            == SCRUTINY_RESOLVE_CYCLE_CAP
+            state.scrutiny_resolve_cycles[claim.entity_id] == SCRUTINY_RESOLVE_CYCLE_CAP
         )
 
-    async def test_below_cap_increments_and_runs_scrutiny(
-        self, tmp_path: Path
-    ) -> None:
-        claim, repo = await _setup_objective_and_claim(
-            tmp_path, "scrutinize_below_cap"
-        )
+    async def test_below_cap_increments_and_runs_scrutiny(self, tmp_path: Path) -> None:
+        claim, repo = await _setup_objective_and_claim(tmp_path, "scrutinize_below_cap")
 
         state = EpistemicGraphState(objective_id=claim.objective_id)
         state.claims_needing_rescrutiny.add(claim.entity_id)
-        state.scrutiny_resolve_cycles[claim.entity_id] = (
-            SCRUTINY_RESOLVE_CYCLE_CAP - 1
-        )
+        state.scrutiny_resolve_cycles[claim.entity_id] = SCRUTINY_RESOLVE_CYCLE_CAP - 1
 
         deps = EpistemicDeps(repo=repo, agent_runner=None)
         ctx = _FakeRunContext(state, deps)
@@ -161,15 +154,12 @@ class TestScrutinizeRespectsCap:
         assert len(scrutiny_ops) == 1
         # Counter incremented from CAP-1 to CAP.
         assert (
-            state.scrutiny_resolve_cycles[claim.entity_id]
-            == SCRUTINY_RESOLVE_CYCLE_CAP
+            state.scrutiny_resolve_cycles[claim.entity_id] == SCRUTINY_RESOLVE_CYCLE_CAP
         )
         # Rescrutiny flag consumed.
         assert claim.entity_id not in state.claims_needing_rescrutiny
 
-    async def test_first_pass_initializes_counter_to_one(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_first_pass_initializes_counter_to_one(self, tmp_path: Path) -> None:
         """Fresh claim that gets marked for rescrutiny: counter starts at 1
         after the first Scrutinize pass."""
         claim, repo = await _setup_objective_and_claim(
@@ -193,9 +183,7 @@ class TestScrutinizeRespectsCap:
         """A claim that has no verdict yet (initial scrutiny, not
         rescrutiny) must not count toward the cap. Only rescrutiny passes
         do."""
-        store = DocumentStore.for_database(
-            "scrutinize_initial", db_dir=tmp_path
-        )
+        store = DocumentStore.for_database("scrutinize_initial", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
@@ -287,9 +275,7 @@ class TestResolveUncertaintiesRespectsCap:
 
         state = EpistemicGraphState(objective_id=claim.objective_id)
         # Cycles below the cap.
-        state.scrutiny_resolve_cycles[claim.entity_id] = (
-            SCRUTINY_RESOLVE_CYCLE_CAP - 1
-        )
+        state.scrutiny_resolve_cycles[claim.entity_id] = SCRUTINY_RESOLVE_CYCLE_CAP - 1
 
         deps = EpistemicDeps(
             repo=repo, agent_runner=fake_runner, embedding_model="test-embed"
@@ -311,9 +297,7 @@ class TestLoopTermination:
         """Drive the loop manually: alternate Scrutinize → ResolveUncertainties
         and verify the system stops requesting rescrutiny after CAP rounds.
         This is the smoke-v12 case 54 reproduction in miniature."""
-        claim, repo = await _setup_objective_and_claim(
-            tmp_path, "loop_termination"
-        )
+        claim, repo = await _setup_objective_and_claim(tmp_path, "loop_termination")
 
         state = EpistemicGraphState(objective_id=claim.objective_id)
         deps = EpistemicDeps(
@@ -402,12 +386,14 @@ class TestPromoteToSupportedSkipsCycleCapped:
 
 
 class TestComputePosteriorOscillationDetected:
-    async def test_cycle_capped_claim_yields_oscillation_terminal_state(
+    async def test_cycle_capped_claim_with_no_ia_suspends_via_no_certified_gate(
         self, tmp_path: Path
     ) -> None:
-        """compute_posterior detects active cycle_capped claims and emits
-        terminal_state='oscillation_detected' with posterior=0.5,
-        symmetric to the retrieval_failed short-circuit."""
+        """Cycle-capped + no integrated_assessment ⇒ the no-certified-verdict
+        gate (added 2026-05-05) suspends the posterior to 0.5 with
+        ``terminal_state="oscillation_detected"``. The cycle-capped flag
+        is informational provenance — the substantive epistemic state is
+        "no IBE certification", which is the gate's general condition."""
         claim, repo = await _setup_objective_and_claim(
             tmp_path, "posterior_oscillation"
         )
@@ -419,18 +405,23 @@ class TestComputePosteriorOscillationDetected:
         assert report is not None
         assert report.terminal_state == "oscillation_detected"
         assert report.posterior == 0.5
-        # The explanation references the snapshot count.
-        assert "2 persistent concerns" in report.explanation
+        assert report.mode == "counting_only"
+        assert "IBE certification" in report.explanation
 
-    async def test_no_cycle_capped_claims_means_normal_posterior(
+    async def test_no_cycle_capped_claims_with_ia_means_normal_posterior(
         self, tmp_path: Path
     ) -> None:
         """Sanity: compute_posterior's normal path is unchanged for runs
-        with no cycle-capped claims."""
-        claim, repo = await _setup_objective_and_claim(
-            tmp_path, "posterior_normal"
-        )
-        # cycle_capped defaults to False.
+        with an IBE-certified claim. (Without an integrated_assessment,
+        the no-certified-verdict gate would fire even without
+        cycle_capped — that's the structurally correct behaviour, but
+        not what this test is checking.)"""
+        claim, repo = await _setup_objective_and_claim(tmp_path, "posterior_normal")
+        # cycle_capped defaults to False. Stamp an IA so the
+        # no-certified-verdict gate doesn't preempt the test.
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.7
+        await repo.save(claim)
 
         report = await compute_posterior(repo, claim.objective_id)
         assert report is not None
@@ -449,5 +440,3 @@ class TestComputePosteriorOscillationDetected:
 # The v0.2 propagation tests for that path were removed when
 # decomposed_runner was deleted — see test_combine_claim_verdicts.py
 # (TestCombineClaimVerdicts) for the new shape.
-
-

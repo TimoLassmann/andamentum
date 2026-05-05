@@ -237,6 +237,106 @@ async def compute_posterior(
     capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
     n_capped_partial = len(capped)
 
+    # No-certified-verdict gate (mirrors CheckCompletion's
+    # no_certified_verdict exit, commit 761a5d9).
+    #
+    # The IBE chain is the system's certifier of directional verdicts.
+    # When no active claim has an ``integrated_assessment``, the
+    # certifier didn't fire — the synthesis writer is routed to
+    # ``SynthesizeInsufficient`` under the same condition. The posterior
+    # aggregator must mirror that decision: without IBE-certified
+    # verdicts, neither the writer nor the aggregator should produce a
+    # directional output.
+    #
+    # The previous behaviour was to fall through to the counting path,
+    # which produced a directional posterior from
+    # ``sigmoid(supporting - contradicting)`` × cap penalty. That
+    # disagreed with the writer's "insufficient" prose on case 847 v18
+    # (and would have disagreed on every uncertified case eventually).
+    # Counting on uncertified evidence is structurally unsafe — its
+    # direction depends on which evidence the providers happened to
+    # surface, which the judge happened to label which way, which the
+    # cluster-weighting happened to amplify. Run-to-run noise can flip
+    # the posterior across 0.5 with no change in epistemic state.
+    #
+    # When this gate fires, the diagnostic counting fields are still
+    # reported (so downstream readers can see WHAT the counting WOULD
+    # have said) but the headline posterior is 0.5 with
+    # ``terminal_state="oscillation_detected"``. The system says: "the
+    # IBE chain didn't certify; we suspend judgment."
+    if active_claims and not any(
+        c.integrated_assessment is not None for c in active_claims
+    ):
+        # Compute the diagnostic counts so the report explains WHAT
+        # would have been counted (even though we don't use them).
+        diag_supporting = 0.0
+        diag_contradicting = 0.0
+        for claim in active_claims:
+            claim_evidence = [
+                e
+                for e in evidence
+                if e.entity_id in claim.evidence_ids
+                and not e.invalidated
+                and e.cluster_status not in ("corroborative", "deferred")
+            ]
+            for e in claim_evidence:
+                cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
+                weight = 1.0 + math.log(cluster_size)
+                if e.support_judgment == "supports":
+                    diag_supporting += weight
+                elif e.support_judgment == "contradicts":
+                    diag_contradicting += weight
+        diag_log_odds = diag_supporting - diag_contradicting
+        if abs(diag_log_odds) < 700:
+            diag_counting = 1.0 / (1.0 + math.exp(-diag_log_odds))
+        else:
+            diag_counting = 1.0 if diag_log_odds > 0 else 0.0
+
+        # Terminal-state precedence: retrieval_failed wins because
+        # it's the more specific diagnostic (the inquiry was *prevented*
+        # from gathering more evidence). Without retrieval_failed, the
+        # default "we did not converge on a verdict" terminal is
+        # oscillation_detected. Same precedence as
+        # CheckCompletion's exit ordering.
+        if retrieval_failed:
+            ts: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
+                "retrieval_failed"
+            )
+            reason_prefix = (
+                "Retrieval failed AND no certified verdict: evidence "
+                "extraction returned empty content for several "
+                "consecutive attempts, and "
+            )
+        else:
+            ts = "oscillation_detected"
+            reason_prefix = "No certified verdict: "
+
+        return PosteriorReport(
+            posterior=0.5,
+            log_odds=0,
+            supporting_count=diag_supporting,
+            contradicting_count=diag_contradicting,
+            counting_posterior=round(diag_counting, 6),
+            mode="counting_only",
+            objective_id=objective_id,
+            question_type=question_type,
+            explanation=(
+                f"{reason_prefix}none of the {len(active_claims)} "
+                "non-abandoned claim(s) reached IBE certification "
+                "(integrated_assessment=None on all). The synthesis "
+                "writer is routed to SynthesizeInsufficient under the "
+                "same condition (CheckCompletion's no_certified_verdict "
+                "exit, commit 761a5d9). The aggregator mirrors that "
+                "decision — without IBE certification, no directional "
+                "posterior. Diagnostic counts shown for inspection: "
+                f"{diag_supporting:.2f} supporting vs "
+                f"{diag_contradicting:.2f} contradicting (counting "
+                f"posterior would be {diag_counting:.4f}), but counting "
+                "alone is not the system's verdict."
+            ),
+            terminal_state=ts,
+        )
+
     # 3. Diagnostic: weighted counts across active claims. These are reported
     # for inspection and used only as the counting fallback when no claim
     # received an integration verdict.
