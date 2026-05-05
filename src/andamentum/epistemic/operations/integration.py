@@ -40,7 +40,40 @@ from .base import BaseOperation, OperationInput, OperationResult
 from ..agents.output_models import LikelinessScore, LovelinessScore
 from ..entities import Claim, Evidence, Uncertainty
 from ..entities.claim import CandidateRecord
-from ..thresholds import ADVERSARIAL_SURVIVED_THRESHOLD
+from ..thresholds import (
+    ADVERSARIAL_REFUTED_THRESHOLD,
+    ADVERSARIAL_SURVIVED_THRESHOLD,
+)
+
+
+def _adversarial_confidence_cap(adversarial_balance: float | None) -> float:
+    """Cap on ``integrated_confidence`` from the adversarial-balance signal.
+
+    Three zones (Option A — soft tri-state on the existing thresholds):
+
+      * ``balance >= ADVERSARIAL_SURVIVED_THRESHOLD`` (≥ 0.7): SURVIVED.
+        No cap (returns 1.0).
+      * ``balance < ADVERSARIAL_REFUTED_THRESHOLD`` (< 0.3): REFUTED.
+        Hard cap at 0.5 — the TMS gate normally demotes refuted claims
+        before they reach IBE; if one slips through, the cap prevents
+        a confident directional certification on a refuted foundation.
+      * In between (CONTESTED, Lakatosian): linear interpolation from
+        0.5 (at the refuted threshold) to 1.0 (at the survived
+        threshold). A balance of 0.5 caps confidence at 0.75; a balance
+        of 0.31 caps at ~0.51.
+
+    No cap when ``adversarial_balance`` is None (adversarial search not
+    run, e.g. for question types where adversarial track is SKIP).
+    """
+    if adversarial_balance is None:
+        return 1.0
+    if adversarial_balance >= ADVERSARIAL_SURVIVED_THRESHOLD:
+        return 1.0
+    if adversarial_balance < ADVERSARIAL_REFUTED_THRESHOLD:
+        return 0.5
+    band_width = ADVERSARIAL_SURVIVED_THRESHOLD - ADVERSARIAL_REFUTED_THRESHOLD
+    band_position = (adversarial_balance - ADVERSARIAL_REFUTED_THRESHOLD) / band_width
+    return 0.5 + band_position * 0.5
 
 
 # ── Shared brief-building helper ──────────────────────────────────────
@@ -598,18 +631,45 @@ class SelectBestExplanationOperation(BaseOperation):
             chosen.gap_loveliness = 0.0
             chosen.gap_likeliness = 0.0
 
+        # Apply the adversarial-balance confidence cap (Option A — soft
+        # tri-state). The IBE chain's confidence reflects loveliness ×
+        # likeliness; the adversarial balance reflects whether the claim
+        # withstood active refutation. A claim in the CONTESTED zone
+        # should not certify at high confidence even if the IBE
+        # candidates score well, because a non-trivial counter-evidence
+        # signal exists. The cap is the same continuous function used by
+        # ``compute_confidence_score`` for stage gates, so adversarial
+        # signal propagates consistently through both confidence
+        # surfaces.
+        cap = _adversarial_confidence_cap(claim.adversarial_balance)
+        capped_confidence = min(confidence, cap)
+        was_capped = capped_confidence < confidence - 1e-9
+
         # Write to the integration fields compute_posterior reads
         claim.integrated_assessment = _verdict_to_canonical(chosen.verdict)
-        claim.integrated_confidence = max(0.0, min(1.0, confidence))
+        claim.integrated_confidence = max(0.0, min(1.0, capped_confidence))
         claim.integrated_reasoning = reasoning
+        if was_capped:
+            claim.integrated_reasoning += (
+                f"\n\n[Adversarial cap applied: IBE confidence "
+                f"{confidence:.2f} reduced to {capped_confidence:.2f} because "
+                f"adversarial_balance={claim.adversarial_balance:.2f} is in "
+                f"the contested zone (< {ADVERSARIAL_SURVIVED_THRESHOLD}).]"
+            )
         await self.repo.save(claim)
 
+        cap_note = (
+            f", capped from {confidence:.2f} (adv_balance="
+            f"{claim.adversarial_balance:.2f})"
+            if was_capped
+            else ""
+        )
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
             message=(
                 f"Selected {chosen.candidate_id} ({chosen.verdict}) over "
                 f"{runner_up.candidate_id}; verdict={claim.integrated_assessment}, "
-                f"confidence={claim.integrated_confidence:.2f}"
+                f"confidence={claim.integrated_confidence:.2f}{cap_note}"
             ),
         )
