@@ -18,6 +18,7 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
+from ..thresholds import ADVERSARIAL_REFUTED_THRESHOLD
 
 
 # Adversarial-search query budget: total = MAX_ADVERSARIAL_TEMPLATES
@@ -323,10 +324,11 @@ class AdversarialSearchOperation(BaseOperation):
                 await self.repo.save(adv_evidence)
                 claim.evidence_ids.append(adv_evidence.entity_id)
 
-            # For genuinely challenged claims (balance < 0.3), create a single
-            # NON-BLOCKING uncertainty summarizing the adversarial finding.
-            # The balance score on the claim is what gates use — not individual uncertainties.
-            if balance_score < 0.3:
+            # For Popper-refuted claims (balance < ADVERSARIAL_REFUTED_THRESHOLD),
+            # create a single NON-BLOCKING uncertainty summarizing the
+            # adversarial finding. The balance score on the claim is what
+            # gates use — not individual uncertainties.
+            if balance_score < ADVERSARIAL_REFUTED_THRESHOLD:
                 uncertainty = Uncertainty(
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.SCOPE_DIFFERENCE,

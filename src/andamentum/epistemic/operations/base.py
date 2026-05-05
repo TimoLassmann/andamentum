@@ -43,7 +43,9 @@ class OperationInput:
     entity_id: str
     entity_type: str
     operation: str
-    metadata: dict[str, Any] = field(default_factory=dict)  # TODO(theme-5): per-operation TypedDicts when feasible
+    metadata: dict[str, Any] = field(
+        default_factory=dict
+    )  # TODO(theme-5): per-operation TypedDicts when feasible
 
 
 # Backward compatibility alias
@@ -200,11 +202,14 @@ class QualityScorer(Protocol):
         ...
 
 
-# Investigation cycle limits (Peirce inquiry cycling)
-MAX_INVESTIGATION_ATTEMPTS = 3
-
-# Uncertainty resolution chain depth limit
-MAX_UNCERTAINTY_DEPTH = 3
+# NOTE on Peirce-cycling caps. Two constants used to live here —
+# ``MAX_INVESTIGATION_ATTEMPTS`` and ``MAX_UNCERTAINTY_DEPTH``. They
+# were never referenced; the actual caps were inline ``3``s in
+# ``graph/nodes.py``. As of 2026-05-05 the canonical Peirce-cycling
+# constant is ``epistemic.thresholds.PEIRCE_CYCLE_CAP``, which all
+# three Peirce-grounded loops (investigation, scrutiny↔resolve,
+# uncertainty depth) share. See that module for the philosophical
+# basis.
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -204,7 +204,7 @@ You verify that a research answer is faithful to the underlying data. Your job i
 
 4. **Major omission.** The answer omits a finding that, if included, would meaningfully change a reader's bottom-line conclusion. Omitting one supporting study is not a major omission. Omitting that adversarial search refuted the headline IS. Omitting a blocking uncertainty IS.
 
-5. **Misrepresentation of structural signals.** The answer describes verification results inaccurately relative to the data's own values. E.g., if adversarial_balance < 0.5, the answer cannot say "withstood adversarial challenge"; if a claim is at HYPOTHESIS, the answer cannot describe it as "established."
+5. **Misrepresentation of structural signals.** The answer describes verification results inaccurately relative to the data's own values. E.g., if adversarial_balance has not crossed the survival threshold, the answer cannot say "withstood adversarial challenge"; if a claim is at HYPOTHESIS, the answer cannot describe it as "established."
 
 ## What you do NOT flag
 

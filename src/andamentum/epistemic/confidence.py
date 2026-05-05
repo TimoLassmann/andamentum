@@ -43,39 +43,15 @@ from pydantic import BaseModel, Field
 
 from .repository import EpistemicRepository
 
+# Confidence penalties live in ``epistemic.thresholds`` (the canonical
+# constants module). Re-exported here so existing callers that imported
+# them from ``confidence`` keep working.
+from .thresholds import (
+    CYCLE_CAP_CONFIDENCE_PENALTY,
+    RETRIEVAL_FAILED_CONFIDENCE_PENALTY,
+)
+
 logger = logging.getLogger(__name__)
-
-
-CYCLE_CAP_CONFIDENCE_PENALTY = 0.7
-"""Multiplier applied to a cycle-capped claim's ``integrated_confidence``
-when it contributes to the aggregated posterior. The cap fired meaning
-inquiry didn't reach a stable terminal state; the verdict is provisional
-even within the IBE-certified range. 0.7 leaves directional signal
-intact but pulls the contribution toward neutral so the final number
-reflects the cap's provenance.
-
-See docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md
-for the principled distinction between *verdict instability* (suspend
-judgment — Peirce) and *inquiry inexhaustibility* (provisional but
-directional — fallibilism). The cap firing is the second; the previous
-all-capped → 0.5 rule conflated the two."""
-
-
-RETRIEVAL_FAILED_CONFIDENCE_PENALTY = 0.7
-"""Multiplier pulling the aggregated posterior toward 0.5 when the
-inquiry's ``retrieval_failed`` flag is set (evidence extraction
-returned empty content for several consecutive attempts). The flag
-prevents *more* extraction work from running, but the IBE chain that
-fired beforehand produced a legitimate verdict on the evidence already
-gathered. Surface that signal with a confidence penalty rather than
-zeroing it — same anti-pattern as the cycle-cap fix at the output
-layer (see SciFact case 54 v14).
-
-Applied as a pull-toward-neutral on the aggregated posterior:
-``new_p = 0.5 + (old_p - 0.5) * RETRIEVAL_FAILED_CONFIDENCE_PENALTY``.
-Equivalent to multiplying confidence by 0.7 in the per-claim mapping;
-applied at the outer level to handle both rule-blind and rule-aware
-aggregation paths uniformly."""
 
 
 # Question types where posterior P(Y) is meaningful.

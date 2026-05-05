@@ -21,6 +21,11 @@ from .invariants import no_stranded_claims
 from .state import EpistemicGraphState
 from .deps import EpistemicDeps
 from .result import EpistemicResult
+from ..thresholds import (
+    ADVERSARIAL_SURVIVED_THRESHOLD,
+    PEIRCE_CYCLE_CAP,
+    POSTERIOR_DECISIVE_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +36,23 @@ logger = logging.getLogger(__name__)
 
 
 _EMPTY_EXTRACTION_THRESHOLD = 3
+"""Operational guard: number of consecutive empty extractions before
+``state.retrieval_failed`` flips True. NOT a Peirce-cycling cap —
+it's a retrieval-health signal, kept separate so the two concerns
+remain independently tunable."""
 
 # Cap on Scrutinize ↔ ResolveUncertainties oscillation per claim.
 # Each pass of Scrutinize on a marked-for-rescrutiny claim counts as
 # one cycle. Once a claim hits this many cycles, Scrutinize stops
 # rescrutinizing and ResolveUncertainties stops requesting rescrutiny.
-# The claim retains its current verdict — analogous to the
-# investigation cap of 3. The bug this prevents: claims whose seed
-# text produces a reliably-novel-but-near-duplicate uncertainty per
-# scrutiny pass loop forever, since the genuine resolution per round
-# keeps marking the claim for rescrutiny.
-SCRUTINY_RESOLVE_CYCLE_CAP = 3
+# The claim retains its current verdict.
+#
+# Aliases ``PEIRCE_CYCLE_CAP`` for backward compatibility — every
+# Peirce-grounded loop in the graph (investigation attempts,
+# scrutiny↔resolve, uncertainty resolution depth) shares the same
+# canonical value defined in ``epistemic.thresholds``. See that
+# module for the philosophical basis.
+SCRUTINY_RESOLVE_CYCLE_CAP = PEIRCE_CYCLE_CAP
 
 
 async def _mark_cycle_capped(deps: "EpistemicDeps", claim_id: str, source: str) -> None:
@@ -762,7 +773,10 @@ class Scrutinize(Node):
                 continue  # will be promoted
             if claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
-                if claim.stage == ClaimStage.HYPOTHESIS and inv_count >= 3:
+                if (
+                    claim.stage == ClaimStage.HYPOTHESIS
+                    and inv_count >= PEIRCE_CYCLE_CAP
+                ):
                     needs_abandon.append(claim)
                 elif claim.stage != ClaimStage.HYPOTHESIS:
                     # SUPPORTED+ claim that failed scrutiny -> demote
@@ -814,7 +828,7 @@ class Investigate(Node):
                 continue
             if claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
-                if inv_count < 3:
+                if inv_count < PEIRCE_CYCLE_CAP:
                     result = await _run_op(
                         InvestigateClaimOperation,
                         deps,
@@ -1028,7 +1042,10 @@ class AbandonOrDemote(Node):
             if claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
 
-                if claim.stage == ClaimStage.HYPOTHESIS and inv_count >= 3:
+                if (
+                    claim.stage == ClaimStage.HYPOTHESIS
+                    and inv_count >= PEIRCE_CYCLE_CAP
+                ):
                     # First try refute-promotion: if evidence overwhelmingly
                     # contradicts, promote to SUPPORTED with
                     # integrated_assessment="contradicts" instead of abandoning.
@@ -1423,9 +1440,16 @@ class RunVerification(Node):
                 if activation == TrackActivation.SECONDARY:
                     # SECONDARY tracks only fire when a condition is met
                     if track_name == "adversarial":
-                        # Fire on first pass (balance is None) or if prior balance was poor
+                        # Fire on first pass (balance is None) or when the
+                        # claim hasn't yet survived adversarial challenge.
+                        # Skip-refire requires *survival* (not just "above
+                        # midpoint"); see ADVERSARIAL_SURVIVED_THRESHOLD
+                        # in epistemic.thresholds.
                         balance = claim.adversarial_balance
-                        if balance is not None and balance >= 0.6:
+                        if (
+                            balance is not None
+                            and balance >= ADVERSARIAL_SURVIVED_THRESHOLD
+                        ):
                             continue  # Already tested, survived — skip
                     elif track_name == "convergence":
                         # Only fire if claim has 3+ evidence items
@@ -1665,7 +1689,7 @@ class ResolveUncertainties(Node):
         )
         new_blocking = [u for u in remaining if u.is_blocking]
 
-        if new_blocking and self.depth < 3:
+        if new_blocking and self.depth < PEIRCE_CYCLE_CAP:
             return ResolveUncertainties(
                 depth=self.depth + 1,
                 next_on_clear=self.next_on_clear,
@@ -2336,11 +2360,18 @@ class CheckSynthesisDemand(Node):
                     "regression."
                 ),
             )
-        # Gate 4: decisive posterior (≥0.85 supports OR ≤0.15 contradicts).
+        # Gate 4: decisive posterior (above POSTERIOR_DECISIVE_THRESHOLD,
+        # or symmetrically below ``1 - threshold``). See
+        # epistemic.thresholds for the asymmetric-stakes motivation.
         elif combined.posterior is not None and (
-            combined.posterior >= 0.85 or combined.posterior <= 0.15
+            combined.posterior >= POSTERIOR_DECISIVE_THRESHOLD
+            or combined.posterior <= 1.0 - POSTERIOR_DECISIVE_THRESHOLD
         ):
-            direction = "supports" if combined.posterior >= 0.85 else "contradicts"
+            direction = (
+                "supports"
+                if combined.posterior >= POSTERIOR_DECISIVE_THRESHOLD
+                else "contradicts"
+            )
             demand = Demand.satisfied(
                 justification=(
                     f"Combined posterior {combined.posterior:.3f} ({direction}) "

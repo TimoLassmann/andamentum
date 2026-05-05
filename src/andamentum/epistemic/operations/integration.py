@@ -40,14 +40,13 @@ from .base import BaseOperation, OperationInput, OperationResult
 from ..agents.output_models import LikelinessScore, LovelinessScore
 from ..entities import Claim, Evidence, Uncertainty
 from ..entities.claim import CandidateRecord
+from ..thresholds import ADVERSARIAL_SURVIVED_THRESHOLD
 
 
 # ── Shared brief-building helper ──────────────────────────────────────
 
 
-async def _build_evidence_brief(
-    op: BaseOperation, claim: Claim
-) -> dict[str, object]:
+async def _build_evidence_brief(op: BaseOperation, claim: Claim) -> dict[str, object]:
     """Build the evidence summary block shared by all IBE stages.
 
     Returns a dict with keys: supporting_evidence, contradicting_evidence,
@@ -89,7 +88,7 @@ async def _build_evidence_brief(
 
     adversarial_text = "Adversarial search has NOT been conducted."
     if claim.adversarial_checked and claim.adversarial_balance is not None:
-        if claim.adversarial_balance >= 0.7:
+        if claim.adversarial_balance >= ADVERSARIAL_SURVIVED_THRESHOLD:
             adversarial_text = (
                 f"Adversarial search conducted: NO strong counterevidence "
                 f"found (balance: {claim.adversarial_balance:.2f}). "
@@ -589,8 +588,12 @@ class SelectBestExplanationOperation(BaseOperation):
         # against the gap; we record the gap separately so a reader can
         # verify the alignment.
         if chosen is not runner_up:
-            chosen.gap_loveliness = (chosen.loveliness or 0.0) - (runner_up.loveliness or 0.0)
-            chosen.gap_likeliness = (chosen.likeliness or 0.0) - (runner_up.likeliness or 0.0)
+            chosen.gap_loveliness = (chosen.loveliness or 0.0) - (
+                runner_up.loveliness or 0.0
+            )
+            chosen.gap_likeliness = (chosen.likeliness or 0.0) - (
+                runner_up.likeliness or 0.0
+            )
         else:
             chosen.gap_loveliness = 0.0
             chosen.gap_likeliness = 0.0

@@ -27,6 +27,10 @@ from .report_data import (
     UncertaintySummary,
 )
 from .repository import EpistemicRepository
+from .thresholds import (
+    ADVERSARIAL_REFUTED_THRESHOLD,
+    ADVERSARIAL_SURVIVED_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -221,11 +225,11 @@ class ReportGenerator:
                 if adv is not None:
                     balance = getattr(adv, "adversarial_balance", None)
                     if balance is not None:
-                        if balance < 0.3:
+                        if balance < ADVERSARIAL_REFUTED_THRESHOLD:
                             verification_parts.append(
                                 f"Adversarial search: found strong counter-evidence (balance: {balance:.2f})"
                             )
-                        elif balance > 0.8:
+                        elif balance >= ADVERSARIAL_SURVIVED_THRESHOLD:
                             verification_parts.append(
                                 f"Adversarial search: withstood challenge (balance: {balance:.2f})"
                             )
@@ -516,12 +520,14 @@ class ReportGenerator:
             strong_counter = sum(
                 1
                 for c in adversarial_checked
-                if c.adversarial_balance is not None and c.adversarial_balance < 0.3
+                if c.adversarial_balance is not None
+                and c.adversarial_balance < ADVERSARIAL_REFUTED_THRESHOLD
             )
             survived = sum(
                 1
                 for c in adversarial_checked
-                if c.adversarial_balance is not None and c.adversarial_balance >= 0.7
+                if c.adversarial_balance is not None
+                and c.adversarial_balance >= ADVERSARIAL_SURVIVED_THRESHOLD
             )
             parts.append(
                 f"\n{len(adversarial_checked)} claims were checked against counter-evidence (adversarial search)."
@@ -529,12 +535,14 @@ class ReportGenerator:
             if strong_counter > 0:
                 parts.append(
                     f"{strong_counter} were found to have strong counter-evidence "
-                    f"(adversarial balance < 0.3) and were automatically demoted "
+                    f"(adversarial balance < {ADVERSARIAL_REFUTED_THRESHOLD}) "
+                    f"and were automatically demoted "
                     f"by the Truth Maintenance System."
                 )
             if survived > 0:
                 parts.append(
-                    f"{survived} claims survived adversarial challenge (balance >= 0.7)."
+                    f"{survived} claims survived adversarial challenge "
+                    f"(balance >= {ADVERSARIAL_SURVIVED_THRESHOLD})."
                 )
 
         # TMS demotions (from promotion_history)

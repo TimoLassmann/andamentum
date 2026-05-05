@@ -93,7 +93,7 @@ def _claim_posterior(claim: Claim) -> float | None:
         return None
     confidence = claim.integrated_confidence or 0.0
     if getattr(claim, "cycle_capped", False):
-        from ..confidence import CYCLE_CAP_CONFIDENCE_PENALTY
+        from ..thresholds import CYCLE_CAP_CONFIDENCE_PENALTY
 
         confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
     if claim.integrated_assessment == "supports":

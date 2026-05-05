@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from andamentum.typeset import Report
 
 from .report_data import QUESTION_TYPE_LABELS, ReportData
+from .thresholds import ADVERSARIAL_REFUTED_THRESHOLD
 
 STAGE_DISPLAY_ORDER: tuple[str, ...] = (
     "supported",
@@ -152,7 +153,8 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
         challenged = sum(
             1
             for c in data.claims
-            if c.adversarial_balance is not None and c.adversarial_balance < 0.3
+            if c.adversarial_balance is not None
+            and c.adversarial_balance < ADVERSARIAL_REFUTED_THRESHOLD
         )
         verdict_body = data.verdict
         if challenged:
