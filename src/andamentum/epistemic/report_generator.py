@@ -546,20 +546,22 @@ class ReportGenerator:
                 )
 
         # TMS demotions (from promotion_history)
+        _STAGE_ORDER = {
+            "hypothesis": 0,
+            "supported": 1,
+            "provisional": 2,
+            "robust": 3,
+            "actionable": 4,
+        }
         demotion_count = 0
         for claim in all_claims:
             for entry in claim.promotion_history:
-                from_stage = entry.get("from", "")
-                to_stage = entry.get("to", "")
-                # A demotion is when the target stage is lower
-                _STAGE_ORDER = {
-                    "hypothesis": 0,
-                    "supported": 1,
-                    "provisional": 2,
-                    "robust": 3,
-                    "actionable": 4,
-                }
-                if _STAGE_ORDER.get(to_stage, 0) < _STAGE_ORDER.get(from_stage, 0):
+                # A demotion is when the target stage is lower.
+                # ClaimStage is a str-enum so its values double as the
+                # _STAGE_ORDER keys.
+                if _STAGE_ORDER.get(entry.to_stage.value, 0) < _STAGE_ORDER.get(
+                    entry.from_stage.value, 0
+                ):
                     demotion_count += 1
         if demotion_count > 0:
             parts.append(

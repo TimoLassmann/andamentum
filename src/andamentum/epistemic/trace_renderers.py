@@ -378,12 +378,11 @@ def _render_claim_card(lineage: ClaimLineage, console: Console) -> None:
         console.print()
         console.print("[bold]Promotion Path:[/bold]")
         for promo in lineage.promotion_path:
-            from_stage = promo.get("from_stage", "?")
-            to_stage = promo.get("to_stage", "?")
-            justification = promo.get("justification", "")
-            console.print(f"  {from_stage.upper()} → {to_stage.upper()}")
-            if justification:
-                console.print(f"  [dim]{justification}[/dim]")
+            console.print(
+                f"  {promo.from_stage.value.upper()} → {promo.to_stage.value.upper()}"
+            )
+            if promo.justification:
+                console.print(f"  [dim]{promo.justification}[/dim]")
     else:
         # No promotions yet - show what's needed
         console.print()

@@ -166,7 +166,7 @@ class TestPromoteAsRefutedOperation:
         assert reloaded.abandoned is False
         assert reloaded.confidence_score == reloaded.integrated_confidence
         assert len(reloaded.promotion_history) == 1
-        assert reloaded.promotion_history[-1]["to"] == ClaimStage.SUPPORTED.value
+        assert reloaded.promotion_history[-1].to_stage == ClaimStage.SUPPORTED
 
     async def test_refuses_when_not_refuted(self, tmp_path: Path) -> None:
         claim, repo = await _setup_claim_with_evidence(tmp_path, 5, 1)
@@ -321,9 +321,7 @@ class TestPosteriorIncludesRefuted:
         )
         assert result.success
 
-        posterior = await compute_posterior(
-            repo, objective_id=claim.objective_id
-        )
+        posterior = await compute_posterior(repo, objective_id=claim.objective_id)
         assert posterior is not None
         assert posterior.posterior < 0.2, (
             f"Expected low posterior (evidence contradicts), got {posterior.posterior:.3f}"

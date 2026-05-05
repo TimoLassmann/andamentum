@@ -194,8 +194,8 @@ class TestClaimMethods:
         )
         assert c.stage == ClaimStage.SUPPORTED
         assert len(c.promotion_history) == 1
-        assert c.promotion_history[0]["from"] == "hypothesis"
-        assert c.promotion_history[0]["to"] == "supported"
+        assert c.promotion_history[0].from_stage == ClaimStage.HYPOTHESIS
+        assert c.promotion_history[0].to_stage == ClaimStage.SUPPORTED
 
     def test_model_post_init_evidence_count(self):
         c = Claim(statement="X", objective_id="o", evidence_ids=["e1", "e2", "e3"])

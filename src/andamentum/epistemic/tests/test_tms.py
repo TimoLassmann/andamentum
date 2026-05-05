@@ -317,9 +317,9 @@ class TestRevalidateClaimOperation:
         updated = await repo.get("claim", "cl-1")
         assert len(updated.promotion_history) == 1
         entry = updated.promotion_history[0]
-        assert entry["from"] == "supported"
-        assert entry["to"] == "hypothesis"
-        assert "TMS demotion" in entry["justification"]
+        assert entry.from_stage == ClaimStage.SUPPORTED
+        assert entry.to_stage == ClaimStage.HYPOTHESIS
+        assert "TMS demotion" in entry.justification
 
 
 # ══════════════════════════════════════════════════════════════════════════════
