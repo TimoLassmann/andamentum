@@ -18,6 +18,94 @@ from ..entities import (
 )
 
 
+# K8 Bug #1 fix (per docs/superpowers/plans/2026-05-05-k8-bug1-provider-tournament.md):
+# Number of providers picked per OBJECTIVE in research-mode round 1.
+# All sub-claims query all K providers, enabling cross-domain
+# convergence detection per claim (≥2 independent sources is the
+# minimum that lets the convergence detector fire). Operational —
+# kept inline rather than in epistemic.thresholds because it's an
+# engineering trade-off, not a Popper/Lakatos/Peirce commitment.
+RESEARCH_MODE_PROVIDER_K = 2
+
+
+async def _run_provider_tournament(
+    *,
+    agent_runner: object,
+    question: str,
+    candidates: list[str],
+    candidate_descriptions: dict[str, str],
+    k: int,
+) -> list[str]:
+    """Pick the top K providers for a research-mode objective via
+    iterative tournament.
+
+    Each round: ask the ``epistemic_rank_providers`` agent to pick
+    the best provider given the current candidate pool, append it to
+    the result, and remove it from the pool. Loop until K providers
+    are picked or the pool is exhausted.
+
+    The tournament is per-OBJECTIVE: it runs once at the start of
+    PlanTask, before the sub-claim loop. Every sub-claim then queries
+    all K returned providers. This is what enables per-sub-claim
+    cross-domain convergence detection (the convergence detector
+    needs ≥2 independent sources to fire).
+
+    Why per-objective rather than per-sub-claim K: per-sub-claim
+    would be 4x more ranker calls (K calls × N sub-claims), without
+    enough additional benefit on the workloads we expect. Future
+    work if benchmark data shows otherwise.
+
+    Args:
+        agent_runner: AgentRunner instance to call the ranker.
+        question: The research question (or clarified question) — what
+            the LLM ranks providers against. Same value for every
+            tournament round.
+        candidates: Current pool of provider names. The function does
+            NOT mutate this list; it works on a copy.
+        candidate_descriptions: Map of provider name → description.
+            Used to format the prompt's candidate list.
+        k: How many providers to pick. Clipped to ``len(candidates)``.
+
+    Returns:
+        Ordered list of picked provider names (most-preferred first).
+        At most ``min(k, len(candidates))`` entries.
+
+    Raises:
+        ValueError: if ``candidates`` is empty or ``k <= 0``.
+    """
+    if not candidates:
+        raise ValueError(
+            "_run_provider_tournament: candidates is empty; cannot pick any providers"
+        )
+    if k <= 0:
+        raise ValueError(f"_run_provider_tournament: k must be ≥1 (got {k})")
+
+    remaining = list(candidates)
+    picked: list[str] = []
+    target = min(k, len(candidates))
+
+    for _round in range(target):
+        candidates_text = "\n".join(
+            f"- {p}: {candidate_descriptions.get(p, '')}" for p in remaining
+        )
+        rank_result = await agent_runner.run(  # type: ignore[attr-defined]
+            "epistemic_rank_providers",
+            sub_claim=question,
+            candidates=candidates_text,
+        )
+        choice = getattr(rank_result, "chosen_provider", None)
+        # Defensive: LLM may hallucinate a provider name not in the pool.
+        # Fall back to the first remaining candidate so the tournament
+        # still progresses. Same fallback shape as the existing
+        # per-sub-claim ranker call site.
+        if choice not in remaining:
+            choice = remaining[0]
+        picked.append(choice)
+        remaining.remove(choice)
+
+    return picked
+
+
 class ClarifyQuestionOperation(BaseOperation):
     """Clarify and refine the research question.
 
