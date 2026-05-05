@@ -94,7 +94,7 @@ class TestDecomposeNode:
         reloaded = await repo.get("objective", obj.entity_id)
         assert reloaded.decomposition is not None
         assert len(reloaded.decomposition.sub_investigations) == 3
-        assert reloaded.combination_rule == "AND"
+        assert reloaded.decomposition.combination_rule == "AND"
         decompose_ops = [
             op for op in state.operations_log if op["operation"] == "decompose_question"
         ]

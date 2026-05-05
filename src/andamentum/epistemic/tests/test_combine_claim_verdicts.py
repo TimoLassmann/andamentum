@@ -347,7 +347,6 @@ class TestCombineClaimVerdictsNode:
                 "combination_rule": "AND",
                 "rationale": "both must hold",
             },
-            combination_rule="AND",
         )
         obj.objective_id = obj.entity_id
         await repo.save(obj)
@@ -395,7 +394,6 @@ class TestCombineClaimVerdictsNode:
                 "combination_rule": "WEIGHTED_AND",
                 "rationale": "weighted",
             },
-            combination_rule="WEIGHTED_AND",
         )
         obj.objective_id = obj.entity_id
         await repo.save(obj)

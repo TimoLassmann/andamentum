@@ -261,23 +261,11 @@ def _weighted_mean(
 def resolve_combination_rule(objective: Any) -> str | None:
     """Single source of truth for the combination_rule lookup.
 
-    Reads from BOTH ``objective.combination_rule`` (the dedicated
-    Objective field) AND ``objective.decomposition.combination_rule``
-    (the rule the decomposer wrote into the typed Decomposition).
-    Returns the first non-None value, or None if neither is set.
-
-    Used by both ``CombineClaimVerdicts`` (graph node) and
-    ``compute_posterior`` (confidence.py) so the two paths can never
-    disagree on which rule to apply.
-
-    Phase 6 of the Move-3 plan: the dict-based dual lookup is now a
-    typed attribute lookup; the helper still exists because the
-    "objective field wins, decomposition fallback" fallback logic
-    is the cross-cutting invariant.
+    Reads ``objective.decomposition.combination_rule``. The previous
+    duplicated top-level ``Objective.combination_rule`` field was
+    removed (commit forthcoming): ``decomposition`` is the typed
+    source of truth and the duplicate created a desync risk.
     """
-    rule = getattr(objective, "combination_rule", None)
-    if rule:
-        return rule
     decomposition = getattr(objective, "decomposition", None)
     if decomposition is None:
         return None
