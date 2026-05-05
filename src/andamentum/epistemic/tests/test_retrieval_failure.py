@@ -355,3 +355,27 @@ class TestTypesetReportRetrievalFailed:
         ]
         assert any("P(YES)" in t for t in callout_texts)
         assert not any("Retrieval failed" in t for t in callout_texts)
+
+    def test_emits_warning_callout_when_oscillation_detected(self) -> None:
+        # No-certified-verdict gate fires; renderer must surface the
+        # suspension and refuse to emit a directional P(YES).
+        data = _make_report_data(terminal_state="oscillation_detected")
+        atoms = build_typeset_report(data)
+        callout_texts = [
+            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
+        ]
+        assert any("No certified verdict" in t for t in callout_texts)
+        assert not any("P(YES)" in t for t in callout_texts)
+
+    def test_unknown_terminal_state_fails_loud(self) -> None:
+        # Defensive: any future terminal_state added to confidence.py
+        # without a matching renderer branch must NOT silently fall
+        # through to a P(YES) callout. Surfaces the raw state name
+        # instead.
+        data = _make_report_data(terminal_state="some_future_state")
+        atoms = build_typeset_report(data)
+        callout_texts = [
+            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
+        ]
+        assert any("some_future_state" in t for t in callout_texts)
+        assert not any("P(YES)" in t for t in callout_texts)

@@ -123,26 +123,46 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
         r.callout(f"This is a {qt_label}", tone="note")
 
     # ── Posterior interpretation ─────────────────────────────────────
+    #
+    # Invariant: a directional posterior (P(YES)) is rendered ONLY when
+    # ``terminal_state == "completed"``. Every non-completed terminal
+    # gets a state-specific callout instead. Adding a new terminal in
+    # ``confidence.py`` without a renderer branch falls into the
+    # ``else`` arm and surfaces the raw state name — failing loud
+    # rather than silently emitting a misleading 50% number.
 
-    if (
-        data.confidence_scores
-        and data.confidence_scores.terminal_state == "retrieval_failed"
-    ):
-        r.callout(
-            "**Retrieval failed** — evidence extraction returned empty content "
-            "repeatedly (3+ times consecutively). The posterior is uninformative; "
-            "the investigation could not gather enough data to form a reasoned answer.",
-            tone="warning",
-        )
-    elif data.confidence_scores and data.confidence_scores.posterior is not None:
-        posterior_pct = data.confidence_scores.posterior * 100
+    if data.confidence_scores:
         cs = data.confidence_scores
-        interp = (
-            f"**P(YES) ≈ {posterior_pct:.1f}%** — "
-            f"{cs.posterior_supporting} supporting vs "
-            f"{cs.posterior_contradicting} contradicting evidence points."
-        )
-        r.callout(interp, tone="info")
+        ts = cs.terminal_state
+        if ts == "completed" and cs.posterior is not None:
+            posterior_pct = cs.posterior * 100
+            interp = (
+                f"**P(YES) ≈ {posterior_pct:.1f}%** — "
+                f"{cs.posterior_supporting} supporting vs "
+                f"{cs.posterior_contradicting} contradicting evidence points."
+            )
+            r.callout(interp, tone="info")
+        elif ts == "retrieval_failed":
+            r.callout(
+                "**Retrieval failed** — evidence extraction returned empty content "
+                "repeatedly (3+ times consecutively). The posterior is uninformative; "
+                "the investigation could not gather enough data to form a reasoned answer.",
+                tone="warning",
+            )
+        elif ts == "oscillation_detected":
+            r.callout(
+                "**No certified verdict** — the IBE chain "
+                "(inference-to-best-explanation) did not certify a directional "
+                "verdict for any active claim. The posterior is suspended at 0.5; "
+                "counting evidence on uncertified claims is unsafe (run-to-run "
+                "noise can flip direction with no real change in epistemic state).",
+                tone="warning",
+            )
+        else:
+            r.callout(
+                f"**Inquiry terminated: {ts}** — no directional verdict rendered.",
+                tone="warning",
+            )
 
     # ── Key Findings Q&A ─────────────────────────────────────────────
 
@@ -163,11 +183,19 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
     if data.confidence_scores:
         cs = data.confidence_scores
-        conf_body = (
-            f"Posterior: {cs.posterior:.2%}"
-            if cs.posterior is not None
-            else "No posterior computed"
-        )
+        ts = cs.terminal_state
+        # Same invariant as the posterior callout above: only emit a
+        # directional probability when the inquiry actually completed.
+        if ts == "completed" and cs.posterior is not None:
+            conf_body = f"Posterior: {cs.posterior:.2%}"
+        elif ts == "retrieval_failed":
+            conf_body = "No posterior — retrieval failed before evidence converged."
+        elif ts == "oscillation_detected":
+            conf_body = "No posterior — no IBE-certified verdict."
+        elif cs.posterior is None:
+            conf_body = "No posterior computed"
+        else:
+            conf_body = f"No posterior — inquiry terminated: {ts}."
         qa_entries.append({"label": "How confident are we?", "body": conf_body})
 
         qa_entries.append(
