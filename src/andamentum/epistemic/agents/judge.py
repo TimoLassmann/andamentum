@@ -35,6 +35,11 @@ field together and pick out any qualifiers:
 "in adolescents", "in murine models"
 - Temporal restrictions: "during the first trimester", "at steady state"
 - Subject restrictions: "for new TB drugs only", "in low-income settings"
+- **Term meaning**: If a word in the claim plausibly has a technical \
+meaning in the relevant field that differs from everyday usage, use \
+the technical meaning. When the claim's intent is ambiguous between a \
+narrow and a broad reading, prefer the broader defensible reading \
+unless the claim explicitly narrows it.
 
 Summarise the scope in one short phrase for the `claim_scope_summary` field.
 

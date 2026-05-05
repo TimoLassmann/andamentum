@@ -8,7 +8,7 @@ Architecture: Layer 1 (framework-agnostic, pure Pydantic)
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..primitives import (
     CausalRole,
@@ -628,6 +628,38 @@ class EvidenceJudgmentOutput(BaseModel):
             "analysis. For out-of-scope cases, name the scope mismatch."
         )
     )
+
+    @model_validator(mode="after")
+    def _verdict_consistent_with_scope(self) -> "EvidenceJudgmentOutput":
+        """Cross-field invariant: ``in_scope`` and ``verdict`` must agree.
+
+        The judge prompt states this rule (Step 4: "If in_scope is False,
+        verdict MUST be 'no_bearing'"). The schema previously did not
+        enforce it, so the LLM could return logically inconsistent
+        outputs like ``in_scope=True, verdict='no_bearing'`` ("this is
+        on-topic but I can't tell which way it leans") which the prompt
+        explicitly forbids.
+
+        Raising ValueError here triggers pydantic-ai's output-retry
+        mechanism (the agent is registered with output_retries=3 in
+        ``judge.py``) — the model gets the validation error message
+        as feedback and retries.
+        """
+        if self.in_scope and self.verdict == "no_bearing":
+            raise ValueError(
+                "in_scope=True is incompatible with verdict='no_bearing'. "
+                "If the evidence is in scope, set verdict to 'supports' "
+                "or 'contradicts'. If the evidence really has no bearing, "
+                "set in_scope=False."
+            )
+        if not self.in_scope and self.verdict != "no_bearing":
+            raise ValueError(
+                f"in_scope=False requires verdict='no_bearing' (got "
+                f"{self.verdict!r}). Out-of-scope evidence cannot support "
+                "or contradict a claim — set verdict='no_bearing' or "
+                "reconsider whether the evidence is actually in scope."
+            )
+        return self
 
 
 class IndependenceJudgmentOutput(BaseModel):
