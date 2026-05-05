@@ -14,6 +14,11 @@ from .primitives import (
     AdversarialEvidence,
     CriticismCategory,
 )
+from .thresholds import (
+    ADVERSARIAL_REFUTED_THRESHOLD,
+    ADVERSARIAL_SURVIVED_THRESHOLD,
+    ADVERSARIAL_SUSPICIOUS_THRESHOLD,
+)
 
 
 def calculate_adversarial_balance(
@@ -31,12 +36,17 @@ def calculate_adversarial_balance(
     Returns:
         Balance score from 0.0 to 1.0.
 
-    Interpretation:
-    - > 0.8: Strongly supported (but check for confirmation bias)
-    - 0.6-0.8: Moderately supported
-    - 0.4-0.6: Contested
-    - 0.2-0.4: Weakly supported / likely false
-    - < 0.2: Strongly challenged
+    Interpretation (Popper-Lakatos three-band; canonical breakpoints
+    in epistemic.thresholds):
+
+    - > ADVERSARIAL_SUSPICIOUS_THRESHOLD (0.95): suspiciously
+      uncontested — check for insufficient adversarial search
+    - >= ADVERSARIAL_SURVIVED_THRESHOLD (0.7): survived adversarial
+      challenge (Popperian corroboration)
+    - >= ADVERSARIAL_REFUTED_THRESHOLD (0.3): contested (Lakatos:
+      counterevidence exists but isn't decisive)
+    - < ADVERSARIAL_REFUTED_THRESHOLD (0.3): refuted (Popper:
+      adversarial evidence dominates)
     """
     total = supporting_weight + adversarial_weight
     if total == 0:
@@ -45,7 +55,15 @@ def calculate_adversarial_balance(
 
 
 def interpret_balance(balance: float) -> str:
-    """Interpret an adversarial balance score.
+    """Interpret an adversarial balance score using the canonical
+    Popper-Lakatos three-band system.
+
+    The function is a *narrative renderer*: its strings are consumed
+    by report writers and CLI panels for human-readable display, not
+    by graph routing or gate decisions (those branch on the balance
+    value directly via ``epistemic.thresholds`` constants). Bands
+    here are derived from the same canonical thresholds so the
+    narrative stays consistent with the gating logic.
 
     Args:
         balance: Balance score from 0.0 to 1.0.
@@ -53,18 +71,13 @@ def interpret_balance(balance: float) -> str:
     Returns:
         Human-readable interpretation.
     """
-    if balance > 0.95:
-        return "Suspiciously uncontested - may indicate insufficient adversarial search"
-    elif balance > 0.8:
-        return "Strongly supported - no significant counterarguments found"
-    elif balance > 0.6:
-        return "Moderately supported - some valid criticism but outweighed by support"
-    elif balance > 0.4:
-        return "Contested - significant criticism exists, claim uncertain"
-    elif balance > 0.2:
-        return "Weakly supported - adversarial evidence outweighs support"
-    else:
-        return "Strongly challenged - substantial counterarguments undermine claim"
+    if balance > ADVERSARIAL_SUSPICIOUS_THRESHOLD:
+        return "Suspiciously uncontested — may indicate insufficient adversarial search"
+    if balance >= ADVERSARIAL_SURVIVED_THRESHOLD:
+        return "Survived adversarial challenge — no decisive counterevidence found"
+    if balance < ADVERSARIAL_REFUTED_THRESHOLD:
+        return "Refuted — adversarial evidence dominates"
+    return "Contested — significant counterevidence exists; claim uncertain"
 
 
 def determine_verdict(
@@ -79,11 +92,22 @@ def determine_verdict(
     Returns:
         Tuple of (verdict, recommendation, confidence).
 
-    Verdicts:
-    - SUPPORTED: Claim survived adversarial search
-    - CONTESTED: Significant criticism exists
-    - CHALLENGED: Strong counterarguments undermine claim
-    - REFUTED: Overwhelming adversarial evidence
+    Three-band Popper-Lakatos verdict, derived from the canonical
+    breakpoints in ``epistemic.thresholds``. The verdict string is
+    consumed by reporters and CLI panels (display only — graph
+    routing branches on the balance value directly via the gate
+    thresholds, not on the verdict string).
+
+    Verdicts (canonical three-band):
+    - SUPPORTED: balance >= ADVERSARIAL_SURVIVED_THRESHOLD —
+      claim survived adversarial challenge (Popperian corroboration).
+    - CONTESTED: REFUTED <= balance < SURVIVED — claim has
+      counterevidence but isn't decisively refuted (Lakatos middle).
+    - REFUTED: balance < ADVERSARIAL_REFUTED_THRESHOLD — adversarial
+      evidence dominates (Popper falsification). Also returned when
+      ≥2 quality replication failures are present, regardless of
+      balance — replication failure is a structural refutation that
+      a balance score may not fully reflect.
     """
     # Count strong counterarguments
     strong_counters = sum(
@@ -100,35 +124,26 @@ def determine_verdict(
         and c.quality.passes_threshold
     )
 
-    # Determine verdict
+    # Replication failures are decisive regardless of balance.
+    if replication_failures >= 2:
+        return "REFUTED", "refute", 0.85
     if replication_failures > 0:
-        # Replication failure is very serious
-        if replication_failures >= 2:
-            return "REFUTED", "refute", 0.85
-        else:
-            return "CHALLENGED", "weaken", 0.75
+        return "CONTESTED", "weaken", 0.75
 
-    if balance > 0.8:
+    if balance >= ADVERSARIAL_SURVIVED_THRESHOLD:
+        # Strong counters temper survival confidence (Lakatos: the
+        # research programme survives but isn't unchallenged).
         if strong_counters == 0:
             return "SUPPORTED", "maintain", 0.9 - (1.0 - balance) * 0.5
-        else:
-            # Strong counters exist but balance is good
-            return "SUPPORTED", "maintain", 0.7
+        return "SUPPORTED", "maintain", 0.7
 
-    elif balance > 0.6:
-        if strong_counters >= 2:
-            return "CONTESTED", "modify", 0.6
-        else:
-            return "SUPPORTED", "maintain", 0.65
-
-    elif balance > 0.4:
-        return "CONTESTED", "modify", 0.5
-
-    elif balance > 0.2:
-        return "CHALLENGED", "weaken", 0.6
-
-    else:
+    if balance < ADVERSARIAL_REFUTED_THRESHOLD:
         return "REFUTED", "refute", 0.75
+
+    # Contested middle band (REFUTED ≤ balance < SURVIVED).
+    if strong_counters >= 2:
+        return "CONTESTED", "modify", 0.6
+    return "CONTESTED", "modify", 0.5
 
 
 def calculate_total_adversarial_weight(
@@ -166,11 +181,11 @@ def should_flag_for_review(
         Tuple of (should_flag, reason).
     """
     # Suspiciously uncontested
-    if balance > 0.95 and len(counterarguments) == 0:
+    if balance > ADVERSARIAL_SUSPICIOUS_THRESHOLD and len(counterarguments) == 0:
         return True, "No counterarguments found - may need broader search"
 
     # Strong challenge but not demoted
-    if balance < 0.3:
+    if balance < ADVERSARIAL_REFUTED_THRESHOLD:
         return True, "Strong adversarial evidence - claim may need demotion"
 
     # Mixed quality counterarguments

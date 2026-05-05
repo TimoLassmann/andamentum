@@ -120,9 +120,14 @@ class TestAdversarialBalance:
         assert balance == 0.5
 
     def test_interpret_balance_strings(self):
-        assert "supported" in interpret_balance(0.85).lower()
+        # Three-band Popper-Lakatos system from epistemic.thresholds.
+        # Balance 0.85 is above SURVIVED (0.7) → "Survived ..."
+        # Balance 0.50 is between REFUTED (0.3) and SURVIVED (0.7)
+        #   → "Contested ..."
+        # Balance 0.15 is below REFUTED (0.3) → "Refuted ..."
+        assert "survived" in interpret_balance(0.85).lower()
         assert "contested" in interpret_balance(0.5).lower()
-        assert "challenged" in interpret_balance(0.15).lower()
+        assert "refuted" in interpret_balance(0.15).lower()
 
     def test_determine_verdict_supported(self):
         verdict, recommendation, conf = determine_verdict(0.9, [])
