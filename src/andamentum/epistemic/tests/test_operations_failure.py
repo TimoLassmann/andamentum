@@ -982,7 +982,9 @@ class TestInvestigateClaimFailure:
 
     @pytest.mark.asyncio
     async def test_investigation_exhausted_abandons_claim(self, tmp_path):
-        """After MAX_INVESTIGATION_ATTEMPTS, claim is abandoned."""
+        """After PEIRCE_CYCLE_CAP investigations, claim is abandoned."""
+        from andamentum.epistemic.thresholds import PEIRCE_CYCLE_CAP
+
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         claim = await _save_claim(
@@ -990,8 +992,8 @@ class TestInvestigateClaimFailure:
             obj.entity_id,
             scrutiny_verdict="needs_resolution",
         )
-        # Set investigation_count to max
-        claim.investigation_count = 3  # MAX_INVESTIGATION_ATTEMPTS
+        # Set investigation_count to the cap
+        claim.investigation_count = PEIRCE_CYCLE_CAP
         await repo.save(claim)
 
         runner = FakeAgentRunner()

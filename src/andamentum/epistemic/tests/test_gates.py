@@ -320,13 +320,16 @@ class TestComputeConfidenceScore:
             ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.8
         )
         assert score_good == score_no_balance
-        # With low balance: penalty applied
+        # With low balance: penalty applied. Penalty formula uses
+        # ADVERSARIAL_SURVIVED_THRESHOLD as the floor for "no penalty"
+        # (claims at or above survival incur no additional penalty).
         score_challenged = compute_confidence_score(
             ClaimStage.SUPPORTED, 0.8, adversarial_balance=0.2
         )
         assert score_challenged < score_no_balance
-        # Penalty magnitude: (0.6 - 0.2) * 0.3 = 0.12
-        assert score_no_balance - score_challenged == pytest.approx(0.12, abs=0.01)
+        # Penalty magnitude: (ADVERSARIAL_SURVIVED_THRESHOLD - 0.2) * 0.3
+        # = (0.7 - 0.2) * 0.3 = 0.15.
+        assert score_no_balance - score_challenged == pytest.approx(0.15, abs=0.01)
 
     def test_adversarial_balance_never_below_zero(self):
         score = compute_confidence_score(
@@ -341,8 +344,17 @@ class TestProvisionalQualitySumThreshold:
         assert gate.min_quality_sum == 0.5
 
     def test_provisional_has_adversarial_balance_threshold(self):
+        """PROVISIONAL gate's adversarial floor is the principled
+        ADVERSARIAL_REFUTED_THRESHOLD: PROVISIONAL allows "contested"
+        but not "refuted". (Before 2026-05-05 harmonization this was
+        0.4 — an arbitrary buffer above refuted; now matches the
+        principled boundary.)"""
+        from andamentum.epistemic.thresholds import (
+            ADVERSARIAL_REFUTED_THRESHOLD,
+        )
+
         gate = STAGE_GATES[ClaimStage.PROVISIONAL]
-        assert gate.adversarial_balance_threshold == 0.4
+        assert gate.adversarial_balance_threshold == ADVERSARIAL_REFUTED_THRESHOLD
 
 
 class TestAdversarialBalanceGate:
@@ -428,7 +440,9 @@ class TestAdversarialSurvivalGate:
 
         result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
         # Should not fail on supporting sources
-        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        supporting_reasons = [
+            r for r in result.blocking_reasons if "supporting" in r.lower()
+        ]
         assert len(supporting_reasons) == 0
 
     async def test_low_balance_does_not_satisfy(self, repo):
@@ -449,7 +463,9 @@ class TestAdversarialSurvivalGate:
         await repo.save(claim)
 
         result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
-        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        supporting_reasons = [
+            r for r in result.blocking_reasons if "supporting" in r.lower()
+        ]
         assert len(supporting_reasons) > 0
 
     async def test_adversarial_not_run_does_not_satisfy(self, repo):
@@ -469,7 +485,9 @@ class TestAdversarialSurvivalGate:
         await repo.save(claim)
 
         result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
-        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        supporting_reasons = [
+            r for r in result.blocking_reasons if "supporting" in r.lower()
+        ]
         assert len(supporting_reasons) > 0
 
     async def test_direct_support_still_works(self, repo):
@@ -488,5 +506,7 @@ class TestAdversarialSurvivalGate:
         await repo.save(claim)
 
         result = await validate_promotion(claim, ClaimStage.SUPPORTED, repo)
-        supporting_reasons = [r for r in result.blocking_reasons if "supporting" in r.lower()]
+        supporting_reasons = [
+            r for r in result.blocking_reasons if "supporting" in r.lower()
+        ]
         assert len(supporting_reasons) == 0

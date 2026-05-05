@@ -20,8 +20,6 @@ from typing import Optional, TYPE_CHECKING
 # ── Base layer ───────────────────────────────────────────────────────────
 from .base import (
     DEDUP_SIMILARITY_THRESHOLD,
-    MAX_INVESTIGATION_ATTEMPTS,
-    MAX_UNCERTAINTY_DEPTH,
     AgentRunner,
     BaseOperation,
     DefaultValidator,
@@ -244,8 +242,6 @@ __all__ = [
     "OperationValidator",
     "DefaultValidator",
     "DEDUP_SIMILARITY_THRESHOLD",
-    "MAX_INVESTIGATION_ATTEMPTS",
-    "MAX_UNCERTAINTY_DEPTH",
     "OperationInput",
     "WorkItem",  # backward compat alias
     "ProviderRegistry",

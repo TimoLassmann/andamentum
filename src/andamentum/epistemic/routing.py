@@ -204,7 +204,10 @@ ROUTING_TABLE: dict[str, RoutingProfile] = {
 }
 
 SECONDARY_TRIGGERS: dict[str, str] = {
-    "adversarial": "conflicting_evidence_flag OR adversarial_balance < 0.6",
+    "adversarial": (
+        "conflicting_evidence_flag OR "
+        "adversarial_balance < ADVERSARIAL_SURVIVED_THRESHOLD"
+    ),
     "convergence": "evidence_count >= 3 AND domain_count < 2",
     "deductive": "claim_has_logical_structure AND no_deductive_validation_yet",
     "argument": "claim_has_premise_chain AND no_argument_analysis_yet",

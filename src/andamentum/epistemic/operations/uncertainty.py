@@ -4,11 +4,16 @@ Resolves blocking uncertainties with sibling grouping (cosine dedup)
 and concern dedup. When resolution succeeds, applies the same answer
 to semantically similar siblings.
 
-Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, MAX_UNCERTAINTY_DEPTH)
+Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD)
 Operates on: Uncertainty, Claim, Evidence, Objective entities
 """
 
-from .base import BaseOperation, DEDUP_SIMILARITY_THRESHOLD, OperationInput, OperationResult
+from .base import (
+    BaseOperation,
+    DEDUP_SIMILARITY_THRESHOLD,
+    OperationInput,
+    OperationResult,
+)
 
 from ..entities import (
     Claim,

@@ -636,7 +636,9 @@ class TestPromotion:
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = OperationInput(entity_id="c-1", entity_type="claim", operation="promote_claim")
+        work = OperationInput(
+            entity_id="c-1", entity_type="claim", operation="promote_claim"
+        )
         result = await ops["promote_claim"].execute(work)
 
         assert result.success
@@ -1412,8 +1414,8 @@ class TestDeduplicateConcerns:
 
     @pytest.mark.asyncio
     async def test_depth_demotion(self, repo, fake_runner):
-        """Concerns at depth >= MAX_UNCERTAINTY_DEPTH become non-blocking."""
-        from andamentum.epistemic.operations.base import MAX_UNCERTAINTY_DEPTH
+        """Concerns at depth >= PEIRCE_CYCLE_CAP become non-blocking."""
+        from andamentum.epistemic.thresholds import PEIRCE_CYCLE_CAP
 
         obj = Objective(
             entity_id="obj-1",
@@ -1425,7 +1427,7 @@ class TestDeduplicateConcerns:
                     "text": "Deep concern",
                     "parent_id": "u-1",
                     "affected_claim_ids": ["c-1"],
-                    "depth": MAX_UNCERTAINTY_DEPTH,
+                    "depth": PEIRCE_CYCLE_CAP,
                 },
             ],
         )

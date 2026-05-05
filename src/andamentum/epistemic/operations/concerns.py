@@ -11,7 +11,7 @@ This prevents the cascade where each resolution call generates slightly
 different wordings of the same concern, each passing pairwise dedup
 because it only sees what existed at the moment of its creation.
 
-Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD, MAX_UNCERTAINTY_DEPTH)
+Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD)
 Operates on: Objective (reads pending_concerns), creates Uncertainty entities
 """
 
@@ -20,10 +20,10 @@ import logging
 from .base import (
     BaseOperation,
     DEDUP_SIMILARITY_THRESHOLD,
-    MAX_UNCERTAINTY_DEPTH,
     OperationInput,
     OperationResult,
 )
+from ..thresholds import PEIRCE_CYCLE_CAP
 
 from ..entities import (
     Objective,
@@ -140,7 +140,7 @@ class DeduplicateConcernsOperation(BaseOperation):
             # Must change uncertainty_type (not just is_blocking) because
             # model_post_init recomputes is_blocking from type on every load.
             child_depth = s.get("depth", 0)
-            if child_depth >= MAX_UNCERTAINTY_DEPTH and new_uncertainty.is_blocking:
+            if child_depth >= PEIRCE_CYCLE_CAP and new_uncertainty.is_blocking:
                 new_uncertainty.uncertainty_type = UncertaintyType.EVIDENCE_GAP
                 new_uncertainty.is_blocking = False
                 await self.repo.save(new_uncertainty)

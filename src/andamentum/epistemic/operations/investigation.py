@@ -5,11 +5,12 @@ when scrutiny produces doubt and creates targeted Evidence stubs.
 GeneratePredictionOperation produces testable predictions from robust claims.
 RecordDecisionOperation creates Decision entities for actionable claims.
 
-Depends on: base (BaseOperation, OperationResult, MAX_INVESTIGATION_ATTEMPTS)
+Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim, Evidence, Decision, Objective entities
 """
 
-from .base import BaseOperation, MAX_INVESTIGATION_ATTEMPTS, OperationInput, OperationResult
+from .base import BaseOperation, OperationInput, OperationResult
+from ..thresholds import PEIRCE_CYCLE_CAP
 
 from ..entities import (
     Claim,
@@ -66,9 +67,7 @@ class GeneratePredictionOperation(BaseOperation):
             aspects = []
             for i in range(self.NUM_ASPECTS):
                 if aspects:
-                    prev_text = "\n".join(
-                        f"- {a.testable_dimension}" for a in aspects
-                    )
+                    prev_text = "\n".join(f"- {a.testable_dimension}" for a in aspects)
                 else:
                     prev_text = "(none yet)"
 
@@ -188,9 +187,7 @@ class RecordDecisionOperation(BaseOperation):
                 for i, c in enumerate(all_claims):
                     if isinstance(c, Claim) and not c.abandoned:
                         marker = (
-                            " <- (this claim)"
-                            if c.entity_id == claim.entity_id
-                            else ""
+                            " <- (this claim)" if c.entity_id == claim.entity_id else ""
                         )
                         all_claims_text.append(
                             f"[{i}] [{c.stage.value}] {c.statement} "
@@ -257,8 +254,8 @@ class InvestigateClaimOperation(BaseOperation):
                 message="Claim already abandoned",
             )
 
-        # Check investigation limit
-        if claim.investigation_count >= MAX_INVESTIGATION_ATTEMPTS:
+        # Check investigation limit (Peirce-cycling cap)
+        if claim.investigation_count >= PEIRCE_CYCLE_CAP:
             # Exhausted — force to fail and abandon
             if claim.scrutiny_verdict == "needs_resolution":
                 claim.scrutiny_verdict = "fail"
@@ -278,9 +275,7 @@ class InvestigateClaimOperation(BaseOperation):
         for eid in claim.evidence_ids:
             ev = await self.repo.get("evidence", eid)
             if isinstance(ev, Evidence) and ev.extracted_content:
-                evidence_summaries.append(
-                    f"[{ev.source_type}] {ev.extracted_content}"
-                )
+                evidence_summaries.append(f"[{ev.source_type}] {ev.extracted_content}")
                 source_types_seen.add(ev.source_type)
 
         # Load scrutiny issues from uncertainties
@@ -313,9 +308,7 @@ class InvestigateClaimOperation(BaseOperation):
             from ..providers import PROVIDER_REGISTRY
 
             all_providers = sorted(PROVIDER_REGISTRY)
-            unused_providers = [
-                p for p in all_providers if p not in source_types_seen
-            ]
+            unused_providers = [p for p in all_providers if p not in source_types_seen]
             chosen_provider: str | None = None
             if len(unused_providers) >= 2:
                 # Rank unused candidates and pick the best.
@@ -376,7 +369,11 @@ class InvestigateClaimOperation(BaseOperation):
                 # the agent's source_type — we've made the provider
                 # decision externally for lazy-escalation. When None,
                 # honor whatever the agent chose.
-                source_type = chosen_provider if chosen_provider is not None else agent_source_type
+                source_type = (
+                    chosen_provider
+                    if chosen_provider is not None
+                    else agent_source_type
+                )
                 if not query:
                     continue
 

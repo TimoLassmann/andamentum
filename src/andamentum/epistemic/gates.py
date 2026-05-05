@@ -19,6 +19,10 @@ import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from .entities import Claim, ClaimStage, Evidence
+from .thresholds import (
+    ADVERSARIAL_REFUTED_THRESHOLD,
+    ADVERSARIAL_SURVIVED_THRESHOLD,
+)
 
 if TYPE_CHECKING:
     from .repository import EpistemicRepository
@@ -230,7 +234,11 @@ STAGE_GATES: dict[ClaimStage, StageGate] = {
         requires_computational=False,
         blocks_on_uncertainties=True,
         min_supporting_sources=2,
-        adversarial_balance_threshold=0.4,
+        # PROVISIONAL allows "contested" but not "refuted" — the
+        # principled floor is ADVERSARIAL_REFUTED_THRESHOLD. Promotion
+        # past PROVISIONAL (to ROBUST/ACTIONABLE) requires actual
+        # survival; that gate is enforced by upstream stage logic.
+        adversarial_balance_threshold=ADVERSARIAL_REFUTED_THRESHOLD,
     ),
     ClaimStage.ROBUST: StageGate(
         target_stage=ClaimStage.ROBUST,
@@ -457,9 +465,7 @@ async def count_support_contradict(
     return n_sup, n_con
 
 
-async def is_refuted_by_evidence(
-    claim: "Claim", repo: "EpistemicRepository"
-) -> bool:
+async def is_refuted_by_evidence(claim: "Claim", repo: "EpistemicRepository") -> bool:
     """True when the claim's evidence overwhelmingly contradicts it.
 
     Heuristic: at least 3 contradicting evidence items AND contradicts >= 2 ×
@@ -506,9 +512,16 @@ def compute_confidence_score(
     """
     base, bonus_weight = _STAGE_CONFIDENCE.get(stage, (0.1, 0.0))
     score = base + avg_quality * bonus_weight
-    # Adversarial balance penalty: if claim is challenged, reduce confidence
-    if adversarial_balance is not None and adversarial_balance < 0.6:
-        penalty = (0.6 - adversarial_balance) * 0.3  # Max penalty ~0.18
+    # Adversarial balance penalty: if the claim has not survived
+    # adversarial challenge (i.e. balance < ADVERSARIAL_SURVIVED_THRESHOLD),
+    # reduce confidence proportionally to the gap below survival.
+    # Maximum penalty when balance is at the survival threshold; 0
+    # additional penalty when balance is at or above it.
+    if (
+        adversarial_balance is not None
+        and adversarial_balance < ADVERSARIAL_SURVIVED_THRESHOLD
+    ):
+        penalty = (ADVERSARIAL_SURVIVED_THRESHOLD - adversarial_balance) * 0.3
         score -= penalty
     return max(0.0, min(1.0, score))
 
@@ -589,7 +602,7 @@ async def validate_promotion(
             adversarial_survived = (
                 claim.adversarial_checked
                 and claim.adversarial_balance is not None
-                and claim.adversarial_balance >= 0.7
+                and claim.adversarial_balance >= ADVERSARIAL_SURVIVED_THRESHOLD
             )
 
             if (
@@ -785,11 +798,15 @@ async def validate_current_stage(
         except Exception as e:
             logger.warning("validate_current_stage: quality sum check failed: %s", e)
 
-    # Adversarial balance — if adversarial search has run and found severe refutation,
-    # the claim shouldn't remain at its current stage. 0.3 is the same threshold
-    # used in AdversarialSearchOperation to flag severe challenges.
+    # Adversarial balance — if adversarial search has run and the claim
+    # has been Popper-refuted (balance below ADVERSARIAL_REFUTED_THRESHOLD),
+    # it cannot remain at its current stage. Same threshold and
+    # interpretation used by AdversarialSearchOperation.
     adversarial_balance = getattr(claim, "adversarial_balance", None)
-    if adversarial_balance is not None and adversarial_balance < 0.3:
+    if (
+        adversarial_balance is not None
+        and adversarial_balance < ADVERSARIAL_REFUTED_THRESHOLD
+    ):
         reasons.append(
             f"Adversarial balance {adversarial_balance:.2f} indicates refutation (threshold 0.3)"
         )

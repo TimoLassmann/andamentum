@@ -1,8 +1,10 @@
 """Tests for investigation cycle limiting.
 
-Investigation cycles are capped by MAX_INVESTIGATION_ATTEMPTS=3 in
-InvestigateClaimOperation. After 3 cycles, the claim is abandoned.
-No other mechanism (saturation, etc.) limits investigation.
+Investigation cycles are capped by PEIRCE_CYCLE_CAP=3 (the canonical
+Peirce-cycling constant in ``andamentum.epistemic.thresholds``) in
+InvestigateClaimOperation. After PEIRCE_CYCLE_CAP cycles the claim
+is abandoned. No other mechanism (saturation, etc.) limits
+investigation.
 """
 
 import pytest
@@ -12,7 +14,7 @@ from ..entities.claim import Claim
 from ..entities.objective import Objective
 from ..primitives import ClaimStage
 from ..operations.investigation import InvestigateClaimOperation
-from ..operations.base import MAX_INVESTIGATION_ATTEMPTS
+from ..thresholds import PEIRCE_CYCLE_CAP
 from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
 
@@ -30,7 +32,7 @@ class TestInvestigationCap:
 
     @pytest.mark.asyncio
     async def test_investigation_exhausted_abandons_claim(self, repo):
-        """After MAX_INVESTIGATION_ATTEMPTS, claim is abandoned."""
+        """After PEIRCE_CYCLE_CAP, claim is abandoned."""
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
 
@@ -39,7 +41,7 @@ class TestInvestigationCap:
             objective_id=obj.entity_id,
             stage=ClaimStage.HYPOTHESIS,
             scrutiny_verdict="needs_resolution",
-            investigation_count=MAX_INVESTIGATION_ATTEMPTS,
+            investigation_count=PEIRCE_CYCLE_CAP,
         )
         await repo.save(claim)
 
@@ -57,7 +59,7 @@ class TestInvestigationCap:
 
     @pytest.mark.asyncio
     async def test_investigation_below_cap_continues(self, repo):
-        """Below MAX_INVESTIGATION_ATTEMPTS, investigation proceeds."""
+        """Below PEIRCE_CYCLE_CAP, investigation proceeds."""
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
 
