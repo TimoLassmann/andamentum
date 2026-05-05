@@ -9,7 +9,7 @@ Architecture: Layer 1 (framework-agnostic)
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
 from .prediction import Prediction
@@ -58,27 +58,15 @@ class CandidateRecord(BaseModel):
 class PromotionHistoryEntry(BaseModel):
     """Typed entry in ``Claim.promotion_history``.
 
-    The wire format keeps the legacy ``{"from", "to", "timestamp",
-    "justification"}`` keys (via Pydantic field aliases) so persisted
-    Claims load without migration. In code, consumers access the typed
-    ``from_stage`` / ``to_stage`` attributes — the previous untyped
-    ``list[dict[str, Any]]`` shape masked a real bug
-    (``trace_renderers.py`` reading ``"from_stage"`` / ``"to_stage"``
-    string keys that no writer ever produced).
+    Replaces the previous untyped ``list[dict[str, Any]]`` shape, which
+    masked a real bug — ``trace_renderers.py`` was reading
+    ``"from_stage"`` / ``"to_stage"`` keys that no writer produced.
     """
 
-    from_stage: "ClaimStage" = Field(alias="from")
-    to_stage: "ClaimStage" = Field(alias="to")
+    from_stage: "ClaimStage"
+    to_stage: "ClaimStage"
     timestamp: datetime
     justification: str
-
-    # populate_by_name=True   → constructor accepts ``from_stage=...``
-    #                          (the python-friendly name) in addition to
-    #                          ``from=...`` (the wire alias).
-    # serialize_by_alias=True → ``model_dump`` emits ``{"from", "to"}``,
-    #                          preserving the legacy wire shape so
-    #                          persisted Claims round-trip byte-equal.
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
 
 class ClaimStage(str, Enum):
@@ -347,20 +335,12 @@ class Claim(EpistemicEntity):
         history append and stage assignment, then layers on its own
         Lakatos / verification-flag cleanup.
         """
-        # Construct via ``model_validate`` (dict input) so the wire
-        # aliases ``"from"`` / ``"to"`` round-trip exactly; the
-        # ``populate_by_name=True`` setting also lets us pass the
-        # field-name kwargs, but pyright's Pydantic plugin treats the
-        # alias as the canonical kwarg name and rejects the field-name
-        # form. Validating a dict sidesteps that.
         self.promotion_history.append(
-            PromotionHistoryEntry.model_validate(
-                {
-                    "from": from_stage,
-                    "to": to_stage,
-                    "timestamp": datetime.now(),
-                    "justification": justification,
-                }
+            PromotionHistoryEntry(
+                from_stage=from_stage,
+                to_stage=to_stage,
+                timestamp=datetime.now(),
+                justification=justification,
             )
         )
         self.stage = to_stage
