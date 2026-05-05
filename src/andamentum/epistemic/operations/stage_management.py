@@ -9,8 +9,6 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim entities
 """
 
-from datetime import datetime
-
 from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import Claim
@@ -74,17 +72,13 @@ class PromoteClaimOperation(BaseOperation):
                 validation_errors=gate_result.blocking_reasons,
             )
 
-        # Record promotion
+        # Record promotion (canonical writer: claim.record_promotion).
         old_stage = claim.stage
-        claim.promotion_history.append(
-            {
-                "from": old_stage.value,
-                "to": target_stage.value,
-                "timestamp": datetime.now().isoformat(),
-                "justification": f"Gate requirements met for {target_stage.value}",
-            }
+        claim.record_promotion(
+            old_stage,
+            target_stage,
+            justification=f"Gate requirements met for {target_stage.value}",
         )
-        claim.stage = target_stage
 
         # Compute and set confidence score
         from ..gates import compute_confidence_score, quality_weighted_evidence_sum
@@ -214,15 +208,11 @@ class PromoteAsRefutedOperation(BaseOperation):
         # count, not holistic integration.
         confidence = min(0.9, n_con / (n_con + max(1, n_sup)))
 
-        claim.promotion_history.append(
-            {
-                "from": claim.stage.value,
-                "to": ClaimStage.SUPPORTED.value,
-                "timestamp": datetime.now().isoformat(),
-                "justification": f"Refuted by evidence: {n_con} contradicts vs {n_sup} supports",
-            }
+        claim.record_promotion(
+            claim.stage,
+            ClaimStage.SUPPORTED,
+            justification=f"Refuted by evidence: {n_con} contradicts vs {n_sup} supports",
         )
-        claim.stage = ClaimStage.SUPPORTED
         claim.integrated_assessment = "contradicts"
         claim.integrated_confidence = confidence
         claim.integrated_reasoning = (
@@ -302,20 +292,16 @@ class SoftPromoteOperation(BaseOperation):
                 did_work=False,
             )
 
-        claim.promotion_history.append(
-            {
-                "from": claim.stage.value,
-                "to": ClaimStage.SUPPORTED.value,
-                "timestamp": datetime.now().isoformat(),
-                "justification": (
-                    f"Soft-promoted: refute threshold not met "
-                    f"({n_con} contradicts vs {n_sup} supports). "
-                    f"Promoted to SUPPORTED so the IBE chain can produce a "
-                    f"calibrated verdict on the directional evidence."
-                ),
-            }
+        claim.record_promotion(
+            claim.stage,
+            ClaimStage.SUPPORTED,
+            justification=(
+                f"Soft-promoted: refute threshold not met "
+                f"({n_con} contradicts vs {n_sup} supports). "
+                f"Promoted to SUPPORTED so the IBE chain can produce a "
+                f"calibrated verdict on the directional evidence."
+            ),
         )
-        claim.stage = ClaimStage.SUPPORTED
         # integrated_assessment / integrated_confidence / integrated_reasoning
         # are deliberately left as None. The IBE chain (EnumerateCandidates
         # → ScoreLoveliness → ScoreLikeliness → SelectBestExplanation) will

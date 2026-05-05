@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
+from .entities.claim import PromotionHistoryEntry
+
 if TYPE_CHECKING:
     from .primitives import Claim, Evidence, Uncertainty
 
@@ -75,7 +77,7 @@ class ClaimLineage:
     # Each entry: {uncertainty_id, uncertainty_type, description}
 
     # Promotion history
-    promotion_path: List[Dict[str, Any]] = field(default_factory=list)
+    promotion_path: List[PromotionHistoryEntry] = field(default_factory=list)
     # Each entry: {from_stage, to_stage, justification, timestamp}
 
     @classmethod

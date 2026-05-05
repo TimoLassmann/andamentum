@@ -9,7 +9,7 @@ Architecture: Layer 1 (framework-agnostic)
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .base import EpistemicEntity
 from .prediction import Prediction
@@ -29,7 +29,9 @@ class CandidateRecord(BaseModel):
     abductive deliberation trace survives in the database.
     """
 
-    candidate_id: str = Field(description="Stable id assigned by enumeration: 'A', 'B', ...")
+    candidate_id: str = Field(
+        description="Stable id assigned by enumeration: 'A', 'B', ..."
+    )
     verdict: str = Field(
         description=(
             "One of supports / contradicts / insufficient / "
@@ -51,6 +53,32 @@ class CandidateRecord(BaseModel):
         default=None,
         description="Set on the chosen candidate: chosen.likeliness - runner_up.likeliness.",
     )
+
+
+class PromotionHistoryEntry(BaseModel):
+    """Typed entry in ``Claim.promotion_history``.
+
+    The wire format keeps the legacy ``{"from", "to", "timestamp",
+    "justification"}`` keys (via Pydantic field aliases) so persisted
+    Claims load without migration. In code, consumers access the typed
+    ``from_stage`` / ``to_stage`` attributes — the previous untyped
+    ``list[dict[str, Any]]`` shape masked a real bug
+    (``trace_renderers.py`` reading ``"from_stage"`` / ``"to_stage"``
+    string keys that no writer ever produced).
+    """
+
+    from_stage: "ClaimStage" = Field(alias="from")
+    to_stage: "ClaimStage" = Field(alias="to")
+    timestamp: datetime
+    justification: str
+
+    # populate_by_name=True   → constructor accepts ``from_stage=...``
+    #                          (the python-friendly name) in addition to
+    #                          ``from=...`` (the wire alias).
+    # serialize_by_alias=True → ``model_dump`` emits ``{"from", "to"}``,
+    #                          preserving the legacy wire shape so
+    #                          persisted Claims round-trip byte-equal.
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
 
 class ClaimStage(str, Enum):
@@ -104,7 +132,7 @@ class Claim(EpistemicEntity):
 
     # Stage tracking
     stage: ClaimStage = Field(default=ClaimStage.HYPOTHESIS)
-    promotion_history: list[dict[str, Any]] = Field(
+    promotion_history: list[PromotionHistoryEntry] = Field(
         default_factory=list,
         description="Record of stage transitions: [{from, to, timestamp, justification}]",
     )
@@ -312,14 +340,28 @@ class Claim(EpistemicEntity):
     def record_promotion(
         self, from_stage: ClaimStage, to_stage: ClaimStage, justification: str
     ) -> None:
-        """Record a stage promotion in history."""
+        """Record a stage transition in history.
+
+        Canonical writer for ``promotion_history``. Demotions are
+        transitions too — ``record_demotion`` delegates here for the
+        history append and stage assignment, then layers on its own
+        Lakatos / verification-flag cleanup.
+        """
+        # Construct via ``model_validate`` (dict input) so the wire
+        # aliases ``"from"`` / ``"to"`` round-trip exactly; the
+        # ``populate_by_name=True`` setting also lets us pass the
+        # field-name kwargs, but pyright's Pydantic plugin treats the
+        # alias as the canonical kwarg name and rejects the field-name
+        # form. Validating a dict sidesteps that.
         self.promotion_history.append(
-            {
-                "from": from_stage.value,
-                "to": to_stage.value,
-                "timestamp": datetime.now().isoformat(),
-                "justification": justification,
-            }
+            PromotionHistoryEntry.model_validate(
+                {
+                    "from": from_stage,
+                    "to": to_stage,
+                    "timestamp": datetime.now(),
+                    "justification": justification,
+                }
+            )
         )
         self.stage = to_stage
         self.touch()
@@ -337,20 +379,11 @@ class Claim(EpistemicEntity):
         to ensure consistent behavior regardless of demotion cause.
         """
         old_stage = self.stage
-        self.stage = target_stage
 
-        # Lakatos: track the regression
+        # Lakatos: track the regression. Stage assignment and history
+        # append are delegated to record_promotion (the canonical writer).
         self.record_modification()
-
-        # Record in promotion history (demotions are recorded too)
-        self.promotion_history.append(
-            {
-                "from": old_stage.value,
-                "to": target_stage.value,
-                "timestamp": datetime.now().isoformat(),
-                "justification": justification,
-            }
-        )
+        self.record_promotion(old_stage, target_stage, justification)
 
         # Peirce cycling: reset verification state so the claim can be
         # re-evaluated from its new stage. All verification tracks and
@@ -403,7 +436,9 @@ class Claim(EpistemicEntity):
             "sub_investigation_id": self.sub_investigation_id,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
-            "integration_candidates": [c.model_dump() for c in self.integration_candidates],
+            "integration_candidates": [
+                c.model_dump() for c in self.integration_candidates
+            ],
         }
         if self.confidence_score is not None:
             meta["confidence_score"] = self.confidence_score
@@ -471,8 +506,7 @@ class Claim(EpistemicEntity):
             integrated_confidence=metadata.get("integrated_confidence"),
             integrated_reasoning=metadata.get("integrated_reasoning"),
             integration_candidates=[
-                CandidateRecord(**c)
-                for c in metadata.get("integration_candidates", [])
+                CandidateRecord(**c) for c in metadata.get("integration_candidates", [])
             ],
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
