@@ -42,12 +42,24 @@ def _make_claim(
     evidence_ids: list[str] | None = None,
     abandoned: bool = False,
     objective_id: str = OBJ_ID,
+    integrated_assessment: str | None = None,
+    integrated_confidence: float | None = None,
 ) -> Claim:
+    """Build a test Claim.
+
+    By default ``integrated_assessment=None`` — but the no-certified-
+    verdict gate (added 2026-05-05) suspends the posterior to 0.5 when
+    no claim has IA. Tests of the counting math should set IA so the
+    gate doesn't fire AND assert on ``counting_posterior`` (the
+    diagnostic), not on ``posterior`` (which now follows the
+    integration verdict)."""
     return Claim(
         objective_id=objective_id,
         statement="Test claim for posterior",
         evidence_ids=evidence_ids or [],
         abandoned=abandoned,
+        integrated_assessment=integrated_assessment,
+        integrated_confidence=integrated_confidence,
     )
 
 
@@ -81,8 +93,12 @@ def _make_evidence(
 class TestPosteriorEvidenceDirection:
     """Tests that evidence direction drives posterior correctly."""
 
-    async def test_all_supporting_evidence_high_posterior(self, repo):
-        """All supporting evidence should produce a high posterior (> 0.5)."""
+    async def test_all_supporting_evidence_high_diagnostic_counting(self, repo):
+        """All supporting evidence should produce a high counting_posterior
+        (the diagnostic). The headline posterior suspends to 0.5 because
+        no claim has integrated_assessment — the no-certified-verdict
+        gate (added 2026-05-05) requires IBE certification before
+        committing to a directional posterior."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -98,13 +114,18 @@ class TestPosteriorEvidenceDirection:
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
-        assert report.posterior > 0.5
+        # Headline posterior suspends — no IBE certification.
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
+        # Diagnostic counts still computed and exposed.
         assert report.supporting_count == 3
         assert report.contradicting_count == 0
-        assert report.log_odds == 3
+        assert report.counting_posterior > 0.5
 
-    async def test_all_contradicting_evidence_low_posterior(self, repo):
-        """All contradicting evidence should produce a low posterior (< 0.5)."""
+    async def test_all_contradicting_evidence_low_diagnostic_counting(self, repo):
+        """All contradicting evidence — diagnostic counting reflects it
+        even though the headline posterior suspends. See the analogous
+        ``test_all_supporting_evidence_high_diagnostic_counting``."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -120,10 +141,11 @@ class TestPosteriorEvidenceDirection:
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
-        assert report.posterior < 0.5
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
         assert report.supporting_count == 0
         assert report.contradicting_count == 3
-        assert report.log_odds == -3
+        assert report.counting_posterior < 0.5
 
     async def test_balanced_evidence_posterior_near_half(self, repo):
         """Equal supporting and contradicting evidence should produce posterior near 0.5."""
@@ -170,7 +192,10 @@ class TestPosteriorEvidenceFiltering:
     """Tests that invalidated, corroborative, no_bearing evidence are excluded."""
 
     async def test_invalidated_evidence_excluded(self, repo):
-        """Invalidated evidence should not count toward posterior."""
+        """Invalidated evidence should not count toward diagnostic
+        counting (and would not count toward posterior if the
+        no-certified-verdict gate weren't suspending the posterior
+        in this no-IA fixture)."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -186,10 +211,10 @@ class TestPosteriorEvidenceFiltering:
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
-        # Only the valid supporting evidence should count
+        # Only the valid supporting evidence is counted in the
+        # diagnostic — invalidated is excluded.
         assert report.supporting_count == 1
         assert report.contradicting_count == 0
-        assert report.log_odds == 1
 
     async def test_corroborative_evidence_excluded(self, repo):
         """Corroborative (non-representative) evidence should not count."""
@@ -223,7 +248,8 @@ class TestPosteriorEvidenceFiltering:
         assert report.contradicting_count == 0
 
     async def test_no_bearing_evidence_excluded(self, repo):
-        """Evidence with support_judgment 'no_bearing' should be ignored."""
+        """Evidence with support_judgment 'no_bearing' should not count
+        toward the diagnostic supporting / contradicting tallies."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -239,7 +265,6 @@ class TestPosteriorEvidenceFiltering:
         assert report is not None
         assert report.supporting_count == 1
         assert report.contradicting_count == 0
-        assert report.log_odds == 1
 
     async def test_unjudged_evidence_excluded(self, repo):
         """Evidence with support_judgment None should be ignored."""
@@ -371,9 +396,7 @@ class TestPosteriorSeedClaimMode:
     binary by construction regardless of how the parent was classified.
     """
 
-    async def test_explanatory_parent_seed_claim_child_returns_report(
-        self, repo
-    ):
+    async def test_explanatory_parent_seed_claim_child_returns_report(self, repo):
         """The headline case: explanatory question_type with claim_to_verify
         set must produce a posterior, not None."""
         obj = Objective(
@@ -396,9 +419,7 @@ class TestPosteriorSeedClaimMode:
         assert result.posterior == pytest.approx(0.125)
         assert result.integration_verdict == "contradicts"
 
-    async def test_comparative_parent_seed_claim_child_returns_report(
-        self, repo
-    ):
+    async def test_comparative_parent_seed_claim_child_returns_report(self, repo):
         """A comparative parent decomposed into binary seed claims:
         each child verifies a specific claim, so seed-claim mode opens
         up posterior computation even though comparative parents
@@ -528,7 +549,10 @@ class TestPosteriorSeedClaimMode:
         await repo.save(obj)
         from andamentum.epistemic.entities.claim import ClaimStage as _CS
 
-        for sub_id, verdict, conf in (("A", "contradicts", 0.5), ("B", "supports", 0.85)):
+        for sub_id, verdict, conf in (
+            ("A", "contradicts", 0.5),
+            ("B", "supports", 0.85),
+        ):
             c = Claim(
                 objective_id=OBJ_ID,
                 statement=sub_id,
@@ -563,9 +587,7 @@ class TestPosteriorSeedClaimMode:
         assert result is not None
         assert result.mode == "abductive"
 
-    async def test_explanatory_parent_with_decomposition_returns_report(
-        self, repo
-    ):
+    async def test_explanatory_parent_with_decomposition_returns_report(self, repo):
         """Multi-seed-claim mode: parent classified explanatory but has
         decomposition with sub-investigations. is_verification_task()
         is True (decomposition is set with non-empty sub_investigations);
@@ -609,7 +631,9 @@ class TestPosteriorMultiClaimAggregation:
     """Tests that evidence is aggregated across multiple active claims."""
 
     async def test_evidence_aggregated_across_claims(self, repo):
-        """Evidence from multiple active claims should be summed together."""
+        """Evidence from multiple active claims should be summed
+        together in the diagnostic counts. The headline posterior
+        suspends because no claim has integrated_assessment."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -627,12 +651,17 @@ class TestPosteriorMultiClaimAggregation:
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
-        # 2 supporting from claim1 + 1 contradicting from claim2
+        # 2 supporting from claim1 + 1 contradicting from claim2 — the
+        # diagnostic counts aggregate across claims correctly.
         assert report.supporting_count == 2
         assert report.contradicting_count == 1
-        assert report.log_odds == 1
-        # 1 / (1 + exp(-1)) ≈ 0.731
-        assert report.posterior == pytest.approx(1.0 / (1.0 + math.exp(-1)), abs=1e-4)
+        # Diagnostic counting_posterior reflects the math:
+        # 1 / (1 + exp(-1)) ≈ 0.731.
+        assert report.counting_posterior == pytest.approx(
+            1.0 / (1.0 + math.exp(-1)), abs=1e-4
+        )
+        # Headline posterior suspends — no IBE certification.
+        assert report.posterior == 0.5
 
 
 # =========================================================================
@@ -671,7 +700,16 @@ class TestPosteriorReportStructure:
         assert len(report.explanation) > 0
 
     async def test_sigmoid_calculation(self, repo):
-        """Verify the sigmoid transform: posterior = 1/(1+exp(-log_odds))."""
+        """Verify the sigmoid transform: posterior = 1/(1+exp(-log_odds))
+        when an integrated_assessment is present (so counts can drive
+        the diagnostic counting_posterior).
+
+        After 2026-05-05's no-certified-verdict gate, counting alone
+        does NOT drive the headline posterior — the gate suspends to
+        0.5 if no claim has an integrated_assessment. To test the
+        sigmoid math we set an integrated_assessment so the gate
+        passes; the diagnostic counting_posterior then exposes the
+        sigmoid value for inspection."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -682,13 +720,15 @@ class TestPosteriorReportStructure:
         await repo.save(e2)
 
         claim = _make_claim(evidence_ids=["e-sig1", "e-sig2"])
+        # Set IA so the no-certified-verdict gate doesn't fire.
+        claim.integrated_assessment = "supports"
+        claim.integrated_confidence = 0.4
         await repo.save(claim)
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
         expected = 1.0 / (1.0 + math.exp(-2))
-        assert report.posterior == pytest.approx(expected, abs=1e-4)
-        assert report.log_odds == 2
+        assert report.counting_posterior == pytest.approx(expected, abs=1e-4)
 
 
 # =========================================================================
@@ -824,8 +864,19 @@ class TestPosteriorIntegrationSynthesis:
         # supports at 0.8 → 0.9
         assert report.posterior == pytest.approx(0.9, abs=0.01)
 
-    async def test_no_integration_falls_back_to_counting(self, repo):
-        """When no claim has an integration verdict, counting drives the posterior."""
+    async def test_no_integration_suspends_via_no_certified_verdict_gate(self, repo):
+        """When no claim has an integration verdict, the
+        no-certified-verdict gate (added 2026-05-05) suspends the
+        posterior at 0.5 rather than falling back to counting.
+
+        Pre-fix: counting drove the posterior on uncertified claims,
+        which produced writer-vs-aggregator disagreements (the writer
+        was simultaneously routed to SynthesizeInsufficient under the
+        same condition). Now both signals derive from the same upstream
+        condition: no IBE certification → no directional output. The
+        diagnostic counting_posterior is still exposed so a reader can
+        see WHAT counting WOULD have said, but it does not drive the
+        posterior."""
         obj = _make_objective()
         await repo.save(obj)
 
@@ -841,10 +892,13 @@ class TestPosteriorIntegrationSynthesis:
 
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
-        assert report.mode == "counting_fallback"
-        # Counting drives the answer in this branch.
-        assert report.posterior == pytest.approx(report.counting_posterior, abs=1e-6)
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
+        assert report.mode == "counting_only"
+        # Diagnostic counting still exposed for reader inspection.
+        assert report.counting_posterior > 0.5  # 2 supports, 0 contradicts
         assert report.integration_verdict is None
+        assert "No certified verdict" in report.explanation
 
     async def test_report_includes_new_fields(self, repo):
         """PosteriorReport surfaces all fields used by downstream consumers."""

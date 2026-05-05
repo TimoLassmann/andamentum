@@ -136,7 +136,10 @@ class TestAllCappedShortCircuits:
         assert report is not None
         assert report.posterior == 0.5
         assert report.terminal_state == "oscillation_detected"
-        assert "ALL" in report.explanation
+        # All-capped without IA fires the no-certified-verdict gate
+        # (added 2026-05-05). The all-capped path is structurally a
+        # subset of the broader "no IBE certification" condition.
+        assert "IBE certification" in report.explanation
 
 
 class TestNoCappedUnchanged:
@@ -292,7 +295,7 @@ class TestSciFactCase957Shape:
     (gold=SUP) but cycle_capped suppressed the counting signal,
     returning 0.500. Three-way rule routes to the counting fallback."""
 
-    async def test_capped_no_verdict_one_sided_evidence_uses_counting(
+    async def test_capped_no_verdict_one_sided_evidence_suspends(
         self, tmp_path: Path
     ) -> None:
         store = DocumentStore.for_database("scifact_957", db_dir=tmp_path)
@@ -347,33 +350,42 @@ class TestSciFactCase957Shape:
 
         report = await compute_posterior(repo, obj.entity_id)
         assert report is not None
-        # Pre-cycle-cap-fix: posterior=0.5 (oscillation_detected discarded
-        # the capped claim's signal entirely).
-        # Pre-counting-path-fix: posterior ≈ 1.0 (counting fallback ran
-        # at full strength on the capped claim's evidence).
-        # Post-counting-path-fix: counting fallback runs but the cap
-        # penalty pulls the posterior toward neutral. log_odds = 18
-        # → counting_posterior ≈ 1.0; pulled by 0.7 → 0.5 + 0.5*0.7 = 0.85.
-        # Still directionally correct (SUP) but reflects the cap's
-        # provenance.
-        assert 0.80 < report.posterior < 0.90
-        assert report.terminal_state == "completed"
-        assert report.mode == "counting_fallback"
-        # Provenance: cap fired, signal came via counting.
-        assert "cycle cap" in report.explanation
-        assert "counting_posterior pulled toward neutral" in report.explanation
+        # Behaviour history on this shape:
+        # 1) Pre-cycle-cap-fix: posterior=0.5 (all-capped → discarded
+        #    via the original oscillation short-circuit).
+        # 2) Cycle-cap-fix (235d3fb): counting fallback ran at full
+        #    strength → posterior ≈ 1.0 (writer-vs-aggregator gap).
+        # 3) Counting-path-cap-penalty (705155d): counting × 0.7 →
+        #    posterior ≈ 0.85 (still committed, still gap).
+        # 4) No-certified-verdict gate (this commit): no IA on any
+        #    active claim → posterior=0.5, terminal=oscillation_detected.
+        #    Counts surface as diagnostics only.
+        # The system now refuses to commit on uncertified evidence —
+        # mirrors the synthesis writer's SynthesizeInsufficient route.
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
+        assert report.mode == "counting_only"
+        # Diagnostic counts are still exposed in the report.
+        assert report.supporting_count > report.contradicting_count
+        # Explanation surfaces the structural reason.
+        assert "No certified verdict" in report.explanation
+        assert "IBE certification" in report.explanation
 
 
 class TestSciFactCase439V15Shape:
     """Cycle-capped, no integrated_assessment, small one-sided evidence
     pool. Reproduces the v15 case 439 regression: cluster weighting
     amplified 2 raw supports to weighted 4.20, producing posterior 0.985
-    (confident SUP) on a gold-NEI claim. The counting-path cap penalty
-    pulls this toward neutral so the posterior reflects the cap's
-    provenance — still wrong direction (gold is NEI) but less
-    confidently wrong, awaiting a future small-N dampener."""
+    on a gold-NEI claim.
 
-    async def test_capped_small_pool_dampens_confidence(self, tmp_path: Path) -> None:
+    The no-certified-verdict gate (added 2026-05-05) replaces the
+    previous chain of partial fixes (cycle-cap penalty, counting-path
+    penalty) with a clean structural answer: when no claim has IBE
+    certification, the posterior suspends at 0.5. The cluster
+    amplification is then irrelevant because the counting path no
+    longer drives the posterior."""
+
+    async def test_capped_small_pool_suspends(self, tmp_path: Path) -> None:
         store = DocumentStore.for_database("scifact_439_v15", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
@@ -419,14 +431,17 @@ class TestSciFactCase439V15Shape:
 
         report = await compute_posterior(repo, obj.entity_id)
         assert report is not None
-        # Pre-counting-path-fix: posterior ≈ 0.985 (cluster weighting
-        # amplified 2 supports to weighted 4.20, log_odds 4.20).
-        # Post-fix: counting_posterior unchanged (~0.985), but pulled
-        # by 0.7 → 0.5 + 0.485*0.7 = 0.840.
-        assert 0.80 < report.posterior < 0.88
-        assert report.terminal_state == "completed"
-        assert report.mode == "counting_fallback"
-        assert "cycle cap" in report.explanation
+        # Posterior suspends because no claim has IBE certification —
+        # cluster-weight amplification on the counting path is no
+        # longer the driver. The diagnostic counts are still exposed
+        # so a reader can see WHAT counting WOULD have said.
+        assert report.posterior == 0.5
+        assert report.terminal_state == "oscillation_detected"
+        assert report.mode == "counting_only"
+        # The diagnostic counting posterior would have been ≈0.985
+        # (cluster weighting amplifies 2 supports to weighted ~4.2).
+        assert report.counting_posterior > 0.95
+        assert "No certified verdict" in report.explanation
 
 
 class TestGenuineOscillation:
@@ -464,7 +479,13 @@ class TestGenuineOscillation:
         assert report is not None
         assert report.posterior == 0.5
         assert report.terminal_state == "oscillation_detected"
-        assert "Oscillation detected" in report.explanation
+        # The no-certified-verdict gate (added 2026-05-05) handles
+        # this case (claim has no integrated_assessment) BEFORE the
+        # all-capped-balanced check fires, so the explanation now
+        # references IBE certification rather than oscillation.
+        # Same terminal_state, same posterior — just a different
+        # diagnostic.
+        assert "No certified verdict" in report.explanation
 
 
 class TestCapPenaltyEffect:
