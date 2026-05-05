@@ -26,6 +26,11 @@ from .domain_distance import (
     cluster_by_domain,
     calculate_inter_cluster_distances,
 )
+from .thresholds import (
+    CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW,
+    CONVERGENCE_INTRA_DIVERSITY_THRESHOLD,
+    CONVERGENCE_STRONG_THRESHOLD,
+)
 
 
 # Thresholds for convergence detection
@@ -255,7 +260,9 @@ def _check_independence(
         if intra_cluster_pairs:
             independent_count = sum(1 for v in intra_cluster_pairs if v)
             ratio = independent_count / len(intra_cluster_pairs)
-            checks["intra_cluster_diversity"] = ratio >= 0.5
+            checks["intra_cluster_diversity"] = (
+                ratio >= CONVERGENCE_INTRA_DIVERSITY_THRESHOLD
+            )
         else:
             checks["intra_cluster_diversity"] = False
     else:
@@ -340,7 +347,7 @@ def _determine_verdict(
         # (For now, assume non-convergent means partial)
         return "PARTIAL"
 
-    if strength >= 0.7:
+    if strength >= CONVERGENCE_STRONG_THRESHOLD:
         return "CONVERGENT"
     else:
         return "PARTIAL"
@@ -514,7 +521,10 @@ def assess_convergence_quality(convergence: ConvergentEvidence) -> Dict[str, Any
         quality["weaknesses"].append("Insufficient domain diversity")
         quality["suggestions"].append("Seek evidence from additional research methods")
 
-    if convergence.average_inter_domain_distance < 0.3:
+    if (
+        convergence.average_inter_domain_distance
+        < CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW
+    ):
         quality["weaknesses"].append("Domains are closely related (shared error modes)")
         quality["suggestions"].append(
             "Seek evidence from more methodologically distinct domains"

@@ -172,6 +172,48 @@ are decisive — CheckSynthesisDemand Gate 4 will not loop back for
 more investigation. Read by: graph/nodes.py:CheckSynthesisDemand."""
 
 
+# ── Convergence (Reichenbach common-cause / Mill's methods) ────────
+#
+# Multi-domain convergence: a claim that holds across genuinely
+# independent evidence pools is more credible than the same claim
+# holding in one pool. This is Reichenbach's common-cause
+# principle — agreement across causally-independent sources is
+# evidence the agreement isn't artefactual.
+#
+# ``convergence_detector._determine_verdict`` maps a *strength*
+# score (computed from cluster count, inter-domain distance, and
+# representative quality) to one of {NO_EVIDENCE, SINGLE_DOMAIN,
+# PARTIAL, CONVERGENT}. The CONVERGENT label is load-bearing: it
+# triggers the fast-path-to-IBE in
+# ``graph/nodes.py:RunVerification`` — a SUPPORTED claim with at
+# least one CONVERGENT sibling skips ``ResolveUncertainties`` and
+# goes straight to integration.
+#
+# Thresholds here are kept at their pre-2026-05-05 values
+# (no behaviour change vs. the previous bare numerics). The point
+# of naming them is that the manuscript can refer to them by
+# name and the reader can see them all in one place; tuning is a
+# separate decision.
+
+CONVERGENCE_STRONG_THRESHOLD: float = 0.7
+"""Strength score at or above which the convergence verdict is
+CONVERGENT. Below: PARTIAL. Read by:
+``convergence_detector._determine_verdict``. Load-bearing — gates
+the IBE fast-path."""
+
+CONVERGENCE_INTRA_DIVERSITY_THRESHOLD: float = 0.5
+"""Minimum fraction of within-cluster pairs that must be judged
+methodologically independent for the cluster to count as
+diverse. Read by:
+``convergence_detector._compute_independence_checks``."""
+
+CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW: float = 0.3
+"""Below this average inter-domain distance, clusters are too
+similar to count as truly independent domains and the
+``shared_error_modes`` weakness is flagged. Read by:
+``convergence_detector.assess_quality``."""
+
+
 __all__ = [
     "ADVERSARIAL_REFUTED_THRESHOLD",
     "ADVERSARIAL_SURVIVED_THRESHOLD",
@@ -181,4 +223,7 @@ __all__ = [
     "RETRIEVAL_FAILED_CONFIDENCE_PENALTY",
     "POSTERIOR_DIRECTIONAL_BREAKPOINT",
     "POSTERIOR_DECISIVE_THRESHOLD",
+    "CONVERGENCE_STRONG_THRESHOLD",
+    "CONVERGENCE_INTRA_DIVERSITY_THRESHOLD",
+    "CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW",
 ]
