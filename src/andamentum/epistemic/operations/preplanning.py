@@ -392,64 +392,71 @@ class PlanTaskOperation(BaseOperation):
         )
 
         if sub_investigations:
-            # Phase 2 of lazy-escalation: per-sub-claim, pick the
-            # SINGLE BEST provider via LLM rank (instead of querying
-            # all providers in parallel). Round 1 starts narrow; later
-            # rounds (driven by demand from scrutiny) will pull other
-            # providers from the candidate list via InvestigateClaim
-            # operation.
-            #
-            # If the ranker can't pick (no agent_runner, or LLM
-            # output doesn't match a candidate), fall back to the
-            # first relevant provider — keeps the pipeline alive
-            # but loses the lazy-escalation benefit for that sub.
+            # K8 Bug #1 fix (provider tournament). The previous design
+            # called the ranker per-sub-claim with the same candidate
+            # list each time, so the LLM consistently picked the same
+            # generic-best provider for every sub-claim. The tournament
+            # picks K providers ONCE for the whole objective via
+            # iterative ranker calls (pick → remove → pick again);
+            # every sub-claim then queries all K providers. K=2 is the
+            # minimum that lets the cross-domain convergence detector
+            # fire per sub-claim (≥2 independent sources required).
+            # See docs/superpowers/plans/2026-05-05-k8-bug1-provider-
+            # tournament.md.
+            picked_providers: list[str]
+            if self.agent_runner and len(providers) > 1:
+                picked_providers = await _run_provider_tournament(
+                    agent_runner=self.agent_runner,
+                    question=clarified,
+                    candidates=list(providers),
+                    candidate_descriptions=PROVIDER_DESCRIPTIONS,
+                    k=RESEARCH_MODE_PROVIDER_K,
+                )
+            else:
+                # No agent_runner, or only one provider available →
+                # tournament has nothing to pick. Fall back to the
+                # first ``RESEARCH_MODE_PROVIDER_K`` candidates.
+                picked_providers = list(providers[:RESEARCH_MODE_PROVIDER_K]) or [
+                    "web_search"
+                ]
+
             for sub in sub_investigations:
                 sub_id = sub.id
                 seed_claim_text = sub.seed_claim
                 question_text = seed_claim_text or clarified
 
-                chosen_provider = providers[0] if providers else "web_search"
-                if self.agent_runner and len(providers) > 1:
-                    candidates_text = "\n".join(
-                        f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}" for p in providers
-                    )
-                    rank_result = await self.run_agent(
-                        "epistemic_rank_providers",
-                        sub_claim=question_text,
-                        candidates=candidates_text,
-                    )
-                    if rank_result.chosen_provider in providers:
-                        chosen_provider = rank_result.chosen_provider
-                    # else: fall back to providers[0] (already set)
+                # Create one Evidence stub per (sub-claim, provider)
+                # pair. With K=2 and 4 sub-claims, this yields 8 stubs
+                # in round 1.
+                for provider in picked_providers:
+                    query = question_text  # fallback if no agent_runner
+                    if self.agent_runner:
+                        result = await self.run_agent(
+                            "epistemic_formulate_query",
+                            question=question_text,
+                            provider=provider,
+                            provider_description=PROVIDER_DESCRIPTIONS.get(
+                                provider, ""
+                            ),
+                            query_guidance=PROVIDER_QUERY_GUIDANCE.get(provider, ""),
+                        )
+                        query = result.query
 
-                # Formulate query for the chosen provider only.
-                query = question_text  # fallback if no agent_runner
-                if self.agent_runner:
-                    result = await self.run_agent(
-                        "epistemic_formulate_query",
-                        question=question_text,
-                        provider=chosen_provider,
-                        provider_description=PROVIDER_DESCRIPTIONS.get(
-                            chosen_provider, ""
-                        ),
-                        query_guidance=PROVIDER_QUERY_GUIDANCE.get(chosen_provider, ""),
+                    evidence = Evidence(
+                        objective_id=objective.entity_id,
+                        source_ref=query,
+                        source_type=provider,
+                        extracted=False,
+                        sub_investigation_id=sub_id,
                     )
-                    query = result.query
-
-                evidence = Evidence(
-                    objective_id=objective.entity_id,
-                    source_ref=query,
-                    source_type=chosen_provider,
-                    extracted=False,
-                    sub_investigation_id=sub_id,
-                )
-                await self.repo.save(evidence)
-                created_evidence.append(evidence.entity_id)
+                    await self.repo.save(evidence)
+                    created_evidence.append(evidence.entity_id)
 
             plan_msg = (
                 f"Plan created with {len(created_evidence)} evidence sources "
                 f"across {len(sub_investigations)} sub-investigations "
-                f"(round-1 lazy: one provider per sub-claim, ranked)"
+                f"(round-1 tournament: {len(picked_providers)} providers per "
+                f"sub-claim — {', '.join(picked_providers)})"
             )
         else:
             # Original per-objective behavior (no decomposition).
