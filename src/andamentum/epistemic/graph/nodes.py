@@ -2201,7 +2201,7 @@ class CheckCompletion(Node):
 
         # Maximal B (extended): every "system can't conclude" path
         # routes through SynthesizeInsufficient so a structurally honest
-        # artefact is always produced. Three exit paths into the
+        # artefact is always produced. Four exit paths into the
         # fallibilism terminal:
         #
         #   1. retrieval_failed — evidence extraction kept returning
@@ -2210,6 +2210,11 @@ class CheckCompletion(Node):
         #      nothing investigable.
         #   3. partial — claims existed but were all abandoned during
         #      scrutiny.
+        #   4. no_certified_verdict — claims exist and aren't abandoned,
+        #      but none reached IBE certification (no
+        #      ``integrated_assessment``). Most often: every active
+        #      claim is cycle-capped at HYPOTHESIS, so PromoteToSupported
+        #      skipped them and the IBE chain never ran.
         #
         # The retrieval_failed BOOL on EpistemicResult is preserved
         # (downstream confidence + report consumers branch on it), so
@@ -2236,6 +2241,46 @@ class CheckCompletion(Node):
         non_abandoned = [c for c in all_claims if not c.abandoned]
 
         if non_abandoned:
+            # Exit 4 — no_certified_verdict.
+            #
+            # The IBE chain (EnumerateCandidates → ScoreLoveliness →
+            # ScoreLikeliness → SelectBestExplanation) is the system's
+            # *certifier* of directional verdicts. It only runs on
+            # SUPPORTED claims; cycle-capped or otherwise-uncertified
+            # HYPOTHESIS claims are filtered out by PromoteToSupported.
+            # When no active claim has an ``integrated_assessment``, the
+            # IBE chain never produced a verdict for this objective —
+            # neither the synthesis writer nor the posterior aggregator
+            # should fabricate one. Route to SynthesizeInsufficient and
+            # let the structural-honest artefact say so.
+            #
+            # Why this exit specifically catches the case 957 v17 shape:
+            # case 957's claim was cycle_capped=True at HYPOTHESIS, so
+            # PromoteToSupported skipped it. Without an
+            # integrated_assessment, the writer was reading evidence
+            # content directly and concluding "No" while the posterior
+            # aggregator was counting labels and concluding 0.85
+            # "supports". They disagreed because both were running
+            # *ungrounded*. Routing here makes that visible upstream and
+            # produces an artefact that matches the system's actual
+            # epistemic state ("we did not certify a verdict") rather
+            # than asking the writer to invent one.
+            any_certified = any(
+                c.integrated_assessment is not None for c in non_abandoned
+            )
+            if not any_certified:
+                state.synthesis_insufficient_reason = (
+                    f"None of the {len(non_abandoned)} non-abandoned claim(s) "
+                    "reached IBE certification (integrated_assessment is None "
+                    "on every active claim). Most likely cause: every active "
+                    "claim is cycle-capped at HYPOTHESIS, so "
+                    "PromoteToSupported skipped them and the IBE chain "
+                    "never ran. Without IBE-certified verdicts, neither "
+                    "the writer nor the posterior aggregator should "
+                    "produce a directional verdict — synthesis suspends "
+                    "judgment."
+                )
+                return SynthesizeInsufficient()
             return CheckSynthesisDemand()
 
         if all_claims:

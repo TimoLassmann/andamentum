@@ -370,11 +370,18 @@ async def test_check_completion_routes_active_claims_to_synthesis_demand(
         CheckSynthesisDemand,
     )
 
-    state, deps = await _setup_check_completion_state(
-        repo, objective_id="obj-active"
-    )
+    state, deps = await _setup_check_completion_state(repo, objective_id="obj-active")
 
-    # One active (non-abandoned) claim.
+    # One active claim with an integrated_assessment — this is the
+    # "happy path" where the IBE chain certified a verdict. Routing
+    # must continue through CheckSynthesisDemand so the existing
+    # gate-and-loop-back logic handles it.
+    #
+    # Note: a SUPPORTED claim WITHOUT integrated_assessment now
+    # routes to SynthesizeInsufficient under the no_certified_verdict
+    # exit (added 2026-05-05). That exit is tested separately in
+    # test_no_certified_verdict_exit.py; this test pins the IA-present
+    # branch.
     c = Claim(
         objective_id="obj-active",
         statement="active claim",
@@ -382,14 +389,17 @@ async def test_check_completion_routes_active_claims_to_synthesis_demand(
         stage=ClaimStage.SUPPORTED,
         scrutiny_verdict="pass",
         abandoned=False,
+        integrated_assessment="supports",
+        integrated_confidence=0.7,
     )
     await repo.save(c)
 
     next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
     assert isinstance(next_node, CheckSynthesisDemand), (
-        "When there are active claims the existing routing must hold; "
-        "Maximal B's extension only catches the bypass paths."
+        "When there are active claims with integrated_assessment, the "
+        "existing routing must hold; Maximal B's extension catches "
+        "uncertified claims."
     )
     # CheckCompletion didn't write a synthesis_insufficient_reason on
     # this path — the demand check might still ask for it later.
