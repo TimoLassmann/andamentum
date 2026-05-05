@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..entities.claim import Claim
+from ..thresholds import POSTERIOR_DIRECTIONAL_BREAKPOINT
 
 if TYPE_CHECKING:
     from ..entities.decomposition import Decomposition
@@ -66,11 +67,17 @@ class CombinedVerdict:
 
 
 def _verdict_label(p: float) -> str:
-    """Map a combined posterior to a verdict label using the same
-    breakpoints the per-claim integration uses."""
-    if p > 0.66:
+    """Map a combined posterior to a verdict label.
+
+    Uses ``POSTERIOR_DIRECTIONAL_BREAKPOINT`` from
+    ``epistemic.thresholds`` (canonical value 0.66) and its mirror
+    ``1 - threshold`` for the contradicts side. Symmetric around 0.5.
+    The label is consumed by reporters and the writer agent — it does
+    not gate any routing decision in the graph.
+    """
+    if p > POSTERIOR_DIRECTIONAL_BREAKPOINT:
         return "supports"
-    if p < 0.34:
+    if p < 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT:
         return "contradicts"
     return "insufficient"
 
