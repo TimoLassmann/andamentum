@@ -211,3 +211,63 @@ class TestDedupeEvidenceBySourceRef:
         # Stub is ignored (extracted=False), so e1 has no peer to merge with.
         assert n_groups == 0
         assert n_marked == 0
+
+
+class TestVouchingPropagatesAsCorroborationCount:
+    """Phase B: when N independent providers return the same item, the
+    surviving Evidence's ``corroboration_count`` reflects N. Downstream
+    consumers (compute_posterior, IBE chain) already weight evidence by
+    ``1 + log(corroboration_count)``, so populating it from provider
+    count makes Reichenbach common-cause vouching propagate
+    automatically.
+    """
+
+    async def test_three_providers_same_doi_yields_count_three(self, repo):
+        obj_id = await _make_objective(repo)
+        e_pubmed = _make_evidence(obj_id, "pubmed", "10.1234/abc")
+        e_openalex = _make_evidence(
+            obj_id, "openalex", "https://doi.org/10.1234/abc"
+        )
+        e_europepmc = _make_evidence(obj_id, "europepmc", "10.1234/ABC")
+        await repo.save(e_pubmed)
+        await repo.save(e_openalex)
+        await repo.save(e_europepmc)
+
+        await dedupe_evidence_by_source_ref(repo, obj_id)
+
+        # Whichever item survived (longest content / oldest tie-break)
+        # should carry corroboration_count=3 and a non-empty
+        # corroborating_sources list.
+        all_ev = await repo.query("evidence", objective_id=obj_id)
+        survivors = [e for e in all_ev if not e.invalidated]
+        assert len(survivors) == 1
+        winner = survivors[0]
+        assert winner.corroboration_count == 3
+        assert len(winner.corroborating_sources) >= 1
+
+    async def test_two_providers_yields_count_two(self, repo):
+        obj_id = await _make_objective(repo)
+        e1 = _make_evidence(obj_id, "pubmed", "10.5/y")
+        e2 = _make_evidence(obj_id, "openalex", "10.5/y")
+        await repo.save(e1)
+        await repo.save(e2)
+
+        await dedupe_evidence_by_source_ref(repo, obj_id)
+
+        all_ev = await repo.query("evidence", objective_id=obj_id)
+        winner = next(e for e in all_ev if not e.invalidated)
+        assert winner.corroboration_count == 2
+
+    async def test_single_provider_unchanged(self, repo):
+        obj_id = await _make_objective(repo)
+        e = _make_evidence(obj_id, "pubmed", "10.6/z")
+        await repo.save(e)
+
+        await dedupe_evidence_by_source_ref(repo, obj_id)
+
+        loaded = await repo.get("evidence", e.entity_id)
+        # No duplicates seen → corroboration_count stays at the default
+        # (1). Phase B only INCREASES the count from provider vouching;
+        # it never decreases below an existing value (other paths like
+        # the HDBSCAN cluster sweep can also raise it).
+        assert loaded.corroboration_count == 1

@@ -191,3 +191,75 @@ async def test_fallback_when_no_agent_runner(tmp_path: Path) -> None:
     assert len(all_evidence) == 2
     for ev in all_evidence:
         assert ev.source_type == "web_search"
+
+
+async def test_verify_mode_skips_per_provider_relevance_check(
+    tmp_path: Path, fake_runner
+) -> None:
+    """Phase B: in verify mode (claim_to_verify set), PlanTaskOperation
+    must NOT run the per-provider ``epistemic_select_provider`` LLM
+    check. That check was a dominant variance source in 5-rep smokes
+    (different runs rolled different yes/no decisions, producing
+    wildly different provider mixes for the same claim). Instead use
+    all configured providers; let the existing dedup-driven
+    ``corroboration_count`` carry vouching signal downstream.
+
+    Test: an Objective with claim_to_verify set goes through PlanTask
+    and creates one Evidence stub per registered provider, regardless
+    of what the per-provider relevance LLM might have decided.
+    """
+    from andamentum.epistemic.providers import PROVIDER_REGISTRY
+
+    store = DocumentStore.for_database("verify_mode_planning", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    # Verify-mode objective: claim_to_verify set, no decomposition.
+    obj = Objective(
+        description="Test claim X.",
+        clarified_question="Test claim X.",
+        question_type="verificatory",
+        claim_to_verify="Test claim X.",
+        phase="analyzed",
+    )
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    op = PlanTaskOperation(
+        repo=repo,
+        agent_runner=fake_runner,
+        embedding_model="t",
+    )
+    result = await op.execute(
+        OperationInput(
+            entity_id=obj.entity_id,
+            entity_type="objective",
+            operation="plan_task",
+        )
+    )
+    assert result.success
+
+    all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
+    # All registered providers should be represented (web_search is
+    # always added if not already present, but it should also be in
+    # PROVIDER_REGISTRY for this assertion to be meaningful).
+    seen_providers = {e.source_type for e in all_evidence}
+    expected_providers = set(PROVIDER_REGISTRY) | {"web_search"}
+    assert seen_providers == expected_providers, (
+        f"Verify mode should query ALL configured providers; got "
+        f"{seen_providers}, expected {expected_providers}"
+    )
+
+    # Verify the operations log does NOT contain
+    # epistemic_select_provider calls (the per-provider relevance LLM
+    # check). The fake runner records every agent call; in verify mode
+    # this agent should be skipped entirely.
+    select_calls = [
+        c
+        for c in op._agent_calls
+        if c.get("agent_name") == "epistemic_select_provider"
+    ]
+    assert select_calls == [], (
+        f"Verify mode must skip epistemic_select_provider (per-provider "
+        f"relevance check); found {len(select_calls)} calls"
+    )
