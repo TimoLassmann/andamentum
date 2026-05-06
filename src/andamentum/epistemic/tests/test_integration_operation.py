@@ -10,6 +10,8 @@ ScoreLikeliness → SelectBestExplanation in sequence:
 - Resets the candidate trace on demotion
 """
 
+import pytest
+
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations.base import OperationInput
 from ..operations.integration import (
@@ -240,16 +242,23 @@ class TestAdversarialConfidenceCap:
 
 
 class TestSelectBestExplanationAppliesCap:
-    """Integration tests: the cap actually clips ``integrated_confidence``.
+    """Integration tests: the caps actually clip ``integrated_confidence``.
 
-    The fake runner returns confidence=0.75 from
-    ``epistemic_select_best_explanation`` (see conftest.py). Combined
-    with adversarial_balance values across the three zones, this
-    exercises whether the cap clips correctly end-to-end through
-    ``SelectBestExplanationOperation.execute``.
+    With Phase C added, two caps fire in sequence: the adversarial
+    cap (Phase A — based on adversarial_balance) and the framing-tie
+    cap (Phase C — based on chosen-vs-best-opposing-candidate
+    loveliness gap). The fake runner produces all candidates with
+    equal loveliness=0.78, so the framing-tie cap fires hard
+    (gap=0 → cap=0.5) on every run regardless of adversarial_balance.
+    These integration tests verify that both caps fire correctly and
+    annotate the reasoning appropriately. Direct unit tests for each
+    cap function are in TestAdversarialConfidenceCap and
+    TestFramingTieCap below; those exercise the cap logic with
+    crafted CandidateRecord inputs that don't suffer the fake runner's
+    tied-loveliness limitation.
     """
 
-    async def test_survived_balance_does_not_clip(
+    async def test_survived_balance_only_framing_tie_clips(
         self, repo, fake_runner
     ) -> None:
         await repo.save(_make_objective())
@@ -261,18 +270,20 @@ class TestSelectBestExplanationAppliesCap:
             stage=ClaimStage.SUPPORTED,
             scrutiny_verdict="pass",
             adversarial_checked=True,
-            adversarial_balance=0.8,  # SURVIVED — no cap
+            adversarial_balance=0.8,  # SURVIVED — adv cap=1.0
         )
         await repo.save(claim)
 
         updated = await _run_full_ibe(repo, fake_runner)
-        # Fake runner returns 0.75; no cap applied.
-        assert updated.integrated_confidence == 0.75
+        # Adv cap doesn't fire. Framing-tie cap fires (tied loveliness
+        # in fake runner) → cap=0.5. min(1.0, 0.5) clips 0.75 → 0.5.
+        assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" not in (
             updated.integrated_reasoning or ""
         )
+        assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
-    async def test_contested_balance_clips_below_runner_confidence(
+    async def test_contested_balance_both_caps_fire(
         self, repo, fake_runner
     ) -> None:
         await repo.save(_make_objective())
@@ -284,14 +295,15 @@ class TestSelectBestExplanationAppliesCap:
             stage=ClaimStage.SUPPORTED,
             scrutiny_verdict="pass",
             adversarial_checked=True,
-            adversarial_balance=0.4,  # CONTESTED — cap=0.625
+            adversarial_balance=0.4,  # CONTESTED — adv cap=0.625
         )
         await repo.save(claim)
 
         updated = await _run_full_ibe(repo, fake_runner)
-        # Fake runner returns 0.75; cap at 0.625 clips it.
-        assert updated.integrated_confidence == 0.625
+        # adv_cap=0.625, ft_cap=0.5; min=0.5 clips 0.75 → 0.5.
+        assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
+        assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
     async def test_refuted_balance_hard_caps(
         self, repo, fake_runner
@@ -305,10 +317,184 @@ class TestSelectBestExplanationAppliesCap:
             stage=ClaimStage.SUPPORTED,
             scrutiny_verdict="pass",
             adversarial_checked=True,
-            adversarial_balance=0.15,  # REFUTED — hard cap at 0.5
+            adversarial_balance=0.15,  # REFUTED — adv cap=0.5
         )
         await repo.save(claim)
 
         updated = await _run_full_ibe(repo, fake_runner)
+        # Both caps land at 0.5 here.
         assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
+
+
+class TestFramingTieCap:
+    """Unit tests for ``_framing_tie_cap``.
+
+    Lipton's IBE: the strength of inference-to-best-explanation is
+    bounded by the loveliness gap between the chosen explanation and
+    the best opposing alternative. The cap is 1.0 when chosen
+    dominates by ≥ FRAMING_TIE_SATURATION_GAP, 0.5 at perfect tie,
+    linear in between. No threshold tuning beyond the saturation gap
+    (which mirrors the adversarial CONTESTED band's 0.4 width).
+    """
+
+    def test_no_opposing_candidate_no_cap(self) -> None:
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="supports",
+            description="x",
+            loveliness=0.8,
+            likeliness=0.9,
+        )
+        # All other candidates are "insufficient" (not opposing).
+        others = [
+            CandidateRecord(
+                candidate_id="B",
+                verdict="insufficient",
+                description="y",
+                loveliness=0.3,
+                likeliness=0.5,
+            )
+        ]
+        cap, opp, gap = _framing_tie_cap(chosen, [chosen, *others])
+        assert cap == 1.0
+        assert opp is None
+        assert gap is None
+
+    def test_chosen_dominates_no_cap(self) -> None:
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="supports",
+            description="x",
+            loveliness=0.9,
+            likeliness=0.9,
+        )
+        opposing = CandidateRecord(
+            candidate_id="B",
+            verdict="contradicts",
+            description="y",
+            loveliness=0.3,  # gap = 0.6 > 0.4 saturation
+            likeliness=0.7,
+        )
+        cap, opp, gap = _framing_tie_cap(chosen, [chosen, opposing])
+        assert cap == 1.0
+        assert opp is opposing
+        assert gap == pytest.approx(0.6)
+
+    def test_perfect_tie_caps_at_half(self) -> None:
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="supports",
+            description="x",
+            loveliness=0.8,
+            likeliness=0.9,
+        )
+        opposing = CandidateRecord(
+            candidate_id="B",
+            verdict="contradicts",
+            description="y",
+            loveliness=0.8,  # perfect tie
+            likeliness=0.7,
+        )
+        cap, opp, gap = _framing_tie_cap(chosen, [chosen, opposing])
+        assert cap == 0.5
+        assert opp is opposing
+        assert gap == 0.0
+
+    def test_partial_gap_linear_interp(self) -> None:
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="supports",
+            description="x",
+            loveliness=0.85,
+            likeliness=0.9,
+        )
+        opposing = CandidateRecord(
+            candidate_id="B",
+            verdict="contradicts",
+            description="y",
+            loveliness=0.65,  # gap = 0.2 → cap = 0.5 + 0.2/0.4 * 0.5 = 0.75
+            likeliness=0.7,
+        )
+        cap, opp, gap = _framing_tie_cap(chosen, [chosen, opposing])
+        assert cap == pytest.approx(0.75)
+        assert opp is opposing
+
+    def test_picks_highest_loveliness_opposing_not_runner_up(self) -> None:
+        """The cap looks at the FULL candidate set, not just the named
+        runner-up. Case 847 v22 rep 3 showed the chain sometimes picks
+        a same-direction runner-up while a strongly opposing candidate
+        exists with high loveliness — that opposing candidate is the
+        signal we care about for framing-tie detection."""
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="supports",
+            description="x",
+            loveliness=0.85,
+            likeliness=0.9,
+            chosen=True,
+        )
+        # Runner-up is same-direction (would not trigger naive
+        # chosen-vs-runner-up gap detection).
+        runner_up_same = CandidateRecord(
+            candidate_id="B",
+            verdict="supports_refined",
+            description="y",
+            loveliness=0.78,
+            likeliness=0.85,
+            runner_up=True,
+        )
+        # Strong opposing candidate that wasn't picked as runner-up.
+        opposing = CandidateRecord(
+            candidate_id="D",
+            verdict="contradicts_refined",
+            description="z",
+            loveliness=0.7,  # gap = 0.15 → cap = 0.5 + 0.15/0.4 * 0.5 ≈ 0.6875
+            likeliness=0.9,
+        )
+        cap, opp, gap = _framing_tie_cap(
+            chosen, [chosen, runner_up_same, opposing]
+        )
+        # Cap is from the OPPOSING candidate, not the same-direction
+        # runner-up.
+        assert opp is opposing
+        assert gap == pytest.approx(0.15)
+        assert cap == pytest.approx(0.6875)
+
+    def test_insufficient_chosen_no_cap(self) -> None:
+        """When chosen is insufficient, there's no canonical-direction
+        commitment to dampen — return cap=1.0."""
+        from ..entities.claim import CandidateRecord
+        from ..operations.integration import _framing_tie_cap
+
+        chosen = CandidateRecord(
+            candidate_id="A",
+            verdict="insufficient",
+            description="x",
+            loveliness=0.5,
+            likeliness=0.5,
+        )
+        opposing = CandidateRecord(
+            candidate_id="B",
+            verdict="supports",
+            description="y",
+            loveliness=0.6,
+            likeliness=0.5,
+        )
+        cap, _, _ = _framing_tie_cap(chosen, [chosen, opposing])
+        assert cap == 1.0

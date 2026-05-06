@@ -492,6 +492,83 @@ def _verdict_to_canonical(verdict: str) -> str:
     return "insufficient"
 
 
+# Width of the framing-tie CONTESTED band (loveliness-gap units).
+# Mirrors the width of the adversarial CONTESTED band (0.3→0.7 = 0.4)
+# rather than introducing a new tuning knob. When the chosen
+# candidate's loveliness exceeds the best opposing candidate's by at
+# least ``FRAMING_TIE_SATURATION_GAP``, the framing-tie cap is 1.0
+# (no dampening). At a perfect tie (gap = 0), the cap is 0.5 (severe
+# dampening — the abductive chain has no principled tie-breaker
+# between opposing coherent explanations).
+FRAMING_TIE_SATURATION_GAP: float = 0.4
+
+
+def _framing_tie_cap(
+    chosen: "CandidateRecord", candidates: "list[CandidateRecord]"
+) -> tuple[float, "CandidateRecord | None", float | None]:
+    """Cap on ``integrated_confidence`` from the framing-tie signal.
+
+    Lipton's IBE says: the strength of inference-to-best-explanation is
+    bounded by how decisively the chosen explanation dominates
+    alternatives. When an *opposing* candidate (canonical verdict
+    different from the chosen's) has a competitive loveliness score,
+    the chain is in a frame-ambiguous state — both stories are coherent
+    explanations of the evidence, and the chain's commitment to one
+    over the other is essentially a coin flip dressed as a verdict.
+
+    This function looks at the FULL candidate set (not just the named
+    runner-up) because the v22 case 847 trace showed the chain
+    sometimes picks a same-direction runner-up while a strongly
+    opposing candidate exists with high loveliness. The richer signal
+    asks: "is there ANY opposing candidate the chain found coherent?".
+
+    Returns:
+        (cap, best_opposing_or_None, gap_or_None)
+
+        cap: 0.5 (perfect tie) → 1.0 (chosen dominates by ≥
+             FRAMING_TIE_SATURATION_GAP). Linear in between.
+        best_opposing: the highest-loveliness candidate whose canonical
+             verdict opposes the chosen's. None if no such candidate.
+        gap: chosen.loveliness - best_opposing.loveliness, or None.
+    """
+    chosen_canonical = _verdict_to_canonical(chosen.verdict)
+    chosen_love = chosen.loveliness or 0.0
+    if chosen_canonical == "insufficient":
+        # Insufficient is not "opposing" anything in the supports/
+        # contradicts sense — no framing-tie signal to compute.
+        return 1.0, None, None
+
+    opposing_canonical = (
+        "contradicts" if chosen_canonical == "supports" else "supports"
+    )
+
+    best_opposing: "CandidateRecord | None" = None
+    best_love = -1.0
+    for c in candidates:
+        if c is chosen:
+            continue
+        if _verdict_to_canonical(c.verdict) != opposing_canonical:
+            continue
+        love = c.loveliness or 0.0
+        if love > best_love:
+            best_love = love
+            best_opposing = c
+
+    if best_opposing is None or best_love <= 0.0:
+        return 1.0, None, None
+
+    gap = chosen_love - best_love
+    if gap >= FRAMING_TIE_SATURATION_GAP:
+        return 1.0, best_opposing, gap
+    if gap <= 0.0:
+        # Opposing matches or exceeds chosen on loveliness — perfect
+        # tie or worse. Cap at 0.5; downstream consumers can decide
+        # whether to surface as "contested".
+        return 0.5, best_opposing, gap
+    cap = 0.5 + (gap / FRAMING_TIE_SATURATION_GAP) * 0.5
+    return cap, best_opposing, gap
+
+
 class SelectBestExplanationOperation(BaseOperation):
     """Pick the best candidate by combined loveliness × likeliness, with
     gap-based confidence (Lipton's comparative selection).
@@ -631,39 +708,66 @@ class SelectBestExplanationOperation(BaseOperation):
             chosen.gap_loveliness = 0.0
             chosen.gap_likeliness = 0.0
 
-        # Apply the adversarial-balance confidence cap (Option A — soft
-        # tri-state). The IBE chain's confidence reflects loveliness ×
-        # likeliness; the adversarial balance reflects whether the claim
-        # withstood active refutation. A claim in the CONTESTED zone
-        # should not certify at high confidence even if the IBE
-        # candidates score well, because a non-trivial counter-evidence
-        # signal exists. The cap is the same continuous function used by
-        # ``compute_confidence_score`` for stage gates, so adversarial
-        # signal propagates consistently through both confidence
-        # surfaces.
-        cap = _adversarial_confidence_cap(claim.adversarial_balance)
+        # Apply two confidence caps in sequence (Phase A: adversarial,
+        # Phase C: framing-tie). Both attenuate ``integrated_confidence``
+        # via principled signals from the IBE chain's existing trace —
+        # neither introduces a tunable threshold beyond the existing
+        # canonical thresholds.
+        #
+        # 1. Adversarial cap (Option A — soft tri-state on
+        #    adversarial_balance). A claim in the CONTESTED zone (0.3 ≤
+        #    balance < 0.7) should not certify at high confidence even
+        #    if loveliness × likeliness say otherwise — a non-trivial
+        #    counter-evidence signal exists.
+        # 2. Framing-tie cap (Phase C — exposing IBE deliberation). When
+        #    an opposing-verdict candidate has competitive loveliness,
+        #    the chain's commitment to the chosen verdict is essentially
+        #    a coin flip dressed as a verdict. Lipton's IBE explicitly
+        #    bounds inference strength by the gap between best and
+        #    second-best.
+        adv_cap = _adversarial_confidence_cap(claim.adversarial_balance)
+        ft_cap, best_opposing, ft_gap = _framing_tie_cap(
+            chosen, list(claim.integration_candidates)
+        )
+        cap = min(adv_cap, ft_cap)
         capped_confidence = min(confidence, cap)
-        was_capped = capped_confidence < confidence - 1e-9
+        adv_capped = adv_cap < confidence - 1e-9
+        ft_capped = ft_cap < confidence - 1e-9
 
         # Write to the integration fields compute_posterior reads
         claim.integrated_assessment = _verdict_to_canonical(chosen.verdict)
         claim.integrated_confidence = max(0.0, min(1.0, capped_confidence))
         claim.integrated_reasoning = reasoning
-        if was_capped:
+        if adv_capped:
             claim.integrated_reasoning += (
                 f"\n\n[Adversarial cap applied: IBE confidence "
-                f"{confidence:.2f} reduced to {capped_confidence:.2f} because "
+                f"{confidence:.2f} reduced toward {adv_cap:.2f} because "
                 f"adversarial_balance={claim.adversarial_balance:.2f} is in "
                 f"the contested zone (< {ADVERSARIAL_SURVIVED_THRESHOLD}).]"
             )
+        if ft_capped and best_opposing is not None and ft_gap is not None:
+            claim.integrated_reasoning += (
+                f"\n\n[Framing-tie cap applied: IBE confidence "
+                f"{confidence:.2f} reduced toward {ft_cap:.2f} because the "
+                f"chosen candidate's loveliness ({chosen.loveliness:.2f}) "
+                f"barely dominates an opposing candidate "
+                f"'{best_opposing.candidate_id}' "
+                f"(verdict={best_opposing.verdict}, "
+                f"loveliness={best_opposing.loveliness:.2f}, "
+                f"gap={ft_gap:.2f}). The abductive chain's commitment to "
+                f"this direction is contested — a coherent opposing "
+                f"explanation has comparable explanatory force.]"
+            )
         await self.repo.save(claim)
 
-        cap_note = (
-            f", capped from {confidence:.2f} (adv_balance="
-            f"{claim.adversarial_balance:.2f})"
-            if was_capped
-            else ""
-        )
+        cap_notes: list[str] = []
+        if adv_capped:
+            cap_notes.append(
+                f"adv_balance={claim.adversarial_balance:.2f}, adv_cap={adv_cap:.2f}"
+            )
+        if ft_capped and ft_gap is not None:
+            cap_notes.append(f"framing_tie_gap={ft_gap:.2f}, ft_cap={ft_cap:.2f}")
+        cap_note = f" [capped from {confidence:.2f}: {', '.join(cap_notes)}]" if cap_notes else ""
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
