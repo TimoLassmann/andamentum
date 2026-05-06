@@ -237,3 +237,51 @@ async def test_no_claims_still_routes_correctly(tmp_path: Path) -> None:
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
     assert "No claims were created" in state.synthesis_insufficient_reason
+
+
+@pytest.mark.asyncio
+async def test_retrieval_failed_with_ia_set_routes_to_writer(
+    tmp_path: Path,
+) -> None:
+    """Phase A invariant — IA presence is the canonical certifier.
+
+    Case 957 rep 5 shape: ``state.retrieval_failed`` was True (some
+    extractions returned empty content during the run) but the IBE
+    chain DID certify on the evidence available, so
+    ``integrated_assessment`` is set on at least one active claim.
+
+    Pre-fix: CheckCompletion's first check (``if state.retrieval_failed``)
+    routed to SynthesizeInsufficient unconditionally, while
+    compute_posterior saw the IA and emitted a directional posterior.
+    Result: writer prose said "Insufficient Evidence" while the
+    aggregator emitted 0.773. Writer-aggregator disagreement.
+
+    Post-fix: ``any_certified`` is the primary gate. With IA set, route
+    to CheckSynthesisDemand even when retrieval_failed=True. The writer
+    produces a directional verdict; retrieval_failed is annotated in
+    prose (or surfaced via metadata) but does NOT suppress the verdict.
+    """
+    obj, repo = await _setup(tmp_path, "retrieval_failed_with_ia")
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="Test claim",
+        scope="scope",
+        stage=ClaimStage.SUPPORTED,
+        integrated_assessment="supports",
+        integrated_confidence=0.78,
+    )
+    await repo.save(claim)
+
+    state = EpistemicGraphState(
+        objective_id=obj.entity_id,
+        retrieval_failed=True,
+    )
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    ctx = _FakeRunContext(state, deps)
+    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+
+    # IA wins: route to writer despite retrieval_failed=True.
+    assert isinstance(next_node, CheckSynthesisDemand)
+    # No insufficient-reason should be set (we're not going to the
+    # insufficient terminal).
+    assert state.synthesis_insufficient_reason is None
