@@ -170,17 +170,22 @@ async def _build_evidence_brief(op: BaseOperation, claim: Claim) -> dict[str, ob
 # ── Stage 1: Enumerate candidates (Peirce, generative) ───────────────
 
 
-# IBE candidate budget. Five slots A-E, two minimum viable.
+# IBE candidate budget. The LLM enumerator iterates the first
+# ``_MAX_LLM_ENUM_CANDIDATES`` (=5) slots; balanced enumeration (Phase D)
+# reuses the remaining slots to seed missing canonical verdicts when
+# the LLM's output didn't cover all three. Single source of truth so
+# the two paths can't accidentally overlap on ID assignment.
 #
-# A previous Phase-1-efficiency cut reduced this to three slots
-# A-C to halve IBE chain cost (each candidate is scored on
+# A previous Phase-1-efficiency cut reduced LLM slots to three
+# (A-C) to halve IBE chain cost (each candidate is scored on
 # loveliness + likeliness, so 5 → 3 saves 4 LLM calls per claim).
 # Reverted (2026-05-02) after benchmark runs showed convergence
 # degradation: with fewer candidates the abductive search had less
 # diversity, claims more often produced wishy-washy verdicts that
-# couldn't carry the IBE chain to a decisive answer. Restored to
-# A-E.
-_CANDIDATE_IDS = ["A", "B", "C", "D", "E"]
+# couldn't carry the IBE chain to a decisive answer.
+_CANDIDATE_ID_POOL: list[str] = list("ABCDEFGHIJ")
+_MAX_LLM_ENUM_CANDIDATES = 5
+_CANDIDATE_IDS = _CANDIDATE_ID_POOL[:_MAX_LLM_ENUM_CANDIDATES]
 _MIN_VIABLE_CANDIDATES = 2
 
 
@@ -333,13 +338,13 @@ class EnumerateCandidatesOperation(BaseOperation):
             n_added = 0
             if missing:
                 used_ids = {c.candidate_id for c in proposed}
-                # Extended pool: ``_CANDIDATE_IDS`` caps the LLM
-                # enumeration at 5; if all 5 were used, balanced
-                # augmentation needs IDs from the next letters in the
-                # alphabet (we will need at most 3 more).
-                _BALANCED_POOL = list("ABCDEFGHIJ")
+                # ``_CANDIDATE_ID_POOL`` is a strict superset of
+                # ``_CANDIDATE_IDS`` (the LLM-enumeration slots); if
+                # the LLM filled all 5 slots, balanced augmentation
+                # uses the remaining slots in the pool. We need at
+                # most 3 (one per canonical verdict).
                 available_ids = [
-                    cid for cid in _BALANCED_POOL if cid not in used_ids
+                    cid for cid in _CANDIDATE_ID_POOL if cid not in used_ids
                 ]
                 defaults_by_verdict = {
                     c.verdict: c for c in _default_candidates()
