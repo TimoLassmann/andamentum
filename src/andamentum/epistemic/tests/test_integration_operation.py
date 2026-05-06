@@ -498,3 +498,160 @@ class TestFramingTieCap:
         )
         cap, _, _ = _framing_tie_cap(chosen, [chosen, opposing])
         assert cap == 1.0
+
+
+class TestBalancedEnumeration:
+    """Phase D: balanced enumeration ensures IBE always considers rival
+    canonical verdicts. Lipton's IBE works by COMPARATIVE selection
+    across rival framings; that comparison is only meaningful if rival
+    framings exist in the candidate set. The enumerator LLM has a
+    confirmation-leaning bias on many claims (case 847 v22 trace: 4/5
+    reps' candidate sets contained no contradicts-framed candidate).
+    Without rival candidates, the framing-tie cap (Phase C) has nothing
+    to grab onto. After this fix, the enumeration step always produces
+    at least one candidate per canonical verdict
+    (supports / contradicts / insufficient) — augmenting from defaults
+    when the LLM's output skipped one.
+    """
+
+    async def test_llm_only_supports_balanced_adds_contradicts_and_insufficient(
+        self, repo
+    ) -> None:
+        """Simulates the case 847 v22 pattern: the enumerator produces
+        only supports-framed candidates. Balanced augmentation should
+        add a contradicts and an insufficient candidate so the chain
+        considers all rivals."""
+        from .conftest import FakeAgentRunner
+
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=[],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+        )
+        await repo.save(claim)
+
+        # Override the proposer to always return a supports framing.
+        # Loop runs 5 iterations (done=False) → 5 supports candidates.
+        biased_runner = FakeAgentRunner(
+            overrides={
+                "epistemic_propose_one_candidate": {
+                    "done": False,
+                    "verdict": "supports",
+                    "description": "Biased toward supports framing",
+                }
+            }
+        )
+        op = EnumerateCandidatesOperation(
+            repo=repo, agent_runner=biased_runner, embedding_model="test"
+        )
+        await op.execute(
+            OperationInput(
+                entity_id="cl-1",
+                entity_type="claim",
+                operation="enumerate_candidates",
+            )
+        )
+
+        from ..operations.integration import _verdict_to_canonical
+
+        updated = await repo.get("claim", "cl-1")
+        canonicals = {
+            _verdict_to_canonical(c.verdict) for c in updated.integration_candidates
+        }
+        # All three canonical verdicts present after balanced augmentation.
+        assert canonicals == {"supports", "contradicts", "insufficient"}
+        # Should have 5 LLM-generated supports + 2 default rivals = 7 total.
+        n_supports = sum(
+            1
+            for c in updated.integration_candidates
+            if _verdict_to_canonical(c.verdict) == "supports"
+        )
+        n_contradicts = sum(
+            1
+            for c in updated.integration_candidates
+            if _verdict_to_canonical(c.verdict) == "contradicts"
+        )
+        n_insufficient = sum(
+            1
+            for c in updated.integration_candidates
+            if _verdict_to_canonical(c.verdict) == "insufficient"
+        )
+        assert n_supports == 5
+        assert n_contradicts == 1
+        assert n_insufficient == 1
+        # The added defaults are tagged in their description so the
+        # downstream trace is auditable.
+        added = [
+            c
+            for c in updated.integration_candidates
+            if "[Balanced enumeration:" in (c.description or "")
+        ]
+        assert len(added) == 2
+
+    async def test_llm_balanced_no_augmentation_needed(self, repo) -> None:
+        """When the enumerator's output already covers all canonical
+        verdicts, balanced augmentation is a no-op (zero defaults
+        added, descriptions don't get the [Balanced enumeration] tag)."""
+        from .conftest import FakeAgentRunner
+
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=[],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+        )
+        await repo.save(claim)
+
+        # Sequence of responses: supports, contradicts, insufficient,
+        # then done. Use a custom runner that cycles.
+        responses = [
+            {"done": False, "verdict": "supports", "description": "s"},
+            {"done": False, "verdict": "contradicts", "description": "c"},
+            {"done": False, "verdict": "insufficient", "description": "i"},
+            {"done": True, "verdict": None, "description": None},
+        ]
+        call_idx = [0]
+
+        class CyclingRunner(FakeAgentRunner):
+            async def run(self, agent_name, **kwargs):
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_propose_one_candidate":
+                    r = responses[call_idx[0]]
+                    call_idx[0] += 1
+                    from types import SimpleNamespace
+
+                    return SimpleNamespace(**r)
+                return await super().run(agent_name, **kwargs)
+
+        op = EnumerateCandidatesOperation(
+            repo=repo, agent_runner=CyclingRunner(), embedding_model="test"
+        )
+        await op.execute(
+            OperationInput(
+                entity_id="cl-1",
+                entity_type="claim",
+                operation="enumerate_candidates",
+            )
+        )
+
+        from ..operations.integration import _verdict_to_canonical
+
+        updated = await repo.get("claim", "cl-1")
+        # 3 LLM-generated, balanced — no defaults added.
+        assert len(updated.integration_candidates) == 3
+        canonicals = {
+            _verdict_to_canonical(c.verdict) for c in updated.integration_candidates
+        }
+        assert canonicals == {"supports", "contradicts", "insufficient"}
+        # No augmentation tags.
+        assert not any(
+            "[Balanced enumeration:" in (c.description or "")
+            for c in updated.integration_candidates
+        )
