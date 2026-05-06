@@ -2199,30 +2199,48 @@ class CheckCompletion(Node):
         state = ctx.state
         deps = ctx.deps
 
-        # Maximal B (extended): every "system can't conclude" path
-        # routes through SynthesizeInsufficient so a structurally honest
-        # artefact is always produced. Four exit paths into the
-        # fallibilism terminal:
+        # Single canonical certifier (Phase A — 2026-05-06). The IBE
+        # chain (EnumerateCandidates → ScoreLoveliness → ScoreLikeliness
+        # → SelectBestExplanation) is the system's certifier of
+        # directional verdicts. ``integrated_assessment is not None`` on
+        # any active claim is the system's binary answer to "did we
+        # adjudicate?". Every router that decides whether the writer
+        # should produce a directional report — and every aggregator
+        # that decides whether the posterior should commit — must
+        # consult this same canonical signal. Process flags (notably
+        # ``retrieval_failed``) describe inquiry health, not adjudication
+        # state, and become reasons WHY no IA was reached when applicable
+        # rather than routing overrides that bypass the IBE check.
         #
-        #   1. retrieval_failed — evidence extraction kept returning
-        #      empty content; we have nothing fresh to chew on.
-        #   2. no_claims — decomposition / claim-creation produced
-        #      nothing investigable.
-        #   3. partial — claims existed but were all abandoned during
-        #      scrutiny.
-        #   4. no_certified_verdict — claims exist and aren't abandoned,
-        #      but none reached IBE certification (no
-        #      ``integrated_assessment``). Most often: every active
-        #      claim is cycle-capped at HYPOTHESIS, so PromoteToSupported
-        #      skipped them and the IBE chain never ran.
+        # Routing rule:
+        #   * any active claim has IA → CheckSynthesisDemand (the writer
+        #     produces a directional report; the posterior aggregator
+        #     commits via IA; retrieval_failed is annotated in prose if
+        #     applicable but does not suppress the verdict).
+        #   * no active claim has IA → SynthesizeInsufficient with one
+        #     of four reason variants: retrieval_failed > no_claims >
+        #     all_abandoned > no_certified_verdict. The reason text
+        #     describes WHY the system could not adjudicate; the
+        #     terminal artefact is structurally identical regardless.
         #
-        # The retrieval_failed BOOL on EpistemicResult is preserved
-        # (downstream confidence + report consumers branch on it), so
-        # operational distinction survives even though the status field
-        # is uniform "insufficient" across all SynthesizeInsufficient
-        # exits. The artefact body surfaces the cause via the reason
-        # text written below.
+        # This closes the writer-aggregator coherence gap on the
+        # retrieval_failed-with-IA-set case (case 957 rep 5: writer said
+        # "Insufficient" while aggregator emitted directional posterior
+        # 0.773). After this fix both consumers agree: IA is set →
+        # directional output; IA is not set → suspend.
 
+        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+        non_abandoned = [c for c in all_claims if not c.abandoned]
+        any_certified = bool(non_abandoned) and any(
+            c.integrated_assessment is not None for c in non_abandoned
+        )
+
+        if any_certified:
+            # IBE certified at least one active claim. The system has
+            # an answer to report — even if retrieval health flagged.
+            return CheckSynthesisDemand()
+
+        # No certified claim. Pick the most informative reason text.
         if state.retrieval_failed:
             state.synthesis_insufficient_reason = (
                 "Retrieval failed: evidence extraction returned empty "
@@ -2235,58 +2253,19 @@ class CheckCompletion(Node):
                 "every newly-found item was a duplicate of evidence "
                 "already invalidated upstream."
             )
-            return SynthesizeInsufficient()
-
-        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        non_abandoned = [c for c in all_claims if not c.abandoned]
-
-        if non_abandoned:
-            # Exit 4 — no_certified_verdict.
-            #
-            # The IBE chain (EnumerateCandidates → ScoreLoveliness →
-            # ScoreLikeliness → SelectBestExplanation) is the system's
-            # *certifier* of directional verdicts. It only runs on
-            # SUPPORTED claims; cycle-capped or otherwise-uncertified
-            # HYPOTHESIS claims are filtered out by PromoteToSupported.
-            # When no active claim has an ``integrated_assessment``, the
-            # IBE chain never produced a verdict for this objective —
-            # neither the synthesis writer nor the posterior aggregator
-            # should fabricate one. Route to SynthesizeInsufficient and
-            # let the structural-honest artefact say so.
-            #
-            # Why this exit specifically catches the case 957 v17 shape:
-            # case 957's claim was cycle_capped=True at HYPOTHESIS, so
-            # PromoteToSupported skipped it. Without an
-            # integrated_assessment, the writer was reading evidence
-            # content directly and concluding "No" while the posterior
-            # aggregator was counting labels and concluding 0.85
-            # "supports". They disagreed because both were running
-            # *ungrounded*. Routing here makes that visible upstream and
-            # produces an artefact that matches the system's actual
-            # epistemic state ("we did not certify a verdict") rather
-            # than asking the writer to invent one.
-            any_certified = any(
-                c.integrated_assessment is not None for c in non_abandoned
+        elif non_abandoned:
+            state.synthesis_insufficient_reason = (
+                f"None of the {len(non_abandoned)} non-abandoned claim(s) "
+                "reached IBE certification (integrated_assessment is None "
+                "on every active claim). Most likely cause: every active "
+                "claim is cycle-capped at HYPOTHESIS, so "
+                "PromoteToSupported skipped them and the IBE chain "
+                "never ran. Without IBE-certified verdicts, neither "
+                "the writer nor the posterior aggregator should "
+                "produce a directional verdict — synthesis suspends "
+                "judgment."
             )
-            if not any_certified:
-                state.synthesis_insufficient_reason = (
-                    f"None of the {len(non_abandoned)} non-abandoned claim(s) "
-                    "reached IBE certification (integrated_assessment is None "
-                    "on every active claim). Most likely cause: every active "
-                    "claim is cycle-capped at HYPOTHESIS, so "
-                    "PromoteToSupported skipped them and the IBE chain "
-                    "never ran. Without IBE-certified verdicts, neither "
-                    "the writer nor the posterior aggregator should "
-                    "produce a directional verdict — synthesis suspends "
-                    "judgment."
-                )
-                return SynthesizeInsufficient()
-            return CheckSynthesisDemand()
-
-        if all_claims:
-            # All claims abandoned: scrutiny found none of the candidate
-            # claims investigable / supportable. The system DID produce
-            # claims and DID work on them; the work just didn't survive.
+        elif all_claims:
             state.synthesis_insufficient_reason = (
                 f"All {len(all_claims)} candidate claim(s) were abandoned "
                 "during scrutiny. The system did not find any "
@@ -2294,9 +2273,6 @@ class CheckCompletion(Node):
                 "directional verdict is supportable."
             )
         else:
-            # No claims at all: decomposition / claim-creation produced
-            # nothing to investigate. Probably the question didn't
-            # decompose into anything meaningful.
             state.synthesis_insufficient_reason = (
                 "No claims were created from the question. The "
                 "decomposition / claim-creation step produced nothing "
