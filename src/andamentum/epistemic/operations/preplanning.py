@@ -337,11 +337,27 @@ class PlanTaskOperation(BaseOperation):
                 message=f"Phase {objective.phase} is not 'analyzed'",
             )
 
-        # Step 1: LLM-based provider selection.
-        # For each registered provider, a focused agent decides whether it
-        # is relevant to this question. This is a narrow binary judgment
-        # (yes/no), run once per provider. The agent sees the provider's
-        # full description so it can reason about domain coverage.
+        # Step 1: provider selection.
+        #
+        # In RESEARCH mode (decomposition produces sub-investigations):
+        # use the per-provider LLM relevance check. The agent decides
+        # whether each provider is on-topic for the question; non-
+        # relevant providers are dropped. The K8 tournament downstream
+        # then picks K of the surviving providers per objective.
+        #
+        # In VERIFY mode (``claim_to_verify`` is set): skip the LLM
+        # relevance check and use ALL configured providers. Phase B
+        # (provider-redundancy / Reichenbach common-cause at the
+        # retrieval layer): in single-claim verification we want every
+        # independent indexing pipeline to vote on every claim, so that
+        # the dedup-driven ``corroboration_count`` carries meaningful
+        # vouching signal. The per-provider relevance LLM call was a
+        # dominant variance source in 5-rep smokes (different runs
+        # rolled different yes/no decisions, producing wildly different
+        # provider mixes for the same claim) — and its filtering value
+        # is low when the domain is fixed by ``claim_to_verify``. Cost
+        # rises ~30% (more retrieval API calls) but variance drops
+        # sharply.
         from ..providers import (
             PROVIDER_DESCRIPTIONS,
             PROVIDER_QUERY_GUIDANCE,
@@ -349,9 +365,12 @@ class PlanTaskOperation(BaseOperation):
         )
 
         clarified = objective.clarified_question or objective.description
+        is_verify_mode = bool(objective.claim_to_verify)
 
         providers: list[str] = []
-        if self.agent_runner:
+        if is_verify_mode:
+            providers = sorted(PROVIDER_REGISTRY)
+        elif self.agent_runner:
             for provider_name in sorted(PROVIDER_REGISTRY):
                 description = PROVIDER_DESCRIPTIONS.get(provider_name, "")
                 if not description:

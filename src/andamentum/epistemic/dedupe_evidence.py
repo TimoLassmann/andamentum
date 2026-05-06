@@ -123,10 +123,10 @@ async def dedupe_evidence_by_source_ref(
             ),
         )
         losers = [e for e in group if e is not winner]
-        provider_list = sorted({e.source_type for e in losers if e.source_type})
+        loser_provider_list = sorted({e.source_type for e in losers if e.source_type})
         provider_blurb = (
-            f" (also returned by {', '.join(provider_list)})"
-            if provider_list
+            f" (also returned by {', '.join(loser_provider_list)})"
+            if loser_provider_list
             else ""
         )
 
@@ -139,13 +139,30 @@ async def dedupe_evidence_by_source_ref(
             await repo.save(loser)
             n_marked += 1
 
+        # Phase B (provider redundancy / Reichenbach common-cause at the
+        # retrieval layer). Populate ``corroboration_count`` on the
+        # winner from the *number of distinct providers* that returned
+        # the same item. Downstream consumers (compute_posterior, IBE
+        # chain integration) already weight evidence by
+        # ``1 + log(corroboration_count)`` — populating it here from
+        # provider count means independent vouching propagates
+        # automatically through the posterior and the abductive chain.
+        all_provider_set = {e.source_type for e in group if e.source_type}
+        new_count = max(winner.corroboration_count, len(all_provider_set))
+        if new_count > winner.corroboration_count:
+            winner.corroboration_count = new_count
+            winner.corroborating_sources = sorted(
+                {e.source_ref for e in group if e.source_ref}
+            )
+            await repo.save(winner)
+
         logger.info(
             "[dedupe_evidence] key=%s kept=%s (%s) marked %d duplicate(s) from %s",
             key,
             winner.entity_id[:12],
             winner.source_type,
             len(losers),
-            provider_list,
+            loser_provider_list,
         )
 
     if n_marked:
