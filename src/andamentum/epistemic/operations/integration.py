@@ -302,7 +302,80 @@ class EnumerateCandidatesOperation(BaseOperation):
                 f"seeded {len(proposed)} defaults"
             )
         else:
-            message = f"Enumerated {len(proposed)} candidates"
+            # Balanced enumeration (Phase D — Lipton). IBE selects the
+            # best explanation by COMPARATIVE evaluation across rival
+            # framings; that comparison is only meaningful if rival
+            # framings exist in the candidate set. The enumerator LLM
+            # has a confirmation-leaning bias on many claims (case 847
+            # v22 trace: 4/5 reps' candidate sets contained no
+            # contradicts-framed candidate; case 957 v20: framings
+            # rolled all-supports or all-contradicts depending on the
+            # run). Without rival candidates the framing-tie cap
+            # (Phase C) has nothing to grab onto, and the chain
+            # commits confidently to whichever direction the
+            # enumerator happened to roll.
+            #
+            # Fix: ensure the final candidate set covers all three
+            # canonical verdicts. If the enumerator skipped one
+            # (canonical verdicts are derived via _verdict_to_canonical
+            # so refined verdicts count as their canonical parent),
+            # append a default candidate for the missing verdict. The
+            # defaults go through loveliness/likeliness scoring like
+            # any other candidate; if the literature genuinely doesn't
+            # support that framing, the scorer will rate it low and
+            # the framing-tie cap won't fire — but the chain has
+            # _considered_ the rival, which is Lipton's requirement.
+            canonical_present = {
+                _verdict_to_canonical(c.verdict) for c in proposed
+            }
+            required_canonicals = {"supports", "contradicts", "insufficient"}
+            missing = required_canonicals - canonical_present
+            n_added = 0
+            if missing:
+                used_ids = {c.candidate_id for c in proposed}
+                # Extended pool: ``_CANDIDATE_IDS`` caps the LLM
+                # enumeration at 5; if all 5 were used, balanced
+                # augmentation needs IDs from the next letters in the
+                # alphabet (we will need at most 3 more).
+                _BALANCED_POOL = list("ABCDEFGHIJ")
+                available_ids = [
+                    cid for cid in _BALANCED_POOL if cid not in used_ids
+                ]
+                defaults_by_verdict = {
+                    c.verdict: c for c in _default_candidates()
+                }
+                # Sort missing for deterministic ordering across runs.
+                for verdict in sorted(missing):
+                    if not available_ids:
+                        break  # ran out of candidate IDs
+                    default_c = defaults_by_verdict[verdict]
+                    proposed.append(
+                        CandidateRecord(
+                            candidate_id=available_ids.pop(0),
+                            verdict=verdict,
+                            description=(
+                                f"[Balanced enumeration: enumerator did not "
+                                f"produce a {verdict}-framed candidate; "
+                                f"seeded with the default framing to ensure "
+                                f"the IBE chain considers all canonical "
+                                f"verdicts (Lipton: comparative selection "
+                                f"requires rivals).] "
+                                + default_c.description
+                            ),
+                        )
+                    )
+                    n_added += 1
+
+            if n_added:
+                message = (
+                    f"Enumerated {len(proposed) - n_added} candidates "
+                    f"+ {n_added} balanced-enumeration default"
+                    f"{'s' if n_added != 1 else ''} "
+                    f"(missing canonical verdicts: "
+                    f"{', '.join(sorted(missing))})"
+                )
+            else:
+                message = f"Enumerated {len(proposed)} candidates"
 
         claim.integration_candidates = proposed
         await self.repo.save(claim)
