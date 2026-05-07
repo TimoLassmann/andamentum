@@ -23,8 +23,10 @@ from .embeddings import (
     EmbeddingFn,
     chunk_text,
     cosine_similarity,
+    discover_input_budget_chars,
     embed_documents,
     embed_texts,
+    infer_input_budget_chars,
     make_ollama_embedder,
 )
 from .models import resolve_model, resolve_model_from_args
@@ -42,8 +44,10 @@ __all__ = [
     "EmbeddingFn",
     "chunk_text",
     "cosine_similarity",
+    "discover_input_budget_chars",
     "embed_documents",
     "embed_texts",
+    "infer_input_budget_chars",
     "make_ollama_embedder",
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_MAX_EMBED_CHARS",
