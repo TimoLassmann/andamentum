@@ -21,6 +21,8 @@ from __future__ import annotations
 import uuid
 from typing import Awaitable, Callable
 
+from andamentum.core.embeddings import infer_input_budget_chars
+
 from .embeddings import EmbeddingFn, make_ollama_embedder
 from .judge import judge_cut
 from .prompts import TARGET_MAX_CHARS, TARGET_MIN_CHARS
@@ -44,6 +46,7 @@ async def extract_units(
     target_min_chars: int = TARGET_MIN_CHARS,
     target_max_chars: int = TARGET_MAX_CHARS,
     embedding_fn: EmbeddingFn | None = None,
+    embedding_input_budget_chars: int | None = None,
     judge_executor: ExecutorFn | None = None,
     judge_low_pct: float = 0.60,
     judge_high_pct: float = 0.90,
@@ -70,7 +73,14 @@ async def extract_units(
         `target_max_chars` are split semantically.
     embedding_fn:
         Async function that returns one embedding per input string. If None,
-        defaults to a local Ollama call (``embeddinggemma:latest``).
+        defaults to a local Ollama call (``embeddinggemma:latest``). Embedders
+        built by ``make_ollama_embedder`` advertise their input char budget via
+        an ``input_budget_chars`` attribute; the chunker uses it to subdivide
+        oversized paragraphs before embedding.
+    embedding_input_budget_chars:
+        Override the embedder's advertised input budget. If neither this nor
+        ``embedding_fn.input_budget_chars`` is set, falls back to 2000 chars
+        (the document_store-aligned default).
     judge_executor:
         Optional. If supplied, the LLM judge is consulted for grey-zone
         boundaries. If None, stage 3 is skipped.
@@ -140,6 +150,7 @@ async def extract_units(
     embedder: EmbeddingFn | None = None
     refined_pieces: list[tuple[int, int]] = []
 
+    embed_budget: int | None = None
     for start, end in pieces:
         length = end - start
         if length <= target_max_chars:
@@ -148,6 +159,12 @@ async def extract_units(
 
         if embedder is None:
             embedder = embedding_fn or make_ollama_embedder()
+            embed_budget = (
+                embedding_input_budget_chars
+                if embedding_input_budget_chars is not None
+                else infer_input_budget_chars(embedder)
+            )
+        assert embed_budget is not None  # set together with embedder above
         sub_spans, candidates = await semantic_split_section(
             source=source,
             section_start=start,
@@ -155,6 +172,7 @@ async def extract_units(
             target_max=target_max_chars,
             target_min=target_min_chars,
             embedding_fn=embedder,
+            embed_input_budget=embed_budget,
         )
         # Track grey-zone cuts among the chosen ones for stage 3.
         chosen_offsets = {e for s, e in sub_spans[:-1]}  # last span has no cut
