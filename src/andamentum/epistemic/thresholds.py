@@ -105,8 +105,7 @@ interpreter for diagnostic flags."""
 # the cap is one decision, not three.
 #
 # Operational caps that are NOT Peirce-grounded
-# (``MAX_VALIDATION_ROUNDS`` for the writer-validator loop,
-# ``_EMPTY_EXTRACTION_THRESHOLD`` for retrieval health) keep their
+# (``MAX_VALIDATION_ROUNDS`` for the writer-validator loop) keep their
 # own names and homes.
 
 PEIRCE_CYCLE_CAP: int = 3
