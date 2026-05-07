@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
-from andamentum.epistemic.graph.nodes import _update_retrieval_health
+from andamentum.epistemic.graph.nodes import _evaluate_retrieval_health
 from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.report_data import (
     ConfidenceScores,
@@ -21,7 +22,6 @@ from andamentum.epistemic.typeset_report import build_typeset_report
 class TestGraphStateRetrievalFields:
     def test_default_values(self) -> None:
         s = EpistemicGraphState()
-        assert s.consecutive_empty_extractions == 0
         assert s.retrieval_failed is False
 
 
@@ -67,80 +67,152 @@ async def _make_obj(repo: EpistemicRepository) -> Objective:
     return obj
 
 
-class TestRetrievalHealthUpdater:
-    async def test_empty_extractions_increment(self, tmp_path: Path) -> None:
-        repo = await _make_repo(tmp_path)
-        obj = await _make_obj(repo)
-        state = EpistemicGraphState()
-        for _ in range(2):
-            ev = Evidence(
-                source_type="web",
-                source_ref="https://ex.com/x",
-                extracted_content="",
-                objective_id=obj.entity_id,
-            )
-            await repo.save(ev)
-            _update_retrieval_health(state, ev)
-        assert state.consecutive_empty_extractions == 2
-        assert state.retrieval_failed is False
+class TestEvaluateRetrievalHealth:
+    """End-of-gathering retrieval-health semantics (replaces the old
+    consecutive-empties counter on 2026-05-08).
 
-    async def test_non_empty_resets_counter(self, tmp_path: Path) -> None:
-        repo = await _make_repo(tmp_path)
-        obj = await _make_obj(repo)
-        state = EpistemicGraphState()
-        state.consecutive_empty_extractions = 2
-        ev = Evidence(
-            source_type="web",
-            source_ref="https://ex.com/y",
-            extracted_content="real content here",
-            objective_id=obj.entity_id,
-        )
-        await repo.save(ev)
-        _update_retrieval_health(state, ev)
-        assert state.consecutive_empty_extractions == 0
-        assert state.retrieval_failed is False
+    Principle: retrieval has failed when *zero* evidence pieces with
+    content exist for the objective at end-of-gathering. Off-topic
+    providers returning empty is expected and routine; only the total
+    yield matters. Invariant under provider count and execution order.
+    """
 
-    async def test_threshold_flips_flag(self, tmp_path: Path) -> None:
+    async def test_zero_evidence_flips_flag_true(self, tmp_path: Path) -> None:
         repo = await _make_repo(tmp_path)
         obj = await _make_obj(repo)
-        state = EpistemicGraphState()
-        for _ in range(3):
-            ev = Evidence(
-                source_type="web",
-                source_ref="https://ex.com/z",
-                extracted_content="",
-                objective_id=obj.entity_id,
-            )
-            await repo.save(ev)
-            _update_retrieval_health(state, ev)
-        assert state.consecutive_empty_extractions == 3
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = SimpleNamespace(repo=repo)
+        await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
         assert state.retrieval_failed is True
 
-    async def test_non_empty_does_not_unflip_retrieval_failed(
+    async def test_any_non_empty_evidence_keeps_flag_false(
         self, tmp_path: Path
     ) -> None:
-        # Once retrieval_failed flips True it stays True even if later
-        # extractions succeed. The flag represents a terminal health
-        # classification for the run, not a real-time gauge.
+        """A single piece of real content is sufficient — retrieval has
+        not failed. Counterexample to the old counter, which could trip
+        on transient empty clusters even when plenty of real content
+        was eventually found."""
         repo = await _make_repo(tmp_path)
         obj = await _make_obj(repo)
-        state = EpistemicGraphState()
-        state.retrieval_failed = True
-        state.consecutive_empty_extractions = 3
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = SimpleNamespace(repo=repo)
 
-        ev = Evidence(
-            source_type="web",
-            source_ref="https://ex.com/late",
-            extracted_content="something real",
-            objective_id=obj.entity_id,
+        # Many empty stubs + one with content — retrieval did NOT fail.
+        for i in range(5):
+            await repo.save(
+                Evidence(
+                    source_type="off_topic_provider",
+                    source_ref=f"https://ex.com/empty/{i}",
+                    extracted_content="",
+                    objective_id=obj.entity_id,
+                )
+            )
+        await repo.save(
+            Evidence(
+                source_type="pubmed",
+                source_ref="PMID:12345",
+                extracted_content="Real abstract content from the on-topic provider.",
+                objective_id=obj.entity_id,
+            )
         )
-        await repo.save(ev)
-        _update_retrieval_health(state, ev)
 
-        # counter resets but flag stays — a late recovery shouldn't erase
-        # the fact that we've already been flagged as a failed-retrieval run.
-        assert state.consecutive_empty_extractions == 0
+        await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
+        assert state.retrieval_failed is False
+
+    async def test_all_empty_evidence_flips_flag_true(
+        self, tmp_path: Path
+    ) -> None:
+        repo = await _make_repo(tmp_path)
+        obj = await _make_obj(repo)
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = SimpleNamespace(repo=repo)
+
+        for i in range(5):
+            await repo.save(
+                Evidence(
+                    source_type="provider",
+                    source_ref=f"https://ex.com/empty/{i}",
+                    extracted_content="",
+                    objective_id=obj.entity_id,
+                )
+            )
+
+        await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
         assert state.retrieval_failed is True
+
+    async def test_non_sticky_recovery_unflips_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """The new check is non-sticky: if a late extraction sweep
+        produces non-empty evidence, the flag flips back to False.
+        Counter to the old "sticky once tripped" behaviour, which kept
+        the flag True even after content was eventually found."""
+        repo = await _make_repo(tmp_path)
+        obj = await _make_obj(repo)
+        state = EpistemicGraphState(
+            objective_id=obj.entity_id, retrieval_failed=True
+        )
+        deps = SimpleNamespace(repo=repo)
+
+        await repo.save(
+            Evidence(
+                source_type="pubmed",
+                source_ref="PMID:99999",
+                extracted_content="Late but real content.",
+                objective_id=obj.entity_id,
+            )
+        )
+
+        await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
+        # Real content was found — retrieval did NOT fail, regardless
+        # of any prior state.
+        assert state.retrieval_failed is False
+
+    async def test_invariant_under_off_topic_provider_count(
+        self, tmp_path: Path
+    ) -> None:
+        """Adding more off-topic providers (each returning empty) does
+        NOT trip the flag, because the on-topic providers still
+        produced content. This is the regression test for the bug we
+        actually fixed: the old counter would trip on any 3 consecutive
+        empties regardless of total yield, so adding off-topic
+        providers made spurious trips more likely."""
+        repo = await _make_repo(tmp_path)
+        obj = await _make_obj(repo)
+        state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = SimpleNamespace(repo=repo)
+
+        # Simulate verify-mode: many providers, most off-topic, a
+        # couple with real content. Order doesn't matter under the
+        # new semantics.
+        for provider in [
+            "chembl",
+            "monarch",
+            "clinicaltrials",
+            "open_targets",
+            "arxiv",  # five off-topic for an immunology question
+        ]:
+            await repo.save(
+                Evidence(
+                    source_type=provider,
+                    source_ref=f"https://ex.com/{provider}/empty",
+                    extracted_content="",
+                    objective_id=obj.entity_id,
+                )
+            )
+        for provider in ["pubmed", "openalex", "europepmc"]:
+            await repo.save(
+                Evidence(
+                    source_type=provider,
+                    source_ref=f"PMID:{provider}_12345",
+                    extracted_content=f"Real {provider} abstract content.",
+                    objective_id=obj.entity_id,
+                )
+            )
+
+        await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
+        # 5 empties + 3 with content → not a retrieval failure.
+        assert state.retrieval_failed is False
 
 
 class TestPipelineResultExposesRetrievalFailed:

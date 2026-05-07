@@ -35,11 +35,9 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-_EMPTY_EXTRACTION_THRESHOLD = 3
-"""Operational guard: number of consecutive empty extractions before
-``state.retrieval_failed`` flips True. NOT a Peirce-cycling cap —
-it's a retrieval-health signal, kept separate so the two concerns
-remain independently tunable."""
+# Retrieval health is evaluated at end-of-gathering, not per-extraction
+# (no transient counter, no per-extraction threshold). See
+# ``_evaluate_retrieval_health`` below.
 
 # Cap on Scrutinize ↔ ResolveUncertainties oscillation per claim.
 # Each pass of Scrutinize on a marked-for-rescrutiny claim counts as
@@ -104,23 +102,37 @@ async def _mark_cycle_capped(deps: "EpistemicDeps", claim_id: str, source: str) 
     )
 
 
-def _update_retrieval_health(state: EpistemicGraphState, evidence: Any) -> None:
-    """Update retrieval-health counters based on one extraction outcome.
+async def _evaluate_retrieval_health(
+    state: EpistemicGraphState, deps: EpistemicDeps
+) -> None:
+    """Set ``state.retrieval_failed`` based on actual evidence yield.
 
-    Empty extraction (``extracted_content`` is falsy) increments the
-    consecutive-empty counter; non-empty resets it to zero. When the
-    counter crosses ``_EMPTY_EXTRACTION_THRESHOLD``, ``state.retrieval_failed``
-    flips True. Once flipped, the flag stays True for the remainder of the
-    run — a late successful extraction shouldn't erase the fact that the
-    retrieval infrastructure was already flagged as failing.
+    Retrieval has failed when **zero** evidence pieces with content
+    exist for the objective at end-of-gathering. Off-topic providers
+    returning empty is expected and routine; transient mid-run empty
+    clusters are not failures if other providers found content.
+
+    The previous design used a per-extraction "consecutive empties"
+    counter that flipped a sticky flag once 3 empties accrued in a
+    row. That metric was order-dependent (which providers happened to
+    run consecutively), conflated "off-topic provider returned []"
+    with "real retrieval failure", and got worse as the system added
+    providers (more chances of legitimate empties bunching). The end-
+    of-gathering check is invariant under provider count and matches
+    the natural-language meaning of "retrieval failed": we attempted
+    to gather data and got nothing.
+
+    Non-sticky: if a later extraction sweep produces non-empty
+    evidence, the flag flips back to False, because by then the
+    objective has data and retrieval has not failed.
     """
-    content = getattr(evidence, "extracted_content", None)
-    if content:
-        state.consecutive_empty_extractions = 0
-    else:
-        state.consecutive_empty_extractions += 1
-        if state.consecutive_empty_extractions >= _EMPTY_EXTRACTION_THRESHOLD:
-            state.retrieval_failed = True
+    all_evidence = await deps.repo.query(
+        "evidence", objective_id=state.objective_id
+    )
+    has_any_content = any(
+        bool(getattr(ev, "extracted_content", "")) for ev in all_evidence
+    )
+    state.retrieval_failed = not has_any_content
 
 
 def _make_op(op_class: type, deps: EpistemicDeps) -> Any:
@@ -536,13 +548,13 @@ class PlanEvidence(Node):
 class ExtractEvidence(Node):
     """Extract content from all unextracted evidence stubs.
 
-    Phase 5 of the Move-3 plan. Writes
-    ``consecutive_empty_extractions`` and ``retrieval_failed`` via the
-    ``_update_retrieval_health`` helper.
+    Phase 5 of the Move-3 plan. Writes ``retrieval_failed`` once at
+    end-of-gathering via ``_evaluate_retrieval_health`` (zero-yield
+    semantics).
     """
 
     reads = frozenset({"objective_id", "claims_created"})
-    writes = frozenset({"consecutive_empty_extractions", "retrieval_failed"})
+    writes = frozenset({"retrieval_failed"})
     operations = frozenset()  # populated below
     post_invariants = ()
 
@@ -569,8 +581,6 @@ class ExtractEvidence(Node):
                 "evidence",
                 "extract_evidence",
             )
-            updated_ev = await deps.repo.get("evidence", ev.entity_id)
-            _update_retrieval_health(state, updated_ev)
 
         # Cross-provider duplicate sweep: when multiple providers return the
         # same paper, mark all but one as invalidated so judging / scrutiny /
@@ -579,6 +589,9 @@ class ExtractEvidence(Node):
         from ..dedupe_evidence import dedupe_evidence_by_source_ref
 
         await dedupe_evidence_by_source_ref(deps.repo, state.objective_id)
+
+        # End-of-gathering retrieval-health check (zero-yield semantics).
+        await _evaluate_retrieval_health(state, deps)
 
         # If claims have not yet been created, go create them.
         # Otherwise we are re-entering after investigation — go back to scrutiny.
@@ -857,13 +870,13 @@ class Investigate(Node):
 class ExtractNewEvidence(Node):
     """Extract content from newly created evidence stubs, then re-enter scrutiny.
 
-    Phase 5 of the Move-3 plan. Writes
-    ``consecutive_empty_extractions`` and ``retrieval_failed`` via the
-    ``_update_retrieval_health`` helper.
+    Phase 5 of the Move-3 plan. Writes ``retrieval_failed`` once at
+    end-of-gathering via ``_evaluate_retrieval_health`` (zero-yield
+    semantics).
     """
 
     reads = frozenset({"objective_id"})
-    writes = frozenset({"consecutive_empty_extractions", "retrieval_failed"})
+    writes = frozenset({"retrieval_failed"})
     operations = frozenset()  # populated below
     post_invariants = ()
 
@@ -897,8 +910,6 @@ class ExtractNewEvidence(Node):
                 "evidence",
                 "extract_evidence",
             )
-            updated_ev = await deps.repo.get("evidence", ev.entity_id)
-            _update_retrieval_health(state, updated_ev)
             per_stub_results.append((ev, result))
 
         # Cross-provider duplicate sweep before judging fires. Dedupe runs
@@ -907,6 +918,9 @@ class ExtractNewEvidence(Node):
         from ..dedupe_evidence import dedupe_evidence_by_source_ref
 
         await dedupe_evidence_by_source_ref(deps.repo, state.objective_id)
+
+        # End-of-gathering retrieval-health check (zero-yield semantics).
+        await _evaluate_retrieval_health(state, deps)
 
         # Pass 2: link new evidence to claims and judge. Invalidated items
         # (marked by the dedupe sweep) are skipped — they were duplicates

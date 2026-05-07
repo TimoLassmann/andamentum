@@ -72,15 +72,12 @@ class EpistemicGraphState:
     terminal_claims: set[str] = field(default_factory=set)
 
     # ── Retrieval health ────────────────────────────────────────
-    # Number of consecutive extractions that returned zero content.
-    # Incremented by ExtractEvidence nodes (Task B2); reset to 0
-    # when a non-empty extraction lands.
-    consecutive_empty_extractions: int = 0
-
-    # Set to True when consecutive_empty_extractions crosses the
-    # threshold. Downstream nodes (Task B3) check this and
-    # short-circuit to CheckCompletion; the PosteriorReport
-    # surfaces it as a distinct terminal_state.
+    # Set True when end-of-gathering yields zero evidence pieces with
+    # content for this objective (zero-yield semantics, evaluated by
+    # ``_evaluate_retrieval_health`` in graph/nodes.py). Downstream
+    # consumers (compute_posterior, CheckCompletion, the synthesis
+    # writer) read this as a single binary signal: did we gather
+    # anything, or not?
     retrieval_failed: bool = False
 
     # ── Flow control (graph-managed, not on entities) ───────────
