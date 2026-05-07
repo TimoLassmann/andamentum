@@ -273,8 +273,11 @@ async def test_adversarial_check_propagates_counterarg_eval_failure(tmp_path):
 
 
 async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
-    """When neither an agent runner nor a gatherer is wired up, extraction
-    must raise — never fabricate `[Content from ...]` placeholders."""
+    """ExtractEvidenceOperation requires an evidence_gatherer. The
+    agent-only fallback was deleted because the agent had no source
+    content to extract from and produced hallucinated content
+    paraphrasing the claim. Without a gatherer the operation must
+    raise rather than silently fabricate."""
     from andamentum.document_store import DocumentStore
     from andamentum.epistemic.entities import Evidence
     from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
@@ -298,7 +301,7 @@ async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
         quality_scorer=None,
         embedding_model=None,
     )
-    with pytest.raises(RuntimeError, match="no extractor"):
+    with pytest.raises(RuntimeError, match="no evidence_gatherer"):
         await op.execute(
             OperationInput(
                 entity_id=ev.entity_id,
