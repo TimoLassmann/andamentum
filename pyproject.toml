@@ -84,7 +84,8 @@ markers = [
     "ollama: test requires a live Ollama embedding backend",
     "benchmark: long-running accuracy or performance benchmark",
     "cloud: test calls a real cloud LLM (costs tokens, needs API key)",
+    "live_provider: test calls a live evidence provider API (PubMed, OpenAlex, etc.) — needs internet, no auth typically required",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker
 # overrides this.
-addopts = "-m 'not ollama and not benchmark and not cloud'"
+addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider'"

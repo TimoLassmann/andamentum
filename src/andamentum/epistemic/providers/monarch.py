@@ -145,17 +145,17 @@ class MonarchProvider:
                     )
 
         except Exception as e:
+            # Honest empty-result on API failure. The previous behaviour
+            # was to return a single phantom GatheredEvidence with
+            # ``source_ref=query`` (the search query string) and
+            # synthesised content "Monarch Initiative search failed: ...".
+            # Per the provider contract (see CONTRIBUTING.md) and the
+            # Strategy 2 deletion in ExtractEvidenceOperation (commit
+            # ee4bbb8), providers must return ``[]`` on error rather than
+            # placeholder content — placeholder evidence pollutes the
+            # downstream evidence pool with non-paper content that the
+            # judge cannot meaningfully evaluate.
             logger.warning(f"Monarch Initiative query failed for '{query}': {e}")
-            if not gathered:
-                return [
-                    GatheredEvidence(
-                        content=f"Monarch Initiative search failed: {e}",
-                        source_ref=query,
-                        source_type="monarch_initiative",
-                        quality_score=None,
-                        limitations=[f"API error: {e}"],
-                    )
-                ]
 
         return gathered[: self.max_results]
 
