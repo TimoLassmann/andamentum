@@ -401,11 +401,22 @@ class TestEvidenceExtraction:
         assert evidence.experimental_context is None
 
 
-class TestAgentOnlyExtraction:
-    """Test Strategy 2: agent extraction without evidence_gatherer still scores."""
+class TestExtractRequiresGatherer:
+    """The agent-only fallback path was deleted (commit ahead) because the
+    agent had no source content to extract from and produced hallucinated
+    content paraphrasing the claim. ExtractEvidenceOperation now requires
+    a real evidence_gatherer; without one, it raises rather than silently
+    fabricating content. See SciFact case 781 v25 forensic in the
+    operation's class docstring.
+    """
 
-    async def test_agent_only_extraction_scores_evidence(self, repo, fake_runner):
-        """When no evidence_gatherer is provided, agent extraction still scores quality."""
+    async def test_no_gatherer_raises_regardless_of_agent_runner(
+        self, repo, fake_runner
+    ):
+        """Even with an agent_runner configured, ExtractEvidenceOperation
+        must raise when no evidence_gatherer is provided. The agent path
+        was removed because it generated content from the claim text
+        rather than from real source documents."""
         obj = Objective(
             entity_id="obj-ao",
             objective_id="obj-ao",
@@ -421,25 +432,17 @@ class TestAgentOnlyExtraction:
         )
         await repo.save(e)
 
-        # Create operations WITHOUT evidence_gatherer (model=None skips auto-creation)
         ops = create_operations(repo, fake_runner, evidence_gatherer=None)
         work = OperationInput(
             entity_id="e-ao", entity_type="evidence", operation="extract_evidence"
         )
-        result = await ops["extract_evidence"].execute(work)
-
-        assert result.success
-        loaded = await repo.get_evidence("e-ao")
-        assert loaded.extracted is True
-        assert loaded.quality_score is not None, (
-            "Agent-only extraction must score evidence"
-        )
-        assert loaded.quality_metadata is not None
-        assert loaded.quality_metadata.get("source") == "agent"
+        with pytest.raises(RuntimeError, match="no evidence_gatherer"):
+            await ops["extract_evidence"].execute(work)
 
     async def test_no_runner_no_gatherer_raises(self, repo):
-        """When neither a runner nor a gatherer is wired up, extraction must raise
-        rather than fabricate placeholder content."""
+        """When no gatherer is wired up, extraction must raise rather than
+        fabricate placeholder content — regardless of whether a runner is
+        also missing."""
         obj = Objective(
             entity_id="obj-df",
             objective_id="obj-df",
@@ -455,13 +458,63 @@ class TestAgentOnlyExtraction:
         )
         await repo.save(e)
 
-        # No runner, no gatherer — must raise, not silently fabricate content
         ops = create_operations(repo, agent_runner=None, evidence_gatherer=None)
         work = OperationInput(
             entity_id="e-df", entity_type="evidence", operation="extract_evidence"
         )
-        with pytest.raises(RuntimeError, match="no extractor"):
+        with pytest.raises(RuntimeError, match="no evidence_gatherer"):
             await ops["extract_evidence"].execute(work)
+
+    async def test_empty_gatherer_invalidates_stub_does_not_synthesise(
+        self, repo, fake_runner
+    ):
+        """When the gatherer returns an empty list (provider had no
+        results), ExtractEvidenceOperation must mark the evidence stub
+        invalidated rather than fall through to a synthetic content
+        generator. SciFact case 781 v25 forensic: the deleted Strategy
+        2 path produced 6 phantom 'supports' pieces with claim-
+        paraphrased content, drowning out 2 real contradicts pieces."""
+
+        class EmptyGatherer:
+            async def gather(self, source_type, query):
+                return []
+
+        obj = Objective(
+            entity_id="obj-emp",
+            objective_id="obj-emp",
+            description="Test claim",
+            phase="planned",
+        )
+        await repo.save(obj)
+        e = Evidence(
+            entity_id="e-emp",
+            objective_id="obj-emp",
+            source_type="cochrane",
+            source_ref='"experimental autoimmune myocarditis" IFN-gamma knockout',
+            extracted=False,
+        )
+        await repo.save(e)
+
+        ops = create_operations(repo, fake_runner, evidence_gatherer=EmptyGatherer())
+        result = await ops["extract_evidence"].execute(
+            OperationInput(
+                entity_id="e-emp",
+                entity_type="evidence",
+                operation="extract_evidence",
+            )
+        )
+        assert result.success
+        loaded = await repo.get_evidence("e-emp")
+        # Stub is now invalidated (the honest "no source found" terminal)
+        # rather than carrying synthesised content.
+        assert loaded.invalidated is True
+        assert "no results" in (loaded.invalidation_reason or "").lower()
+        # extracted is True so we don't retry
+        assert loaded.extracted is True
+        # Critically: NO synthesised content. The whole point of the
+        # fix is that the stub doesn't carry claim-paraphrased text
+        # for the judge to mislabel.
+        assert not loaded.extracted_content
 
     async def test_gatherer_exception_propagates(self, repo, fake_runner):
         """When gatherer throws, the exception propagates out of the operation."""

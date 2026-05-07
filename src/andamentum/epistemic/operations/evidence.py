@@ -5,28 +5,40 @@ or agent-based extraction, and scores source quality via OpenAlex lookup
 or agent assessment.
 
 Depends on: base (BaseOperation, OperationResult, GatheredEvidence)
-Operates on: Evidence, Objective entities
+Operates on: Evidence entities
 """
 
 from .base import BaseOperation, GatheredEvidence, OperationInput, OperationResult
 
-from ..entities import (
-    Claim,
-    Evidence,
-    Objective,
-)
+from ..entities import Evidence
 
 
 class ExtractEvidenceOperation(BaseOperation):
     """Extract content from an evidence source.
 
-    Takes an evidence stub (extracted=False) and populates
-    the extracted_content field.
+    Takes an evidence stub (``extracted=False``) and populates the
+    ``extracted_content`` field by calling the configured evidence
+    gatherer.
 
-    Evidence gathering strategy:
-    1. If evidence_gatherer is available: use it to fetch raw content
-    2. If agent_runner is available (no gatherer, or gatherer empty/failed): use agent for extraction
-    3. If neither: raises RuntimeError — indicates a wiring bug in graph construction
+    The previous design had an "agent fallback" path that called an
+    LLM to "extract" content when the gatherer returned empty. That
+    fallback was structurally broken: the agent's prompt assumed
+    ``source_content`` was provided as input, but the call site never
+    fetched any source content — it only passed the source_ref (a
+    search query in the empty-gatherer case) and the claim's
+    ``objective_description``. With no actual paper to read, the LLM
+    fell back on its parametric knowledge plus the claim text, and
+    synthesised content that paraphrased the claim. Downstream the
+    judge labelled this synthesised text "supports" because it
+    matched the claim, producing a closed-loop hallucination where
+    the system voted on its own input. Discovered via SciFact case
+    781 v25 trace (6 phantom "supports" pieces with claim-paraphrased
+    content vs 2 real "contradicts" pieces from PubMed/OpenAlex).
+
+    The fallback is removed entirely. When the gatherer returns no
+    results, the evidence stub is marked invalidated honestly. When
+    no gatherer is configured at all, the operation raises — there is
+    no LLM-only mode that produces non-hallucinated evidence content.
     """
 
     entity_type = "evidence"
@@ -52,153 +64,96 @@ class ExtractEvidenceOperation(BaseOperation):
 
         _extract_log = _logging.getLogger(__name__)
         _extract_log.info(
-            "[extract_evidence] START %s source_type=%s source_ref=%.80s gatherer=%s runner=%s",
+            "[extract_evidence] START %s source_type=%s source_ref=%.80s gatherer=%s",
             evidence.entity_id,
             evidence.source_type,
             evidence.source_ref,
             type(self.evidence_gatherer).__name__ if self.evidence_gatherer else "None",
-            type(self.agent_runner).__name__ if self.agent_runner else "None",
         )
 
-        # Strategy 1: Use evidence gatherer (async Python, no LLM)
-        if self.evidence_gatherer:
-            gathered = await self.evidence_gatherer.gather(
-                evidence.source_type,
-                evidence.source_ref,
-            )
-            _extract_log.info(
-                "[extract_evidence] GATHERER returned %d items for %s",
-                len(gathered) if gathered else 0,
-                evidence.entity_id,
-            )
-
-            if gathered:
-                # Fill original stub with first gathered item
-                self._fill_evidence_from_gathered(evidence, gathered[0])
-                await self._score_evidence(evidence, gathered[0])
-                evidence.extracted = True
-                await self.repo.save(evidence)
-                _extract_log.info(
-                    "[extract_evidence] GATHERER SUCCESS %s quality_score=%s",
-                    evidence.entity_id,
-                    evidence.quality_score,
-                )
-
-                # Create new Evidence entities for remaining items.
-                # Propagate sub_investigation_id from the originating stub so
-                # multi-seed-claim's per-claim evidence pool (filter on
-                # sub_investigation_id at multi_seed_claim.py:126) sees ALL
-                # the gatherer's results, not just the first one. Without
-                # this, gatherer-extras silently drop out of the per-claim
-                # pool — each sub-investigation would see only the 1 stub-
-                # tied result per provider instead of the full hit set.
-                created_ids = [evidence.entity_id]
-                for g in gathered[1:]:
-                    new_ev = Evidence(
-                        objective_id=evidence.objective_id,
-                        source_type=g.source_type or evidence.source_type,
-                        source_ref=g.source_ref,
-                        extracted=True,
-                        sub_investigation_id=evidence.sub_investigation_id,
-                    )
-                    self._fill_evidence_from_gathered(new_ev, g)
-                    await self._score_evidence(new_ev, g)
-                    await self.repo.save(new_ev)
-                    created_ids.append(new_ev.entity_id)
-
-                return OperationResult(
-                    success=True,
-                    entity_id=evidence.entity_id,
-                    message=f"Extracted {len(gathered)} sources into {len(created_ids)} entities",
-                    created_entities=created_ids,
-                )
-            # Gatherer returned nothing or failed — fall through to agent extraction
-            _extract_log.info(
-                "[extract_evidence] GATHERER empty/failed for %s, falling through to agent",
-                evidence.entity_id,
-            )
-
-        # Strategy 2: Use agent runner (primary when no gatherer, or fallback when gatherer fails)
-        if self.agent_runner:
-            _extract_log.info(
-                "[extract_evidence] AGENT extraction for %s", evidence.entity_id
-            )
-            # Load objective description for context
-            objective_description = ""
-            if evidence.objective_id:
-                obj = await self.repo.get("objective", evidence.objective_id)
-                if isinstance(obj, Objective):
-                    objective_description = obj.description
-
-            result = await self.run_agent(
-                "epistemic_extract_evidence",
-                source_ref=evidence.source_ref,
-                source_type=evidence.source_type,
-                objective_description=objective_description or evidence.source_ref,
-            )
-            evidence.extracted_content = result.content
-            evidence.limitations = result.limitations
-            _extract_log.info(
-                "[extract_evidence] AGENT extracted %d chars for %s",
-                len(evidence.extracted_content) if evidence.extracted_content else 0,
-                evidence.entity_id,
-            )
-            # Score via agent (no GatheredEvidence available in this path)
-            await self._score_evidence(evidence)
-        else:
+        if not self.evidence_gatherer:
             raise RuntimeError(
-                f"[extract_evidence] no extractor available for {evidence.entity_id}: "
-                f"ExtractEvidenceOperation requires either an evidence_gatherer or "
-                f"an agent_runner. This indicates a wiring bug in graph construction."
+                f"[extract_evidence] no evidence_gatherer configured for "
+                f"{evidence.entity_id}: ExtractEvidenceOperation requires a "
+                f"real gatherer. The agent-only fallback was removed because "
+                f"the agent has no source content to extract from and produces "
+                f"hallucinated content that paraphrases the claim. Wire a real "
+                f"gatherer or skip extraction for this objective."
             )
 
-        evidence.extracted = True
-
-        _extract_log.info(
-            "[extract_evidence] DONE %s extracted=%s quality_score=%s quality_source=%s content_len=%d",
-            evidence.entity_id,
-            evidence.extracted,
-            evidence.quality_score,
-            (evidence.quality_metadata or {}).get("source", "none"),
-            len(evidence.extracted_content) if evidence.extracted_content else 0,
+        gathered = await self.evidence_gatherer.gather(
+            evidence.source_type,
+            evidence.source_ref,
         )
+        _extract_log.info(
+            "[extract_evidence] GATHERER returned %d items for %s",
+            len(gathered) if gathered else 0,
+            evidence.entity_id,
+        )
+
+        if not gathered:
+            # Provider returned no results. Mark the stub invalidated
+            # honestly. The previous "fall through to agent extraction"
+            # path produced hallucinated content; see the class docstring
+            # and SciFact case 781 v25 forensic.
+            evidence.invalidated = True
+            evidence.invalidation_reason = (
+                f"Provider {evidence.source_type} returned no results "
+                f"for query: {evidence.source_ref[:120]}"
+            )
+            evidence.extracted = True  # don't retry
+            await self.repo.save(evidence)
+            _extract_log.info(
+                "[extract_evidence] EMPTY-RESULT %s — stub invalidated",
+                evidence.entity_id,
+            )
+            return OperationResult(
+                success=True,
+                entity_id=evidence.entity_id,
+                message=(
+                    f"No source found by {evidence.source_type} "
+                    f"for query — stub invalidated"
+                ),
+            )
+
+        # Fill original stub with first gathered item
+        self._fill_evidence_from_gathered(evidence, gathered[0])
+        await self._score_evidence(evidence, gathered[0])
+        evidence.extracted = True
         await self.repo.save(evidence)
+        _extract_log.info(
+            "[extract_evidence] GATHERER SUCCESS %s quality_score=%s",
+            evidence.entity_id,
+            evidence.quality_score,
+        )
 
-        # ── Judge evidence if already linked to a claim ────────────────
-        # For investigation-created evidence, the claim link exists before
-        # extraction. Judge immediately after content is available.
-        # For plan-created evidence, no claim exists yet — judging happens
-        # inside ProposeClaimsOperation after claims are created.
-        if (
-            self.agent_runner
-            and evidence.extracted_content
-            and evidence.support_judgment is None
-        ):
-            claims = await self.repo.query("claim", objective_id=evidence.objective_id)
-            linked_claim = None
-            for c in claims:
-                if isinstance(c, Claim) and evidence.entity_id in c.evidence_ids:
-                    linked_claim = c
-                    break
-
-            if linked_claim is not None:
-                from ..judge import judge_evidence as _judge
-
-                judgment = await _judge(
-                    claim_statement=linked_claim.statement,
-                    claim_scope=linked_claim.scope,
-                    evidence_content=evidence.extracted_content,
-                    evidence_source=f"{evidence.source_type}: {evidence.source_ref}",
-                    runner=self.agent_runner,
-                )
-                evidence.support_judgment = judgment.verdict
-                evidence.judgment_reasoning = judgment.reasoning
-                await self.repo.save(evidence)
+        # Create new Evidence entities for remaining items.
+        # Propagate sub_investigation_id from the originating stub so
+        # multi-seed-claim's per-claim evidence pool (filter on
+        # sub_investigation_id at multi_seed_claim.py:126) sees ALL
+        # the gatherer's results, not just the first one. Without
+        # this, gatherer-extras silently drop out of the per-claim
+        # pool — each sub-investigation would see only the 1 stub-
+        # tied result per provider instead of the full hit set.
+        created_ids = [evidence.entity_id]
+        for g in gathered[1:]:
+            new_ev = Evidence(
+                objective_id=evidence.objective_id,
+                source_type=g.source_type or evidence.source_type,
+                source_ref=g.source_ref,
+                extracted=True,
+                sub_investigation_id=evidence.sub_investigation_id,
+            )
+            self._fill_evidence_from_gathered(new_ev, g)
+            await self._score_evidence(new_ev, g)
+            await self.repo.save(new_ev)
+            created_ids.append(new_ev.entity_id)
 
         return OperationResult(
             success=True,
             entity_id=evidence.entity_id,
-            message=f"Extracted {len(evidence.extracted_content)} chars",
+            message=f"Extracted {len(gathered)} sources into {len(created_ids)} entities",
+            created_entities=created_ids,
         )
 
     def _fill_evidence_from_gathered(
