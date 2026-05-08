@@ -81,6 +81,25 @@ ADVERSARIAL_SUSPICIOUS_THRESHOLD: float = 0.95
 adversary should be this convinced. Read by: adversarial-balance
 interpreter for diagnostic flags."""
 
+FRAMING_TIE_SATURATION_GAP: float = (
+    ADVERSARIAL_SURVIVED_THRESHOLD - ADVERSARIAL_REFUTED_THRESHOLD
+)
+"""Width of the framing-tie CONTESTED band, in loveliness-gap units.
+
+Mirrors the width of the adversarial CONTESTED band — the same
+"contested zone width" concept applied at the IBE / loveliness layer
+rather than the Popperian survival layer. Derived from the canonical
+adversarial thresholds rather than declared independently so that
+revising the adversarial band automatically moves this in lockstep.
+
+When the chosen IBE candidate's loveliness exceeds the best opposing
+candidate's by at least this gap, the framing-tie cap is 1.0 (no
+dampening). At a perfect tie (gap = 0), the cap is 0.5 (severe
+dampening — the abductive chain has no principled tie-breaker
+between opposing coherent explanations). Linear in between.
+
+Read by: ``operations.integration._framing_tie_cap``."""
+
 
 # ── Peirce cycling (one cap, three loops) ──────────────────────────
 #
