@@ -481,7 +481,13 @@ class AssessConvergenceOperation(BaseOperation):
                 continue
             candidates.append(ev)
 
-        for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+        selected = await top_n_representatives(
+            candidates,
+            LLM_PANEL_CAP,
+            claim_text=claim.statement,
+            embedding_model=self.embedding_model,
+        )
+        for ev in selected:
             eid = ev.entity_id
             content = ev.extracted_content
 
@@ -639,7 +645,13 @@ class ValidateDeductivelyOperation(BaseOperation):
                     and ev.cluster_status not in ("corroborative", "deferred")
                 ):
                     candidates.append(ev)
-            for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+            selected = await top_n_representatives(
+                candidates,
+                LLM_PANEL_CAP,
+                claim_text=claim.statement,
+                embedding_model=self.embedding_model,
+            )
+            for ev in selected:
                 context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
 
             result = await self.run_agent(
@@ -721,7 +733,13 @@ class VerifyComputationallyOperation(BaseOperation):
                     and ev.cluster_status not in ("corroborative", "deferred")
                 ):
                     candidates.append(ev)
-            for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+            selected = await top_n_representatives(
+                candidates,
+                LLM_PANEL_CAP,
+                claim_text=claim.statement,
+                embedding_model=self.embedding_model,
+            )
+            for ev in selected:
                 context_parts.append(f"[{ev.source_type}] {ev.extracted_content}")
 
             result = await self.run_agent(

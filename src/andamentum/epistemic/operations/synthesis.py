@@ -284,8 +284,21 @@ class SynthesizeReportOperation(BaseOperation):
                 not in ("corroborative", "deferred")
             ):
                 snapshot_evidence.append(e)
-        evidence: list[Evidence] = top_n_representatives(
-            snapshot_evidence, LLM_PANEL_CAP
+        # Synthesis ranks evidence relevance against the overall research
+        # question (or its clarified form). For verify mode this is
+        # essentially the claim text; for research mode it's the broader
+        # decomposed question. Either way it's the natural relevance anchor
+        # for the synthesis prompt.
+        synthesis_anchor = (
+            getattr(objective, "clarified_question", None)
+            or getattr(objective, "description", None)
+            or ""
+        ) if isinstance(objective, Objective) else ""
+        evidence: list[Evidence] = await top_n_representatives(
+            snapshot_evidence,
+            LLM_PANEL_CAP,
+            claim_text=synthesis_anchor,
+            embedding_model=self.embedding_model,
         )
 
         # Load uncertainties

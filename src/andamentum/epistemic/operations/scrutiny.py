@@ -80,7 +80,13 @@ class ScrutiniseClaimOperation(BaseOperation):
             candidates.append(ev)
 
         evidence_summaries: list[str] = []
-        for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+        selected = await top_n_representatives(
+            candidates,
+            LLM_PANEL_CAP,
+            claim_text=claim.statement,
+            embedding_model=self.embedding_model,
+        )
+        for ev in selected:
             quality_str = (
                 f", quality={ev.quality_score:.2f}" if ev.quality_score else ""
             )

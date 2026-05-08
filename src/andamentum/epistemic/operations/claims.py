@@ -51,24 +51,80 @@ LLM_PANEL_CAP = 10
 EVIDENCE_TOP_K = LLM_PANEL_CAP
 
 
-def top_n_representatives(
-    evidence: list[Evidence], n: int = LLM_PANEL_CAP
+async def top_n_representatives(
+    evidence: list[Evidence],
+    n: int = LLM_PANEL_CAP,
+    *,
+    claim_text: str | None = None,
+    embedding_model: str | None = None,
 ) -> list[Evidence]:
-    """Pick the top N representatives by quality score, descending.
+    """Pick the top N evidence pieces, ranked by claim-relevance.
 
-    Centralises the cost-cap behaviour for LLM panel operations. Each
-    consumer (assess_convergence, validate_deductively, integrate_evidence,
-    etc.) calls this with its own gathered representative list to bound the
-    work it sends to the model.
+    The IBE chain (and other LLM panel consumers) need the N pieces of
+    evidence that speak most directly to the claim under investigation.
+    Ranking by ``quality_score`` — the previous behaviour — selects on
+    source reliability and extraction completeness, which is the wrong
+    axis: a high-quality piece that's only tangentially relevant gets
+    passed through, while a directly-relevant piece from a less-rigorous
+    source gets demoted. SciFact case 1163 trace showed the quality
+    ranking preserving 3:1 supports majority but the IBE chain still
+    committing contradicts — the deeper bug is in the loveliness scorer,
+    but the quality-based filter wasn't doing IBE any favours either.
 
-    None quality_scores sort lowest. source_ref is the tiebreaker to keep
-    the selection deterministic across re-runs on the same evidence base.
+    When ``claim_text`` and ``embedding_model`` are both provided, ranks
+    by cosine similarity between each piece's content embedding and the
+    claim text embedding. This is the same Reichenbach common-cause-at-
+    retrieval principle applied at the adversarial-search rerank
+    (commit 0f039ef): the stable signal is the claim itself, not the
+    transient quality_score.
+
+    When either is None, falls back to ranking by ``quality_score`` (the
+    legacy behaviour) so test paths and other callers without embedding
+    infrastructure don't crash. Production paths should provide both.
+
+    Tiebreaker is ``source_ref`` so selection is deterministic across
+    re-runs on the same evidence base.
     """
-    ranked = sorted(
-        evidence,
-        key=lambda e: (-(e.quality_score or 0.0), e.source_ref or ""),
+    if not evidence:
+        return []
+
+    if not claim_text or not embedding_model:
+        # Legacy quality-score ranking — preserved for callers without
+        # embedding infrastructure (notably some test paths).
+        ranked = sorted(
+            evidence,
+            key=lambda e: (-(e.quality_score or 0.0), e.source_ref or ""),
+        )
+        return ranked[:n]
+
+    # Embed claim + every candidate in one batch. embeddinggemma at
+    # 768-dim is fast enough that batching all evidence per call is fine.
+    from ..embeddings import embed_texts
+    from ..similarity import cosine_similarity
+
+    texts = [claim_text] + [ev.extracted_content or "" for ev in evidence]
+    try:
+        embeddings = await embed_texts(texts, model=embedding_model)
+    except RuntimeError:
+        # Embedding endpoint unreachable — fall back to quality-score
+        # rather than crash the IBE chain. The downstream consumer will
+        # still operate on a sensible (if less-relevance-optimal)
+        # candidate set.
+        ranked = sorted(
+            evidence,
+            key=lambda e: (-(e.quality_score or 0.0), e.source_ref or ""),
+        )
+        return ranked[:n]
+
+    claim_emb = embeddings[0]
+    candidate_embs = embeddings[1:]
+    scored = list(
+        zip(evidence, (cosine_similarity(claim_emb, ce) for ce in candidate_embs))
     )
-    return ranked[:n]
+    # Sort by similarity descending; tiebreak on source_ref for stable
+    # output across re-runs.
+    scored.sort(key=lambda pair: (-pair[1], pair[0].source_ref or ""))
+    return [ev for ev, _ in scored[:n]]
 
 
 async def select_top_k_evidence(
