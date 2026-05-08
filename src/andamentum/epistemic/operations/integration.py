@@ -43,6 +43,7 @@ from ..entities.claim import CandidateRecord
 from ..thresholds import (
     ADVERSARIAL_REFUTED_THRESHOLD,
     ADVERSARIAL_SURVIVED_THRESHOLD,
+    FRAMING_TIE_SATURATION_GAP,
 )
 
 
@@ -574,17 +575,6 @@ def _verdict_to_canonical(verdict: str) -> str:
     if verdict.startswith("contradicts"):
         return "contradicts"
     return "insufficient"
-
-
-# Width of the framing-tie CONTESTED band (loveliness-gap units).
-# Mirrors the width of the adversarial CONTESTED band (0.3→0.7 = 0.4)
-# rather than introducing a new tuning knob. When the chosen
-# candidate's loveliness exceeds the best opposing candidate's by at
-# least ``FRAMING_TIE_SATURATION_GAP``, the framing-tie cap is 1.0
-# (no dampening). At a perfect tie (gap = 0), the cap is 0.5 (severe
-# dampening — the abductive chain has no principled tie-breaker
-# between opposing coherent explanations).
-FRAMING_TIE_SATURATION_GAP: float = 0.4
 
 
 def _framing_tie_cap(
