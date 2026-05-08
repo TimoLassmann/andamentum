@@ -108,7 +108,13 @@ async def _build_evidence_brief(op: BaseOperation, claim: Claim) -> dict[str, ob
     supports_items: list[str] = []
     contradicts_items: list[str] = []
     no_bearing_items: list[str] = []
-    for ev in top_n_representatives(candidates, LLM_PANEL_CAP):
+    selected = await top_n_representatives(
+        candidates,
+        LLM_PANEL_CAP,
+        claim_text=claim.statement,
+        embedding_model=op.embedding_model,
+    )
+    for ev in selected:
         content = ev.extracted_content or ""
         cluster_size = max(1, getattr(ev, "corroboration_count", 1) or 1)
         summary = f"[{ev.source_type}, cluster_size={cluster_size}] {content}"
