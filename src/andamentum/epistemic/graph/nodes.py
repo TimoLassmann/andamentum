@@ -1920,7 +1920,7 @@ class SelectBestExplanation(Node):
     verdict).
     """
 
-    reads = frozenset({"objective_id"})
+    reads = frozenset({"objective_id", "ibe_agreement_k"})
     writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
@@ -1949,6 +1949,9 @@ class SelectBestExplanation(Node):
             and c.integration_candidates
         ]
         if eligible_ids:
+            # Pass ibe_agreement_k via metadata so the operation can
+            # run the IBE chain K times and require agreement on
+            # direction before committing a verdict.
             await asyncio.gather(
                 *(
                     _run_op(
@@ -1958,6 +1961,7 @@ class SelectBestExplanation(Node):
                         cid,
                         "claim",
                         "select_best_explanation",
+                        metadata={"ibe_agreement_k": state.ibe_agreement_k},
                     )
                     for cid in eligible_ids
                 )

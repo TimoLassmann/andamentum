@@ -1,840 +1,625 @@
-# Epistemic System
+# Epistemic system — overview
 
-A formal epistemology implementation for AI research — building knowledge that can be trusted, traced, and revised.
+A formal-epistemology pipeline that takes a question, decomposes it, gathers evidence, and scrutinises each claim from multiple philosophical angles. It produces an answer with calibrated confidence, or suspends judgment when the inquiry doesn't converge.
+
+This document is the markdown counterpart to [`epistemic_flow.html`](./epistemic_flow.html). The HTML is the rendered, human-readable version with diagrams; this is the same content as plain text suitable for grep, diff, and feeding to LLMs.
 
 ---
 
-## Core Principle: Epistemic Decomposition
+## Contents
 
-When we ask an LLM to research a topic, we get a monolith — confident prose with no traceability, no calibrated confidence, no revision path. If it's wrong, our only option is to regenerate and hope.
+1. [Architecture at a glance](#1-architecture-at-a-glance)
+2. [The seven primitives](#2-the-seven-primitives)
+3. [The graph (23 nodes)](#3-the-graph-23-nodes)
+4. [The claim lifecycle](#4-the-claim-lifecycle)
+5. [The inquiry cycle (Peirce)](#5-the-inquiry-cycle-peirce)
+6. [Adversarial check (Popper / Lakatos)](#6-adversarial-check-popper--lakatos)
+7. [The IBE chain (Lipton)](#7-the-ibe-chain-lipton)
+8. [Convergence (Reichenbach)](#8-convergence-reichenbach)
+9. [Lazy escalation](#9-lazy-escalation)
+10. [Confidence scoring](#10-confidence-scoring)
+11. [Question-type routing](#11-question-type-routing)
+12. [Threshold reference](#12-threshold-reference)
+13. [Code structure](#13-code-structure)
+14. [Operations catalogue](#14-operations-catalogue)
+15. [Providers catalogue](#15-providers-catalogue)
 
-This isn't how reliable knowledge is produced. Science doesn't work because individual scientists are infallible. It works because the **process** — peer review, replication, adversarial challenge, explicit uncertainty — produces reliable knowledge from fallible participants.
+---
 
-The epistemic system applies this insight to LLM-based research:
+## 1. Architecture at a glance
 
-> **Every epistemic judgment is made by a focused agent performing the narrowest possible task, and combined through deterministic, auditable rules.**
+Five questions structure the pipeline:
 
-Instead of one LLM doing monolithic reasoning, we decompose the epistemic process into:
+1. **What is the question?** Classify, clarify, decompose into sub-claims.
+2. **What evidence exists?** Pick providers, write queries, fetch and extract passages.
+3. **What does the evidence say about each claim?** Scrutinise, judge, surface uncertainties, investigate where doubts remain.
+4. **Has the claim survived adversarial challenge?** Multi-angle verification, cross-domain convergence, IBE selection of best explanation.
+5. **What's the integrated verdict?** Combine sub-claim verdicts; emit a calibrated posterior or suspend judgment.
 
-1. **Narrow judgment tasks** — each performed by a focused agent that sees only what's relevant and answers only what's asked
-2. **Deterministic combination rules** — gates, thresholds, and calculations that combine judgments into outcomes
-3. **Explicit state** — every claim, every piece of evidence, every uncertainty is a first-class object with provenance
+A graph of 23 nodes routes the work. Each node reads explicit state, dispatches one or more operations, and returns one of its declared successors. Operations read entities, do work (LLM calls, computation), and write results back; the graph alone decides what runs next.
 
-LLMs are unreliable at sustained coherent reasoning over thousands of tokens. But they're remarkably good at narrow, well-specified judgment tasks: "Given this claim and this piece of text, is this relevant evidence? Rate 1-5 with justification." Each such task is something a human expert could do in two minutes. The system's reliability comes not from any individual judgment being perfect, but from the **structure** that combines many narrow judgments through transparent rules.
+### High-level pipeline
 
-No single agent decides whether a claim is true. The verdict emerges from the structured interaction of many narrow judgments.
+```
+question
+   ↓
+PrepareObjective  (classify · clarify · concept-analysis)
+   ↓
+Decompose         (question → sub-claims)
+   ↓
+PlanEvidence + ExtractEvidence  (provider tournament K=2)
+   ↓
+CreateClaims
+   ↓
+[scrutiny cycle]  Scrutinize ⇄ Investigate ⇄ ResolveUncertainties
+   ↓
+PromoteToSupported → ClusterEvidence → RunVerification
+   ↓
+[IBE chain]       EnumerateCandidates → ScoreLoveliness → ScoreLikeliness
+                  → SelectBestExplanation → PromoteSupported
+   ↓
+CombineClaimVerdicts → CheckCompletion → CheckSynthesisDemand
+   ↓                                          ↓
+Synthesize                              SynthesizeInsufficient
+```
 
-### The Analogy
+Every successor a node can return is declared in its `run()` return type, enforced by both the type-checker and the graph runtime. The set of nodes and edges is also exposed as a Python value (`topology()` in `graph/topology.py`), which test suites use to assert reachability properties.
 
-| Scientific Process | Epistemic System |
+---
+
+## 2. The seven primitives
+
+Every persistent thing the system reasons over is one of seven entity types. They share a common base (`EpistemicEntity`) with id, timestamps, and provenance fields. All seven live in `epistemic/entities/`.
+
+| Entity | Role | Key fields |
+|---|---|---|
+| **Objective** | The research question and what's been done about it. | `question`, `question_type`, `decomposition`, `artefact_id`, `snapshot_id`, `claim_to_verify` |
+| **Evidence** | A piece of source content extracted from a provider. | `source_type`, `source_ref`, `extracted_content`, `quality_score`, `support_judgment`, `invalidated` |
+| **Claim** | A scoped proposition under investigation. | `statement`, `scope`, `stage`, `scrutiny_verdict`, `integrated_assessment`, `integrated_confidence`, `adversarial_balance`, `convergence_verdict`, `cycle_capped`, `integration_candidates` |
+| **Uncertainty** | An identified doubt, gap, or open question about a claim. | `description`, `uncertainty_type`, `blocking`, `resolved`, `resolution` |
+| **Decision** | The "what would change my mind?" record at ACTIONABLE stage. | `criteria`, `actionable_threshold`, `what_would_change_mind` |
+| **Snapshot** | An immutable freeze of the objective's state at synthesis time. | `artefact_id`, `frozen_at`, `claim_ids`, `evidence_ids` |
+| **Artefact** | The synthesised report (markdown / HTML). | `artefact_type` ∈ {`summary`, `insufficient`}, `content`, `title` |
+
+Every field on these entities represents something real: a verdict, a score, a stage. Nothing exists purely to signal scheduling.
+
+The final report is reachable from `Objective` via two routes: directly through `Objective.artefact_id → Artefact.content`, and through the immutable freeze `Objective.snapshot_id → Snapshot.artefact_id → Artefact.content`. Both point at the same `Artefact`.
+
+`Prediction` entities (in `entities/prediction.py`) record the ROBUST stage's falsifying commitments but are not part of the seven core primitives.
+
+---
+
+## 3. The graph (23 nodes)
+
+The graph is a pydantic-graph DAG over typed nodes. Each node declares four contract fields:
+
+- `reads` — state field names from `EpistemicGraphState` the node will read
+- `writes` — state fields the node will mutate
+- `operations` — operation classes the node dispatches
+- `post_invariants` — predicates that must hold after the node runs
+
+Successors are the return type of the node's `run()` method.
+
+### Successor map
+
+```
+PrepareObjective         → Decompose
+Decompose                → PlanEvidence
+PlanEvidence             → ExtractEvidence
+ExtractEvidence          → CreateClaims | Scrutinize
+CreateClaims             → Scrutinize
+Scrutinize               → AbandonOrDemote | Investigate | ResolveUncertainties
+Investigate              → ExtractNewEvidence
+ExtractNewEvidence       → Scrutinize
+AbandonOrDemote          → PromoteToSupported | Scrutinize
+ResolveUncertainties     → EnumerateCandidates | PromoteToSupported | ResolveUncertainties | Scrutinize
+PromoteToSupported       → CheckCompletion | ClusterEvidence
+ClusterEvidence          → RunVerification
+RunVerification          → EnumerateCandidates | ResolveUncertainties
+EnumerateCandidates      → ScoreLoveliness
+ScoreLoveliness          → ScoreLikeliness
+ScoreLikeliness          → SelectBestExplanation
+SelectBestExplanation    → PromoteSupported
+PromoteSupported         → CombineClaimVerdicts
+CombineClaimVerdicts     → CheckCompletion
+CheckCompletion          → CheckSynthesisDemand | SynthesizeInsufficient
+CheckSynthesisDemand     → Scrutinize | Synthesize | SynthesizeInsufficient
+Synthesize               → (terminal)
+SynthesizeInsufficient   → (terminal)
+```
+
+### Node contracts (reads / writes / operations)
+
+#### Setup
+
+- **PrepareObjective**
+  - reads: `objective_id`, `skip_preplanning`
+  - writes: `question_type`
+  - ops: `ClarifyQuestion`, `ClassifyQuestion`, `ConceptualAnalysis`
+- **Decompose**
+  - reads: `objective_id`
+  - ops: `DecomposeQuestion`
+
+#### Evidence gathering
+
+- **PlanEvidence**
+  - reads: `objective_id`
+  - ops: `PlanTask`
+- **ExtractEvidence**
+  - reads: `claims_created`, `objective_id`
+  - writes: `retrieval_failed`
+  - ops: `ExtractEvidence`
+- **CreateClaims**
+  - reads: `objective_id`
+  - writes: `claim_ids`, `claims_created`
+  - ops: `MultiSeedClaim`, `ProposeClaims`, `SeedClaim`
+- **ExtractNewEvidence**
+  - reads: `objective_id`
+  - writes: `retrieval_failed`
+  - ops: `ExtractEvidence`
+
+#### Inquiry cycle
+
+- **Scrutinize**
+  - reads: `claims_needing_rescrutiny`, `investigation_counts`, `objective_id`, `scrutiny_resolve_cycles`
+  - writes: `claims_needing_rescrutiny`, `scrutiny_resolve_cycles`
+  - ops: `ScrutiniseClaim`
+- **Investigate**
+  - reads: `investigation_counts`, `objective_id`
+  - writes: `claims_needing_rescrutiny`, `claims_needing_tms`, `investigation_counts`
+  - ops: `InvestigateClaim`
+- **AbandonOrDemote**
+  - reads: `investigation_counts`, `objective_id`
+  - writes: `terminal_claims`, `verification_done`
+  - ops: `AbandonStaleClaim`, `DemoteClaim`, `PromoteAsRefuted`, `SoftPromote`
+- **ResolveUncertainties**
+  - reads: `claims_needing_rescrutiny`, `objective_id`, `scrutiny_resolve_cycles`
+  - writes: `claims_needing_rescrutiny`, `scrutiny_resolve_cycles`
+  - ops: `DeduplicateConcerns`, `ResolveUncertainty`
+- **PromoteToSupported**
+  - reads: `objective_id`, `verification_done`
+  - writes: `terminal_claims`
+  - ops: `PromoteClaim`, `SetRoutingDefaults`
+
+#### Verification
+
+- **ClusterEvidence**
+  - reads: `objective_id`
+  - ops: (deterministic — convergence detector)
+- **RunVerification**
+  - reads: `claims_needing_rescrutiny`, `objective_id`, `question_type`
+  - ops: `AdversarialSearch`, `AnalyzeArgument`, `AssessConvergence`, `ContrastiveEvaluation`, `CrossClaimConsistency`, `ValidateDeductively`, `VerifyComputationally`
+
+#### IBE chain
+
+- **EnumerateCandidates**
+  - reads: `objective_id`
+  - ops: `EnumerateCandidates`
+- **ScoreLoveliness**
+  - reads: `objective_id`
+  - ops: `ScoreLoveliness`
+- **ScoreLikeliness**
+  - reads: `objective_id`
+  - ops: `ScoreLikeliness`
+- **SelectBestExplanation**
+  - reads: `objective_id`
+  - ops: `SelectBestExplanation`
+- **PromoteSupported**
+  - reads: `objective_id`
+  - writes: `verification_done`
+  - ops: `GeneratePrediction`, `PromoteClaim`, `RecordDecision`
+
+#### Combination & demand
+
+- **CombineClaimVerdicts**
+  - reads: `objective_id`
+  - ops: (deterministic — combiner in `graph/combination.py`)
+- **CheckCompletion**
+  - reads: `errors`, `failed`, `objective_id`, `operations_log`, `quarantined`, `retrieval_failed`, `successful`
+  - writes: `synthesis_insufficient_reason`
+  - ops: (deterministic gates)
+- **CheckSynthesisDemand**
+  - reads: `claims_needing_rescrutiny`, `objective_id`, `scrutiny_resolve_cycles`
+  - writes: `claims_needing_rescrutiny`
+  - ops: (deterministic gates plus Demand LLM agent)
+
+#### Terminals
+
+- **Synthesize**
+  - reads: same as `CheckCompletion`
+  - ops: `FreezeSnapshot`, `SynthesizeReport` (writer ⇄ validator loop)
+- **SynthesizeInsufficient**
+  - reads: same as `Synthesize` plus `synthesis_insufficient_reason`
+  - ops: `FreezeSnapshot`, `SynthesizeInsufficientReport`
+
+### Loops
+
+Three loops are visible in the topology, all bounded by `PEIRCE_CYCLE_CAP = 3`:
+
+- **Investigation cycle:** `Scrutinize → Investigate → ExtractNewEvidence → Scrutinize`. Bounded by `investigation_counts[claim_id]`.
+- **Scrutiny–resolve cycle:** `Scrutinize → ResolveUncertainties → Scrutinize`. Bounded by `scrutiny_resolve_cycles[claim_id]`.
+- **Demand loop:** `CheckSynthesisDemand → Scrutinize` when synthesis isn't satisfied. Bounded by the same `scrutiny_resolve_cycles` counter.
+
+A claim that hits the cap on any of these is marked `cycle_capped=True`. The combiner and posterior calculator treat capped claims with reduced weight rather than discarding them.
+
+---
+
+## 4. The claim lifecycle
+
+Claims advance through five stages. Promotion requires passing a deterministic gate (defined in `gates.py:STAGE_GATES`). Gates are routing-aware: only verification tracks marked PRIMARY or SECONDARY for the question type are required.
+
+| Stage | Requirements |
 |---|---|
-| Individual researcher | Focused agent (narrow task) |
-| Peer review | Scrutiny agent |
-| Replication | Cross-domain convergence check |
-| Devil's advocate | Adversarial search agent |
-| Journal acceptance criteria | Stage gates |
-| Retraction / correction | TMS cascading belief maintenance |
-| The scientific community | The pydantic-graph pipeline (DAG scheduler) |
+| **HYPOTHESIS** | Just proposed. No evidence required. |
+| **SUPPORTED** | ≥ 1 supporting evidence + uncertainties listed + scrutiny passed. |
+| **PROVISIONAL** | ≥ 2 evidence + scrutiny passed + contested-OK (adversarial balance not REFUTED). |
+| **ROBUST** | Convergence ≥ STRONG + adversarial SURVIVED + predictions made. |
+| **ACTIONABLE** | Decision criteria met + "what would change my mind" recorded. |
 
-### What This Is Not
+Each gate is the conjunction of:
 
-- **Not an ensemble of LLMs voting** — agents have different roles, not the same role repeated
-- **Not chain-of-thought with extra steps** — the structure *is* the epistemology, not just a prompt technique
-- **Not circular** — using a focused agent to evaluate evidence quality is analogous to peer review (humans evaluating other humans' work). The evaluation is narrow, auditable, and combined deterministically. Circularity would be asking the same agent to both produce and validate its own claims.
+1. **Counted preconditions**: evidence count, source diversity, uncertainty count. Pure data lookups.
+2. **Track requirements**: verification tracks the question type marks PRIMARY for this stage. SECONDARY tracks contribute when present but don't gate; SKIP tracks are not required.
+3. **Quality breakpoints**: adversarial balance band, convergence verdict, etc.
+
+Routing-awareness means a normative claim is not refused promotion because its computational-verification track is empty; that track is SKIP for normative questions.
+
+### Stage demotion
+
+If new evidence invalidates a key supporting source, or adversarial balance drops below `ADVERSARIAL_REFUTED_THRESHOLD`, or contradicting evidence outweighs supporting evidence, the claim is demoted (Truth Maintenance System cascade). Demotion resets verification flags so the claim can be re-investigated, but persistent results like `adversarial_balance` and `integration_candidates` are preserved.
 
 ---
 
-## The Design Test
+## 5. The inquiry cycle (Peirce)
 
-Every component in the system falls into one of three categories:
+Peirce's framework: inquiry is bounded. At some point the system declares "we have circled this enough" and accepts the current state, even when it isn't fully resolved. Three loops in the graph encode this commitment, all sharing the cap `PEIRCE_CYCLE_CAP = 3`.
 
-| Category | What it does | Who does it | Example |
+### Why one cap, three loops?
+
+All three are conceptually the same Peircean "fix belief in bounded inquiry" commitment. Tuning the cap is one decision, not three. Operational caps that aren't Peirce-grounded — like `MAX_VALIDATION_ROUNDS = 3` for the writer-validator loop in synthesis — keep their own names and homes.
+
+### Cycle-capping
+
+A capped claim:
+
+- Has `cycle_capped=True` set on the entity.
+- Skips further scrutiny rounds; the demand loop in `CheckSynthesisDemand` will not add it back.
+- Is excluded from IBE certification.
+- Contributes to the aggregated posterior with reduced weight (`CYCLE_CAP_CONFIDENCE_PENALTY = 0.7` as a pull-toward-neutral on the counting fallback path; multiplicative on confidence in the integration path).
+- Surfaces in the synthesis report under "limitations" with its capped status named.
+
+Cycle-capping is the system's signal that an inquiry has reached its bounded limit. The architecture trades occasional honest suspension on a hard claim for never confidently ratifying a claim that repeatedly failed scrutiny.
+
+---
+
+## 6. Adversarial check (Popper / Lakatos)
+
+For each claim that has reached SUPPORTED stage, the system actively searches for counter-evidence. The result is `adversarial_balance` ∈ [0, 1] — the fraction of the claim's effective evidence that survives after counter-evidence is weighed in.
+
+### Pipeline
+
+1. Generate adversarial queries from the claim ("evidence against X", "X refuted", "limitations of X").
+2. Search the same providers used for the original evidence so the adversarial source pool isn't biased toward sources that already supported the claim.
+3. Extract counter-claims from the adversarial sources.
+4. The judgement agent assesses each counter-claim impartially, on what the source actually says rather than the desired direction.
+5. Compute `adversarial_balance` as `weighted_supports / (weighted_supports + weighted_contradicts)`.
+
+### Soft tri-state
+
+| Band | Range | Reading |
+|---|---|---|
+| **REFUTED** | balance < 0.3 | Popper-falsified — claim must demote/abandon |
+| **CONTESTED** | 0.3 ≤ balance < 0.7 | Lakatosian middle — cannot promote past PROVISIONAL |
+| **SURVIVED** | balance ≥ 0.7 | Popperian corroboration — required for ROBUST/ACTIONABLE |
+| **SUSPICIOUS** (diagnostic) | balance ≥ 0.95 | Search itself was insufficient — flag for review, not a decision |
+
+The thresholds are symmetric around 0.5 with ±0.2 distance, giving a contested band of width 0.4. The width is wide because small differences around 0.5 don't license decisive directional commitments. `ADVERSARIAL_SUSPICIOUS_THRESHOLD = 0.95` is a meta-diagnostic, not a decision threshold: balances above 0.95 suggest the adversarial search itself was insufficient.
+
+---
+
+## 7. The IBE chain (Lipton)
+
+For each SUPPORTED claim that reaches verification, Lipton's inference-to-best-explanation runs as a five-node chain. The chain produces `integrated_assessment` ∈ {`supports`, `contradicts`, `insufficient`} and `integrated_confidence` ∈ [0, 1]. These feed the posterior calculator's directional verdict.
+
+```
+EnumerateCandidates → ScoreLoveliness → ScoreLikeliness → SelectBestExplanation → PromoteSupported
+```
+
+### What each node does
+
+1. **EnumerateCandidates** produces 4–6 candidate explanations of the evidence with balanced supports and contradicts framings. Balanced enumeration ensures the loveliness scorer compares real alternatives rather than variations of one framing.
+2. **ScoreLoveliness** scores each candidate's theoretical virtue: simplicity, scope, depth, unification, internal coherence, fit with background knowledge. *Loveliness* is Lipton's term for "how much we'd want this explanation to be true if it explained the data". Range: [0, 1].
+3. **ScoreLikeliness** estimates `P(observed evidence | candidate is true)`. Range: [0, 1].
+4. **SelectBestExplanation** picks the candidate with highest `loveliness × likeliness`, then applies the framing-tie cap on `integrated_confidence`.
+5. **PromoteSupported** commits the verdict to `integrated_assessment`; if the chosen verdict crosses ROBUST gate requirements, generates the falsifying prediction.
+
+### The framing-tie cap
+
+When the chosen candidate's loveliness only narrowly exceeds the best opposing candidate's, the abductive chain has no principled tie-breaker; both stories are coherent. The cap dampens `integrated_confidence` in proportion to the gap:
+
+```
+cap = 0.5 + (loveliness_gap / FRAMING_TIE_SATURATION_GAP) × 0.5
+```
+
+where `FRAMING_TIE_SATURATION_GAP = 0.4` mirrors the width of the adversarial CONTESTED band. Behaviour:
+
+- Gap ≥ 0.4: cap = 1.0 (no dampening)
+- Gap = 0.0: cap = 0.5 (severe dampening, perfect tie)
+- Linear in between
+
+The cap is smooth: it dampens confidence proportionally rather than gating verdicts at a discrete threshold. Counting evidence still contributes to the posterior even when the framing-tie cap engages.
+
+### K-agreement check
+
+The IBE chain is stochastic: small noise in the loveliness or likeliness scores can flip the argmax in `SelectBestExplanation`, so two runs of the chain on the same claim may commit to opposite verdicts. The framing-tie cap dampens confidence, but it can't dampen direction — argmax is discrete.
+
+The K-agreement check addresses this. After the chain has run once, `SelectBestExplanationOperation` runs the full chain (Enumerate → Loveliness → Likeliness → Select) `K − 1` additional times in memory. The K independent verdicts are then aggregated:
+
+- If all K runs agree on canonical direction (`supports` / `contradicts` / `insufficient`), the verdict is committed; `integrated_confidence` is set to the minimum across the K runs.
+- If the runs disagree, `integrated_assessment` falls back to `insufficient` and `integrated_confidence` to 0.5 — independent reasoning passes failed to converge, so a single-run argmax is not certified.
+
+K is tunable per run via the `ibe_agreement_k` parameter on `run_epistemic_graph`. The default is `IBE_AGREEMENT_K_DEFAULT = 2` — the minimum sample size at which "agreement" carries information, paralleling the K=2 commitment in the provider tournament. Higher K trades LLM cost for stricter agreement; setting K=1 disables the check (legacy single-run behaviour).
+
+K=2 doubles the IBE chain's LLM-call count for any claim that reaches verification. In typical runs this is roughly +10–15% of total LLM cost per case. K=20 is permitted; the cost scales linearly.
+
+---
+
+## 8. Convergence (Reichenbach)
+
+Reichenbach's common-cause principle: agreement across causally-independent sources is evidence the agreement isn't an artefact of any one source's biases. Cross-domain convergence is detected as part of verification.
+
+### Pipeline
+
+The convergence detector (`convergence_detector.py`) runs in `ClusterEvidence` and `RunVerification`:
+
+1. Cluster evidence by content embedding (HDBSCAN; cosine threshold 0.7).
+2. Compute inter-cluster distance — methodological similarity measure.
+3. Score independence within each cluster (fraction of pairs that are methodologically independent).
+4. Compute strength from cluster count, inter-domain distance, and representative quality.
+5. Map strength to verdict: NO_EVIDENCE / SINGLE_DOMAIN / PARTIAL / CONVERGENT.
+
+The CONVERGENT label triggers the **fast-path-to-IBE** in `RunVerification`: a SUPPORTED claim with at least one CONVERGENT sibling skips `ResolveUncertainties` and goes straight to `EnumerateCandidates`. Converged claims have already cleared the bar that uncertainty-resolution exists to clear.
+
+### Convergence thresholds
+
+| Constant | Value | Role |
+|---|---|---|
+| `CONVERGENCE_STRONG_THRESHOLD` | 0.7 | Strength score at or above this maps to CONVERGENT |
+| `CONVERGENCE_INTRA_DIVERSITY_THRESHOLD` | 0.5 | Min fraction of independent within-cluster pairs |
+| `CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW` | 0.3 | Below: clusters too similar — `shared_error_modes` warning |
+
+---
+
+## 9. Lazy escalation
+
+Each layer asks for what it's missing; breadth comes from demand. Planning, investigation, scrutiny, and synthesis don't pre-commit to a wide search. When a layer detects insufficient evidence, it emits a `Demand`, and the graph routes that demand to the layer best placed to satisfy it minimally.
+
+### The Demand object
+
+Three flat fields, chosen for small-LLM compatibility (in `epistemic/demand.py`):
+
+```python
+class Demand(BaseModel):
+    needs_more: bool
+    justification: str
+    target_hint: str  # may be empty
+```
+
+The demand is not layer-specific. One uniform shape travels everywhere; each consumer interprets the freeform fields in its own context.
+
+### Iterative provider tournament
+
+Round 1 of research-mode investigation uses a provider tournament at the objective level:
+
+- `epistemic_rank_providers` is called K = `RESEARCH_MODE_PROVIDER_K` = 2 times with a shrinking candidate pool to pick K distinct providers.
+- Every sub-claim then queries all K. K=2 is the minimum that lets the cross-domain convergence detector fire per claim.
+- Round 2+ escalates with the next-best unused provider per sub-claim only when scrutiny demands more (the `state.providers_used_per_sub` set tracks what's been queried).
+
+### Synthesis demand loop
+
+`CheckSynthesisDemand` runs cheap deterministic gates first, and a Demand-emitting LLM agent only when the gates are inconclusive:
+
+1. **Gate 1: open-research check** — is the question entirely unresolved?
+2. **Gate 2: no-combined-verdict check** — does the combiner have nothing to combine?
+3. **Gate 3: stranded-claims check** — are there non-terminal claims with eligible cycle budget remaining?
+4. **Gate 4: decisive-posterior check** — is the posterior already at or beyond `POSTERIOR_DECISIVE_THRESHOLD = 0.85`?
+5. **LLM judgment (fallback)** — emit a `Demand`; if `needs_more=True`, route eligible claims back to `Scrutinize`; otherwise proceed to `Synthesize`.
+
+The termination guarantee is the per-sub-claim cap (`scrutiny_resolve_cycles[claim_id] < PEIRCE_CYCLE_CAP`), not a global give-up budget. The loop terminates as soon as no claim can make progress, even if the satisfaction LLM keeps saying `needs_more`.
+
+---
+
+## 10. Confidence scoring
+
+The aggregated posterior is computed by `compute_posterior` in `confidence.py`. It blends two signals via weighted model averaging:
+
+- **Counting posterior** — Bayesian count of effective supporting vs contradicting evidence per claim, log-odds composed across claims, normalised.
+- **Integration posterior** — derived from the IBE chain's `integrated_assessment` weighted by `integrated_confidence`.
+
+The blending weight reflects how much the IBE chain certified. When all claims have an integrated assessment, the integration signal dominates. When none do, the counting signal carries the verdict. When some do and some don't, the blend interpolates.
+
+### Posterior penalties
+
+When a process flag fires (the inquiry didn't converge cleanly), the verdict it produced is provisional. The penalty surfaces that signal with reduced weight, rather than discarding it.
+
+| Flag | Constant | Value | Mechanism |
 |---|---|---|---|
-| **Judgment** | Requires understanding natural language to make a decision | Focused agent call | "Is this text relevant evidence for this claim?" |
-| **Combination** | Merges existing judgments into a derived quantity | Deterministic arithmetic | `balance = supporting / (supporting + opposing)` |
-| **Gate** | Decides whether an entity can advance based on existing signals | Deterministic threshold | "Need ≥2 evidence items with quality sum ≥0.5" |
+| `cycle_capped=True` on any contributing claim | `CYCLE_CAP_CONFIDENCE_PENALTY` | 0.7 | Multiplier on confidence (integration path) or pull-toward-neutral on posterior (counting path) |
+| `state.retrieval_failed=True` | `RETRIEVAL_FAILED_CONFIDENCE_PENALTY` | 0.7 | Same shape, same value. Stacks multiplicatively |
 
-The rule: **If a component requires understanding natural language, it is a judgment and must go through a focused agent. If it combines existing judgments, it must be deterministic and auditable.**
+A doubly-provisional verdict gets `0.7 × 0.7 = 0.49` of its full distance from 0.5.
 
-Keyword heuristics are a fourth category that should not exist. A keyword list checking for "p-value" or "systematic review" is neither genuine assessment (an agent could reason about whether statistical evidence is appropriate for the specific claim) nor a deterministic rule (it's a brittle approximation masquerading as logic). When you find a keyword heuristic in the codebase, replace it with a focused agent call.
+### Verdict labelling
 
-### Compliance Checklist
-
-When reviewing or writing code for the epistemic system, check:
-
-1. **Does this function need to understand text to produce its output?**
-   - YES → It must call a focused agent. No keyword matching. No regex classification.
-   - NO → It should be deterministic (arithmetic, threshold, lookup).
-
-2. **Does this agent call do exactly one thing?**
-   - A focused agent should evaluate ONE aspect: relevance, or specificity, or quality — not all three at once.
-
-3. **Is every input to a gate either a stored entity field or a deterministic computation?**
-   - Gates must not contain implicit judgments. If a gate needs a quality score, that score must already exist on the entity, computed by a prior operation.
-
-4. **Can I trace this output back to specific evidence?**
-   - Every claim in the final artefact must link to evidence. Every piece of evidence must have a source reference.
-
----
-
-## Seven Epistemic Primitives
-
-All knowledge is represented using seven primitive types that form a complete vocabulary for describing the epistemic state of any research inquiry.
-
-### 1. Objective
-
-The research question. An objective captures the question and its current phase of investigation — from initial formulation through evidence collection, claim validation, and final synthesis. The objective is the root node connecting all other primitives. Each objective carries a `question_type` field (set by `classify_question`, one of seven types: verificatory, explanatory, exploratory, comparative, predictive, compositional, normative) that determines which verification tracks fire and what stage gate thresholds apply. The objective also maintains a `pending_concerns` buffer (list of dicts) for remaining concerns generated during uncertainty resolution rounds; these are batch-deduplicated by `DeduplicateConcernsOperation` before being promoted to uncertainty entities.
-
-### 2. Evidence
-
-An interpreted observation from a source. Evidence is not raw data — it is data that has been extracted, contextualized, and linked to the inquiry. Each piece records its source, the extracted content, known limitations, and whether extraction is complete. Evidence exists independently of claims; the same evidence may support, undermine, or be irrelevant to multiple claims. Each evidence entity also carries a `cluster_status` (unclustered, representative, corroborative, or deferred) set by the HDBSCAN deduplication pipeline, a `corroboration_count` recording how many semantically similar items the evidence represents, and a `support_judgment` field ("supports", "contradicts", or "no_bearing") set by inline judge calls during `ProposeClaimsOperation` or `ExtractEvidenceOperation`.
-
-### 3. Claim
-
-A scoped proposition with a defined lifecycle. Claims are the central currency of the system. Each has a statement, a scope (what it applies to), a stage (how well-substantiated it is), and explicit links to supporting evidence. Claims accumulate verification results as they progress through scrutiny, and track modification history for degeneracy detection. Additional fields: `contrastive_checked` and `consistency_checked` (for the two pairwise verification tracks), `integrated_assessment` (holistic evidence verdict from abductive integration: 'supports', 'contradicts', or 'insufficient'), `integrated_confidence` (0.0-1.0 confidence from integration), and `integrated_reasoning` (evidential chain from integration).
-
-### 4. Uncertainty
-
-First-class doubt. Rather than hiding uncertainty in hedging language, the system represents it as an explicit entity with a type, scope, and resolution status. Some uncertainties are *blocking* — they prevent claims from advancing. Others are *non-blocking* — they serve as caveats without halting progress. This distinction is fundamental to making progress under imperfect information.
-
-### 5. Decision
-
-A commitment record. When a claim reaches sufficient maturity, a decision records what was decided, the justification, which claims informed it, and whether the decision is reversible.
-
-### 6. Snapshot
-
-An immutable freeze of the epistemic state at a point in time. Snapshots capture which claims, evidence, and uncertainties existed at the moment of synthesis, ensuring the output reflects a coherent state.
-
-### 7. Artefact
-
-The human-facing output with full traceability. Compiled from a snapshot, an artefact includes the final synthesis along with a trace map linking each paragraph to the claims and evidence that support it.
-
----
-
-## The Claim Lifecycle
-
-Claims progress through five stages of increasing epistemic maturity:
-
-```
-HYPOTHESIS → SUPPORTED → PROVISIONAL → ROBUST → ACTIONABLE
-```
-
-**Hypothesis** — Initial proposition, not yet scrutinized. The system makes no assumption about validity; it records the proposition and awaits evaluation.
-
-**Supported** — Passed initial skeptic review. A scrutiny agent examined the claim for logical coherence, scope appropriateness, and basic evidential support. This does not mean the claim is true — only that it warrants investigation.
-
-**Provisional** — Survived multiple independent verification methods: adversarial search, cross-domain convergence, deductive validation. Provisionally accepted but open to revision.
-
-**Robust** — Supported by multiple independent evidence sources and has withstood sustained adversarial challenge. Reliable for practical purposes, though falsifiable in principle.
-
-**Actionable** — Meets decision-readiness criteria. Evidence warrants commitment to real-world decisions.
-
-The lifecycle is not a one-way escalator. Claims can be **demoted** when new evidence undermines them. Demotion is not failure — it is the system working as intended.
-
----
-
-## Stage Gates
-
-Each stage transition is governed by a **deterministic gate** — requirements that must be satisfied before a claim can advance. Gates are implemented in code, not evaluated by language models. The criteria for epistemic advancement must be transparent, reproducible, and immune to the persuasive fluency of LLM outputs.
-
-| Transition | Default Requirements |
+| Posterior | Label |
 |---|---|
-| **Hypothesis → Supported** | ≥1 evidence, quality sum ≥0.3, scrutiny passed, no blocking uncertainties, min_supporting_sources=1 |
-| **Supported → Provisional** | ≥2 evidence, quality sum ≥0.5, all 7 verification track flags true, adversarial balance ≥0.4, no blocking uncertainties, min_supporting_sources=2 |
-| **Provisional → Robust** | ≥3 evidence, quality sum ≥1.5, adversarial + convergence + deductive complete, independent evidence lines from ≥2 domains, min_supporting_sources=3 |
-| **Robust → Actionable** | ≥3 evidence, quality sum ≥1.5, all verification tracks complete, decision criteria defined, min_supporting_sources=3 |
+| ≥ 0.66 (`POSTERIOR_DIRECTIONAL_BREAKPOINT`) | **supports** |
+| ≤ 0.34 (1 − breakpoint) | **contradicts** |
+| 0.34 < p < 0.66 | **insufficient** |
 
-The `min_supporting_sources` gate counts independent evidence clusters with a `support_judgment` of "supports" (set by the judge module). This gate is only enforced when at least one evidence item has been judged, providing a graceful transition as the judge is integrated into existing inquiries.
-
-The SUPPORTED → PROVISIONAL gate requires verification tracks relevant to the question type to be complete. The graph's `RunVerification` node runs only applicable tracks based on the routing profile. Tracks marked SKIP in the routing profile are not required by the gate — `validate_promotion()` checks activation levels and only enforces PRIMARY and SECONDARY tracks.
-
-**Question-type parameterization**: Gate thresholds are overridden per question type via the routing config. For example, exploratory questions lower the SUPPORTED evidence threshold to 0.5, while verificatory questions raise the PROVISIONAL gate to require convergence. The `validate_promotion()` function reads overrides from the routing profile's `gate_thresholds` and falls back to defaults when no override exists.
-
-Gates also check for blocking uncertainties and degeneracy warnings. If any blocking uncertainty is associated with a claim, promotion is denied regardless of other criteria. Quality sums exclude corroborative and deferred evidence (only representative evidence contributes).
-
-**Important**: Gates consume signals that were produced by earlier operations. The gate itself is purely deterministic — it checks numeric thresholds against stored fields. The judgment about evidence quality, adversarial balance, and verification results happens in the operations that *set* those fields, each through focused agent calls.
+The directional breakpoint is wider than 0.5 to keep the label calibrated with the underlying evidence strength. `POSTERIOR_DECISIVE_THRESHOLD = 0.85` is a separate, stricter threshold used only by `CheckSynthesisDemand` Gate 4 to decide whether more inquiry could change the headline.
 
 ---
 
-## Quality Assessment: The Agent-Deterministic Split
+## 11. Question-type routing
 
-This section describes how the system evaluates evidence quality and counterargument strength. This is where the core design principle has the most practical impact.
+Not every verification track applies to every question. The system classifies the question into one of seven types in `PrepareObjective`, and the type dictates which verification tracks are PRIMARY (gating), SECONDARY (contributing), *If applicable*, or SKIP (irrelevant).
 
-### The Three-Layer Pattern
+### Seven question types
 
-Every quality assessment in the system follows the same pattern:
-
-1. **Focused agent produces a judgment** — A small, auditable LLM call evaluates ONE aspect (relevance, specificity, source credibility, etc.) and produces a numeric score with justification
-2. **Deterministic formula combines judgments** — Arithmetic combines individual scores into a composite (e.g., `quality = 0.4 * relevance + 0.3 * specificity + 0.3 * source_credibility`)
-3. **Deterministic gate consumes the composite** — Threshold checks decide whether the entity can advance
-
-The agent provides understanding. The formula provides transparency. The gate provides reproducibility. No step does the job of another.
-
-### Evidence Quality
-
-Evidence quality scoring combines:
-
-- **Bibliometric signals** (deterministic) — Citation counts, journal DOAJ status, retraction checks. These are available for academic sources and are computed without LLM involvement.
-- **Content assessment** (focused agent) — Relevance to the specific claim, methodological rigor, specificity of findings. These require understanding the text and must go through a focused agent call.
-
-For sources without bibliometric metadata (web search, databases), content assessment from a focused agent is the primary quality signal. The system must not fall back to keyword heuristics when bibliometric signals are unavailable — it must use a focused agent instead.
-
-### Counterargument Quality
-
-When adversarial search finds potential counterarguments, each must be evaluated for:
-
-- **Relevance** — Does this actually address the claim's specific assertions?
-- **Specificity** — Is this a general objection or targeted to the claim?
-- **Evidence backing** — Does the counterargument cite evidence, or is it speculative?
-- **Source credibility** — Is the source authoritative for this domain?
-
-Each of these evaluations requires understanding natural language. Each must be a focused agent call. The combined quality score is then a deterministic weighted sum, and the adversarial balance is deterministic arithmetic:
-
-```
-balance = supporting_weight / (supporting_weight + adversarial_weight)
-```
-
-### Domain Classification
-
-Evidence is classified along four dimensions for convergence detection: methodology (experimental, observational, theoretical, computational), data source (primary, secondary, meta-analytic), temporal approach (cross-sectional, longitudinal, historical), and causal role (cause, effect, mechanism, correlation).
-
-Classification requires understanding the evidence content. Each classification must be a focused agent call. The convergence calculation that uses these classifications is deterministic (clustering and distance metrics).
-
-### Evidence-Claim Judgment
-
-The judge module (`judge.py`) provides two focused evaluative LLM calls that are the only evaluative inputs to the confidence scoring model:
-
-- **`judge_evidence()`** — Given a claim and a piece of evidence, returns a three-way classification: "supports", "contradicts", or "no_bearing", with reasoning.
-- **`judge_independence()`** — Given two evidence items, returns a binary judgment: independent or not independent, with reasoning.
-
-These run **inline** inside existing operations, not as separate operations:
-- **`ProposeClaimsOperation`**: after each claim is created, all linked evidence is judged for support/contradict/no_bearing.
-- **`ExtractEvidenceOperation`**: after extraction, if the evidence is already linked to a claim, it is judged immediately.
-
-Judge verdicts feed into the posterior confidence score (see Confidence Scoring below) and the `min_supporting_sources` stage gate. The judge makes no domain-specific quality judgments — it evaluates only the relationship between a piece of evidence and a claim.
-
-### What Must NOT Be Keyword-Based
-
-The following evaluations require genuine understanding and must use focused agent calls:
-
-- Evidence relevance to a claim
-- Evidence quality / methodological rigor
-- Counterargument relevance, specificity, and strength
-- Evidence domain classification (methodology, data source, temporal approach, causal role)
-- Adversarial query generation (extracting key concepts from a claim)
-- Criticism classification (logical, empirical, methodological, scope-based)
-
-### What Is Correctly Deterministic
-
-The following are properly deterministic and should NOT use agent calls:
-
-- Stage gate thresholds (evidence count, quality sum, verification flags, min_supporting_sources)
-- Adversarial balance calculation (ratio of weights)
-- Convergence detection (clustering algorithm on classified dimensions)
-- Domain distance metrics (lookup table between classification categories)
-- Degeneracy detection (modification counts and timestamps)
-- Bibliometric quality scoring (citation counts, journal status)
-- Posterior confidence scoring (integration assessment when available, falls back to count-based logistic)
-- Question-type routing (lookup table from question type to track activation levels)
-- Provider selection (semantic similarity: embed question + provider descriptions, rank by cosine, select top-K)
-- Evidence deduplication (HDBSCAN clustering on embedding distances)
-- Evidence dedup via shared similarity module (single-linkage clustering, Union-Find)
-- Caveat dedup (group non-blocking uncertainties by embedding, keep medoid)
-- Batched concern dedup (group buffered remaining_concerns, filter against existing)
-
----
-
-## Seven Verification Methods
-
-Once a claim passes initial scrutiny, it faces up to seven independent verification tracks. Not all tracks fire for every question — the routing system activates tracks based on question type (see Question-Type Routing below).
-
-### Adversarial Search
-
-The system actively seeks evidence *against* the claim. An adversarial agent generates search queries designed to find counterexamples, contradictions, and competing explanations. Found counterarguments are evaluated by focused agents for relevance, specificity, and strength. The adversarial balance — the ratio of supporting to opposing evidence, weighted by quality — determines whether the claim can withstand challenge.
-
-This is perhaps the most important verification method. Both human researchers and language models suffer from confirmation bias. Adversarial search directly counteracts this by making disconfirmation a first-class activity.
-
-#### Pipeline
-
-`AdversarialSearchOperation` (in `operations/verification.py`) runs per challenged claim in five steps:
-
-1. **Template query generation** — deterministic domain-aware query templates based on the claim text.
-2. **Agent query generation** — three parallel agent calls (`epistemic_generate_counterquery`) using independent framings (`contradicting_evidence`, `alternative_explanations`, `replication_failures`). Each framing runs without seeing prior outputs, preserving Kahneman's independence principle.
-3. **Web search** — the combined query set (capped at 5) runs in parallel against the evidence gatherer with bounded concurrency (`asyncio.Semaphore(5)`).
-4. **Counterargument evaluation** — each search hit is scored by a narrow agent (`epistemic_evaluate_counterargument`) for relevance, specificity, evidence-backing, and source credibility. Evaluations run in parallel with bounded concurrency (`asyncio.Semaphore(10)`). Failed evaluations fall back to a default counterargument with neutral quality scores so a single hiccup doesn't corrupt the balance calculation.
-5. **Balance synthesis** — `synthesize_adversarial_result()` aggregates the weighted counterargument weight against the supporting evidence weight to produce the adversarial balance score, verdict (`SUPPORTED` / `CONTESTED` / `CHALLENGED` / `REFUTED`), and recommendation.
-
-Parallelization in steps 2–4 is what keeps wall time bounded. A sequential implementation would incur 1 + 5 + N roundtrips (where N is typically 25–50 search hits per claim); the parallel implementation collapses this to roughly the worst single-call latency.
-
-#### Persistence
-
-Three distinct artifacts are written to the database after a successful adversarial search:
-
-- **The `Claim` entity** gets its `adversarial_balance` and `adversarial_checked` fields updated in place.
-- **Quality-passing counterarguments** are persisted as individual `Evidence` entities with `support_judgment="contradicts"`, deduplicated by source URL (the highest-quality counterargument per URL wins). The claim's `evidence_ids` list is extended with the new evidence IDs so TMS and the evidence bibliography can find them.
-- **The full `AdversarialEvidence` wrapper** (with `epistemic_type="adversarial_evidence"`, containing the complete counterargument list, queries used, weights, verdict, explanation, and recommendation) is persisted via `EpistemicRepository.save_adversarial_evidence()`. This is the source of truth for report rendering — without it, the counterargument synthesis is lost between the verification operation and the report generator.
-
-For strongly challenged claims (`balance_score < 0.3`), a non-blocking `Uncertainty` is also created summarizing the adversarial finding so the limitations section of the report flags the challenge.
-
-#### Report rendering
-
-Counter-evidence surfaces in the HTML report in two places:
-
-1. **In the Findings section**, each challenged claim's Details block shows the adversarial summary line (`Counter-evidence search found strong opposition (balance: 0.16). This claim was demoted after adversarial challenge.`) followed by a nested list of the individual counterarguments, each with its text, weight, and source link. `ReportGenerator` builds `AdversarialSummary` objects (one per counterargument, tagged with the originating `claim_id`) from the persisted `AdversarialEvidence`; `html_report.py` groups them by claim and renders them inside the existing claim details toggle.
-2. **In the Sources section**, contradicting evidence appears under its own "Contradicting" subheading in the evidence bibliography — populated from the `Evidence` entities written in the persistence step above.
-
-The two renderings are complementary: the bibliography lists the raw sources, while the claim details show the system's synthesized interpretation of what each counterargument actually argues and how strongly it counts against the claim.
-
-### Cross-Domain Convergence
-
-Evidence is classified along four dimensions (methodology, data source, temporal approach, causal role). Evidence from different domains is clustered, and the system measures whether independent lines converge on the same conclusion. Convergence from methodologically independent sources is stronger than convergence from similar sources.
-
-### Deductive Validation
-
-The claim is tested against first principles, logical consistency, and known constraints. This catches claims that are empirically plausible but logically flawed — errors that evidence alone cannot reveal.
-
-### Computational Verification
-
-For claims with quantifiable predictions, computational verification independently verifies the numbers. Only applicable to claims with verifiable quantitative content, but when it applies, it provides the strongest evidence: reproducible calculation.
-
-### Contrastive Evaluation
-
-Pairwise comparison of competing claims. When the question involves choosing between explanations or comparing alternatives, the contrastive evaluator assesses each claim pair on explanatory power, evidential support, parsimony, and scope. Primary for explanatory and comparative question types. Skipped for verificatory and predictive questions where claims are evaluated independently rather than against each other.
-
-### Cross-Claim Consistency
-
-Pairwise conflict detection between claims within the same inquiry. Checks whether any two claims logically contradict each other, assert incompatible scope, or make conflicting predictions. Primary for exploratory, comparative, compositional, and normative question types — all cases where multiple independent claims are proposed and must cohere. When conflicts are found, uncertainties are created to flag the inconsistency.
-
-### Argument Analysis
-
-Formal analysis of a claim's argument structure: identification of premises, conclusions, logical validity, soundness, and common fallacies. Fires for claims that passed scrutiny. Primarily activated for explanatory and normative question types where the logical structure of the argument is as important as the empirical evidence.
-
----
-
-## Question-Type Routing
-
-Different research questions require different verification strategies. A verificatory question ("Does X cause Y?") needs strong adversarial search and convergence but not contrastive evaluation. An explanatory question ("Why does X happen?") needs contrastive evaluation between competing explanations but not necessarily adversarial search.
-
-The routing system configures which verification tracks fire and what gate thresholds apply, based on the question type set by `ClassifyQuestionOperation` early in the pipeline.
-
-### Seven Question Types
-
-| Type | Core concern | Example |
+| Type | Example | Decomposes? |
 |---|---|---|
-| **Verificatory** | Is this true? | "Does spaced repetition improve long-term retention?" |
-| **Explanatory** | Why does this happen? | "Why do neural networks generalize beyond training data?" |
-| **Exploratory** | What is the landscape? | "What approaches exist for protein folding prediction?" |
-| **Comparative** | Which is better? | "Is CRISPR more effective than TALENs for gene editing?" |
-| **Predictive** | What will happen? | "Will mRNA vaccines work against future coronaviruses?" |
-| **Compositional** | How do parts relate? | "How do sleep, exercise, and diet interact to affect cognition?" |
-| **Normative** | What should we do? | "Should AI systems be required to explain their decisions?" |
+| **Empirical** | Is APOE4 associated with Alzheimer's risk? | Yes |
+| **Causal** | Does smoking cause lung cancer? | Yes |
+| **Comparative** | Is drug A more effective than drug B? | Yes |
+| **Definitional** | What is a metalloproteinase? | No (single-claim) |
+| **Predictive** | Will treatment X reduce mortality? | Yes |
+| **Methodological** | Is the proposed RCT design adequate? | Yes |
+| **Verificatory** | Does paper P support claim C? | No (seed claim is the question) |
 
-### Routing Matrix
+### Routing matrix
 
-Each track is assigned one of four activation levels per question type:
+P = Primary (gates promotion), S = Secondary (contributes when present), A = If applicable, — = Skipped.
 
-| Track | Verificatory | Explanatory | Exploratory | Comparative | Predictive | Compositional | Normative |
+| Track | Empirical | Causal | Comparative | Definitional | Predictive | Methodological | Verificatory |
 |---|---|---|---|---|---|---|---|
-| **Adversarial** | PRIMARY | SECONDARY | SKIP | SECONDARY | SECONDARY | SKIP | SECONDARY |
-| **Convergence** | PRIMARY | SECONDARY | SECONDARY | SKIP | SKIP | PRIMARY | SKIP |
-| **Deductive** | SECONDARY | PRIMARY | SKIP | SECONDARY | PRIMARY | SKIP | PRIMARY |
-| **Computational** | IF_APPLICABLE | IF_APPLICABLE | SKIP | SKIP | PRIMARY | SKIP | SKIP |
-| **Argument** | SECONDARY | PRIMARY | SKIP | SKIP | SKIP | SKIP | PRIMARY |
-| **Contrastive** | SKIP | PRIMARY | SKIP | PRIMARY | SKIP | SKIP | SKIP |
-| **Consistency** | SKIP | SKIP | PRIMARY | PRIMARY | SKIP | PRIMARY | PRIMARY |
+| Adversarial | P | P | P | S | P | P | P |
+| Convergence | P | P | P | S | S | S | P |
+| Deductive | — | S | — | P | — | P | — |
+| Computational | A | A | A | — | P | A | — |
+| Contrastive | S | P | P | — | S | S | S |
+| Cross-claim consistency | S | S | S | S | S | S | — |
+| Argument analysis | S | S | S | P | S | P | S |
 
-### Activation Levels
+The classification is set once in `PrepareObjective` and stored on `Objective.question_type`. `SetRoutingDefaultsOperation`, run when a claim crosses into SUPPORTED, reads the type and pre-marks SKIP tracks as not-applicable on the claim itself, so downstream verifiers don't waste calls.
 
-- **PRIMARY**: Always fires for this question type.
-- **SECONDARY**: Fires only when a deterministic condition on the claim is met. For example, adversarial search fires as SECONDARY only when the adversarial balance is below 0.6 (indicating conflicting evidence). Convergence fires as SECONDARY only when the claim has 3+ evidence items.
-- **IF_APPLICABLE**: Like PRIMARY but semantically indicates the track may find nothing to do (e.g., computational verification on a non-quantitative claim).
-- **SKIP**: Never fires. The `SetRoutingDefaultsOperation` pre-marks the track's boolean flag as `True` on the claim entity so that promotion gates are not blocked by a track that was intentionally skipped.
+### Verificatory mode
 
-### SetRoutingDefaultsOperation
-
-`SetRoutingDefaultsOperation` reads the objective's `question_type`, looks up the routing profile, and sets all SKIP track flags to `True` on every SUPPORTED claim. This is a deterministic operation — no LLM call. It is called by the `PromoteToSupported` graph node before verification begins. The `routing_applied` flag was removed — the operation is idempotent (setting already-true flags is a no-op) and the graph ensures it runs exactly once per promote cycle. The operation pre-marks SKIP track flags so gate validation works correctly.
-
-### Gate Threshold Overrides
-
-Each routing profile includes a `gate_thresholds` dict that can override the default stage gate requirements. For example:
-- Exploratory questions lower the SUPPORTED evidence threshold to 0.5 (breadth over depth).
-- Explanatory questions add a `requires_contrastive_superiority` check at PROVISIONAL.
-- Predictive questions require `requires_falsification_criteria` at ACTIONABLE (predictions are generated at ROBUST stage).
-
-The `validate_promotion()` function merges these overrides with default gate thresholds at runtime.
+When `Objective.claim_to_verify` is set, decomposition is skipped. `CreateClaims` seeds the single specified claim and the rest of the pipeline runs normally. A Pydantic `model_validator` on `Objective` refuses constructions that set both `claim_to_verify` and `decomposition`; they are mutually exclusive seed modes.
 
 ---
 
-## Deduplication
+## 12. Threshold reference
 
-When gathering evidence from multiple providers, the system frequently retrieves semantically similar content — the same finding reported by different sources, or overlapping coverage from web search results. Without deduplication, near-duplicates inflate counts and dilute the signal-to-noise ratio for downstream agents. The system uses two dedup mechanisms depending on the entity type.
+Every decision-relevant numeric threshold lives in `epistemic/thresholds.py`. Each constant is named after the philosophical commitment it encodes; every site across the codebase imports from this single file.
 
-### Evidence Deduplication (HDBSCAN)
+### Adversarial balance (Popper / Lakatos)
 
-Evidence is clustered using HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise) on cosine distances between text embeddings. HDBSCAN discovers cluster count from data structure — no epsilon or k parameter to tune. Documents that are genuinely unique become noise singletons and are preserved as singleton clusters.
+| Constant | Value | Read by |
+|---|---|---|
+| `ADVERSARIAL_REFUTED_THRESHOLD` | 0.3 | stage demotion · posterior calculation · reporters |
+| `ADVERSARIAL_SURVIVED_THRESHOLD` | 0.7 | stage gates · refire-skip logic · synthesis writer · reporters |
+| `ADVERSARIAL_SUSPICIOUS_THRESHOLD` | 0.95 | balance interpreter (diagnostic) |
+| `FRAMING_TIE_SATURATION_GAP` | 0.4 (derived) | `integration._framing_tie_cap` |
 
-**Cluster-Ranked Top-K Selection**: After clustering, the system selects the top K=5 clusters ranked by the best `quality_score` of any member. Within each selected cluster, the **medoid** (most central document by embedding distance) is selected as the primary representative, and the **best-quality member** (highest `quality_score`) is also selected if different from the medoid.
+### Inquiry cycling (Peirce)
 
-**Evidence Status Tracking**: Each evidence entity is tagged with a `cluster_status`:
+| Constant | Value | Read by |
+|---|---|---|
+| `PEIRCE_CYCLE_CAP` | 3 | investigation · scrutiny–resolve · uncertainty depth |
+| `IBE_AGREEMENT_K_DEFAULT` | 2 | default for `EpistemicGraphState.ibe_agreement_k` — number of independent IBE chain runs whose verdicts must agree |
 
-| Status | Meaning |
+### Output-layer provenance
+
+| Constant | Value | Read by |
+|---|---|---|
+| `CYCLE_CAP_CONFIDENCE_PENALTY` | 0.7 | posterior aggregation when any claim is cycle-capped |
+| `RETRIEVAL_FAILED_CONFIDENCE_PENALTY` | 0.7 | posterior aggregation when retrieval failed |
+
+### Posterior breakpoints
+
+| Constant | Value | Read by |
+|---|---|---|
+| `POSTERIOR_DIRECTIONAL_BREAKPOINT` | 0.66 | `combination._verdict_label` |
+| `POSTERIOR_DECISIVE_THRESHOLD` | 0.85 | `CheckSynthesisDemand` Gate 4 |
+
+### Convergence (Reichenbach / Mill)
+
+| Constant | Value | Read by |
+|---|---|---|
+| `CONVERGENCE_STRONG_THRESHOLD` | 0.7 | convergence verdict — gates IBE fast-path |
+| `CONVERGENCE_INTRA_DIVERSITY_THRESHOLD` | 0.5 | cluster diversity check |
+| `CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW` | 0.3 | `shared_error_modes` warning |
+
+The constants are deliberately few. Adding a new threshold requires the same justification (theoretical basis plus the sites that read it) as the existing set. Bare numeric literals in decision logic across the rest of `epistemic/` are an architectural smell.
+
+---
+
+## 13. Code structure
+
+Top-level layout under `src/andamentum/epistemic/`:
+
+| Path | Role |
 |---|---|
-| `unclustered` | Not yet processed by deduplication |
-| `representative` | Selected for downstream processing (medoid or best-quality member) |
-| `corroborative` | Semantically similar to a representative; stored for provenance but filtered from pipeline |
-| `deferred` | In a cluster outside top-K; stored but not processed this cycle |
-
-Corroborative evidence is excluded from quality sums and agent context but its existence is recorded in the `corroboration_count` on the representative for provenance.
-
-Evidence deduplication is applied at two points:
-1. **Initial claim proposal** (`ProposeClaimsOperation`): clusters all extracted evidence before claims are proposed, ensuring claims are built from distinct findings.
-2. **After investigation** (`ScrutiniseClaimOperation`): clusters newly fetched evidence before re-scrutiny, preventing investigation cycles from inflating evidence with near-duplicates.
-
-### Unified Similarity Module
-
-The shared `similarity.py` module provides deterministic threshold-based deduplication for assertions, uncertainties, and caveats. It uses cosine similarity with single-linkage clustering via Union-Find (items form transitive groups when similarity exceeds the threshold). A unified threshold `DEDUP_SIMILARITY_THRESHOLD = 0.7` applies across all uses.
-
-Key components:
-- **`embed_and_group()`** — Embed texts and group by cosine similarity using single-linkage clustering.
-- **`medoid()`** — Select the most central item in each group as the representative.
-- **`assess_clustering()`** — Silhouette diagnostics for cluster quality.
-- **`validate_groups()`** — Optional LLM-assisted validation of large clusters (calls `epistemic_validate_group` agent).
-
-### Caveat Dedup
-
-During `FreezeSnapshotOperation`, non-blocking uncertainties are deduplicated before the snapshot is frozen. The similarity module groups semantically similar caveats and keeps only the medoid of each group, preventing the final report from listing near-identical caveats.
-
-### Batched Concern Dedup
-
-When `ResolveUncertaintyOperation` generates remaining concerns, they are buffered in the objective's `pending_concerns` list rather than immediately creating uncertainty entities. `DeduplicateConcernsOperation` fires when `pending_concerns_count > 0`, deduplicates the buffer using the similarity module, filters against existing uncertainties, and promotes distinct concerns to uncertainty entities.
-
----
-
-## Investigation Termination
-
-Investigation cycles are capped by `MAX_INVESTIGATION_ATTEMPTS = 3` in `InvestigateClaimOperation`. After 3 investigation cycles, the claim is abandoned via the `AbandonOrDemote` graph node. No separate saturation mechanism exists — the investigation count is the sole termination condition.
-
----
-
-## Uncertainty Taxonomy
-
-Uncertainties are classified into sixteen types in two categories.
-
-### Blocking (7 types)
-
-| Type | Meaning |
-|---|---|
-| **Unknown** | Genuinely missing critical information |
-| **Contradiction** | Sources genuinely disagree on the core claim |
-| **Computational Disagreement** | Dual execution results disagree |
-| **Strong Counterevidence** | Adversarial search found strong counterarguments |
-| **Logical Inconsistency** | Claim contradicts itself or established facts |
-| **Physical Implausibility** | Claim violates conservation laws, causality |
-| **Missing Premise** | Claim requires unstated assumptions |
-
-### Non-Blocking (9 types)
-
-| Type | Meaning |
-|---|---|
-| **Evidence Gap** | Insufficient evidence, but not fatal |
-| **Assumption** | We assume X without proof |
-| **Risk** | X could go wrong |
-| **Weak Convergence** | Evidence sources show weak independence |
-| **Definitional Variation** | Depends on how terms are defined |
-| **Scope Difference** | Different sources apply to different contexts |
-| **Methodological Variation** | Different methods yield different specifics |
-| **Perspectival** | Valid different viewpoints on same fact |
-| **Granularity Difference** | True at one level, nuanced at finer level |
-
-A claim with 10 non-blocking uncertainties can still advance. A claim with 1 blocking uncertainty cannot. This prevents over-skepticism while ensuring genuine epistemic problems are addressed.
-
----
-
-## The Inquiry Cycle (Peirce)
-
-The system implements cycling inspired by Peirce's theory of inquiry: knowledge advances through hypothesis, test, revision, and re-test.
-
-When a claim is demoted, its verification flags are reset — scrutiny verdict cleared, adversarial/convergence/deductive/computational marks removed. The claim returns to an earlier stage with a clean slate for re-evaluation against the updated evidence base. This forces genuine re-examination, not bookkeeping.
-
-### Investigation Cycling
-
-When scrutiny produces doubt but the claim is not clearly wrong (verdict: `needs_resolution`), the system enters an investigation cycle: analyze the scrutiny feedback, generate targeted search queries, create new evidence stubs. The graph re-enters the Scrutinize node after new evidence is extracted. Investigation terminates when the hard limit of 3 investigation attempts is reached, at which point the claim is abandoned.
-
-Investigation cycling implements Peirce's insight more faithfully than demotion alone. Demotion says "this was wrong, try again." Investigation says "this might be right, but we need more evidence to tell."
-
----
-
-## Degeneracy Detection (Lakatos)
-
-Lakatos distinguished between *progressive* research programmes (generating novel predictions) and *degenerative* ones (surviving only through ad-hoc modifications). The system implements two detection rules:
-
-| Rule | Trigger | Signal |
-|---|---|---|
-| **DEGEN_001** | modification_count > 3 | Suggests ad-hoc patching |
-| **DEGEN_003** | ≥3 modifications in 24h | Rapid-fire patching |
-
-Degeneracy warnings block promotion but are surfaced for human judgment about whether to continue investigation or abandon.
-
----
-
-## Traceability (Doyle TMS)
-
-Every element of the final output traces back through a justification chain:
-
-```
-Artefact → Snapshot → Claims → Evidence → Source
-```
-
-**Debugging**: When the output contains an error, the trace identifies which evidence was misinterpreted. The fix is targeted.
-
-**Trust calibration**: A reader can inspect the justification chain for any statement.
-
-**Revision**: When new evidence emerges, the trace identifies affected claims for selective revision (AGM minimal change principle).
-
----
-
-## Belief Revision (AGM)
-
-Revision follows the AGM framework: success (new information incorporated), consistency (no contradictions), minimal change (alter as little as possible). When a claim is demoted, evidence links remain intact, verification results are cleared, and the claim returns to an earlier stage. Demoting one claim does not cascade to unrelated claims.
-
----
-
-## Graph-Driven Architecture
-
-The system uses a pydantic-graph DAG (Directed Acyclic Graph with explicit cycles) to control the pipeline. Each node wraps one or more operations and returns the next node to run via typed return values. The graph makes dependencies explicit and type-checked — if a node returns a type not in the graph, construction fails at import time.
-
-### Architecture Principles
-
-Five rules govern the interaction between graph nodes and operations:
-
-- **P1: Operations are pure transforms.** An operation reads entities, does work, and writes the result. It never manipulates fields on other entities to signal what should happen next.
-- **P2: The graph is the sole flow controller.** Only graph nodes decide what runs next, based on operation results, entity state, and graph state.
-- **P3: Entity fields are data, not signals.** Every field on Claim, Evidence, Objective represents something real — a verdict, a score, a stage. No field exists solely to tell the scheduler what to do.
-- **P4: Graph state tracks pipeline progress.** `EpistemicGraphState` tracks what work has been done and what needs doing — not entity fields.
-- **P5: Operations don't reach across entity boundaries.** An operation on an Uncertainty does not modify Claims. Cross-entity effects are the graph's job.
-
-### Graph Topology (16 nodes)
-
-```
-PrepareObjective → PlanEvidence → ExtractEvidence → CreateClaims → Scrutinize
-                                                                       │
-  ┌────────────────────────────────────────────────────────────────────┘
-  │
-  ├── Investigate → ExtractNewEvidence → Scrutinize (cycle, max 3)
-  ├── AbandonOrDemote → Scrutinize or CheckCompletion
-  └── ResolveUncertainties → PromoteToSupported → ClusterEvidence → RunVerification
-                                    │                                      │
-                                    └── CheckCompletion         ResolveUncertainties
-                                                                           │
-                                                                    IntegrateEvidence
-                                                                           │
-                                                                    PromoteSupported
-                                                                           │
-                                                                    CheckCompletion
-                                                                           │
-                                                                      Synthesize → End
-```
-
-### Node Types
-
-| Node | Type | Operations wrapped |
-|---|---|---|
-| PrepareObjective | LLM | clarify_question, classify_question, conceptual_analysis |
-| PlanEvidence | LLM | plan_task |
-| ExtractEvidence | LLM + embedding | extract_evidence (loops all unextracted) |
-| CreateClaims | LLM | seed_claim OR propose_claims |
-| Scrutinize | LLM | scrutinise_claim (loops all unscrutinized) |
-| Investigate | LLM | investigate_claim |
-| ExtractNewEvidence | LLM + embedding | extract_evidence (investigation stubs) |
-| AbandonOrDemote | Deterministic | abandon_stale_claim, demote_claim |
-| ResolveUncertainties | LLM | resolve_uncertainty, deduplicate_concerns |
-| PromoteToSupported | Deterministic | promote_claim, set_routing_defaults |
-| ClusterEvidence | Embedding | select_top_k_evidence (HDBSCAN clustering) |
-| RunVerification | LLM | adversarial, convergence, deductive, computational, contrastive, consistency, argument |
-| IntegrateEvidence | LLM | integrate_evidence (abductive integration) |
-| PromoteSupported | Deterministic | promote_claim (S→P→R→A), generate_prediction, record_decision |
-| CheckCompletion | Deterministic | routes to Synthesize or End |
-| Synthesize | LLM | freeze_snapshot, synthesize_report |
-
-### Key Design Decisions
-
-- **ResolveUncertainties appears in two positions**: before first promote (uncertainties from scrutiny) and after verification (uncertainties from adversarial search). The `next_on_clear` parameter routes to PromoteToSupported or IntegrateEvidence accordingly.
-- **PromoteToSupported is a routing hub**: checks actual claim state (HYPOTHESIS with pass → promote; SUPPORTED without verification → ClusterEvidence; all done → CheckCompletion). This correctly handles re-entry after uncertainty resolution.
-- **ClusterEvidence is a separate node**: deterministic embedding-based clustering separated from LLM-calling verification tracks. Reduces 100+ evidence items to ~8 representatives before verification.
-- **TMS runs as a sweep**: `_run_tms_sweep()` is called after RunVerification and ExtractNewEvidence — not as a separate node. It cascades evidence invalidation and claim revalidation.
-
-### Entry Point
-
-The sole entry point is `run_research_question()` in `operations_runner.py`, which delegates to `run_epistemic_graph()` in `graph/__init__.py`. Both the CLI and benchmark harnesses should call this function.
-
----
-
-## Implementation Architecture
-
-### Two Code Layers
-
-| Layer | Location | Responsibility |
-|---|---|---|
-| **Library** | `src/andamentum/epistemic/` | Framework-agnostic. Entities, operations, graph-based scheduling, gates, adapters, agents (Python-native), routing, dedup, confidence, runner. Install with `pip install andamentum`. |
-
-### Agents
-
-34 Python-native agent definitions, all narrow: each agent has a maximum of 7 output fields with no nested object lists. Agents are registered in `AGENT_REGISTRY` via `register_agent()` at import time, grouped by domain module:
-
-- **Preplanning** (4): `epistemic_clarify_question`, `epistemic_classify_question`, `epistemic_conceptual_analysis`, `epistemic_formulate_query`
-- **Evidence** (5): `epistemic_extract_evidence`, `epistemic_assess_evidence`, `epistemic_assess_evidence_quality`, `epistemic_extract_assertion`, `epistemic_screen_relevance`
-- **Verification** (12): `epistemic_draft_claim`, `epistemic_identify_single_issue`, `epistemic_identify_testable_aspect`, `epistemic_investigate_claim`, `epistemic_deductive_validation`, `epistemic_verify_computationally`, `epistemic_analyze_argument`, `epistemic_contrastive_evaluation`, `epistemic_cross_claim_consistency`, `epistemic_generate_counterquery`, `epistemic_evaluate_counterargument`, `epistemic_check_pairwise_independence`
-- **Synthesis** (5): `epistemic_validate_answer`, `epistemic_write_answer`, `epistemic_resolve_uncertainty`, `epistemic_record_decision`, `epistemic_classify_evidence_domain`
-- **Integration** (1): `epistemic_integrate_evidence` (abductive integration of evidence for a claim)
-- **Prediction** (3): `epistemic_classify_prediction`, `epistemic_define_falsification`, `epistemic_specify_prediction`
-- **Judge** (2): `epistemic_judge_evidence` (supports/contradicts/no_bearing), `epistemic_judge_independence` (binary independence)
-- **Provider** (1): `epistemic_select_provider` (semantic provider selection)
-- **Similarity** (1): `epistemic_validate_group` (generic group validation for dedup)
-- **Output models** (1 module): Shared Pydantic output models in `agents/output_models.py`
-
-### Operations
-
-29 operation classes registered in `OPERATION_CLASSES`, each inheriting from `BaseOperation`:
-
-| Operation | Entity | Effect |
-|---|---|---|
-| `ClarifyQuestionOperation` | objective | Disambiguate, set phase=clarified |
-| `ClassifyQuestionOperation` | objective | Set question_type (7 types), deterministic routing follows |
-| `ConceptualAnalysisOperation` | objective | Define terms, set phase=analyzed |
-| `PlanTaskOperation` | objective | Create evidence stubs, set phase=planned |
-| `ProposeClaimsOperation` | objective | Deduplicate evidence (HDBSCAN), propose claims from top-K representatives |
-| `SeedClaimOperation` | objective | Create claim from `claim_to_verify` (verification mode) |
-| `ExtractEvidenceOperation` | evidence | Fill extracted_content from source |
-| `ScrutiniseClaimOperation` | claim | Set scrutiny_verdict, may create uncertainties |
-| `InvestigateClaimOperation` | claim | Create targeted evidence stubs, reset verdict |
-| `AbandonStaleClaimOperation` | claim | Abandon claims that exhausted investigation attempts |
-| `SetRoutingDefaultsOperation` | claim | Pre-mark skipped track flags based on question type routing (deterministic, no LLM) |
-| `AdversarialSearchOperation` | claim | Evaluate counterarguments, set adversarial_balance |
-| `AssessConvergenceOperation` | claim | Assess cross-domain convergence |
-| `ValidateDeductivelyOperation` | claim | Check logical soundness |
-| `VerifyComputationallyOperation` | claim | Verify quantitative predictions |
-| `ContrastiveEvaluationOperation` | claim | Pairwise comparison of competing claims |
-| `CrossClaimConsistencyOperation` | claim | Pairwise conflict check between claims |
-| `AnalyzeArgumentOperation` | claim | Analyze argument structure, premises, fallacies |
-| `IntegrateEvidenceOperation` | claim | Abductive integration of evidence for holistic assessment |
-| `PromoteClaimOperation` | claim | Advance stage via deterministic gate check (routing-aware thresholds) |
-| `DemoteClaimOperation` | claim | Lower stage, reset all 7 verification flags |
-| `ResolveUncertaintyOperation` | uncertainty | Set resolution text |
-| `DeduplicateConcernsOperation` | objective | Batch dedup buffered remaining concerns |
-| `GeneratePredictionOperation` | claim | Create testable predictions |
-| `RecordDecisionOperation` | claim | Create decision entity |
-| `InvalidateEvidenceOperation` | evidence | TMS: cascade evidence invalidation to dependent claims |
-| `RevalidateClaimOperation` | claim | TMS: re-validate claim stage gate after evidence invalidation |
-| `FreezeSnapshotOperation` | objective | Create immutable state snapshot |
-| `SynthesizeReportOperation` | snapshot | LLM writes prose; code assembles report + trace map |
-
-### Key Implementation Details
-
-**Adapters** normalize agent output. The runner validates output against the agent definition's `output_model`, returning typed Pydantic models. Adapters transform these into operation-specific dataclasses via direct field access — field mismatches surface as `AttributeError`, not silent wrong defaults.
-
-**Code-driven synthesis**: `SynthesizeReportOperation` loads entities from the snapshot, calls the agent for prose only, and assembles the structured report and trace mapping deterministically in code. The LLM writes; the code structures.
-
-**Cycling reset**: When `DemoteClaimOperation` fires, it clears `scrutiny_verdict` and resets all seven verification booleans to False, forcing full re-evaluation from scratch.
-
-**TMS operations**: `InvalidateEvidenceOperation` and `RevalidateClaimOperation` implement Doyle's truth maintenance. When evidence is invalidated (e.g., retracted source), cascading invalidation marks dependent claims for revalidation. `RevalidateClaimOperation` re-checks stage gates using `validate_current_stage()` and demotes claims that no longer meet their current stage requirements.
-
-### Code Structure
-
-```
-src/andamentum/epistemic/
-├── entities/                      # Entity models (7 types)
-├── agents/                        # Python agent definitions + output models
-│   ├── __init__.py                # AGENT_REGISTRY, register_agent()
-│   ├── output_models.py           # Shared Pydantic output models
-│   ├── preplanning.py             # clarify, classify, conceptual, formulate
-│   ├── evidence.py                # extract, assess, quality
-│   ├── verification.py            # scrutiny, investigation, deductive, adversarial, etc.
-│   ├── synthesis.py               # validate_answer, write_answer, domain classification
-│   ├── uncertainty.py             # extract_assertion, screen_relevance
-│   ├── judge.py                   # judge_evidence, judge_independence
-│   └── similarity.py             # validate_group
-├── validation/                    # Gate validators, output validators, traceability
-├── operations/                    # 29 operation classes (split by pipeline phase)
-│   ├── __init__.py                #   re-exports, OPERATION_CLASSES, create_operations()
-│   ├── base.py                    #   protocols, BaseOperation, constants
-│   ├── preplanning.py             #   clarify, classify, analyze, plan
-│   ├── claims.py                  #   evidence selection + claim proposal + inline judge
-│   ├── evidence.py                #   extract + quality scoring + inline judge
-│   ├── scrutiny.py                #   scrutinise claim
-│   ├── verification.py            #   adversarial, convergence, deductive, computational
-│   ├── stage_management.py        #   promote/demote
-│   ├── uncertainty.py             #   resolve uncertainty
-│   ├── synthesis.py               #   freeze snapshot (with caveat dedup) + synthesize report
-│   ├── analysis.py                #   argument, contrastive, consistency
-│   ├── investigation.py           #   investigate, predict, decide
-│   ├── belief_maintenance.py      #   invalidate, revalidate, routing defaults
-│   └── concerns.py                #   batch dedup of remaining concerns
-├── graph/                         # pydantic-graph DAG (16 nodes, EpistemicGraphState)
-├── patterns.py                    # Legacy pattern definitions (retained for reference)
-├── gates.py                       # StageGate definitions + validate_promotion() (routing-aware) + TMS validate_current_stage()
-├── routing.py                     # Question-type routing table (verification tracks, gate overrides)
-├── provider_routing.py            # Semantic provider selection (embed question + rank providers by cosine similarity)
-├── judge.py                       # Central judge module: judge_evidence(), judge_independence()
-├── similarity.py                  # Shared embed-compare-group utility (cosine, Union-Find, medoid, validation)
-├── dedup.py                       # HDBSCAN evidence deduplication
-├── embeddings.py                  # Ollama embedding client for dedup clustering + provider routing
-├── confidence.py                  # Posterior confidence scoring
-├── typeset_report.py              # Adapter: convert ReportData to typeset atom list
-├── adapters.py                    # Agent output normalization
-├── repository.py                  # Entity CRUD interface
-├── storage.py                     # StorageBackend protocol
-├── runner.py                      # DefaultAgentRunner (PydanticAI agent execution)
-├── operations_runner.py           # Entry point: run_research_question() → graph execution
-├── primitives.py                  # Shared enums and dataclasses
-├── quality.py                     # Bibliometric quality scoring
-├── adversarial_balance.py         # Balance calculation (deterministic)
-├── adversarial_evaluator.py       # Counterargument evaluation
-├── adversarial_query_generator.py # Search query generation
-├── domain_classifier.py           # Evidence domain classification
-├── domain_distance.py             # Inter-domain distance (deterministic)
-├── convergence_detector.py        # Convergence detection (deterministic)
-├── preflight.py                   # Preflight health checks (HealthCheckable protocol)
-├── evidence_gathering.py          # Evidence provider routing
-├── evidence_router.py             # Provider dispatch
-├── config.py                      # ResearchConfig
-├── result_models.py               # Typed result models
-├── synthesis.py                   # Result synthesis
-├── trace.py                       # Reasoning trace building
-├── stats.py                       # Run statistics
-├── console.py                     # Rich console output
-├── cli_handlers.py                # Async handlers for CLI commands
-├── cli.py                         # Standalone CLI entry point (andamentum-epistemic)
-├── html_report.py                 # HTML report generation
-├── report_generator.py            # Report formatting
-└── trace_renderers.py             # Trace visualization
-```
-
-### Evidence Providers
-
-| Provider | Type | Quality Signal |
-|---|---|---|
-| **Web Search** | General | Content assessment (focused agent) |
-| **OpenAlex** | Academic | Bibliometric (deterministic) + content assessment |
-| **Monarch** | Biomedical | Database authority (deterministic) + content assessment |
-| **Knowledge Sources** | Biomedical DBs | Database authority (deterministic) |
-
-Provider selection uses **semantic similarity**: `select_providers()` in `provider_routing.py` embeds the clarified question and all provider descriptions using Ollama, ranks providers by cosine similarity, and selects the top-K whose score exceeds a calibrated threshold (`min_score=0.15`). Web search is always appended as a universal fallback. Provider description embeddings are cached per model at module level. No LLM call is involved — only embedding distance. This replaced a previous keyword-matching approach (`DOMAIN_PROVIDER_MAP`) which was brittle and could not handle queries outside its hardcoded vocabulary. A 200-query benchmark validates routing accuracy (97.5% top-3 recall).
-
-### Extension Guide
-
-**Add a new operation**: Create `BaseOperation` subclass → register in `OPERATION_CLASSES` → add a graph node that calls it → create agent manifest → (optional) add adapter.
-
-**Add an evidence provider**: Implement `EvidenceGatherer` protocol → wire into `DefaultEvidenceGatherer`. Implement `check_health()` → `async def check_health(self) -> CheckResult` so preflight discovers the provider automatically (see Preflight section below).
-
-**Modify stage gates**: Edit `STAGE_GATES` dict in `gates.py`.
-
-**Add an entity type**: Create entity class → register in `ENTITY_CLASSES` → add repository methods.
-
-### Preflight Health Checks
-
-Misconfiguration (wrong model ID, SearXNG not running, external API down) is not detected until mid-run without preflight validation. The preflight system provides fail-fast checks **before** an expensive research run starts.
-
-**Design**: Provider-advertised health checks. Each component implements a `check_health()` method; the preflight system discovers and calls these. No hardcoded provider-specific logic in the preflight module.
-
-**Protocol**:
+| `thresholds.py` | Single source of truth for every decision-relevant numeric threshold. |
+| `entities/` | The seven primitives plus `Prediction` and decomposition types. Pure pydantic data classes. |
+| `operations/` | 17 operation classes (`BaseOperation` subclasses). Pure transforms. |
+| `graph/` | The 23-node DAG. `nodes.py` · `state.py` · `topology.py` · `base.py`. |
+| `gates.py` | Stage promotion gates. `STAGE_GATES` dict plus `validate_promotion` (routing-aware). |
+| `providers/` | 10 evidence providers plus `CONTRIBUTING.md`. Each returns `list[GatheredEvidence]`; never raises. |
+| `convergence_detector.py` | Reichenbach common-cause cluster analysis. |
+| `confidence.py` | Posterior aggregation; counting plus integration via weighted model averaging. |
+| `demand.py` | The `Demand` Pydantic model used everywhere lazy-escalation happens. |
+| `repository.py` | `EpistemicRepository` wraps `StorageBackend`; in-memory backend in `storage.py`. |
+| `runner.py` | `DefaultAgentRunner` wrapping `core.AgentRunner` with the epistemic agent registry. |
+| `cli.py` | `andamentum-epistemic` entry point. Two modes: `ask` and `verify`. |
+| `tests/` | Tests live next to the code they test. `test_topology.py` asserts reachability properties. |
+
+### Entry point
 
 ```python
-from andamentum.epistemic.preflight import HealthCheckable, CheckResult
+from andamentum.epistemic.graph import run_epistemic_graph
 
-@runtime_checkable
-class HealthCheckable(Protocol):
-    async def check_health(self) -> CheckResult: ...
+result = await run_epistemic_graph(
+    question="...",
+    mode="research",  # or "verify"
+    model="anthropic:claude-haiku-4-5",
+    embedding_model="ollama:embeddinggemma:latest",
+    ibe_agreement_k=2,  # default; raise for stricter agreement
+)
 ```
 
-**Components that implement `check_health()`**:
-- `DefaultAgentRunner` — tests LLM connectivity with a minimal inference call
-- `WebSearchGatherer` — tests SearXNG reachability
-- `MonarchProvider` — tests Monarch API search endpoint
-- `OpenAlexProvider` — tests OpenAlex API works endpoint
-
-**Adding preflight to a new provider**: Just implement `check_health()` on the class. The preflight function discovers it via `hasattr(provider, 'check_health')` — no registration needed.
-
-```python
-class NewDatabaseProvider:
-    async def gather(self, query: str) -> list[GatheredEvidence]: ...
-
-    async def check_health(self) -> CheckResult:
-        from andamentum.epistemic.preflight import CheckResult
-        # Test own API endpoint, return pass/fail
-        ...
-```
-
-**CLI**: `andamentum-epistemic preflight [--model MODEL] [--providers biomedical] [--verbose]`
-
-**Python API**:
-
-```python
-from andamentum.epistemic.preflight import preflight
-
-result = await preflight(model="bedrock:claude-haiku-4-5", providers=providers)
-if not result.ok:
-    sys.exit(1)
-```
+The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both resolve `--model` from the argument or `$ANDAMENTUM_MAIN_LLM_MODEL`, and exit with an error if neither is set.
 
 ---
 
-## Observability
+## 14. Operations catalogue
 
-### Operation Profiling
+One module per family in `operations/`. Total: 17 modules.
 
-After every run, the CLI prints an operation profiling table aggregated from execution step metadata stored during the run. The table shows each operation type, call count, total wall-clock time, and mean time per call. This enables identifying bottlenecks (e.g., adversarial search averaging 8 seconds vs. deductive validation averaging 2 seconds) without instrumenting individual operations.
+| Module | Operations |
+|---|---|
+| `preplanning` | `ClarifyQuestionOperation`, `ClassifyQuestionOperation`, `ConceptualAnalysisOperation`, `DecomposeQuestionOperation`, `PlanTaskOperation` |
+| `seed_claim`, `multi_seed_claim`, `claims` | `SeedClaimOperation`, `MultiSeedClaimOperation`, `ProposeClaimsOperation`, plus `top_n_representatives` (claim-relevance rerank, async) |
+| `evidence` | `ExtractEvidenceOperation` (provider dispatch plus passage extraction plus relevance rerank) |
+| `scrutiny`, `investigation` | `ScrutiniseClaimOperation`, `InvestigateClaimOperation` |
+| `uncertainty`, `concerns` | `ResolveUncertaintyOperation`, `DeduplicateConcernsOperation` |
+| `verification` | `AdversarialSearchOperation`, `AnalyzeArgumentOperation`, `AssessConvergenceOperation`, `ContrastiveEvaluationOperation`, `CrossClaimConsistencyOperation`, `ValidateDeductivelyOperation`, `VerifyComputationallyOperation` |
+| `integration` | `EnumerateCandidatesOperation`, `ScoreLovelinessOperation`, `ScoreLikelinessOperation`, `SelectBestExplanationOperation` (plus framing-tie cap helper) |
+| `stage_management` | `PromoteClaimOperation`, `DemoteClaimOperation`, `PromoteAsRefutedOperation`, `SoftPromoteOperation`, `AbandonStaleClaimOperation`, `SetRoutingDefaultsOperation`, `GeneratePredictionOperation`, `RecordDecisionOperation` |
+| `synthesis` | `FreezeSnapshotOperation`, `SynthesizeReportOperation` (writer ⇄ validator), `SynthesizeInsufficientReportOperation` |
+| `belief_maintenance` | TMS cascade after evidence invalidation |
+| `analysis`, `identifier_extraction`, `cleanup` | Helpers used during scrutiny and investigation |
 
-### Confidence Scoring
-
-Posterior confidence runs after the graph completes. It is a pure computation — no LLM calls, no trained weights, zero free parameters.
-
-#### Posterior confidence (evidential direction)
-
-`compute_posterior()` produces a `PosteriorReport` for yes/no-style research questions (verificatory, comparative, predictive). Returns None for other question types where a directional answer is not meaningful. Works on claims at any stage (including HYPOTHESIS) so the metric is meaningful even when claims have not been promoted.
-
-When integration assessment is available (i.e., a claim has `integrated_assessment` set by `IntegrateEvidenceOperation`), the posterior uses the integration verdict directly. Otherwise, it falls back to count-based logistic: `log_odds = claims_supported - claims_contradicted`, then `posterior_confidence = 1 / (1 + exp(-log_odds))`. Only representative (not corroborative/deferred), non-invalidated evidence with a directional judgment counts.
-
-### Diagnostic Logging
-
-Evidence selection during deduplication logs cluster counts, representative selections, and corroborative evidence counts at the INFO level. The graph logs each node transition and operation execution. All diagnostic output uses standard Python logging, not print statements.
-
----
-
-## Domain Agnosticism
-
-The seven primitives, five stages, stage gates, verification methods, and uncertainty taxonomy are domain-independent. They apply equally to biomedical research, policy analysis, technology assessment, historical inquiry, and financial analysis. The domain-specific knowledge comes from evidence sources and language models, not from the epistemic framework. The framework provides scaffolding; content fills it.
+Every operation inherits from `BaseOperation` and conforms to the same shape: takes an `OperationInput`, does work, returns `OperationResult`.
 
 ---
 
-## Usage
+## 15. Providers catalogue
 
-For CLI reference, common workflows, Python API, and troubleshooting, see [EPISTEMIC_USAGE.md](EPISTEMIC_USAGE.md).
+Providers retrieve and structure evidence. They never assess quality (`quality_score=None` always), never truncate content, and return `list[GatheredEvidence]` (empty list on error, never raise). The full specification is in `providers/CONTRIBUTING.md`.
 
-Quick start:
+| Provider | Source | Domain |
+|---|---|---|
+| `arxiv` | arXiv preprints | physics, CS, math, quantitative biology |
+| `biorxiv` | bioRxiv preprints | biology, medicine |
+| `chembl` | ChEMBL | compound bioactivity |
+| `clinicaltrials` | ClinicalTrials.gov | clinical trials |
+| `cochrane` | Cochrane Library | systematic reviews |
+| `europepmc` | Europe PMC | life sciences literature |
+| `monarch` | Monarch Initiative | genotype–phenotype |
+| `open_targets` | Open Targets | drug-target evidence |
+| `openalex` | OpenAlex | cross-disciplinary scholarly |
+| `pubmed` | PubMed / NCBI | biomedical literature |
 
-```bash
-# Ask a research question
-andamentum-epistemic ask "What is spaced repetition and does it work?"
-
-# With all trace visualizations
-andamentum-epistemic ask "question" --trace all
-
-# Generate HTML report
-andamentum-epistemic ask "question" --output-path report.html
-```
-
----
-
-## References
-
-1. **Alchourrón, C.E., Gärdenfors, P., and Makinson, D.** (1985). On the Logic of Theory Change: Partial Meet Contraction and Revision Functions. *The Journal of Symbolic Logic*, 50(2), 510-530.
-
-2. **Doyle, J.** (1979). A Truth Maintenance System. *Artificial Intelligence*, 12(3), 231-272.
-
-3. **Lakatos, I.** (1978). *The Methodology of Scientific Research Programmes: Philosophical Papers Volume 1*. Cambridge University Press.
-
-4. **Peirce, C.S.** (1903). Pragmatism as a Principle and Method of Right Thinking: The 1903 Harvard Lectures on Pragmatism. Edited by P.A. Turrisi. SUNY Press, 1997.
-
----
-
-*"The irritation of doubt causes a struggle to attain a state of belief. I shall term this struggle inquiry." — C.S. Peirce*
+Total: 10 providers. The iterative tournament selects K=2 distinct providers per sub-claim by default, escalating up to all 10 only when scrutiny demands more.

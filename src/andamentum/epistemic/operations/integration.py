@@ -35,6 +35,7 @@ integrated_* fields).
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from .base import BaseOperation, OperationInput, OperationResult
 from ..agents.output_models import LikelinessScore, LovelinessScore
@@ -643,6 +644,232 @@ def _framing_tie_cap(
     return cap, best_opposing, gap
 
 
+# ── In-memory IBE chain helpers (for K-agreement runs) ────────────────
+#
+# These helpers replicate the LLM-driving logic of the four IBE
+# operations but operate on a list of CandidateRecord passed by
+# reference. They do not mutate the claim entity and do not save.
+#
+# Run 1 of the IBE chain executes through the graph nodes
+# (Enumerate → ScoreLoveliness → ScoreLikeliness → SelectBest)
+# and the per-stage Operation classes write results to the claim.
+# Runs 2..K (when ``ibe_agreement_k > 1``) execute through these
+# helpers from inside ``SelectBestExplanationOperation``.
+
+
+async def _run_enumerate_inline(
+    op: BaseOperation,
+    claim: Claim,
+    brief: dict[str, object],
+) -> list[CandidateRecord]:
+    """Generate a fresh candidate list. Mirrors EnumerateCandidatesOperation
+    but does not mutate the claim or persist."""
+    if not op.agent_runner:
+        return _default_candidates()
+
+    proposed: list[CandidateRecord] = []
+    for slot in _CANDIDATE_IDS:
+        already_text = (
+            "\n".join(
+                f"- {c.candidate_id} ({c.verdict}): {c.description}"
+                for c in proposed
+            )
+            if proposed
+            else "(none yet — propose the first candidate)"
+        )
+        result = await op.run_agent(
+            "epistemic_propose_one_candidate",
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            supporting_evidence=brief["supporting_evidence"],
+            contradicting_evidence=brief["contradicting_evidence"],
+            no_bearing_evidence=brief["no_bearing_evidence"],
+            adversarial_outcome=brief["adversarial_outcome"],
+            open_uncertainties=brief["open_uncertainties"],
+            already_proposed=already_text,
+        )
+        if result.done or not result.verdict or not result.description:
+            break
+        proposed.append(
+            CandidateRecord(
+                candidate_id=slot,
+                verdict=str(result.verdict),
+                description=str(result.description),
+            )
+        )
+
+    if len(proposed) < _MIN_VIABLE_CANDIDATES:
+        return _default_candidates()
+
+    # Balanced enumeration — ensure all three canonical verdicts are
+    # represented. See EnumerateCandidatesOperation for the full
+    # rationale.
+    canonical_present = {_verdict_to_canonical(c.verdict) for c in proposed}
+    required = {"supports", "contradicts", "insufficient"}
+    missing = required - canonical_present
+    if missing:
+        used_ids = {c.candidate_id for c in proposed}
+        available_ids = [cid for cid in _CANDIDATE_ID_POOL if cid not in used_ids]
+        defaults_by_verdict = {c.verdict: c for c in _default_candidates()}
+        for verdict in sorted(missing):
+            if not available_ids:
+                break
+            default_c = defaults_by_verdict[verdict]
+            proposed.append(
+                CandidateRecord(
+                    candidate_id=available_ids.pop(0),
+                    verdict=verdict,
+                    description=(
+                        f"[Balanced enumeration: enumerator did not "
+                        f"produce a {verdict}-framed candidate; "
+                        f"seeded with the default framing.] "
+                        + default_c.description
+                    ),
+                )
+            )
+    return proposed
+
+
+async def _run_loveliness_inline(
+    op: BaseOperation,
+    claim: Claim,
+    brief: dict[str, object],
+    candidates: list[CandidateRecord],
+) -> None:
+    """Score loveliness on each candidate in place."""
+    unscored = [c for c in candidates if c.loveliness is None]
+    if not unscored:
+        return
+    if not op.agent_runner:
+        for c in unscored:
+            c.loveliness = 0.5
+            c.loveliness_reasoning = "No agent runner — neutral default."
+        return
+
+    async def _score_one(
+        cand: CandidateRecord,
+    ) -> tuple[CandidateRecord, LovelinessScore]:
+        result = await op.run_agent(
+            "epistemic_score_candidate_loveliness",
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            candidate_verdict=cand.verdict,
+            candidate_description=cand.description,
+            evidence_summary=brief["evidence_summary"],
+        )
+        return cand, result
+
+    results = await asyncio.gather(*[_score_one(c) for c in unscored])
+    for cand, score in results:
+        cand.loveliness = float(score.loveliness)
+        cand.loveliness_reasoning = str(score.reasoning)
+
+
+async def _run_likeliness_inline(
+    op: BaseOperation,
+    claim: Claim,
+    brief: dict[str, object],
+    candidates: list[CandidateRecord],
+) -> None:
+    """Score likeliness on each candidate in place."""
+    unscored = [c for c in candidates if c.likeliness is None]
+    if not unscored:
+        return
+    if not op.agent_runner:
+        for c in unscored:
+            c.likeliness = 0.5
+            c.likeliness_reasoning = "No agent runner — neutral default."
+        return
+
+    async def _score_one(
+        cand: CandidateRecord,
+    ) -> tuple[CandidateRecord, LikelinessScore]:
+        result = await op.run_agent(
+            "epistemic_score_candidate_likeliness",
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            candidate_verdict=cand.verdict,
+            candidate_description=cand.description,
+            supporting_evidence=brief["supporting_evidence"],
+            contradicting_evidence=brief["contradicting_evidence"],
+            no_bearing_evidence=brief["no_bearing_evidence"],
+            adversarial_outcome=brief["adversarial_outcome"],
+            open_uncertainties=brief["open_uncertainties"],
+        )
+        return cand, result
+
+    results = await asyncio.gather(*[_score_one(c) for c in unscored])
+    for cand, score in results:
+        cand.likeliness = float(score.likeliness)
+        cand.likeliness_reasoning = str(score.reasoning)
+
+
+@dataclass
+class _SelectionResult:
+    """Bundle the outputs of a single IBE selection run for K-agreement
+    aggregation. ``canonical_verdict`` is the agreement axis; the other
+    fields preserve the per-run detail for diagnostic reporting."""
+
+    canonical_verdict: str  # "supports" / "contradicts" / "insufficient"
+    capped_confidence: float
+
+
+async def _run_select_inline(
+    op: BaseOperation,
+    claim: Claim,
+    candidates: list[CandidateRecord],
+) -> _SelectionResult | None:
+    """Run the LLM selection on a candidate set, apply both confidence
+    caps, return the canonical verdict and capped confidence. Returns
+    None on hard agent failure."""
+    if not candidates or any(
+        c.loveliness is None or c.likeliness is None for c in candidates
+    ):
+        return None
+
+    if not op.agent_runner:
+        ranked = sorted(
+            candidates,
+            key=lambda c: (c.loveliness or 0.0) * (c.likeliness or 0.0),
+            reverse=True,
+        )
+        chosen = ranked[0]
+        confidence = 0.5
+    else:
+        candidates_block = "\n\n".join(
+            (
+                f"### Candidate {c.candidate_id} ({c.verdict})\n"
+                f"Description: {c.description}\n"
+                f"Loveliness: {c.loveliness:.2f} — {c.loveliness_reasoning or ''}\n"
+                f"Likeliness: {c.likeliness:.2f} — {c.likeliness_reasoning or ''}"
+            )
+            for c in candidates
+        )
+        result = await op.run_agent(
+            "epistemic_select_best_explanation",
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            candidates=candidates_block,
+        )
+        chosen = next(
+            (c for c in candidates if c.candidate_id == result.chosen_candidate_id),
+            None,
+        )
+        if chosen is None:
+            return None
+        confidence = float(result.confidence)
+
+    adv_cap = _adversarial_confidence_cap(claim.adversarial_balance)
+    ft_cap, _best_opposing, _ft_gap = _framing_tie_cap(chosen, list(candidates))
+    cap = min(adv_cap, ft_cap)
+    capped_confidence = max(0.0, min(1.0, min(confidence, cap)))
+
+    return _SelectionResult(
+        canonical_verdict=_verdict_to_canonical(chosen.verdict),
+        capped_confidence=capped_confidence,
+    )
+
+
 class SelectBestExplanationOperation(BaseOperation):
     """Pick the best candidate by combined loveliness × likeliness, with
     gap-based confidence (Lipton's comparative selection).
@@ -842,6 +1069,73 @@ class SelectBestExplanationOperation(BaseOperation):
         if ft_capped and ft_gap is not None:
             cap_notes.append(f"framing_tie_gap={ft_gap:.2f}, ft_cap={ft_cap:.2f}")
         cap_note = f" [capped from {confidence:.2f}: {', '.join(cap_notes)}]" if cap_notes else ""
+
+        # ── K-agreement check (Reichenbach over LLM-stochastic IBE) ──
+        # Run the IBE chain (Enumerate → Loveliness → Likeliness →
+        # Select) K-1 more times in memory and require all K runs to
+        # agree on canonical direction. K=1 disables this check; K=2
+        # is the canonical default.
+        ibe_k = int(work.metadata.get("ibe_agreement_k", 1) or 1)
+        agreement_note = ""
+        if ibe_k > 1:
+            run1_canonical = claim.integrated_assessment
+            confidences = [claim.integrated_confidence or 0.5]
+            additional: list[str] = []
+            brief = await _build_evidence_brief(self, claim)
+            for _ in range(ibe_k - 1):
+                cand_i = await _run_enumerate_inline(self, claim, brief)
+                await _run_loveliness_inline(self, claim, brief, cand_i)
+                await _run_likeliness_inline(self, claim, brief, cand_i)
+                sel_i = await _run_select_inline(self, claim, cand_i)
+                if sel_i is None:
+                    # Treat hard failure as a missing run; if no other
+                    # runs disagree, agreement is computed over the
+                    # successful ones only.
+                    continue
+                additional.append(sel_i.canonical_verdict)
+                confidences.append(sel_i.capped_confidence)
+
+            all_verdicts = [run1_canonical, *additional]
+            distinct = set(all_verdicts)
+            if len(distinct) > 1:
+                # Disagreement → fall back to insufficient. The
+                # framing-tie cap dampens single-run confidence; the
+                # K-agreement check is the discrete-direction analogue.
+                claim.integrated_assessment = "insufficient"
+                claim.integrated_confidence = 0.5
+                tally = ", ".join(
+                    f"{v}={all_verdicts.count(v)}" for v in sorted(distinct)
+                )
+                claim.integrated_reasoning = (claim.integrated_reasoning or "") + (
+                    f"\n\n[K-agreement (K={ibe_k}): runs disagreed on direction "
+                    f"({tally}). Independent IBE chains did not converge; "
+                    f"committing insufficient rather than ratifying a single-run "
+                    f"argmax.]"
+                )
+                await self.repo.save(claim)
+                agreement_note = (
+                    f" [K-agreement={ibe_k}: disagreed ({tally}) → insufficient]"
+                )
+            elif len(additional) > 0:
+                # All K runs agreed on direction. Use min(confidence)
+                # across runs as the conservative reduction. Always
+                # record the agreement check so the trace shows it
+                # ran, even when the confidences happen to match.
+                new_conf = max(0.0, min(1.0, min(confidences)))
+                claim.integrated_confidence = new_conf
+                claim.integrated_reasoning = (
+                    claim.integrated_reasoning or ""
+                ) + (
+                    f"\n\n[K-agreement (K={ibe_k}): all {len(all_verdicts)} "
+                    f"runs agreed on '{run1_canonical}'; confidence is "
+                    f"min across runs ({new_conf:.2f}).]"
+                )
+                await self.repo.save(claim)
+                agreement_note = (
+                    f" [K-agreement={ibe_k}: all agreed on {run1_canonical}, "
+                    f"confidence={new_conf:.2f}]"
+                )
+
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
@@ -849,5 +1143,6 @@ class SelectBestExplanationOperation(BaseOperation):
                 f"Selected {chosen.candidate_id} ({chosen.verdict}) over "
                 f"{runner_up.candidate_id}; verdict={claim.integrated_assessment}, "
                 f"confidence={claim.integrated_confidence:.2f}{cap_note}"
+                f"{agreement_note}"
             ),
         )

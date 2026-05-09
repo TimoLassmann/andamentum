@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..thresholds import IBE_AGREEMENT_K_DEFAULT
 from .quarantine import QuarantineRecord
 
 
@@ -44,6 +45,17 @@ class EpistemicGraphState:
     question: str = ""
     question_type: str | None = None
     skip_preplanning: bool = False
+
+    # ── IBE chain agreement (Reichenbach over LLM-stochastic IBE) ──
+    # Number of independent IBE chain runs whose verdicts must agree
+    # on direction before ``integrated_assessment`` is committed for
+    # a claim. K=1 disables the agreement check (legacy single-run
+    # behaviour). K=2 (default) is the minimum sample size that
+    # detects disagreement; higher K trades LLM cost for stricter
+    # agreement. Read by
+    # ``operations.integration.SelectBestExplanationOperation`` and
+    # surfaced as a runtime parameter on ``run_epistemic_graph``.
+    ibe_agreement_k: int = IBE_AGREEMENT_K_DEFAULT
 
     # ── Run identity ─────────────────────────────────────────────
     # Per-graph-run disambiguator. Each fresh state gets a new id;

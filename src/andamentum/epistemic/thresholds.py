@@ -133,6 +133,41 @@ the three Peirce-grounded loops (investigation, scrutiny-resolve,
 uncertainty-depth). Read by: graph/nodes.py at all three sites."""
 
 
+# ── IBE chain internal agreement (Reichenbach, applied to LLM-stochastic IBE) ──
+#
+# The IBE chain is four sequential LLM operations
+# (Enumerate → Loveliness → Likeliness → Select), each at non-zero
+# temperature. The final argmax step is sensitive to score noise: when
+# the chosen and best-opposing candidates have similar combined
+# scores, different runs of the same chain on the same claim can
+# commit to opposite verdicts. The framing-tie cap dampens
+# ``integrated_confidence`` to compensate, but argmax is discrete —
+# the verdict's *direction* can still flip.
+#
+# ``IBE_AGREEMENT_K_DEFAULT`` is the number of independent IBE chain
+# runs whose verdicts must agree on direction before
+# ``integrated_assessment`` is committed for a claim. When the K runs
+# don't agree, ``integrated_assessment`` falls back to
+# ``insufficient`` — the same Reichenbach-style "agreement across
+# independent samples" commitment that motivates the K=2 provider
+# tournament. K=2 is the minimum sample size at which "agreement"
+# carries any information; higher K trades more LLM calls for stricter
+# agreement.
+#
+# The default lives here; the actual K used by a graph run is read
+# from ``EpistemicGraphState.ibe_agreement_k`` so callers can override
+# per-run (e.g. K=20 for an important interactive query).
+
+IBE_AGREEMENT_K_DEFAULT: int = 2
+"""Number of independent IBE chain runs whose verdicts must agree
+before ``integrated_assessment`` is committed. K=1 disables the
+agreement check (legacy single-run behaviour). K=2 is the minimum
+sample size that detects disagreement and is the canonical default —
+parallels ``RESEARCH_MODE_PROVIDER_K`` at the provider-tournament
+layer. Read by: ``operations.integration.SelectBestExplanationOperation``
+via ``EpistemicGraphState.ibe_agreement_k``."""
+
+
 # ── Confidence penalties (output-layer provenance) ─────────────────
 #
 # When a process flag fires (the inquiry didn't converge cleanly),
@@ -236,7 +271,9 @@ __all__ = [
     "ADVERSARIAL_REFUTED_THRESHOLD",
     "ADVERSARIAL_SURVIVED_THRESHOLD",
     "ADVERSARIAL_SUSPICIOUS_THRESHOLD",
+    "FRAMING_TIE_SATURATION_GAP",
     "PEIRCE_CYCLE_CAP",
+    "IBE_AGREEMENT_K_DEFAULT",
     "CYCLE_CAP_CONFIDENCE_PENALTY",
     "RETRIEVAL_FAILED_CONFIDENCE_PENALTY",
     "POSTERIOR_DIRECTIONAL_BREAKPOINT",

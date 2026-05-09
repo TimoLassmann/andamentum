@@ -655,3 +655,149 @@ class TestBalancedEnumeration:
             "[Balanced enumeration:" in (c.description or "")
             for c in updated.integration_candidates
         )
+
+
+class TestKAgreement:
+    """Tests for the K-agreement check in SelectBestExplanationOperation.
+
+    When ``metadata["ibe_agreement_k"] > 1``, the operation runs the
+    full IBE chain K times and requires all K runs to agree on
+    canonical direction. If they disagree, ``integrated_assessment``
+    falls back to ``insufficient``. If they agree, the verdict is
+    preserved with ``min(confidence)`` across runs.
+    """
+
+    async def _setup_claim(self, repo) -> None:
+        """Common fixture: claim seeded for IBE selection."""
+        await repo.save(_make_objective())
+        ev = Evidence(
+            entity_id="ev-1",
+            objective_id="obj-1",
+            extracted=True,
+            extracted_content="Test evidence content",
+            support_judgment="no_bearing",
+        )
+        await repo.save(ev)
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            evidence_ids=["ev-1"],
+            stage=ClaimStage.SUPPORTED,
+            scrutiny_verdict="pass",
+            adversarial_checked=True,
+            adversarial_balance=0.8,
+        )
+        await repo.save(claim)
+
+    async def _run_chain_with_k(
+        self, repo, runner, k: int
+    ) -> Claim:
+        """Run the four IBE stages and pass ibe_agreement_k as metadata
+        to the final SelectBestExplanationOperation."""
+        for op_cls, op_name in [
+            (EnumerateCandidatesOperation, "enumerate_candidates"),
+            (ScoreLovelinessOperation, "score_loveliness"),
+            (ScoreLikelinessOperation, "score_likeliness"),
+        ]:
+            op = op_cls(repo=repo, agent_runner=runner, embedding_model="test")
+            work = OperationInput(entity_id="cl-1", entity_type="claim", operation=op_name)
+            await op.execute(work)
+
+        select_op = SelectBestExplanationOperation(
+            repo=repo, agent_runner=runner, embedding_model="test"
+        )
+        select_work = OperationInput(
+            entity_id="cl-1",
+            entity_type="claim",
+            operation="select_best_explanation",
+            metadata={"ibe_agreement_k": k},
+        )
+        await select_op.execute(select_work)
+        return await repo.get("claim", "cl-1")
+
+    async def test_k_equals_1_no_additional_runs(self, repo, fake_runner) -> None:
+        """K=1 disables the agreement check; no additional IBE chain runs."""
+        await self._setup_claim(repo)
+        baseline_calls = len(fake_runner.calls)
+        updated = await self._run_chain_with_k(repo, fake_runner, k=1)
+        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        # K=1 must not append the K-agreement note to the reasoning.
+        assert "K-agreement" not in (updated.integrated_reasoning or "")
+        # And no additional propose-one-candidate calls beyond run 1.
+        propose_calls = [
+            c for c in fake_runner.calls[baseline_calls:]
+            if c[0] == "epistemic_propose_one_candidate"
+        ]
+        # Run 1 enumeration is the only set; the count is bounded by
+        # _CANDIDATE_IDS (= 5) but doesn't double or triple under K=1.
+        assert len(propose_calls) <= 5
+
+    async def test_k_equals_2_all_agree_commits_verdict(self, repo, fake_runner) -> None:
+        """K=2 with agreeing runs preserves the verdict and confidence
+        falls to min across runs."""
+        await self._setup_claim(repo)
+        updated = await self._run_chain_with_k(repo, fake_runner, k=2)
+        # Default fake_runner returns the same select-best response on
+        # every call → both runs agree.
+        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert "K-agreement (K=2)" in (updated.integrated_reasoning or "")
+        assert "all" in (updated.integrated_reasoning or "").lower()
+
+    async def test_k_equals_2_disagreement_marks_insufficient(self, repo) -> None:
+        """K=2 with disagreeing runs forces integrated_assessment to
+        'insufficient' and confidence to 0.5."""
+        from .conftest import FakeAgentRunner
+
+        await self._setup_claim(repo)
+
+        # Custom runner: alternates the chosen-candidate-id on each
+        # select-best call. With balanced enumeration, candidates
+        # have ids A/B/C with verdicts supports/contradicts/insufficient.
+        # First select picks A (supports), second picks B (contradicts).
+        select_call_idx = [0]
+        chosen_sequence = ["A", "B"]
+
+        class AlternatingSelectRunner(FakeAgentRunner):
+            async def run(self, agent_name, **kwargs):
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_select_best_explanation":
+                    chosen = chosen_sequence[
+                        select_call_idx[0] % len(chosen_sequence)
+                    ]
+                    select_call_idx[0] += 1
+                    runner_up = "C" if chosen != "C" else "A"
+                    from types import SimpleNamespace
+
+                    return SimpleNamespace(
+                        chosen_candidate_id=chosen,
+                        runner_up_candidate_id=runner_up,
+                        confidence=0.8,
+                        reasoning="alternating",
+                    )
+                return await super().run(agent_name, **kwargs)
+
+        runner = AlternatingSelectRunner()
+        updated = await self._run_chain_with_k(repo, runner, k=2)
+
+        assert updated.integrated_assessment == "insufficient"
+        assert updated.integrated_confidence == 0.5
+        assert "K-agreement" in (updated.integrated_reasoning or "")
+        assert "disagreed" in (updated.integrated_reasoning or "").lower()
+
+    async def test_k_equals_3_all_agree(self, repo, fake_runner) -> None:
+        """K=3 with three agreeing runs preserves the verdict."""
+        await self._setup_claim(repo)
+        updated = await self._run_chain_with_k(repo, fake_runner, k=3)
+        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert "K-agreement (K=3)" in (updated.integrated_reasoning or "")
+
+    async def test_default_k_from_state_is_2(self) -> None:
+        """The state-level default is 2 — minimum sample size that
+        detects disagreement."""
+        from ..graph.state import EpistemicGraphState
+        from ..thresholds import IBE_AGREEMENT_K_DEFAULT
+
+        state = EpistemicGraphState()
+        assert state.ibe_agreement_k == IBE_AGREEMENT_K_DEFAULT
+        assert IBE_AGREEMENT_K_DEFAULT == 2
