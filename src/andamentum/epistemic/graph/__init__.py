@@ -172,6 +172,7 @@ async def run_epistemic_graph(
     stop_after: Optional[type] = None,
     start_at: Optional[type] = None,
     output_dir: Optional[Path] = None,
+    ibe_agreement_k: Optional[int] = None,
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -285,10 +286,19 @@ async def run_epistemic_graph(
     )
 
     # Build graph state and deps
+    from ..thresholds import IBE_AGREEMENT_K_DEFAULT
+
+    resolved_k = ibe_agreement_k if ibe_agreement_k is not None else IBE_AGREEMENT_K_DEFAULT
+    if resolved_k < 1:
+        raise ValueError(
+            f"ibe_agreement_k must be >= 1 (got {resolved_k}). "
+            f"K=1 is single-run; K>=2 enables Reichenbach-style agreement check."
+        )
     state = EpistemicGraphState(
         objective_id=objective_id,
         question=question,
         skip_preplanning=skip_preplanning,
+        ibe_agreement_k=resolved_k,
     )
     deps = EpistemicDeps(
         repo=repo,
