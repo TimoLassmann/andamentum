@@ -162,7 +162,7 @@ class TestMonarchSearchParams:
         assert len(results) >= 2
         for r in results:
             assert isinstance(r, GatheredEvidence)
-            assert r.source_type == "monarch_initiative"
+            assert r.source_type == "monarch"
             assert r.quality_score is None  # providers don't pre-compute quality
 
     async def test_search_skips_items_without_name(self, monkeypatch):
@@ -296,21 +296,21 @@ class TestMonarchExtractEntityIds:
             GatheredEvidence(
                 content="A",
                 source_ref="x",
-                source_type="monarch_initiative",
+                source_type="monarch",
                 quality_score=0.7,
                 quality_metadata={"entity_id": "HGNC:1100"},
             ),
             GatheredEvidence(
                 content="B",
                 source_ref="y",
-                source_type="monarch_initiative",
+                source_type="monarch",
                 quality_score=0.7,
                 quality_metadata={"entity_id": "MONDO:007"},
             ),
             GatheredEvidence(
                 content="C",
                 source_ref="z",
-                source_type="monarch_initiative",
+                source_type="monarch",
                 quality_score=0.7,
                 quality_metadata={},
             ),
@@ -327,7 +327,7 @@ class TestMonarchExtractEntityIds:
             GatheredEvidence(
                 content="A",
                 source_ref="x",
-                source_type="monarch_initiative",
+                source_type="monarch",
                 quality_score=0.7,
             ),
         ]

@@ -129,7 +129,7 @@ source_ref="PMID:38437170 DOI:10.1038/..."
 
 **`source_type`** (required) — Your provider's lowercase name, matching the
 key used in `register_provider()`. Examples: `"pubmed"`, `"chembl"`,
-`"clinicaltrials"`, `"monarch_initiative"`, `"open_targets"`, `"openalex"`,
+`"clinicaltrials"`, `"monarch"`, `"open_targets"`, `"openalex"`,
 `"biorxiv"`.
 
 **`evidence_kind`** — What type of evidence this is. Use one of the
