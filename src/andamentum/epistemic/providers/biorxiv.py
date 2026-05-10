@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..preflight import CheckResult
@@ -75,9 +75,11 @@ class BioRxivProvider:
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search bioRxiv for preprints.
 
-        Note: The bioRxiv API is date-range based, not keyword-search based.
-        For keyword search, we use the NCBI content API endpoint which indexes
-        bioRxiv content.
+        bioRxiv's own API is date-range based, not keyword-search based,
+        so keyword search goes through NCBI E-utilities filtered to
+        ``biorxiv[filter] OR medrxiv[filter]``. When the filter returns no
+        PMIDs, return an empty list — bioRxiv genuinely has no
+        keyword-searchable hit for the query through this index.
         """
         import httpx
 
@@ -100,14 +102,13 @@ class BioRxivProvider:
                     params=params,
                 )
                 if search_resp.status_code != 200:
-                    # Fallback: use date-range API for recent preprints
-                    return await self._gather_recent(client, query)
+                    return []
 
                 search_data = search_resp.json()
                 pmids = search_data.get("esearchresult", {}).get("idlist", [])
 
                 if not pmids:
-                    return await self._gather_recent(client, query)
+                    return []
 
                 # Fetch details from PubMed (bioRxiv preprints are indexed there)
                 fetch_resp = await client.get(
@@ -183,77 +184,3 @@ class BioRxivProvider:
             logger.warning(f"bioRxiv query failed for '{query}': {e}")
 
         return gathered[: self.max_results]
-
-    async def _gather_recent(self, client: Any, query: str) -> list[GatheredEvidence]:
-        """Fallback: get recent preprints from the date-range API."""
-        today = datetime.now().strftime("%Y-%m-%d")
-        month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        url = f"{BIORXIV_API}/details/{self.server}/{month_ago}/{today}/0/{self.max_results}"
-
-        try:
-            response = await client.get(url)
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
-            collection = data.get("collection", [])
-            gathered: list[GatheredEvidence] = []
-
-            query_lower = query.lower()
-            for item in collection:
-                title = item.get("title", "")
-                abstract = item.get("abstract", "")
-
-                # Basic relevance filter
-                text = f"{title} {abstract}".lower()
-                if not any(term in text for term in query_lower.split()[:3]):
-                    continue
-
-                doi = item.get("doi", "")
-                authors = item.get("authors", "")
-                category = item.get("category", "")
-                version = item.get("version", "")
-                date = item.get("date", "")
-                published = item.get("published", "")
-
-                content_parts = [title]
-                if authors:
-                    content_parts.append(f"Authors: {authors}")
-                if abstract:
-                    content_parts.append(f"\n{abstract}")
-
-                identifiers: dict[str, str] = {}
-                if doi:
-                    identifiers["doi"] = doi
-
-                gathered.append(
-                    GatheredEvidence(
-                        content="\n".join(content_parts),
-                        source_ref=f"doi:{doi}" if doi else title,
-                        source_type=self.server,
-                        evidence_kind="preprint",
-                        identifiers=identifiers,
-                        structured_data={
-                            "title": title,
-                            "authors": authors,
-                            "category": category,
-                            "posted_date": date,
-                            "version": version,
-                            "published_doi": published or None,
-                            "server": self.server,
-                        },
-                        quality_score=None,
-                        quality_metadata={
-                            "peer_reviewed": bool(published),
-                            "version": version,
-                        },
-                        limitations=["Preprint — not peer-reviewed"]
-                        if not published
-                        else [],
-                    )
-                )
-
-            return gathered[: self.max_results]
-        except Exception as e:
-            logger.debug(f"bioRxiv date-range fallback failed: {e}")
-            return []

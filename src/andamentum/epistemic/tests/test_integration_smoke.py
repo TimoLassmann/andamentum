@@ -31,7 +31,7 @@ class TestMonarchAPISmoke:
         # Verify result shape
         for r in results:
             assert r.content, "Result content should not be empty"
-            assert r.source_type == "monarch_initiative"
+            assert r.source_type == "monarch"
             assert r.source_ref, "Result should have a source_ref"
 
     async def test_health_check_passes(self):

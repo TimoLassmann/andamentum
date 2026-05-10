@@ -203,7 +203,7 @@ class MonarchProvider:
                             if item_id
                             else name
                         ),
-                        source_type="monarch_initiative",
+                        source_type="monarch",
                         evidence_kind="entity_metadata",
                         identifiers={"monarch_id": item_id} if item_id else {},
                         structured_data={
@@ -428,7 +428,7 @@ class MonarchProvider:
         return GatheredEvidence(
             content=content,
             source_ref=source_ref,
-            source_type="monarch_initiative",
+            source_type="monarch",
             evidence_kind=evidence_kind,
             identifiers=identifiers,
             structured_data=structured_data,
