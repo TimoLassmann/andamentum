@@ -34,6 +34,7 @@ dependencies = [
     "lxml>=5.0.0",               # whetstone (docx xml manipulation)
     "matplotlib>=3.8",           # figures (publication-quality plotting engine)
     "rapidfuzz>=3.0",            # chunker (fuzzy anchor matching)
+    "textstat>=0.7.4",           # proofread (deterministic readability scores)
 ]
 
 [project.scripts]
@@ -46,6 +47,7 @@ andamentum-chunker      = "andamentum.chunker.cli:main"
 andamentum-harvest      = "andamentum.harvest.cli:main"
 andamentum-typeset      = "andamentum.typeset.cli:main"
 andamentum-vision-critique = "andamentum.vision_critique.cli:main"
+andamentum-proofread    = "andamentum.proofread.cli:main"
 
 [project.optional-dependencies]
 dev = [
