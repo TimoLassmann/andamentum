@@ -83,6 +83,7 @@ async def formulate_provider_query(
     provider_name: str,
     provider: Any,
     agent_runner: AgentRunner,
+    angle: str | None = None,
 ) -> DispatchResult:
     """Run the dispatch agent for one provider against one claim.
 
@@ -98,7 +99,11 @@ async def formulate_provider_query(
     "providers never raise" convention from CONTRIBUTING.md.
 
     Args:
-        claim: The research claim or sub-claim to construct queries for.
+        claim: The research claim being verified. Always the *subject*
+            of inquiry — the actual thing whose truth is being assessed.
+            Used as-is by the dispatch agent to ground its query in the
+            claim's lexicon and subject matter. Stays constant across
+            investigation rounds.
         provider_name: Short identifier (matches the registration key).
         provider: An instance of a provider class. Must have
             ``description``, ``query_guidance``, ``query_examples``
@@ -106,6 +111,15 @@ async def formulate_provider_query(
         agent_runner: An ``AgentRunner`` configured with the dispatch
             model. Typically shared across many dispatch calls in one
             claim's processing.
+        angle: Optional. A methodological angle to explore
+            ("adversarial evidence", "mechanistic studies",
+            "independent replication", …). When set, the dispatch agent
+            shapes the query to find evidence *about the claim* of the
+            kind the angle describes — the angle modifies the search
+            within the claim's subject matter rather than replacing it.
+            None in initial-gather (no specific angle); set in
+            investigation rounds (the intent from
+            ``epistemic_investigate_claim``).
 
     Returns:
         ``DispatchResult`` with 0, 1, or 2 queries. Never raises.
@@ -122,6 +136,7 @@ async def formulate_provider_query(
         result = await agent_runner.run(
             defn,
             claim=claim,
+            angle=angle or "(none — find evidence about the claim broadly)",
             provider_name=provider_name,
             provider_description=description,
             query_guidance=query_guidance,
@@ -129,10 +144,11 @@ async def formulate_provider_query(
         )
     except Exception as e:
         logger.warning(
-            "Dispatch agent failed for provider=%s claim=%r: %s — "
+            "Dispatch agent failed for provider=%s claim=%r angle=%r: %s — "
             "treating as abstain",
             provider_name,
             claim[:80],
+            (angle or "")[:80],
             e,
         )
         return DispatchResult(
@@ -251,6 +267,7 @@ async def gather_evidence_new(
     agent_runner: AgentRunner,
     top_k: int | None = None,
     embedding_model: str | None = None,
+    angle: str | None = None,
 ) -> list[GatheredEvidence]:
     """Description-driven gather: dispatch each provider, then gather.
 
@@ -271,7 +288,10 @@ async def gather_evidence_new(
     have their HTTP-call layer reached, by design.
 
     Args:
-        claim: Claim or sub-claim text.
+        claim: The claim being verified — the subject of inquiry. Used
+            as-is to ground the dispatch agent's query in the claim's
+            lexicon. Constant across investigation rounds for a given
+            claim.
         providers: ``{name: provider_instance}``. Each provider must
             satisfy the Phase 1 contract (description, query_guidance,
             query_examples class attributes plus ``gather`` method).
@@ -281,6 +301,12 @@ async def gather_evidence_new(
             no-pre-filter default at current scale.
         embedding_model: Embedding model id for the pre-filter. Only
             consulted when ``top_k`` triggers actual narrowing.
+        angle: Optional methodological angle to explore alongside the
+            claim ("adversarial evidence", "independent replication",
+            etc.). When set, the dispatch agent shapes queries to find
+            evidence *about the claim* of the kind the angle describes.
+            None for initial gather; set for investigation rounds (the
+            intent from ``epistemic_investigate_claim``).
 
     Returns:
         List of ``GatheredEvidence`` from all providers that returned
@@ -299,6 +325,7 @@ async def gather_evidence_new(
         *(
             formulate_provider_query(
                 claim=claim,
+                angle=angle,
                 provider_name=name,
                 provider=p,
                 agent_runner=agent_runner,

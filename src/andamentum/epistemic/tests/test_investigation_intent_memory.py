@@ -316,6 +316,73 @@ class TestInvestigationIntentMemory:
         assert "(yielded 0 items) intent B1" in kwargs[2]["previous_intents"]
 
 
+class TestClaimGroundedDispatch:
+    """Investigation passes the actual claim as the dispatch agent's
+    ``claim`` and the intent as ``angle`` — keeping the claim's subject
+    matter present in the dispatch context across rounds.
+
+    The earlier shape (passing the intent as the claim) abstracted the
+    claim away and produced no_bearing-dominated evidence pools — the
+    v8 calibration regression. This test pins that the new shape is in
+    place.
+    """
+
+    async def test_dispatch_receives_claim_and_intent_separately(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from andamentum.epistemic.operations import investigation as inv_mod
+
+        store = DocumentStore.for_database("claim_grounded", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(description="parent", question_type="verificatory")
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+        claim = Claim(
+            objective_id=obj.entity_id,
+            statement="Aspirin reduces the risk of colorectal cancer.",
+            scope="adults at average risk",
+            stage=ClaimStage.HYPOTHESIS,
+            scrutiny_verdict="needs_resolution",
+        )
+        await repo.save(claim)
+
+        observed: list[dict[str, Any]] = []
+
+        async def fake_helper(
+            op, c, *, objective_id, providers, core_runner,
+            angle=None, sub_investigation_id=None,
+            depends_on_claim_id=None, created_by="dispatch",
+        ):
+            observed.append({"claim": c, "angle": angle})
+            return []
+
+        monkeypatch.setattr(inv_mod, "dispatch_and_persist_for_text", fake_helper)
+
+        runner = _RecordingRunner(intents_per_round=[["adversarial replication"]])
+
+        op = InvestigateClaimOperation(
+            repo,
+            runner,
+            embedding_model="t",
+            providers={"stub": _NoOpProvider()},
+        )
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="investigate_claim",
+            )
+        )
+
+        assert len(observed) == 1
+        # The dispatch helper receives the claim's statement as the
+        # subject and the intent as the angle — NOT the intent as the
+        # claim. This is the fix for v8's no_bearing-dominated pattern.
+        assert observed[0]["claim"] == "Aspirin reduces the risk of colorectal cancer."
+        assert observed[0]["angle"] == "adversarial replication"
+
+
 class TestZeroIntentGracefulExit:
     """The agent may legitimately return zero intents — rational
     suspension of judgment when the search space looks exhausted

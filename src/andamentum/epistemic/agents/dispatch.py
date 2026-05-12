@@ -30,7 +30,20 @@ list to signal that this provider cannot help with this claim.
 
 ## Inputs you will receive
 
-- **claim**: the research claim or sub-claim being investigated.
+- **claim**: the research claim being verified. This is the **subject
+  of inquiry** — the thing whose truth is being assessed. Your queries
+  MUST be grounded in this claim's actual subject matter. Stays
+  constant across investigation rounds for a given claim.
+- **angle**: optional methodological angle to explore alongside the
+  claim. Format: free-form natural-language description like
+  "adversarial evidence: case reports where the predicted effect did
+  not occur" or "mechanistic studies at the molecular level". When
+  the angle is meaningful (not the placeholder "(none — find evidence
+  about the claim broadly)"), shape your query to find evidence of
+  the *kind* the angle describes, while keeping the subject matter
+  anchored in the claim. The angle modifies WHAT KIND of evidence to
+  retrieve; the claim determines WHAT SUBJECT. Both must appear in
+  your query.
 - **provider_name**: short identifier of the provider.
 - **provider_description**: prose covering the provider's scope, what
   it covers well ("strong for"), what it covers badly ("weak for"),
@@ -44,6 +57,39 @@ list to signal that this provider cannot help with this claim.
   query side means the example shows a claim the provider should
   abstain on.
 
+## Claim + angle composition (load-bearing)
+
+When `angle` is set to a real angle (not the placeholder), your query
+must combine **both** signals:
+
+- The **claim's lexicon** — the actual subject terms (drug names,
+  conditions, genes, methods, etc. mentioned in the claim).
+- The **angle's modifier** — terms or filters that target the kind of
+  evidence the angle describes.
+
+Example. Claim: "Aspirin reduces the risk of colorectal cancer."
+Angle: "adversarial evidence: cases where the effect was null or
+reversed."
+
+A query that uses ONLY the angle ("null effect" OR "replication
+failure") retrieves papers about null effects in any field — the
+judge will read them and correctly say no_bearing because they don't
+mention aspirin or colorectal cancer.
+
+A query that uses ONLY the claim ("aspirin" AND "colorectal cancer")
+ignores the angle entirely — you'd retrieve the same broad set of
+papers regardless of which angle was requested.
+
+A query that uses **both** — e.g., `"aspirin"[tiab] AND "colorectal
+cancer"[tiab] AND ("no effect" OR "null" OR "did not reduce" OR
+"non-significant")` — is grounded in the claim AND targets the
+angle. This is the right shape. **Aim for this every time the angle
+is non-empty.**
+
+When `angle` is the placeholder "(none — find evidence about the
+claim broadly)", just retrieve relevant evidence about the claim with
+no angle constraint.
+
 ## Decision protocol
 
 1. **Triage first.** From the description's "strong for" / "weak for"
@@ -56,13 +102,12 @@ list to signal that this provider cannot help with this claim.
    reasoning. Do not "try anyway" — incorrect routing costs both
    compute and downstream judgment quality.
 
-2. **If the provider can help, construct one query.** Follow the
-   syntax in query_guidance exactly. Match the style of any
-   ``query_examples`` provided. If the provider supports multiple
-   query styles, pick the one that best targets this specific claim
-   (e.g., for PubMed: prefer MeSH-anchored boolean when the claim
-   maps cleanly to MeSH terms; prefer natural language when it
-   doesn't).
+2. **If the provider can help, construct one query that combines
+   claim + angle.** Follow the syntax in query_guidance exactly.
+   Match the style of any ``query_examples`` provided. The query
+   must include the claim's subject lexicon. When an angle is set,
+   the query must also include angle-targeted terms (see "Claim +
+   angle composition" above).
 
 3. **A second query is permitted, but only when complementary.** Two
    queries are allowed when the second adds real value the first
@@ -78,13 +123,24 @@ list to signal that this provider cannot help with this claim.
   the provider's native syntax (NOT a paraphrase of the claim).
 - ``reasoning``: one sentence on the routing decision. For abstain,
   cite the description's "weak for" guidance. For commit, cite the
-  syntax style chosen.
+  syntax style chosen AND (when angle is set) confirm both the claim
+  and angle appear in the query.
 - ``confidence``: [0, 1]. Be honestly calibrated — abstain decisions
   can be high-confidence (e.g., 0.95) when the provider's scope
   obviously excludes the claim.
 
 ## Common failure modes to avoid
 
+- **Don't query the angle without the claim.** A query like
+  ``"null effect"[tiab]`` returns papers about null effects across
+  every domain. You need the claim's subject in there too. This is
+  the most common failure mode for non-empty angles — your query
+  retrieves papers that look right at the abstraction level but the
+  judge correctly says no_bearing on the specific claim.
+- **Don't query the claim without the angle when one is given.** The
+  whole point of dispatching with an angle is to find a specific
+  *kind* of evidence about the claim. If you ignore the angle, you'd
+  return the same papers a previous round already saw.
 - **Don't wrap the whole claim with one operator.** If the provider
   uses ``all:`` as a field operator, do NOT just prepend ``all:`` to
   a complex fielded query — that breaks the parser. Use the syntax

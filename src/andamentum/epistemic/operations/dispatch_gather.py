@@ -38,11 +38,12 @@ logger = logging.getLogger(__name__)
 
 async def dispatch_and_persist_for_text(
     op: BaseOperation,
-    text: str,
+    claim: str,
     *,
     objective_id: str,
     providers: dict[str, Any],
     core_runner: Any,
+    angle: str | None = None,
     sub_investigation_id: str | None = None,
     depends_on_claim_id: str | None = None,
     created_by: str = "dispatch",
@@ -53,18 +54,27 @@ async def dispatch_and_persist_for_text(
 
     Both the initial-gather operation and the follow-up investigation
     operation funnel through this function — there is one routing +
-    persistence implementation. The ``text`` argument is whatever the
-    caller wants the dispatch agent to interpret as a search target:
+    persistence implementation.
 
-    - Initial gather passes a sub-investigation's ``seed_claim`` (or
-      the clarified question when there's no decomposition).
-    - Investigation passes one **intent** from the rewritten
-      ``epistemic_investigate_claim`` agent — a natural-language
-      description of an evidence-gap angle.
+    The ``claim`` argument is the **subject of inquiry** — the actual
+    claim text being verified — and stays constant across investigation
+    rounds for a given claim. The optional ``angle`` argument modifies
+    the search *within* that subject matter:
 
-    The dispatch agent's prompt names its input "claim" but the
-    contract is "natural-language description of what to look for"; an
-    intent is the same shape.
+    - Initial gather passes ``claim = sub_investigation.seed_claim``
+      (or the clarified question) and ``angle = None`` — find evidence
+      about the sub-claim broadly.
+    - Investigation passes ``claim = claim.statement`` (the original
+      claim under investigation) and ``angle = intent`` — find
+      evidence about the claim, of the kind the intent describes.
+
+    Separating the subject from the angle is what keeps the dispatch
+    agent's queries grounded in the claim's lexicon across rounds. If
+    the intent were passed as ``claim``, the dispatch agent would
+    write queries about the intent's abstraction (e.g.,
+    "replication failures") with no reference to the actual subject
+    (e.g., "aspirin and colorectal cancer"), and the judge would
+    correctly say no_bearing on most retrieved papers.
 
     Args:
         op: The calling operation. Used as a context bag for
@@ -72,12 +82,14 @@ async def dispatch_and_persist_for_text(
             ``quality_scorer``, and ``embedding_model`` — the
             dependencies needed to score evidence consistently with
             the legacy ExtractEvidence path.
-        text: The search target the dispatch agent sees as "claim".
+        claim: The claim being verified.
         objective_id: Objective the evidence belongs to.
         providers: ``{name: instance}`` provider registry.
         core_runner: The core.agents.AgentRunner-shaped runner the
             dispatch agent uses (``op.agent_runner.core_runner`` on
             the DefaultAgentRunner).
+        angle: Optional. The methodological angle / intent to explore.
+            None for initial gather; set for investigation rounds.
         sub_investigation_id: Propagated onto each Evidence so
             MultiSeedClaim's per-claim filter sees it. Initial gather
             sets this from ``sub.id``; investigation propagates it
@@ -90,7 +102,10 @@ async def dispatch_and_persist_for_text(
     from ..dispatch import gather_evidence_new
 
     gathered = await gather_evidence_new(
-        claim=text, providers=providers, agent_runner=core_runner
+        claim=claim,
+        angle=angle,
+        providers=providers,
+        agent_runner=core_runner,
     )
 
     extract_helper = ExtractEvidenceOperation(
