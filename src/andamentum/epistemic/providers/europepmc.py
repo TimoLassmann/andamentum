@@ -67,7 +67,42 @@ class EuropePMCProvider:
         "tags do NOT work here. The `site:` operator does not work."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "CRISPR-Cas9 gene editing efficiency in vivo",
+            "CRISPR Cas9 gene editing efficiency in vivo",
+        ),
+        (
+            "single-cell RNA sequencing methodological comparisons",
+            'TITLE:"single cell" AND TITLE:"RNA sequencing" AND comparison',
+        ),
+        (
+            "metformin effect on HbA1c outcomes",
+            '(TITLE:"metformin" OR KW:"metformin") AND ABSTRACT:"HbA1c"',
+        ),
+        (
+            "open-access papers on mRNA vaccine lipid nanoparticle delivery",
+            '"mRNA vaccine" "lipid nanoparticle" AND OPEN_ACCESS:y',
+        ),
+        (
+            "tumor microenvironment immunotherapy resistance literature 2020-2025",
+            '"tumor microenvironment" immunotherapy resistance PUB_YEAR:[2020 TO 2025]',
+        ),
+        (
+            "what does DOI 10.1001/jama.2022.0078 conclude",
+            'DOI:"10.1001/jama.2022.0078"',
+        ),
+        # Out-of-domain — non-biomedical
+        (
+            "quantum error correction surface codes",
+            None,
+        ),
+        # Out-of-domain — clinical trial registration, not literature
+        (
+            "ongoing recruitment for CAR-T trials in lymphoma",
+            None,
+        ),
+    ]
     output_kind = "assertion_evidence"
     independence_group = "biomedical_literature"
     provider_contract_version = 1

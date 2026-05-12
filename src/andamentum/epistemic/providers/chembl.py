@@ -60,7 +60,48 @@ class ChEMBLProvider:
         "language descriptions return nothing."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "what is the bioactivity profile of imatinib",
+            "imatinib",
+        ),
+        (
+            "lookup compound Gleevec",
+            "Gleevec",
+        ),
+        (
+            "details of compound CHEMBL941",
+            "CHEMBL941",
+        ),
+        (
+            "bioactivity of pembrolizumab",
+            "pembrolizumab",
+        ),
+        (
+            "the compound formerly known as STI571",
+            "STI571",
+        ),
+        # Out-of-domain — clinical outcome (not compound metadata)
+        (
+            "does atorvastatin reduce all-cause mortality",
+            None,
+        ),
+        # Out-of-domain — bibliometric question
+        (
+            "open-access papers are more cited",
+            None,
+        ),
+        # Out-of-domain — gene-disease association
+        (
+            "BRCA1 mutations linked to breast cancer",
+            None,
+        ),
+        # Out-of-domain — protein function (not a small molecule)
+        (
+            "DdrB protein is an alternative SSB in Deinococcus radiodurans",
+            None,
+        ),
+    ]
     output_kind = "structured_record"
     independence_group = "chemistry_structured"
     provider_contract_version = 1

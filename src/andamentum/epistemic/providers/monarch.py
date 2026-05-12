@@ -85,7 +85,47 @@ class MonarchProvider:
         "phenotypes does mutation in Y cause'. 1–3 token queries are optimal."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "what diseases is BRCA1 associated with",
+            "BRCA1",
+        ),
+        (
+            "what is the evidence linking BRCA1 to breast cancer",
+            "BRCA1 breast cancer",
+        ),
+        (
+            "genes associated with cystic fibrosis",
+            "cystic fibrosis",
+        ),
+        (
+            "phenotypes characterized by intellectual disability",
+            "intellectual disability",
+        ),
+        (
+            "lookup MONDO:0008029",
+            "MONDO:0008029",
+        ),
+        (
+            "clinical significance of BRCA1 c.5266dupC variant",
+            "c.5266dupC BRCA1",
+        ),
+        # Out-of-domain — bibliometric
+        (
+            "open-access papers are more cited",
+            None,
+        ),
+        # Out-of-domain — clinical trial
+        (
+            "phase III trial of pembrolizumab in melanoma",
+            None,
+        ),
+        # Out-of-domain — bacterial protein function
+        (
+            "DdrB protein is an alternative SSB in Deinococcus radiodurans",
+            None,
+        ),
+    ]
     output_kind = "structured_record"
     independence_group = "genetics_structured"
     provider_contract_version = 1

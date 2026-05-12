@@ -88,7 +88,48 @@ class PubMedProvider:
         "string. The `site:` operator is silently ignored — do not use it."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        # Natural-language Best Match
+        (
+            "role of interleukin-6 in rheumatoid arthritis pathogenesis",
+            "interleukin-6 rheumatoid arthritis pathogenesis",
+        ),
+        # MeSH-anchored boolean
+        (
+            "metformin's effect on glycemic control in type 2 diabetes",
+            '"Metformin"[MeSH] AND "Diabetes Mellitus, Type 2"[MeSH] AND "glycemic control"[tiab]',
+        ),
+        # MeSH + publication-type filter
+        (
+            "randomized controlled trials of semaglutide in heart failure",
+            '"Semaglutide"[MeSH] AND "Heart Failure"[MeSH] AND "Randomized Controlled Trial"[pt]',
+        ),
+        # Field-tagged text words
+        (
+            "mechanisms of amyloid beta accumulation in Alzheimer's disease",
+            '"amyloid beta"[tiab] AND "Alzheimer Disease"[MeSH] AND mechanism*[tiab]',
+        ),
+        # Date-bounded
+        (
+            "recent published evidence on long COVID neurological symptoms 2022 onwards",
+            '"COVID-19"[MeSH] AND neurological[tiab] AND 2022:2025[pdat]',
+        ),
+        # PMID lookup
+        (
+            "what does PMID 35133415 conclude",
+            "35133415[uid]",
+        ),
+        # Out-of-domain — non-biomedical (ML)
+        (
+            "transformer attention mechanism scaling laws",
+            None,
+        ),
+        # Out-of-domain — pure physics
+        (
+            "topological insulators band structure",
+            None,
+        ),
+    ]
     output_kind = "assertion_evidence"
     independence_group = "biomedical_literature"
     provider_contract_version = 1

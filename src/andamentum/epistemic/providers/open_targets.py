@@ -84,7 +84,48 @@ class OpenTargetsProvider:
         "optimal."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "what is known about KRAS as a target",
+            "KRAS",
+        ),
+        (
+            "therapeutic targets for Alzheimer's disease",
+            "Alzheimer's disease",
+        ),
+        (
+            "evidence for tofacitinib in rheumatoid arthritis",
+            "tofacitinib rheumatoid arthritis",
+        ),
+        (
+            "what targets correspond to ENSG00000133703",
+            "ENSG00000133703",
+        ),
+        (
+            "evidence linking TNF signaling to inflammatory disease",
+            "TNF signaling",
+        ),
+        # Out-of-domain — bibliometric
+        (
+            "open-access papers are more cited",
+            None,
+        ),
+        # Out-of-domain — clinical outcome (not target-disease)
+        (
+            "phase III trial of semaglutide for heart failure",
+            None,
+        ),
+        # Out-of-domain — fundamental biology
+        (
+            "role of H2A.Z histone variant in yeast chromatin",
+            None,
+        ),
+        # Out-of-domain — chemistry-only
+        (
+            "SMILES structure of remdesivir",
+            None,
+        ),
+    ]
     output_kind = "structured_record"
     independence_group = "genetics_structured"
     provider_contract_version = 1

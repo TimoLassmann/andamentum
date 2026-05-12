@@ -60,7 +60,39 @@ class BioRxivProvider:
         "than 'the definitive answer to X'. The `site:` operator does not work."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "recent preprints on protein language models for structure prediction",
+            '"protein language model" AND structure prediction',
+        ),
+        (
+            "unpublished findings on AlphaFold3 accuracy on PDB targets",
+            "AlphaFold3 OR AlphaFold-3",
+        ),
+        (
+            "latest preprint results on CRISPR prime editing efficiency in primary cells",
+            '"prime editing" AND efficiency AND primary cells',
+        ),
+        (
+            "preprints on long COVID biomarkers posted in 2024-2025",
+            '"long COVID" biomarker 2024:2025[pdat]',
+        ),
+        # Out-of-domain — established research, not a preprint question
+        (
+            "established mechanism of metformin in type 2 diabetes",
+            None,
+        ),
+        # Out-of-domain — clinical trial registration
+        (
+            "phase III trial of semaglutide for obesity",
+            None,
+        ),
+        # Out-of-domain — non-biomedical
+        (
+            "scaling laws for large language models",
+            None,
+        ),
+    ]
     output_kind = "assertion_evidence"
     independence_group = "preprint_archive"
     provider_contract_version = 1

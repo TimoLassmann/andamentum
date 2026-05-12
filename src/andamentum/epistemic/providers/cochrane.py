@@ -61,7 +61,43 @@ class CochraneProvider:
         "work."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "effectiveness of metformin in type 2 diabetes",
+            "metformin type 2 diabetes",
+        ),
+        (
+            "exercise interventions for preventing falls in older adults",
+            "exercise falls older adults",
+        ),
+        (
+            "SGLT2 inhibitors for heart failure outcomes",
+            "SGLT2 inhibitor heart failure",
+        ),
+        (
+            "statins for primary cardiovascular prevention",
+            '"Hydroxymethylglutaryl-CoA Reductase Inhibitors"[MeSH] AND "primary prevention"',
+        ),
+        (
+            "antibiotics for acute otitis media in children",
+            "antibiotics acute otitis media children",
+        ),
+        # Out-of-domain — basic biology, no clinical question
+        (
+            "molecular mechanism of histone modification in chromatin remodeling",
+            None,
+        ),
+        # Out-of-domain — drug compound metadata
+        (
+            "SMILES structure of remdesivir",
+            None,
+        ),
+        # Out-of-domain — gene-phenotype association
+        (
+            "BRCA1 mutations and breast cancer risk",
+            None,
+        ),
+    ]
     output_kind = "assertion_evidence"
     independence_group = "systematic_reviews"
     provider_contract_version = 1

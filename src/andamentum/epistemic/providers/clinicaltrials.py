@@ -74,7 +74,47 @@ class ClinicalTrialsProvider:
         "`site:` operator does not work."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "ongoing phase III trials of semaglutide in heart failure",
+            'AREA[Intervention]semaglutide AND AREA[Condition]"heart failure" AND AREA[Phase]Phase3',
+        ),
+        (
+            "eligibility criteria for CAR-T cell therapy trials in lymphoma",
+            'AREA[Intervention]"CAR-T" AND AREA[Condition]lymphoma',
+        ),
+        (
+            "trials measuring HbA1c outcomes with metformin in type 2 diabetes",
+            'AREA[OutcomeMeasure]"HbA1c" AND AREA[Intervention]metformin AND AREA[Condition]"type 2 diabetes"',
+        ),
+        (
+            "trials by Pfizer in melanoma",
+            "AREA[Sponsor]Pfizer AND AREA[Condition]melanoma",
+        ),
+        (
+            "recruiting CAR-T trials",
+            'AREA[Intervention]"CAR-T" AND AREA[OverallStatus]Recruiting',
+        ),
+        (
+            "what is the design of NCT04183440",
+            "AREA[NCTId]NCT04183440",
+        ),
+        # Out-of-domain — fundamental biology, no human trials
+        (
+            "role of H2A.Z histone variant in yeast chromatin",
+            None,
+        ),
+        # Out-of-domain — preclinical / animal-model only
+        (
+            "efficacy of compound X in mouse xenograft models of glioblastoma",
+            None,
+        ),
+        # Out-of-domain — published literature, not trials
+        (
+            "mechanism of action of pembrolizumab",
+            None,
+        ),
+    ]
     output_kind = "trial_registration"
     independence_group = "clinical_registry"
     provider_contract_version = 1
