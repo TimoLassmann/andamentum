@@ -34,3 +34,9 @@ class EpistemicDeps:
     provider: str = "all"
     verbose: bool = False
     progress_callback: Optional[ProgressCallback] = None
+    # Provider registry (``{name: instance}``) — only consulted by the
+    # ``dispatch_mode="new"`` path in DispatchGatherOperation. The legacy
+    # path accesses providers via ``evidence_gatherer`` (CompositeGatherer
+    # already wraps the same dict). Both paths therefore work whether or
+    # not this field is set, but new-mode requires it to be populated.
+    providers: dict[str, Any] | None = None
