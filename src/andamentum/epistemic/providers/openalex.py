@@ -64,9 +64,46 @@ class OpenAlexProvider:
         "return less noise. The `site:` operator does not work."
     )
 
-    # (claim, native-query) pairs. None = the provider should abstain on
-    # this claim. Populated in Phase 2 when the dispatch agent is built.
-    query_examples: list[tuple[str, str | None]] = []
+    # (claim, native-query) pairs. None = abstain. Used by the
+    # description-driven dispatch agent as in-context teaching.
+    # Native queries follow this provider's ``query_guidance`` literally
+    # — no paraphrasing.
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "what do we know about the Permian-Triassic mass extinction",
+            "Permian-Triassic mass extinction",
+        ),
+        (
+            "research on transformer attention mechanisms in language models",
+            "transformer attention mechanism language model",
+        ),
+        (
+            "scholarly work on gravitational wave detection at LIGO",
+            '"gravitational wave" detection LIGO',
+        ),
+        (
+            "what has Geoffrey Hinton published on backpropagation",
+            "Hinton backpropagation",
+        ),
+        (
+            "academic literature on monetary policy and inflation expectations",
+            '"monetary policy" inflation expectations',
+        ),
+        (
+            "scholarly work on population genetics and genetic drift",
+            "population genetics genetic drift",
+        ),
+        # Out-of-domain — non-scholarly current event
+        (
+            "what was today's closing price of the S&P 500",
+            None,
+        ),
+        # Out-of-domain — technical how-to
+        (
+            "how do I install Python 3.12 on macOS",
+            None,
+        ),
+    ]
 
     output_kind = "assertion_evidence"
     independence_group = "general_scholarly"

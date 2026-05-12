@@ -65,7 +65,51 @@ class ArXivProvider:
         "literature here. Use cat: prefixes to scope to the right subdomain."
     )
 
-    query_examples: list[tuple[str, str | None]] = []
+    query_examples: list[tuple[str, str | None]] = [
+        (
+            "transformer attention mechanism scaling with sequence length",
+            "transformer attention mechanism scaling",
+        ),
+        (
+            "reinforcement learning from human feedback methodology",
+            'ti:"reinforcement learning" AND ti:"human feedback"',
+        ),
+        (
+            "machine-learning research on diffusion models for image generation",
+            "cat:cs.LG AND ti:diffusion AND abs:image",
+        ),
+        (
+            "computational methods for predicting protein-protein interactions",
+            '(cat:q-bio.QM OR cat:q-bio.BM) AND ti:"protein-protein interaction"',
+        ),
+        (
+            "quantum error correction with surface codes",
+            '(cat:quant-ph OR cat:cs.IT) AND ti:"quantum error correction" AND ti:"surface code"',
+        ),
+        (
+            "Hinton's published work on deep learning architectures",
+            "au:Hinton AND (abs:deep AND abs:learning)",
+        ),
+        (
+            "what does arXiv paper 2305.12345 propose",
+            "id:2305.12345",
+        ),
+        # Out-of-domain — wet-lab biology
+        (
+            "in vivo CRISPR knockout efficiency in mouse liver",
+            None,
+        ),
+        # Out-of-domain — clinical pharmacology
+        (
+            "atorvastatin's effect on LDL cholesterol in heart failure patients",
+            None,
+        ),
+        # Out-of-domain — clinical trial
+        (
+            "phase III trial of pembrolizumab in melanoma",
+            None,
+        ),
+    ]
     output_kind = "assertion_evidence"
     independence_group = "preprint_archive"
     provider_contract_version = 1
