@@ -37,6 +37,48 @@ _PHASE_QUALITY: dict[str, float] = {
 class ClinicalTrialsProvider:
     """Evidence provider using ClinicalTrials.gov API v2."""
 
+    description = (
+        "Registry of FDA-regulated and international clinical trials from "
+        "ClinicalTrials.gov. Contains trial protocols, eligibility criteria, primary "
+        "and secondary endpoints, enrollment numbers, phase (I/II/III/IV), sponsor "
+        "information, recruitment status, and posted results. Best for questions about "
+        "ongoing or completed clinical studies in humans, trial design, patient "
+        "eligibility, endpoint selection, recruitment, and comparative trial data. "
+        "Example queries: 'ongoing phase III trials for semaglutide in heart failure', "
+        "'eligibility criteria for CAR-T cell therapy trials in lymphoma', 'primary "
+        "endpoints of EMPA-REG OUTCOME study', 'recruiting clinical trials for "
+        "pancreatic cancer immunotherapy'."
+    )
+
+    query_guidance = (
+        "The query goes to ClinicalTrials.gov v2 as the `query.term` parameter. "
+        "Inside `query.term`, the AREA[FieldName]value syntax scopes to specific "
+        "fields: Condition, Intervention, BriefTitle, OfficialTitle, Sponsor, "
+        "OverallStatus, StudyType, Phase, OutcomeMeasure, LocationCountry, "
+        'NCTId. Boolean (AND, OR, NOT), phrase quoting ("...").\n'
+        "\n"
+        "Query styles that all work:\n"
+        "- Plain text: metformin type 2 diabetes\n"
+        "- Field-scoped intervention plus condition: AREA[Intervention]metformin "
+        'AND AREA[Condition]"type 2 diabetes"\n'
+        "- Phase-filtered: AREA[Intervention]semaglutide AND AREA[Phase]Phase3\n"
+        '- Outcome-targeted: AREA[OutcomeMeasure]"HbA1c" AND '
+        "AREA[Intervention]metformin\n"
+        "- Sponsor plus condition: AREA[Sponsor]Pfizer AND AREA[Condition]melanoma\n"
+        '- Status filter: AREA[Intervention]"CAR-T" AND '
+        "AREA[OverallStatus]Recruiting\n"
+        "- NCT ID lookup: AREA[NCTId]NCT04183440\n"
+        "\n"
+        "This provider returns trial registrations, not literature — it is not "
+        "the right place to look for systematic reviews or meta-analyses. The "
+        "`site:` operator does not work."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "trial_registration"
+    independence_group = "clinical_registry"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

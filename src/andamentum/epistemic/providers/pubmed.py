@@ -46,6 +46,53 @@ _PUB_TYPE_QUALITY: dict[str, float] = {
 class PubMedProvider:
     """Evidence provider using NCBI PubMed E-utilities."""
 
+    description = (
+        "Peer-reviewed biomedical and life sciences literature from NCBI's MEDLINE. "
+        "The default provider for any question about biomedical research, medicine, "
+        "biology, disease mechanisms, molecular pathways, genetics, pharmacology, "
+        "immunology, neuroscience, epidemiology, public health, or clinical outcomes "
+        "as documented in the published peer-reviewed record. Use PubMed whenever a "
+        "question is about what biomedical research has established or published, "
+        "even if the question also touches on specific drugs, targets, or trials — "
+        "other biomedical providers cover those more narrowly. Example queries: "
+        "'role of interleukin-6 in rheumatoid arthritis pathogenesis', 'mechanisms "
+        "of amyloid beta accumulation in Alzheimer's disease', 'epidemiology of "
+        "tuberculosis in sub-Saharan Africa', 'published evidence on ketogenic diet "
+        "for refractory epilepsy', 'neurobiology of opioid addiction'."
+    )
+
+    query_guidance = (
+        "The query is sent to NCBI esearch as the `term` parameter. The full "
+        "PubMed query language is supported: Boolean operators (AND, OR, NOT), "
+        'MeSH terms ("X"[MeSH], auto-explodes children unless [Mesh:noexp]), '
+        "title/abstract field tags ([tiab], [ti], [ab]), author ([au]), journal "
+        "([Journal]), publication date ([pdat]), publication type ([pt]), text "
+        'word ([tw]), DOI ([doi]), PMID ([uid]), phrase quoting ("..."), '
+        "truncation (brca*), date ranges (2020:2025[pdat]).\n"
+        "\n"
+        "Query styles that all work — pick whichever best targets the question:\n"
+        "- Plain natural-language (uses Best Match relevance ranking): "
+        "metformin glycemic control type 2 diabetes\n"
+        '- MeSH-anchored Boolean: "Metformin"[MeSH] AND "Diabetes Mellitus, '
+        'Type 2"[MeSH]\n'
+        '- MeSH plus study-type filter: "Metformin"[MeSH] AND "Diabetes '
+        'Mellitus, Type 2"[MeSH] AND ("Randomized Controlled Trial"[pt] OR '
+        '"Meta-Analysis"[pt])\n'
+        '- Field-tagged with phrases: "glycemic control"[tiab] AND humans[Mesh]\n'
+        "- Author plus topic: Madsen KS[au] AND metformin\n"
+        "- ID lookup: 35133415[uid]  or  10.1001/jama.2022.0078[doi]\n"
+        "- Date-bounded: metformin glycemic 2020:2025[pdat]\n"
+        "\n"
+        "Length: short and structured beats long and free-text. 3–8 well-chosen "
+        "tokens with operators usually outperforms a 12-word natural-language "
+        "string. The `site:` operator is silently ignored — do not use it."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "biomedical_literature"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
         self.api_key = os.getenv("NCBI_API_KEY")

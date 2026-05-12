@@ -25,6 +25,53 @@ class OpenAlexProvider:
     Quality comes FOR FREE with search results — no second API call needed.
     """
 
+    # ── Description-driven-dispatch contract (Phase 1) ───────────────────
+    # The dispatch agent reads ``description`` and ``query_examples`` at
+    # runtime to decide triage and construct queries. The legacy
+    # formulator path also reads ``description`` and ``query_guidance``
+    # via the registry shim in ``providers/__init__.py``. Phase 1 keeps
+    # both consumers happy by colocating all data on the provider class.
+
+    description = (
+        "The default general-purpose academic literature search for any scholarly "
+        "question that does not specifically concern human medicine, drug compounds, "
+        "or clinical trials. Use this provider whenever the question is about "
+        "scientific research, scholarly work, or academic publications in general. "
+        "Good default choice for any research question, especially broad or "
+        "cross-disciplinary ones. Example queries: 'what do we know about the "
+        "Permian-Triassic mass extinction', 'research on transformer attention "
+        "mechanisms', 'academic papers about the origin of the Indo-European "
+        "languages', 'scholarly work on population genetics and genetic drift'."
+    )
+
+    query_guidance = (
+        "The query goes to OpenAlex `/works` as the `search` parameter — "
+        'full-text relevance ranking. Phrase quoting ("...") and implicit '
+        "AND between tokens are supported.\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Plain bag of terms: metformin HbA1c diabetes\n"
+        '- Phrase-anchored: "GLP-1 receptor agonist" obesity\n'
+        "- Topic plus study type: meta-analysis aspirin cardiovascular prevention\n"
+        "- Author plus topic: Hinton backpropagation\n"
+        "- Cross-disciplinary topic: transformer attention mechanism\n"
+        "- Multi-domain: gravitational wave detection LIGO\n"
+        "\n"
+        "OpenAlex does NOT support PubMed-style [MeSH] field tags. OpenAlex is "
+        "the strongest pick for non-biomedical scholarly questions (physics, "
+        "history, economics, social sciences) and broad cross-disciplinary "
+        "searches; for tight biomedical questions, PubMed and Europe PMC "
+        "return less noise. The `site:` operator does not work."
+    )
+
+    # (claim, native-query) pairs. None = the provider should abstain on
+    # this claim. Populated in Phase 2 when the dispatch agent is built.
+    query_examples: list[tuple[str, str | None]] = []
+
+    output_kind = "assertion_evidence"
+    independence_group = "general_scholarly"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

@@ -27,6 +27,44 @@ CHEMBL_API = "https://www.ebi.ac.uk/chembl/api/data"
 class ChEMBLProvider:
     """Evidence provider using the ChEMBL REST API."""
 
+    description = (
+        "Curated database of bioactive drug-like small molecules from EMBL-EBI, with "
+        "quantitative bioactivity data, drug mechanisms, ADMET properties, and "
+        "compound-target interactions. Contains IC50, EC50, Ki, Kd values, SMILES "
+        "structures, ChEMBL IDs, binding assays, and approved drug indications. Best "
+        "for questions about specific chemical compounds, drug potency, medicinal "
+        "chemistry, quantitative pharmacology, and structure-activity relationships. "
+        "Example queries: 'IC50 of imatinib against BCR-ABL kinase', 'mechanism of "
+        "action of pembrolizumab', 'SMILES structure and bioactivity of remdesivir', "
+        "'EC50 values for ACE inhibitors on angiotensin converting enzyme'."
+    )
+
+    query_guidance = (
+        "The query goes to ChEMBL's `/molecule/search.json` `q` parameter. "
+        "Accepts: compound generic name, trade name, synonym, ChEMBL ID, drug "
+        "INN, IUPAC name. SMILES and InChI substring search uses different "
+        "endpoints not exposed by this adapter — do NOT pass SMILES strings.\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Generic name: imatinib\n"
+        "- Trade name: Gleevec\n"
+        "- ChEMBL ID: CHEMBL941\n"
+        "- Synonym or development code: STI571\n"
+        "- Drug class member: pembrolizumab\n"
+        "- Compound plus synonym: metformin glucophage\n"
+        "\n"
+        "This is a compound search, not a literature search — returns "
+        "molecular structures, bioactivity (IC50, EC50, Ki), and mechanism. "
+        "Use only when the question explicitly asks for compound-level "
+        "pharmacology. 1–3 token compound names are optimal; verbose natural-"
+        "language descriptions return nothing."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "structured_record"
+    independence_group = "chemistry_structured"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

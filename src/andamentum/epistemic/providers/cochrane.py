@@ -29,6 +29,43 @@ EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 class CochraneProvider:
     """Evidence provider for Cochrane systematic reviews via PubMed E-utilities."""
 
+    description = (
+        "Cochrane systematic reviews and meta-analyses — the highest level of "
+        "clinical evidence. Each review synthesizes findings from multiple "
+        "randomized controlled trials on a specific clinical question. Use for "
+        "any claim about clinical interventions, treatment effectiveness, drug "
+        "safety, or public health interventions where a systematic review may "
+        "exist. Example queries: 'exercise interventions for preventing falls "
+        "in older adults', 'statins for primary prevention of cardiovascular "
+        "disease', 'antibiotics for acute otitis media in children'."
+    )
+
+    query_guidance = (
+        'The query goes to NCBI esearch with `AND "Cochrane Database Syst '
+        'Rev"[Journal]` appended automatically. Full PubMed query syntax is '
+        "supported (Boolean, MeSH, [tiab]/[ti]/[ab], [au], [pdat], phrase "
+        "quoting, wildcards), but the corpus is already pre-filtered to "
+        "Cochrane systematic reviews — keep queries shorter and more topic-"
+        "focused than for PubMed.\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Short topic phrase: metformin type 2 diabetes\n"
+        "- Topic plus intervention: exercise falls older adults\n"
+        '- MeSH-anchored: "Metformin"[MeSH] AND "Diabetes Mellitus, Type 2"[MeSH]\n'
+        '- Title-tagged: "metformin"[ti] AND "diabetes"[ti]\n'
+        "- Topic plus outcome: aspirin myocardial infarction primary prevention\n"
+        "- Drug class plus condition: SGLT2 inhibitor heart failure\n"
+        "\n"
+        "Adding [pt] filters for systematic reviews is redundant — every result "
+        "is one. 3–7 tokens is usually optimal. The `site:` operator does not "
+        "work."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "systematic_reviews"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

@@ -1243,3 +1243,140 @@ class TestArXivProvider:
         assert "doi" not in r.identifiers
         assert r.structured_data["doi"] is None
         assert r.structured_data["journal_ref"] is None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Description-driven-dispatch contract structural tests
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Phase 1 of the description-driven-dispatch refactor introduces five
+# class attributes on every provider class:
+#
+#   description: str                        non-empty, multi-paragraph
+#   query_guidance: str                     non-empty, native syntax + examples
+#   query_examples: list[tuple[str, str|None]]   populated in Phase 2
+#   output_kind: str                        one of the allowed values
+#   independence_group: str                 non-empty short tag
+#   provider_contract_version: int          1 for the current contract
+#
+# These tests fail CI if a provider drops the contract — protecting
+# against accidental regressions when new providers are added or existing
+# ones are refactored.
+
+
+class TestProviderSelfDescriptionContract:
+    """Structural tests for the post-Phase-1 provider contract.
+
+    Every registered provider must declare the required class attributes.
+    No behavioural assertion here — that's Phase 2's job. This is a contract
+    check.
+    """
+
+    _VALID_OUTPUT_KINDS = {
+        "assertion_evidence",
+        "structured_record",
+        "trial_registration",
+        "compound_data",
+    }
+
+    def _all_provider_classes(self) -> list[type]:
+        from andamentum.epistemic.providers import PROVIDER_REGISTRY
+
+        return list(PROVIDER_REGISTRY.values())
+
+    def test_every_provider_has_description(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "description"), f"{cls.__name__} missing description"
+            assert isinstance(cls.description, str), f"{cls.__name__}.description not str"
+            assert len(cls.description) >= 100, (
+                f"{cls.__name__}.description too short ({len(cls.description)} chars); "
+                "should be a multi-paragraph natural-language scope description"
+            )
+
+    def test_every_provider_has_query_guidance(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "query_guidance"), (
+                f"{cls.__name__} missing query_guidance"
+            )
+            assert isinstance(cls.query_guidance, str), (
+                f"{cls.__name__}.query_guidance not str"
+            )
+            assert len(cls.query_guidance) >= 100, (
+                f"{cls.__name__}.query_guidance too short; should describe "
+                "native query syntax with examples"
+            )
+
+    def test_every_provider_has_query_examples(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "query_examples"), (
+                f"{cls.__name__} missing query_examples"
+            )
+            assert isinstance(cls.query_examples, list), (
+                f"{cls.__name__}.query_examples not a list"
+            )
+            # Phase 1: may be empty (filled in Phase 2). Just check shape:
+            # each entry must be (str, str | None).
+            for example in cls.query_examples:
+                assert isinstance(example, tuple) and len(example) == 2, (
+                    f"{cls.__name__}.query_examples entry not a 2-tuple"
+                )
+                claim, query = example
+                assert isinstance(claim, str), (
+                    f"{cls.__name__} example claim not a string"
+                )
+                assert query is None or isinstance(query, str), (
+                    f"{cls.__name__} example query is not str or None"
+                )
+
+    def test_every_provider_has_output_kind(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "output_kind"), f"{cls.__name__} missing output_kind"
+            assert cls.output_kind in self._VALID_OUTPUT_KINDS, (
+                f"{cls.__name__}.output_kind={cls.output_kind!r} not in "
+                f"{sorted(self._VALID_OUTPUT_KINDS)}"
+            )
+
+    def test_every_provider_has_independence_group(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "independence_group"), (
+                f"{cls.__name__} missing independence_group"
+            )
+            assert isinstance(cls.independence_group, str), (
+                f"{cls.__name__}.independence_group not str"
+            )
+            assert cls.independence_group, (
+                f"{cls.__name__}.independence_group is empty"
+            )
+            # Convention: lowercase + underscores, no spaces.
+            assert " " not in cls.independence_group, (
+                f"{cls.__name__}.independence_group={cls.independence_group!r} "
+                "should be a single token with underscores, not spaces"
+            )
+
+    def test_every_provider_has_contract_version(self) -> None:
+        for cls in self._all_provider_classes():
+            assert hasattr(cls, "provider_contract_version"), (
+                f"{cls.__name__} missing provider_contract_version"
+            )
+            assert cls.provider_contract_version == 1, (
+                f"{cls.__name__}.provider_contract_version != 1; "
+                "Phase 1 introduces v1, future contracts bump this"
+            )
+
+    def test_registry_shim_populates_globals_from_class_attrs(self) -> None:
+        """The shim in register_provider reads description/query_guidance
+        from class attributes when not passed as kwargs. This verifies the
+        legacy globals stay populated post-refactor."""
+        from andamentum.epistemic.providers import (
+            PROVIDER_DESCRIPTIONS,
+            PROVIDER_QUERY_GUIDANCE,
+            PROVIDER_REGISTRY,
+        )
+
+        for name, cls in PROVIDER_REGISTRY.items():
+            assert PROVIDER_DESCRIPTIONS.get(name) == cls.description, (
+                f"PROVIDER_DESCRIPTIONS[{name}] does not match class attribute"
+            )
+            assert PROVIDER_QUERY_GUIDANCE.get(name) == cls.query_guidance, (
+                f"PROVIDER_QUERY_GUIDANCE[{name}] does not match class attribute"
+            )
