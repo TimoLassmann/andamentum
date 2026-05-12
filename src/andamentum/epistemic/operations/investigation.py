@@ -278,13 +278,23 @@ class InvestigateClaimOperation(BaseOperation):
                 evidence_summaries.append(f"[{ev.source_type}] {ev.extracted_content}")
                 source_types_seen.add(ev.source_type)
 
-        # Load scrutiny issues from uncertainties
+        # Load scrutiny issues from uncertainties.
+        # Filter to UNRESOLVED only: ResolveUncertaintyOperation stamps
+        # ``resolved_at`` (Uncertainty.is_resolved) when an issue has been
+        # addressed, and every other consumer in the codebase (CLI stats,
+        # report generator, promotion gates, typeset report) honours that
+        # field. Feeding already-resolved descriptions back into the
+        # investigation agent's prompt makes the agent re-target gaps that
+        # have already been closed, which both burns LLM cycles and crowds
+        # the genuinely-open issues out of the agent's attention window.
         scrutiny_issues: list[str] = []
         uncertainties = await self.repo.query(
             "uncertainty",
             objective_id=claim.objective_id,
         )
         for u in uncertainties:
+            if u.is_resolved:
+                continue
             affected = u.affected_claim_ids
             if claim.entity_id in affected:
                 desc = u.description
