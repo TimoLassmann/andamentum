@@ -88,13 +88,56 @@ async def _check_initial_evidence(_state: Any, repo: Any) -> bool:
     return bool(claims) and all(c.evidence_count > 0 for c in claims)
 
 
+async def _all_active_claim_evidence_judged(state: Any, repo: Any) -> bool:
+    """Every Evidence linked to a non-abandoned, non-cycle-capped claim
+    with extracted content must have ``support_judgment`` set before
+    the scrutiny-and-investigation stage exits.
+
+    This safety net codifies a contract that used to be implicit: the
+    pre-2026-05-12 judging step in ``ExtractNewEvidence`` was keyed off
+    the per-stub extraction loop, so a future code path that creates
+    Evidence without going through that loop would silently leave
+    ``support_judgment=None``. Downstream consumers
+    (``compute_posterior``, the IBE chain, ``confidence.py``,
+    the writer) all skip items where the field is None, which means
+    the calibration regresses silently — exactly the v7 failure mode
+    (1146 unjudged items on dev30, AUC -0.12).
+
+    By writing the invariant explicitly at the stage boundary, any
+    future creation-path change that bypasses judging fails loudly
+    here rather than producing miscalibrated posteriors. The fix is
+    always the same: route the new Evidence through a judging step
+    before the stage exits.
+    """
+    claims = await _claims(repo)
+    active_ids = {
+        c.entity_id for c in claims if not c.abandoned and not c.cycle_capped
+    }
+    all_evidence = await repo.query("evidence", objective_id=state.objective_id)
+    for ev in all_evidence:
+        if (
+            ev.depends_on_claim_id in active_ids
+            and ev.support_judgment is None
+            and not ev.invalidated
+            and ev.extracted_content
+        ):
+            return False
+    return True
+
+
 async def _check_scrutiny(state: Any, repo: Any) -> bool:
     claims = await _claims(repo)
     active = [c for c in claims if not c.abandoned and not c.cycle_capped]
-    return (
+    verdicts_settled = (
         all(c.scrutiny_verdict in {"pass", "fail"} for c in active)
         and len(state.claims_needing_rescrutiny) == 0
     )
+    if not verdicts_settled:
+        return False
+    # Every claim-linked Evidence with content must have a verdict
+    # before downstream stages run. See ``_all_active_claim_evidence_judged``
+    # for the v7 regression this guard prevents from recurring silently.
+    return await _all_active_claim_evidence_judged(state, repo)
 
 
 async def _check_verification(_state: Any, repo: Any) -> bool:

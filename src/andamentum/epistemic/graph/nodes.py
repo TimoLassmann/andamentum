@@ -984,13 +984,15 @@ class ExtractNewEvidence(Node):
             extracted=False,
         )
 
-        # Pass 1: extraction only. Each extract_evidence call may create
-        # extras (gathered[1:]) — we collect them all before judging so
-        # the dedupe sweep runs in between and we don't pay LLM cost on
-        # cross-provider duplicates.
-        per_stub_results: list[tuple[Any, Any]] = []
+        # Pass 1: extraction. Defensive — the v7 evidence-gathering path
+        # (initial gather via DispatchGatherOperation, follow-up rounds
+        # via InvestigateClaimOperation + dispatch_and_persist_for_text)
+        # persists Evidence with ``extracted=True`` directly, so this
+        # loop is empty on normal runs. It remains in place so any
+        # future code path that introduces ``extracted=False`` stubs
+        # is still handled.
         for ev in unextracted:
-            result = await _run_op(
+            await _run_op(
                 ExtractEvidenceOperation,
                 deps,
                 state,
@@ -998,7 +1000,6 @@ class ExtractNewEvidence(Node):
                 "evidence",
                 "extract_evidence",
             )
-            per_stub_results.append((ev, result))
 
         # Cross-provider duplicate sweep before judging fires. Dedupe runs
         # on all evidence for the objective so it catches duplicates within
@@ -1010,78 +1011,81 @@ class ExtractNewEvidence(Node):
         # End-of-gathering retrieval-health check (zero-yield semantics).
         await _evaluate_retrieval_health(state, deps)
 
-        # Pass 2: link new evidence to claims and judge. Invalidated items
-        # (marked by the dedupe sweep) are skipped — they were duplicates
-        # of evidence that's already represented and will be filtered out
-        # by all downstream consumers anyway.
-        for ev, result in per_stub_results:
-            if not result.success:
-                continue
-
-            created_ids = getattr(result, "created_entities", []) or []
-            if len(created_ids) <= 1:
-                continue
-
-            original = await deps.repo.get("evidence", ev.entity_id)
-            claim_id = original.depends_on_claim_id
-            if not claim_id:
-                continue
-
-            claim = await deps.repo.get("claim", claim_id)
-            if not isinstance(claim, Claim):
-                continue
-
-            extras_linked = 0
-            evidence_to_judge: list[Evidence] = []
-            for eid in created_ids:
-                entity_ev = await deps.repo.get("evidence", eid)
-                if not isinstance(entity_ev, Evidence):
+        # Pass 2: judge every Evidence linked to a non-abandoned claim
+        # that has extracted content and no support_judgment yet.
+        #
+        # The previous implementation was keyed off ``per_stub_results``
+        # — the list of stubs that had just been extracted. That made
+        # the judging contract implicitly assume "Evidence arrives via
+        # the stub-extraction path." When ``InvestigateClaimOperation``
+        # was rewritten to persist Evidence directly via the dispatch
+        # helper (``extracted=True``, no stub step), the per_stub_results
+        # list became empty and the judging silently never ran for
+        # investigation-time evidence. Result: 1146 unjudged items on
+        # dev30 v7 and a substantial calibration regression.
+        #
+        # The new contract is source-agnostic: every Evidence with
+        # ``depends_on_claim_id`` set, ``extracted_content`` non-empty,
+        # ``support_judgment is None``, and ``invalidated=False`` is
+        # eligible for judging. The predicate doesn't care HOW the
+        # Evidence got into the repo — only that it's a claim-linked
+        # piece of content still missing its verdict. The
+        # scrutiny_and_investigation stage's exit invariant in
+        # ``graph/stages.py`` enforces the same predicate as a safety
+        # net so a future creation path can't break this silently again.
+        if deps.agent_runner is not None:
+            all_evidence = await deps.repo.query(
+                "evidence", objective_id=state.objective_id
+            )
+            unjudged_by_claim: dict[str, list[Evidence]] = {}
+            for ev in all_evidence:
+                if not isinstance(ev, Evidence):
                     continue
-
-                # Skip linking + judging for items the dedupe sweep
-                # invalidated as cross-provider duplicates.
-                if entity_ev.invalidated:
+                if not ev.depends_on_claim_id:
                     continue
+                if ev.support_judgment is not None:
+                    continue
+                if ev.invalidated:
+                    continue
+                if not ev.extracted_content:
+                    continue
+                unjudged_by_claim.setdefault(
+                    ev.depends_on_claim_id, []
+                ).append(ev)
 
-                if eid not in claim.evidence_ids:
-                    claim.evidence_ids.append(eid)
-                    extras_linked += 1
+            runner = deps.agent_runner
 
-                if (
-                    deps.agent_runner
-                    and entity_ev.extracted_content
-                    and entity_ev.support_judgment is None
-                ):
-                    evidence_to_judge.append(entity_ev)
+            async def _judge_against_claim(
+                ev_to_judge: Evidence, claim_statement: str, claim_scope: str
+            ) -> None:
+                judgment = await judge_evidence(
+                    claim_statement=claim_statement,
+                    claim_scope=claim_scope,
+                    evidence_content=ev_to_judge.extracted_content,
+                    evidence_source=(
+                        f"{ev_to_judge.source_type}: {ev_to_judge.source_ref}"
+                    ),
+                    runner=runner,
+                )
+                verdict = judgment.verdict.lower().strip()
+                if verdict not in ("supports", "contradicts", "no_bearing"):
+                    verdict = "no_bearing"
+                ev_to_judge.support_judgment = verdict
+                ev_to_judge.judgment_reasoning = judgment.reasoning
+                await deps.repo.save(ev_to_judge)
 
-            # Phase 2a of the efficiency plan: judge the new evidence
-            # extras concurrently. Each judgment writes a different
-            # Evidence entity, so the calls are independent. The
-            # AgentRunner's global semaphore bounds in-flight calls
-            # (defaults: 1 for Ollama, 8 for cloud).
-            if evidence_to_judge and deps.agent_runner is not None:
-                runner = deps.agent_runner
-
-                async def _judge_extra(entity_ev: Evidence) -> None:
-                    judgment = await judge_evidence(
-                        claim_statement=claim.statement,
-                        claim_scope=claim.scope or "",
-                        evidence_content=entity_ev.extracted_content,
-                        evidence_source=f"{entity_ev.source_type}: {entity_ev.source_ref}",
-                        runner=runner,
+            for claim_id, evs in unjudged_by_claim.items():
+                claim = await deps.repo.get("claim", claim_id)
+                if not isinstance(claim, Claim) or claim.abandoned:
+                    continue
+                claim_statement = claim.statement
+                claim_scope = claim.scope or ""
+                await asyncio.gather(
+                    *(
+                        _judge_against_claim(ev, claim_statement, claim_scope)
+                        for ev in evs
                     )
-                    verdict = judgment.verdict.lower().strip()
-                    if verdict not in ("supports", "contradicts", "no_bearing"):
-                        verdict = "no_bearing"
-                    entity_ev.support_judgment = verdict
-                    entity_ev.judgment_reasoning = judgment.reasoning
-                    await deps.repo.save(entity_ev)
-
-                await asyncio.gather(*(_judge_extra(ev) for ev in evidence_to_judge))
-
-            if extras_linked > 0:
-                claim.evidence_count = len(claim.evidence_ids)
-                await deps.repo.save(claim)
+                )
 
         # TMS sweep: new evidence may trigger revalidation of claims
         await _run_tms_sweep(deps, state)

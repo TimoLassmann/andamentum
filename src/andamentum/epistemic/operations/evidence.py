@@ -135,7 +135,14 @@ class ExtractEvidenceOperation(BaseOperation):
         # this, gatherer-extras silently drop out of the per-claim
         # pool — each sub-investigation would see only the 1 stub-
         # tied result per provider instead of the full hit set.
+        #
+        # Also propagate ``depends_on_claim_id`` from the stub. When
+        # the stub was created during an investigation round, it was
+        # linked to a specific claim; the extras conceptually inherit
+        # the same link, so downstream judging (predicate-driven in
+        # ``ExtractNewEvidence``) can find them.
         created_ids = [evidence.entity_id]
+        new_evidence_entities: list[Evidence] = []
         for g in gathered[1:]:
             new_ev = Evidence(
                 objective_id=evidence.objective_id,
@@ -143,11 +150,33 @@ class ExtractEvidenceOperation(BaseOperation):
                 source_ref=g.source_ref,
                 extracted=True,
                 sub_investigation_id=evidence.sub_investigation_id,
+                depends_on_claim_id=evidence.depends_on_claim_id,
             )
             self._fill_evidence_from_gathered(new_ev, g)
             await self._score_evidence(new_ev, g)
             await self.repo.save(new_ev)
             created_ids.append(new_ev.entity_id)
+            new_evidence_entities.append(new_ev)
+
+        # Append extras to the originating claim's evidence_ids list.
+        # This is the reverse-index linkage MultiSeedClaim, scrutiny,
+        # and the gates iterate over. Without it, extras exist with
+        # a depends_on_claim_id pointer but the claim doesn't know
+        # about them — they appear in repo queries but not in
+        # ``claim.evidence_ids``.
+        if new_evidence_entities and evidence.depends_on_claim_id:
+            claim = await self.repo.get("claim", evidence.depends_on_claim_id)
+            from ..entities import Claim
+
+            if isinstance(claim, Claim):
+                added = False
+                for new_ev in new_evidence_entities:
+                    if new_ev.entity_id not in claim.evidence_ids:
+                        claim.evidence_ids.append(new_ev.entity_id)
+                        added = True
+                if added:
+                    claim.evidence_count = len(claim.evidence_ids)
+                    await self.repo.save(claim)
 
         return OperationResult(
             success=True,
