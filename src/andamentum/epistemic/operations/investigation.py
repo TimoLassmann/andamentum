@@ -20,6 +20,7 @@ from ..entities import (
     Evidence,
     Objective,
 )
+from ..entities.intent_record import IntentRecord
 
 
 class GeneratePredictionOperation(BaseOperation):
@@ -337,11 +338,20 @@ class InvestigateClaimOperation(BaseOperation):
             if claim.entity_id in u.affected_claim_ids and u.description:
                 scrutiny_issues.append(str(u.description))
 
-        # Prior-round intents — the memory the previous agent didn't have.
-        previous_intents = list(claim.investigation_intents)
+        # Prior-round intents with reachability annotations. The agent
+        # reads ``yielded N items`` as a Lakatos-style signal: a 0-yield
+        # intent is a dead end (the angle didn't connect to indexed
+        # evidence — Quine-Duhem says we cannot conclude the claim is
+        # false, only that this routing didn't reach the question). The
+        # prompt teaches the agent to use this signal to vary the
+        # *dimension* of inquiry (method, population, frame, etc.), not
+        # the wording.
         previous_intents_text = (
-            "\n".join(f"- {intent}" for intent in previous_intents)
-            if previous_intents
+            "\n".join(
+                f"- (yielded {r.evidence_count} items) {r.text}"
+                for r in claim.investigation_intents
+            )
+            if claim.investigation_intents
             else "(none — this is the first investigation round)"
         )
 
@@ -381,11 +391,31 @@ class InvestigateClaimOperation(BaseOperation):
             )
             created_entities.extend(ev_ids)
             claim.evidence_ids.extend(ev_ids)
-            claim.investigation_intents.append(intent)
+            # Record the intent with its reachability count. The next
+            # round's gap-analysis agent will see this annotation.
+            claim.investigation_intents.append(
+                IntentRecord(text=intent, evidence_count=len(ev_ids))
+            )
 
         claim.investigation_count += 1
         claim.evidence_count = len(claim.evidence_ids)
         await self.repo.save(claim)
+
+        # The agent may legitimately return zero intents — Peirce: rational
+        # suspension of judgment when the search space looks exhausted is
+        # itself a termination of inquiry. The cap remains the floor.
+        if not new_intents:
+            suspend_msg = (
+                f"Investigation #{claim.investigation_count}: agent "
+                "returned zero intents — suspending further inquiry on "
+                "this claim (search space deemed exhausted)"
+            )
+            return OperationResult(
+                success=True,
+                entity_id=claim.entity_id,
+                message=suspend_msg,
+                created_entities=[],
+            )
 
         return OperationResult(
             success=True,

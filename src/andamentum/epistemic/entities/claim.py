@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
+from .intent_record import IntentRecord
 from .prediction import Prediction
 
 
@@ -209,20 +210,30 @@ class Claim(EpistemicEntity):
         default=0,
         description="Number of investigation cycles triggered by scrutiny doubt",
     )
-    # Prior-round evidence-gap analysis memory. Each entry is one intent
-    # ("we need a methodologically-independent angle on the mechanism")
-    # that ``epistemic_investigate_claim`` proposed in a previous round.
-    # Passed back into the agent on the next round as ``previous_intents``
-    # so it can deliberately propose a different angle rather than
-    # reshuffling the same lexicon. The agent never sees query strings —
-    # only intents — because the routing layer (description-driven
-    # dispatch) shapes provider-specific queries from each intent.
-    investigation_intents: list[str] = Field(
+    # Prior-round evidence-gap analysis memory. Each entry pairs one
+    # intent the gap-analysis agent proposed with the number of Evidence
+    # entities the routing layer persisted for it (the **reachability**
+    # signal — Quine-Duhem: 0 yield does not mean the claim is false,
+    # only that this angle didn't connect to indexed evidence).
+    #
+    # Passed back into the agent on the next round so it can:
+    #   * avoid proposing variants of dead-end intents (Lakatos: response
+    #     to failure must be substantive, not ad-hoc lexical reshuffling);
+    #   * recognise when the search space looks exhausted and rationally
+    #     suspend judgment (Peirce: inquiry terminates either by
+    #     resolving doubt or by concluding the question is unanswerable
+    #     from available means).
+    #
+    # The agent never sees query strings — only intents — because the
+    # routing layer (description-driven dispatch) shapes provider-specific
+    # queries from each intent.
+    investigation_intents: list[IntentRecord] = Field(
         default_factory=list,
         description=(
-            "Natural-language descriptions of evidence-gap angles proposed "
-            "in prior investigation rounds. Used as agent memory to avoid "
-            "repeating the same angle round after round."
+            "Yield-annotated record of evidence-gap angles proposed in "
+            "prior investigation rounds. Each entry is an IntentRecord "
+            "with the intent text and how many Evidence entities the "
+            "routing layer persisted for it. Used as agent memory."
         ),
     )
     abandoned: bool = Field(
@@ -426,7 +437,7 @@ class Claim(EpistemicEntity):
             "superseded_by_id": self.superseded_by_id,
             "modification_count": self.modification_count,
             "investigation_count": self.investigation_count,
-            "investigation_intents": self.investigation_intents,
+            "investigation_intents": [r.model_dump() for r in self.investigation_intents],
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
             "persistent_concerns": self.persistent_concerns,
@@ -478,7 +489,10 @@ class Claim(EpistemicEntity):
             modification_count=metadata.get("modification_count", 0),
             modification_timestamps=metadata.get("modification_timestamps", []),
             investigation_count=metadata.get("investigation_count", 0),
-            investigation_intents=metadata.get("investigation_intents", []),
+            investigation_intents=[
+                IntentRecord.from_dict(r)
+                for r in metadata.get("investigation_intents", [])
+            ],
             abandoned=metadata.get("abandoned", False),
             cycle_capped=metadata.get("cycle_capped", False),
             persistent_concerns=metadata.get("persistent_concerns", []),
