@@ -52,6 +52,43 @@ class OpenTargetsProvider:
     epistemic system can judge each piece of evidence independently.
     """
 
+    description = (
+        "Integrated drug target evidence from the Open Targets Platform, combining "
+        "genetic associations (GWAS), somatic mutations (cancer), literature co-mentions, "
+        "pathway membership, drug-target interactions, tractability, and "
+        "target-disease association scores. Best for questions about which proteins "
+        "or genes are therapeutic targets for a given disease, drug repurposing "
+        "opportunities, pathway-level target evaluation, and druggability assessment. "
+        "Example queries: 'therapeutic targets for Alzheimer's disease with genetic "
+        "support', 'druggable targets in KRAS-mutant colorectal cancer', 'pathway "
+        "evidence linking TNF signaling to rheumatoid arthritis', 'target tractability "
+        "for PCSK9 in cardiovascular disease'."
+    )
+
+    query_guidance = (
+        "The query goes to Open Targets GraphQL `search(queryString: $q)`. "
+        "Accepts: target names, gene symbols, disease names, pathway names, "
+        "ontology IDs (ENSG, MONDO, EFO, HP).\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Gene symbol: KRAS\n"
+        "- Disease name: Alzheimer's disease\n"
+        "- Disease plus qualifier: idiopathic pulmonary fibrosis\n"
+        "- Ensembl gene ID: ENSG00000133703\n"
+        "- EFO disease ID: EFO_0000270\n"
+        "- Pathway name: TNF signaling\n"
+        "- Drug-disease pair: tofacitinib rheumatoid arthritis\n"
+        "\n"
+        "Returns target-disease associations, druggability, GWAS signal, and "
+        "drug-target interactions. Not for literature. 1–3 token queries are "
+        "optimal."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "structured_record"
+    independence_group = "genetics_structured"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

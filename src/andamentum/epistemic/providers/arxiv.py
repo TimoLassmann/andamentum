@@ -32,6 +32,44 @@ _ARXIV_NS = "http://arxiv.org/schemas/atom"
 class ArXivProvider:
     """Evidence provider using the arXiv API."""
 
+    description = (
+        "Preprint server for physics, mathematics, computer science, "
+        "quantitative biology, quantitative finance, statistics, electrical "
+        "engineering, and economics. Use for any non-biomedical scientific "
+        "claim, especially in physics, AI/ML, mathematics, or computer "
+        "science. Also covers quantitative biology preprints not on bioRxiv. "
+        "Example queries: 'transformer attention mechanisms', 'quantum error "
+        "correction surface codes', 'reinforcement learning from human feedback'."
+    )
+
+    query_guidance = (
+        "The query is wrapped as `all:{query}` and sent to the arXiv API's "
+        "`search_query` parameter, but a query starting with a field prefix "
+        "overrides this. Field prefixes: ti: (title), abs: (abstract), au: "
+        "(author), cat: (subject category, e.g., cs.LG, stat.ML, q-bio.PE, "
+        "math.ST, hep-ph, cond-mat), all: (all fields), jr: (journal-ref), "
+        'id: (arXiv ID). Boolean: AND, OR, ANDNOT. Phrase quoting ("...").\n'
+        "\n"
+        "Query styles that all work:\n"
+        "- Plain bag of terms (auto-prefixed `all:`): transformer attention "
+        "mechanism\n"
+        '- Title-restricted: ti:"reinforcement learning"\n'
+        "- Category plus topic: cat:cs.LG AND ti:transformer\n"
+        "- Author plus topic: au:Hinton AND backpropagation\n"
+        "- Title plus abstract: ti:diffusion AND abs:image\n"
+        "- Multi-category: (cat:cs.LG OR cat:stat.ML) AND ti:scaling\n"
+        "- arXiv ID lookup: id:2305.12345\n"
+        "\n"
+        "Coverage: physics, math, CS, quantitative biology, quantitative "
+        "finance, statistics, EE, economics. No clinical or wet-lab biomedical "
+        "literature here. Use cat: prefixes to scope to the right subdomain."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "preprint_archive"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

@@ -54,6 +54,42 @@ class MonarchProvider:
     No auth required. No documented rate limit.
     """
 
+    description = (
+        "Curated gene–disease and gene–phenotype associations aggregated from "
+        "OMIM, HPO (Human Phenotype Ontology), Orphanet, ClinVar, and model organism "
+        "databases by the Monarch Initiative. Best for questions about which genes "
+        "are linked to which diseases, phenotype-driven rare disease diagnosis, "
+        "variant–disease significance, and cross-species orthology of disease genes. "
+        "Example queries: 'genes associated with hypertrophic cardiomyopathy', "
+        "'phenotypes caused by COL1A1 mutations', 'rare diseases linked to mitochondrial "
+        "complex I deficiency', 'clinical significance of BRCA1 c.5266dupC variant'."
+    )
+
+    query_guidance = (
+        "The query goes to Monarch's `/search` `q` parameter. Accepts: gene "
+        "symbols, disease names, phenotype terms, ontology IDs (HGNC:, MONDO:, "
+        "HP:, OMIM:, ORPHA:), and variants.\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Gene symbol: BRCA1\n"
+        "- Gene plus disease: BRCA1 breast cancer\n"
+        "- Disease name: cystic fibrosis\n"
+        "- HPO phenotype term: intellectual disability\n"
+        "- MONDO disease ID: MONDO:0008029\n"
+        "- HGNC gene ID: HGNC:1100\n"
+        "- HPO phenotype ID: HP:0001263\n"
+        "- Variant: c.5266dupC BRCA1\n"
+        "\n"
+        "Monarch is curated gene-disease-phenotype association data, not "
+        "literature. Use only for 'what genes are linked to X' or 'what "
+        "phenotypes does mutation in Y cause'. 1–3 token queries are optimal."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "structured_record"
+    independence_group = "genetics_structured"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

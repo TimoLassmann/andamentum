@@ -31,6 +31,47 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 class EuropePMCProvider:
     """Evidence provider using the Europe PMC REST API."""
 
+    description = (
+        "Comprehensive biomedical and life sciences literature from Europe PMC, "
+        "covering PubMed, PMC full-text, preprints, and patents. Returns full "
+        "abstracts for all results. Use for any biomedical literature search, "
+        "especially when full abstracts are needed or when searching across "
+        "preprints and published articles simultaneously. Example queries: "
+        "'CRISPR-Cas9 gene editing efficiency in vivo', 'single-cell RNA "
+        "sequencing methods comparison', 'gut microbiome and immune response'."
+    )
+
+    query_guidance = (
+        "The query goes to Europe PMC's `search` endpoint as the `query` "
+        "parameter. Native field operators: TITLE:, ABSTRACT:, KW: (keyword), "
+        "AUTH: (author), AFF: (affiliation), JOURNAL:, ISSN:, DOI:, PMID:, "
+        "PUB_YEAR:, FIRST_AUTH:, OPEN_ACCESS:y, SRC: (MED, PRE for preprints, "
+        "AGR for agricultural, CTX, ETH, HIR). Boolean (AND, OR, NOT), phrase "
+        'quoting ("..."), wildcards (cancer*), range syntax ([2020 TO 2025]).\n'
+        "\n"
+        "Query styles that all work:\n"
+        "- Plain text: CRISPR Cas9 gene editing efficiency\n"
+        '- Title-restricted: TITLE:"metformin" AND TITLE:"HbA1c"\n'
+        '- Title OR keyword plus abstract: (TITLE:"metformin" OR '
+        'KW:"metformin") AND ABSTRACT:"glycemic"\n'
+        "- Date-bounded: metformin HbA1c PUB_YEAR:[2020 TO 2025]\n"
+        '- Open-access only: "single cell" AND OPEN_ACCESS:y\n'
+        '- Author plus topic: AUTH:"Madsen" AND metformin\n'
+        "- Source-filtered (preprints): metformin SRC:PRE\n"
+        '- DOI / PMID lookup: DOI:"10.1001/jama.2022.0078"\n'
+        "\n"
+        "Plain-text queries get heavily diluted by conference abstract "
+        "collections (ESICM LIVES, UEG Week, ECTS Congress, etc., which "
+        "contain thousands of mentions of any biomedical term) — prefer "
+        "field-restricted queries when possible. PubMed-style [MeSH] field "
+        "tags do NOT work here. The `site:` operator does not work."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "biomedical_literature"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
 

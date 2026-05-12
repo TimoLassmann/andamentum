@@ -28,6 +28,43 @@ BIORXIV_API = "https://api.biorxiv.org"
 class BioRxivProvider:
     """Evidence provider using bioRxiv/medRxiv preprint API."""
 
+    description = (
+        "Preprint server for unpublished, pre-peer-review biology and medicine "
+        "manuscripts. Use this provider ONLY when the question explicitly asks "
+        "about preprints, unpublished research, work that has not yet been peer "
+        "reviewed, cutting-edge results that have not yet appeared in journals, "
+        "or the very latest findings. If the question does not mention preprints "
+        "or unpublished work, prefer pubmed or openalex instead. Example queries: "
+        "'recent preprints on protein language models', 'unpublished findings on "
+        "AlphaFold3 accuracy', 'latest preprint results about CRISPR prime "
+        "editing efficiency', 'not-yet-published research on long COVID biomarkers'."
+    )
+
+    query_guidance = (
+        "The query is wrapped as `{query} AND (biorxiv[filter] OR "
+        "medrxiv[filter])` and sent to NCBI esearch — so all PubMed query "
+        "syntax (Boolean, MeSH, [tiab]/[ti]/[ab], [au], [pdat], phrase "
+        "quoting, wildcards) is supported, scoped to bioRxiv and medRxiv "
+        "preprints indexed by NCBI.\n"
+        "\n"
+        "Query styles that all work:\n"
+        "- Plain text: protein language model AlphaFold\n"
+        '- MeSH-anchored: "COVID-19"[MeSH] AND vaccine\n'
+        '- Title-restricted: "organoid"[ti] AND brain\n'
+        "- Date-bounded: single cell sequencing 2024:2025[pdat]\n"
+        "- Author plus topic: Salzberg[au] AND genome assembly\n"
+        '- Topic plus study type: "protein structure"[tiab] AND prediction\n'
+        "\n"
+        "bioRxiv and medRxiv preprint indexing in PubMed is partial — not "
+        "every preprint reaches NCBI. Best for 'recent preprints on X' rather "
+        "than 'the definitive answer to X'. The `site:` operator does not work."
+    )
+
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "preprint_archive"
+    provider_contract_version = 1
+
     def __init__(self, max_results: int = 10, server: str = "biorxiv"):
         self.max_results = max_results
         self.server = server  # "biorxiv" or "medrxiv"
