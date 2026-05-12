@@ -80,11 +80,9 @@ class TestAdapterRegistry:
             "epistemic_classify_question",
             "epistemic_contrastive_evaluation",
             "epistemic_cross_claim_consistency",
-            "epistemic_formulate_query",
             "epistemic_extract_assertion",
             "epistemic_draft_claim",
             "epistemic_identify_single_issue",
-            "epistemic_select_provider",
         }
         assert set(ADAPTERS.keys()) == expected
 

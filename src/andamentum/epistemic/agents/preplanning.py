@@ -1,13 +1,21 @@
-"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, decompose_question, select_provider, formulate_query."""
+"""Preplanning agents — clarify_question, classify_question, conceptual_analysis, decompose_question, rank_providers.
+
+The legacy ``epistemic_select_provider`` and ``epistemic_formulate_query``
+agents were retired alongside ``PlanTaskOperation`` when description-driven
+dispatch (``epistemic_dispatch_provider`` in ``agents/dispatch.py``) became
+the only evidence-gathering path. ``epistemic_rank_providers`` survives
+because ``InvestigateClaimOperation`` still uses it to pick the next
+provider for lazy-escalation during follow-up rounds; that call site is
+slated for replacement when investigation is rewritten as an intent /
+routing split.
+"""
 
 from .output_models import (
     ClarifyQuestionOutput,
     ClassifyQuestionOutput,
     ConceptualAnalysisOutput,
-    FormulateQueryOutput,
     QuestionDecomposition,
     RankProvidersOutput,
-    SelectProviderOutput,
 )
 from . import AgentDefinition, register_agent
 
@@ -472,38 +480,6 @@ register_agent(
 )
 
 
-# ── epistemic_select_provider ──────────────────────────────────────────────
-
-SELECT_PROVIDER_PROMPT = """\
-# Evidence Provider Selector
-
-You decide whether a specific evidence provider is relevant to a research question.
-
-## Your Task
-You will see a research question and a description of one evidence provider.
-Decide: is this provider likely to have relevant evidence for this question?
-
-## Guidelines
-- Read the provider description carefully — it tells you what this source contains
-- A provider is relevant if the question's topic falls within the provider's domain
-- When in doubt, err toward relevant (it is better to check a source and find
-  nothing than to skip a source that had the answer)
-- Do not consider whether the provider will SUPPORT or CONTRADICT the claim —
-  only whether it covers the right topic
-
-Answer with a clear yes or no and a brief reason."""
-
-register_agent(
-    AgentDefinition(
-        name="epistemic_select_provider",
-        prompt=SELECT_PROVIDER_PROMPT,
-        output_model=SelectProviderOutput,
-        retries=2,
-        output_retries=3,
-    )
-)
-
-
 # ── epistemic_rank_providers ──────────────────────────────────────────────
 
 RANK_PROVIDERS_PROMPT = """\
@@ -565,56 +541,3 @@ register_agent(
 )
 
 
-# ── epistemic_formulate_query ───────────────────────────────────────────────
-
-FORMULATE_QUERY_PROMPT = """\
-# Search Query Formulator
-
-You write one search query in the native syntax of a specific evidence
-provider.
-
-## Inputs
-- question: the research question / sub-claim under investigation
-- provider: the provider name
-- query_guidance: the provider's native query language plus a catalogue
-  of valid query styles
-- provider_description: what content this provider contains (for context;
-  query syntax is in query_guidance)
-
-## Your task
-Read query_guidance carefully. The catalogue lists multiple syntactically
-different forms — all of them work. Choose the form whose strengths best
-target the question's specific information need:
-
-- For a topic-shaped question, plain text or short Boolean usually
-  suffices.
-- For a question that names a specific intervention, condition, outcome,
-  gene, drug, or trial, prefer the field-restricted or ID-based form when
-  the provider supports one.
-- For a question constrained by year, journal, author, or study type, use
-  the corresponding field qualifier.
-- Respect operators that the guidance flags as unsupported.
-
-Do NOT mechanically copy one style across all queries. Different
-sub-claims warrant different forms.
-
-Frame the query around the TOPIC, not around one side of the argument.
-Avoid phrasing that presupposes a particular answer.
-
-## Output
-- query: one query string in the provider's native syntax, no surrounding
-  prose.
-- rationale: one sentence on why this style fits this question and this
-  provider.
-
-Now write the query."""
-
-register_agent(
-    AgentDefinition(
-        name="epistemic_formulate_query",
-        prompt=FORMULATE_QUERY_PROMPT,
-        output_model=FormulateQueryOutput,
-        retries=3,
-        output_retries=5,
-    )
-)

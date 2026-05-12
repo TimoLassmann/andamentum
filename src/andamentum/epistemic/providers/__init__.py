@@ -33,69 +33,31 @@ from .arxiv import ArXivProvider
 # ── Provider Registry ────────────────────────────────────────────────────────
 
 PROVIDER_REGISTRY: dict[str, type] = {}
+
+# Mirror of each provider class's ``description`` attribute, indexed by
+# registration name. Populated automatically by ``register_provider``.
+# Read by ``InvestigateClaimOperation`` to feed the ``epistemic_rank_providers``
+# agent during lazy-escalation. The description-driven dispatch path reads
+# ``description`` directly off the provider class (the canonical location);
+# this dict exists only because the legacy investigation rotation still
+# expects name → description lookup.
 PROVIDER_DESCRIPTIONS: dict[str, str] = {}
-PROVIDER_QUERY_GUIDANCE: dict[str, str] = {}
 
 
-def register_provider(
-    name: str,
-    cls: type,
-    description: str = "",
-    query_guidance: str = "",
-) -> None:
+def register_provider(name: str, cls: type) -> None:
     """Register a provider class.
 
-    ``description`` describes content scope and when to pick this provider —
-    read by the ranker / dispatch agent. ``query_guidance`` describes the
-    provider's native query language with a catalogue of valid styles — read
-    by the legacy formulator (still load-bearing through Phases 1–4 of the
-    description-driven-dispatch refactor, removed in Phase 5).
-
-    **Migration shim (description-driven-dispatch Phase 1).** This function
-    is the bridge between the legacy "data lives in the registry call" world
-    and the post-refactor "data lives on the provider class" world. Both work:
-
-    - If a provider class declares ``description`` and/or ``query_guidance``
-      as class attributes, those are used preferentially (post-refactor
-      providers do this).
-    - If kwargs are passed explicitly to ``register_provider``, those win
-      over class attributes (legacy migration not yet complete for this
-      provider).
-    - If neither, the registry-level value is empty.
-
-    The dispatch-agent-readable contract — ``description``, ``query_examples``,
+    Data — ``description``, ``query_guidance``, ``query_examples``,
     ``output_kind``, ``independence_group``, ``provider_contract_version`` —
-    lives entirely on the provider class. The shim does not consume those
-    fields; they are read directly by the dispatch path in Phase 2 onwards.
+    lives on the provider class as class attributes. This function only
+    indexes the class under ``name`` in ``PROVIDER_REGISTRY`` and snapshots
+    the ``description`` attribute into ``PROVIDER_DESCRIPTIONS`` for the
+    investigation-rotation use case noted above.
     """
     PROVIDER_REGISTRY[name] = cls
-
-    # Prefer class attributes (post-refactor pattern) over kwargs (legacy).
-    effective_description = description or getattr(cls, "description", "")
-    effective_query_guidance = query_guidance or getattr(cls, "query_guidance", "")
-
-    if effective_description:
-        PROVIDER_DESCRIPTIONS[name] = effective_description
-    if effective_query_guidance:
-        PROVIDER_QUERY_GUIDANCE[name] = effective_query_guidance
-
-
-def get_source_catalogue() -> str:
-    """Build a formatted catalogue of available providers for the planning agent.
-
-    Returns a markdown-formatted list of provider names and domain descriptions.
-    """
-    lines = []
-    for name in sorted(PROVIDER_REGISTRY):
-        desc = PROVIDER_DESCRIPTIONS.get(name, "")
-        if desc:
-            lines.append(f"- **{name}**: {desc}")
-        else:
-            lines.append(f"- **{name}**")
-    lines.append(
-        "- **web_search**: General-purpose web search with evidence synthesis (always available as fallback)"
-    )
-    return "\n".join(lines)
+    description = getattr(cls, "description", "")
+    if description:
+        PROVIDER_DESCRIPTIONS[name] = description
 
 
 def get_provider(name: str, **kwargs: Any) -> Any:
@@ -146,13 +108,6 @@ register_provider("cochrane", CochraneProvider)
 register_provider("arxiv", ArXivProvider)
 
 
-# PROVIDER_EXAMPLES was deleted as part of the description-driven-dispatch
-# refactor (Phase 1, 2026-05-12). Its only consumer was the deleted
-# `provider_routing.py` module. Per-provider example queries are now
-# colocated on each provider class as ``query_examples`` (populated in
-# Phase 2 when the dispatch agent is built).
-
-
 __all__ = [
     # Provider classes
     "OpenAlexProvider",
@@ -169,10 +124,8 @@ __all__ = [
     # Registry
     "PROVIDER_REGISTRY",
     "PROVIDER_DESCRIPTIONS",
-    "PROVIDER_QUERY_GUIDANCE",
     "register_provider",
     "get_provider",
     "get_all_providers",
     "get_biomedical_providers",
-    "get_source_catalogue",
 ]

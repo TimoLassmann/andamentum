@@ -457,8 +457,8 @@ class Decompose(Node):
     ``DecomposeQuestionOperation`` to populate ``objective.decomposition``
     so:
 
-    * ``PlanTaskOperation`` formulates queries per sub-investigation
-      (per-claim evidence pool, Option-2).
+    * ``DispatchGatherOperation`` dispatches queries per
+      sub-investigation (per-claim evidence pool, Option-2).
     * ``CreateClaims`` routes to ``MultiSeedClaimOperation`` (one Claim
       per sub-investigation, sub_investigation_id-tagged).
     * ``CombineClaimVerdicts`` applies the decomposition's
@@ -510,26 +510,26 @@ class Decompose(Node):
 
 @dataclass
 class PlanEvidence(Node):
-    """Plan evidence gathering — branches on ``state.dispatch_mode``.
+    """Plan and execute evidence gathering via description-driven dispatch.
 
-    Legacy mode (``"legacy"``, default): run ``PlanTaskOperation``, which
-    uses the three-agent chain (select_provider + rank_providers +
-    formulate_query) to create one Evidence stub per (sub-claim,
-    provider). ``ExtractEvidence`` then fills each stub by calling its
-    provider.
+    Runs ``DispatchGatherOperation``: one dispatch-agent call per
+    (provider, sub-claim), each combining route + query into a single
+    decision. Providers that the agent decides to abstain on never have
+    their HTTP-call layer reached. Returned ``GatheredEvidence`` items
+    are persisted as Evidence entities with content + quality scoring
+    already attached, so the downstream ``ExtractEvidence`` node sees
+    no ``extracted=False`` stubs and proceeds straight to the
+    retrieval-health check.
 
-    New mode (``"new"``): run ``DispatchGatherOperation``, which uses
-    the description-driven dispatch agent (one LLM call per provider
-    per sub-claim, combining route + query into a single decision) and
-    persists Evidence with content + quality scoring already attached.
-    The downstream ``ExtractEvidence`` node sees no ``extracted=False``
-    stubs and harmlessly proceeds to the retrieval-health check.
-
-    Phase 5 of the Move-3 plan; dispatch_mode branch added Phase 4 of
-    the description-driven-dispatch PRD (2026-05-12).
+    The legacy three-agent gather path (PlanTaskOperation +
+    epistemic_select_provider + epistemic_formulate_query) was
+    decommissioned once dev30 v6 demonstrated the description-driven
+    dispatch is faster, less wasteful, and at-or-better on calibration.
+    See ``docs/superpowers/plans/2026-05-12-description-driven-provider-
+    dispatch.md`` §6.
     """
 
-    reads = frozenset({"objective_id", "dispatch_mode"})
+    reads = frozenset({"objective_id"})
     writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
@@ -540,19 +540,7 @@ class PlanEvidence(Node):
         state = ctx.state
         deps = ctx.deps
 
-        if state.dispatch_mode == "new":
-            await self._run_new_dispatch(state, deps)
-        else:
-            from ..operations.preplanning import PlanTaskOperation
-
-            await _run_op(
-                PlanTaskOperation,
-                deps,
-                state,
-                state.objective_id,
-                "objective",
-                "plan_task",
-            )
+        await self._run_dispatch(state, deps)
 
         obj = await deps.repo.get("objective", state.objective_id)
         obj.phase = "planned"
@@ -560,7 +548,7 @@ class PlanEvidence(Node):
 
         return ExtractEvidence()
 
-    async def _run_new_dispatch(
+    async def _run_dispatch(
         self, state: EpistemicGraphState, deps: EpistemicDeps
     ) -> None:
         """Execute ``DispatchGatherOperation`` with the providers from
@@ -3013,7 +3001,6 @@ from ..operations.preplanning import (  # noqa: E402
     ClassifyQuestionOperation,
     ConceptualAnalysisOperation,
     DecomposeQuestionOperation,
-    PlanTaskOperation,
 )
 from ..operations.evidence import (  # noqa: E402
     ExtractEvidenceOperation,
@@ -3045,7 +3032,7 @@ PrepareObjective.operations = frozenset(
 Decompose.operations = frozenset({DecomposeQuestionOperation})
 
 
-PlanEvidence.operations = frozenset({PlanTaskOperation, DispatchGatherOperation})
+PlanEvidence.operations = frozenset({DispatchGatherOperation})
 
 
 ExtractEvidence.operations = frozenset({ExtractEvidenceOperation})

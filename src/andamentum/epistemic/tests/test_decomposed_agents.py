@@ -55,26 +55,6 @@ class TestCheckPairwiseIndependenceAgent:
         assert result.independent is False
 
 
-from ..agents.output_models import FormulateQueryOutput  # noqa: E402
-
-
-class TestFormulateQueryAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_formulate_query")
-        assert agent.name == "epistemic_formulate_query"
-
-    def test_output_model_fields(self):
-        fields = FormulateQueryOutput.model_fields
-        assert "query" in fields
-        assert "rationale" in fields
-        assert len(fields) == 2
-
-    def test_adapter(self):
-        raw = SimpleNamespace(query="  BRCA1 breast cancer risk  ", rationale="test")
-        result = adapt_agent_output("epistemic_formulate_query", raw)
-        assert result.query == "BRCA1 breast cancer risk"
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Prediction decomposition agents (identify → specify → falsify → classify)
 # ──────────────────────────────────────────────────────────────────────────────

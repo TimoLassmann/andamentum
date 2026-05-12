@@ -477,20 +477,6 @@ class CrossClaimConsistencyOutput(BaseModel):
     )
 
 
-class SelectProviderOutput(BaseModel):
-    """Output from epistemic_select_provider agent.
-
-    Narrow binary judgment: is this provider relevant to this question?
-    """
-
-    relevant: bool = Field(
-        description="True if this provider is likely to have relevant evidence for the question"
-    )
-    reasoning: str = Field(
-        description="One sentence explaining why this provider is or is not relevant"
-    )
-
-
 class RankProvidersOutput(BaseModel):
     """Output from epistemic_rank_providers agent.
 
@@ -516,18 +502,6 @@ class RankProvidersOutput(BaseModel):
             "likely to give a high-information-density answer for the "
             "specific sub-claim being investigated."
         )
-    )
-
-
-class FormulateQueryOutput(BaseModel):
-    """Output from epistemic_formulate_query agent.
-
-    Narrow agent: produces one search query optimized for a specific provider.
-    """
-
-    query: str = Field(description="Search query in the provider's native syntax")
-    rationale: str = Field(
-        description="One sentence: why this query style fits this question and provider"
     )
 
 

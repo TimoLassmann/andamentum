@@ -1,19 +1,14 @@
-"""Tests for the dispatch_mode wiring on run_epistemic_graph.
+"""Tests for DispatchGatherOperation and the PlanEvidence node wiring.
 
-Phase 4 of the description-driven-dispatch PRD. Verifies that:
+Description-driven dispatch is the only evidence-gathering path. These
+tests cover:
 
-- The default ``dispatch_mode="legacy"`` preserves the v5 path
-  (PlanTaskOperation runs, the new ``DispatchGatherOperation`` does
-  not).
-- Setting ``dispatch_mode="new"`` routes ``PlanEvidence`` to
-  ``DispatchGatherOperation``, which calls
-  ``dispatch.gather_evidence_new`` and persists Evidence entities
-  with content + scoring already attached.
-- Both branches leave ``objective.phase = "planned"`` so downstream
-  nodes are oblivious to which path was taken.
+- ``DispatchGatherOperation`` persist / abstain / phase-advance behaviour.
+- ``PlanEvidence`` routes objective through DispatchGatherOperation and
+  quarantines correctly on operation failure.
 
-Tests use a stub agent runner and stub providers — no live LLM, no
-HTTP calls.
+Tests use a stub agent runner and stub providers — no live LLM, no HTTP
+calls.
 """
 
 from __future__ import annotations
@@ -25,7 +20,7 @@ import pytest
 
 from andamentum.epistemic.entities import Objective
 from andamentum.epistemic.graph.deps import EpistemicDeps
-from andamentum.epistemic.graph.nodes import PlanEvidence, ExtractEvidence
+from andamentum.epistemic.graph.nodes import ExtractEvidence, PlanEvidence
 from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.operations.base import GatheredEvidence
 from andamentum.epistemic.operations.dispatch_gather import DispatchGatherOperation
@@ -71,7 +66,6 @@ class _DispatchStubRunner:
         self.calls.append((agent_name, kwargs))
         if agent_name == "epistemic_assess_evidence_quality":
             return SimpleNamespace(**self._scoring)
-        # Default permissive response for other agents.
         return SimpleNamespace()
 
 
@@ -98,7 +92,7 @@ class _CoreRunnerStub:
 
 
 class _StubProvider:
-    """Minimal provider implementing the Phase-1 dispatch contract."""
+    """Minimal provider implementing the dispatch contract."""
 
     description = (
         "Stub provider. Strong for stub claims. Weak for irrelevant claims. "
@@ -121,23 +115,6 @@ class _StubProvider:
     async def gather(self, query: str) -> list[GatheredEvidence]:
         self.gather_calls.append(query)
         return list(self._gathered)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# State tests
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class TestEpistemicGraphStateDispatchMode:
-    def test_dispatch_mode_defaults_to_legacy(self) -> None:
-        state = EpistemicGraphState(objective_id="o1", question="q?")
-        assert state.dispatch_mode == "legacy"
-
-    def test_dispatch_mode_can_be_set_to_new(self) -> None:
-        state = EpistemicGraphState(
-            objective_id="o1", question="q?", dispatch_mode="new"
-        )
-        assert state.dispatch_mode == "new"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -192,7 +169,6 @@ class TestDispatchGatherOperation:
         assert ev.extracted is True
         assert ev.extracted_content == "Stub evidence content."
         assert ev.source_type == "stub_a"
-        # Quality score should be filled — provider supplied 0.8.
         assert ev.quality_score is not None
         assert provider.gather_calls == ["stub query"]
 
@@ -204,7 +180,7 @@ class TestDispatchGatherOperation:
         runner = _DispatchStubRunner(
             dispatch_responses={
                 "stub_a": {
-                    "queries": [],  # abstain
+                    "queries": [],
                     "reasoning": "not in scope",
                     "confidence": 0.9,
                 }
@@ -219,7 +195,6 @@ class TestDispatchGatherOperation:
         )
 
         assert result.success
-        # Dispatch was called, gather was NOT.
         assert provider.gather_calls == []
         ev_list = await repo.query("evidence", objective_id="obj_test")
         assert ev_list == []
@@ -275,66 +250,50 @@ class TestDispatchGatherOperation:
 
         assert result.success
         assert "not 'analyzed'" in result.message
-        # No dispatch, no gather, no evidence
         assert provider.gather_calls == []
         ev_list = await repo.query("evidence", objective_id="obj_x")
         assert ev_list == []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PlanEvidence routing tests
+# PlanEvidence node — wiring tests
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class TestPlanEvidenceRouting:
-    async def test_legacy_mode_runs_plan_task(
+class TestPlanEvidenceWiring:
+    async def test_plan_evidence_dispatches_and_advances(
         self, repo: EpistemicRepository, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Default dispatch_mode runs PlanTaskOperation, not the new dispatch."""
+        """PlanEvidence runs DispatchGatherOperation and returns ExtractEvidence."""
         obj = Objective(
-            entity_id="obj_legacy",
-            objective_id="obj_legacy",
+            entity_id="obj_dispatch",
+            objective_id="obj_dispatch",
             description="q?",
             phase="analyzed",
         )
         await repo.save(obj)
 
-        plan_task_calls: list[str] = []
-        dispatch_gather_calls: list[str] = []
+        dispatch_calls: list[str] = []
 
-        from andamentum.epistemic.operations import preplanning as preplan_mod
-        from andamentum.epistemic.operations import (
-            dispatch_gather as dg_mod,
-        )
+        from andamentum.epistemic.operations import dispatch_gather as dg_mod
 
-        async def fake_plan_execute(self: Any, work: Any) -> Any:
+        async def fake_dispatch_execute(self: Any, work: Any) -> Any:
             from andamentum.epistemic.operations.base import OperationResult
-            plan_task_calls.append(work.entity_id)
+            dispatch_calls.append(work.entity_id)
             target = await self.repo.get("objective", work.entity_id)
             target.phase = "planned"
             await self.repo.save(target)
             return OperationResult(
-                success=True, entity_id=work.entity_id, message="legacy ran"
+                success=True, entity_id=work.entity_id, message="dispatched"
             )
 
-        async def fake_dispatch_execute(self: Any, work: Any) -> Any:
-            from andamentum.epistemic.operations.base import OperationResult
-            dispatch_gather_calls.append(work.entity_id)
-            return OperationResult(
-                success=True, entity_id=work.entity_id, message="new ran"
-            )
-
-        monkeypatch.setattr(
-            preplan_mod.PlanTaskOperation, "execute", fake_plan_execute
-        )
         monkeypatch.setattr(
             dg_mod.DispatchGatherOperation, "execute", fake_dispatch_execute
         )
 
         state = EpistemicGraphState(
-            objective_id="obj_legacy",
+            objective_id="obj_dispatch",
             question="q?",
-            dispatch_mode="legacy",
         )
         deps = EpistemicDeps(
             repo=repo,
@@ -345,77 +304,15 @@ class TestPlanEvidenceRouting:
         node = PlanEvidence()
         next_node = await node.run(_FakeCtx(state, deps))  # type: ignore[arg-type]
 
-        assert plan_task_calls == ["obj_legacy"]
-        assert dispatch_gather_calls == []
+        assert dispatch_calls == ["obj_dispatch"]
         assert isinstance(next_node, ExtractEvidence)
 
-    async def test_new_mode_runs_dispatch_gather(
+    async def test_plan_evidence_quarantines_on_exception(
         self, repo: EpistemicRepository, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """dispatch_mode='new' routes to DispatchGatherOperation."""
-        obj = Objective(
-            entity_id="obj_new",
-            objective_id="obj_new",
-            description="q?",
-            phase="analyzed",
-        )
-        await repo.save(obj)
-
-        plan_task_calls: list[str] = []
-        dispatch_gather_calls: list[str] = []
-
-        from andamentum.epistemic.operations import preplanning as preplan_mod
-        from andamentum.epistemic.operations import (
-            dispatch_gather as dg_mod,
-        )
-
-        async def fake_plan_execute(self: Any, work: Any) -> Any:
-            from andamentum.epistemic.operations.base import OperationResult
-            plan_task_calls.append(work.entity_id)
-            return OperationResult(
-                success=True, entity_id=work.entity_id, message="legacy ran"
-            )
-
-        async def fake_dispatch_execute(self: Any, work: Any) -> Any:
-            from andamentum.epistemic.operations.base import OperationResult
-            dispatch_gather_calls.append(work.entity_id)
-            target = await self.repo.get("objective", work.entity_id)
-            target.phase = "planned"
-            await self.repo.save(target)
-            return OperationResult(
-                success=True, entity_id=work.entity_id, message="new ran"
-            )
-
-        monkeypatch.setattr(
-            preplan_mod.PlanTaskOperation, "execute", fake_plan_execute
-        )
-        monkeypatch.setattr(
-            dg_mod.DispatchGatherOperation, "execute", fake_dispatch_execute
-        )
-
-        state = EpistemicGraphState(
-            objective_id="obj_new",
-            question="q?",
-            dispatch_mode="new",
-        )
-        deps = EpistemicDeps(
-            repo=repo,
-            agent_runner=_DispatchStubRunner(),
-            providers={"stub_a": _StubProvider(name="stub_a", gathered=[])},
-        )
-
-        node = PlanEvidence()
-        next_node = await node.run(_FakeCtx(state, deps))  # type: ignore[arg-type]
-
-        assert plan_task_calls == []
-        assert dispatch_gather_calls == ["obj_new"]
-        assert isinstance(next_node, ExtractEvidence)
-
-    async def test_dispatch_gather_quarantines_on_exception(
-        self, repo: EpistemicRepository, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """If DispatchGatherOperation raises, the node records a quarantine
-        rather than propagating — matches _run_op's contract."""
+        """If DispatchGatherOperation raises, PlanEvidence records a
+        quarantine rather than propagating — matches the _run_op contract
+        for other nodes."""
         obj = Objective(
             entity_id="obj_boom",
             objective_id="obj_boom",
@@ -424,9 +321,7 @@ class TestPlanEvidenceRouting:
         )
         await repo.save(obj)
 
-        from andamentum.epistemic.operations import (
-            dispatch_gather as dg_mod,
-        )
+        from andamentum.epistemic.operations import dispatch_gather as dg_mod
 
         async def boom_execute(self: Any, work: Any) -> Any:
             raise RuntimeError("simulated dispatch failure")
@@ -438,7 +333,6 @@ class TestPlanEvidenceRouting:
         state = EpistemicGraphState(
             objective_id="obj_boom",
             question="q?",
-            dispatch_mode="new",
         )
         deps = EpistemicDeps(
             repo=repo,
@@ -449,7 +343,6 @@ class TestPlanEvidenceRouting:
         node = PlanEvidence()
         await node.run(_FakeCtx(state, deps))  # type: ignore[arg-type]
 
-        # Quarantine recorded, no exception propagated.
         assert any(
             q.entity_id == "obj_boom" and q.operation == "dispatch_gather"
             for q in state.quarantined

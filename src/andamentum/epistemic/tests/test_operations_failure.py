@@ -1098,7 +1098,6 @@ class TestCreateOperationsErrorHandling:
         expected = {
             "clarify_question",
             "conceptual_analysis",
-            "plan_task",
             "propose_claims",
             "extract_evidence",
             "scrutinise_claim",

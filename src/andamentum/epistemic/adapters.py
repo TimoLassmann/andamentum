@@ -559,44 +559,6 @@ def adapt_cross_claim_consistency(raw: Any) -> CrossClaimConsistencyResult:
 
 
 @dataclass
-class FormulateQueryResult:
-    """Result from search query formulation.
-
-    Manifest fields: query, rationale.
-    """
-
-    query: str
-    rationale: str
-
-
-@dataclass
-class SelectProviderResult:
-    """Result from provider selection.
-
-    Manifest fields: relevant, reasoning.
-    """
-
-    relevant: bool
-    reasoning: str
-
-
-def adapt_select_provider(raw: Any) -> SelectProviderResult:
-    """Adapt epistemic_select_provider output."""
-    return SelectProviderResult(
-        relevant=bool(raw.relevant),
-        reasoning=str(raw.reasoning).strip(),
-    )
-
-
-def adapt_formulate_query(raw: Any) -> FormulateQueryResult:
-    """Adapt epistemic_formulate_query output."""
-    return FormulateQueryResult(
-        query=raw.query.strip(),
-        rationale=raw.rationale.strip(),
-    )
-
-
-@dataclass
 class ExtractAssertionResult:
     """Result from assertion extraction.
 
@@ -662,8 +624,6 @@ ADAPTERS: dict[str, Callable[..., Any]] = {
     "epistemic_classify_question": adapt_classify_question,
     "epistemic_contrastive_evaluation": adapt_contrastive_evaluation,
     "epistemic_cross_claim_consistency": adapt_cross_claim_consistency,
-    "epistemic_select_provider": adapt_select_provider,
-    "epistemic_formulate_query": adapt_formulate_query,
     "epistemic_extract_assertion": adapt_extract_assertion,
     "epistemic_draft_claim": adapt_draft_claim,
     "epistemic_identify_single_issue": adapt_identify_single_issue,
