@@ -531,6 +531,51 @@ class FormulateQueryOutput(BaseModel):
     )
 
 
+class DispatchProviderOutput(BaseModel):
+    """Output from epistemic_dispatch_provider agent.
+
+    The description-driven-dispatch agent's decision for ONE provider.
+    Replaces the three-agent chain (select_provider + rank_providers +
+    formulate_query) with a single per-provider call that does triage
+    AND query construction together.
+
+    Flat schema for small-LLM compatibility. ``queries`` is a list of
+    0+ native-syntax query strings: empty means "this provider should
+    abstain for this claim"; one is the common case; two is permitted
+    when the provider benefits from complementary queries (e.g., PubMed
+    MeSH-anchored + free-text fallback).
+    """
+
+    queries: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Zero or more native-syntax query strings for this provider. "
+            "An empty list means the provider should abstain — its "
+            "description-stated coverage doesn't match the claim. "
+            "One query is the common case. Two queries is permitted "
+            "when complementary searches add real value (e.g., MeSH-"
+            "anchored boolean + free-text fallback for PubMed). Never "
+            "more than two."
+        ),
+    )
+    reasoning: str = Field(
+        description=(
+            "One sentence: why the chosen queries match this provider's "
+            "stated coverage, or why the provider should abstain."
+        )
+    )
+    confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Confidence that the routing decision is correct, [0, 1]. "
+            "High confidence on abstention is OK — it means the agent "
+            "is sure the provider can't help."
+        ),
+    )
+
+
 # ── Claim Proposal Decomposition ───────────────────────────────────────────
 
 

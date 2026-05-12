@@ -47,6 +47,7 @@ from . import synthesis as _synthesis  # noqa: E402, F401
 from . import similarity as _similarity  # noqa: E402, F401
 from . import judge as _judge  # noqa: E402, F401
 from . import integration as _integration  # noqa: E402, F401
+from . import dispatch as _dispatch  # noqa: E402, F401
 
 __all__ = [
     "AgentDefinition",
