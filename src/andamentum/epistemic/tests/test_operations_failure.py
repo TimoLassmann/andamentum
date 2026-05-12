@@ -949,7 +949,9 @@ class TestInvestigateClaimFailure:
         )
 
         runner = FakeAgentRunner()
-        op = InvestigateClaimOperation(failing_repo, runner)
+        op = InvestigateClaimOperation(
+            failing_repo, runner, providers={"stub": object()}
+        )
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
@@ -971,7 +973,9 @@ class TestInvestigateClaimFailure:
         )
 
         runner = FakeAgentRunner()
-        op = InvestigateClaimOperation(failing_repo, runner)
+        op = InvestigateClaimOperation(
+            failing_repo, runner, providers={"stub": object()}
+        )
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
@@ -997,7 +1001,9 @@ class TestInvestigateClaimFailure:
         await repo.save(claim)
 
         runner = FakeAgentRunner()
-        op = InvestigateClaimOperation(repo, runner)
+        op = InvestigateClaimOperation(
+            repo, runner, providers={"stub": object()}
+        )
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",

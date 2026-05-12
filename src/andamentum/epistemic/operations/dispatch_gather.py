@@ -1,71 +1,137 @@
-"""Description-driven evidence gathering — new dispatch path.
+"""Description-driven evidence gathering — initial-gather operation
+plus a shared helper used by the follow-up investigation operation.
 
-Phase 4 of the description-driven-dispatch PRD
-(``docs/superpowers/plans/2026-05-12-description-driven-provider-
-dispatch.md``).
+This module holds:
 
-This operation is the new-mode counterpart to the legacy pair
-``PlanTaskOperation`` (creates Evidence stubs via three-agent chain)
-plus ``ExtractEvidenceOperation`` (fills each stub by calling its
-provider). It collapses both into one step:
+1. ``DispatchGatherOperation`` — the initial gather. Driven by
+   ``PlanEvidence``, run once per objective at the start of inquiry.
+   Iterates the objective's sub-investigations (or the clarified
+   question if there's no decomposition) and feeds each one to
+   ``dispatch_and_persist_for_text``.
 
-1. For each sub-investigation (or the objective itself when no
-   decomposition exists), call ``dispatch.gather_evidence_new``.
-2. ``gather_evidence_new`` runs the description-driven dispatch agent
-   once per provider in parallel: each agent decides whether to abstain
-   or commit one or two native-syntax queries, then provider HTTP calls
-   fan out in parallel.
-3. Returned ``GatheredEvidence`` items are persisted as Evidence
-   entities with ``extracted=True`` and quality scoring already applied
-   — so the downstream ``ExtractEvidence`` node harmlessly finds no
-   ``extracted=False`` stubs and proceeds.
+2. ``dispatch_and_persist_for_text`` — a module-level helper that runs
+   one search target through ``gather_evidence_new`` and persists the
+   returned ``GatheredEvidence`` items as Evidence entities with content
+   + quality scoring already attached. Both ``DispatchGatherOperation``
+   (initial gather) and ``InvestigateClaimOperation`` (follow-up rounds)
+   call this — there is one routing+persistence implementation, used
+   in both places.
 
-Scope discipline: this operation never falls back to the legacy path,
-never silently drops sub-investigations, and never fabricates evidence
-when providers return nothing. Zero-yield is honest — the retrieval-
-health check in ``ExtractEvidence`` will mark the objective
-``retrieval_failed``.
-
-Architecture: operations are pure transforms (P1). This operation
-reads the objective, does its work, and writes Evidence entities.
-The graph (``PlanEvidence`` node, branching on ``state.dispatch_mode``)
-controls when it runs.
+Scope discipline: neither operation falls back to a legacy path or
+fabricates evidence when providers return nothing. Zero-yield is
+honest — the retrieval-health check in ``ExtractEvidence`` /
+``ExtractNewEvidence`` marks the objective ``retrieval_failed``.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .base import BaseOperation, OperationInput, OperationResult
 from .evidence import ExtractEvidenceOperation
 
 from ..entities import Evidence, Objective
 
-if TYPE_CHECKING:
-    from .base import GatheredEvidence
-
 logger = logging.getLogger(__name__)
 
 
-class DispatchGatherOperation(BaseOperation):
-    """Run the description-driven dispatch path end-to-end on one objective.
+async def dispatch_and_persist_for_text(
+    op: BaseOperation,
+    text: str,
+    *,
+    objective_id: str,
+    providers: dict[str, Any],
+    core_runner: Any,
+    sub_investigation_id: str | None = None,
+    depends_on_claim_id: str | None = None,
+    created_by: str = "dispatch",
+) -> list[str]:
+    """Run one search target through the description-driven dispatch
+    path and persist each returned ``GatheredEvidence`` as an Evidence
+    entity. Returns the list of created Evidence entity ids.
 
-    Reads ``objective.decomposition`` to determine the per-sub-claim
-    fan-out, runs ``gather_evidence_new`` per sub-claim, persists each
-    returned ``GatheredEvidence`` as an Evidence entity with content +
-    quality score attached.
+    Both the initial-gather operation and the follow-up investigation
+    operation funnel through this function — there is one routing +
+    persistence implementation. The ``text`` argument is whatever the
+    caller wants the dispatch agent to interpret as a search target:
+
+    - Initial gather passes a sub-investigation's ``seed_claim`` (or
+      the clarified question when there's no decomposition).
+    - Investigation passes one **intent** from the rewritten
+      ``epistemic_investigate_claim`` agent — a natural-language
+      description of an evidence-gap angle.
+
+    The dispatch agent's prompt names its input "claim" but the
+    contract is "natural-language description of what to look for"; an
+    intent is the same shape.
+
+    Args:
+        op: The calling operation. Used as a context bag for
+            ``repo``, ``agent_runner``, ``evidence_gatherer``,
+            ``quality_scorer``, and ``embedding_model`` — the
+            dependencies needed to score evidence consistently with
+            the legacy ExtractEvidence path.
+        text: The search target the dispatch agent sees as "claim".
+        objective_id: Objective the evidence belongs to.
+        providers: ``{name: instance}`` provider registry.
+        core_runner: The core.agents.AgentRunner-shaped runner the
+            dispatch agent uses (``op.agent_runner.core_runner`` on
+            the DefaultAgentRunner).
+        sub_investigation_id: Propagated onto each Evidence so
+            MultiSeedClaim's per-claim filter sees it. Initial gather
+            sets this from ``sub.id``; investigation propagates it
+            from the claim under investigation.
+        depends_on_claim_id: Set by investigation only — ties each
+            new Evidence to the claim that triggered the round.
+            Initial gather leaves this None.
+        created_by: Audit tag on the new Evidence entities.
+    """
+    from ..dispatch import gather_evidence_new
+
+    gathered = await gather_evidence_new(
+        claim=text, providers=providers, agent_runner=core_runner
+    )
+
+    extract_helper = ExtractEvidenceOperation(
+        op.repo,
+        op.agent_runner,
+        evidence_gatherer=op.evidence_gatherer,
+        quality_scorer=op.quality_scorer,
+        embedding_model=op.embedding_model,
+    )
+
+    created_ids: list[str] = []
+    for g in gathered:
+        evidence = Evidence(
+            objective_id=objective_id,
+            source_type=g.source_type or "unknown",
+            source_ref=g.source_ref,
+            extracted=True,
+            sub_investigation_id=sub_investigation_id,
+            depends_on_claim_id=depends_on_claim_id,
+            created_by=created_by,
+        )
+        extract_helper._fill_evidence_from_gathered(evidence, g)
+        await extract_helper._score_evidence(evidence, g)
+        await op.repo.save(evidence)
+        created_ids.append(evidence.entity_id)
+    return created_ids
+
+
+class DispatchGatherOperation(BaseOperation):
+    """Initial evidence gather: dispatch each sub-investigation (or the
+    objective itself when there's no decomposition) through the
+    description-driven routing layer.
 
     Requires:
 
-    - ``self.agent_runner`` — a ``DefaultAgentRunner`` (the graph's
-      standard agent runner). Its ``core_runner`` property is forwarded
-      to ``gather_evidence_new`` because that path uses the
-      definition-based ``run(defn, **kwargs)`` shape rather than the
-      name-based wrapper.
-    - ``providers`` dict on the constructor's ``embedding_model`` side
-      isn't enough — we read it directly off ``self`` via the bespoke
-      constructor argument below.
+    - ``self.agent_runner`` — a ``DefaultAgentRunner``. Its
+      ``core_runner`` property is forwarded to ``gather_evidence_new``
+      because that path uses the definition-based ``run(defn,
+      **kwargs)`` shape.
+    - ``providers`` dict on construction — provider instances to
+      dispatch to.
     """
 
     entity_type = "objective"
@@ -76,9 +142,6 @@ class DispatchGatherOperation(BaseOperation):
         providers: dict[str, object] | None = None,
         **kwargs: object,
     ) -> None:
-        # Pass-through to BaseOperation; we just snapshot ``providers``
-        # as an extra attribute so execute() can hand it to
-        # gather_evidence_new without reaching into the deps object.
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._dispatch_providers: dict[str, object] = providers or {}
 
@@ -108,20 +171,13 @@ class DispatchGatherOperation(BaseOperation):
         if not self._dispatch_providers:
             raise RuntimeError(
                 "DispatchGatherOperation requires a non-empty providers "
-                "dict (passed through EpistemicDeps.providers). Set "
-                "dispatch_mode='legacy' or supply providers."
+                "dict (passed through EpistemicDeps.providers)."
             )
 
-        # Reach the core AgentRunner protocol: gather_evidence_new builds
-        # the AgentDefinition itself and calls runner.run(defn, **kwargs),
-        # which is not the name-based wrapper DefaultAgentRunner exposes.
         core_runner: Any = getattr(
             self.agent_runner, "core_runner", self.agent_runner
         )
 
-        # Build the per-sub-claim work list. Multi-seed decomposition
-        # produces N (sub_id, claim_text) pairs; otherwise a single
-        # (None, clarified_question) pair drives one dispatch sweep.
         clarified = objective.clarified_question or objective.description
         sub_investigations = (
             objective.decomposition.sub_investigations
@@ -136,37 +192,26 @@ class DispatchGatherOperation(BaseOperation):
         else:
             work_list = [(None, clarified)]
 
-        # Run dispatch + gather once per sub-claim. Sub-claims are
-        # iterated sequentially because gather_evidence_new already
-        # parallelises across providers; serialising at the sub-claim
-        # level keeps API call bursts bounded and per-claim traces
-        # debuggable.
-        from ..dispatch import gather_evidence_new
-
         created_entities: list[str] = []
-        total_gathered = 0
         for sub_id, claim_text in work_list:
-            gathered = await gather_evidence_new(
-                claim=claim_text,
-                providers=self._dispatch_providers,
-                agent_runner=core_runner,
+            ev_ids = await dispatch_and_persist_for_text(
+                self,
+                claim_text,
+                objective_id=objective.entity_id,
+                providers=self._dispatch_providers,  # type: ignore[arg-type]
+                core_runner=core_runner,
+                sub_investigation_id=sub_id,
+                created_by="dispatch_gather",
             )
-            total_gathered += len(gathered)
-            for g in gathered:
-                ev_id = await self._persist_evidence(
-                    objective=objective,
-                    gathered=g,
-                    sub_investigation_id=sub_id,
-                )
-                created_entities.append(ev_id)
+            created_entities.extend(ev_ids)
 
         objective.phase = "planned"
         await self.repo.save(objective)
 
         sub_count = len(sub_investigations) if sub_investigations else 1
         plan_msg = (
-            f"Description-driven dispatch: {total_gathered} evidence items "
-            f"persisted across {sub_count} sub-investigation(s)"
+            f"Description-driven dispatch: {len(created_entities)} evidence "
+            f"items persisted across {sub_count} sub-investigation(s)"
         )
 
         return OperationResult(
@@ -175,40 +220,3 @@ class DispatchGatherOperation(BaseOperation):
             message=plan_msg,
             created_entities=created_entities,
         )
-
-    async def _persist_evidence(
-        self,
-        *,
-        objective: Objective,
-        gathered: "GatheredEvidence",
-        sub_investigation_id: str | None,
-    ) -> str:
-        """Persist one GatheredEvidence as an Evidence entity.
-
-        Uses ``ExtractEvidenceOperation``'s fill + score helpers so the
-        scoring logic is shared with the legacy path — including the
-        OpenAlex bibliometric resolution, agent assessment fallback,
-        and provider-supplied score chain. The evidence is marked
-        ``extracted=True`` because content is already attached.
-        """
-        evidence = Evidence(
-            objective_id=objective.entity_id,
-            source_type=gathered.source_type or "unknown",
-            source_ref=gathered.source_ref,
-            extracted=True,
-            sub_investigation_id=sub_investigation_id,
-        )
-        # Instantiate ExtractEvidenceOperation only to reuse its
-        # fill/score helpers — we do NOT call its execute(). Constructed
-        # with the same dependencies this operation already holds.
-        extract_helper = ExtractEvidenceOperation(
-            self.repo,
-            self.agent_runner,
-            evidence_gatherer=self.evidence_gatherer,
-            quality_scorer=self.quality_scorer,
-            embedding_model=self.embedding_model,
-        )
-        extract_helper._fill_evidence_from_gathered(evidence, gathered)
-        await extract_helper._score_evidence(evidence, gathered)
-        await self.repo.save(evidence)
-        return evidence.entity_id

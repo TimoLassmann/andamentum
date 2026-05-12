@@ -209,6 +209,22 @@ class Claim(EpistemicEntity):
         default=0,
         description="Number of investigation cycles triggered by scrutiny doubt",
     )
+    # Prior-round evidence-gap analysis memory. Each entry is one intent
+    # ("we need a methodologically-independent angle on the mechanism")
+    # that ``epistemic_investigate_claim`` proposed in a previous round.
+    # Passed back into the agent on the next round as ``previous_intents``
+    # so it can deliberately propose a different angle rather than
+    # reshuffling the same lexicon. The agent never sees query strings —
+    # only intents — because the routing layer (description-driven
+    # dispatch) shapes provider-specific queries from each intent.
+    investigation_intents: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Natural-language descriptions of evidence-gap angles proposed "
+            "in prior investigation rounds. Used as agent memory to avoid "
+            "repeating the same angle round after round."
+        ),
+    )
     abandoned: bool = Field(
         default=False,
         description="Claim abandoned after exhausting investigation attempts",
@@ -410,6 +426,7 @@ class Claim(EpistemicEntity):
             "superseded_by_id": self.superseded_by_id,
             "modification_count": self.modification_count,
             "investigation_count": self.investigation_count,
+            "investigation_intents": self.investigation_intents,
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
             "persistent_concerns": self.persistent_concerns,
@@ -461,6 +478,7 @@ class Claim(EpistemicEntity):
             modification_count=metadata.get("modification_count", 0),
             modification_timestamps=metadata.get("modification_timestamps", []),
             investigation_count=metadata.get("investigation_count", 0),
+            investigation_intents=metadata.get("investigation_intents", []),
             abandoned=metadata.get("abandoned", False),
             cycle_capped=metadata.get("cycle_capped", False),
             persistent_concerns=metadata.get("persistent_concerns", []),

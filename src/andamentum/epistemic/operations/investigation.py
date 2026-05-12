@@ -10,6 +10,7 @@ Operates on: Claim, Evidence, Decision, Objective entities
 """
 
 from .base import BaseOperation, OperationInput, OperationResult
+from .dispatch_gather import dispatch_and_persist_for_text
 from ..thresholds import PEIRCE_CYCLE_CAP
 
 from ..entities import (
@@ -226,16 +227,46 @@ class RecordDecisionOperation(BaseOperation):
 
 
 class InvestigateClaimOperation(BaseOperation):
-    """Investigate evidence gaps when scrutiny produces doubt (Peirce inquiry cycling).
+    """Follow-up evidence gather when scrutiny produces doubt.
 
-    When scrutiny returns "needs_resolution" or "fail" at HYPOTHESIS,
-    this operation identifies what evidence is missing and creates
-    targeted Evidence stubs for the existing extraction infrastructure.
+    Two-layer design:
 
-    After MAX_INVESTIGATION_ATTEMPTS, the claim is abandoned.
+    1. **Gap analysis.** ``epistemic_investigate_claim`` reads the
+       claim, the unresolved scrutiny issues, and the intents proposed
+       in earlier rounds, and produces 1-3 natural-language **intents**
+       describing fresh evidence-search angles. The agent is held
+       responsible for proposing angles that differ from prior intents
+       (the prompt makes the previous-intents list visible and
+       explicitly instructs against paraphrase).
+
+    2. **Routing.** Each intent is funnelled through
+       ``dispatch_and_persist_for_text`` — the same routing layer used
+       by the initial gather (``DispatchGatherOperation``). The
+       description-driven dispatch agent decides per-provider whether
+       to commit or abstain on each intent, and persisted Evidence
+       inherits the claim's ``sub_investigation_id`` plus
+       ``depends_on_claim_id=claim.entity_id``.
+
+    The previous design (queries-with-source-types + a separate
+    ranker that silently overrode the agent's provider choice) was
+    decommissioned alongside the legacy gather chain. There is now
+    exactly one routing implementation; investigation is purely an
+    upstream gap-analysis step that feeds it.
+
+    After ``PEIRCE_CYCLE_CAP`` rounds (in graph state — this operation
+    is the per-claim safety duplicate), the claim is abandoned.
     """
 
     entity_type = "claim"
+
+    def __init__(
+        self,
+        *args: object,
+        providers: dict[str, object] | None = None,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self._dispatch_providers: dict[str, object] = providers or {}
 
     async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
@@ -254,39 +285,47 @@ class InvestigateClaimOperation(BaseOperation):
                 message="Claim already abandoned",
             )
 
-        # Check investigation limit (Peirce-cycling cap)
+        # Per-claim Peirce-cycling safety. The graph-state cap is the
+        # primary bound; this is defence in depth.
         if claim.investigation_count >= PEIRCE_CYCLE_CAP:
-            # Exhausted — force to fail and abandon
             if claim.scrutiny_verdict == "needs_resolution":
                 claim.scrutiny_verdict = "fail"
             claim.abandoned = True
             await self.repo.save(claim)
-
             return OperationResult(
                 success=True,
                 entity_id=claim.entity_id,
-                message=f"Investigation exhausted after {claim.investigation_count} attempts, claim abandoned",
+                message=(
+                    f"Investigation exhausted after "
+                    f"{claim.investigation_count} attempts, claim abandoned"
+                ),
             )
 
-        # Gather context for the investigation agent
-        # Load existing evidence
+        if not self.agent_runner:
+            raise RuntimeError(
+                "InvestigateClaimOperation requires an agent_runner — "
+                "the gap-analysis agent is the upstream cognitive step."
+            )
+
+        if not self._dispatch_providers:
+            raise RuntimeError(
+                "InvestigateClaimOperation requires a non-empty providers "
+                "dict (passed through EpistemicDeps.providers). The "
+                "routing layer dispatches each intent to all providers."
+            )
+
+        # Existing evidence summaries — only items with extracted content
+        # contribute. Invalidated stubs (provider returned nothing on a
+        # prior round) are honestly absent from this view.
         evidence_summaries: list[str] = []
-        source_types_seen: set[str] = set()
         for eid in claim.evidence_ids:
             ev = await self.repo.get("evidence", eid)
             if isinstance(ev, Evidence) and ev.extracted_content:
                 evidence_summaries.append(f"[{ev.source_type}] {ev.extracted_content}")
-                source_types_seen.add(ev.source_type)
 
-        # Load scrutiny issues from uncertainties.
-        # Filter to UNRESOLVED only: ResolveUncertaintyOperation stamps
-        # ``resolved_at`` (Uncertainty.is_resolved) when an issue has been
-        # addressed, and every other consumer in the codebase (CLI stats,
-        # report generator, promotion gates, typeset report) honours that
-        # field. Feeding already-resolved descriptions back into the
-        # investigation agent's prompt makes the agent re-target gaps that
-        # have already been closed, which both burns LLM cycles and crowds
-        # the genuinely-open issues out of the agent's attention window.
+        # Unresolved scrutiny issues only — resolved uncertainties are
+        # filtered (otherwise the agent re-targets gaps already closed,
+        # see d9bcf1f).
         scrutiny_issues: list[str] = []
         uncertainties = await self.repo.query(
             "uncertainty",
@@ -295,127 +334,66 @@ class InvestigateClaimOperation(BaseOperation):
         for u in uncertainties:
             if u.is_resolved:
                 continue
-            affected = u.affected_claim_ids
-            if claim.entity_id in affected:
-                desc = u.description
-                if desc:
-                    scrutiny_issues.append(str(desc))
+            if claim.entity_id in u.affected_claim_ids and u.description:
+                scrutiny_issues.append(str(u.description))
 
-        # Run investigation agent
+        # Prior-round intents — the memory the previous agent didn't have.
+        previous_intents = list(claim.investigation_intents)
+        previous_intents_text = (
+            "\n".join(f"- {intent}" for intent in previous_intents)
+            if previous_intents
+            else "(none — this is the first investigation round)"
+        )
+
+        gap_result = await self.run_agent(
+            "epistemic_investigate_claim",
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            existing_evidence="\n".join(evidence_summaries)
+            if evidence_summaries
+            else "No evidence gathered yet",
+            scrutiny_issues="\n".join(scrutiny_issues)
+            if scrutiny_issues
+            else "No specific issues recorded",
+            previous_intents=previous_intents_text,
+            scrutiny_verdict=claim.scrutiny_verdict or "unknown",
+        )
+
+        new_intents = [s.strip() for s in gap_result.intents if s.strip()]
+
+        # Route each intent through the shared description-driven
+        # dispatch path — the same machinery initial gather uses.
+        core_runner: object = getattr(
+            self.agent_runner, "core_runner", self.agent_runner
+        )
+
         created_entities: list[str] = []
-
-        if self.agent_runner:
-            # Phase 3 of lazy-escalation: pick the NEXT unused provider
-            # for this sub-claim's escalation. The investigate operation
-            # is the system's "the demand from scrutiny says we need
-            # more — go pull a different angle" handler. Different
-            # provider = different angle.
-            #
-            # Provider tracking is derived from existing Evidence
-            # entities: we already loaded them above as part of the
-            # context-gathering step (source_types_seen). The unused
-            # set is everything in the provider registry minus that.
-            from ..providers import PROVIDER_REGISTRY
-
-            all_providers = sorted(PROVIDER_REGISTRY)
-            unused_providers = [p for p in all_providers if p not in source_types_seen]
-            chosen_provider: str | None = None
-            if len(unused_providers) >= 2:
-                # Rank unused candidates and pick the best.
-                from ..providers import PROVIDER_DESCRIPTIONS
-
-                candidates_text = "\n".join(
-                    f"- {p}: {PROVIDER_DESCRIPTIONS.get(p, '')}"
-                    for p in unused_providers
-                )
-                rank_result = await self.run_agent(
-                    "epistemic_rank_providers",
-                    sub_claim=claim.statement,
-                    candidates=candidates_text,
-                )
-                if rank_result.chosen_provider in unused_providers:
-                    chosen_provider = rank_result.chosen_provider
-            elif len(unused_providers) == 1:
-                # Only one unused provider — no rank needed.
-                chosen_provider = unused_providers[0]
-            # If no unused providers (chosen_provider is None), the
-            # agent generates queries with its own source_type
-            # choices. This is the "we've been everywhere" fallback —
-            # the investigation loop will eventually hit its budget
-            # cap and the claim either soft-promotes or abandons.
-
-            result = await self.run_agent(
-                "epistemic_investigate_claim",
-                claim_statement=claim.statement,
-                claim_scope=claim.scope,
-                existing_evidence="\n".join(evidence_summaries)
-                if evidence_summaries
-                else "No evidence gathered yet",
-                scrutiny_issues="\n".join(scrutiny_issues)
-                if scrutiny_issues
-                else "No specific issues recorded",
-                available_source_types=", ".join(sorted(source_types_seen))
-                if source_types_seen
-                else "openalex, web_search",
-                scrutiny_verdict=claim.scrutiny_verdict or "unknown",
+        for intent in new_intents:
+            ev_ids = await dispatch_and_persist_for_text(
+                self,
+                intent,
+                objective_id=claim.objective_id,
+                providers=self._dispatch_providers,  # type: ignore[arg-type]
+                core_runner=core_runner,
+                sub_investigation_id=claim.sub_investigation_id,
+                depends_on_claim_id=claim.entity_id,
+                created_by="investigate_claim",
             )
-
-            # Create evidence stubs from agent output
-            for eq in result.evidence_queries:
-                # eq is normally an InvestigateClaimQueryItem (pydantic
-                # model with .source_type / .query attributes). Some
-                # tests pass a dict, and the legacy fake_runner default
-                # returns plain strings — handle all three shapes.
-                if isinstance(eq, dict):
-                    agent_source_type = eq.get("source_type", "web_search")
-                    query = eq.get("query", "")
-                elif isinstance(eq, str):
-                    agent_source_type = "web_search"
-                    query = eq
-                else:
-                    agent_source_type = getattr(eq, "source_type", "web_search")
-                    query = getattr(eq, "query", "")
-                # When chosen_provider was set by the ranker, override
-                # the agent's source_type — we've made the provider
-                # decision externally for lazy-escalation. When None,
-                # honor whatever the agent chose.
-                source_type = (
-                    chosen_provider
-                    if chosen_provider is not None
-                    else agent_source_type
-                )
-                if not query:
-                    continue
-
-                # Propagate sub_investigation_id from the originating
-                # Claim. Mirrors the gatherer-extras propagation in
-                # ExtractEvidenceOperation: under multi-seed-claim, every
-                # Evidence belonging to a sub-investigation must carry
-                # the sub_investigation_id tag so MultiSeedClaim's
-                # per-claim filter sees it on later passes.
-                evidence_stub = Evidence(
-                    objective_id=claim.objective_id,
-                    source_type=source_type,
-                    source_ref=query,
-                    extracted=False,
-                    created_by="investigate_claim",
-                    depends_on_claim_id=claim.entity_id,
-                    sub_investigation_id=claim.sub_investigation_id,
-                )
-                await self.repo.save(evidence_stub)
-
-                # Link to claim
-                claim.evidence_ids.append(evidence_stub.entity_id)
-                created_entities.append(evidence_stub.entity_id)
+            created_entities.extend(ev_ids)
+            claim.evidence_ids.extend(ev_ids)
+            claim.investigation_intents.append(intent)
 
         claim.investigation_count += 1
         claim.evidence_count = len(claim.evidence_ids)
-
         await self.repo.save(claim)
 
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"Investigation #{claim.investigation_count}: created {len(created_entities)} evidence stubs",
+            message=(
+                f"Investigation #{claim.investigation_count}: "
+                f"{len(new_intents)} intent(s) → "
+                f"{len(created_entities)} evidence item(s)"
+            ),
             created_entities=created_entities,
         )

@@ -58,8 +58,22 @@ class TestInvestigationCap:
         assert updated.abandoned is True
 
     @pytest.mark.asyncio
-    async def test_investigation_below_cap_continues(self, repo):
-        """Below PEIRCE_CYCLE_CAP, investigation proceeds."""
+    async def test_investigation_below_cap_continues(
+        self, repo, fake_runner, monkeypatch
+    ):
+        """Below PEIRCE_CYCLE_CAP, investigation proceeds (count
+        increments, claim not abandoned, scrutiny_verdict unchanged).
+
+        We monkeypatch ``dispatch_and_persist_for_text`` so the test
+        doesn't exercise dispatch/HTTP — only the operation's per-claim
+        bookkeeping is on the assertion path."""
+        from andamentum.epistemic.operations import investigation as inv_mod
+
+        async def fake_helper(*args, **kwargs):
+            return []
+
+        monkeypatch.setattr(inv_mod, "dispatch_and_persist_for_text", fake_helper)
+
         obj = Objective(description="test", phase="claims_proposed")
         await repo.save(obj)
 
@@ -72,9 +86,9 @@ class TestInvestigationCap:
         )
         await repo.save(claim)
 
-        # With no agent_runner, investigation creates no stubs but still
-        # increments count. Scrutiny reset moved to graph node.
-        op = InvestigateClaimOperation(repo=repo, agent_runner=None)
+        op = InvestigateClaimOperation(
+            repo, fake_runner, providers={"stub": object()}
+        )
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",
@@ -86,4 +100,6 @@ class TestInvestigationCap:
         updated = await repo.get("claim", claim.entity_id)
         assert updated.abandoned is False
         assert updated.investigation_count == 2
-        assert updated.scrutiny_verdict == "needs_resolution"  # unchanged by operation
+        # scrutiny_verdict unchanged by the operation itself (scrutiny
+        # reset is the graph node's job).
+        assert updated.scrutiny_verdict == "needs_resolution"

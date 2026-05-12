@@ -123,20 +123,6 @@ class MalformedOutputRunner:
 # Default canned responses matching actual agent manifest output_model fields.
 # The adapters use attribute access, so field names must be exact.
 _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
-    "epistemic_rank_providers": {
-        # Tests don't have to thread real provider lists through; the
-        # default pick is "web_search" since that's universally
-        # available. Tests that need to verify specific provider
-        # choices override per-test.
-        #
-        # ``epistemic_rank_providers`` is still called by
-        # ``InvestigateClaimOperation`` during lazy-escalation —
-        # description-driven dispatch replaced its tournament use at
-        # the initial-gather layer, but investigation rotation still
-        # consults it pending the investigate_claim rewrite.
-        "chosen_provider": "web_search",
-        "reasoning": "Default fake_runner output: web_search.",
-    },
     "epistemic_check_synthesis_demand": {
         # Phase 1 of lazy-escalation: default to needs_more=False so
         # tests that incidentally exercise this agent get a satisfied
@@ -211,8 +197,10 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "fallacies": [],
     },
     "epistemic_investigate_claim": {
-        "evidence_queries": ["spaced repetition effectiveness"],
-        "reasoning": "Additional evidence found supporting the claim",
+        "intents": [
+            "follow-up evidence-search angle for spaced repetition effectiveness"
+        ],
+        "reasoning": "Default fake_runner output: one intent.",
     },
     "epistemic_record_decision": {
         "statement": "Spaced repetition is effective",

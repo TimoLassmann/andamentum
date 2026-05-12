@@ -1363,19 +1363,20 @@ class TestProviderSelfDescriptionContract:
                 "Phase 1 introduces v1, future contracts bump this"
             )
 
-    def test_registry_populates_descriptions_from_class_attrs(self) -> None:
-        """``register_provider`` snapshots each provider class's
-        ``description`` attribute into ``PROVIDER_DESCRIPTIONS``. The
-        legacy ``PROVIDER_QUERY_GUIDANCE`` was retired once
-        ``epistemic_formulate_query`` was deleted; ``query_guidance`` now
-        lives only on the provider class and is read directly by the
-        dispatch agent."""
-        from andamentum.epistemic.providers import (
-            PROVIDER_DESCRIPTIONS,
-            PROVIDER_REGISTRY,
-        )
+    def test_registry_indexes_every_provider_class(self) -> None:
+        """``register_provider`` indexes the class under its short name.
+        Provider data — ``description``, ``query_guidance``,
+        ``query_examples``, ``output_kind``, ``independence_group``,
+        ``provider_contract_version`` — lives on the class and is read
+        directly by the dispatch agent. The legacy
+        ``PROVIDER_DESCRIPTIONS`` / ``PROVIDER_QUERY_GUIDANCE`` mirror
+        dicts were retired once the agents that consumed them
+        (``epistemic_select_provider``, ``epistemic_formulate_query``,
+        ``epistemic_rank_providers``) were decommissioned."""
+        from andamentum.epistemic.providers import PROVIDER_REGISTRY
 
+        assert PROVIDER_REGISTRY, "Registry should be populated at import"
         for name, cls in PROVIDER_REGISTRY.items():
-            assert PROVIDER_DESCRIPTIONS.get(name) == cls.description, (
-                f"PROVIDER_DESCRIPTIONS[{name}] does not match class attribute"
+            assert isinstance(cls.description, str) and cls.description, (
+                f"Provider {name} class missing non-empty .description"
             )
