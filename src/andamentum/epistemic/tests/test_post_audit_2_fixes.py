@@ -54,12 +54,14 @@ class TestInvestigationPropagatesSubInvestigationId:
         calls: list[dict] = []
 
         async def fake_helper(
-            op, text, *, objective_id, providers, core_runner,
+            op, claim, *, objective_id, providers, core_runner,
+            angle=None,
             sub_investigation_id=None, depends_on_claim_id=None,
             created_by="dispatch",
         ):
             calls.append({
-                "text": text,
+                "claim": claim,
+                "angle": angle,
                 "sub_id": sub_investigation_id,
                 "depends_on": depends_on_claim_id,
             })

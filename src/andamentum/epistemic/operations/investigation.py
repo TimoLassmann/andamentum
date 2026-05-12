@@ -379,9 +379,17 @@ class InvestigateClaimOperation(BaseOperation):
 
         created_entities: list[str] = []
         for intent in new_intents:
+            # Pass the *claim* as the subject and the *intent* as the
+            # angle. The dispatch agent grounds its query in the claim's
+            # lexicon while shaping the search along the intent's
+            # methodological dimension. The earlier shape (passing the
+            # intent as the claim) produced queries that abstracted the
+            # claim out and made most retrieved evidence read as
+            # no_bearing — degenerating the calibration.
             ev_ids = await dispatch_and_persist_for_text(
                 self,
-                intent,
+                claim.statement,
+                angle=intent,
                 objective_id=claim.objective_id,
                 providers=self._dispatch_providers,  # type: ignore[arg-type]
                 core_runner=core_runner,
