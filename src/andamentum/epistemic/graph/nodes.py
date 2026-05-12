@@ -510,12 +510,26 @@ class Decompose(Node):
 
 @dataclass
 class PlanEvidence(Node):
-    """Create evidence stubs via plan_task.
+    """Plan evidence gathering — branches on ``state.dispatch_mode``.
 
-    Phase 5 of the Move-3 plan.
+    Legacy mode (``"legacy"``, default): run ``PlanTaskOperation``, which
+    uses the three-agent chain (select_provider + rank_providers +
+    formulate_query) to create one Evidence stub per (sub-claim,
+    provider). ``ExtractEvidence`` then fills each stub by calling its
+    provider.
+
+    New mode (``"new"``): run ``DispatchGatherOperation``, which uses
+    the description-driven dispatch agent (one LLM call per provider
+    per sub-claim, combining route + query into a single decision) and
+    persists Evidence with content + quality scoring already attached.
+    The downstream ``ExtractEvidence`` node sees no ``extracted=False``
+    stubs and harmlessly proceeds to the retrieval-health check.
+
+    Phase 5 of the Move-3 plan; dispatch_mode branch added Phase 4 of
+    the description-driven-dispatch PRD (2026-05-12).
     """
 
-    reads = frozenset({"objective_id"})
+    reads = frozenset({"objective_id", "dispatch_mode"})
     writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
@@ -523,25 +537,74 @@ class PlanEvidence(Node):
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> "ExtractEvidence":
-        from ..operations.preplanning import PlanTaskOperation
-
         state = ctx.state
         deps = ctx.deps
 
-        await _run_op(
-            PlanTaskOperation,
-            deps,
-            state,
-            state.objective_id,
-            "objective",
-            "plan_task",
-        )
+        if state.dispatch_mode == "new":
+            await self._run_new_dispatch(state, deps)
+        else:
+            from ..operations.preplanning import PlanTaskOperation
+
+            await _run_op(
+                PlanTaskOperation,
+                deps,
+                state,
+                state.objective_id,
+                "objective",
+                "plan_task",
+            )
 
         obj = await deps.repo.get("objective", state.objective_id)
         obj.phase = "planned"
         await deps.repo.save(obj)
 
         return ExtractEvidence()
+
+    async def _run_new_dispatch(
+        self, state: EpistemicGraphState, deps: EpistemicDeps
+    ) -> None:
+        """Execute ``DispatchGatherOperation`` with the providers from
+        deps. Kept inline (rather than through ``_run_op``) because the
+        operation takes a non-standard ``providers`` kwarg that
+        ``_make_op`` doesn't know about.
+        """
+        from ..operations.base import OperationInput, OperationResult
+        from ..operations.dispatch_gather import DispatchGatherOperation
+
+        op = DispatchGatherOperation(
+            deps.repo,
+            deps.agent_runner,
+            evidence_gatherer=deps.evidence_gatherer,
+            quality_scorer=deps.quality_scorer,
+            embedding_model=deps.embedding_model,
+            providers=deps.providers,
+        )
+        work = OperationInput(
+            entity_id=state.objective_id,
+            entity_type="objective",
+            operation="dispatch_gather",
+            metadata={},
+        )
+        try:
+            result = await op.execute(work)
+        except Exception as e:
+            logger.warning(
+                "dispatch_gather on %s raised %s: %s — quarantining",
+                state.objective_id[:12],
+                type(e).__name__,
+                e,
+            )
+            state.quarantine(
+                state.objective_id, "objective", "dispatch_gather", e
+            )
+            result = OperationResult(
+                success=False,
+                entity_id=state.objective_id,
+                message=f"dispatch_gather quarantined: {type(e).__name__}: {e}",
+            )
+        state.log_operation(
+            "dispatch_gather", state.objective_id, result.success, result.message
+        )
 
 
 @dataclass
@@ -2955,6 +3018,9 @@ from ..operations.preplanning import (  # noqa: E402
 from ..operations.evidence import (  # noqa: E402
     ExtractEvidenceOperation,
 )
+from ..operations.dispatch_gather import (  # noqa: E402
+    DispatchGatherOperation,
+)
 from ..operations.seed_claim import SeedClaimOperation  # noqa: E402
 from ..operations.multi_seed_claim import (  # noqa: E402
     MultiSeedClaimOperation,
@@ -2979,7 +3045,7 @@ PrepareObjective.operations = frozenset(
 Decompose.operations = frozenset({DecomposeQuestionOperation})
 
 
-PlanEvidence.operations = frozenset({PlanTaskOperation})
+PlanEvidence.operations = frozenset({PlanTaskOperation, DispatchGatherOperation})
 
 
 ExtractEvidence.operations = frozenset({ExtractEvidenceOperation})

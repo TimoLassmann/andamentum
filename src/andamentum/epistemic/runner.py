@@ -73,6 +73,19 @@ class DefaultAgentRunner:
     async def __aexit__(self, *exc: object) -> None:
         self._runner.clear_cache()
 
+    @property
+    def core_runner(self) -> Any:
+        """Expose the underlying ``core.agents.AgentRunner``.
+
+        Used by code paths that need the definition-based call shape
+        ``.run(defn, **kwargs)`` rather than the name-based wrapper
+        this class normally provides — e.g.
+        ``dispatch.gather_evidence_new`` calls
+        ``formulate_provider_query`` which constructs the definition
+        itself and passes it to ``runner.run``.
+        """
+        return self._runner
+
     async def check_health(self) -> "CheckResult":
         """Test LLM connectivity with a minimal inference call."""
         import time
