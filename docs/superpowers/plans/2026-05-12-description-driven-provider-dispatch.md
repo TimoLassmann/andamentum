@@ -2,7 +2,27 @@
 
 **Date:** 2026-05-12  
 **Pre-refactor restore point:** `git tag pre-dispatch-refactor` → commit `e30c314`  
-**Status:** Planning. No code changes yet.
+**Status:** Shipped. Description-driven dispatch is the only evidence-gathering path as of 2026-05-12. The legacy three-agent chain (`PlanTaskOperation` + `epistemic_select_provider` + `epistemic_formulate_query`) has been decommissioned; `epistemic_rank_providers` remains in the codebase only as a transitional dependency of `InvestigateClaimOperation` (lazy-escalation rotation) and is slated for removal when investigation is rewritten as an intent / routing split.
+
+## Phase 4 results (dev30 v6 vs v5)
+
+A/B comparison on the dev30 SciFact corpus, only `dispatch_mode` differs:
+
+| metric | v5 legacy | v6 new | reading |
+|---|---|---|---|
+| AUC | 0.880 | 0.860 | within ±0.04 noise envelope (baseline_frontier moved similar magnitude with no retrieval changes) |
+| Brier | 0.153 | 0.158 | tied |
+| ECE | 0.230 | 0.190 | **improved by 0.04** (calibration tightened) |
+| Judge F1 | 0.518 | 0.520 | tied |
+| Wall-clock | 10.5 min/case | 4.3 min/case | **2.4× faster** |
+| Total evidence | 2,009 | 1,211 | **−40%** (less noise) |
+| Invalidation rate | 33.2% | 21.1% | **−12 pp** (more keepers per query) |
+| Mean distinct providers/case | 11.00 | 3.43 | selective, not blanket |
+| Per-provider signal quality | — | up on openalex (13→15%), europepmc (12→17%), pubmed (26→31%) | better queries, not just better routing |
+
+Three providers (arXiv, bioRxiv, ClinicalTrials.gov) had **100% invalidation across all 30 v5 cases** — the legacy fan-to-all was structurally wasting work. New dispatch correctly abstains on those for biomedical claims and reaches them only when the claim domain matches. Phase 4 acceptance criteria (AUC ≥ 0.85, ECE ≤ 0.20, Brier ≤ 0.20) all met on the epistemic arm.
+
+The cycling pattern in `InvestigateClaimOperation` is unchanged between v5 and v6 (both use the same memoryless `epistemic_investigate_claim` agent for follow-up rounds). That's a separate concern, scoped for the investigation rewrite.
 
 ---
 

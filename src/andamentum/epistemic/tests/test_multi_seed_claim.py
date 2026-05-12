@@ -30,7 +30,6 @@ from andamentum.epistemic.operations.base import OperationInput
 from andamentum.epistemic.operations.multi_seed_claim import (
     MultiSeedClaimOperation,
 )
-from andamentum.epistemic.operations.preplanning import PlanTaskOperation
 from andamentum.epistemic.repository import EpistemicRepository
 
 
@@ -121,75 +120,6 @@ class TestClaimSubInvestigationId:
 
         loaded = await repo.get("claim", claim.entity_id)
         assert loaded.sub_investigation_id == "B"
-
-
-# ── PlanTaskOperation per-claim query formulation ─────────────────────
-
-
-class TestPlanEvidenceMultiSeed:
-    async def test_per_sub_investigation_evidence_stubs(
-        self, tmp_path: Path, fake_runner
-    ) -> None:
-        """With decomposition set, PlanTaskOperation emits one Evidence
-        stub per (sub_investigation × provider), each tagged with the
-        sub_investigation_id."""
-        obj, repo = await _setup_objective_with_decomposition(
-            tmp_path, "plan_multi", n_subs=3
-        )
-        op = PlanTaskOperation(
-            repo=repo, agent_runner=fake_runner, embedding_model="test"
-        )
-        result = await op.execute(
-            OperationInput(
-                entity_id=obj.entity_id,
-                entity_type="objective",
-                operation="plan_task",
-            )
-        )
-        assert result.success
-
-        all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
-        # The fake_runner accepts any provider as relevant; web_search is
-        # also always in providers as the universal fallback. The test
-        # confirms tagging, not exact provider count.
-        assert all_evidence  # at least one stub per (sub, provider)
-        # Every stub carries a sub_investigation_id from {A, B, C}.
-        sub_ids = {ev.sub_investigation_id for ev in all_evidence}
-        assert sub_ids == {"A", "B", "C"}, f"Expected sub_ids={{A,B,C}}, got {sub_ids}"
-        # Same provider may produce multiple stubs (one per sub) — expected.
-
-    async def test_no_decomposition_falls_back_to_per_objective(
-        self, tmp_path: Path, fake_runner
-    ) -> None:
-        """When decomposition is not set, PlanTaskOperation behaves as
-        before: one stub per provider with no sub_investigation_id."""
-        store = DocumentStore.for_database("plan_no_decomp", db_dir=tmp_path)
-        await store.initialize()
-        repo = EpistemicRepository(store)
-        obj = Objective(
-            description="raw q",
-            clarified_question="raw q",
-            phase="analyzed",
-            question_type="verificatory",
-        )
-        obj.objective_id = obj.entity_id
-        await repo.save(obj)
-
-        op = PlanTaskOperation(
-            repo=repo, agent_runner=fake_runner, embedding_model="test"
-        )
-        await op.execute(
-            OperationInput(
-                entity_id=obj.entity_id,
-                entity_type="objective",
-                operation="plan_task",
-            )
-        )
-
-        all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
-        assert all_evidence
-        for ev in all_evidence:
-            assert ev.sub_investigation_id is None
 
 
 # ── MultiSeedClaimOperation ───────────────────────────────────────────

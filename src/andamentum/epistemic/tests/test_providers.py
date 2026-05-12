@@ -1363,20 +1363,19 @@ class TestProviderSelfDescriptionContract:
                 "Phase 1 introduces v1, future contracts bump this"
             )
 
-    def test_registry_shim_populates_globals_from_class_attrs(self) -> None:
-        """The shim in register_provider reads description/query_guidance
-        from class attributes when not passed as kwargs. This verifies the
-        legacy globals stay populated post-refactor."""
+    def test_registry_populates_descriptions_from_class_attrs(self) -> None:
+        """``register_provider`` snapshots each provider class's
+        ``description`` attribute into ``PROVIDER_DESCRIPTIONS``. The
+        legacy ``PROVIDER_QUERY_GUIDANCE`` was retired once
+        ``epistemic_formulate_query`` was deleted; ``query_guidance`` now
+        lives only on the provider class and is read directly by the
+        dispatch agent."""
         from andamentum.epistemic.providers import (
             PROVIDER_DESCRIPTIONS,
-            PROVIDER_QUERY_GUIDANCE,
             PROVIDER_REGISTRY,
         )
 
         for name, cls in PROVIDER_REGISTRY.items():
             assert PROVIDER_DESCRIPTIONS.get(name) == cls.description, (
                 f"PROVIDER_DESCRIPTIONS[{name}] does not match class attribute"
-            )
-            assert PROVIDER_QUERY_GUIDANCE.get(name) == cls.query_guidance, (
-                f"PROVIDER_QUERY_GUIDANCE[{name}] does not match class attribute"
             )

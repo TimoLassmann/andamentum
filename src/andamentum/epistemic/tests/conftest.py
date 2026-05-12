@@ -129,13 +129,11 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         # available. Tests that need to verify specific provider
         # choices override per-test.
         #
-        # Note: PlanTask now runs an iterative tournament (K calls,
-        # K=RESEARCH_MODE_PROVIDER_K=2 by default), so a default-
-        # responding fake_runner returns "web_search" on the first
-        # call → web_search is picked → removed from pool → next
-        # call also returns "web_search" → not in remaining → falls
-        # back to remaining[0] (first non-web_search provider).
-        # See _run_provider_tournament in operations/preplanning.py.
+        # ``epistemic_rank_providers`` is still called by
+        # ``InvestigateClaimOperation`` during lazy-escalation —
+        # description-driven dispatch replaced its tournament use at
+        # the initial-gather layer, but investigation rotation still
+        # consults it pending the investigate_claim rewrite.
         "chosen_provider": "web_search",
         "reasoning": "Default fake_runner output: web_search.",
     },
@@ -308,10 +306,6 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "confidence": 0.75,
         "reasoning": "Default mock: A dominates B on combined loveliness × likeliness.",
     },
-    "epistemic_formulate_query": {
-        "query": "spaced repetition effectiveness long-term memory",
-        "rationale": "Query optimized for this provider's domain",
-    },
     "epistemic_screen_relevance": {
         "is_relevant": True,
         "reason": "Evidence is relevant to the research question",
@@ -327,10 +321,6 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
     "epistemic_judge_evidence": {
         "verdict": "supports",
         "reasoning": "Test judgment",
-    },
-    "epistemic_select_provider": {
-        "relevant": True,
-        "reasoning": "Provider is relevant for this question type",
     },
     # Phase 1 of top-down decomposition: returns a verificatory-style
     # decomposition with 3 sub-investigations combined via AND. Tests

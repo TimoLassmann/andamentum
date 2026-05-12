@@ -102,25 +102,15 @@ class TestPreplanningChain:
         loaded = await repo.get_objective("obj-1")
         assert loaded.phase == "analyzed"
 
-    async def test_plan_task(self, repo, fake_runner):
-        obj = Objective(
-            entity_id="obj-1",
-            objective_id="obj-1",
-            description="What is spaced repetition?",
-            phase="analyzed",
-        )
-        await repo.save(obj)
-
-        ops = create_operations(repo, fake_runner, embedding_model="test-model")
-        work = OperationInput(
-            entity_id="obj-1", entity_type="objective", operation="plan_task"
-        )
-
-        result = await ops["plan_task"].execute(work)
-
-        assert result.success
-        loaded = await repo.get_objective("obj-1")
-        assert loaded.phase == "planned"
+    # ``plan_task`` was the registry name for ``PlanTaskOperation`` —
+    # the legacy three-agent gather operation. It was deleted alongside
+    # ``epistemic_select_provider`` / ``epistemic_formulate_query`` when
+    # description-driven dispatch became the only evidence-gathering
+    # path. ``DispatchGatherOperation`` has its own coverage in
+    # ``test_dispatch_gather.py``; it is dispatched directly by the
+    # ``PlanEvidence`` node rather than registered under a fixed name
+    # in ``OPERATION_CLASSES`` (it takes a non-standard ``providers``
+    # kwarg that the generic factory cannot supply).
 
 
 class TestEvidenceExtraction:

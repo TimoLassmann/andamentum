@@ -7,8 +7,8 @@ fires when ``objective.decomposition`` is set and mints one Claim per
 sub-investigation in the decomposition.
 
 Each minted Claim links only the Evidence whose ``sub_investigation_id``
-matches it — the per-claim evidence pool that PlanTaskOperation set up
-in multi-seed-claim mode. This avoids the support_judgment-collision
+matches it — the per-claim evidence pool that ``DispatchGatherOperation``
+set up in multi-seed-claim mode. This avoids the support_judgment-collision
 problem: ``Evidence.support_judgment`` is a single scalar, so an Evidence
 item linked to claim A only ever needs one verdict (vs. A), not multiple
 conflicting ones.
@@ -89,7 +89,7 @@ class MultiSeedClaimOperation(BaseOperation):
                 existing_sub_ids.add(c.sub_investigation_id)
 
         # All evidence for this objective. We'll filter per-sub-investigation
-        # below using the sub_investigation_id tag PlanTaskOperation wrote.
+        # below using the sub_investigation_id tag DispatchGatherOperation wrote.
         all_evidence_raw = await self.repo.query(
             "evidence", objective_id=objective.entity_id
         )

@@ -14,12 +14,10 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from ..thresholds import IBE_AGREEMENT_K_DEFAULT
 from .quarantine import QuarantineRecord
-
-DispatchMode = Literal["legacy", "new"]
 
 
 def _new_run_id() -> str:
@@ -58,22 +56,6 @@ class EpistemicGraphState:
     # ``operations.integration.SelectBestExplanationOperation`` and
     # surfaced as a runtime parameter on ``run_epistemic_graph``.
     ibe_agreement_k: int = IBE_AGREEMENT_K_DEFAULT
-
-    # ── Evidence-gathering dispatch mode ─────────────────────────
-    # ``"legacy"`` (default) keeps the v5 path: PlanTaskOperation
-    # builds Evidence stubs via the three-agent chain (select_provider
-    # + rank_providers + formulate_query), then ExtractEvidenceOperation
-    # fills each stub by calling its provider.
-    # ``"new"`` routes through ``dispatch.gather_evidence_new``: one
-    # description-driven dispatch agent per (provider, sub-claim) makes
-    # the route + query decision in a single LLM call, and persists
-    # Evidence directly with content + scoring already attached.
-    # Phase 4 of the description-driven-dispatch PRD
-    # (docs/superpowers/plans/2026-05-12-description-driven-provider-
-    # dispatch.md). Default stays legacy so existing harnesses (paper
-    # repo's dev30) are unaffected; opt in by passing
-    # ``dispatch_mode="new"`` to ``run_epistemic_graph``.
-    dispatch_mode: DispatchMode = "legacy"
 
     # ── Run identity ─────────────────────────────────────────────
     # Per-graph-run disambiguator. Each fresh state gets a new id;

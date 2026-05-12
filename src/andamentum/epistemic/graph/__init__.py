@@ -173,7 +173,6 @@ async def run_epistemic_graph(
     start_at: Optional[type] = None,
     output_dir: Optional[Path] = None,
     ibe_agreement_k: Optional[int] = None,
-    dispatch_mode: Literal["legacy", "new"] = "legacy",
 ) -> Any:
     """Run a research question through the epistemic graph pipeline.
 
@@ -193,13 +192,6 @@ async def run_epistemic_graph(
             sub-objective spawned by the decomposed runner). When None,
             falls back to resume-first-objective-or-create behaviour
             from ``question``.
-        dispatch_mode: ``"legacy"`` (default) uses the v5 three-agent
-            evidence-gathering chain. ``"new"`` routes through the
-            description-driven dispatch agent (one LLM call per
-            provider per sub-claim, combining route + query into a
-            single decision). Phase 4 of the description-driven-
-            dispatch PRD; provided so existing harnesses can opt in
-            for A/B comparison without touching the default path.
 
     Returns:
         PipelineResult (backward compatible)
@@ -307,7 +299,6 @@ async def run_epistemic_graph(
         question=question,
         skip_preplanning=skip_preplanning,
         ibe_agreement_k=resolved_k,
-        dispatch_mode=dispatch_mode,
     )
     deps = EpistemicDeps(
         repo=repo,

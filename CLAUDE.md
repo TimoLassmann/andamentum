@@ -58,7 +58,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 0 errors, ruff clean, pytest 1901 passing (2 skipped, 7 deselected)**. Test count grew through 2026-04 with the whetstone v2 feature-parity work (deterministic checklist, panel mode, guidelines+custom modes, consistency lens, statcheck, claim→evidence anchoring, novelty check, overclaim lens) and dropped by 124 when v1 was decommissioned. The 2026-05 document_store rag/ cleanup deleted 2 reranking tests; the chunker swap added 22 (10 adapter unit tests + 12 shape regression tests). Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 23 errors (pre-existing test-only typing noise — pydantic-graph generic variance in test_topology.py + Decomposition dict-form fixtures in several test files), ruff clean, pytest 2064 passing (2 skipped, 25 deselected)**. Test count grew through 2026-04 with the whetstone v2 feature-parity work (deterministic checklist, panel mode, guidelines+custom modes, consistency lens, statcheck, claim→evidence anchoring, novelty check, overclaim lens) and dropped by 124 when v1 was decommissioned. The 2026-05 document_store rag/ cleanup deleted 2 reranking tests; the chunker swap added 22 (10 adapter unit tests + 12 shape regression tests). The 2026-05-12 dispatch unification (PlanTaskOperation + `epistemic_select_provider` + `epistemic_formulate_query` decommissioned; description-driven dispatch is the only evidence-gathering path) deleted three test files (test_provider_tournament.py, test_phase2_lazy_planning.py, routing_benchmark_queries.py) and trimmed several others. Don't claim completion until you've run these three and seen that state.
 
 ## CLIs
 
