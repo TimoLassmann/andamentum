@@ -33,14 +33,61 @@ from andamentum.epistemic.repository import EpistemicRepository
 
 
 class TestInvestigationPropagatesSubInvestigationId:
+    """Per-claim tagging invariants survive the routing-unification rewrite.
+
+    Investigation rounds now go through ``dispatch_and_persist_for_text``
+    (the shared routing+persistence helper), but the per-claim tags
+    (``depends_on_claim_id``, ``sub_investigation_id``) must still be
+    set on every Evidence the operation creates. We monkeypatch the
+    helper to a thin recorder so the test focuses on tag propagation
+    rather than re-testing dispatch.
+    """
+
+    @staticmethod
+    def _patch_helper(monkeypatch) -> list[dict]:
+        """Replace dispatch_and_persist_for_text with a recorder that
+        persists one Evidence per call (so the test's invariants run
+        against actual saved entities). Returns the call log."""
+        from andamentum.epistemic.entities import Evidence
+        from andamentum.epistemic.operations import investigation as inv_mod
+
+        calls: list[dict] = []
+
+        async def fake_helper(
+            op, text, *, objective_id, providers, core_runner,
+            sub_investigation_id=None, depends_on_claim_id=None,
+            created_by="dispatch",
+        ):
+            calls.append({
+                "text": text,
+                "sub_id": sub_investigation_id,
+                "depends_on": depends_on_claim_id,
+            })
+            ev = Evidence(
+                objective_id=objective_id,
+                source_type="stub",
+                source_ref=f"stub-ref-{len(calls)}",
+                extracted=True,
+                extracted_content="stub content",
+                sub_investigation_id=sub_investigation_id,
+                depends_on_claim_id=depends_on_claim_id,
+                quality_score=0.5,
+                created_by=created_by,
+            )
+            await op.repo.save(ev)
+            return [ev.entity_id]
+
+        monkeypatch.setattr(inv_mod, "dispatch_and_persist_for_text", fake_helper)
+        return calls
+
     async def test_investigation_evidence_inherits_sub_id(
-        self, tmp_path: Path, fake_runner
+        self, tmp_path: Path, fake_runner, monkeypatch
     ) -> None:
         """When InvestigateClaimOperation runs on a multi-seed-claim
-        Claim (carrying sub_investigation_id), the Evidence stubs it
-        creates must inherit the same sub_investigation_id. Otherwise
-        the investigation-derived evidence is silently invisible to
-        MultiSeedClaim's per-claim filter on subsequent passes."""
+        Claim (carrying sub_investigation_id), the Evidence it creates
+        must inherit the same sub_investigation_id."""
+        self._patch_helper(monkeypatch)
+
         store = DocumentStore.for_database("inv_sub_id", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
@@ -61,7 +108,10 @@ class TestInvestigationPropagatesSubInvestigationId:
         await repo.save(claim)
 
         op = InvestigateClaimOperation(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
+            repo,
+            fake_runner,
+            embedding_model="t",
+            providers={"stub": object()},
         )
         result = await op.execute(
             OperationInput(
@@ -71,9 +121,8 @@ class TestInvestigationPropagatesSubInvestigationId:
             )
         )
         assert result.success
-        # Every Evidence created by investigation should carry sub_id="A".
         all_evidence = await repo.query("evidence", objective_id=obj.entity_id)
-        assert all_evidence  # fake_runner returns at least one query
+        assert all_evidence
         for ev in all_evidence:
             assert ev.depends_on_claim_id == claim.entity_id
             assert ev.sub_investigation_id == "A", (
@@ -83,11 +132,12 @@ class TestInvestigationPropagatesSubInvestigationId:
             )
 
     async def test_investigation_no_sub_id_when_claim_has_none(
-        self, tmp_path: Path, fake_runner
+        self, tmp_path: Path, fake_runner, monkeypatch
     ) -> None:
         """Sanity: when the originating Claim has no sub_investigation_id
-        (open-research mode), investigation evidence's sub_id stays
-        None — we shouldn't fabricate a tag."""
+        (open-research mode), investigation evidence's sub_id stays None."""
+        self._patch_helper(monkeypatch)
+
         store = DocumentStore.for_database("inv_no_sub", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
@@ -105,7 +155,10 @@ class TestInvestigationPropagatesSubInvestigationId:
         await repo.save(claim)
 
         op = InvestigateClaimOperation(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
+            repo,
+            fake_runner,
+            embedding_model="t",
+            providers={"stub": object()},
         )
         await op.execute(
             OperationInput(

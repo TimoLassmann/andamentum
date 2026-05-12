@@ -34,30 +34,17 @@ from .arxiv import ArXivProvider
 
 PROVIDER_REGISTRY: dict[str, type] = {}
 
-# Mirror of each provider class's ``description`` attribute, indexed by
-# registration name. Populated automatically by ``register_provider``.
-# Read by ``InvestigateClaimOperation`` to feed the ``epistemic_rank_providers``
-# agent during lazy-escalation. The description-driven dispatch path reads
-# ``description`` directly off the provider class (the canonical location);
-# this dict exists only because the legacy investigation rotation still
-# expects name → description lookup.
-PROVIDER_DESCRIPTIONS: dict[str, str] = {}
-
 
 def register_provider(name: str, cls: type) -> None:
     """Register a provider class.
 
     Data — ``description``, ``query_guidance``, ``query_examples``,
     ``output_kind``, ``independence_group``, ``provider_contract_version`` —
-    lives on the provider class as class attributes. This function only
-    indexes the class under ``name`` in ``PROVIDER_REGISTRY`` and snapshots
-    the ``description`` attribute into ``PROVIDER_DESCRIPTIONS`` for the
-    investigation-rotation use case noted above.
+    lives on the provider class as class attributes and is read directly
+    from the class by the dispatch agent at runtime. This function only
+    indexes the class under ``name`` in ``PROVIDER_REGISTRY``.
     """
     PROVIDER_REGISTRY[name] = cls
-    description = getattr(cls, "description", "")
-    if description:
-        PROVIDER_DESCRIPTIONS[name] = description
 
 
 def get_provider(name: str, **kwargs: Any) -> Any:
@@ -123,7 +110,6 @@ __all__ = [
     "ArXivProvider",
     # Registry
     "PROVIDER_REGISTRY",
-    "PROVIDER_DESCRIPTIONS",
     "register_provider",
     "get_provider",
     "get_all_providers",

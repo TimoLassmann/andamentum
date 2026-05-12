@@ -37,33 +37,60 @@ from andamentum.epistemic.repository import EpistemicRepository
 
 
 class _CapturingRunner:
-    """Stub runner that records what scrutiny_issues was passed to
-    ``epistemic_investigate_claim`` and returns a minimal valid output."""
+    """Stub runner with both name-based (BaseOperation.run_agent) and
+    definition-based (gather_evidence_new) protocols.
+
+    ``run(name, **kw)`` handles the gap-analysis call. ``core_runner``
+    handles the per-provider dispatch agent calls — they all return
+    ``queries=[]`` so the downstream routing phase abstains across the
+    board and no provider HTTP calls fire. This lets us assert what the
+    gap-analysis agent saw without standing up real provider stubs.
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.model = "stub-model"
+        self.core_runner = _CapturingCoreRunner(parent=self)
 
     async def run(self, agent_name: str, **kwargs: Any) -> Any:
         self.calls.append((agent_name, kwargs))
         if agent_name == "epistemic_investigate_claim":
             return SimpleNamespace(
-                evidence_queries=[
-                    SimpleNamespace(
-                        source_type="web_search",
-                        query="follow-up",
-                    )
-                ],
+                intents=["follow-up intent"],
                 reasoning="stub",
             )
-        # rank_providers path may also fire; provide a permissive default.
-        return SimpleNamespace(chosen_provider="web_search")
+        return SimpleNamespace()
 
     def last_call_kwargs(self, agent_name: str) -> dict[str, Any] | None:
         for name, kwargs in reversed(self.calls):
             if name == agent_name:
                 return kwargs
         return None
+
+
+class _CapturingCoreRunner:
+    """Definition-based runner stub. Every dispatch call abstains so the
+    routing layer is a no-op during this test."""
+
+    def __init__(self, *, parent: _CapturingRunner):
+        self._parent = parent
+        self.model = parent.model
+
+    async def run(self, defn: Any, **kwargs: Any) -> Any:
+        self._parent.calls.append((getattr(defn, "name", str(defn)), kwargs))
+        return SimpleNamespace(queries=[], reasoning="abstain", confidence=0.5)
+
+
+class _NoOpProvider:
+    description = "Stub provider used only to satisfy the providers-dict guard."
+    query_guidance = "n/a"
+    query_examples: list[tuple[str, str | None]] = []
+    output_kind = "assertion_evidence"
+    independence_group = "stub"
+    provider_contract_version = 1
+
+    async def gather(self, query: str) -> list[Any]:
+        return []
 
 
 class TestInvestigationFiltersResolvedUncertainties:
@@ -111,7 +138,10 @@ class TestInvestigationFiltersResolvedUncertainties:
 
         runner = _CapturingRunner()
         op = InvestigateClaimOperation(
-            repo=repo, agent_runner=runner, embedding_model="t"
+            repo,
+            runner,
+            embedding_model="t",
+            providers={"stub": _NoOpProvider()},
         )
         result = await op.execute(
             OperationInput(
@@ -171,7 +201,10 @@ class TestInvestigationFiltersResolvedUncertainties:
 
         runner = _CapturingRunner()
         op = InvestigateClaimOperation(
-            repo=repo, agent_runner=runner, embedding_model="t"
+            repo,
+            runner,
+            embedding_model="t",
+            providers={"stub": _NoOpProvider()},
         )
         await op.execute(
             OperationInput(

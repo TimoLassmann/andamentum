@@ -122,12 +122,13 @@ class ResolveUncertaintyResult:
 
 @dataclass
 class InvestigateClaimResult:
-    """Result from claim investigation.
+    """Result from claim investigation (evidence-gap analysis).
 
-    Manifest fields: evidence_queries (list with source_type, query), reasoning.
+    Manifest fields: intents (natural-language search angles), reasoning.
+    Provider routing is the dispatch layer's job, not investigate_claim's.
     """
 
-    evidence_queries: list[Any] = field(default_factory=list)
+    intents: list[str] = field(default_factory=list)
     reasoning: str = ""
 
 
@@ -394,7 +395,7 @@ def adapt_resolve_uncertainty(raw: Any) -> ResolveUncertaintyResult:
 def adapt_investigate_claim(raw: Any) -> InvestigateClaimResult:
     """Adapt epistemic_investigate_claim output."""
     return InvestigateClaimResult(
-        evidence_queries=raw.evidence_queries,
+        intents=[str(s).strip() for s in raw.intents if str(s).strip()],
         reasoning=raw.reasoning,
     )
 

@@ -880,8 +880,6 @@ class Investigate(Node):
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> "ExtractNewEvidence":
-        from ..operations.investigation import InvestigateClaimOperation
-
         state = ctx.state
         deps = ctx.deps
 
@@ -893,14 +891,7 @@ class Investigate(Node):
             if claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
                 if inv_count < PEIRCE_CYCLE_CAP:
-                    result = await _run_op(
-                        InvestigateClaimOperation,
-                        deps,
-                        state,
-                        claim.entity_id,
-                        "claim",
-                        "investigate_claim",
-                    )
+                    result = await self._run_investigate(state, deps, claim.entity_id)
                     state.investigation_counts[claim.entity_id] = inv_count + 1
                     if result.success:
                         state.claims_needing_rescrutiny.add(claim.entity_id)
@@ -915,6 +906,52 @@ class Investigate(Node):
                                 state.claims_needing_tms.add(claim.entity_id)
 
         return ExtractNewEvidence()
+
+    async def _run_investigate(
+        self, state: EpistemicGraphState, deps: EpistemicDeps, claim_id: str
+    ) -> Any:
+        """Execute ``InvestigateClaimOperation`` with the providers from
+        deps. Inline (rather than through ``_run_op``) because the
+        operation takes a non-standard ``providers`` kwarg that
+        ``_make_op`` doesn't know about — same pattern as PlanEvidence
+        uses for DispatchGatherOperation.
+        """
+        from ..operations.base import OperationInput, OperationResult
+        from ..operations.investigation import InvestigateClaimOperation
+
+        op = InvestigateClaimOperation(
+            deps.repo,
+            deps.agent_runner,
+            evidence_gatherer=deps.evidence_gatherer,
+            quality_scorer=deps.quality_scorer,
+            embedding_model=deps.embedding_model,
+            providers=deps.providers,
+        )
+        work = OperationInput(
+            entity_id=claim_id,
+            entity_type="claim",
+            operation="investigate_claim",
+            metadata={},
+        )
+        try:
+            result = await op.execute(work)
+        except Exception as e:
+            logger.warning(
+                "investigate_claim on %s raised %s: %s — quarantining",
+                claim_id[:12],
+                type(e).__name__,
+                e,
+            )
+            state.quarantine(claim_id, "claim", "investigate_claim", e)
+            result = OperationResult(
+                success=False,
+                entity_id=claim_id,
+                message=f"investigate_claim quarantined: {type(e).__name__}: {e}",
+            )
+        state.log_operation(
+            "investigate_claim", claim_id, result.success, result.message
+        )
+        return result
 
 
 @dataclass

@@ -246,10 +246,14 @@ class TestAdaptResolveUncertainty:
 
 class TestAdaptInvestigateClaim:
     def test_basic(self):
-        raw = ns(evidence_queries=["query1"], reasoning="Need more data")
+        raw = ns(
+            intents=[" mechanistic angle ", "adversarial angle", ""],
+            reasoning="Need more data",
+        )
         result = adapt_investigate_claim(raw)
         assert isinstance(result, InvestigateClaimResult)
-        assert result.evidence_queries == ["query1"]
+        # Adapter strips whitespace and drops empty entries.
+        assert result.intents == ["mechanistic angle", "adversarial angle"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

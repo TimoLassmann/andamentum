@@ -231,25 +231,27 @@ class ResolveUncertaintyOutput(BaseModel):
     )
 
 
-class InvestigateClaimQueryItem(BaseModel):
-    """Single evidence query in investigate_claim output."""
-
-    source_type: str = Field(
-        description='Evidence provider to query (e.g., "openalex", "web_search", "all")'
-    )
-    query: str = Field(
-        description="Natural language search query targeting the specific gap"
-    )
-
-
 class InvestigateClaimOutput(BaseModel):
-    """Output from epistemic_investigate_claim agent."""
+    """Output from epistemic_investigate_claim agent.
 
-    evidence_queries: list[InvestigateClaimQueryItem] = Field(
-        description="Targeted evidence searches to resolve scrutiny doubt"
+    The agent only performs **evidence-gap analysis**: given a claim and
+    the open scrutiny issues, it proposes 1-3 natural-language search
+    intents describing what to look for next. Provider selection and
+    query construction happen downstream in the description-driven
+    dispatch path — the same routing layer used by the initial gather.
+    The agent never names a source_type and never writes a native query.
+    """
+
+    intents: list[str] = Field(
+        description=(
+            "1-3 natural-language descriptions of evidence-search angles "
+            "that target unresolved gaps. Each intent should be a "
+            "complete, dispatchable description of what to look for — "
+            "the dispatch layer will turn it into per-provider queries."
+        )
     )
     reasoning: str = Field(
-        description="Explanation of what evidence gaps were identified and why these queries target them"
+        description="Explanation of what evidence gaps were identified and why these intents target them"
     )
 
 
@@ -474,34 +476,6 @@ class CrossClaimConsistencyOutput(BaseModel):
     conflicts: bool = Field(description="Whether the two claims contradict each other")
     tension_point: str = Field(
         description="One sentence identifying the specific premise in tension, or empty if no conflict"
-    )
-
-
-class RankProvidersOutput(BaseModel):
-    """Output from epistemic_rank_providers agent.
-
-    Phase 2 of the lazy-escalation plan: pick the SINGLE best provider
-    for a sub-claim from a list of candidates. Used in round 1 of the
-    inquiry loop to narrow eager broad-search to lazy escalation —
-    later rounds (driven by demand) can pull additional providers from
-    the candidate list.
-
-    Flat schema for small-LLM compatibility (single string + reasoning).
-    """
-
-    chosen_provider: str = Field(
-        description=(
-            "Name of the single best provider for this sub-claim, "
-            "chosen from the provided candidate list. Must match one "
-            "of the candidate names exactly (no paraphrasing)."
-        )
-    )
-    reasoning: str = Field(
-        description=(
-            "One-sentence justification: why this provider is most "
-            "likely to give a high-information-density answer for the "
-            "specific sub-claim being investigated."
-        )
     )
 
 
