@@ -1,5 +1,109 @@
 # Changelog
 
+## 0.3.0rc3 — 2026-05-13
+
+Adds a **second report layout** alongside the classic one — Cochrane-
+style audit report. The classic layout (``typeset_report.py``) is
+unchanged; the new audit layout lives in ``audit_report.py``. Choose
+between them via ``--report-style {classic,audit,both}``. ``both``
+writes two files so they can be opened side-by-side for comparison.
+
+### Why a parallel layout
+
+The classic report is prose-led and reads cleanly when the answer is
+self-evident. The audit report is structured for cases where the
+*reasoning trail* is the value — clinical decision support,
+regulatory submissions, anywhere "show your work" matters. The two
+layouts are not redundant; they target different reader needs.
+
+### What the audit layout shows
+
+1. **Headline panel** — claim, verdict badge (Supported / Refuted /
+   Inconclusive / Insufficient evidence), posterior pill.
+2. **Summary of findings** — small Cochrane-style table immediately
+   under the headline: directional split (supports / contradicts /
+   no bearing) with counts and percentages.
+3. **Plain-language summary** — the existing answer prose, separated
+   from the evidence breakdown.
+4. **Key evidence per claim** — claim card (with collapsible details
+   carrying the audit trail) plus the top 3-5 supporting items and
+   the strongest counter-evidence rendered inline as a markdown list
+   with **clickable source links** (DOI / PMID / NCT auto-link). The
+   classic layout's inline reference-number list (which on a 98-item
+   claim rendered as ``1, 2, 3, …, 98``) is gone.
+5. **Audit trail per claim** — investigation rounds as a real list
+   (each round its own bullet, properly rendered), IBE chain
+   candidates as a markdown table with loveliness / likeliness
+   scores, and the adversarial probe explicitly framed. All folded
+   into the claim card's ``<details>`` so the reader opts in.
+6. **Caveats & Limitations** — same data as classic, visually
+   separated.
+7. **Appendix** — a single collapsible card containing the full
+   evidence trail (every retrieved item with its one-sentence
+   judgement and clickable source), grouped by direction. The full
+   list is available for verification but not imposed on the scanner.
+
+### Source-ref clickability
+
+DOI, PMID, and NCT identifiers are now auto-converted to clickable
+URLs:
+
+- ``doi:10.1234/abc`` → ``https://doi.org/10.1234/abc``
+- ``PMID:12345678`` → ``https://pubmed.ncbi.nlm.nih.gov/12345678/``
+- ``NCT04501978`` → ``https://clinicaltrials.gov/study/NCT04501978``
+- Bare ``https://`` URLs are unchanged.
+
+Used by the audit layout for both inline highlights and the
+appendix's full list. The classic layout is unchanged.
+
+### Run modes
+
+The audit layout handles both run modes from the same code path:
+
+- **Verify mode**: one claim seeded from ``claim_to_verify`` — single
+  ``Key evidence`` section with the claim card and audit trail.
+- **Research mode**: question decomposed into sub-investigations —
+  ``Sub-investigations`` section with each sub-claim numbered
+  (#1, #2, …), its own card, key-evidence breakdown, and audit
+  trail. The combined verdict shows in the headline.
+
+### Files
+
+- ``src/andamentum/epistemic/audit_report.py`` (new) — the Cochrane-
+  style renderer. ~500 LOC. Uses only the 7 built-in typeset atoms
+  (heading, prose, callout, items, aside, card, reference) — no
+  custom atoms added.
+- ``src/andamentum/epistemic/report_generator.py`` — ``generate_html``
+  and ``save_html`` now take a ``style`` parameter
+  (``"classic"`` (default) | ``"audit"``).
+- ``src/andamentum/epistemic/cli.py`` — ``--report-style`` flag added
+  to ``ask`` and ``verify`` subcommands. ``both`` writes two files
+  with ``-classic.html`` and ``-audit.html`` suffixes.
+- ``src/andamentum/epistemic/cli_handlers.py`` — ``handle_ask``
+  threads ``report_style`` through to ``save_html``.
+
+### Tests
+
+- 22 new tests in ``test_audit_report.py``. Covers source-URL
+  conversion, verdict callouts (Supported / Refuted / Inconclusive /
+  Insufficient), Summary-of-Findings table, single-claim rendering
+  (no inline number list, evidence counts in details, clickable
+  source links, audit trail in card details), research-mode rendering
+  (sub-investigations section, numbered sub-claims), and appendix
+  presence/absence.
+
+### Verification
+
+- pyright: 23 errors (unchanged baseline).
+- ruff: clean.
+- pytest: 2105 passing (+22 audit-report tests), 2 skipped,
+  25 deselected.
+
+The classic report is bit-for-bit unchanged; existing databases
+re-render identically under ``--report-style classic``. The audit
+layout consumes the same ``ReportData`` so existing dev30 v9
+databases render audit-style with zero LLM tokens.
+
 ## 0.3.0rc2 — 2026-05-13
 
 Report-rendering update. Surfaces the audit trail of investigative

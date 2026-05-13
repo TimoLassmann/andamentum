@@ -695,12 +695,19 @@ class ReportGenerator:
         self,
         objective_id: Optional[str] = None,
         model_name: str = "unknown",
+        style: str = "classic",
     ) -> Optional[str]:
         """Generate HTML report content.
 
         Args:
             objective_id: Optional specific objective to report on
             model_name: Model used for the investigation
+            style: Report layout to render. ``"classic"`` (default) is
+                the prose-led layout in ``typeset_report.py``.
+                ``"audit"`` is the Cochrane-style layout in
+                ``audit_report.py`` — verdict pill + summary-of-findings
+                table + per-claim key evidence with collapsible audit
+                trail + full evidence appendix.
 
         Returns:
             HTML content as string, or None if no data found
@@ -715,6 +722,16 @@ class ReportGenerator:
 
         from andamentum.typeset import render as typeset_render
 
+        if style == "audit":
+            from .audit_report import build_audit_report
+
+            return typeset_render(build_audit_report(report_data))
+
+        if style != "classic":
+            raise ValueError(
+                f"Unknown report style: {style!r}. Use 'classic' or 'audit'."
+            )
+
         from .typeset_report import build_typeset_report
 
         return typeset_render(build_typeset_report(report_data))
@@ -724,6 +741,7 @@ class ReportGenerator:
         output_path: Path,
         objective_id: Optional[str] = None,
         model_name: str = "unknown",
+        style: str = "classic",
     ) -> bool:
         """Generate and save HTML report to file.
 
@@ -731,6 +749,8 @@ class ReportGenerator:
             output_path: Path to save the HTML file
             objective_id: Optional specific objective to report on
             model_name: Model used for the investigation
+            style: ``"classic"`` (default) or ``"audit"``. See
+                :meth:`generate_html` for layout differences.
 
         Returns:
             True if saved successfully, False otherwise
@@ -738,6 +758,7 @@ class ReportGenerator:
         html_content = await self.generate_html(
             objective_id=objective_id,
             model_name=model_name,
+            style=style,
         )
 
         if not html_content:

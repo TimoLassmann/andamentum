@@ -860,6 +860,7 @@ async def handle_ask(
     output_path: Optional[str] = None,
     provider: str = "all",
     db_dir: Optional[str] = None,
+    report_style: str = "classic",
 ) -> AskResult:
     """Ask a research question and get validated findings.
 
@@ -1108,18 +1109,36 @@ async def handle_ask(
 
             output_file = Path(output_path)
             generator = ReportGenerator(store, name)
-            if await generator.save_html(
-                output_path=output_file,
-                objective_id=objective_id,
-                model_name=model,
-            ):
-                console.print(
-                    f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
-                )
+
+            # ``report_style="both"`` writes two files so the user can
+            # compare the classic and audit layouts side-by-side. The
+            # filenames append ``-classic`` and ``-audit`` to the
+            # ``--output`` stem.
+            if report_style == "both":
+                stem = output_file.with_suffix("")
+                ext = output_file.suffix or ".html"
+                targets = [
+                    ("classic", stem.parent / f"{stem.name}-classic{ext}"),
+                    ("audit", stem.parent / f"{stem.name}-audit{ext}"),
+                ]
             else:
-                console.print(
-                    "\n[yellow]Warning: Failed to generate HTML report[/yellow]"
-                )
+                targets = [(report_style, output_file)]
+
+            for style_label, target_path in targets:
+                if await generator.save_html(
+                    output_path=target_path,
+                    objective_id=objective_id,
+                    model_name=model,
+                    style=style_label,
+                ):
+                    console.print(
+                        f"\n[green]✓[/green] HTML report ({style_label}) "
+                        f"saved to: [bold]{target_path}[/bold]"
+                    )
+                else:
+                    console.print(
+                        f"\n[yellow]Warning: Failed to generate {style_label} HTML report[/yellow]"
+                    )
 
         # Clean up if not keeping
         if not keep:
