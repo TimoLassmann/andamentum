@@ -114,7 +114,7 @@ def _short_source(source_ref: str) -> str:
 
 
 def _verdict_label(data: ReportData) -> str:
-    """Top-level verdict label — Supported / Refuted / Insufficient / Suspended.
+    """Top-level verdict label — Supported / Refuted / Insufficient / Inconclusive.
 
     Reads from confidence_scores + claim stages, not from the artefact
     prose, so the badge is consistent with the posterior even when the
@@ -134,22 +134,38 @@ def _verdict_label(data: ReportData) -> str:
     return "Inconclusive"
 
 
-def _verdict_tone(label: str) -> str:
-    """Map a verdict label to a callout tone (info / warning / success / note)."""
-    return {
-        "Supported": "success",
-        "Refuted": "warning",
-        "Inconclusive": "note",
-        "Insufficient evidence": "warning",
-    }.get(label, "info")
+def _confidence_body(data: ReportData) -> str:
+    """Body text for the Q&A panel's "How confident are we?" row.
 
-
-def _posterior_pill(data: ReportData) -> str:
-    """Compact posterior expression for the headline pill."""
+    Honours the same terminal-state invariant as the verdict pill —
+    only emits a directional probability when the inquiry actually
+    completed; otherwise surfaces the terminal state honestly.
+    """
     cs = data.confidence_scores
-    if cs is None or cs.terminal_state != "completed" or cs.posterior is None:
-        return "Suspended"
-    return f"P(YES) ≈ {cs.posterior * 100:.0f}%"
+    if cs is None:
+        return "No posterior computed"
+    ts = cs.terminal_state
+    if ts == "completed" and cs.posterior is not None:
+        return f"Posterior: {cs.posterior * 100:.1f}%"
+    if ts == "retrieval_failed":
+        return "No posterior — retrieval failed before evidence converged."
+    if ts == "oscillation_detected":
+        return "No posterior — no IBE-certified verdict."
+    if cs.posterior is None:
+        return "No posterior computed"
+    return f"No posterior — inquiry terminated: {ts}."
+
+
+def _thoroughness_body(data: ReportData) -> str:
+    """Body for the Q&A panel's "How thorough?" row — count of evidence
+    sources, plus investigation rounds if any fired."""
+    parts = [f"{data.stats.total_evidence} evidence sources examined"]
+    n_rounds = data.stats.investigation_rounds_total
+    if n_rounds:
+        parts.append(
+            f"across {n_rounds} investigation round{'s' if n_rounds != 1 else ''}"
+        )
+    return " ".join(parts)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -473,21 +489,40 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
         meta["mode"] = qt_label
     r.heading(data.research_question, meta=meta)
 
-    # ── Verdict callout — the headline pill ─────────────────────────────
-    verdict_label = _verdict_label(data)
-    posterior_pill = _posterior_pill(data)
     multi_claim = len(data.claims) > 1
-    headline_parts: list[str] = [
-        f"**{verdict_label}** — {posterior_pill}",
+
+    # ── Key Findings Q&A panel — lead with the finding ─────────────────
+    #
+    # The first thing a reader sees after the title is the structured
+    # answer: what was studied, what we found, how confident we are,
+    # how thorough the search was. This is the same shape the classic
+    # layout uses (the user explicitly wanted this lifted into the
+    # audit layout). Rendered as a neutral ``items`` block — no
+    # red/green tone treatments.
+    qa_entries: list[dict[str, str]] = [
+        {"label": "What was studied?", "body": data.clarified_question or data.research_question},
     ]
     if data.verdict:
-        headline_parts.append(data.verdict)
-    if multi_claim:
-        headline_parts.append(
-            f"_Decomposed into {len(data.claims)} sub-claims; combined "
-            "verdict above. Per-sub-claim audit trails follow._"
+        qa_entries.append({"label": "What did we find?", "body": data.verdict})
+    elif multi_claim:
+        # Research mode without a single artefact verdict: synthesise from
+        # the verdict label (Supported / Refuted / Inconclusive / Insufficient).
+        qa_entries.append(
+            {
+                "label": "What did we find?",
+                "body": f"{_verdict_label(data)} — see per-sub-claim verdicts below.",
+            }
         )
-    r.callout("\n\n".join(headline_parts), tone=_verdict_tone(verdict_label))
+    qa_entries.append(
+        {"label": "How confident are we?", "body": _confidence_body(data)}
+    )
+    qa_entries.append(
+        {
+            "label": "How thorough was the investigation?",
+            "body": _thoroughness_body(data),
+        }
+    )
+    r.items(entries=qa_entries)
 
     # ── Summary of findings (Cochrane-style table) ──────────────────────
     s = data.stats

@@ -116,39 +116,87 @@ class TestSourceUrl:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class TestVerdictCallout:
-    def test_supported_when_posterior_above_threshold(self):
+class TestKeyFindingsQAPanel:
+    """The audit layout leads with a structured Q&A items block — what
+    was studied / what did we find / how confident / how thorough.
+    No coloured verdict callouts: the user explicitly didn't want
+    red/green tone treatments. The verdict surfaces inline via the
+    'What did we find?' entry and the posterior via 'How confident'."""
+
+    def test_qa_panel_present(self):
+        data = _make_report_data(posterior=0.85)
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        assert items_atoms, "Q&A items panel should be present"
+        labels = {e["label"] for e in items_atoms[0]["entries"]}
+        assert "What was studied?" in labels
+        assert "What did we find?" in labels
+        assert "How confident are we?" in labels
+        assert "How thorough was the investigation?" in labels
+
+    def test_what_did_we_find_uses_verdict_text(self):
+        data = _make_report_data(posterior=0.85)
+        # data.verdict is "Supported with caveats." from the fixture.
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        find = next(
+            e for e in items_atoms[0]["entries"]
+            if e["label"] == "What did we find?"
+        )
+        assert "Supported with caveats" in find["body"]
+
+    def test_confidence_renders_posterior_when_completed(self):
+        data = _make_report_data(posterior=0.85, terminal_state="completed")
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        conf = next(
+            e for e in items_atoms[0]["entries"]
+            if e["label"] == "How confident are we?"
+        )
+        assert "Posterior" in conf["body"]
+        assert "85" in conf["body"]
+
+    def test_confidence_surfaces_terminal_when_not_completed(self):
+        data = _make_report_data(terminal_state="oscillation_detected")
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        conf = next(
+            e for e in items_atoms[0]["entries"]
+            if e["label"] == "How confident are we?"
+        )
+        assert "IBE-certified verdict" in conf["body"]
+        # No directional posterior percentage when not completed.
+        assert "Posterior:" not in conf["body"]
+
+    def test_no_verdict_callouts_at_all(self):
+        """The audit layout must not emit success/warning-toned callouts
+        for the verdict. The user explicitly didn't want red/green
+        tone cues."""
         data = _make_report_data(posterior=0.85)
         atoms = build_audit_report(data)
         callouts = _atoms_of_kind(atoms, "callout")
-        assert any("**Supported**" in str(a.get("content", "")) for a in callouts)
-        # tone should be success.
-        assert any(a.get("tone") == "success" for a in callouts)
+        # The only callouts allowed are tonally neutral (note/info) and
+        # they should NOT carry the verdict-label words 'Supported',
+        # 'Refuted', 'Insufficient', 'Inconclusive' as the headline.
+        for c in callouts:
+            tone = c.get("tone")
+            assert tone in (None, "note", "info"), (
+                f"Audit layout used non-neutral callout tone: {tone}"
+            )
 
-    def test_refuted_when_posterior_below(self):
-        data = _make_report_data(posterior=0.15)
-        atoms = build_audit_report(data)
-        callouts = _atoms_of_kind(atoms, "callout")
-        assert any("**Refuted**" in str(a.get("content", "")) for a in callouts)
-        assert any(a.get("tone") == "warning" for a in callouts)
-
-    def test_inconclusive_in_middle_band(self):
-        data = _make_report_data(posterior=0.5)
-        atoms = build_audit_report(data)
-        callouts = _atoms_of_kind(atoms, "callout")
-        assert any("**Inconclusive**" in str(a.get("content", "")) for a in callouts)
-
-    def test_insufficient_when_non_completed_terminal(self):
-        data = _make_report_data(
-            terminal_state="oscillation_detected", posterior=0.5
+    def test_thoroughness_includes_round_count_when_present(self):
+        stats = InvestigationStats(
+            total_evidence=100, investigation_rounds_total=6
         )
+        data = _make_report_data(stats=stats)
         atoms = build_audit_report(data)
-        callouts = _atoms_of_kind(atoms, "callout")
-        assert any(
-            "Insufficient evidence" in str(a.get("content", "")) for a in callouts
+        items_atoms = _atoms_of_kind(atoms, "items")
+        thorough = next(
+            e for e in items_atoms[0]["entries"]
+            if e["label"] == "How thorough was the investigation?"
         )
-        # Pill should say "Suspended" not a percentage.
-        assert any("Suspended" in str(a.get("content", "")) for a in callouts)
+        assert "100 evidence sources" in thorough["body"]
+        assert "6 investigation rounds" in thorough["body"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
