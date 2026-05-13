@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "andamentum"
-version = "0.2.0"
+version = "0.3.0rc1"
 description = "Composable agentic systems for scientific automation."
 readme = "README.md"
 requires-python = ">=3.10"
