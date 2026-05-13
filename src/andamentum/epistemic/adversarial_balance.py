@@ -6,7 +6,7 @@ based on the balance between supporting and adversarial evidence.
 Architecture: Layer 1 (framework-agnostic, no model calls)
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 import uuid
 
 from .primitives import (
@@ -164,46 +164,6 @@ def calculate_total_adversarial_weight(
         for c in counterarguments
         if c.quality.passes_threshold and c.match_strength != "none"
     )
-
-
-def should_flag_for_review(
-    balance: float, counterarguments: List[Counterargument]
-) -> Tuple[bool, Optional[str]]:
-    """Determine if results should be flagged for human review.
-
-    From spec Part 6.3: Flag suspicious patterns.
-
-    Args:
-        balance: Adversarial balance score.
-        counterarguments: List of counterarguments.
-
-    Returns:
-        Tuple of (should_flag, reason).
-    """
-    # Suspiciously uncontested
-    if balance > ADVERSARIAL_SUSPICIOUS_THRESHOLD and len(counterarguments) == 0:
-        return True, "No counterarguments found - may need broader search"
-
-    # Strong challenge but not demoted
-    if balance < ADVERSARIAL_REFUTED_THRESHOLD:
-        return True, "Strong adversarial evidence - claim may need demotion"
-
-    # Mixed quality counterarguments
-    low_quality = sum(1 for c in counterarguments if not c.quality.passes_threshold)
-    if low_quality > len(counterarguments) / 2:
-        return True, "Many low-quality counterarguments - may need better sources"
-
-    # Ad hominem attacks present (filtered but should note)
-    ad_hominems = sum(
-        1 for c in counterarguments if c.category == CriticismCategory.AD_HOMINEM
-    )
-    if ad_hominems > 0:
-        return (
-            True,
-            f"{ad_hominems} ad hominem attacks filtered - topic may be politically charged",
-        )
-
-    return False, None
 
 
 def generate_explanation(

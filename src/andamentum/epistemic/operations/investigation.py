@@ -325,8 +325,7 @@ class InvestigateClaimOperation(BaseOperation):
                 evidence_summaries.append(f"[{ev.source_type}] {ev.extracted_content}")
 
         # Unresolved scrutiny issues only — resolved uncertainties are
-        # filtered (otherwise the agent re-targets gaps already closed,
-        # see d9bcf1f).
+        # filtered so the agent doesn't re-target gaps already closed.
         scrutiny_issues: list[str] = []
         uncertainties = await self.repo.query(
             "uncertainty",

@@ -93,21 +93,17 @@ async def _all_active_claim_evidence_judged(state: Any, repo: Any) -> bool:
     with extracted content must have ``support_judgment`` set before
     the scrutiny-and-investigation stage exits.
 
-    This safety net codifies a contract that used to be implicit: the
-    pre-2026-05-12 judging step in ``ExtractNewEvidence`` was keyed off
-    the per-stub extraction loop, so a future code path that creates
-    Evidence without going through that loop would silently leave
-    ``support_judgment=None``. Downstream consumers
-    (``compute_posterior``, the IBE chain, ``confidence.py``,
-    the writer) all skip items where the field is None, which means
-    the calibration regresses silently — exactly the v7 failure mode
-    (1146 unjudged items on dev30, AUC -0.12).
+    This is the explicit, enforced version of a contract that used to
+    be implicit: downstream consumers (``compute_posterior``, the IBE
+    chain, ``confidence.py``, the writer) all skip Evidence where
+    ``support_judgment`` is None. If a code path adds Evidence without
+    judging it, posteriors silently degenerate toward 0.5 and the
+    discriminative metrics drop with no exception or test failure.
 
-    By writing the invariant explicitly at the stage boundary, any
-    future creation-path change that bypasses judging fails loudly
-    here rather than producing miscalibrated posteriors. The fix is
-    always the same: route the new Evidence through a judging step
-    before the stage exits.
+    The stage-exit invariant raises loudly at the boundary rather than
+    letting that class of bug propagate. The fix is always the same:
+    route the new Evidence through a judging step before the stage
+    exits.
     """
     claims = await _claims(repo)
     active_ids = {
@@ -135,8 +131,9 @@ async def _check_scrutiny(state: Any, repo: Any) -> bool:
     if not verdicts_settled:
         return False
     # Every claim-linked Evidence with content must have a verdict
-    # before downstream stages run. See ``_all_active_claim_evidence_judged``
-    # for the v7 regression this guard prevents from recurring silently.
+    # before downstream stages run — see
+    # ``_all_active_claim_evidence_judged`` for the contract this
+    # enforces and why it's expressed as an invariant.
     return await _all_active_claim_evidence_judged(state, repo)
 
 

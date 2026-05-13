@@ -321,10 +321,13 @@ class TestClaimGroundedDispatch:
     ``claim`` and the intent as ``angle`` — keeping the claim's subject
     matter present in the dispatch context across rounds.
 
-    The earlier shape (passing the intent as the claim) abstracted the
-    claim away and produced no_bearing-dominated evidence pools — the
-    v8 calibration regression. This test pins that the new shape is in
-    place.
+    The alternative shape — passing the intent text as the dispatch
+    agent's ``claim`` — abstracts the claim's subject away. The
+    dispatch agent then writes queries about the intent's methodological
+    framing (e.g. "adversarial replication") rather than about the
+    claim's actual content (e.g. "aspirin reduces colorectal cancer"),
+    and downstream judging correctly returns ``no_bearing`` on most
+    retrieved papers. This test pins the correct shape.
     """
 
     async def test_dispatch_receives_claim_and_intent_separately(

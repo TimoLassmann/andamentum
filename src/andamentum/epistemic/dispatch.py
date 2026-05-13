@@ -1,33 +1,31 @@
 """Description-driven evidence-provider dispatch.
 
-Replaces the legacy three-agent chain
-(``epistemic_select_provider`` + ``epistemic_rank_providers`` +
-``epistemic_formulate_query``) with one generic per-provider dispatch
-agent. Provider knowledge is read from each provider's class attributes
-(``description``, ``query_guidance``, ``query_examples``) at runtime;
-this module never hard-codes provider names or syntaxes.
+Provider knowledge lives on each provider class as the four class
+attributes ``description``, ``query_guidance``, ``query_examples``,
+``output_kind`` (see ``providers/CONTRIBUTING.md``). A single generic
+dispatch agent reads those attributes at runtime to decide whether the
+provider can help with a given claim and, if so, to construct one or
+two native-syntax queries for it. Adding a new provider is therefore a
+class-attribute + HTTP-wrapper task — no agent changes, no prompt
+engineering.
 
 Public API:
 
 - ``DispatchResult`` — bundle of (queries, reasoning, confidence)
   produced by one dispatch call.
-- ``formulate_provider_query(claim, provider, *, agent_runner)`` —
-  ask the dispatch agent whether ``provider`` can help with ``claim``,
-  and if so, construct one or two native-syntax queries.
+- ``formulate_provider_query(claim, provider, *, agent_runner, angle)``
+  — ask the dispatch agent whether ``provider`` can help with
+  ``claim``, and if so, construct one or two native-syntax queries.
+  ``angle`` is an optional methodological angle the queries should
+  target (used by investigation rounds; ``None`` in initial gather).
 - ``select_candidates_by_embedding(claim, providers, *, top_k, ...)`` —
   optional pre-filter that narrows N providers to top-K by description
-  similarity. At the current 10-provider catalogue, ``top_k`` defaults
-  to "no pre-filter" (pass-through) per the PRD; the helper exists so
-  large-catalogue activation is a one-flag change later.
-- ``gather_evidence_new(claim, providers, *, agent_runner, ...)`` —
-  end-to-end orchestrator: pre-filter → dispatch → gather → aggregate.
-  Returns ``list[GatheredEvidence]`` in the same shape the legacy
-  pipeline produces, so this is drop-in for the existing extract step.
-
-Phase 2 of the description-driven-dispatch PRD
-(``docs/superpowers/plans/2026-05-12-description-driven-provider-dispatch.md``).
-The legacy path keeps working unchanged through Phase 4; this module
-runs alongside as the opt-in alternative.
+  similarity. At the current catalogue size, ``top_k`` defaults to
+  "no pre-filter" (pass-through); the helper exists so large-catalogue
+  activation is a one-flag change later.
+- ``gather_evidence_new(claim, providers, *, agent_runner, angle, ...)``
+  — end-to-end orchestrator: pre-filter → dispatch → gather →
+  aggregate. Returns ``list[GatheredEvidence]``.
 """
 
 from __future__ import annotations
@@ -89,7 +87,7 @@ async def formulate_provider_query(
 
     Reads ``provider.description``, ``provider.query_guidance``, and
     ``provider.query_examples`` from the provider's class attributes
-    (Phase 1 contract). Returns a ``DispatchResult`` describing the
+    (provider self-description contract). Returns a ``DispatchResult`` describing the
     agent's routing decision.
 
     On hard agent failure (network, malformed output the agent runner
@@ -107,7 +105,7 @@ async def formulate_provider_query(
         provider_name: Short identifier (matches the registration key).
         provider: An instance of a provider class. Must have
             ``description``, ``query_guidance``, ``query_examples``
-            class attributes per the Phase 1 contract.
+            class attributes per the provider self-description contract.
         agent_runner: An ``AgentRunner`` configured with the dispatch
             model. Typically shared across many dispatch calls in one
             claim's processing.

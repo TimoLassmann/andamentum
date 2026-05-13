@@ -521,12 +521,10 @@ class PlanEvidence(Node):
     no ``extracted=False`` stubs and proceeds straight to the
     retrieval-health check.
 
-    The legacy three-agent gather path (PlanTaskOperation +
-    epistemic_select_provider + epistemic_formulate_query) was
-    decommissioned once dev30 v6 demonstrated the description-driven
-    dispatch is faster, less wasteful, and at-or-better on calibration.
-    See ``docs/superpowers/plans/2026-05-12-description-driven-provider-
-    dispatch.md`` §6.
+    The description-driven dispatch path is the only evidence-gathering
+    implementation; the prior multi-agent chain (provider selection,
+    ranking, and per-provider query formulation as separate agents) was
+    decommissioned in favour of the unified single-agent design.
     """
 
     reads = frozenset({"objective_id"})
@@ -984,12 +982,12 @@ class ExtractNewEvidence(Node):
             extracted=False,
         )
 
-        # Pass 1: extraction. Defensive — the v7 evidence-gathering path
-        # (initial gather via DispatchGatherOperation, follow-up rounds
-        # via InvestigateClaimOperation + dispatch_and_persist_for_text)
-        # persists Evidence with ``extracted=True`` directly, so this
-        # loop is empty on normal runs. It remains in place so any
-        # future code path that introduces ``extracted=False`` stubs
+        # Pass 1: extraction. Defensive — the current evidence-gathering
+        # path (initial gather via DispatchGatherOperation, follow-up
+        # rounds via InvestigateClaimOperation + dispatch_and_persist_
+        # for_text) persists Evidence with ``extracted=True`` directly,
+        # so this loop is empty on normal runs. It remains in place so
+        # any future code path that introduces ``extracted=False`` stubs
         # is still handled.
         for ev in unextracted:
             await _run_op(
@@ -1014,25 +1012,17 @@ class ExtractNewEvidence(Node):
         # Pass 2: judge every Evidence linked to a non-abandoned claim
         # that has extracted content and no support_judgment yet.
         #
-        # The previous implementation was keyed off ``per_stub_results``
-        # — the list of stubs that had just been extracted. That made
-        # the judging contract implicitly assume "Evidence arrives via
-        # the stub-extraction path." When ``InvestigateClaimOperation``
-        # was rewritten to persist Evidence directly via the dispatch
-        # helper (``extracted=True``, no stub step), the per_stub_results
-        # list became empty and the judging silently never ran for
-        # investigation-time evidence. Result: 1146 unjudged items on
-        # dev30 v7 and a substantial calibration regression.
-        #
-        # The new contract is source-agnostic: every Evidence with
-        # ``depends_on_claim_id`` set, ``extracted_content`` non-empty,
-        # ``support_judgment is None``, and ``invalidated=False`` is
-        # eligible for judging. The predicate doesn't care HOW the
-        # Evidence got into the repo — only that it's a claim-linked
-        # piece of content still missing its verdict. The
-        # scrutiny_and_investigation stage's exit invariant in
+        # The judging contract is **source-agnostic**: every Evidence
+        # with ``depends_on_claim_id`` set, ``extracted_content``
+        # non-empty, ``support_judgment is None``, and ``invalidated=
+        # False`` is eligible for judging. The predicate doesn't care
+        # HOW the Evidence got into the repo — only that it's a
+        # claim-linked piece of content still missing its verdict.
+        # The scrutiny_and_investigation stage's exit invariant in
         # ``graph/stages.py`` enforces the same predicate as a safety
-        # net so a future creation path can't break this silently again.
+        # net, so any future creation path that bypasses judging fails
+        # loudly at the stage boundary rather than silently degrading
+        # posterior calibration.
         if deps.agent_runner is not None:
             all_evidence = await deps.repo.query(
                 "evidence", objective_id=state.objective_id
