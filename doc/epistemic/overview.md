@@ -407,13 +407,14 @@ class Demand(BaseModel):
 
 The demand is not layer-specific. One uniform shape travels everywhere; each consumer interprets the freeform fields in its own context.
 
-### Iterative provider tournament
+### Description-driven dispatch
 
-Round 1 of research-mode investigation uses a provider tournament at the objective level:
+Evidence gathering runs through a single per-provider dispatch agent (`epistemic_dispatch_provider`):
 
-- `epistemic_rank_providers` is called K = `RESEARCH_MODE_PROVIDER_K` = 2 times with a shrinking candidate pool to pick K distinct providers.
-- Every sub-claim then queries all K. K=2 is the minimum that lets the cross-domain convergence detector fire per claim.
-- Round 2+ escalates with the next-best unused provider per sub-claim only when scrutiny demands more (the `state.providers_used_per_sub` set tracks what's been queried).
+- Each provider class self-describes via four attributes: `description` (scope and strengths/weaknesses), `query_guidance` (native query syntax catalogue), `query_examples` (representative claim → native-query pairs), `output_kind`.
+- For each claim (or sub-claim, or follow-up intent), the dispatch agent is invoked once per provider in parallel. It either commits one or two native-syntax queries or abstains for that provider.
+- Adding a new provider is a class-attribute task — no agent design, no taxonomy update.
+- Investigation rounds use the same dispatch path: the `epistemic_investigate_claim` agent generates a methodological *angle* (intent), and the dispatch agent receives the *claim* as the subject and the *intent* as the angle modifier. Queries combine both, so retrieved evidence stays grounded in the claim's subject matter while exploring the intent's dimension.
 
 ### Synthesis demand loop
 
@@ -589,9 +590,10 @@ One module per family in `operations/`. Total: 17 modules.
 
 | Module | Operations |
 |---|---|
-| `preplanning` | `ClarifyQuestionOperation`, `ClassifyQuestionOperation`, `ConceptualAnalysisOperation`, `DecomposeQuestionOperation`, `PlanTaskOperation` |
+| `preplanning` | `ClarifyQuestionOperation`, `ClassifyQuestionOperation`, `ConceptualAnalysisOperation`, `DecomposeQuestionOperation` |
+| `dispatch_gather` | `DispatchGatherOperation` (initial gather via description-driven dispatch) plus the module-level `dispatch_and_persist_for_text` helper shared with investigation |
 | `seed_claim`, `multi_seed_claim`, `claims` | `SeedClaimOperation`, `MultiSeedClaimOperation`, `ProposeClaimsOperation`, plus `top_n_representatives` (claim-relevance rerank, async) |
-| `evidence` | `ExtractEvidenceOperation` (provider dispatch plus passage extraction plus relevance rerank) |
+| `evidence` | `ExtractEvidenceOperation` (residual stub-extraction path; the dispatch flow normally persists Evidence with content + scoring already attached, so this path is rarely exercised) |
 | `scrutiny`, `investigation` | `ScrutiniseClaimOperation`, `InvestigateClaimOperation` |
 | `uncertainty`, `concerns` | `ResolveUncertaintyOperation`, `DeduplicateConcernsOperation` |
 | `verification` | `AdversarialSearchOperation`, `AnalyzeArgumentOperation`, `AssessConvergenceOperation`, `ContrastiveEvaluationOperation`, `CrossClaimConsistencyOperation`, `ValidateDeductivelyOperation`, `VerifyComputationallyOperation` |

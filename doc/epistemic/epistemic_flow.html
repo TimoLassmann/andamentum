@@ -671,11 +671,11 @@ cap = 0.5 + (loveliness_gap / FRAMING_TIE_SATURATION_GAP) × 0.5
 
 <p>The demand is not layer-specific. One uniform shape travels everywhere; each consumer interprets the freeform fields in its own context. Small-LLM agents fill flat schemas reliably, and a demand chain rendered as text reads naturally.</p>
 
-<h3>The iterative provider tournament</h3>
+<h3>Description-driven dispatch</h3>
 
-<p>Round 1 of research-mode investigation uses a provider tournament at the objective level. <code>epistemic_rank_providers</code> is called <code>K = RESEARCH_MODE_PROVIDER_K = 2</code> times with a shrinking candidate pool to pick K distinct providers; every sub-claim then queries all K. K=2 is the minimum that lets the cross-domain convergence detector fire per claim, since Reichenbach's common-cause needs at least two independent sources.</p>
+<p>Evidence gathering runs through a single per-provider dispatch agent (<code>epistemic_dispatch_provider</code>). Each provider class self-describes via four attributes: <code>description</code> (scope, strengths, weaknesses), <code>query_guidance</code> (native query syntax catalogue), <code>query_examples</code> (representative claim → native-query pairs), and <code>output_kind</code>. For each claim or sub-claim, the dispatch agent is invoked once per provider in parallel and either commits one or two native-syntax queries or abstains for that provider. Cross-domain convergence still requires at least two independent sources to fire (Reichenbach's common-cause principle), but the system reaches that threshold by per-provider commit/abstain rather than by a separate tournament.</p>
 
-<p>Round 2+ escalates with the next-best unused provider per sub-claim only when scrutiny demands more (the <code>state.providers_used_per_sub</code> set tracks what's been queried). This avoids the dead-weight of querying every provider for every claim while still escalating on demand.</p>
+<p>Investigation rounds (follow-up gathers triggered by scrutiny doubt) use the same dispatch path. The <code>epistemic_investigate_claim</code> agent generates a methodological <em>angle</em> — an intent like "find adversarial evidence" or "replication in a different model system" — and the dispatch agent receives the original claim as the subject and the intent as the angle modifier. Queries combine both: retrieved evidence stays grounded in the claim's subject matter while exploring the intent's dimension. Adding a new provider is a class-attribute + HTTP-wrapper task, with no agent design or prompt engineering required.</p>
 
 <h3>Synthesis demand loop</h3>
 
