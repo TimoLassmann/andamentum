@@ -184,6 +184,42 @@ class TestKeyFindingsQAPanel:
                 f"Audit layout used non-neutral callout tone: {tone}"
             )
 
+    def test_question_type_in_qa_panel(self):
+        """The question-type classification ('This is a yes/no factual
+        question') belongs inside the Q&A panel, not as a separate
+        callout."""
+        data = _make_report_data()
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        labels = {e["label"] for e in items_atoms[0]["entries"]}
+        assert "What type of question?" in labels
+        qt = next(
+            e for e in items_atoms[0]["entries"]
+            if e["label"] == "What type of question?"
+        )
+        assert "yes/no factual question" in qt["body"]
+        # And there is no separate question-type callout.
+        callouts = _atoms_of_kind(atoms, "callout")
+        assert not any(
+            "This is a yes/no" in str(c.get("content", "")) for c in callouts
+        )
+
+    def test_verdict_callout_renders_data_verdict_with_neutral_tone(self):
+        """The one-sentence verdict (``data.verdict``) renders as a
+        neutral-toned callout right after the heading — lead with the
+        finding in the system's own words."""
+        data = _make_report_data()
+        # fixture has verdict = "Supported with caveats."
+        atoms = build_audit_report(data)
+        callouts = _atoms_of_kind(atoms, "callout")
+        # Find the callout that contains the verdict text.
+        verdict_callouts = [
+            c for c in callouts if "Supported with caveats" in str(c.get("content", ""))
+        ]
+        assert verdict_callouts, "Verdict callout missing"
+        # Tone must be neutral.
+        assert verdict_callouts[0].get("tone") in (None, "note", "info")
+
     def test_thoroughness_includes_round_count_when_present(self):
         stats = InvestigationStats(
             total_evidence=100, investigation_rounds_total=6
@@ -373,7 +409,9 @@ class TestSingleClaimRendering:
 
 
 class TestResearchMode:
-    def test_subinvestigations_section_when_multiple_claims(self):
+    def test_sub_claims_numbered_in_research_mode(self):
+        """Research-mode reports render under the unified 'Findings'
+        heading; each sub-claim is numbered #1, #2, …"""
         claims = [
             ClaimSummary(
                 claim_id=f"c{i}",
@@ -386,8 +424,8 @@ class TestResearchMode:
         ]
         data = _make_report_data(claims=claims)
         atoms = build_audit_report(data)
-        sub_sections = _atoms_with_heading(atoms, "Sub-investigations")
-        assert sub_sections, "Research-mode report should have a Sub-investigations heading"
+        findings = _atoms_with_heading(atoms, "Findings")
+        assert findings, "Findings heading should be present in research mode too"
         # Each sub-claim is rendered as a card.
         card_atoms = _atoms_of_kind(atoms, "card")
         sub_cards = [
@@ -399,10 +437,13 @@ class TestResearchMode:
         for i, c in enumerate(sub_cards, start=1):
             assert f"#{i}" in str(c.get("content", ""))
 
-    def test_key_evidence_heading_when_single_claim(self):
-        """Verify-mode reports use 'Key evidence' instead of
-        'Sub-investigations' for the per-claim section."""
-        claims = [
+    def test_findings_heading_unified_in_both_modes(self):
+        """Both verify-mode (single claim) and research-mode (multiple
+        sub-claims) use the same 'Findings' heading for the per-claim
+        section, matching the classic layout. The intro text differs
+        per mode."""
+        # Verify mode — single claim.
+        single = [
             ClaimSummary(
                 claim_id="c1",
                 statement="Single claim",
@@ -411,10 +452,29 @@ class TestResearchMode:
                 stage="supported",
             )
         ]
-        data = _make_report_data(claims=claims)
-        atoms = build_audit_report(data)
-        assert _atoms_with_heading(atoms, "Key evidence")
-        assert not _atoms_with_heading(atoms, "Sub-investigations")
+        atoms_single = build_audit_report(_make_report_data(claims=single))
+        findings_single = _atoms_with_heading(atoms_single, "Findings")
+        assert findings_single, "Verify-mode report should have Findings heading"
+        assert "Below" in findings_single[0]["content"]
+
+        # Research mode — multiple sub-claims.
+        multi = [
+            ClaimSummary(
+                claim_id=f"c{i}",
+                statement=f"Sub-claim {i}",
+                scope="g",
+                assumptions=[],
+                stage="supported",
+            )
+            for i in range(3)
+        ]
+        atoms_multi = build_audit_report(_make_report_data(claims=multi))
+        findings_multi = _atoms_with_heading(atoms_multi, "Findings")
+        assert findings_multi, "Research-mode report should have Findings heading"
+        assert "decomposed into 3" in findings_multi[0]["content"]
+        # Neither layout uses the old labels.
+        assert not _atoms_with_heading(atoms_single, "Key evidence")
+        assert not _atoms_with_heading(atoms_multi, "Sub-investigations")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

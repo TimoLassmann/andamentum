@@ -5,24 +5,25 @@ clean, prose-heavy report. This module produces a different shape:
 **audit-first**, optimised for someone who wants to inspect the
 system's reasoning trail rather than just read the answer.
 
-Differences from the classic layout:
+Structure (top to bottom):
 
-1. **Headline panel** at the top — claim, verdict badge, posterior pill.
-2. **Summary of findings table** (Cochrane-style) immediately under
-   the headline — small, scannable, the bottom line in 30 seconds.
-3. **Plain-language summary** — same prose body as classic, but
-   visually separated from the evidence breakdown.
-4. **Key evidence per claim** — the claim card shows the 3-5 strongest
-   supporting items and the strongest counter-evidence inline, with
-   clickable source links. The 98-item flat reference list that
-   currently dominates the classic claim card is *gone* — the full
-   list is in the appendix as a collapsible section.
-5. **Audit trail per claim** — investigation rounds as a proper list,
-   IBE chain candidates as a markdown table, adversarial probe as
-   explicit prose. Each section is a collapsible ``<details>`` block
-   so the reader can opt in.
-6. **Caveats & Limitations** — same as classic.
-7. **Appendix: full evidence trail** — every retrieved item with its
+1. **Heading** — research question + meta (date, model).
+2. **One-line verdict callout** (``data.verdict``, neutral tone).
+3. **Key Findings Q&A panel** — What was studied / What type of
+   question / What did we find / How confident / How thorough.
+4. **Summary prose** — research question quote + evidence counts +
+   the direct-answer narrative.
+5. **Summary of findings** — Cochrane-style table of evidence
+   directional split (supports / contradicts / no bearing) with
+   counts and percentages.
+6. **Findings** — per-claim cards. Each card shows the 3-5 strongest
+   supporting items and the strongest counter-evidence inline with
+   clickable source links; the investigation rounds, IBE chain
+   table, and adversarial probe live in the card's collapsible
+   ``<details>``.
+7. **Caveats & Limitations** — non-blocking and blocking unresolved
+   uncertainties, same data the classic layout uses.
+8. **Appendix: full evidence trail** — every retrieved item with its
    judgement and source link, in collapsible groups by direction.
 
 The module uses **only the 7 built-in typeset atoms** (heading,
@@ -482,31 +483,50 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
         "date": data.investigation_date.strftime("%Y-%m-%d"),
         "model": data.model_used,
     }
-    if data.question_type:
-        qt_label = QUESTION_TYPE_LABELS.get(
-            data.question_type, data.question_type
-        )
-        meta["mode"] = qt_label
     r.heading(data.research_question, meta=meta)
 
     multi_claim = len(data.claims) > 1
 
-    # ── Key Findings Q&A panel — lead with the finding ─────────────────
+    # ── One-sentence verdict — lead with the finding ────────────────────
     #
-    # The first thing a reader sees after the title is the structured
-    # answer: what was studied, what we found, how confident we are,
-    # how thorough the search was. This is the same shape the classic
-    # layout uses (the user explicitly wanted this lifted into the
-    # audit layout). Rendered as a neutral ``items`` block — no
-    # red/green tone treatments.
+    # The very first thing a reader sees after the title is the
+    # one-line conclusion in the system's own words (``data.verdict``).
+    # Rendered as a neutral note-toned callout — no red/green
+    # treatments. In research mode without a synthesised verdict,
+    # we fall back to the verdict label + posterior pill.
+    verdict_line = data.verdict
+    if not verdict_line and multi_claim:
+        verdict_line = (
+            f"{_verdict_label(data)} — see per-sub-claim verdicts below."
+        )
+    if verdict_line:
+        r.callout(verdict_line, tone="note")
+
+    # ── Key Findings Q&A panel — structured answer to the question ─────
+    #
+    # The classic layout's "what was studied / what did we find / how
+    # confident / how thorough" items block, lifted into the audit
+    # layout. The question type (yes/no factual, explanation,
+    # comparison, …) sits here too — what the system thinks the
+    # question *is* belongs alongside what it found.
+    qt_body: str | None = None
+    if data.question_type:
+        qt_label = QUESTION_TYPE_LABELS.get(
+            data.question_type, data.question_type
+        )
+        qt_body = f"This is a {qt_label}."
+
     qa_entries: list[dict[str, str]] = [
-        {"label": "What was studied?", "body": data.clarified_question or data.research_question},
+        {
+            "label": "What was studied?",
+            "body": data.clarified_question or data.research_question,
+        },
     ]
+    if qt_body:
+        qa_entries.append({"label": "What type of question?", "body": qt_body})
     if data.verdict:
         qa_entries.append({"label": "What did we find?", "body": data.verdict})
     elif multi_claim:
-        # Research mode without a single artefact verdict: synthesise from
-        # the verdict label (Supported / Refuted / Inconclusive / Insufficient).
         qa_entries.append(
             {
                 "label": "What did we find?",
@@ -524,7 +544,42 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
     )
     r.items(entries=qa_entries)
 
-    # ── Summary of findings (Cochrane-style table) ──────────────────────
+    # ── Summary prose — research question + counts + direct answer ─────
+    #
+    # The classic layout's "Summary" section, lifted here. Sits
+    # immediately after the Q&A panel so a reader can read the
+    # one-sentence verdict above, the structured Q&A here, then the
+    # narrative answer in prose form — before moving into the Summary
+    # of Findings table and the per-claim findings.
+    summary_parts: list[str] = []
+    summary_parts.append(f"**Research Question:** *{data.research_question}*")
+    summary_parts.append("")
+    counts_line = f"**Evidence Sources:** {data.stats.total_evidence}"
+    claims_supported = sum(
+        1
+        for c in data.claims
+        if c.stage.lower() in ("supported", "robust", "provisional", "actionable")
+    )
+    counts_line += (
+        f" | **Claims Established:** {claims_supported} of "
+        f"{data.stats.total_claims}"
+    )
+    summary_parts.append(counts_line)
+    if data.direct_answer:
+        summary_parts.append("")
+        summary_parts.append(data.direct_answer)
+    r.prose(
+        "\n".join(summary_parts),
+        heading="Summary",
+        id="summary",
+    )
+
+    # ── Summary of findings (Cochrane-style table) — for auditing ──────
+    #
+    # The table follows the prose summary because it's the first thing
+    # someone auditing the result should look at: a directional split
+    # of evidence counts that lets a reader cross-check the verdict
+    # against the underlying retrievals.
     s = data.stats
     judged_total = s.evidence_supports + s.evidence_contradicts + s.evidence_no_bearing
     sof_rows = [
@@ -564,29 +619,35 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
         id="summary-of-findings",
     )
 
-    # ── Plain-language summary ──────────────────────────────────────────
-    if data.direct_answer:
-        r.prose(
-            data.direct_answer,
-            heading="Plain-language summary",
-            id="plain-language-summary",
-        )
-
-    # ── Per-claim sections ──────────────────────────────────────────────
+    # ── Findings (per-claim cards with evidence) ───────────────────────
+    #
+    # The system's discrete findings — one card per claim, each with
+    # its strongest supporting evidence, the adversarial probe's
+    # counter-evidence, and the audit trail (investigation rounds +
+    # IBE chain) tucked into the card's collapsible details.
+    # ``Findings`` is the same word the classic layout uses; matches
+    # Cochrane convention. In research mode (decomposition) the
+    # claims are numbered ``#1, #2, …`` and the intro text says so.
     adv_by_claim: dict[str, list[Any]] = {}
     for adv in data.adversarial:
         adv_by_claim.setdefault(adv.claim_id, []).append(adv)
 
     if multi_claim:
-        # Research mode — each sub-claim becomes its own audit card.
-        r.prose(
+        intro = (
             f"The question was decomposed into {len(data.claims)} sub-claims, "
             "each investigated separately. Below: each sub-claim's verdict, "
-            "key supporting and counter-evidence, and the methodological "
-            "trail the system followed.",
-            heading="Sub-investigations",
-            id="sub-investigations",
+            "the strongest supporting and counter-evidence, and the "
+            "methodological audit trail the system followed."
         )
+    else:
+        intro = (
+            "Below: the system's verdict, the strongest supporting "
+            "evidence, the strongest counter-evidence the adversarial "
+            "probe surfaced, and the audit trail."
+        )
+    r.prose(intro, heading="Findings", id="findings")
+
+    if multi_claim:
         for i, claim in enumerate(data.claims, start=1):
             _render_claim_section(
                 r,
@@ -596,14 +657,6 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
                 show_label_prefix=f"#{i}",
             )
     else:
-        # Verify mode — one claim, no decomposition.
-        r.prose(
-            "Below: the system's verdict, the strongest supporting "
-            "evidence, the strongest counter-evidence the adversarial "
-            "probe surfaced, and the audit trail.",
-            heading="Key evidence",
-            id="key-evidence",
-        )
         for claim in data.claims:
             _render_claim_section(r, claim, data.evidence, adv_by_claim)
 
