@@ -1,11 +1,12 @@
 """Preplanning agents — clarify_question, classify_question, conceptual_analysis, decompose_question.
 
-All routing decisions (which providers to query, what query to send each
-one) now go through description-driven dispatch
-(``epistemic_dispatch_provider`` in ``agents/dispatch.py``). The legacy
-trio (``epistemic_select_provider``, ``epistemic_rank_providers``,
-``epistemic_formulate_query``) is gone — investigation rounds and
-initial gather both route through the same dispatch path.
+These agents shape the objective before evidence gathering: clarifying
+the question, classifying its epistemic type, performing conceptual
+analysis, and decomposing the question into sub-investigations.
+Routing (which providers to query, what query to send each one) is
+handled by description-driven dispatch
+(``epistemic_dispatch_provider`` in ``agents/dispatch.py``) and is
+intentionally not the responsibility of any preplanning agent.
 """
 
 from .output_models import (

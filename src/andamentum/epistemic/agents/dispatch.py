@@ -1,16 +1,14 @@
 """Description-driven dispatch agent.
 
 Single generic agent that reads ONE provider's description and example
-queries plus a claim, and returns a list of native-syntax queries for
-that provider (empty list = abstain).
+queries plus a claim (and optional methodological angle) and returns a
+list of native-syntax queries for that provider (empty list = abstain).
 
-This replaces the three-agent legacy chain
-(``epistemic_select_provider`` + ``epistemic_rank_providers`` +
-``epistemic_formulate_query``) with one per-provider call that handles
-triage and query construction together. Provider knowledge lives in the
-provider's class attributes (``description``, ``query_guidance``,
-``query_examples``), not in this agent's prompt — so adding a new
-provider doesn't change this agent.
+Provider knowledge lives in the provider's class attributes
+(``description``, ``query_guidance``, ``query_examples``), not in this
+agent's prompt — so adding a new provider doesn't change this agent.
+One per-provider call handles both triage (commit / abstain) and query
+construction.
 
 Architecture: Layer 1 (Pydantic + prompt string).
 """

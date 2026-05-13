@@ -1,24 +1,23 @@
-"""Regression tests for the post-dispatch judging contract.
+"""Regression tests for the source-agnostic judging contract.
 
-After the v6→v7 architecture change (description-driven dispatch as
-the only routing path, including follow-up investigation rounds),
-investigation-time Evidence is persisted with ``extracted=True``
-directly — it never goes through the per-stub ExtractEvidenceOperation
-path. The old judging step in ``ExtractNewEvidence`` was keyed off
-the per-stub extraction list, so it silently stopped firing on the
-new path. Result on dev30: 1146 unjudged Evidence items and AUC -0.12.
+Investigation-time Evidence is persisted with ``extracted=True``
+directly via the dispatch helper — it does not go through the per-stub
+``ExtractEvidenceOperation`` path. The judging step in
+``ExtractNewEvidence`` therefore must not be keyed off any specific
+creation path; it must judge Evidence by the invariant the system
+actually cares about: claim-linked, content-bearing, unjudged.
 
-The fix is twofold:
+The fix has two parts:
 
-1. ``ExtractNewEvidence`` now judges by predicate: every Evidence with
+1. ``ExtractNewEvidence`` judges by predicate: every Evidence with
    ``depends_on_claim_id`` set, ``extracted_content`` non-empty,
    ``support_judgment is None``, and ``invalidated=False`` is judged
    against its claim — regardless of how the Evidence was created.
 
-2. The ``scrutiny_and_investigation`` stage exit invariant now also
-   requires that no such Evidence remains unjudged at stage exit. A
-   future creation path that bypasses judging crashes loudly here
-   rather than producing miscalibrated posteriors silently.
+2. The ``scrutiny_and_investigation`` stage exit invariant enforces
+   the same predicate at the stage boundary. A future creation path
+   that bypasses judging fails loudly here rather than silently
+   regressing posterior calibration.
 
 These tests pin both.
 """
@@ -83,17 +82,17 @@ class _FakeCtx:
 
 
 class TestPredicateDrivenJudging:
-    """The new judging step in ``ExtractNewEvidence`` finds Evidence by
-    predicate, not by stub-extras list. It catches Evidence regardless of
-    which path created it — the contract the v7 regression violated."""
+    """``ExtractNewEvidence`` finds unjudged Evidence by predicate, not
+    by stub-extras list. It catches Evidence regardless of which path
+    created it — the source-agnostic contract."""
 
     async def test_judges_directly_persisted_evidence(
         self, repo: EpistemicRepository
     ) -> None:
         """Evidence persisted with ``extracted=True`` and
-        ``depends_on_claim_id`` (the v7 dispatch path's shape) gets
-        judged by ExtractNewEvidence even though it never went through
-        ExtractEvidenceOperation."""
+        ``depends_on_claim_id`` (the shape produced by the dispatch
+        path) gets judged by ExtractNewEvidence even though it never
+        went through ExtractEvidenceOperation."""
         obj = Objective(
             entity_id="obj_direct",
             objective_id="obj_direct",
@@ -327,8 +326,8 @@ class TestStageInvariant:
             scrutiny_verdict="pass",
         )
         await repo.save(claim)
-        # Unjudged Evidence linked to a non-abandoned claim — exactly
-        # the v7 failure mode.
+        # Unjudged Evidence linked to a non-abandoned claim — the
+        # invariant must catch this and the stage must refuse to exit.
         ev = Evidence(
             entity_id="ev_unjudged",
             objective_id="obj_fail",
