@@ -21,6 +21,8 @@ from .report_data import (
     ConfidenceScores,
     ConvergenceSummary,
     EvidenceSummary,
+    IBECandidate,
+    InvestigationRound,
     InvestigationStats,
     QUESTION_TYPE_LABELS,
     ReportData,
@@ -269,6 +271,43 @@ class ReportGenerator:
                 if eid in evidence_index_map
             )
 
+            # Investigation-rounds audit trail — every follow-up intent
+            # the gap-analysis agent proposed, with its reachability count.
+            # Empty when the claim reached a verdict on initial gather alone.
+            investigation_rounds: list[InvestigationRound] = []
+            for round_idx, record in enumerate(
+                claim.investigation_intents or [], start=1
+            ):
+                investigation_rounds.append(
+                    InvestigationRound(
+                        round_index=round_idx,
+                        intent=record.text,
+                        evidence_count=record.evidence_count,
+                    )
+                )
+
+            # IBE chain candidates — alternative explanations enumerated
+            # at the integration step, scored on loveliness + likeliness.
+            # Empty when the claim never reached IBE (e.g. cycle-capped
+            # at HYPOTHESIS or abandoned).
+            ibe_candidates: list[IBECandidate] = []
+            for c in claim.integration_candidates or []:
+                ibe_candidates.append(
+                    IBECandidate(
+                        candidate_id=c.candidate_id,
+                        verdict=c.verdict,
+                        description=c.description,
+                        loveliness=c.loveliness,
+                        loveliness_reasoning=c.loveliness_reasoning,
+                        likeliness=c.likeliness,
+                        likeliness_reasoning=c.likeliness_reasoning,
+                        chosen=c.chosen,
+                        runner_up=c.runner_up,
+                        gap_loveliness=c.gap_loveliness,
+                        gap_likeliness=c.gap_likeliness,
+                    )
+                )
+
             claim_summaries.append(
                 ClaimSummary(
                     claim_id=claim.claim_id,
@@ -282,6 +321,10 @@ class ReportGenerator:
                     scrutiny_verdict=claim.scrutiny_verdict,
                     verification_summary=verification_summary,
                     evidence_refs_display=evidence_refs_display,
+                    investigation_rounds=investigation_rounds,
+                    ibe_candidates=ibe_candidates,
+                    integrated_assessment=claim.integrated_assessment,
+                    integrated_confidence=claim.integrated_confidence,
                 )
             )
 
@@ -377,6 +420,26 @@ class ReportGenerator:
                         line = line[2:]
                     open_questions.append(line)
 
+        # Per-evidence judgement breakdown — the audit-trail view of
+        # how each retrieved item was categorised. Helps a reader see
+        # at a glance whether the system found directional evidence or
+        # mostly tangential material (the no_bearing share).
+        evidence_supports = sum(
+            1 for ev in all_evidence if ev.support_judgment == "supports"
+        )
+        evidence_contradicts = sum(
+            1 for ev in all_evidence if ev.support_judgment == "contradicts"
+        )
+        evidence_no_bearing = sum(
+            1 for ev in all_evidence if ev.support_judgment == "no_bearing"
+        )
+        evidence_invalidated = sum(
+            1 for ev in all_evidence if ev.invalidated
+        )
+        investigation_rounds_total = sum(
+            len(c.investigation_intents or []) for c in all_claims
+        )
+
         # Build statistics
         stats = InvestigationStats(
             total_evidence=len(all_evidence),
@@ -387,6 +450,11 @@ class ReportGenerator:
             resolved_uncertainties=resolved_count,
             adversarial_challenges=len(adversarial_summaries),
             convergent_domains=len(convergence_summaries),
+            evidence_supports=evidence_supports,
+            evidence_contradicts=evidence_contradicts,
+            evidence_no_bearing=evidence_no_bearing,
+            evidence_invalidated=evidence_invalidated,
+            investigation_rounds_total=investigation_rounds_total,
         )
 
         # Build investigation narrative

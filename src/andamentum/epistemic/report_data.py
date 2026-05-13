@@ -48,6 +48,47 @@ class UncertaintySummary:
 
 
 @dataclass
+class InvestigationRound:
+    """One follow-up investigation round on a claim.
+
+    Each entry is one intent the gap-analysis agent proposed during a
+    round when scrutiny said the evidence was insufficient. The agent
+    names a methodological angle (mechanism, adversarial, replication,
+    methodologically-independent, etc.) and the dispatch layer routes
+    it to providers. ``evidence_count`` is the reachability signal —
+    how many evidence items the routing found for this angle.
+    """
+
+    round_index: int  # 1-based — Round 1, Round 2, …
+    intent: str
+    evidence_count: int
+
+
+@dataclass
+class IBECandidate:
+    """One candidate explanation from the IBE chain.
+
+    The IBE (Inference to the Best Explanation) step enumerates 2+
+    alternative explanations of the evidence, scores each on
+    *loveliness* (how well the explanation fits) and *likeliness*
+    (prior probability), and selects the candidate with the best
+    combined score as the integrated verdict.
+    """
+
+    candidate_id: str  # "A", "B", "C", …
+    verdict: str  # supports / contradicts / insufficient / …
+    description: str
+    loveliness: Optional[float] = None
+    loveliness_reasoning: Optional[str] = None
+    likeliness: Optional[float] = None
+    likeliness_reasoning: Optional[str] = None
+    chosen: bool = False
+    runner_up: bool = False
+    gap_loveliness: Optional[float] = None
+    gap_likeliness: Optional[float] = None
+
+
+@dataclass
 class ClaimSummary:
     """Summary of claim for report rendering."""
 
@@ -62,6 +103,10 @@ class ClaimSummary:
     scrutiny_verdict: Optional[str] = None
     verification_summary: str = ""
     evidence_refs_display: list[int] = field(default_factory=list)
+    investigation_rounds: list[InvestigationRound] = field(default_factory=list)
+    ibe_candidates: list[IBECandidate] = field(default_factory=list)
+    integrated_assessment: Optional[str] = None
+    integrated_confidence: Optional[float] = None
 
 
 @dataclass
@@ -96,6 +141,13 @@ class InvestigationStats:
     resolved_uncertainties: int = 0
     adversarial_challenges: int = 0
     convergent_domains: int = 0
+    # Per-evidence judgement breakdown (the audit-trail view of the
+    # 42% / 58% directional / no_bearing split shown in dev30 results).
+    evidence_supports: int = 0
+    evidence_contradicts: int = 0
+    evidence_no_bearing: int = 0
+    evidence_invalidated: int = 0
+    investigation_rounds_total: int = 0
 
 
 @dataclass
@@ -154,6 +206,8 @@ __all__ = [
     "ConfidenceScores",
     "ConvergenceSummary",
     "EvidenceSummary",
+    "IBECandidate",
+    "InvestigationRound",
     "InvestigationStats",
     "QUESTION_TYPE_LABELS",
     "ReportData",
