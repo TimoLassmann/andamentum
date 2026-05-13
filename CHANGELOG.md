@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.3.0rc2 — 2026-05-13
+
+Report-rendering update. Surfaces the audit trail of investigative
+work that was already stored in entity state but previously invisible
+to readers of the rendered report. **No behaviour change** — the
+pipeline, operations, agents, and scoring are unchanged. Pure
+rendering and report-data extraction. Existing databases re-render
+into the new shape; no re-run required.
+
+### New report sections
+
+- **How this claim was investigated** (per claim) — every follow-up
+  intent the gap-analysis agent proposed across investigation rounds,
+  with the routing-yield count per intent. Empty when the claim
+  reached a verdict on initial gather alone. Reads from
+  `Claim.investigation_intents`.
+- **Inference to the best explanation** (per claim) — every IBE
+  candidate the integration step enumerated, with its loveliness /
+  likeliness scores, the chosen candidate marked, the integrated
+  assessment shown. Reads from `Claim.integration_candidates`.
+- **Adversarial probe** (per claim) — counterarguments are now
+  prefaced with an explicit "the system searched for evidence that
+  would contradict this claim" intro, so the reader sees the probe,
+  not just the result. Same underlying data; reframed presentation.
+- **Evidence judgement breakdown** (top-of-Sources) — total support /
+  contradict / no_bearing counts with percentages. The reader can see
+  at a glance the audit-trail view of how each retrieved item was
+  categorised.
+
+### Schema additions to `report_data.py`
+
+- `InvestigationRound` dataclass — text + evidence_count per round.
+- `IBECandidate` dataclass — candidate description, loveliness,
+  likeliness, chosen / runner_up flags, gap scores.
+- `ClaimSummary` extended with `investigation_rounds`,
+  `ibe_candidates`, `integrated_assessment`, `integrated_confidence`.
+- `InvestigationStats` extended with `evidence_supports`,
+  `evidence_contradicts`, `evidence_no_bearing`, `evidence_invalidated`,
+  `investigation_rounds_total`.
+
+### Tests
+
+- 8 new tests in `test_report_audit_trail.py` covering: investigation
+  rounds rendering (present, empty, singular/plural yield), IBE
+  candidates rendering (chosen/runner-up/rejected), adversarial probe
+  intro, evidence judgement breakdown.
+
+### Verification
+
+- pyright: 23 errors (unchanged baseline).
+- ruff: clean.
+- pytest: 2083 passing (+8 from new audit-trail tests), 2 skipped,
+  25 deselected.
+
+Re-renders cleanly against existing databases. Smoke-tested against
+`test2_hcq` (100 evidence items, 9 investigation intents across 3
+rounds, verdict: fail — correctly identified) and `test3_statins`
+(33 items, 5 IBE candidates, chosen=B "supports_refined", verdict:
+pass).
+
 ## 0.3.0rc1 — 2026-05-13
 
 Pre-release tag. This is the first version of `andamentum` with a

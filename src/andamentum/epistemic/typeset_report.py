@@ -27,6 +27,14 @@ STAGE_DISPLAY_ORDER: tuple[str, ...] = (
 )
 
 
+def _pct(numerator: int, denominator: int) -> str:
+    """Render N/D as a percentage. Returns the empty string when D is 0
+    so callers can drop the parenthetical cleanly."""
+    if denominator <= 0:
+        return "—"
+    return f"{100 * numerator / denominator:.0f}%"
+
+
 def _short_source(url: str) -> str:
     """Return a concise display label for a source URL.
 
@@ -263,12 +271,93 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
 
         r.card(claim.statement, **card_kw)
 
-        # Consecutive run of reference atoms with shared group → clustered under a heading
+        # ── Investigation rounds (audit trail of how this claim was investigated) ──
+        # Empty when the claim reached a verdict on initial gather alone.
+        if claim.investigation_rounds:
+            short_stmt = claim.statement[:70].rstrip()
+            if len(claim.statement) > 70:
+                short_stmt += "…"
+            rounds_lines = [
+                "Scrutiny flagged gaps after the initial gather. The "
+                "gap-analysis agent proposed the following methodological "
+                "angles across rounds; each was routed to providers, "
+                "with the routing yield (how many evidence items came back) "
+                "shown per round.",
+            ]
+            for rnd in claim.investigation_rounds:
+                rounds_lines.append(
+                    f"- **Round {rnd.round_index}** "
+                    f"_(yielded {rnd.evidence_count} item"
+                    f"{'s' if rnd.evidence_count != 1 else ''})_ — "
+                    f"{rnd.intent}"
+                )
+            r.prose(
+                "\n".join(rounds_lines),
+                heading=f"How this claim was investigated — {short_stmt}",
+                id=f"investigation-{_claim_slug(claim.claim_id)}",
+            )
+
+        # ── IBE chain candidates (alternative explanations the system considered) ──
+        # Empty when the claim never reached IBE (cycle-capped, abandoned,
+        # or insufficient evidence to enumerate candidates).
+        if claim.ibe_candidates:
+            short_stmt = claim.statement[:70].rstrip()
+            if len(claim.statement) > 70:
+                short_stmt += "…"
+            ibe_lines = [
+                "The integration step enumerated alternative explanations "
+                "of the evidence and scored each on **loveliness** (how "
+                "well the explanation fits) and **likeliness** (prior "
+                "probability). The candidate with the best combined "
+                "score was selected as the integrated verdict.",
+                "",
+            ]
+            for c in claim.ibe_candidates:
+                tag_parts: list[str] = []
+                if c.chosen:
+                    tag_parts.append("**selected**")
+                elif c.runner_up:
+                    tag_parts.append("_runner-up_")
+                tag_parts.append(f"verdict: {c.verdict}")
+                tag = " · ".join(tag_parts)
+                score_parts: list[str] = []
+                if c.loveliness is not None:
+                    score_parts.append(f"loveliness {c.loveliness:.2f}")
+                if c.likeliness is not None:
+                    score_parts.append(f"likeliness {c.likeliness:.2f}")
+                scores = ", ".join(score_parts) if score_parts else "unscored"
+                ibe_lines.append(
+                    f"- **Candidate {c.candidate_id}** ({tag}) — {c.description}  \n"
+                    f"  _{scores}_"
+                )
+            if claim.integrated_assessment:
+                ibe_lines.append("")
+                ibe_lines.append(
+                    f"**Integrated assessment**: {claim.integrated_assessment}"
+                )
+            r.prose(
+                "\n".join(ibe_lines),
+                heading=f"Inference to the best explanation — {short_stmt}",
+                id=f"ibe-{_claim_slug(claim.claim_id)}",
+            )
+
+        # ── Adversarial probe: surface the probe itself, not just the result ──
         claim_advs = adv_by_claim.get(claim.claim_id, [])
         if claim_advs:
             short_stmt = claim.statement[:70].rstrip()
             if len(claim.statement) > 70:
                 short_stmt += "…"
+            probe_intro = (
+                "The system explicitly searched for evidence that would "
+                "**contradict** this claim — counter-evidence, replication "
+                f"failures, and rival findings. {len(claim_advs)} challenge"
+                f"{'s' if len(claim_advs) != 1 else ''} surfaced:"
+            )
+            r.prose(
+                probe_intro,
+                heading=f"Adversarial probe — {short_stmt}",
+                id=f"adversarial-{_claim_slug(claim.claim_id)}",
+            )
             group_label = f"Counterarguments — {short_stmt}"
             for adv in claim_advs:
                 ref_kw: dict[str, Any] = {
@@ -291,7 +380,40 @@ def build_typeset_report(data: ReportData) -> list[dict[str, Any]]:
     ]
 
     if data.evidence:
-        r.prose("", heading="Sources", id="sources")
+        # Evidence judgement breakdown — the audit-trail view of the
+        # split. Stats are computed across all retrieved items (not just
+        # the deduped/filtered subset that ends up rendered as
+        # references), so the reader can compare "we asked for evidence
+        # and got N items" against "X% were directionally informative."
+        s = data.stats
+        total_judged = (
+            s.evidence_supports + s.evidence_contradicts + s.evidence_no_bearing
+        )
+        breakdown_lines = [
+            f"The system retrieved **{s.total_evidence} evidence items** "
+            f"and judged each against the claim:",
+            "",
+            f"- **{s.evidence_supports} supports** "
+            f"({_pct(s.evidence_supports, total_judged)})",
+            f"- **{s.evidence_contradicts} contradicts** "
+            f"({_pct(s.evidence_contradicts, total_judged)})",
+            f"- **{s.evidence_no_bearing} no bearing** — items that "
+            f"matched the claim's lexicon but didn't directly address "
+            f"its specific outcome / population / context "
+            f"({_pct(s.evidence_no_bearing, total_judged)})",
+        ]
+        if s.evidence_invalidated:
+            breakdown_lines.append(
+                f"- _{s.evidence_invalidated} invalidated_ as cross-provider duplicates"
+            )
+        breakdown_lines.extend([
+            "",
+            "Each item below is shown with its one-sentence judgement "
+            "and (where available) source link.",
+        ])
+        r.prose(
+            "\n".join(breakdown_lines), heading="Sources", id="sources"
+        )
 
         for group_label, group in [
             ("Supporting", supporting_ev),
