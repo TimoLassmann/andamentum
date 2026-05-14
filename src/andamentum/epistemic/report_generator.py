@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Optional
 
 from andamentum.document_store import DocumentStore
+from .entities import ClaimStage
+from .gates import STAGE_GATES
 from .primitives import UncertaintyType
 from .report_data import (
     AdversarialSummary,
@@ -21,6 +23,7 @@ from .report_data import (
     ConfidenceScores,
     ConvergenceSummary,
     EvidenceSummary,
+    GateTraceEntry,
     IBECandidate,
     InvestigationRound,
     InvestigationStats,
@@ -29,12 +32,394 @@ from .report_data import (
     UncertaintySummary,
 )
 from .repository import EpistemicRepository
+from .routing import TrackActivation, get_routing_profile
 from .thresholds import (
     ADVERSARIAL_REFUTED_THRESHOLD,
     ADVERSARIAL_SURVIVED_THRESHOLD,
+    POSTERIOR_DECISIVE_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Gate-trace builder — Schneider-aligned externalisation of the deterministic
+# checks the system applied to each claim. Reads from claim entity state +
+# question-type routing; never mutates anything.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _convergence_threshold_for_stage(stage_value: str) -> tuple[int, str]:
+    """Return ``(min_supporting_sources, gate_name)`` — the convergence
+    threshold the system applied to a claim, based on the stage the
+    claim either reached or was being evaluated against.
+
+    The gate is from ``STAGE_GATES`` keyed by ``ClaimStage``:
+
+    - ``SUPPORTED`` → ``min_supporting_sources = 1``
+    - ``PROVISIONAL`` → 2
+    - ``ROBUST`` / ``ACTIONABLE`` → 3
+
+    For a claim still at ``HYPOTHESIS`` (never promoted), the system was
+    evaluating against the SUPPORTED gate (threshold = 1) when it
+    rejected promotion. The displayed threshold names the gate the
+    claim was being measured against, not an abstract Reichenbach
+    "≥ 2 independent sources" generic.
+    """
+    name = (stage_value or "").lower()
+    # Map stage string → enum → gate. For HYPOTHESIS (or unknown stage)
+    # use the SUPPORTED gate, since that's the immediate next step the
+    # system would try to clear.
+    target: ClaimStage
+    if name == ClaimStage.HYPOTHESIS.value or name == "":
+        target = ClaimStage.SUPPORTED
+    else:
+        try:
+            target = ClaimStage(name)
+        except ValueError:
+            target = ClaimStage.SUPPORTED
+    gate = STAGE_GATES.get(target)
+    if gate is None:
+        # Fallback: PROVISIONAL's threshold is the canonical Reichenbach
+        # value (2). Used only if STAGE_GATES is missing the entry.
+        return (2, "PROVISIONAL")
+    return (gate.min_supporting_sources, target.value.upper())
+
+
+def _routing_label(activation: "TrackActivation") -> str:
+    """Map TrackActivation enum to the human-facing routing word.
+
+    Treats ``IF_APPLICABLE`` as ``SECONDARY`` for display — the
+    distinction matters for promotion logic but not for the reader of
+    the audit trail. Pure presentation choice; the underlying activation
+    is preserved on the GateTraceEntry if a future reader wants it.
+    """
+    if activation == TrackActivation.PRIMARY:
+        return "PRIMARY"
+    if activation == TrackActivation.SECONDARY:
+        return "SECONDARY"
+    if activation == TrackActivation.IF_APPLICABLE:
+        return "SECONDARY"
+    return "SKIP"
+
+
+def _build_gate_trace(
+    claim: object,
+    question_type: str | None,
+    posterior: float | None,
+) -> list[GateTraceEntry]:
+    """Build the per-claim gate trace from claim entity state.
+
+    Each entry is one deterministic check the system applied. Gates that
+    are routed SKIP for this question type render as ``skipped``; gates
+    with no recorded value render as ``skipped`` with a ``no value
+    recorded`` note.
+
+    The trace is the renderer-facing answer to Schneider (2025)'s
+    "black box" challenge: the reasoning steps are named, the
+    thresholds are named, and the observed values are named. Reading
+    this requires no LLM intuition — every row is a deterministic
+    comparison against a constant from ``thresholds.py``.
+    """
+    entries: list[GateTraceEntry] = []
+
+    # Get routing profile if question_type is set. Without a profile
+    # we render all tracks as SECONDARY (no routing-based skips).
+    profile = None
+    if question_type:
+        try:
+            profile = get_routing_profile(question_type)
+        except (KeyError, ValueError):
+            profile = None
+
+    def _activation(track: str) -> TrackActivation:
+        if profile is None:
+            return TrackActivation.SECONDARY
+        return profile.tracks.get(track, TrackActivation.SKIP)
+
+    # ── Scrutiny — always required ──────────────────────────────────────
+    sv = getattr(claim, "scrutiny_verdict", None)
+    if sv is None:
+        entries.append(
+            GateTraceEntry(
+                name="scrutiny",
+                routing="PRIMARY",
+                required="pass",
+                observed="—",
+                status="skipped",
+                note="no value recorded",
+            )
+        )
+    else:
+        status = "satisfied" if sv == "pass" else (
+            "failed" if sv == "fail" else "skipped"
+        )
+        entries.append(
+            GateTraceEntry(
+                name="scrutiny",
+                routing="PRIMARY",
+                required="pass",
+                observed=str(sv),
+                status=status,
+            )
+        )
+
+    # ── Convergence — Reichenbach common-cause ──────────────────────────
+    # The threshold the system applied is stage-dependent: SUPPORTED's
+    # gate requires 1 supporting source, PROVISIONAL requires 2, ROBUST
+    # requires 3. The displayed value names the gate the claim was
+    # being measured against rather than a generic "≥ 2".
+    conv_routing = _activation("convergence")
+    if conv_routing == TrackActivation.SKIP:
+        entries.append(
+            GateTraceEntry(
+                name="convergence",
+                routing="SKIP",
+                required="n/a — not routed for this question type",
+                observed="—",
+                status="skipped",
+            )
+        )
+    else:
+        stage_val = getattr(getattr(claim, "stage", None), "value", "") or ""
+        threshold, gate_name = _convergence_threshold_for_stage(stage_val)
+        required_text = (
+            f"≥ {threshold} independent source"
+            f"{'s' if threshold != 1 else ''} ({gate_name} gate)"
+        )
+        cv = getattr(claim, "convergence_verdict", None)
+        cc = getattr(claim, "convergence_checked", False)
+        if not cc:
+            entries.append(
+                GateTraceEntry(
+                    name="convergence",
+                    routing=_routing_label(conv_routing),
+                    required=required_text,
+                    observed="—",
+                    status="skipped",
+                    note="convergence not checked",
+                )
+            )
+        else:
+            status = "satisfied" if (cv and cv != "insufficient") else "failed"
+            entries.append(
+                GateTraceEntry(
+                    name="convergence",
+                    routing=_routing_label(conv_routing),
+                    required=required_text,
+                    observed=str(cv) if cv else "checked",
+                    status=status,
+                )
+            )
+
+    # ── Adversarial balance ─────────────────────────────────────────────
+    adv_routing = _activation("adversarial")
+    if adv_routing == TrackActivation.SKIP:
+        entries.append(
+            GateTraceEntry(
+                name="adversarial_balance",
+                routing="SKIP",
+                required="n/a — not routed for this question type",
+                observed="—",
+                status="skipped",
+            )
+        )
+    else:
+        ab = getattr(claim, "adversarial_balance", None)
+        ac = getattr(claim, "adversarial_checked", False)
+        if ab is None and not ac:
+            entries.append(
+                GateTraceEntry(
+                    name="adversarial_balance",
+                    routing=_routing_label(adv_routing),
+                    required=f"> {ADVERSARIAL_REFUTED_THRESHOLD:.2f} (not refuted)",
+                    observed="—",
+                    status="skipped",
+                    note="adversarial probe not run",
+                )
+            )
+        else:
+            status = (
+                "satisfied"
+                if (ab is not None and ab > ADVERSARIAL_REFUTED_THRESHOLD)
+                else "failed"
+            )
+            entries.append(
+                GateTraceEntry(
+                    name="adversarial_balance",
+                    routing=_routing_label(adv_routing),
+                    required=f"> {ADVERSARIAL_REFUTED_THRESHOLD:.2f} (not refuted)",
+                    observed=f"{ab:.2f}" if ab is not None else "—",
+                    status=status,
+                    note=(
+                        "survived (≥ "
+                        f"{ADVERSARIAL_SURVIVED_THRESHOLD:.2f})"
+                        if (
+                            ab is not None
+                            and ab >= ADVERSARIAL_SURVIVED_THRESHOLD
+                        )
+                        else None
+                    ),
+                )
+            )
+
+    # ── Deductive validation ────────────────────────────────────────────
+    ded_routing = _activation("deductive")
+    if ded_routing == TrackActivation.SKIP:
+        entries.append(
+            GateTraceEntry(
+                name="deductive_validation",
+                routing="SKIP",
+                required="n/a — not routed for this question type",
+                observed="—",
+                status="skipped",
+            )
+        )
+    else:
+        dc = getattr(claim, "deductive_checked", False)
+        entries.append(
+            GateTraceEntry(
+                name="deductive_validation",
+                routing=_routing_label(ded_routing),
+                required="formal-validity check",
+                observed="checked" if dc else "—",
+                status="satisfied" if dc else "skipped",
+                note=None if dc else "not run for this claim",
+            )
+        )
+
+    # ── Computational verification ──────────────────────────────────────
+    comp_routing = _activation("computational")
+    if comp_routing == TrackActivation.SKIP:
+        entries.append(
+            GateTraceEntry(
+                name="computational_verification",
+                routing="SKIP",
+                required="n/a — not routed for this question type",
+                observed="—",
+                status="skipped",
+            )
+        )
+    else:
+        cc = getattr(claim, "computational_checked", False)
+        entries.append(
+            GateTraceEntry(
+                name="computational_verification",
+                routing=_routing_label(comp_routing),
+                required="numeric reproduction",
+                observed="checked" if cc else "—",
+                status="satisfied" if cc else "skipped",
+                note=None if cc else "not run for this claim",
+            )
+        )
+
+    # ── Posterior decisive ──────────────────────────────────────────────
+    if posterior is None:
+        entries.append(
+            GateTraceEntry(
+                name="posterior_decisive",
+                routing="PRIMARY",
+                required=(
+                    f"≥ {POSTERIOR_DECISIVE_THRESHOLD:.2f} or "
+                    f"≤ {1 - POSTERIOR_DECISIVE_THRESHOLD:.2f}"
+                ),
+                observed="—",
+                status="skipped",
+                note="no posterior computed",
+            )
+        )
+    else:
+        decisive = (
+            posterior >= POSTERIOR_DECISIVE_THRESHOLD
+            or posterior <= 1 - POSTERIOR_DECISIVE_THRESHOLD
+        )
+        direction = (
+            "decisive (confirms)"
+            if posterior >= POSTERIOR_DECISIVE_THRESHOLD
+            else "decisive (refutes)"
+            if posterior <= 1 - POSTERIOR_DECISIVE_THRESHOLD
+            else None
+        )
+        entries.append(
+            GateTraceEntry(
+                name="posterior_decisive",
+                routing="PRIMARY",
+                required=(
+                    f"≥ {POSTERIOR_DECISIVE_THRESHOLD:.2f} or "
+                    f"≤ {1 - POSTERIOR_DECISIVE_THRESHOLD:.2f}"
+                ),
+                observed=f"{posterior:.3f}",
+                status="satisfied" if decisive else "failed",
+                note=direction,
+            )
+        )
+
+    return entries
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reproducibility metadata
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _detect_pipeline_version() -> str:
+    """Best-effort version lookup. Falls back to empty string if the
+    package metadata is not available (e.g. running in a source tree
+    that has not been installed)."""
+    try:
+        from importlib.metadata import version
+
+        return version("andamentum")
+    except Exception:
+        return ""
+
+
+def _detect_git_ref() -> str | None:
+    """Best-effort short git SHA. Returns ``None`` if not in a git
+    checkout. Stable across re-renders of the same ReportData because
+    the data captures it at extraction time."""
+    import subprocess
+    from pathlib import Path
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=Path(__file__).resolve().parent,
+        )
+        if result.returncode == 0:
+            ref = result.stdout.strip()
+            return ref or None
+    except Exception:
+        pass
+    return None
+
+
+def _build_reproduction_command(
+    objective: object,
+    model_name: str,
+    database_name: str,
+) -> str:
+    """Build the CLI command that would re-run this investigation.
+
+    Used in the reproducibility footer of the v2 audit report. The mode
+    (verify vs research) is inferred from whether the objective set a
+    ``claim_to_verify``; the seed is taken from that field if present,
+    otherwise from ``objective.description``.
+    """
+    seed_claim = getattr(objective, "claim_to_verify", None)
+    description = getattr(objective, "description", "")
+    if seed_claim:
+        mode_args = f'verify "{seed_claim}"'
+    else:
+        mode_args = f'ask "{description}"'
+    return (
+        f'andamentum-epistemic {mode_args} '
+        f'--model {model_name} '
+        f'--database {database_name}'
+    )
 
 
 class ReportGenerator:
@@ -308,6 +693,25 @@ class ReportGenerator:
                     )
                 )
 
+            # Gate trace — externalised deterministic checks applied to
+            # this claim. Built from claim entity state + question-type
+            # routing; pure read, no mutation. The renderer surfaces
+            # this as a Schneider-aligned reasoning trace.
+            gate_trace = _build_gate_trace(
+                claim,
+                getattr(objective, "question_type", None),
+                # Per-claim posterior is not stored on the claim entity;
+                # the objective-level posterior applies to single-claim
+                # (verify) runs. For research-mode multi-claim runs the
+                # decisive gate uses ``claim.integrated_confidence`` as
+                # the closest per-claim signal.
+                (
+                    claim.integrated_confidence
+                    if claim.integrated_confidence is not None
+                    else None
+                ),
+            )
+
             claim_summaries.append(
                 ClaimSummary(
                     claim_id=claim.claim_id,
@@ -325,6 +729,14 @@ class ReportGenerator:
                     ibe_candidates=ibe_candidates,
                     integrated_assessment=claim.integrated_assessment,
                     integrated_confidence=claim.integrated_confidence,
+                    gate_trace=gate_trace,
+                    # verdict_label is computed at render time by
+                    # ``audit_report._normalised_verdict`` since it
+                    # blends posterior + integrated_assessment + terminal
+                    # state, all of which the renderer already has. Left
+                    # empty here so the source of truth stays in one
+                    # place rather than diverging.
+                    verdict_label="",
                 )
             )
 
@@ -491,6 +903,48 @@ class ReportGenerator:
             logger.warning(f"Failed to compute confidence scores: {e}")
             confidence_scores = None
 
+        # In verify mode (single claim) the objective-level posterior
+        # directly describes the claim's verdict. Backfill it onto the
+        # claim's gate trace so the "posterior_decisive" row shows the
+        # actually-decisive value rather than the per-claim
+        # ``integrated_confidence`` which can be missing for verify
+        # runs. (Research mode keeps ``integrated_confidence`` per
+        # sub-claim — the per-sub-claim signal is the right one there.)
+        if (
+            len(claim_summaries) == 1
+            and confidence_scores is not None
+            and confidence_scores.posterior is not None
+        ):
+            # Re-lookup the source claim entity so the gate-trace
+            # builder sees the same fields it used the first time;
+            # ``claim_summaries[0]`` is a presentation dataclass, not
+            # the entity. Match by ``claim_id`` against ``all_claims``.
+            source_claim = next(
+                (
+                    c
+                    for c in all_claims
+                    if c.claim_id == claim_summaries[0].claim_id
+                ),
+                None,
+            )
+            if source_claim is not None:
+                claim_summaries[0].gate_trace = _build_gate_trace(
+                    source_claim,
+                    objective.question_type,
+                    confidence_scores.posterior,
+                )
+
+        # Reproducibility metadata — stable across re-renders of the
+        # same persisted state. Constants captured at extraction time
+        # so the report is a frozen artefact.
+        snapshot_id = getattr(objective, "snapshot_id", None)
+        artefact_id = getattr(objective, "artefact_id", None)
+        pipeline_version = _detect_pipeline_version()
+        pipeline_git_ref = _detect_git_ref()
+        reproduction_command = _build_reproduction_command(
+            objective, model_name, self.database_name
+        )
+
         # Build report data
         return ReportData(
             research_question=objective.description,
@@ -512,6 +966,11 @@ class ReportGenerator:
             open_questions=open_questions,
             stats=stats,
             confidence_scores=confidence_scores,
+            snapshot_id=snapshot_id,
+            artefact_id=artefact_id,
+            pipeline_version=pipeline_version,
+            pipeline_git_ref=pipeline_git_ref,
+            reproduction_command=reproduction_command,
         )
 
     @staticmethod
@@ -695,19 +1154,17 @@ class ReportGenerator:
         self,
         objective_id: Optional[str] = None,
         model_name: str = "unknown",
-        style: str = "classic",
     ) -> Optional[str]:
         """Generate HTML report content.
+
+        The audit report is the only renderer: an externalised
+        reasoning trace with the Schneider-aligned gate trace, IBE
+        candidate cards, supporting + contradicting evidence sections,
+        and the reproducibility footer. See ``audit_report.py``.
 
         Args:
             objective_id: Optional specific objective to report on
             model_name: Model used for the investigation
-            style: Report layout to render. ``"classic"`` (default) is
-                the prose-led layout in ``typeset_report.py``.
-                ``"audit"`` is the Cochrane-style layout in
-                ``audit_report.py`` — verdict pill + summary-of-findings
-                table + per-claim key evidence with collapsible audit
-                trail + full evidence appendix.
 
         Returns:
             HTML content as string, or None if no data found
@@ -721,27 +1178,15 @@ class ReportGenerator:
             return None
 
         from andamentum.typeset import render as typeset_render
+        from .audit_report import build_audit_report
 
-        if style == "audit":
-            from .audit_report import build_audit_report
-
-            return typeset_render(build_audit_report(report_data))
-
-        if style != "classic":
-            raise ValueError(
-                f"Unknown report style: {style!r}. Use 'classic' or 'audit'."
-            )
-
-        from .typeset_report import build_typeset_report
-
-        return typeset_render(build_typeset_report(report_data))
+        return typeset_render(build_audit_report(report_data))
 
     async def save_html(
         self,
         output_path: Path,
         objective_id: Optional[str] = None,
         model_name: str = "unknown",
-        style: str = "classic",
     ) -> bool:
         """Generate and save HTML report to file.
 
@@ -749,8 +1194,6 @@ class ReportGenerator:
             output_path: Path to save the HTML file
             objective_id: Optional specific objective to report on
             model_name: Model used for the investigation
-            style: ``"classic"`` (default) or ``"audit"``. See
-                :meth:`generate_html` for layout differences.
 
         Returns:
             True if saved successfully, False otherwise
@@ -758,7 +1201,6 @@ class ReportGenerator:
         html_content = await self.generate_html(
             objective_id=objective_id,
             model_name=model_name,
-            style=style,
         )
 
         if not html_content:
