@@ -15,8 +15,8 @@ from andamentum.epistemic.report_data import (
     InvestigationStats,
     ReportData,
 )
+from andamentum.epistemic.audit_report import build_audit_report
 from andamentum.epistemic.repository import EpistemicRepository
-from andamentum.epistemic.typeset_report import build_typeset_report
 
 
 class TestGraphStateRetrievalFields:
@@ -408,46 +408,73 @@ def _make_report_data(terminal_state: str = "completed") -> ReportData:
     )
 
 
-class TestTypesetReportRetrievalFailed:
-    def test_emits_warning_callout_when_retrieval_failed(self) -> None:
-        data = _make_report_data(terminal_state="retrieval_failed")
-        atoms = build_typeset_report(data)
-        callout_texts = [
-            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
-        ]
-        assert any("Retrieval failed" in t for t in callout_texts)
-        # Should NOT include the P(YES) interpretation when retrieval failed.
-        assert not any("P(YES)" in t for t in callout_texts)
+class TestAuditReportTerminalState:
+    """Confidence body for the Q&A panel handles every terminal_state
+    branch from ``confidence.py``: completed → directional posterior;
+    retrieval_failed / oscillation_detected → named warnings without
+    posterior; unknown → defensive surface of the raw state name.
 
-    def test_emits_p_yes_when_normal_completion(self) -> None:
-        data = _make_report_data(terminal_state="completed")
-        atoms = build_typeset_report(data)
-        callout_texts = [
-            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
-        ]
-        assert any("P(YES)" in t for t in callout_texts)
-        assert not any("Retrieval failed" in t for t in callout_texts)
+    These tests are the v2 equivalent of the v1 typeset_report tests —
+    same invariant (no silent fall-through to a posterior interpretation
+    when the inquiry didn't complete), different renderer surface."""
 
-    def test_emits_warning_callout_when_oscillation_detected(self) -> None:
-        # No-certified-verdict gate fires; renderer must surface the
-        # suspension and refuse to emit a directional P(YES).
-        data = _make_report_data(terminal_state="oscillation_detected")
-        atoms = build_typeset_report(data)
-        callout_texts = [
-            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
-        ]
-        assert any("No certified verdict" in t for t in callout_texts)
-        assert not any("P(YES)" in t for t in callout_texts)
+    @staticmethod
+    def _confidence_body_text(data: ReportData) -> str:
+        """Pull the "How confident are we?" row body out of the rendered
+        Q&A items atom."""
+        atoms = build_audit_report(data)
+        items_atoms = [a for a in atoms if a.get("kind") == "items"]
+        assert items_atoms, "Q&A items panel missing"
+        entries = items_atoms[0]["entries"]
+        confidence_entry = next(
+            (e for e in entries if e["label"] == "How confident are we?"),
+            None,
+        )
+        assert confidence_entry is not None, "How confident? row missing"
+        return str(confidence_entry["body"])
 
-    def test_unknown_terminal_state_fails_loud(self) -> None:
-        # Defensive: any future terminal_state added to confidence.py
-        # without a matching renderer branch must NOT silently fall
-        # through to a P(YES) callout. Surfaces the raw state name
-        # instead.
-        data = _make_report_data(terminal_state="some_future_state")
-        atoms = build_typeset_report(data)
-        callout_texts = [
-            str(a.get("content", "")) for a in atoms if a.get("kind") == "callout"
-        ]
-        assert any("some_future_state" in t for t in callout_texts)
-        assert not any("P(YES)" in t for t in callout_texts)
+    def test_completed_terminal_renders_directional_posterior(self) -> None:
+        body = self._confidence_body_text(
+            _make_report_data(terminal_state="completed")
+        )
+        # Directional probability framing — not "P(YES)".
+        assert "Probability the claim is true" in body
+        # Verdict label appears.
+        assert any(
+            v in body
+            for v in ("Confirmed", "Refuted", "Inconclusive", "Insufficient evidence")
+        )
+        # No leftover v1 phrasing.
+        assert "P(YES)" not in body
+        assert "Retrieval failed" not in body
+
+    def test_retrieval_failed_suppresses_posterior(self) -> None:
+        body = self._confidence_body_text(
+            _make_report_data(terminal_state="retrieval_failed")
+        )
+        assert "retrieval failed" in body.lower()
+        assert "No posterior" in body
+        # Must not show a directional probability interpretation.
+        assert "Probability the claim is true" not in body
+        assert "P(YES)" not in body
+
+    def test_oscillation_detected_suppresses_posterior(self) -> None:
+        body = self._confidence_body_text(
+            _make_report_data(terminal_state="oscillation_detected")
+        )
+        assert "IBE-certified verdict" in body
+        assert "No posterior" in body
+        assert "Probability the claim is true" not in body
+        assert "P(YES)" not in body
+
+    def test_unknown_terminal_state_surfaces_raw_state(self) -> None:
+        """Defensive: any future terminal_state added to confidence.py
+        without a matching renderer branch must NOT silently fall
+        through to a directional posterior — surface the raw state
+        name instead so the gap is visible."""
+        body = self._confidence_body_text(
+            _make_report_data(terminal_state="some_future_state")
+        )
+        assert "some_future_state" in body
+        assert "Probability the claim is true" not in body
+        assert "P(YES)" not in body

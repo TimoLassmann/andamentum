@@ -1,14 +1,10 @@
 """Schema for epistemic report rendering.
 
-Pure data module — no rendering, no I/O. Holds the dataclasses produced by
-``report_generator.extract_report_data`` and consumed by
-``typeset_report.build_typeset_report``. Decoupled from any specific output
-format so the data extraction layer doesn't have to know which renderer
-will run.
-
-This module replaces the dataclass section that used to live in
-``html_report.py``. The HTML rendering itself now goes through
-``andamentum.typeset`` via the typeset_report adapter.
+Pure data module — no rendering, no I/O. Holds the dataclasses produced
+by ``report_generator.extract_report_data`` and consumed by
+``audit_report.build_audit_report``. Decoupled from rendering so the
+data-extraction layer doesn't have to know what the renderer does with
+the data.
 """
 
 from __future__ import annotations
@@ -65,6 +61,31 @@ class InvestigationRound:
 
 
 @dataclass
+class GateTraceEntry:
+    """One row of the per-claim gate trace.
+
+    The gate trace externalises the deterministic checks the system
+    applied to a claim — scrutiny, convergence, adversarial balance,
+    deductive validation, computational verification, posterior
+    decisiveness. Each row carries a human-readable ``required`` value
+    (the threshold), an ``observed`` value, and a status word that the
+    renderer surfaces as plain text (``satisfied`` / ``failed`` /
+    ``skipped``) with no colour signal.
+
+    This is the load-bearing answer to Schneider (2025)'s
+    "black box" challenge: the reasoning steps are *named*, the
+    thresholds are *named*, and the observed values are *named*.
+    """
+
+    name: str  # "scrutiny", "convergence", "adversarial_balance", ...
+    routing: str  # "PRIMARY" | "SECONDARY" | "SKIP"
+    required: str  # e.g. "pass", "≥ 2 independent sources", "< 0.70"
+    observed: str  # e.g. "pass", "14 independent sources", "0.62"
+    status: str  # "satisfied" | "failed" | "skipped"
+    note: Optional[str] = None  # one-sentence elaboration
+
+
+@dataclass
 class IBECandidate:
     """One candidate explanation from the IBE chain.
 
@@ -107,6 +128,14 @@ class ClaimSummary:
     ibe_candidates: list[IBECandidate] = field(default_factory=list)
     integrated_assessment: Optional[str] = None
     integrated_confidence: Optional[float] = None
+    # Per-claim audit data added for v2 report: the verdict label that
+    # the renderer puts on the badge (closed vocabulary; see
+    # ``audit_report._normalised_verdict``), and the gate trace that
+    # externalises every deterministic check the claim was subjected
+    # to. Both are populated by ``report_generator`` from claim entity
+    # state; the renderer never recomputes them.
+    verdict_label: str = ""
+    gate_trace: list[GateTraceEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -185,6 +214,15 @@ class ReportData:
     open_questions: list[str] = field(default_factory=list)
     stats: InvestigationStats = field(default_factory=InvestigationStats)
     confidence_scores: Optional[ConfidenceScores] = None
+    # Reproducibility metadata for the v2 audit report. Stable across
+    # re-renders of the same persisted state — this is the diachronic-
+    # justification answer to Schneider (2025): a reader six months from
+    # now can re-run the same command and obtain a comparable artefact.
+    snapshot_id: Optional[str] = None
+    artefact_id: Optional[str] = None
+    pipeline_version: str = ""
+    pipeline_git_ref: Optional[str] = None
+    reproduction_command: str = ""
 
 
 # Canonical mapping from ``Objective.question_type`` enum values
@@ -206,6 +244,7 @@ __all__ = [
     "ConfidenceScores",
     "ConvergenceSummary",
     "EvidenceSummary",
+    "GateTraceEntry",
     "IBECandidate",
     "InvestigationRound",
     "InvestigationStats",

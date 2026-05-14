@@ -69,18 +69,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ask_parser.add_argument("--output", default=None, help="Path to save HTML report")
     ask_parser.add_argument(
-        "--report-style",
-        default="classic",
-        choices=["classic", "audit", "both"],
-        help=(
-            "HTML report layout. 'classic' (default) — prose-led "
-            "summary; 'audit' — Cochrane-style with summary-of-findings "
-            "table, per-claim key evidence, and collapsible audit trail; "
-            "'both' — write two files, with -classic.html and -audit.html "
-            "appended to the --output path stem so you can compare."
-        ),
-    )
-    ask_parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
     )
 
@@ -134,18 +122,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     verify_parser.add_argument(
         "--output", default=None, help="Path to save HTML report"
-    )
-    verify_parser.add_argument(
-        "--report-style",
-        default="classic",
-        choices=["classic", "audit", "both"],
-        help=(
-            "HTML report layout. 'classic' (default) — prose-led "
-            "summary; 'audit' — Cochrane-style with summary-of-findings "
-            "table, per-claim key evidence, and collapsible audit trail; "
-            "'both' — write two files, with -classic.html and -audit.html "
-            "appended to the --output path stem so you can compare."
-        ),
     )
     verify_parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
@@ -408,7 +384,6 @@ async def _ask(args: argparse.Namespace) -> None:
         mode=mode,
         provider=args.provider,
         output_path=args.output,
-        report_style=getattr(args, "report_style", "classic"),
     )
 
     if not result.success and result.error:

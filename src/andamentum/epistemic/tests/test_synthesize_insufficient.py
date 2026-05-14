@@ -300,7 +300,7 @@ async def test_check_completion_routes_retrieval_failed_to_insufficient(repo) ->
     assert state.synthesis_insufficient_reason is not None
     assert "retrieval failed" in state.synthesis_insufficient_reason.lower()
     # The retrieval_failed BOOL is preserved for downstream consumers
-    # (confidence.compute_posterior, typeset_report) that branch on it.
+    # (confidence.compute_posterior, audit_report) that branch on it.
     assert state.retrieval_failed is True
 
 
