@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — chat (user, assistant, composer)</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>chat (user, assistant, composer)</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · chat (user, assistant, composer) -->
+<div class="am-chat">
+
+    <!-- USER turn — short bubble, right-aligned, sans-serif. -->
+    <div class="am-chat__turn">
+        <div class="am-chat__msg am-chat__msg--user">
+            Can you do a survey of news stories on CNN and BBC News (world edition)?
+        </div>
+    </div>
+
+    <!-- ASSISTANT turn — full width, typeset prose, no bubble.
+         The agent speaks like a document, not like a person texting. -->
+    <div class="am-chat__turn">
+        <div class="am-chat__msg am-chat__msg--assistant">
+            <p>Here's a concise survey of the main stories on <strong>CNN</strong> and <strong>BBC News World edition</strong> over the past 24 hours.</p>
+
+            <h3>Overall takeaway</h3>
+            <p>Both outlets covered a similar cluster of fast-moving international stories, but they differed in emphasis:</p>
+            <ul>
+                <li><strong>CNN</strong> leaned more toward U.S.-centred geopolitics.</li>
+                <li><strong>BBC World</strong> spread attention more broadly across Europe and BBC Verify analysis.</li>
+            </ul>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Composer (chat input row) ─────────────────────────────── -->
+<div class="am-composer">
+    <div class="am-composer__row">
+        <button class="am-btn am-btn--icon" aria-label="Attach">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3 3 0 1 1 4 4l-9 9a1 1 0 1 1-1-1l8-8"/></svg>
+        </button>
+        <textarea class="am-composer__input" rows="1" placeholder="Ask anything…"></textarea>
+        <button class="am-btn am-btn--icon" aria-label="Send" style="color: var(--am-ink);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+    </div>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

@@ -98,6 +98,35 @@ The workhorse atom. Most of your document will be prose. Write standard markdown
 {"kind": "prose", "content": "## Summary\n\nThe evidence shows..."}
 ```
 
+#### Footnotes inside prose
+
+Pandoc-style footnotes are supported via Python-Markdown's `footnotes` extension. Inline `[^id]` markers become superscript anchors; the footnote body is collected at the bottom of the prose block.
+
+```python
+{"kind": "prose",
+ "content": (
+     "The Taiwan cohort study reports reduced AMI incidence [^taiwan].\n\n"
+     "[^taiwan]: Taiwan nationwide cohort, *Scientific Reports* (2025)."
+ )}
+```
+
+Renders as: `… reduced AMI incidence`<sup>1</sup>` …` with a numbered list of footnotes following the paragraph. Footnotes restart at 1 per prose atom.
+
+#### Margin notes inside prose
+
+Tufte-style sidenotes float to the right of the reading column on wide viewports (≥1100px) and fall back inline on narrow ones. Write them as inline HTML — `md_in_html` is enabled.
+
+```python
+{"kind": "prose",
+ "content": (
+     "The literature is mixed."
+     "<aside class=\"typeset-margin-note\">Heterogeneity is the load-bearing observation here.</aside>"
+     " Some studies find a clear effect…"
+ )}
+```
+
+The `<aside>` is rendered inline in the HTML but absolutely positioned in the right margin via CSS.
+
 ### `callout` — emphasized block
 
 Breaks the flow to draw attention to something. Use it for the verdict, a key insight, a warning, or a pull quote.
@@ -140,8 +169,8 @@ A sequence of labeled items. Each entry has a `label` and a `body`. Three visual
 
 ```python
 {"kind": "items", "variant": "right", "entries": [
-    {"label": "2019–present", "body": "**Head, Computational Biology**\nTelethon Kids Institute, Perth"},
-    {"label": "2014–2019", "body": "**Senior Research Fellow**\nTelethon Kids Institute, Perth"},
+    {"label": "2019–present", "body": "**Head, Computational Biology**\nExample Research Institute"},
+    {"label": "2014–2019", "body": "**Senior Research Fellow**\nExample Research Institute"},
 ]}
 ```
 
@@ -225,9 +254,9 @@ A bibliographic-style entry with a number, body text, source link, and badge. Us
 - `group` (optional): when consecutive references share the same `group` value, they are clustered under a group heading. Useful for year-grouped publication lists:
 
 ```python
-{"kind": "reference", "number": 85, "group": "2025", "content": "**Lassmann T**, et al. ..."},
-{"kind": "reference", "number": 84, "group": "2025", "content": "Smith J, **Lassmann T**. ..."},
-{"kind": "reference", "number": 83, "group": "2024", "content": "**Lassmann T**, Jones A. ..."},
+{"kind": "reference", "number": 85, "group": "2025", "content": "**Morgan A**, et al. ..."},
+{"kind": "reference", "number": 84, "group": "2025", "content": "Smith J, **Morgan A**. ..."},
+{"kind": "reference", "number": 83, "group": "2024", "content": "**Morgan A**, Jones A. ..."},
 ```
 
 This renders "2025" as a heading above references 85 and 84, then "2024" as a heading above reference 83.

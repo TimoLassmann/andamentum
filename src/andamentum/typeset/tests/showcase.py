@@ -46,14 +46,18 @@ ARTICLE_DOC = [
             "cardiovascular mortality in type 2 diabetes?*\n\n"
             "**Evidence Sources:** 15 | **Claims Established:** 0 of 2\n\n"
             "The literature provides conflicting evidence regarding metformin's impact on "
-            "cardiovascular mortality. Some meta-analyses and large-scale observational studies "
+            "cardiovascular mortality.<aside class=\"typeset-margin-note\">"
+            "Heterogeneity here is the load-bearing observation, not the average effect."
+            "</aside> Some meta-analyses and large-scale observational studies "
             "suggest that metformin reduces both all-cause and cardiovascular mortality, "
             "particularly in patients with coronary artery disease. For example, a nationwide "
             "cohort study in Taiwan reported a lower incidence of acute myocardial infarction "
-            "among metformin users.\n\n"
+            "among metformin users [^taiwan].\n\n"
             "Other high-quality meta-analyses report that metformin does not significantly "
             "reduce the risk of major adverse cardiovascular events, including stroke or AMI, "
-            "in the general type 2 diabetes population."
+            "in the general type 2 diabetes population [^mace].\n\n"
+            "[^taiwan]: Taiwan nationwide cohort study, *Scientific Reports* (2025).\n"
+            "[^mace]: Pooled meta-analysis of MACE outcomes in T2D, *Cardiovasc Diabetol* (2019)."
         ),
     },
     {
@@ -117,8 +121,8 @@ ARTICLE_DOC = [
 CV_DOC = [
     {
         "kind": "heading",
-        "content": "Timo Lassmann",
-        "subtitle": "Telethon Kids Institute | Perth, Australia",
+        "content": "Dr. Alex Morgan",
+        "subtitle": "Example Research Institute | Sample City",
         "meta": "Publications: 85 | Citations: 4,200 | h-index: 32",
     },
     {"kind": "prose", "heading": "Education", "content": ""},
@@ -126,9 +130,9 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2006", "body": "*PhD, Bioinformatics*\nStockholm University, Sweden"},
-            {"label": "2001", "body": "*MSc, Applied Mathematics*\nUniversity of Adelaide, Australia"},
-            {"label": "1999", "body": "*BSc (Hons), Biochemistry*\nUniversity of Adelaide, Australia"},
+            {"label": "2006", "body": "*PhD, Computational Biology*\nNorthern University"},
+            {"label": "2001", "body": "*MSc, Applied Mathematics*\nCentral State University"},
+            {"label": "1999", "body": "*BSc (Hons), Biochemistry*\nCentral State University"},
         ],
     },
     {"kind": "prose", "heading": "Positions", "content": ""},
@@ -136,29 +140,29 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2019\u2013present", "body": "**Head, Computational Biology**\nTelethon Kids Institute, Perth, Australia"},
-            {"label": "2014\u20132019", "body": "**Senior Research Fellow**\nTelethon Kids Institute, Perth, Australia"},
-            {"label": "2009\u20132014", "body": "**Research Scientist**\nOMICS Science Center, RIKEN, Yokohama, Japan"},
-            {"label": "2006\u20132009", "body": "**Postdoctoral Fellow**\nKarolinska Institutet, Stockholm, Sweden"},
+            {"label": "2019\u2013present", "body": "**Head, Computational Biology**\nExample Research Institute"},
+            {"label": "2014\u20132019", "body": "**Senior Research Fellow**\nExample Research Institute"},
+            {"label": "2009\u20132014", "body": "**Research Scientist**\nInternational Genomics Centre"},
+            {"label": "2006\u20132009", "body": "**Postdoctoral Fellow**\nNorthern University"},
         ],
     },
     {"kind": "prose", "heading": "Selected Publications", "content": ""},
-    {"kind": "reference", "number": 85, "group": "2025", "content": "**Lassmann T**, et al. Andamentum: composable agentic systems for scientific automation. *Nature Methods* (in preparation)."},
-    {"kind": "reference", "number": 84, "group": "2025", "content": "Smith J, **Lassmann T**. Deep epistemic verification of biomedical claims. *Bioinformatics* **41**(2), 234\u2013241."},
-    {"kind": "reference", "number": 83, "group": "2024", "content": "**Lassmann T**, Jones A. MAP-Elites for antibody optimization: a computational framework. *PLOS Computational Biology* **20**(5), e1012345."},
-    {"kind": "reference", "number": 82, "group": "2024", "content": "Chen L, **Lassmann T**, et al. Single-cell multi-omics reveals immune dysregulation in rare disease. *Cell Reports* **43**(3), 113987."},
-    {"kind": "reference", "number": 81, "group": "2023", "content": "**Lassmann T**. Kalign 3: multiple sequence alignment of large datasets. *Bioinformatics* **36**(6), 1928\u20131929.", "badge": "cited 340"},
-    {"kind": "reference", "number": 80, "group": "2023", "content": "Park S, **Lassmann T**, et al. Promoter-level transcription atlas of the developing human brain. *Science* **370**(6520), eabc5765."},
+    {"kind": "reference", "number": 85, "group": "2025", "content": "**Morgan A**, et al. A composable framework for agentic reasoning. *Example Journal* (in preparation)."},
+    {"kind": "reference", "number": 84, "group": "2025", "content": "Smith J, **Morgan A**. Epistemic verification of biomedical claims. *Example Bioinformatics* **41**(2), 234\u2013241."},
+    {"kind": "reference", "number": 83, "group": "2024", "content": "**Morgan A**, Jones A. Evolutionary search for antibody optimization. *Example Computational Biology* **20**(5), e1012345."},
+    {"kind": "reference", "number": 82, "group": "2024", "content": "Chen L, **Morgan A**, et al. Single-cell multi-omics reveals immune dysregulation. *Example Cell Reports* **43**(3), 113987."},
+    {"kind": "reference", "number": 81, "group": "2023", "content": "**Morgan A**. Multiple sequence alignment of large datasets. *Example Bioinformatics* **36**(6), 1928\u20131929.", "badge": "cited 340"},
+    {"kind": "reference", "number": 80, "group": "2023", "content": "Park S, **Morgan A**, et al. Promoter-level transcription atlas of the developing brain. *Example Science* **370**(6520), eabc5765."},
     {
         "kind": "prose",
         "heading": "Grants",
         "content": (
             "| Grant | Year | Amount |\n"
             "|-------|------|--------|\n"
-            "| ARC Discovery: Computational epistemic frameworks for scientific automation | 2024\u20132027 | A$450,000 |\n"
-            "| NHMRC Investigator Grant: Genomics of rare childhood disease | 2021\u20132026 | A$1,200,000 |\n"
-            "| Telethon\u2013Perth Children's Hospital Research Fund | 2020\u20132023 | A$380,000 |\n"
-            "| Channel 7 Telethon Trust: Bioinformatics platform for rare disease | 2019\u20132022 | A$250,000 |"
+            "| National Science Fund: Computational frameworks for scientific automation | 2024\u20132027 | $450,000 |\n"
+            "| Medical Research Council Investigator Grant | 2021\u20132026 | $1,200,000 |\n"
+            "| Children's Hospital Research Fund | 2020\u20132023 | $380,000 |\n"
+            "| Genomics Platform Grant | 2019\u20132022 | $250,000 |"
         ),
     },
     {"kind": "prose", "heading": "Supervision", "content": ""},
@@ -176,10 +180,10 @@ CV_DOC = [
         "kind": "items",
         "variant": "left",
         "entries": [
-            {"label": "2024", "body": "Deep Learning in Genomics. Australian Bioinformatics Conference."},
-            {"label": "2023", "body": "Introduction to Bioinformatics. University of Western Australia."},
-            {"label": "2022", "body": "Computational Biology Workshop. Telethon Kids Institute."},
-            {"label": "2021", "body": "Advanced Sequence Analysis. Perth Biomedical Summer School."},
+            {"label": "2024", "body": "Deep Learning in Genomics. International Bioinformatics Conference."},
+            {"label": "2023", "body": "Introduction to Bioinformatics. Central State University."},
+            {"label": "2022", "body": "Computational Biology Workshop. Example Research Institute."},
+            {"label": "2021", "body": "Advanced Sequence Analysis. Biomedical Summer School."},
         ],
     },
     {"kind": "prose", "heading": "Awards", "content": ""},
@@ -187,18 +191,18 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2023", "body": "WA Premier's Science Award \u2014 Early Career Scientist"},
-            {"label": "2020", "body": "Telethon Kids Institute Director's Prize for Research Excellence"},
-            {"label": "2006", "body": "Best PhD Thesis, Stockholm University Faculty of Science"},
+            {"label": "2023", "body": "Regional Science Award \u2014 Early Career Scientist"},
+            {"label": "2020", "body": "Example Research Institute Director's Prize for Research Excellence"},
+            {"label": "2006", "body": "Best PhD Thesis, Northern University Faculty of Science"},
         ],
     },
     {
         "kind": "prose",
         "heading": "Software",
         "content": (
-            "- **[Kalign](https://github.com/TimoLassmann/kalign)** \u2014 Fast multiple sequence alignment (C, 340+ citations)\n"
-            "- **[Andamentum](https://github.com/andamentum)** \u2014 Composable agentic systems for scientific automation (Python)\n"
-            "- **[TagDust](https://github.com/TimoLassmann/tagdust)** \u2014 HTS read demultiplexer with error correction (C)"
+            "- **example-aligner** \u2014 Fast multiple sequence alignment (C, 340+ citations)\n"
+            "- **example-framework** \u2014 Composable agentic systems (Python)\n"
+            "- **example-demux** \u2014 HTS read demultiplexer with error correction (C)"
         ),
     },
 ]
@@ -211,7 +215,7 @@ REPORT_DOC = [
         "kind": "heading",
         "content": "Semantic Provider Routing Benchmark",
         "subtitle": "Andamentum epistemic module \u2014 routing accuracy evaluation",
-        "meta": {"date": "2026-04-15", "version": "v1.0", "author": "Timo Lassmann"},
+        "meta": {"date": "2026-04-15", "version": "v1.0", "author": "Dr. Alex Morgan"},
     },
     {
         "kind": "callout",

@@ -37,6 +37,7 @@ except ImportError:
     pass
 
 _EXTRA_EXTENSIONS.append("md_in_html")
+_EXTRA_EXTENSIONS.append("footnotes")
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +278,7 @@ def _render_atom(atom: dict[str, object]) -> str:
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

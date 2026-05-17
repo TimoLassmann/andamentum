@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — footnote & margin note</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header { font-family: var(--am-font-sans); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--am-ink-5); padding-bottom: var(--am-sp-3); border-bottom: var(--am-hair) solid var(--am-rule); margin-bottom: var(--am-sp-6); }
+    .snip-header h1 { font-family: var(--am-font-serif); font-size: 22px; font-weight: 700; color: var(--am-ink); margin: 4px 0 0; letter-spacing: -0.2px; text-transform: none; }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+<header class="snip-header">Andamentum · snippet<h1>footnote & margin note</h1></header>
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+
+<!-- Two document-mode annotation patterns:
+     • .typeset-margin-note — Tufte-style sidenote, floats beside the
+       reading column. Falls back to inline at narrow widths.
+     • .typeset-fn + .typeset-footnotes — classic superscript footnote
+       with a bottom-of-document list. -->
+
+<article class="typeset-document">
+    <section class="typeset-prose">
+
+        <p>This paragraph contains a classic superscript footnote<a href="#fn-1" class="typeset-fn" id="fnref-1">1</a> and, in wide layouts, a marginal note floats beside the column without breaking the line.<aside class="typeset-margin-note">A marginal note. Tufte-style — runs in italic serif, beside the reading column.</aside> The reading rhythm is preserved either way.</p>
+
+        <p>Another paragraph with a second footnote<a href="#fn-2" class="typeset-fn" id="fnref-2">2</a> at the end.</p>
+
+        <ol class="typeset-footnotes">
+            <li id="fn-1">A note set in the same body face as the document. <a href="#fnref-1">↩</a></li>
+            <li id="fn-2">A second footnote. Numbered, indented, with a hairline above the list. <a href="#fnref-2">↩</a></li>
+        </ol>
+
+    </section>
+</article>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+</body>
+</html>

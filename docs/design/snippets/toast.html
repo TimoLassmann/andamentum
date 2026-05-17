@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — toasts</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>toasts</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · toasts -->
+<!-- Default (neutral left accent) -->
+<div class="am-toast">
+    <div>
+        <div class="am-toast__title">Saved</div>
+        <div class="am-toast__body">Changes applied to all open documents.</div>
+    </div>
+</div>
+
+<!-- Success -->
+<div class="am-toast am-toast--success">
+    <div>
+        <div class="am-toast__title">Task created</div>
+        <div class="am-toast__body">&ldquo;Read Pierce 2nd article&rdquo; added to Research.</div>
+    </div>
+</div>
+
+<!-- Info -->
+<div class="am-toast am-toast--info">
+    <div>
+        <div class="am-toast__title">Sync complete</div>
+        <div class="am-toast__body">12 documents indexed, 3 updated.</div>
+    </div>
+</div>
+
+<!-- Warn -->
+<div class="am-toast am-toast--warn">
+    <div>
+        <div class="am-toast__title">Action skipped</div>
+        <div class="am-toast__body">Morning brief was paused — last 2 runs failed.</div>
+    </div>
+</div>
+
+<!-- Danger -->
+<div class="am-toast am-toast--danger">
+    <div>
+        <div class="am-toast__title">Source unreachable</div>
+        <div class="am-toast__body">bbc.com/news returned 503. Will retry in 10m.</div>
+    </div>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

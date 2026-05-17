@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — alignment audit</title>
+<link rel="stylesheet" href="components.css">
+<style>
+    .page { max-width: 1280px; margin: 0 auto; padding: 48px 32px 80px; }
+
+    .page-head {
+        margin-bottom: var(--am-sp-8);
+        padding-bottom: var(--am-sp-5);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+    }
+    .page-head .eye {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        margin-bottom: 6px;
+    }
+    .page-head h1 {
+        font-family: var(--am-font-serif);
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 0 0 var(--am-sp-3);
+        letter-spacing: -0.6px;
+        line-height: 1.15;
+    }
+    .page-head p {
+        font-family: var(--am-font-serif);
+        font-size: 18px;
+        color: var(--am-ink-3);
+        line-height: 1.55;
+        margin: 0;
+        max-width: 70ch;
+    }
+
+    /* The audit grid: rows = component types, cols = tones */
+    .audit {
+        display: grid;
+        grid-template-columns: 180px repeat(4, 1fr);
+        gap: 0;
+        border-top: var(--am-hair) solid var(--am-rule);
+    }
+
+    .audit-head {
+        padding: var(--am-sp-3) var(--am-sp-3);
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        border-bottom: var(--am-hair) solid var(--am-rule-3);
+        background: var(--am-paper);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .audit-head .swatch {
+        width: 12px; height: 12px;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+
+    .audit-row-label {
+        padding: var(--am-sp-4) var(--am-sp-3);
+        font-family: var(--am-font-sans);
+        font-size: 13px;
+        color: var(--am-ink-3);
+        border-bottom: var(--am-hair) solid var(--am-rule-2);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        background: var(--am-paper-2);
+    }
+    .audit-row-label .name { color: var(--am-ink); font-weight: 600; font-family: var(--am-font-serif); font-size: 15px; line-height: 1.3; margin-bottom: 2px; }
+    .audit-row-label small { color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono); line-height: 1.4; }
+
+    .audit-cell {
+        padding: var(--am-sp-4) var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule-2);
+        border-left: var(--am-hair) solid var(--am-rule-2);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 80px;
+    }
+
+    /* Footer summary */
+    .footer-strip {
+        display: grid;
+        grid-template-columns: 180px repeat(4, 1fr);
+        margin-top: var(--am-sp-8);
+        padding: var(--am-sp-5);
+        background: var(--am-paper-2);
+        border-radius: var(--am-rad-3);
+        font-family: var(--am-font-sans);
+        font-size: 13px;
+        color: var(--am-ink-3);
+        align-items: center;
+        gap: 0;
+    }
+    .footer-strip > div + div { border-left: var(--am-hair) solid var(--am-rule-3); padding-left: var(--am-sp-4); margin-left: 0; }
+    .footer-strip .label { font-family: var(--am-font-serif); font-weight: 600; color: var(--am-ink); }
+    .footer-strip .swatch-name { font-family: var(--am-font-mono); font-size: 12px; color: var(--am-ink-2); }
+    .footer-strip .swatch-hex  { font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5); }
+    .footer-strip .swatch-row { display: flex; align-items: center; gap: 8px; padding: 0 var(--am-sp-4); }
+    .footer-strip .swatch { width: 16px; height: 16px; border-radius: 3px; }
+
+    /* Theme toggle */
+    .toolbar {
+        position: fixed;
+        top: 24px; right: 24px; z-index: 50;
+        display: flex; gap: 2px;
+        background: var(--am-paper);
+        border: var(--am-hair) solid var(--am-rule);
+        border-radius: var(--am-rad-3);
+        padding: 3px;
+        box-shadow: var(--am-shadow-2);
+    }
+    .toolbar button {
+        font-family: var(--am-font-sans);
+        font-size: 11px; font-weight: 600;
+        color: var(--am-ink-4); background: transparent; border: 0;
+        padding: 5px 12px; border-radius: var(--am-rad-2);
+        cursor: pointer; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .toolbar button.is-active { background: var(--am-paper-3); color: var(--am-ink); }
+
+    @media (max-width: 1000px) {
+        .audit, .footer-strip { grid-template-columns: 140px repeat(4, 1fr); }
+    }
+</style>
+</head>
+
+<body>
+
+<div class="toolbar" role="group" aria-label="Theme">
+    <button data-theme-btn="light" class="is-active">Light</button>
+    <button data-theme-btn="dark">Dark</button>
+</div>
+
+<main class="page">
+
+    <header class="page-head">
+        <div class="eye">Andamentum · alignment audit</div>
+        <h1>Every use of every tone, in one view.</h1>
+        <p>Each column is one semantic tone. Each row is one component that touches that tone. Scan down a column — every cell should feel like a member of the same colour family. If anything jumps out as off-key, that's a bug.</p>
+    </header>
+
+    <div class="audit">
+        <!-- Header row -->
+        <div class="audit-head" style="background: var(--am-paper); justify-content: flex-end; color: var(--am-ink-5); font-style: italic; font-family: var(--am-font-serif); font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 400;">tone →</div>
+        <div class="audit-head"><span class="swatch" style="background: var(--am-info-accent);"></span>Info · slate</div>
+        <div class="audit-head"><span class="swatch" style="background: var(--am-warn-accent);"></span>Warn · ochre</div>
+        <div class="audit-head"><span class="swatch" style="background: var(--am-success-accent);"></span>Success · olive</div>
+        <div class="audit-head"><span class="swatch" style="background: var(--am-danger-accent);"></span>Danger · rust</div>
+
+        <!-- ROW: Callout -->
+        <div class="audit-row-label">
+            <div class="name">Callout</div>
+            <small>typeset-callout</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Bar only (uniform paper-2 bg). Danger is the exception.</small>
+        </div>
+        <div class="audit-cell"><aside class="typeset-callout tone-info" style="margin: 0; font-size: 13px;"><p>Note about the cohort.</p></aside></div>
+        <div class="audit-cell"><aside class="typeset-callout tone-warning" style="margin: 0; font-size: 13px;"><p>Caution: sample is small.</p></aside></div>
+        <div class="audit-cell"><aside class="typeset-callout tone-success" style="margin: 0; font-size: 13px;"><p>Verification passed.</p></aside></div>
+        <div class="audit-cell"><aside class="typeset-callout tone-danger" style="margin: 0; font-size: 13px;"><p>Source unreachable.</p></aside></div>
+
+        <!-- ROW: UI badge -->
+        <div class="audit-row-label">
+            <div class="name">UI badge</div>
+            <small>am-badge--*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Quiet pill — tinted bg + accent ink.</small>
+        </div>
+        <div class="audit-cell"><span class="am-badge am-badge--info">INFO</span></div>
+        <div class="audit-cell"><span class="am-badge am-badge--warn">PAUSED</span></div>
+        <div class="audit-cell"><span class="am-badge am-badge--success">RUNNING</span></div>
+        <div class="audit-cell"><span class="am-badge am-badge--danger">FAILED</span></div>
+
+        <!-- ROW: Document badge -->
+        <div class="audit-row-label">
+            <div class="name">Document badge</div>
+            <small>typeset-badge</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Epistemic stance — inside findings.</small>
+        </div>
+        <div class="audit-cell"><span class="typeset-badge">neutral</span></div>
+        <div class="audit-cell"><span class="typeset-badge" style="background: var(--am-warn-bg); color: var(--am-warn-ink);">disputed</span></div>
+        <div class="audit-cell"><span class="typeset-badge" data-value="supports">supports</span></div>
+        <div class="audit-cell"><span class="typeset-badge" data-value="challenged">challenged</span></div>
+
+        <!-- ROW: Status dot -->
+        <div class="audit-row-label">
+            <div class="name">Status dot</div>
+            <small>am-dot--*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Tiny indicator — accent only.</small>
+        </div>
+        <div class="audit-cell"><span class="am-dot am-dot--info" style="width: 10px; height: 10px;"></span></div>
+        <div class="audit-cell"><span class="am-dot am-dot--warn" style="width: 10px; height: 10px;"></span></div>
+        <div class="audit-cell"><span class="am-dot am-dot--success" style="width: 10px; height: 10px;"></span></div>
+        <div class="audit-cell"><span class="am-dot am-dot--danger" style="width: 10px; height: 10px;"></span></div>
+
+        <!-- ROW: Toast -->
+        <div class="audit-row-label">
+            <div class="name">Toast</div>
+            <small>am-toast--*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Title-tinted only. No bar.</small>
+        </div>
+        <div class="audit-cell"><div class="am-toast am-toast--info" style="min-width: 0; max-width: none; width: 100%; box-shadow: none;"><div><div class="am-toast__title">Sync complete</div><div class="am-toast__body" style="font-size: 11px;">12 documents indexed.</div></div></div></div>
+        <div class="audit-cell"><div class="am-toast am-toast--warn" style="min-width: 0; max-width: none; width: 100%; box-shadow: none;"><div><div class="am-toast__title">Action skipped</div><div class="am-toast__body" style="font-size: 11px;">Last 2 runs failed.</div></div></div></div>
+        <div class="audit-cell"><div class="am-toast am-toast--success" style="min-width: 0; max-width: none; width: 100%; box-shadow: none;"><div><div class="am-toast__title">Task created</div><div class="am-toast__body" style="font-size: 11px;">Added to Research.</div></div></div></div>
+        <div class="audit-cell"><div class="am-toast am-toast--danger" style="min-width: 0; max-width: none; width: 100%; box-shadow: none;"><div><div class="am-toast__title">Source unreachable</div><div class="am-toast__body" style="font-size: 11px;">bbc.com/news 503.</div></div></div></div>
+
+        <!-- ROW: Progress (only danger uses tone) -->
+        <div class="audit-row-label">
+            <div class="name">Progress</div>
+            <small>am-progress--*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Default is ink-grey. Only danger takes colour.</small>
+        </div>
+        <div class="audit-cell"><div style="width: 100%; color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— ink-grey default —</div></div>
+        <div class="audit-cell"><div style="width: 100%; color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— ink-grey default —</div></div>
+        <div class="audit-cell"><div style="width: 100%; color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— ink-grey default —</div></div>
+        <div class="audit-cell"><div style="width: 100%;"><div class="am-progress am-progress--danger"><div class="am-progress__bar" style="width: 78%;"></div></div></div></div>
+
+        <!-- ROW: Task due pill -->
+        <div class="audit-row-label">
+            <div class="name">Task due pill</div>
+            <small>am-task__due.*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">is-soon → warn. is-overdue → danger.</small>
+        </div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><span class="am-task__due is-soon">2026-05-20</span></div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><span class="am-task__due is-overdue">2026-05-13</span></div>
+
+        <!-- ROW: Stat value -->
+        <div class="audit-row-label">
+            <div class="name">Stat value</div>
+            <small>am-stat__value</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">is-danger / is-success — number only.</small>
+        </div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><span class="am-stat__value is-success" style="font-size: 32px;">10</span></div>
+        <div class="audit-cell"><span class="am-stat__value is-danger" style="font-size: 32px;">4</span></div>
+
+        <!-- ROW: Button (only danger has a semantic variant) -->
+        <div class="audit-row-label">
+            <div class="name">Button</div>
+            <small>am-btn--danger</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">Only danger has a semantic button.</small>
+        </div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><button class="am-btn am-btn--danger">Delete</button></div>
+
+        <!-- ROW: Task status icon -->
+        <div class="audit-row-label">
+            <div class="name">Task status</div>
+            <small>am-task__check.is-*</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">In Progress / Waiting / Done / Cancelled use the palette.</small>
+        </div>
+        <div class="audit-cell"><div style="display: flex; align-items: center; gap: 10px;"><div class="am-task__check is-progress"></div><span class="am-meta">In Progress</span></div></div>
+        <div class="audit-cell"><div style="display: flex; align-items: center; gap: 10px;"><div class="am-task__check is-waiting"></div><span class="am-meta">Waiting</span></div></div>
+        <div class="audit-cell"><div style="display: flex; align-items: center; gap: 10px;"><div class="am-task__check is-done"></div><span class="am-meta">Done</span></div></div>
+        <div class="audit-cell"><div style="display: flex; align-items: center; gap: 10px;"><div class="am-task__check is-cancelled"></div><span class="am-meta">Cancelled</span></div></div>
+
+        <!-- ROW: Tool log marker -->
+        <div class="audit-row-label">
+            <div class="name">Tool log marker</div>
+            <small>am-toollog__ok / __fail</small>
+            <small style="margin-top: 4px; font-style: italic; font-family: var(--am-font-serif); color: var(--am-ink-4); font-size: 11px;">The → / × glyphs inside tool entries.</small>
+        </div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><div style="color: var(--am-ink-5); font-size: 11px; font-family: var(--am-font-mono);">— n/a —</div></div>
+        <div class="audit-cell"><span class="am-toollog__ok" style="font-family: var(--am-font-mono); font-size: 14px;">→ done</span></div>
+        <div class="audit-cell"><span class="am-toollog__fail" style="font-family: var(--am-font-mono); font-size: 14px;">× failed</span></div>
+    </div>
+
+    <!-- Footer: token reference -->
+    <div class="footer-strip">
+        <div class="label">Accent token<br><small style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5); font-weight: 400;">--am-{tone}-accent</small></div>
+        <div class="swatch-row"><span class="swatch" style="background: var(--am-info-accent);"></span><div><div class="swatch-name">--am-info-accent</div><div class="swatch-hex">#6e7a8c · slate</div></div></div>
+        <div class="swatch-row"><span class="swatch" style="background: var(--am-warn-accent);"></span><div><div class="swatch-name">--am-warn-accent</div><div class="swatch-hex">#9a8559 · ochre</div></div></div>
+        <div class="swatch-row"><span class="swatch" style="background: var(--am-success-accent);"></span><div><div class="swatch-name">--am-success-accent</div><div class="swatch-hex">#5e7a6a · olive</div></div></div>
+        <div class="swatch-row"><span class="swatch" style="background: var(--am-danger-accent);"></span><div><div class="swatch-name">--am-danger-accent</div><div class="swatch-hex">#9c4a36 · rust</div></div></div>
+    </div>
+
+    <!-- Task status family — the full set, in one place -->
+    <section style="margin-top: var(--am-sp-9);">
+        <div class="page-head" style="margin-bottom: var(--am-sp-6); padding-bottom: var(--am-sp-4);">
+            <div class="eye">Andamentum · task status family</div>
+            <h1 style="font-size: 28px;">All six statuses.</h1>
+            <p>The full task-status vocabulary. Inbox and To Do are neutral (ink-grey, no semantic colour); the other four sit on the palette. Same circle, same size, same stroke weight — only fill/outline state changes. Maps onto the picker your app already uses.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; border: var(--am-hair) solid var(--am-rule-3); border-radius: var(--am-rad-3); overflow: hidden;">
+            <!-- Inbox -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: var(--am-hair) solid var(--am-rule-2); background: var(--am-paper);">
+                <div class="am-task__check is-inbox" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">Inbox</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-inbox</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Newly captured, not yet committed.</div>
+            </div>
+            <!-- To Do -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: var(--am-hair) solid var(--am-rule-2); background: var(--am-paper);">
+                <div class="am-task__check is-todo" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">To Do</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-todo</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Open, ready to be picked up.</div>
+            </div>
+            <!-- In Progress -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: var(--am-hair) solid var(--am-rule-2); background: var(--am-paper);">
+                <div class="am-task__check is-progress" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">In Progress</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-progress · slate</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Being worked on right now.</div>
+            </div>
+            <!-- Waiting -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: var(--am-hair) solid var(--am-rule-2); background: var(--am-paper);">
+                <div class="am-task__check is-waiting" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">Waiting</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-waiting · ochre</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Awaiting input or response.</div>
+            </div>
+            <!-- Done -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: var(--am-hair) solid var(--am-rule-2); background: var(--am-paper);">
+                <div class="am-task__check is-done" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">Done</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-done · olive</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Completed.</div>
+            </div>
+            <!-- Cancelled -->
+            <div style="padding: var(--am-sp-5) var(--am-sp-3); display: flex; flex-direction: column; align-items: center; gap: 10px; background: var(--am-paper);">
+                <div class="am-task__check is-cancelled" style="width: 24px; height: 24px;"></div>
+                <div style="font-family: var(--am-font-serif); font-size: 15px; font-weight: 600; color: var(--am-ink);">Cancelled</div>
+                <div style="font-family: var(--am-font-mono); font-size: 11px; color: var(--am-ink-5);">.is-cancelled · rust</div>
+                <div style="font-family: var(--am-font-serif); font-size: 12px; color: var(--am-ink-4); text-align: center; font-style: italic; line-height: 1.4;">Abandoned or no longer relevant.</div>
+            </div>
+        </div>
+
+        <!-- The same icons, applied to an actual task row -->
+        <div style="margin-top: var(--am-sp-6);">
+            <div class="am-list am-list--bordered">
+                <div class="am-task"><div class="am-task__check is-inbox"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Inbox · raw capture from a meeting</div></div></div>
+                <div class="am-task"><div class="am-task__check is-todo"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">To do · Read Pierce 2nd article</div><div class="am-task__sub"><span class="am-task__due">2026-05-22</span></div></div></div>
+                <div class="am-task"><div class="am-task__check is-progress"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">In progress · DUF / DMYTR — return sequence selection</div></div></div>
+                <div class="am-task"><div class="am-task__check is-waiting"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Waiting · Adjunct appointment — full?</div></div></div>
+                <div class="am-task"><div class="am-task__check is-done"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title is-done" style="color: var(--am-ink-5); text-decoration: line-through; text-decoration-color: var(--am-ink-6);">Done · Manuscript draft</div></div></div>
+                <div class="am-task is-cancelled"><div class="am-task__check is-cancelled"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Cancelled · Old plan for the Q4 review</div></div></div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script>
+    const root = document.documentElement;
+    const buttons = document.querySelectorAll('[data-theme-btn]');
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        buttons.forEach(b => b.classList.toggle('is-active', b.dataset.themeBtn === t));
+        try { localStorage.setItem('andamentum-theme', t); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+    try {
+        const saved = localStorage.getItem('andamentum-theme');
+        if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch (e) {}
+</script>
+</body>
+</html>

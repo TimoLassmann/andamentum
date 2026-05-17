@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum</title>
+<link rel="stylesheet" href="components.css">
+<style>
+    body { min-height: 100vh; display: flex; flex-direction: column; }
+    .index-shell {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 80px 32px 64px;
+        flex: 1;
+    }
+    .index-mark {
+        font-family: var(--am-font-serif);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--am-ink-5);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 24px;
+    }
+    .index-title {
+        font-family: var(--am-font-serif);
+        font-size: 72px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--am-ink);
+        margin: 0 0 16px;
+        letter-spacing: -2.5px;
+    }
+    .index-lede {
+        font-family: var(--am-font-serif);
+        font-size: 24px;
+        color: var(--am-ink-3);
+        line-height: 1.4;
+        margin: 0 0 56px;
+        max-width: 32ch;
+    }
+    .index-section-title {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: 12px;
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin: 56px 0 0;
+    }
+    .index-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+    }
+    .index-card {
+        display: block;
+        padding: 28px 0;
+        border-bottom: var(--am-hair) solid var(--am-rule-2);
+        text-decoration: none;
+        color: inherit;
+        transition: padding-left 160ms var(--am-ease);
+    }
+    .index-card:hover { padding-left: 8px; }
+    .index-card:hover .index-card__arrow { color: var(--am-link); transform: translateX(2px); }
+    .index-card__num {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--am-ink-5);
+        letter-spacing: 0.4px;
+        margin-bottom: 4px;
+    }
+    .index-card__title {
+        font-family: var(--am-font-serif);
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 0 0 6px;
+        line-height: 1.2;
+        letter-spacing: -0.4px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+    }
+    .index-card__arrow {
+        font-family: var(--am-font-serif);
+        color: var(--am-ink-6);
+        font-weight: 400;
+        transition: transform 160ms var(--am-ease), color 160ms var(--am-ease);
+    }
+    .index-card__desc {
+        font-family: var(--am-font-serif);
+        font-size: 17px;
+        color: var(--am-ink-3);
+        line-height: 1.55;
+        margin: 0;
+        max-width: 44ch;
+    }
+
+    .index-snippets {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+        margin-top: 20px;
+    }
+    .index-snip {
+        font-family: var(--am-font-mono);
+        font-size: 13px;
+        color: var(--am-link);
+        text-decoration: none;
+        padding: 10px 0;
+        border-bottom: var(--am-hair) solid var(--am-rule-2);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .index-snip:hover { color: var(--am-ink); }
+    .index-snip::before {
+        content: '·';
+        color: var(--am-ink-6);
+    }
+
+    .index-foot {
+        margin-top: 80px;
+        padding-top: 24px;
+        border-top: var(--am-hair) solid var(--am-rule);
+        font-family: var(--am-font-sans);
+        font-size: 12px;
+        color: var(--am-ink-5);
+        display: flex;
+        gap: 18px;
+        align-items: center;
+    }
+    .index-foot strong { color: var(--am-ink-3); font-weight: 600; }
+
+    .index-toggle {
+        position: fixed; top: 24px; right: 24px;
+        display: flex; gap: 2px;
+        background: var(--am-paper); border: var(--am-hair) solid var(--am-rule);
+        border-radius: var(--am-rad-3); padding: 3px;
+        font-family: var(--am-font-sans);
+        z-index: 50;
+    }
+    .index-toggle button {
+        font-size: 11px; font-weight: 600;
+        color: var(--am-ink-4); background: transparent; border: 0;
+        padding: 5px 12px; border-radius: var(--am-rad-2);
+        cursor: pointer; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .index-toggle button.is-active { background: var(--am-paper-3); color: var(--am-ink); }
+
+    @media (max-width: 720px) {
+        .index-title { font-size: 56px; letter-spacing: -1.8px; }
+        .index-grid { grid-template-columns: 1fr; }
+        .index-snippets { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+</head>
+<body>
+
+<div class="index-toggle" role="group" aria-label="Theme">
+    <button data-theme-btn="light" class="is-active">Light</button>
+    <button data-theme-btn="dark">Dark</button>
+</div>
+
+<main class="index-shell">
+
+    <div class="index-mark">Andamentum · v1.0</div>
+
+    <h1 class="index-title">Andamentum.</h1>
+
+    <p class="index-lede">A scholarly, letterpress-honest design system for documents — and the apps that produce them.</p>
+
+    <div class="index-section-title">Surfaces</div>
+    <div class="index-grid">
+
+        <a class="index-card" href="showcase.html">
+            <div class="index-card__num">§ 01</div>
+            <h2 class="index-card__title">Showcase <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc">Every component, demoed and labelled, with a light/dark toggle. The canonical reference.</p>
+        </a>
+
+        <a class="index-card" href="brain-mockup.html">
+            <div class="index-card__num">§ 02</div>
+            <h2 class="index-card__title">Brain, restyled <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc">A full worked example: the system applied to a knowledge-management / agent app — proof that andamentum extends past the document into chrome.</p>
+        </a>
+
+        <a class="index-card" href="alignment-audit.html">
+            <div class="index-card__num">§ 02b</div>
+            <h2 class="index-card__title">Alignment audit <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc">Every use of every tone in one grid. The fastest way to verify the palette is in family across the whole system.</p>
+        </a>
+
+        <a class="index-card" href="browse-mockup.html">
+            <div class="index-card__num">§ 02c</div>
+            <h2 class="index-card__title">Browse, restyled <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc">A worked example of the system applied to the Browse view of a knowledge-management app — kind/group badges, removable tags, the <code style="font-family: var(--am-font-mono); font-size: 14px; color: var(--am-link);">+</code> add-tag affordance, and the filter bar with custom checkbox.</p>
+        </a>
+
+        <a class="index-card" href="DESIGN.md">
+            <div class="index-card__num">§ 03</div>
+            <h2 class="index-card__title">Philosophy <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc"><code style="font-family: var(--am-font-mono); font-size: 14px; color: var(--am-link);">DESIGN.md</code> — the <em>why</em>. Vibe, tone, things to do, things to never do.</p>
+        </a>
+
+        <a class="index-card" href="CLAUDE.md">
+            <div class="index-card__num">§ 04</div>
+            <h2 class="index-card__title">For Claude Code <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc"><code style="font-family: var(--am-font-mono); font-size: 14px; color: var(--am-link);">CLAUDE.md</code> — instructions to drop at the root of any project that adopts andamentum.</p>
+        </a>
+
+        <a class="index-card" href="components.css">
+            <div class="index-card__num">§ 05</div>
+            <h2 class="index-card__title">Stylesheet <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc"><code style="font-family: var(--am-font-mono); font-size: 14px; color: var(--am-link);">components.css</code> — tokens for light + dark, plus every component rule. Drop on any page.</p>
+        </a>
+
+        <a class="index-card" href="README.md">
+            <div class="index-card__num">§ 06</div>
+            <h2 class="index-card__title">Quick start <span class="index-card__arrow">›</span></h2>
+            <p class="index-card__desc"><code style="font-family: var(--am-font-mono); font-size: 14px; color: var(--am-link);">README.md</code> — five-minute orientation. Where everything is and how to apply it.</p>
+        </a>
+
+    </div>
+
+    <div class="index-section-title">Snippets</div>
+    <div class="index-snippets">
+        <a class="index-snip" href="snippets/typeset-document.html">typeset-document</a>
+        <a class="index-snip" href="snippets/callout.html">callout</a>
+        <a class="index-snip" href="snippets/card.html">card</a>
+        <a class="index-snip" href="snippets/badge.html">badge</a>
+        <a class="index-snip" href="snippets/button.html">button</a>
+        <a class="index-snip" href="snippets/chip.html">chip</a>
+        <a class="index-snip" href="snippets/tag.html">tag</a>
+        <a class="index-snip" href="snippets/input.html">input</a>
+        <a class="index-snip" href="snippets/checkbox.html">checkbox</a>
+        <a class="index-snip" href="snippets/toggle.html">toggle</a>
+        <a class="index-snip" href="snippets/validation.html">validation</a>
+        <a class="index-snip" href="snippets/kbd.html">kbd</a>
+        <a class="index-snip" href="snippets/avatar.html">avatar</a>
+        <a class="index-snip" href="snippets/tooltip.html">tooltip</a>
+        <a class="index-snip" href="snippets/menu.html">menu</a>
+        <a class="index-snip" href="snippets/pagination.html">pagination</a>
+        <a class="index-snip" href="snippets/timeline.html">timeline</a>
+        <a class="index-snip" href="snippets/stepper.html">stepper</a>
+        <a class="index-snip" href="snippets/footnote.html">footnote</a>
+        <a class="index-snip" href="snippets/sidebar.html">sidebar</a>
+        <a class="index-snip" href="snippets/tabs.html">tabs</a>
+        <a class="index-snip" href="snippets/sub-tabs.html">sub-tabs</a>
+        <a class="index-snip" href="snippets/chat.html">chat</a>
+        <a class="index-snip" href="snippets/toollog.html">toollog</a>
+        <a class="index-snip" href="snippets/artefacts.html">artefacts</a>
+        <a class="index-snip" href="snippets/task-row.html">task-row</a>
+        <a class="index-snip" href="snippets/action-row.html">action-row</a>
+        <a class="index-snip" href="snippets/source-row.html">source-row</a>
+        <a class="index-snip" href="snippets/settings.html">settings</a>
+        <a class="index-snip" href="snippets/modal.html">modal</a>
+        <a class="index-snip" href="snippets/toast.html">toast</a>
+        <a class="index-snip" href="snippets/empty-state.html">empty-state</a>
+        <a class="index-snip" href="snippets/progress.html">progress</a>
+    </div>
+
+    <footer class="index-foot">
+        <strong>Source Serif 4</strong>
+        <span>·</span>
+        <span>Inter</span>
+        <span>·</span>
+        <span>SF Mono</span>
+        <span style="margin-left: auto; font-style: italic;">andamento — the line a mosaic follows across a field.</span>
+    </footer>
+
+</main>
+
+<script>
+    const root = document.documentElement;
+    const buttons = document.querySelectorAll('[data-theme-btn]');
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        buttons.forEach(b => b.classList.toggle('is-active', b.dataset.themeBtn === t));
+        try { localStorage.setItem('andamentum-theme', t); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+    try {
+        const saved = localStorage.getItem('andamentum-theme');
+        if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch (e) {}
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — tool log, router decision, artefact card, thinking</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>tool log, router decision, artefact card, thinking</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · tool log, router decision, artefact card, thinking
+     The "run instrumentation" family — everything that sits between a
+     user prompt and the assistant's typeset reply. Use these in any
+     agent / AI surface that exposes its reasoning steps to the user. -->
+<!-- Tool log — collapsible "Tools used" block. -->
+<details class="am-toollog">
+    <summary class="am-toollog__summary">Tools used · Router: research · 2 calls</summary>
+    <div class="am-toollog__body">
+        <div class="am-toollog__entry">
+            <span class="am-toollog__entry__name">knowledge_search</span>
+            <span class="am-toollog__entry__args">{"query":"news stories on CNN and BBC News world edition survey"}</span>
+        </div>
+        <div class="am-toollog__entry">
+            <span class="am-toollog__ok">→</span>
+            <span class="am-toollog__entry__result">[b9a620d7-d3e0-4fb0-957f-807bd3d32dc3] Ollama news</span>
+        </div>
+        <div class="am-toollog__entry">
+            <span class="am-toollog__entry__name">ask_user</span>
+            <span class="am-toollog__entry__args">{"question":"What time window should the survey cover?"}</span>
+        </div>
+    </div>
+</details>
+
+<!-- Router decision banner -->
+<div class="am-router">
+    <span class="am-router__label">Router selected:</span>
+    <span>research</span>
+    <span class="am-router__reason">
+        — the request asks for a survey of news stories from specific sources, which requires external research and synthesis.
+    </span>
+</div>
+
+<!-- Artefact card — "documents this turn created" -->
+<a class="am-artefact" href="#">
+    <span class="am-artefact__icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6 3h9l5 5v13H6z"/>
+            <path d="M15 3v5h5"/>
+            <path d="M9 13h7M9 16h7"/>
+        </svg>
+    </span>
+    <div class="am-artefact__main">
+        <div class="am-artefact__title">CNN &amp; BBC World — 24-hour survey</div>
+        <div class="am-artefact__meta">Document · 1,840 words · created this turn</div>
+    </div>
+</a>
+
+<!-- Thinking indicator (three letterpress dots, italic label) -->
+<div class="am-thinking">
+    <span class="am-thinking__dots">
+        <span class="am-thinking__dot"></span>
+        <span class="am-thinking__dot"></span>
+        <span class="am-thinking__dot"></span>
+    </span>
+    <span>thinking…</span>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — form validation states</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header { font-family: var(--am-font-sans); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--am-ink-5); padding-bottom: var(--am-sp-3); border-bottom: var(--am-hair) solid var(--am-rule); margin-bottom: var(--am-sp-6); }
+    .snip-header h1 { font-family: var(--am-font-serif); font-size: 22px; font-weight: 700; color: var(--am-ink); margin: 4px 0 0; letter-spacing: -0.2px; text-transform: none; }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+<header class="snip-header">Andamentum · snippet<h1>form validation states</h1></header>
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+
+<!-- Apply .is-error / .is-warn to the input, and use .am-help--error /
+     --warn / --success on the help text below. -->
+
+<div style="max-width: 420px; margin-bottom: 16px;">
+    <label class="am-label" for="v1">Project title</label>
+    <input id="v1" class="am-input is-error" type="text" value="">
+    <div class="am-help am-help--error">Required — give the project a short name.</div>
+</div>
+
+<div style="max-width: 420px; margin-bottom: 16px;">
+    <label class="am-label" for="v2">Deadline</label>
+    <input id="v2" class="am-input is-warn" type="date" value="2025-01-01">
+    <div class="am-help am-help--warn">This date is in the past.</div>
+</div>
+
+<div style="max-width: 420px;">
+    <label class="am-label" for="v3">URL</label>
+    <input id="v3" class="am-input" type="url" value="https://example.com">
+    <div class="am-help am-help--success">Reachable. Last checked 2 minutes ago.</div>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+</body>
+</html>

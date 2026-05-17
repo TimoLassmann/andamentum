@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain — Browse (Andamentum)</title>
+<link rel="stylesheet" href="components.css">
+<style>
+    html, body { height: 100%; }
+    body { display: flex; flex-direction: column; }
+
+    /* Top filter strip */
+    .browse-toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--am-sp-4);
+        padding: var(--am-sp-4) var(--am-sp-7);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+    }
+    .browse-toolbar .am-search { flex: 1; max-width: none; }
+    .browse-toolbar__field {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    .browse-toolbar__label {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        color: var(--am-ink-4);
+        font-weight: 500;
+    }
+    .browse-toolbar__field .am-select { width: 110px; min-width: 110px; }
+
+    /* Count */
+    .browse-count {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        color: var(--am-ink-5);
+        padding: var(--am-sp-3) var(--am-sp-7) 0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Document list */
+    .browse-list {
+        padding: var(--am-sp-4) var(--am-sp-5);
+        display: flex;
+        flex-direction: column;
+        gap: var(--am-sp-3);
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    /* Single browse row — three columns: cats / main / aside */
+    .brow-row {
+        display: grid;
+        grid-template-columns: 180px 1fr 32px;
+        gap: var(--am-sp-5);
+        align-items: start;
+        padding: var(--am-sp-4) var(--am-sp-5);
+        background: var(--am-paper);
+        border: var(--am-hair) solid var(--am-rule-2);
+        border-radius: var(--am-rad-3);
+        cursor: pointer;
+        transition: border-color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+    }
+    .brow-row:hover {
+        border-color: var(--am-rule-3);
+        background: var(--am-paper);
+    }
+
+    .brow-row__left {
+        display: flex;
+        flex-direction: column;
+        gap: var(--am-sp-2);
+        min-width: 0;
+    }
+    .brow-row__cats {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+    }
+    .brow-row__date {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        color: var(--am-ink-5);
+        font-variant-numeric: tabular-nums;
+        margin-top: 4px;
+    }
+
+    .brow-row__main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--am-sp-3);
+    }
+    .brow-row__title {
+        font-family: var(--am-font-sans);
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--am-ink);
+        line-height: 1.35;
+        margin: 0;
+        letter-spacing: -0.1px;
+    }
+
+    .brow-row__aside {
+        display: flex;
+        justify-content: flex-end;
+        align-items: flex-start;
+        color: var(--am-ink-6);
+    }
+    .brow-row__icon {
+        background: transparent;
+        border: 0;
+        color: var(--am-ink-6);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: var(--am-rad-2);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .brow-row__icon:hover { color: var(--am-ink-3); background: var(--am-paper-2); }
+</style>
+</head>
+<body>
+
+<!-- Top app header (same as Brain) -->
+<header class="am-app-header">
+    <div class="am-app-title">
+        <span class="am-app-title__mark">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.5 4.5c-1.7 0-3 1.2-3 2.7 0 .8-.6 1-1 1.2-.8.5-.9 1.7-.2 2.3.1.9.3 1.7 1 2 .2.9.7 1.6 1.6 1.8.1.9.7 1.7 1.6 1.8.2.9.9 1.7 2 1.7V4.5Z"/>
+                <path d="M14.5 4.5c1.7 0 3 1.2 3 2.7 0 .8.6 1 1 1.2.8.5.9 1.7.2 2.3-.1.9-.3 1.7-1 2-.2.9-.7 1.6-1.6 1.8-.1.9-.7 1.7-1.6 1.8-.2.9-.9 1.7-2 1.7V4.5Z"/>
+            </svg>
+        </span>
+        <span>Brain</span>
+    </div>
+    <nav class="am-tabs">
+        <button class="am-tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            Work
+        </button>
+        <button class="am-tab is-active">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Browse
+        </button>
+        <button class="am-tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+            Actions
+        </button>
+    </nav>
+    <div class="am-app-header__right">
+        <span class="am-meta" style="font-family: var(--am-font-mono); font-size: var(--am-fs-small);">gpt-5.4-mini</span>
+        <button class="am-btn am-btn--icon" aria-label="New">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+    </div>
+</header>
+
+<!-- Filter toolbar -->
+<div class="browse-toolbar">
+    <div class="am-search">
+        <svg class="am-search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/></svg>
+        <input class="am-input" type="search" placeholder="Search documents…">
+    </div>
+
+    <div class="browse-toolbar__field">
+        <span class="browse-toolbar__label">Group:</span>
+        <select class="am-select"><option>None</option><option>Kind</option><option>Source</option></select>
+    </div>
+
+    <div class="browse-toolbar__field">
+        <span class="browse-toolbar__label">Kind:</span>
+        <select class="am-select"><option>All</option><option>research</option><option>task</option><option>action</option><option>settings</option></select>
+    </div>
+
+    <div class="browse-toolbar__field">
+        <span class="browse-toolbar__label">Source:</span>
+        <select class="am-select"><option>All</option><option>chat</option><option>action</option><option>ingestion</option></select>
+    </div>
+
+    <label class="am-checkbox-row">
+        <input class="am-checkbox" type="checkbox">
+        System
+    </label>
+</div>
+
+<div class="browse-count">546 documents · 6358 chunks</div>
+
+<!-- Document list -->
+<div class="browse-list">
+
+    <!-- Row 1: research, with two tags -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">RESEARCH</span>
+                <span class="am-badge">REFERENCE</span>
+                <span class="am-badge am-badge--info">RESEARCH</span>
+            </div>
+            <div class="brow-row__date">17/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Research: Survey of major news stories on CNN and BBC News World edition in the past 24 hours. Summarize the main stories, compare emphasis, and note any overlap or differences.</h3>
+            <div class="am-tags">
+                <span class="am-tag">Raúl Castro <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Trump <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 2: action, no tags -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">ACTION</span>
+                <span class="am-badge">ACTIVE</span>
+            </div>
+            <div class="brow-row__date">5/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Morning briefing</h3>
+            <div class="am-tags">
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 3: research, many tags -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">RESEARCH</span>
+                <span class="am-badge">REFERENCE</span>
+                <span class="am-badge am-badge--info">RESEARCH</span>
+            </div>
+            <div class="brow-row__date">17/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Research: What new models are available for download on Ollama right now? Summarize recent additions, notable releases, and any official Ollama announcements or model library updates.</h3>
+            <div class="am-tags">
+                <span class="am-tag">Ollama <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Gemma 4 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Mistral Medium 3.5 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">IBM Granite 4.1 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">NVIDIA Nemotron 3 Nano Omni <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">DeepSeek-V4-Flash <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">DeepSeek-V4-Pro <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Kimi K2.6 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Qwen3.6 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">MedGemma 1.5 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">GLM-5.1 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Nemotron Cascade 2 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">MiniMax-M2.7 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">LFM2 <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 4: url summary -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">URL_SUMMARY</span>
+                <span class="am-badge">REFERENCE</span>
+                <span class="am-badge am-badge--info">SUMMARIZE_URL</span>
+            </div>
+            <div class="brow-row__date">17/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Summary: Ollama</h3>
+            <div class="am-tags">
+                <span class="am-tag">Ollama <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Ollama Cloud <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">OpenClaw <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <span class="am-tag">Claude Code <button class="am-tag__close" aria-label="Remove">×</button></span>
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 5: settings -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">SETTINGS</span>
+            </div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Brain Settings</h3>
+            <div class="am-tags">
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 6: task, done -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">TASK</span>
+                <span class="am-badge am-badge--success">DONE</span>
+            </div>
+            <div class="brow-row__date">11/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Kaligin fix — see GitHub — libomp…</h3>
+            <div class="am-tags">
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 7: action, active -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">ACTION</span>
+                <span class="am-badge">ACTIVE</span>
+            </div>
+            <div class="brow-row__date">5/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Evening briefing</h3>
+            <div class="am-tags">
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+    <!-- Row 8: task, done -->
+    <article class="brow-row">
+        <div class="brow-row__left">
+            <div class="brow-row__cats">
+                <span class="am-badge">TASK</span>
+                <span class="am-badge am-badge--success">DONE</span>
+            </div>
+            <div class="brow-row__date">14/5/2026</div>
+        </div>
+        <div class="brow-row__main">
+            <h3 class="brow-row__title">Read: Morning briefing (2026-05-14)</h3>
+            <div class="am-tags">
+                <button class="am-tag-add" aria-label="Add tag">+</button>
+            </div>
+        </div>
+        <div class="brow-row__aside">
+            <button class="brow-row__icon" aria-label="Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m20.6 11.4-8.2-8.2A2 2 0 0 0 11 2.6L4 3.4a1 1 0 0 0-.8.8L2.4 11a2 2 0 0 0 .6 1.4l8.2 8.2a2 2 0 0 0 2.8 0l6.6-6.6a2 2 0 0 0 0-2.6Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>
+            </button>
+        </div>
+    </article>
+
+</div>
+
+</body>
+</html>

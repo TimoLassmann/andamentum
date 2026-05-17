@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — callout (typeset)</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>callout (typeset)</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · callout (typeset)
+     The verdict-style block used at the top of reports, and the
+     tone-variant boxes used inline. -->
+<!-- Default — reads as an opening paragraph, NOT a box.
+     Use this for the one-sentence verdict at the top of a document. -->
+<aside class="typeset-callout">
+    <p>The evidence is mixed, showing reduced mortality in some populations but no significant effect on major cardiovascular events in others.</p>
+</aside>
+
+<!-- Tone variants — subtle tinted box with a 3px left accent. -->
+<aside class="typeset-callout tone-info">
+    <p><strong>Note.</strong> The 2024 update reorganised the cohort definition. Earlier figures are not directly comparable.</p>
+</aside>
+
+<aside class="typeset-callout tone-warning">
+    <p><strong>Heads-up.</strong> Sample size is small (n = 41); take effect-size estimates with caution.</p>
+</aside>
+
+<aside class="typeset-callout tone-success">
+    <p><strong>Confirmed.</strong> Verification passed on all six checks.</p>
+</aside>
+
+<aside class="typeset-callout tone-note">
+    <p>A neutral aside the reader can skip without losing the thread of the paragraph.</p>
+</aside>
+
+<aside class="typeset-callout tone-quote">
+    <p>The intervention &ldquo;may produce a small but durable reduction in HbA1c&rdquo; — though the authors qualify the claim heavily.</p>
+</aside>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

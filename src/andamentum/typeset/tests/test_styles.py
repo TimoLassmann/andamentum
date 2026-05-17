@@ -41,8 +41,8 @@ class TestStyles:
         for style_name in STYLES:
             css = get_style(style_name)
             assert "variant-pairs" in css, f"{style_name} missing .variant-pairs"
-            assert "variant-right" in css, f"{style_name} missing .variant-right"
-            assert "variant-left" in css, f"{style_name} missing .variant-left"
+            assert "item-right" in css, f"{style_name} missing .item-right"
+            assert "item-left" in css, f"{style_name} missing .item-left"
 
     def test_tone_classes_in_article(self):
         css = get_style("article")

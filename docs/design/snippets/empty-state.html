@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — empty state</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>empty state</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · empty state -->
+<div class="am-empty">
+    <div class="am-empty__mark">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </div>
+    <h3 class="am-empty__title">No tasks here yet</h3>
+    <p class="am-empty__hint">Add a task above, or drag one from another project. Tasks added here are filed under &ldquo;Research&rdquo;.</p>
+    <button class="am-btn am-btn--primary">Add task</button>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

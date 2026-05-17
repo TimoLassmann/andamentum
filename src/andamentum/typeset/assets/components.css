@@ -1,0 +1,2683 @@
+/* =====================================================================
+   andamentum — components.css
+   A scholarly, letterpress-honest design system.
+   ─────────────────────────────────────────────────────────────────────
+   ── What this file is ──
+   The whole system in one stylesheet. Drop it on any page with
+       <link rel="stylesheet" href="andamentum/components.css">
+   and everything in the .typeset-* and .am-* class families is styled.
+
+   ── How to read it ──
+   The file is organised in numbered sections. Jump to the section you
+   need; don't search for one-off selectors. Tokens live in §2 — every
+   colour, type size, and gap in the file references one of them.
+
+       1.  Imports & resets
+       2.  Design tokens (light + dark)
+       3.  Typography primitives
+       4.  Typeset document system (.typeset-*)
+       5.  App chrome (header, tabs, sidebar)
+       6.  Buttons, inputs, badges, chips
+       7.  Lists, rows, cards
+       8.  Chat, tool log, artefacts, thinking
+       9.  Modal, toast, empty state, progress
+      10.  Specialised rows (task / action / source / settings)
+      11.  Print + responsive
+
+   ── Naming ──
+       .typeset-*  — document content. Reading view, assistant prose,
+                     report exports. Anything a person reads to learn.
+       .am-*       — app chrome, controls, lists, instrumentation.
+                     Anything the system says about itself.
+       .is-*       — state classes (.is-active, .is-done, .is-overdue).
+                     Used on whichever element they describe.
+       --am-*      — design tokens. Read from anywhere; defined in §2.
+
+   The two namespaces share tokens and look like they belong together.
+   They never compete for the same selector.
+
+   ── Reskinning ──
+   Edit a token in §2 to change the palette / scale. NEVER edit a
+   component rule to change colour — that breaks dark mode and breaks
+   everything else that uses the same token. The tokens cascade.
+
+   ── If you are an agent ──
+   Before adding anything to this file, read:
+       • andamentum/DESIGN.md     — philosophy, do's, don'ts
+       • andamentum/CLAUDE.md     — surface→class mapping cheat sheet
+       • andamentum/showcase.html — what every component looks like
+   Then check whether the thing you're building already exists. It
+   usually does.
+
+   ── Hard rules ──
+   No gradients. No drop shadows on cards or rows (only modal / toast).
+   No pure #000 or #fff. No emoji as iconography. No pill buttons.
+   No saturated semantic colour. No coloured left bar on toasts (was
+   removed deliberately). No --info / --warn / --success progress
+   variants (also removed deliberately — andamentum's default progress
+   is ink-grey; only --danger takes colour).
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. Imports & resets
+   --------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+
+/* ---------------------------------------------------------------------
+   2. Design tokens
+   Light is the home key. Dark is its sibling, not a negative photo.
+   Treat dark as "library at night": warm vellum on dim oak, brass
+   lamp glow. Never pure black, never neon.
+   --------------------------------------------------------------------- */
+
+:root {
+    /* Fonts */
+    --am-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --am-font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --am-font-mono:  'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
+
+    /* Type scale (rem-free on purpose — andamentum trusts pixels) */
+    --am-fs-display: 32px;
+    --am-fs-h2:      22px;
+    --am-fs-lead:    20px;
+    --am-fs-prose:   19px;   /* reading-view body */
+    --am-fs-h3:      18px;
+    --am-fs-ref:     17px;
+    --am-fs-body:    16px;   /* UI body */
+    --am-fs-ui:      15px;   /* dense UI rows */
+    --am-fs-meta:    14px;
+    --am-fs-small:   13px;
+    --am-fs-micro:   12px;
+    --am-fs-tag:     11px;
+    --am-fs-eyebrow: 9px;
+
+    /* Line heights */
+    --am-lh-prose: 1.85;
+    --am-lh-tight: 1.25;
+    --am-lh-ui:    1.5;
+
+    /* Spacing (4-step) */
+    --am-sp-1:  4px;
+    --am-sp-2:  8px;
+    --am-sp-3:  12px;
+    --am-sp-4:  16px;
+    --am-sp-5:  20px;
+    --am-sp-6:  24px;
+    --am-sp-7:  32px;
+    --am-sp-8:  40px;
+    --am-sp-9:  48px;
+    --am-sp-10: 64px;
+
+    /* Radii — andamentum prefers small radii; never pill, never huge */
+    --am-rad-1: 3px;   /* badges, tiny chips */
+    --am-rad-2: 4px;   /* callouts, items */
+    --am-rad-3: 6px;   /* cards, modals, inputs */
+    --am-rad-4: 8px;   /* the largest we go */
+
+    /* Hairline widths */
+    --am-hair: 1px;
+
+    /* Motion */
+    --am-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --am-dur:  140ms;
+
+    /* ── LIGHT palette ─────────────────────────────────────────────── */
+
+    /* Paper / surface — warm cream, four steps deeper */
+    --am-paper:    #f9f7f4;
+    --am-paper-2:  #f4f1ec;
+    --am-paper-3:  #f0ede8;
+    --am-paper-4:  #e8e4de;
+
+    /* Ink / text — seven steps, near-black to near-white */
+    --am-ink:      #1a1a1a;
+    --am-ink-2:    #2b2b2b;
+    --am-ink-3:    #555555;
+    --am-ink-4:    #777777;
+    --am-ink-5:    #999999;
+    --am-ink-6:    #bbbbbb;
+    --am-ink-7:    #cccccc;
+
+    /* Rules / borders */
+    --am-rule:     #e8e4de;
+    --am-rule-2:   #ebe7e0;
+    --am-rule-3:   #d4d0c8;
+
+    /* Link — the brown of an underlined word in an old book */
+    --am-link:     #7c6a4f;
+    --am-link-hover: #1a1a1a;
+    --am-link-rule: #d4d0c8;
+
+    /* Semantic tones — quiet, in-family with the cream paper.
+       Backgrounds are barely-tinted cream; accent carries hue;
+       danger is the one tone with a slightly stronger pull.
+       The whole set is named, but only ACCENT carries real signal —
+       most components use only the accent (left bar, title colour,
+       badge text). Backgrounds are reserved for callouts and badges. */
+    --am-info-bg:        #e8eaee;
+    --am-info-accent:    #6e7a8c;
+    --am-info-ink:       #3e4a5c;
+
+    --am-warn-bg:        #ece5d2;
+    --am-warn-accent:    #9a8559;
+    --am-warn-ink:       #5a4818;
+
+    --am-success-bg:     #e3e6d9;
+    --am-success-accent: #5e7a6a;
+    --am-success-ink:    #2e4636;
+
+    --am-danger-bg:      #f1ddd4;
+    --am-danger-accent:  #9c4a36;
+    --am-danger-ink:     #6e2818;
+
+    --am-note-bg:        #f4f1ec;
+    --am-note-accent:    #c4b99a;
+    --am-note-ink:       #555555;
+
+    /* Selection */
+    --am-select-bg:      #ece3cf;
+    --am-select-ink:     #1a1a1a;
+
+    /* Focus ring — andamentum's only "interactive" colour */
+    --am-focus:    #7c6a4f;
+    --am-focus-aura: rgba(124, 106, 79, 0.18);
+
+    /* Shadows — used sparingly. Andamentum is flat; shadows whisper. */
+    --am-shadow-1: 0 1px 0 rgba(40, 30, 12, 0.04);
+    --am-shadow-2: 0 2px 8px rgba(40, 30, 12, 0.06), 0 1px 0 rgba(40, 30, 12, 0.04);
+    --am-shadow-3: 0 8px 28px rgba(40, 30, 12, 0.10), 0 2px 6px rgba(40, 30, 12, 0.06);
+
+    color-scheme: light;
+}
+
+/* ── DARK palette ─────────────────────────────────────────────────────
+   Same structure, inverted with warmth. Backgrounds carry hue from
+   the paper family so the system still feels like andamentum at night,
+   not like a generic IDE theme.                                       */
+
+:root[data-theme="dark"] {
+    --am-paper:    #18160f;   /* deep warm — never #000 */
+    --am-paper-2:  #201d16;
+    --am-paper-3:  #28241c;
+    --am-paper-4:  #312c23;
+
+    --am-ink:      #ede8df;   /* warm bone-white */
+    --am-ink-2:    #d8d2c5;
+    --am-ink-3:    #b5ad9d;
+    --am-ink-4:    #948c7c;
+    --am-ink-5:    #756e60;
+    --am-ink-6:    #5c564a;
+    --am-ink-7:    #46413a;
+
+    --am-rule:     #36312a;
+    --am-rule-2:   #2e2922;
+    --am-rule-3:   #4a4438;
+
+    --am-link:     #c4b08a;
+    --am-link-hover: #ede8df;
+    --am-link-rule: #4a4438;
+
+    --am-info-bg:        #1c2026;
+    --am-info-accent:    #8a99ac;
+    --am-info-ink:       #c2cedb;
+
+    --am-warn-bg:        #26211a;
+    --am-warn-accent:    #b8a37a;
+    --am-warn-ink:       #d4c89e;
+
+    --am-success-bg:     #1f231d;
+    --am-success-accent: #8a9e8e;
+    --am-success-ink:    #b8c8bd;
+
+    --am-danger-bg:      #2a1d18;
+    --am-danger-accent:  #c47a64;
+    --am-danger-ink:     #d8a796;
+
+    --am-note-bg:        #28241c;
+    --am-note-accent:    #6a6149;
+    --am-note-ink:       #b5ad9d;
+
+    --am-select-bg:      #3a3322;
+    --am-select-ink:     #ede8df;
+
+    --am-focus:    #c4b08a;
+    --am-focus-aura: rgba(196, 176, 138, 0.22);
+
+    --am-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.35);
+    --am-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.40), 0 1px 0 rgba(0, 0, 0, 0.30);
+    --am-shadow-3: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+    color-scheme: dark;
+}
+
+/* Honour OS preference when no explicit theme is set */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --am-paper:    #18160f;
+        --am-paper-2:  #201d16;
+        --am-paper-3:  #28241c;
+        --am-paper-4:  #312c23;
+
+        --am-ink:      #ede8df;
+        --am-ink-2:    #d8d2c5;
+        --am-ink-3:    #b5ad9d;
+        --am-ink-4:    #948c7c;
+        --am-ink-5:    #756e60;
+        --am-ink-6:    #5c564a;
+        --am-ink-7:    #46413a;
+
+        --am-rule:     #36312a;
+        --am-rule-2:   #2e2922;
+        --am-rule-3:   #4a4438;
+
+        --am-link:     #c4b08a;
+        --am-link-hover: #ede8df;
+        --am-link-rule: #4a4438;
+
+        --am-info-bg:        #1c2026;
+        --am-info-accent:    #8a99ac;
+        --am-info-ink:       #c2cedb;
+
+        --am-warn-bg:        #26211a;
+        --am-warn-accent:    #b8a37a;
+        --am-warn-ink:       #d4c89e;
+
+        --am-success-bg:     #1f231d;
+        --am-success-accent: #8a9e8e;
+        --am-success-ink:    #b8c8bd;
+
+        --am-danger-bg:      #2a1d18;
+        --am-danger-accent:  #c47a64;
+        --am-danger-ink:     #d8a796;
+
+        --am-note-bg:        #28241c;
+        --am-note-accent:    #6a6149;
+        --am-note-ink:       #b5ad9d;
+
+        --am-select-bg:      #3a3322;
+        --am-select-ink:     #ede8df;
+
+        --am-focus:    #c4b08a;
+        --am-focus-aura: rgba(196, 176, 138, 0.22);
+
+        --am-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.35);
+        --am-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.40), 0 1px 0 rgba(0, 0, 0, 0.30);
+        --am-shadow-3: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+        color-scheme: dark;
+    }
+}
+
+::selection {
+    background: var(--am-select-bg);
+    color: var(--am-select-ink);
+}
+
+
+/* ---------------------------------------------------------------------
+   3. Typography primitives
+   --------------------------------------------------------------------- */
+
+.am-serif { font-family: var(--am-font-serif); }
+.am-sans  { font-family: var(--am-font-sans); }
+.am-mono  { font-family: var(--am-font-mono); }
+
+/* Eyebrow — tiny, uppercase, tracked. Used for section labels,
+   sidebar group titles, table headers. */
+.am-eyebrow {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+}
+
+.am-meta {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+}
+
+.am-hairline {
+    border: 0;
+    border-top: var(--am-hair) solid var(--am-rule);
+    margin: var(--am-sp-6) 0;
+}
+
+
+/* =====================================================================
+   4. Typeset document system
+   These rules are intentionally token-mapped versions of your existing
+   typeset-* CSS. Same selectors, same visual output in light mode,
+   plus dark-mode support for free. Reading view, assistant prose, and
+   action-history reports all keep working.
+   ===================================================================== */
+
+.typeset-document {
+    font-family: var(--am-font-serif);
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    line-height: var(--am-lh-prose);
+    font-size: var(--am-fs-prose);
+    -webkit-font-smoothing: antialiased;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 40px;
+}
+
+.typeset-heading {
+    margin-bottom: var(--am-sp-8);
+    padding-bottom: var(--am-sp-6);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+
+.typeset-heading h1 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-display);
+    font-weight: 700;
+    color: var(--am-ink);
+    line-height: var(--am-lh-tight);
+    margin: 0 0 var(--am-sp-3);
+    letter-spacing: -0.3px;
+}
+
+.typeset-subtitle {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-lead);
+    color: var(--am-ink-3);
+    margin: 0 0 var(--am-sp-2);
+    line-height: 1.5;
+    font-weight: 400;
+}
+
+.typeset-meta {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+    margin: var(--am-sp-2) 0 0;
+}
+
+/* Prose */
+.typeset-prose { margin: 0 0 var(--am-sp-7); }
+
+.typeset-prose h2 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h2);
+    font-weight: 700;
+    color: var(--am-ink);
+    margin: var(--am-sp-9) 0 var(--am-sp-4);
+}
+
+.typeset-prose h3 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin: var(--am-sp-7) 0 var(--am-sp-3);
+}
+
+.typeset-prose p { margin: 0 0 var(--am-sp-4); }
+
+.typeset-prose ul,
+.typeset-prose ol { margin: 0.5em 0; padding-left: 1.6em; }
+
+.typeset-prose li { margin-bottom: 0.25em; }
+
+.typeset-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: var(--am-fs-ui);
+}
+
+.typeset-prose thead { display: table-header-group; }
+
+.typeset-prose th {
+    text-align: left;
+    padding: var(--am-sp-2) 10px;
+    border-bottom: 2px solid var(--am-rule-3);
+    font-weight: 600;
+    color: var(--am-ink);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.typeset-prose td {
+    padding: 6px 10px;
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    vertical-align: top;
+}
+
+.typeset-prose tr:nth-child(even) { background: var(--am-paper-2); }
+
+.typeset-prose code {
+    font-family: var(--am-font-mono);
+    font-size: 0.875em;
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    padding: 1px 5px;
+    border-radius: var(--am-rad-1);
+}
+
+.typeset-prose pre {
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    padding: 14px 18px;
+    border-radius: var(--am-rad-3);
+    overflow-x: auto;
+    font-size: var(--am-fs-meta);
+    line-height: 1.5;
+}
+
+.typeset-prose pre code { background: none; padding: 0; }
+
+.typeset-prose blockquote {
+    margin: 20px 0;
+    padding: 0 0 0 20px;
+    border-left: 2px solid var(--am-rule-3);
+    color: var(--am-ink-3);
+    font-style: italic;
+}
+
+.typeset-prose a {
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: var(--am-hair) solid var(--am-link-rule);
+}
+.typeset-prose a:hover {
+    color: var(--am-link-hover);
+    border-bottom-color: var(--am-link-hover);
+}
+
+.typeset-prose strong { font-weight: 700; }
+.typeset-prose em     { font-style: italic; }
+
+.typeset-prose hr {
+    border: none;
+    border-top: var(--am-hair) solid var(--am-rule);
+    margin: 2em 0;
+}
+
+.typeset-prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1.5em auto;
+    border-radius: var(--am-rad-2);
+}
+
+/* Callout */
+.typeset-callout {
+    font-size: var(--am-fs-lead);
+    font-weight: 400;
+    line-height: 1.65;
+    margin: 0 0 var(--am-sp-7);
+    color: var(--am-ink);
+}
+.typeset-callout p { margin: 0; }
+
+.typeset-callout.tone-info,
+.typeset-callout.tone-warning,
+.typeset-callout.tone-success,
+.typeset-callout.tone-note {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-radius: var(--am-rad-2);
+    line-height: 1.6;
+    border-left: 3px solid var(--am-note-accent);
+    background: var(--am-paper-2);
+    color: var(--am-ink-2);
+}
+
+.typeset-callout.tone-info    { border-left-color: var(--am-info-accent); }
+.typeset-callout.tone-warning { border-left-color: var(--am-warn-accent); }
+.typeset-callout.tone-success { border-left-color: var(--am-success-accent); }
+.typeset-callout.tone-note    { border-left-color: var(--am-note-accent); }
+
+/* Danger is the one exception — it earns a tinted background because it
+   genuinely needs to draw the reader's eye. Use sparingly. */
+.typeset-callout.tone-danger {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-radius: var(--am-rad-2);
+    line-height: 1.6;
+    border-left: 3px solid var(--am-danger-accent);
+    background: var(--am-danger-bg);
+    color: var(--am-danger-ink);
+}
+
+.typeset-callout.tone-quote {
+    padding: 0 0 0 20px;
+    border-left: 2px solid var(--am-rule-3);
+    font-family: var(--am-font-serif);
+    font-style: italic;
+    color: var(--am-ink-3);
+    background: none;
+}
+
+/* Items (label/value pairs) */
+.typeset-items {
+    font-family: var(--am-font-sans);
+    margin: 0 0 var(--am-sp-8);
+    padding: var(--am-sp-5) var(--am-sp-6);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    font-size: var(--am-fs-meta);
+    line-height: 1.6;
+}
+
+.typeset-item { margin-bottom: var(--am-sp-3); }
+.typeset-item:last-child { margin-bottom: 0; }
+
+.typeset-items.variant-pairs .typeset-item-label {
+    font-weight: 600;
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: var(--am-sp-1);
+}
+.typeset-items.variant-pairs .typeset-item-body {
+    font-size: var(--am-fs-body);
+    color: var(--am-ink-3);
+}
+.typeset-items .typeset-item-body p {
+    font-family: var(--am-font-sans);
+    margin: var(--am-sp-1) 0 0 0;
+}
+
+.item-right { display: flex; align-items: baseline; }
+.item-right .typeset-item-body  { flex: 1; font-size: var(--am-fs-body); color: var(--am-ink-2); }
+.item-right .typeset-item-label { width: 100px; text-align: right; flex-shrink: 0; color: var(--am-ink-5); font-size: var(--am-fs-small); }
+
+.item-left { display: flex; align-items: baseline; }
+.item-left .typeset-item-label { width: 100px; flex-shrink: 0; font-size: var(--am-fs-small); color: var(--am-ink-5); }
+.item-left .typeset-item-body  { flex: 1; font-size: var(--am-fs-body); color: var(--am-ink-2); }
+
+/* Aside */
+.typeset-aside {
+    margin: var(--am-sp-6) 0;
+    padding: var(--am-sp-4) var(--am-sp-5);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    line-height: 1.6;
+    color: var(--am-ink-3);
+}
+
+/* Footnote-style sidebar (document mode) */
+.typeset-sidebar {
+    font-family: var(--am-font-sans);
+    margin-top: var(--am-sp-10);
+    padding-top: var(--am-sp-6);
+    border-top: var(--am-hair) solid var(--am-rule);
+    font-size: var(--am-fs-tag);
+    line-height: 1.5;
+    color: var(--am-ink-6);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--am-sp-5);
+    background: transparent;
+}
+
+.typeset-sidebar-group { margin-bottom: 0; }
+
+.typeset-sidebar-title {
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--am-ink-7);
+    margin: 0 0 var(--am-sp-1);
+}
+
+.typeset-sidebar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: var(--am-fs-tag);
+}
+
+.typeset-sidebar-label { color: var(--am-ink-6); }
+.typeset-sidebar-value { font-weight: 500; color: var(--am-ink-5); }
+
+/* Card (document-mode) */
+.typeset-card {
+    margin: var(--am-sp-4) 0;
+    padding: 0 0 var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.typeset-card:last-child { border-bottom: none; }
+.typeset-card-body { line-height: 1.75; color: var(--am-ink-2); }
+
+.typeset-badge {
+    display: inline-block;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+}
+.typeset-badge[data-value="supports"],
+.typeset-badge[data-value="supported"],
+.typeset-badge[data-value="pass"],
+.typeset-badge[data-value="approved"]   { color: var(--am-success-ink); background: var(--am-success-bg); }
+
+.typeset-badge[data-value="contradicts"],
+.typeset-badge[data-value="contradicted"],
+.typeset-badge[data-value="challenged"],
+.typeset-badge[data-value="fail"],
+.typeset-badge[data-value="rejected"]   { color: var(--am-danger-ink); background: var(--am-danger-bg); }
+
+.typeset-refs { font-family: var(--am-font-sans); font-size: var(--am-fs-micro); color: var(--am-ink-5); }
+.typeset-refs a { color: var(--am-ink-5); text-decoration: none; }
+.typeset-refs a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-card-source {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-4);
+    word-break: break-all;
+    margin-top: var(--am-sp-1);
+}
+.typeset-card-source a { color: var(--am-ink-4); text-decoration: none; }
+.typeset-card-source a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-card-details { margin-top: var(--am-sp-2); }
+.typeset-card-details summary {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-5);
+    cursor: pointer;
+}
+.typeset-card-details summary:hover { color: var(--am-ink-3); }
+.typeset-card-details[open] summary { margin-bottom: var(--am-sp-2); }
+
+/* Reference */
+.typeset-reference {
+    display: flex;
+    font-size: var(--am-fs-ref);
+    margin: var(--am-sp-3) 0;
+    padding: var(--am-sp-3) 0;
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.typeset-reference:last-child { border-bottom: none; }
+
+.typeset-ref-number {
+    width: 36px;
+    flex-shrink: 0;
+    font-size: var(--am-fs-ui);
+    font-weight: 600;
+    color: var(--am-ink-5);
+    font-family: var(--am-font-sans);
+    text-align: right;
+    padding-right: 10px;
+}
+
+.typeset-ref-content { flex: 1; }
+.typeset-ref-body { line-height: 1.75; color: var(--am-ink-2); font-size: var(--am-fs-ref); }
+
+.typeset-ref-source {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-4);
+    margin-top: var(--am-sp-1);
+    word-break: break-all;
+}
+.typeset-ref-source a { color: var(--am-ink-3); text-decoration: none; }
+.typeset-ref-source a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-reference-group { margin: var(--am-sp-4) 0; }
+.typeset-ref-group-label {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 600;
+    color: var(--am-ink-5);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: var(--am-sp-2);
+}
+
+
+/* =====================================================================
+   5. App chrome
+   Header, tabs, sidebars. The frame that holds the document.
+   ===================================================================== */
+
+.am-app {
+    min-height: 100vh;
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+}
+
+.am-app-header {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-7);
+    padding: var(--am-sp-4) var(--am-sp-7);
+    background: var(--am-paper);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+    min-height: 56px;
+}
+
+.am-app-title {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-lead);
+    font-weight: 700;
+    color: var(--am-ink);
+    letter-spacing: -0.2px;
+}
+
+.am-app-title__mark {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--am-ink);
+}
+
+/* Top-level tab strip */
+.am-tabs {
+    display: flex;
+    gap: var(--am-sp-1);
+    align-items: center;
+    flex: 1;
+}
+
+.am-tab {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    font-weight: 500;
+    color: var(--am-ink-4);
+    background: transparent;
+    border: 0;
+    padding: var(--am-sp-2) var(--am-sp-3);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-tab:hover { color: var(--am-ink-2); background: var(--am-paper-2); }
+.am-tab[aria-current="page"],
+.am-tab.is-active {
+    color: var(--am-ink);
+    background: var(--am-paper-2);
+}
+
+.am-app-header__right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    color: var(--am-ink-5);
+    font-size: var(--am-fs-small);
+}
+
+/* Sidebar (app-mode left rail) */
+.am-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--am-paper);
+    border-right: var(--am-hair) solid var(--am-rule);
+    padding: var(--am-sp-6) var(--am-sp-5);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    overflow-y: auto;
+}
+
+.am-sidebar__section { margin-bottom: var(--am-sp-7); }
+.am-sidebar__section:last-child { margin-bottom: 0; }
+
+.am-sidebar__title {
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+    margin: 0 0 var(--am-sp-3);
+}
+
+.am-sidebar__item {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    padding: var(--am-sp-1) var(--am-sp-2);
+    margin: 0 calc(var(--am-sp-2) * -1);
+    border-radius: var(--am-rad-2);
+    color: var(--am-ink-3);
+    font-size: var(--am-fs-meta);
+    cursor: pointer;
+    line-height: 1.5;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-sidebar__item:hover { background: var(--am-paper-2); color: var(--am-ink-2); }
+.am-sidebar__item.is-active {
+    background: var(--am-paper-2);
+    color: var(--am-ink);
+    font-weight: 600;
+}
+
+.am-sidebar__item__icon {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+}
+
+.am-sidebar__item__count {
+    margin-left: auto;
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Stats cluster (the 10 Active / 4 Overdue tiles) */
+.am-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--am-sp-2);
+    margin-bottom: var(--am-sp-7);
+}
+
+.am-stat {
+    padding: var(--am-sp-3) var(--am-sp-3);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+}
+
+.am-stat__value {
+    font-family: var(--am-font-serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--am-ink);
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
+.am-stat__value.is-danger { color: var(--am-danger-ink); }
+.am-stat__value.is-success { color: var(--am-success-ink); }
+
+.am-stat__label {
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: var(--am-sp-1);
+    font-weight: 500;
+}
+
+/* Project / area row inside sidebar — supports a progress sliver */
+.am-nav-row {
+    display: block;
+    padding: var(--am-sp-2);
+    margin: 0 calc(var(--am-sp-2) * -1) var(--am-sp-1);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-nav-row:hover { background: var(--am-paper-2); }
+.am-nav-row.is-active { background: var(--am-paper-2); }
+
+.am-nav-row__title {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-2);
+    font-weight: 500;
+    line-height: 1.35;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.am-nav-row__meta {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+}
+.am-nav-row__progress {
+    height: 2px;
+    background: var(--am-rule);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+.am-nav-row__progress > span {
+    display: block;
+    height: 100%;
+    background: var(--am-success-accent);
+    border-radius: inherit;
+}
+
+
+/* =====================================================================
+   6. Buttons, inputs, badges, chips
+   ===================================================================== */
+
+/* Buttons — flat, hairline-bordered, no gradients, no rounded-pills */
+.am-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    font-weight: 500;
+    line-height: 1;
+    padding: 8px 14px;
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-btn:hover    { background: var(--am-paper-2); color: var(--am-ink); border-color: var(--am-ink-6); }
+.am-btn:active   { background: var(--am-paper-3); }
+.am-btn:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-btn[disabled],
+.am-btn.is-disabled { opacity: 0.45; cursor: not-allowed; }
+
+.am-btn--primary {
+    background: var(--am-ink);
+    color: var(--am-paper);
+    border-color: var(--am-ink);
+}
+.am-btn--primary:hover  { background: var(--am-ink-2); color: var(--am-paper); border-color: var(--am-ink-2); }
+.am-btn--primary:active { background: var(--am-ink-3); }
+
+.am-btn--ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--am-ink-3);
+    padding-left: 8px;
+    padding-right: 8px;
+}
+.am-btn--ghost:hover { background: var(--am-paper-2); border-color: transparent; color: var(--am-ink-2); }
+
+.am-btn--danger {
+    background: var(--am-paper);
+    color: var(--am-danger-ink);
+    border-color: var(--am-danger-accent);
+}
+.am-btn--danger:hover { background: var(--am-danger-bg); color: var(--am-danger-ink); border-color: var(--am-danger-accent); }
+
+.am-btn--sm  { font-size: var(--am-fs-small); padding: 5px 10px; }
+.am-btn--lg  { font-size: var(--am-fs-body); padding: 11px 18px; }
+
+.am-btn--icon {
+    width: 32px; height: 32px;
+    padding: 0;
+    color: var(--am-ink-4);
+}
+.am-btn--icon:hover { color: var(--am-ink-2); }
+
+/* Quick-action chip — rounded enough to read as a "tag of behaviour" */
+.am-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    background: var(--am-paper-2);
+    border: var(--am-hair) solid transparent;
+    border-radius: var(--am-rad-4);
+    padding: 4px 10px;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-chip:hover { background: var(--am-paper-3); color: var(--am-ink); }
+.am-chip.is-active { background: var(--am-ink); color: var(--am-paper); }
+
+/* Tag pill — a small, removable classifier attached to a row of content
+   (e.g. document tags in Browse). Looks like a chip but is structurally
+   distinct: tags are content metadata, chips are filter affordances.
+   Pair with an optional .am-tag__close × button for removability. */
+.am-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    background: var(--am-paper-3);
+    border-radius: var(--am-rad-2);
+    padding: 3px 8px;
+    line-height: 1.4;
+    text-decoration: none;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-tag:hover { background: var(--am-paper-4); color: var(--am-ink-2); }
+
+/* Tinted variants — match the semantic palette for tags that classify
+   by tone (e.g. a "research" tag styled like info). */
+.am-tag--info    { background: var(--am-info-bg);    color: var(--am-info-ink); }
+.am-tag--warn    { background: var(--am-warn-bg);    color: var(--am-warn-ink); }
+.am-tag--success { background: var(--am-success-bg); color: var(--am-success-ink); }
+.am-tag--danger  { background: var(--am-danger-bg);  color: var(--am-danger-ink); }
+
+.am-tag__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-right: -3px;
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-5);
+    cursor: pointer;
+    border-radius: var(--am-rad-1);
+    padding: 0;
+    font-family: var(--am-font-sans);
+    font-size: 14px;
+    line-height: 1;
+    transition: color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-tag__close:hover {
+    color: var(--am-ink);
+    background: color-mix(in srgb, var(--am-ink) 8%, transparent);
+}
+
+/* + add button — invites the user to add another tag to the row.
+   A dashed-outline circle the same size as a task-status check (18px).
+   The + glyph is drawn by pseudo-elements rather than typeset, so it
+   stays crisp and visually weighted, matching the .am-task__check
+   family rather than reading as fallback text. */
+.am-tag-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px dashed var(--am-ink-6);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0;            /* hide any text content inside the button */
+    line-height: 1;
+    padding: 0;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease), border-style var(--am-dur) var(--am-ease);
+}
+.am-tag-add::before,
+.am-tag-add::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    background: var(--am-ink-4);
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-tag-add::before { width: 9px; height: 1.5px; transform: translate(-50%, -50%); }
+.am-tag-add::after  { width: 1.5px; height: 9px; transform: translate(-50%, -50%); }
+
+.am-tag-add:hover {
+    border-color: var(--am-ink-3);
+    border-style: solid;
+}
+.am-tag-add:hover::before,
+.am-tag-add:hover::after {
+    background: var(--am-ink-2);
+}
+
+/* Tag row — a wrapper that lays out tags with consistent spacing and
+   wraps cleanly. Use this around any sequence of .am-tag / .am-tag-add. */
+.am-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Checkbox — a flat 14px square. Pairs with a label sibling. The
+   .am-checkbox class targets a real <input type="checkbox"> using
+   appearance: none, so it remains a real form control under the hood. */
+.am-checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-checkbox-row:hover { color: var(--am-ink-2); }
+
+.am-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1.5px solid var(--am-ink-6);
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-checkbox:hover { border-color: var(--am-ink-3); }
+.am-checkbox:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-checkbox:checked {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+}
+.am-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 0px;
+    width: 4px; height: 7px;
+    border: solid var(--am-paper);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+}
+.am-checkbox:disabled,
+.am-checkbox-row.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.am-checkbox-row.is-disabled .am-checkbox { cursor: not-allowed; }
+
+/* Radio — same idea as checkbox but rounded. */
+.am-radio {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1.5px solid var(--am-ink-6);
+    border-radius: 50%;
+    background: var(--am-paper);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease);
+}
+.am-radio:hover { border-color: var(--am-ink-3); }
+.am-radio:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-radio:checked { border-color: var(--am-ink); }
+.am-radio:checked::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--am-ink);
+}
+
+/* Inputs */
+.am-input,
+.am-textarea,
+.am-select {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    line-height: 1.4;
+    color: var(--am-ink-2);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    padding: 9px 12px;
+    width: 100%;
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-input::placeholder,
+.am-textarea::placeholder { color: var(--am-ink-5); }
+
+.am-input:hover,
+.am-textarea:hover,
+.am-select:hover { border-color: var(--am-ink-6); }
+
+.am-input:focus,
+.am-textarea:focus,
+.am-select:focus {
+    outline: none;
+    border-color: var(--am-focus);
+    box-shadow: 0 0 0 3px var(--am-focus-aura);
+}
+
+.am-textarea { min-height: 80px; resize: vertical; }
+
+.am-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--am-ink-4) 50%),
+                      linear-gradient(135deg, var(--am-ink-4) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 28px;
+}
+
+/* Label + help */
+.am-label {
+    display: block;
+    font-size: var(--am-fs-small);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin-bottom: 6px;
+    font-family: var(--am-font-sans);
+}
+.am-help {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+/* Search input with leading icon */
+.am-search {
+    position: relative;
+}
+.am-search > .am-input {
+    padding-left: 36px;
+}
+.am-search__icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--am-ink-5);
+    pointer-events: none;
+    width: 14px; height: 14px;
+}
+
+/* Badge (UI-mode, complements .typeset-badge in document mode) */
+.am-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 7px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+    line-height: 1.4;
+    border: var(--am-hair) solid transparent;
+}
+.am-badge--info     { background: var(--am-info-bg);    color: var(--am-info-ink); }
+.am-badge--warn     { background: var(--am-warn-bg);    color: var(--am-warn-ink); }
+.am-badge--success  { background: var(--am-success-bg); color: var(--am-success-ink); }
+.am-badge--danger   { background: var(--am-danger-bg);  color: var(--am-danger-ink); }
+.am-badge--note     { background: var(--am-note-bg);    color: var(--am-note-ink); }
+.am-badge--outline  { background: transparent; border-color: var(--am-rule-3); color: var(--am-ink-3); }
+
+.am-badge__dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+}
+
+/* Just a dot, no label */
+.am-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+    background: var(--am-ink-6);
+    flex-shrink: 0;
+}
+.am-dot--info    { background: var(--am-info-accent); }
+.am-dot--warn    { background: var(--am-warn-accent); }
+.am-dot--success { background: var(--am-success-accent); }
+.am-dot--danger  { background: var(--am-danger-accent); }
+
+
+/* =====================================================================
+   7. Lists, rows, cards (app-mode)
+   ===================================================================== */
+
+/* Generic row — a hairline-separated list item.
+   No background, no rounded corners by default. Hover lifts onto paper-2. */
+.am-row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    background: transparent;
+    transition: background var(--am-dur) var(--am-ease);
+    cursor: pointer;
+}
+.am-row:last-child { border-bottom: none; }
+.am-row:hover { background: var(--am-paper-2); }
+
+.am-row__main  { flex: 1; min-width: 0; }
+.am-row__title { font-size: var(--am-fs-body); color: var(--am-ink-2); font-weight: 500; line-height: 1.4; }
+.am-row__meta  { font-size: var(--am-fs-small); color: var(--am-ink-5); margin-top: 3px; line-height: 1.5; }
+.am-row__aside { font-size: var(--am-fs-small); color: var(--am-ink-5); flex-shrink: 0; }
+
+/* List container — implies hairline grouping */
+.am-list {
+    background: var(--am-paper);
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.am-list--bordered {
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-3);
+    overflow: hidden;
+}
+
+/* Card (app-mode) — separate from .typeset-card */
+.am-card {
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-5);
+    box-shadow: var(--am-shadow-1);
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease);
+}
+.am-card:hover { border-color: var(--am-rule-3); box-shadow: var(--am-shadow-2); }
+
+.am-card--quiet {
+    background: var(--am-paper-2);
+    border-color: transparent;
+    box-shadow: none;
+}
+.am-card--quiet:hover { background: var(--am-paper-3); }
+
+.am-card__eyebrow {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+    margin-bottom: var(--am-sp-2);
+}
+.am-card__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.3;
+    margin: 0 0 var(--am-sp-2);
+    letter-spacing: -0.1px;
+}
+.am-card__body {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+.am-card__footer {
+    margin-top: var(--am-sp-3);
+    padding-top: var(--am-sp-3);
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+}
+
+
+/* =====================================================================
+   8. Chat, tool log, artefacts, thinking indicator
+   ===================================================================== */
+
+.am-chat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--am-sp-7);
+    padding: var(--am-sp-7);
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.am-chat__turn { display: flex; flex-direction: column; gap: var(--am-sp-3); }
+
+/* USER message — a small, dark, right-floating bubble.
+   This is "speech": short, sans-serif, opinionated. */
+.am-chat__msg--user {
+    align-self: flex-end;
+    background: var(--am-ink);
+    color: var(--am-paper);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-radius: var(--am-rad-4);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+    line-height: 1.55;
+    max-width: 70%;
+}
+:root[data-theme="dark"] .am-chat__msg--user,
+:root:not([data-theme="light"]) .am-chat__msg--user {
+    /* In dark, the user bubble inverts to keep the contrast direction */
+}
+
+/* ASSISTANT message — flat, full-width, typeset prose.
+   No bubble. The agent speaks like a document. */
+.am-chat__msg--assistant {
+    color: var(--am-ink-2);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-prose);
+    line-height: var(--am-lh-prose);
+    max-width: 100%;
+}
+.am-chat__msg--assistant > * + * { margin-top: var(--am-sp-4); }
+.am-chat__msg--assistant h1,
+.am-chat__msg--assistant h2,
+.am-chat__msg--assistant h3,
+.am-chat__msg--assistant h4 {
+    font-family: var(--am-font-serif);
+    color: var(--am-ink);
+    line-height: 1.3;
+}
+.am-chat__msg--assistant h2 { font-size: var(--am-fs-h2); margin-top: var(--am-sp-7); font-weight: 700; }
+.am-chat__msg--assistant h3 { font-size: var(--am-fs-h3); margin-top: var(--am-sp-5); font-weight: 600; }
+.am-chat__msg--assistant p  { margin: 0 0 var(--am-sp-4); }
+.am-chat__msg--assistant ul,
+.am-chat__msg--assistant ol { padding-left: 1.6em; margin: 0 0 var(--am-sp-4); }
+.am-chat__msg--assistant li { margin-bottom: 0.35em; }
+.am-chat__msg--assistant code {
+    font-family: var(--am-font-mono);
+    font-size: 0.875em;
+    background: var(--am-paper-3);
+    padding: 1px 5px;
+    border-radius: var(--am-rad-1);
+}
+.am-chat__msg--assistant pre {
+    background: var(--am-paper-3);
+    padding: 14px 18px;
+    border-radius: var(--am-rad-3);
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-meta);
+    line-height: 1.55;
+    overflow-x: auto;
+}
+.am-chat__msg--assistant a {
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: var(--am-hair) solid var(--am-link-rule);
+}
+.am-chat__msg--assistant a:hover { color: var(--am-link-hover); border-bottom-color: var(--am-link-hover); }
+.am-chat__msg--assistant blockquote {
+    margin: var(--am-sp-4) 0;
+    padding: 0 0 0 var(--am-sp-5);
+    border-left: 2px solid var(--am-rule-3);
+    color: var(--am-ink-3);
+    font-style: italic;
+}
+
+/* Composer (chat input) */
+.am-composer {
+    background: var(--am-paper);
+    border-top: var(--am-hair) solid var(--am-rule);
+    padding: var(--am-sp-4) var(--am-sp-7);
+}
+.am-composer__row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--am-sp-2);
+    background: var(--am-paper-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-2);
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease);
+}
+.am-composer__row:focus-within {
+    border-color: var(--am-focus);
+    box-shadow: 0 0 0 3px var(--am-focus-aura);
+}
+.am-composer__input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    resize: none;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+    line-height: 1.5;
+    color: var(--am-ink-2);
+    padding: 8px 10px;
+    min-height: 24px;
+    max-height: 200px;
+}
+.am-composer__input::placeholder { color: var(--am-ink-5); }
+
+/* Tool log — collapsible "Tools used" block under each turn */
+.am-toollog {
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    overflow: hidden;
+}
+.am-toollog__summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: var(--am-sp-2) var(--am-sp-3);
+    cursor: pointer;
+    color: var(--am-ink-4);
+    font-weight: 500;
+    list-style: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-toollog__summary::-webkit-details-marker { display: none; }
+.am-toollog__summary::before {
+    content: '›';
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform var(--am-dur) var(--am-ease);
+    color: var(--am-ink-5);
+    font-weight: 400;
+    width: 10px;
+}
+.am-toollog[open] > .am-toollog__summary::before { transform: rotate(90deg); }
+.am-toollog__body {
+    padding: 0 var(--am-sp-3) var(--am-sp-3) calc(var(--am-sp-3) + 18px);
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-micro);
+    line-height: 1.7;
+    color: var(--am-ink-3);
+}
+
+.am-toollog__entry { padding: 2px 0; }
+.am-toollog__entry__name { color: var(--am-ink-2); font-weight: 600; }
+.am-toollog__entry__args { color: var(--am-ink-4); }
+.am-toollog__entry__result { color: var(--am-ink-3); }
+.am-toollog__entry .am-toollog__ok    { color: var(--am-success-ink); }
+.am-toollog__entry .am-toollog__fail  { color: var(--am-danger-ink); }
+
+/* Router decision banner — appears above tool log */
+.am-router {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    padding: var(--am-sp-3);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    line-height: 1.55;
+}
+.am-router__label {
+    font-weight: 600;
+    color: var(--am-ink-2);
+    flex-shrink: 0;
+}
+.am-router__reason { color: var(--am-ink-4); font-style: italic; }
+
+/* Artefact card — "documents this turn created" */
+.am-artefact {
+    display: flex;
+    align-items: stretch;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-left: 3px solid var(--am-link);
+    border-radius: var(--am-rad-3);
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-artefact:hover { background: var(--am-paper-2); border-left-color: var(--am-ink); }
+
+.am-artefact__icon {
+    width: 28px; height: 28px;
+    color: var(--am-link);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.am-artefact__main { flex: 1; min-width: 0; }
+.am-artefact__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.35;
+}
+.am-artefact__meta {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+}
+
+/* Artefacts container — the prominent "N documents created" surface.
+   Use this instead of a standalone .am-artefact when the agent has
+   produced one or more documents in a turn. Houses one or more
+   .am-artefacts__row children. Mirrors the .artefact-card / .artefact-row
+   pattern from the host app. */
+.am-artefacts {
+    background: var(--am-info-bg);
+    border-left: 3px solid var(--am-info-accent);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    font-family: var(--am-font-sans);
+}
+
+.am-artefacts__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--am-fs-meta);
+    font-weight: 600;
+    color: var(--am-info-ink);
+    line-height: 1.4;
+}
+.am-artefacts__header__icon {
+    width: 14px; height: 14px;
+    color: var(--am-info-accent);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+
+.am-artefacts__list {
+    margin-top: var(--am-sp-3);
+    padding-top: var(--am-sp-3);
+    border-top: var(--am-hair) solid var(--am-info-accent);
+    /* Soften the hairline — full accent is too loud as an internal rule */
+    border-top-color: color-mix(in srgb, var(--am-info-accent) 35%, transparent);
+    display: flex;
+    flex-direction: column;
+}
+
+/* A single document row inside an .am-artefacts container.
+   Clickable; truncates the title with ellipsis; carries an optional
+   tag chip on the right. */
+.am-artefacts__row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-2) 0;
+    text-decoration: none;
+    color: var(--am-ink-2);
+    border-bottom: var(--am-hair) solid transparent;
+    transition: color var(--am-dur) var(--am-ease);
+}
+.am-artefacts__row:hover { color: var(--am-ink); }
+.am-artefacts__row + .am-artefacts__row {
+    border-top: var(--am-hair) solid color-mix(in srgb, var(--am-info-accent) 25%, transparent);
+}
+
+.am-artefacts__row__icon {
+    width: 16px; height: 16px;
+    color: var(--am-info-accent);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.am-artefacts__row__title {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    color: var(--am-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+.am-artefacts__row__tag {
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+    letter-spacing: 0.2px;
+}
+
+/* Thinking indicator — three letterpress dots */
+.am-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--am-ink-4);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-style: italic;
+}
+.am-thinking__dots { display: inline-flex; gap: 3px; }
+.am-thinking__dot {
+    width: 5px; height: 5px;
+    background: var(--am-ink-5);
+    border-radius: 50%;
+    animation: am-thinking-pulse 1.2s ease-in-out infinite;
+}
+.am-thinking__dot:nth-child(2) { animation-delay: 0.15s; }
+.am-thinking__dot:nth-child(3) { animation-delay: 0.30s; }
+
+@keyframes am-thinking-pulse {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30%           { opacity: 1;   transform: translateY(-2px); }
+}
+
+
+/* =====================================================================
+   9. Modal, toast, empty state, progress
+   ===================================================================== */
+
+.am-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(40, 30, 12, 0.32);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: var(--am-sp-6);
+}
+:root[data-theme="dark"] .am-modal-backdrop,
+:root:not([data-theme="light"]) .am-modal-backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.am-modal {
+    background: var(--am-paper);
+    border-radius: var(--am-rad-3);
+    box-shadow: var(--am-shadow-3);
+    border: var(--am-hair) solid var(--am-rule);
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.am-modal__header {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+.am-modal__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 700;
+    color: var(--am-ink);
+    flex: 1;
+    line-height: 1.3;
+}
+.am-modal__close {
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-5);
+    cursor: pointer;
+    width: 28px; height: 28px;
+    border-radius: var(--am-rad-2);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+}
+.am-modal__close:hover { background: var(--am-paper-2); color: var(--am-ink-2); }
+
+.am-modal__body {
+    padding: var(--am-sp-5);
+    overflow-y: auto;
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+
+.am-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--am-sp-2);
+    padding: var(--am-sp-3) var(--am-sp-5);
+    border-top: var(--am-hair) solid var(--am-rule);
+    background: var(--am-paper);
+}
+
+/* Toast — quiet pop-in, top-right.
+   No left accent bar (andamentum reads the bar as alarm-tape).
+   Tone is carried by the title colour alone — a typographic
+   distinction, not a graphic one. */
+.am-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--am-sp-3);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    box-shadow: var(--am-shadow-2);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    min-width: 280px;
+    max-width: 380px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-2);
+    line-height: 1.55;
+}
+
+.am-toast__title { font-weight: 600; color: var(--am-ink); margin-bottom: 2px; }
+.am-toast__body  { color: var(--am-ink-3); }
+
+/* Variants colour the TITLE only. The body, border, and background
+   stay neutral so the toast sits quietly until you actually read it. */
+.am-toast--info    > * > .am-toast__title { color: var(--am-info-accent); }
+.am-toast--success > * > .am-toast__title { color: var(--am-success-accent); }
+.am-toast--warn    > * > .am-toast__title { color: var(--am-warn-accent); }
+.am-toast--danger  > * > .am-toast__title { color: var(--am-danger-accent); }
+/* Same selectors but for the simpler markup where __title is a direct child */
+.am-toast--info    > .am-toast__title { color: var(--am-info-accent); }
+.am-toast--success > .am-toast__title { color: var(--am-success-accent); }
+.am-toast--warn    > .am-toast__title { color: var(--am-warn-accent); }
+.am-toast--danger  > .am-toast__title { color: var(--am-danger-accent); }
+
+/* Empty state */
+.am-empty {
+    text-align: center;
+    padding: var(--am-sp-10) var(--am-sp-6);
+    color: var(--am-ink-4);
+    font-family: var(--am-font-sans);
+}
+.am-empty__mark {
+    width: 48px; height: 48px;
+    margin: 0 auto var(--am-sp-4);
+    color: var(--am-ink-6);
+    display: flex; align-items: center; justify-content: center;
+}
+.am-empty__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin: 0 0 var(--am-sp-2);
+}
+.am-empty__hint {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-5);
+    max-width: 420px;
+    margin: 0 auto var(--am-sp-4);
+    line-height: 1.6;
+}
+
+/* Progress */
+.am-progress {
+    width: 100%;
+    height: 6px;
+    background: var(--am-paper-3);
+    border-radius: 3px;
+    overflow: hidden;
+}
+/* Progress.
+   Andamentum keeps progress quiet — a measured ink-grey line, no
+   saturated semantic fills. The only variant that earns colour is
+   --danger, used sparingly when the progress represents something
+   that is genuinely going wrong (failed sync, error retries, etc.). */
+.am-progress__bar {
+    height: 100%;
+    background: var(--am-ink-4);
+    transition: width 240ms var(--am-ease);
+}
+.am-progress--thin   { height: 2px; border-radius: 1px; }
+.am-progress--danger .am-progress__bar { background: var(--am-danger-accent); }
+
+
+/* =====================================================================
+   10. Specialised rows
+   Task rows, scheduled-action rows, source/feed rows, and settings
+   sections. These aren't generic chrome — they're patterns common to
+   productivity, automation, and knowledge-management apps. Sit on the
+   same hairline-separated rhythm as .am-row but carry domain-specific
+   structure (a status check, a schedule, a favicon, etc.).
+   ===================================================================== */
+
+/* Task row */
+.am-task {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    background: transparent;
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+    min-height: 52px;
+}
+.am-task:hover { background: var(--am-paper-2); }
+.am-task:last-child { border-bottom: none; }
+
+.am-task__check {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--am-ink-6);
+    background: transparent;
+    flex-shrink: 0;
+    margin-top: 2px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-task__check:hover { border-color: var(--am-ink-3); }
+
+/* Six task statuses. The default circle is `.is-todo` (or no modifier).
+   Colours map onto the andamentum palette — slate, ochre, olive, rust —
+   so the task family lives in the same colour world as everything else. */
+
+/* Inbox — dashed outline. "Newly captured, not yet committed." */
+.am-task__check.is-inbox {
+    border-style: dashed;
+    border-color: var(--am-ink-5);
+    background: transparent;
+}
+
+/* To Do — solid outline circle (also the default state). */
+.am-task__check.is-todo {
+    border-color: var(--am-ink-5);
+    background: transparent;
+}
+
+/* In Progress — half-filled, slate (info). */
+.am-task__check.is-progress {
+    background: conic-gradient(var(--am-info-accent) 0 50%, transparent 50% 100%);
+    border-color: var(--am-info-accent);
+}
+
+/* Waiting — colored outline, ochre (warn). Awaiting input or response. */
+.am-task__check.is-waiting {
+    border-color: var(--am-warn-accent);
+    background: transparent;
+}
+
+/* Done — filled, olive (success). No checkmark — the parent
+   .am-task.is-done strike-through carries the "this is done" signal. */
+.am-task__check.is-done {
+    background: var(--am-success-accent);
+    border-color: var(--am-success-accent);
+}
+
+/* Cancelled — outlined in warm rust (danger). Title gets strike-through
+   via the parent .am-task.is-cancelled class. */
+.am-task__check.is-cancelled {
+    border-color: var(--am-danger-accent);
+    background: transparent;
+}
+.am-task__check.is-cancelled::after {
+    /* Tiny × glyph inside the circle */
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 1.4px;
+    background: var(--am-danger-accent);
+    transform: translate(-50%, -50%) rotate(45deg);
+    box-shadow: 0 0 0 0 transparent;
+}
+.am-task__check.is-cancelled::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 1.4px;
+    background: var(--am-danger-accent);
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.am-task.is-cancelled .am-task__title {
+    color: var(--am-ink-5);
+    text-decoration: line-through;
+    text-decoration-color: var(--am-ink-6);
+}
+
+.am-task__handle {
+    color: var(--am-ink-6);
+    margin-top: 2px;
+    flex-shrink: 0;
+    cursor: grab;
+    display: inline-flex;
+}
+.am-task__handle:hover { color: var(--am-ink-3); }
+
+.am-task__main { flex: 1; min-width: 0; }
+.am-task__title {
+    font-size: var(--am-fs-body);
+    color: var(--am-ink-2);
+    font-weight: 500;
+    line-height: 1.4;
+}
+.am-task.is-done .am-task__title {
+    color: var(--am-ink-5);
+    text-decoration: line-through;
+    text-decoration-color: var(--am-ink-6);
+}
+.am-task__sub {
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.am-task__due {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-3);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.2px;
+}
+.am-task__due.is-overdue { background: var(--am-danger-bg); color: var(--am-danger-ink); }
+.am-task__due.is-soon    { background: var(--am-warn-bg);   color: var(--am-warn-ink); }
+
+/* Action row (Actions tab) */
+.am-action-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: var(--am-sp-3);
+    align-items: center;
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-action-row:hover { background: var(--am-paper-2); }
+.am-action-row__icon { color: var(--am-ink-5); }
+.am-action-row__title { font-size: var(--am-fs-body); color: var(--am-ink-2); font-weight: 500; }
+.am-action-row__sched { font-size: var(--am-fs-small); color: var(--am-ink-5); font-variant-numeric: tabular-nums; }
+
+/* Source row */
+.am-source-row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.am-source-row__favicon {
+    width: 16px; height: 16px;
+    border-radius: 2px;
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    flex-shrink: 0;
+}
+.am-source-row__main { flex: 1; min-width: 0; }
+.am-source-row__title { font-size: var(--am-fs-meta); color: var(--am-ink-2); font-weight: 500; }
+.am-source-row__url   { font-size: var(--am-fs-micro); color: var(--am-ink-5); word-break: break-all; }
+
+/* Settings */
+.am-settings-section {
+    padding: var(--am-sp-6);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+.am-settings-section:last-child { border-bottom: none; }
+.am-settings-section__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink);
+    margin: 0 0 var(--am-sp-2);
+}
+.am-settings-section__intro {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    margin-bottom: var(--am-sp-5);
+    max-width: 60ch;
+    line-height: 1.6;
+}
+.am-settings-row {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--am-sp-6);
+    padding: var(--am-sp-4) 0;
+    border-top: var(--am-hair) solid var(--am-rule-2);
+}
+.am-settings-row:first-of-type { border-top: none; padding-top: 0; }
+.am-settings-row__label { font-size: var(--am-fs-meta); color: var(--am-ink-2); font-weight: 500; }
+.am-settings-row__help  { font-size: var(--am-fs-micro); color: var(--am-ink-5); margin-top: 4px; line-height: 1.55; }
+
+
+/* =====================================================================
+   11. Print + responsive
+   ===================================================================== */
+
+/* =====================================================================
+   11. Additional components
+   Patterns added later: tooltip, dropdown menu, avatar, kbd, toggle,
+   form validation states, in-page sub-tabs, pagination, timeline,
+   stepper, footnote / margin-note. Each fits the andamentum aesthetic
+   (hairlines, earth-tones, type-led) without expanding the palette.
+   ===================================================================== */
+
+/* ── Tooltip ─────────────────────────────────────────────────────────
+   A small floating label. Default is inverted (dark on light); the
+   `--paper` variant is paper-on-paper with a hairline. Position via JS;
+   this rule only handles visual treatment. */
+.am-tooltip {
+    position: absolute;
+    z-index: 60;
+    background: var(--am-ink);
+    color: var(--am-paper);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    line-height: 1.5;
+    padding: 6px 10px;
+    border-radius: var(--am-rad-2);
+    max-width: 240px;
+    box-shadow: var(--am-shadow-2);
+    pointer-events: none;
+}
+.am-tooltip--paper {
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+}
+
+/* ── Dropdown menu ──────────────────────────────────────────────────
+   Generic popover list for context / more-actions menus. Position via
+   JS; styling only here. */
+.am-menu {
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    box-shadow: var(--am-shadow-3);
+    padding: var(--am-sp-1);
+    min-width: 180px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    z-index: 50;
+}
+.am-menu__group { padding: 2px 0; }
+.am-menu__group + .am-menu__group {
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    margin-top: 2px;
+    padding-top: 6px;
+}
+.am-menu__label {
+    padding: 6px 10px 4px;
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+}
+.am-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    padding: 6px 10px;
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-2);
+    cursor: pointer;
+    border-radius: var(--am-rad-2);
+    width: 100%;
+    text-align: left;
+    text-decoration: none;
+    font: inherit;
+    line-height: 1.4;
+}
+.am-menu__item:hover { background: var(--am-paper-2); color: var(--am-ink); }
+.am-menu__item.is-danger { color: var(--am-danger-ink); }
+.am-menu__item.is-danger:hover { background: var(--am-danger-bg); color: var(--am-danger-ink); }
+.am-menu__item__shortcut {
+    margin-left: auto;
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+}
+.am-menu__item__icon {
+    width: 14px; height: 14px;
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.am-menu__item:hover .am-menu__item__icon { color: var(--am-ink-3); }
+
+/* ── Avatar ─────────────────────────────────────────────────────────
+   Small identity circle. Initials in serif, or background image. */
+.am-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: var(--am-hair) solid var(--am-rule-2);
+    letter-spacing: -0.2px;
+}
+.am-avatar--sm { width: 20px; height: 20px; font-size: 10px; }
+.am-avatar--lg { width: 44px; height: 44px; font-size: 18px; }
+.am-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Keyboard shortcut ──────────────────────────────────────────────
+   Small mono-font pill. Use inside menu items, tooltips, or inline
+   help text. */
+.am-kbd {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-3);
+    background: var(--am-paper-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-1);
+    padding: 1px 6px;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 0 var(--am-rule-2);
+}
+
+/* ── Toggle switch ──────────────────────────────────────────────────
+   For binary settings where on/off should read at a glance. Styles a
+   real <input type="checkbox"> via appearance: none. */
+.am-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 32px;
+    height: 18px;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--am-paper-3);
+    border: var(--am-hair) solid var(--am-rule-3);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-toggle::after {
+    content: '';
+    position: absolute;
+    left: 1px; top: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    box-sizing: border-box;
+    transition: transform var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-toggle:hover { border-color: var(--am-ink-6); }
+.am-toggle:checked {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+}
+.am-toggle:checked::after {
+    transform: translateX(14px);
+    border-color: var(--am-ink);
+}
+.am-toggle:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+}
+.am-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Form validation states ─────────────────────────────────────────
+   Apply .is-error / .is-warn to an input; pair with .am-help--error
+   etc. for the message text. Uses existing semantic tokens. */
+.am-input.is-error,
+.am-textarea.is-error,
+.am-select.is-error {
+    border-color: var(--am-danger-accent);
+}
+.am-input.is-error:focus,
+.am-textarea.is-error:focus,
+.am-select.is-error:focus {
+    border-color: var(--am-danger-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-danger-accent) 22%, transparent);
+}
+.am-input.is-warn,
+.am-textarea.is-warn,
+.am-select.is-warn { border-color: var(--am-warn-accent); }
+
+.am-help--error   { color: var(--am-danger-ink); }
+.am-help--warn    { color: var(--am-warn-ink); }
+.am-help--success { color: var(--am-success-ink); }
+
+/* ── In-page sub-tabs ───────────────────────────────────────────────
+   A quieter variant of .am-tabs for navigation *inside* a section.
+   Underline-only active state, no pill background. */
+.am-tabs--sub {
+    border-bottom: var(--am-hair) solid var(--am-rule);
+    gap: 0;
+}
+.am-tabs--sub .am-tab {
+    border-radius: 0;
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.am-tabs--sub .am-tab:hover {
+    background: transparent;
+    color: var(--am-ink-2);
+}
+.am-tabs--sub .am-tab.is-active,
+.am-tabs--sub .am-tab[aria-current="page"] {
+    background: transparent;
+    color: var(--am-ink);
+    border-bottom-color: var(--am-ink);
+}
+
+/* ── Pagination ─────────────────────────────────────────────────────
+   Number row with prev/next. Tabular-nums; quiet ink. */
+.am-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-variant-numeric: tabular-nums;
+}
+.am-pagination button,
+.am-pagination a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--am-rad-2);
+    color: var(--am-ink-3);
+    cursor: pointer;
+    text-decoration: none;
+    font: inherit;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-pagination button:hover,
+.am-pagination a:hover { background: var(--am-paper-2); color: var(--am-ink); }
+.am-pagination .is-current,
+.am-pagination [aria-current="page"] {
+    background: var(--am-paper-3);
+    color: var(--am-ink);
+    font-weight: 600;
+}
+.am-pagination button:disabled,
+.am-pagination .is-disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.am-pagination__gap {
+    color: var(--am-ink-5);
+    padding: 0 6px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ── Timeline / activity feed ───────────────────────────────────────
+   Vertical hairline with dated entries. */
+.am-timeline {
+    position: relative;
+    padding-left: 24px;
+}
+.am-timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 6px; bottom: 6px;
+    width: 1px;
+    background: var(--am-rule-3);
+}
+.am-timeline__entry {
+    position: relative;
+    padding: 0 0 var(--am-sp-5);
+}
+.am-timeline__entry:last-child { padding-bottom: 0; }
+.am-timeline__entry::before {
+    content: '';
+    position: absolute;
+    left: -22px; top: 6px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--am-ink-6);
+    border: 2px solid var(--am-paper);
+    box-sizing: content-box;
+}
+.am-timeline__entry.is-current::before { background: var(--am-info-accent); }
+.am-timeline__entry.is-success::before { background: var(--am-success-accent); }
+.am-timeline__entry.is-warn::before    { background: var(--am-warn-accent); }
+.am-timeline__entry.is-danger::before  { background: var(--am-danger-accent); }
+
+.am-timeline__date {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--am-ink-5);
+    margin-bottom: 2px;
+    font-variant-numeric: tabular-nums;
+}
+.am-timeline__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.4;
+    margin: 0;
+}
+.am-timeline__body {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+    margin-top: 4px;
+}
+
+/* ── Stepper / wizard progress ──────────────────────────────────────
+   A numbered horizontal sequence for multi-step flows. */
+.am-stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+}
+.am-stepper__step {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    flex: 1;
+    position: relative;
+    padding-right: var(--am-sp-3);
+}
+.am-stepper__step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 30px;
+    right: 6px;
+    top: 11px;
+    height: 1px;
+    background: var(--am-rule-3);
+}
+.am-stepper__step.is-done:not(:last-child)::after { background: var(--am-success-accent); }
+
+.am-stepper__num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--am-ink-6);
+    background: var(--am-paper);
+    color: var(--am-ink-5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+}
+.am-stepper__step.is-current .am-stepper__num {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+    color: var(--am-paper);
+}
+.am-stepper__step.is-done .am-stepper__num {
+    background: var(--am-success-accent);
+    border-color: var(--am-success-accent);
+    color: var(--am-paper);
+}
+.am-stepper__label {
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    line-height: 1.4;
+}
+.am-stepper__step.is-current .am-stepper__label,
+.am-stepper__step.is-done .am-stepper__label { color: var(--am-ink); }
+
+/* ── Margin note / footnote (document-mode) ─────────────────────────
+   Tufte-style sidenote that sits beside the reading column, or a
+   classic superscript footnote with a bottom-of-document list. */
+.typeset-margin-note {
+    float: right;
+    clear: right;
+    width: 200px;
+    margin-right: -240px;
+    margin-top: 0;
+    padding-left: var(--am-sp-4);
+    border-left: var(--am-hair) solid var(--am-rule-3);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-meta);
+    font-style: italic;
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+@media (max-width: 1100px) {
+    .typeset-margin-note {
+        float: none;
+        width: auto;
+        margin: var(--am-sp-3) 0 var(--am-sp-3) var(--am-sp-5);
+    }
+}
+
+.typeset-fn,
+.footnote-ref {
+    font-family: var(--am-font-sans);
+    font-size: 0.75em;
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: 0;
+    padding-left: 1px;
+    vertical-align: super;
+    line-height: 1;
+}
+.typeset-fn:hover,
+.footnote-ref:hover { color: var(--am-link-hover); }
+
+/* `.footnote` is the bottom-of-document block emitted by python-markdown's
+   footnotes extension; `.typeset-footnotes` is the snippet's hand-rolled
+   equivalent. Both are styled the same.                                 */
+.typeset-footnotes,
+.typeset-prose .footnote,
+.typeset-document > .footnote {
+    margin-top: var(--am-sp-9);
+    padding-top: var(--am-sp-4);
+    border-top: var(--am-hair) solid var(--am-rule);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.65;
+}
+.typeset-footnotes ol,
+.typeset-prose .footnote ol,
+.typeset-document > .footnote ol { padding-left: 1.4em; margin: 0; }
+.typeset-footnotes li,
+.typeset-prose .footnote li,
+.typeset-document > .footnote li { margin-bottom: 6px; }
+.typeset-footnotes a,
+.typeset-prose .footnote a,
+.typeset-document > .footnote a { color: var(--am-link); }
+.footnote-backref { text-decoration: none; }
+.typeset-prose .footnote hr,
+.typeset-document > .footnote hr { display: none; }
+
+
+/* =====================================================================
+   12. Print + responsive
+   ===================================================================== */
+
+@media print {
+    body { background: #fff; color: #000; }
+    .am-app-header, .am-sidebar, .am-composer, .am-modal-backdrop, .am-toast { display: none !important; }
+
+    .typeset-document { padding: 0; background: #fff; font-size: 11pt; }
+    .typeset-sidebar { display: none; }
+    h1, h2, h3 { page-break-after: avoid; }
+    .typeset-reference, .typeset-card { page-break-inside: avoid; }
+    p { orphans: 3; widows: 3; }
+}
+
+@media (max-width: 720px) {
+    .am-sidebar { width: 200px; padding: var(--am-sp-4) var(--am-sp-3); }
+    .am-app-header { padding: var(--am-sp-3) var(--am-sp-4); gap: var(--am-sp-3); }
+    .am-chat { padding: var(--am-sp-4); }
+}
+
+@media (max-width: 600px) {
+    .typeset-document { padding: 32px 16px; }
+    .typeset-heading h1 { font-size: 26px; }
+    .typeset-sidebar { grid-template-columns: 1fr; }
+    .am-settings-row { grid-template-columns: 1fr; gap: var(--am-sp-3); }
+}

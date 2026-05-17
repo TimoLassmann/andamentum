@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — stepper / wizard</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header { font-family: var(--am-font-sans); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--am-ink-5); padding-bottom: var(--am-sp-3); border-bottom: var(--am-hair) solid var(--am-rule); margin-bottom: var(--am-sp-6); }
+    .snip-header h1 { font-family: var(--am-font-serif); font-size: 22px; font-weight: 700; color: var(--am-ink); margin: 4px 0 0; letter-spacing: -0.2px; text-transform: none; }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+<header class="snip-header">Andamentum · snippet<h1>stepper / wizard</h1></header>
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+
+<!-- Multi-step progress. Apply .is-done / .is-current to each step. -->
+
+<ol class="am-stepper" style="list-style: none; padding: 0; margin: 0;">
+    <li class="am-stepper__step is-done">
+        <span class="am-stepper__num">1</span>
+        <span class="am-stepper__label">Source selection</span>
+    </li>
+    <li class="am-stepper__step is-done">
+        <span class="am-stepper__num">2</span>
+        <span class="am-stepper__label">Query &amp; scope</span>
+    </li>
+    <li class="am-stepper__step is-current">
+        <span class="am-stepper__num">3</span>
+        <span class="am-stepper__label">Verification</span>
+    </li>
+    <li class="am-stepper__step">
+        <span class="am-stepper__num">4</span>
+        <span class="am-stepper__label">Review &amp; publish</span>
+    </li>
+</ol>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+</body>
+</html>

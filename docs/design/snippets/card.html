@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — cards</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>cards</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · cards
+     App-mode card (.am-card) for list/browse surfaces, and
+     document-mode card (.typeset-card) for inline findings. -->
+<!-- ── App-mode card (use in Browse, document lists) ────────────── -->
+<div class="am-card">
+    <div class="am-card__eyebrow">Document · 2026-04-15</div>
+    <h3 class="am-card__title">What does the published literature say about metformin and cardiovascular mortality?</h3>
+    <p class="am-card__body">Mixed evidence — reduced mortality in some populations, no significant effect on MACE in others. 37 sources examined, 0 of 2 claims established.</p>
+    <div class="am-card__footer">
+        <span class="am-badge am-badge--warn">CHALLENGED</span>
+        <span>15 sources</span>
+        <span style="margin-left: auto;">2 findings</span>
+    </div>
+</div>
+
+<!-- Quiet variant — no border, sits on paper-2. -->
+<div class="am-card am-card--quiet">
+    <div class="am-card__eyebrow">Action · running</div>
+    <h3 class="am-card__title">Morning brief — world news survey</h3>
+    <p class="am-card__body">Surveys CNN, BBC World, Reuters every weekday at 06:00 AWST.</p>
+</div>
+
+<!-- ── Document-mode card (inline finding inside a report) ──────── -->
+<div class="typeset-card">
+    <div class="typeset-card-body">
+        <p>Metformin use is significantly associated with a reduction in both cardiovascular-related mortality and all-cause mortality in individuals with type 2 diabetes or coronary artery disease.</p>
+        <span class="typeset-badge" data-value="supported">supported</span>
+        <sup class="typeset-refs">2, 10</sup>
+    </div>
+    <details class="typeset-card-details">
+        <summary>Details</summary>
+        <p><strong>Scope:</strong> Patients with type 2 diabetes or coronary artery disease.</p>
+        <p><strong>Verification:</strong> Scrutiny: pass.</p>
+    </details>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>
