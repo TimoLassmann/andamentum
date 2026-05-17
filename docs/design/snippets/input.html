@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — inputs, textareas, selects, search, labels, help</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>inputs, textareas, selects, search, labels, help</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · inputs, textareas, selects, search, labels, help -->
+<!-- Text input with label + help -->
+<div style="max-width: 480px;">
+    <label class="am-label" for="t1">Task title</label>
+    <input id="t1" class="am-input" type="text" placeholder="What needs doing?">
+    <div class="am-help">Press <code>⌘ ↵</code> to add and start another.</div>
+</div>
+
+<!-- Search with leading icon -->
+<div class="am-search" style="max-width: 480px;">
+    <svg class="am-search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/></svg>
+    <input class="am-input" type="search" placeholder="Search tasks…">
+</div>
+
+<!-- Textarea -->
+<div style="max-width: 600px;">
+    <label class="am-label" for="t2">Notes</label>
+    <textarea id="t2" class="am-textarea" placeholder="Add a longer note…"></textarea>
+</div>
+
+<!-- Select -->
+<div style="max-width: 320px;">
+    <label class="am-label" for="t3">Group by</label>
+    <select id="t3" class="am-select">
+        <option>None</option>
+        <option>Project</option>
+        <option>Due date</option>
+    </select>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

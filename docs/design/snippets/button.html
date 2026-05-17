@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — buttons</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>buttons</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · buttons
+     Drop into a page that links components.css. -->
+<!-- Primary action (one per surface, max). -->
+<button class="am-btn am-btn--primary">Add Task</button>
+
+<!-- Default — most buttons should be this. -->
+<button class="am-btn">Cancel</button>
+
+<!-- Ghost — for tertiary or destructive-adjacent actions. -->
+<button class="am-btn am-btn--ghost">View details</button>
+
+<!-- Destructive — confirms a deletion, never the default. -->
+<button class="am-btn am-btn--danger">Delete</button>
+
+<!-- Disabled. -->
+<button class="am-btn" disabled>Disabled</button>
+
+<!-- Sizes. -->
+<button class="am-btn am-btn--primary am-btn--sm">Small</button>
+<button class="am-btn am-btn--primary am-btn--lg">Large</button>
+
+<!-- Icon-only button (always include aria-label). -->
+<button class="am-btn am-btn--icon" aria-label="Add">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- Button with leading icon. -->
+<button class="am-btn am-btn--primary">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+    Add Task
+</button>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — sidebar / left rail</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>sidebar / left rail</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · sidebar / left rail
+     The canonical app sidebar pattern: stats, filter, projects, areas. -->
+<aside class="am-sidebar">
+
+    <!-- Stats tiles -->
+    <div class="am-sidebar__section">
+        <div class="am-sidebar__title">Stats</div>
+        <div class="am-stats">
+            <div class="am-stat">
+                <div class="am-stat__value">10</div>
+                <div class="am-stat__label">Active</div>
+            </div>
+            <div class="am-stat">
+                <div class="am-stat__value is-danger">4</div>
+                <div class="am-stat__label">Overdue</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter list (simple items) -->
+    <div class="am-sidebar__section">
+        <div class="am-sidebar__title">Filter</div>
+        <div class="am-sidebar__item is-active">All Active</div>
+        <div class="am-sidebar__item">Inbox</div>
+        <div class="am-sidebar__item">To Do</div>
+        <div class="am-sidebar__item">In Progress</div>
+        <div class="am-sidebar__item">Waiting</div>
+        <div class="am-sidebar__item">Completed</div>
+    </div>
+
+    <!-- Project nav rows (title + meta + progress sliver) -->
+    <div class="am-sidebar__section">
+        <div class="am-sidebar__title">Projects</div>
+
+        <div class="am-nav-row">
+            <div class="am-nav-row__title">CAGE</div>
+            <div class="am-nav-row__meta">1/1 tasks</div>
+            <div class="am-nav-row__progress"><span style="width: 100%;"></span></div>
+        </div>
+
+        <div class="am-nav-row">
+            <div class="am-nav-row__title">Kaligin Manuscript 35</div>
+            <div class="am-nav-row__meta">1/2 tasks</div>
+            <div class="am-nav-row__progress"><span style="width: 50%;"></span></div>
+        </div>
+
+        <button class="am-btn am-btn--sm" style="width: 100%; margin-top: 12px;">+ Add Project</button>
+    </div>
+
+</aside>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

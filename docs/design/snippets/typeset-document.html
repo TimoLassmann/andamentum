@@ -1,0 +1,89 @@
+<!-- Andamentum · full typeset document skeleton
+     Drop your markdown-rendered content into .typeset-prose and the
+     system handles the rest. The structure below is the canonical
+     ordering for a generated report (verdict → key facts → summary
+     → findings → references → metadata footer). -->
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="../components.css">
+    <title>Document title</title>
+</head>
+<body>
+
+<article class="typeset-document">
+
+    <!-- Heading + run metadata -->
+    <header class="typeset-heading">
+        <h1>What does the published literature say about metformin and cardiovascular mortality in type 2 diabetes?</h1>
+        <p class="typeset-meta">2026-04-15 · gemma4:26b · metformin_smoke_test</p>
+    </header>
+
+    <!-- One-sentence verdict, sits at the top, reads as an opening
+         paragraph rather than a box. -->
+    <aside class="typeset-callout">
+        <p>The evidence is mixed, showing reduced mortality in some populations but no significant effect on major cardiovascular events in others.</p>
+    </aside>
+
+    <!-- Key facts as label/value pairs -->
+    <div class="typeset-items variant-pairs">
+        <div class="typeset-item">
+            <div class="typeset-item-label">What was studied?</div>
+            <div class="typeset-item-body">Metformin's effect on cardiovascular mortality in type 2 diabetes.</div>
+        </div>
+        <div class="typeset-item">
+            <div class="typeset-item-label">How confident?</div>
+            <div class="typeset-item-body">High (0.88).</div>
+        </div>
+    </div>
+
+    <!-- Body prose -->
+    <h2>Summary</h2>
+    <section class="typeset-prose">
+        <p><strong>Research Question:</strong> <em>What does the published literature say about metformin and cardiovascular mortality in type 2 diabetes?</em></p>
+        <p>The literature provides conflicting evidence regarding metformin's impact on cardiovascular mortality.</p>
+    </section>
+
+    <!-- Findings — each as a typeset-card -->
+    <h2>Findings</h2>
+    <div class="typeset-card">
+        <div class="typeset-card-body">
+            <p>Metformin use is significantly associated with a reduction in cardiovascular and all-cause mortality.</p>
+            <span class="typeset-badge" data-value="supported">supported</span>
+            <sup class="typeset-refs">2, 10</sup>
+        </div>
+    </div>
+
+    <!-- References -->
+    <h2>Sources</h2>
+    <div class="typeset-reference">
+        <div class="typeset-ref-number">1.</div>
+        <div class="typeset-ref-content">
+            <div class="typeset-ref-body">The meta-analysis reports a statistically significant reduction in pooled CK-MB levels (SMD -0.15, P = 0.04) for metformin use.</div>
+            <span class="typeset-badge" data-value="supports">supports</span>
+            <div class="typeset-ref-source"><a href="#">link.springer.com/article/10.1186/s12933-019-0900-7</a></div>
+        </div>
+    </div>
+
+    <!-- Footnote-style sidebar at the bottom of the document -->
+    <aside class="typeset-aside typeset-sidebar">
+        <div class="typeset-sidebar-group">
+            <div class="typeset-sidebar-title">Investigation</div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Evidence items</span><span class="typeset-sidebar-value">37</span></div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Claims</span><span class="typeset-sidebar-value">2</span></div>
+        </div>
+        <div class="typeset-sidebar-group">
+            <div class="typeset-sidebar-title">Confidence</div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Score</span><span class="typeset-sidebar-value">0.88 HIGH</span></div>
+        </div>
+        <div class="typeset-sidebar-group">
+            <div class="typeset-sidebar-title">Model</div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">LLM</span><span class="typeset-sidebar-value">gemma4:26b</span></div>
+        </div>
+    </aside>
+
+</article>
+
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — task row</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>task row</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · task row
+     Six statuses, each with a distinctive check icon in the
+     andamentum palette. Use this for any to-do / work item surface. -->
+<div class="am-list am-list--bordered">
+
+    <!-- Inbox — dashed outline, "newly captured, not yet committed" -->
+    <div class="am-task">
+        <div class="am-task__check is-inbox"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Raw capture from a meeting</div>
+        </div>
+    </div>
+
+    <!-- To Do — solid outline circle. Open, ready to be picked up.
+         (.is-todo is optional — the unmodified .am-task__check is the
+          same thing. Use .is-todo when you want the class to be explicit.) -->
+    <div class="am-task">
+        <div class="am-task__check is-todo"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Read Pierce 2nd article</div>
+            <div class="am-task__sub">
+                <span class="am-task__due is-overdue">2026-05-13</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- In Progress — half-filled, slate (info) -->
+    <div class="am-task">
+        <div class="am-task__check is-progress"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Large scale epistemic benchmarks &gt; 100 cases on DUG</div>
+        </div>
+    </div>
+
+    <!-- Waiting — coloured outline, ochre (warn). Awaiting input. -->
+    <div class="am-task">
+        <div class="am-task__check is-waiting"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Adjunct appointment — full?</div>
+        </div>
+    </div>
+
+    <!-- Done — filled, olive (success). Title struck through automatically
+         via the parent .am-task.is-done class. -->
+    <div class="am-task is-done">
+        <div class="am-task__check is-done"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Manuscript draft (with andamentum + whetstone)</div>
+            <div class="am-task__sub">
+                <span class="am-task__due">2026-05-08</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cancelled — outlined in warm rust (danger), with a tiny ×.
+         Title strikes through via .am-task.is-cancelled on the parent. -->
+    <div class="am-task is-cancelled">
+        <div class="am-task__check is-cancelled"></div>
+        <div class="am-task__handle">≡</div>
+        <div class="am-task__main">
+            <div class="am-task__title">Old plan for the Q4 review</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Date pill modifiers (used in .am-task__sub):
+     .am-task__due            — default (paper-3)
+     .am-task__due.is-soon    — within ~3 days (warn / ochre)
+     .am-task__due.is-overdue — past due (danger / rust)              -->
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

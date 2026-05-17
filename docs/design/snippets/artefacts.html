@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — artefacts container</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>artefacts container</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · artefacts container
+     The prominent "documents this turn created" surface. Use when
+     the assistant has produced one or more documents in a turn.
+
+     For a single document inline (without the container), see
+     <a class="am-artefact"> further down. -->
+<!-- ── Single document ─────────────────────────────────────────── -->
+<div class="am-artefacts">
+    <div class="am-artefacts__header">
+        <span class="am-artefacts__header__icon">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4.5 6 9.5a2 2 0 1 0 2.8 2.8L13.5 7a3.5 3.5 0 1 0-5-5L3 7.5"/></svg>
+        </span>
+        1 document created
+    </div>
+    <div class="am-artefacts__list">
+        <a class="am-artefacts__row" href="#">
+            <span class="am-artefacts__row__icon">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+            </span>
+            <span class="am-artefacts__row__title">Research: Survey of major news stories on CNN and BBC News World edition in the past 24 hours.</span>
+            <span class="am-artefacts__row__tag">research</span>
+        </a>
+    </div>
+</div>
+
+<!-- ── Multiple documents ──────────────────────────────────────── -->
+<div class="am-artefacts">
+    <div class="am-artefacts__header">
+        <span class="am-artefacts__header__icon">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4.5 6 9.5a2 2 0 1 0 2.8 2.8L13.5 7a3.5 3.5 0 1 0-5-5L3 7.5"/></svg>
+        </span>
+        3 documents created
+    </div>
+    <div class="am-artefacts__list">
+        <a class="am-artefacts__row" href="#">
+            <span class="am-artefacts__row__icon">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+            </span>
+            <span class="am-artefacts__row__title">Research: Metformin and cardiovascular mortality — meta-analysis review</span>
+            <span class="am-artefacts__row__tag">research</span>
+        </a>
+        <a class="am-artefacts__row" href="#">
+            <span class="am-artefacts__row__icon">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+            </span>
+            <span class="am-artefacts__row__title">Brief: Findings summary for Jonathan and Peter, 2026-05-08</span>
+            <span class="am-artefacts__row__tag">brief</span>
+        </a>
+        <a class="am-artefacts__row" href="#">
+            <span class="am-artefacts__row__icon">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+            </span>
+            <span class="am-artefacts__row__title">Note: Three counter-evidence sources worth following up</span>
+            <span class="am-artefacts__row__tag">note</span>
+        </a>
+    </div>
+</div>
+
+<!-- ── Single inline (legacy) ──────────────────────────────────────
+     A standalone artefact link card. Use when the document isn't tied
+     to a turn — e.g. an inline link in body prose. -->
+<a class="am-artefact" href="#">
+    <span class="am-artefact__icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6 3h9l5 5v13H6z"/>
+            <path d="M15 3v5h5"/>
+            <path d="M9 13h7M9 16h7"/>
+        </svg>
+    </span>
+    <div class="am-artefact__main">
+        <div class="am-artefact__title">CNN &amp; BBC World — 24-hour survey</div>
+        <div class="am-artefact__meta">Document · 1,840 words · created this turn</div>
+    </div>
+</a>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

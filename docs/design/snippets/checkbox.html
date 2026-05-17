@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — checkbox &amp; radio</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-5); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>checkbox &amp; radio</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+
+    <!-- Checkbox — wrap the input and its label in .am-checkbox-row to
+         make the whole row clickable. .am-checkbox styles the real
+         <input type="checkbox"> via appearance: none, so it remains a
+         valid form control. -->
+    <label class="am-checkbox-row">
+        <input class="am-checkbox" type="checkbox">
+        System
+    </label>
+
+    <label class="am-checkbox-row">
+        <input class="am-checkbox" type="checkbox" checked>
+        Include archived documents
+    </label>
+
+    <label class="am-checkbox-row is-disabled">
+        <input class="am-checkbox" type="checkbox" disabled>
+        Disabled
+    </label>
+
+    <!-- Radio group — same wrapping pattern, but inputs share a name. -->
+    <div>
+        <label class="am-checkbox-row">
+            <input class="am-radio" type="radio" name="kind" checked>
+            All kinds
+        </label>
+        <label class="am-checkbox-row" style="margin-left: 16px;">
+            <input class="am-radio" type="radio" name="kind">
+            Research only
+        </label>
+        <label class="am-checkbox-row" style="margin-left: 16px;">
+            <input class="am-radio" type="radio" name="kind">
+            Tasks only
+        </label>
+    </div>
+
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>

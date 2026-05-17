@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain — restyled in Andamentum</title>
+<link rel="stylesheet" href="components.css">
+<style>
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+
+    .brain-app {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100vh;
+    }
+
+    .brain-body {
+        display: grid;
+        grid-template-columns: 240px 1fr 1fr;
+        min-height: 0;
+    }
+
+    .brain-main, .brain-side, .brain-rail {
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .brain-rail { border-right: var(--am-hair) solid var(--am-rule); }
+
+    .brain-side { border-right: var(--am-hair) solid var(--am-rule); display: flex; flex-direction: column; }
+    .brain-side__toolbar {
+        display: flex; align-items: center; gap: var(--am-sp-3);
+        padding: var(--am-sp-4) var(--am-sp-6);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        background: var(--am-paper);
+        position: sticky; top: 0; z-index: 5;
+    }
+    .brain-side__list { flex: 1; overflow-y: auto; }
+
+    .brain-main { display: flex; flex-direction: column; }
+    .brain-main__chrome {
+        display: flex; align-items: center; gap: var(--am-sp-2);
+        padding: var(--am-sp-3) var(--am-sp-5);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+    }
+    .brain-main__scroll { flex: 1; overflow-y: auto; padding: var(--am-sp-5) var(--am-sp-6) var(--am-sp-6); }
+    .brain-main__footer { border-top: var(--am-hair) solid var(--am-rule); padding: var(--am-sp-3) var(--am-sp-5); }
+
+    /* Floating theme toggle */
+    .brain-theme {
+        position: fixed; bottom: var(--am-sp-4); left: var(--am-sp-4);
+        z-index: 50;
+        display: flex; gap: 2px;
+        background: var(--am-paper); border: var(--am-hair) solid var(--am-rule);
+        border-radius: var(--am-rad-3); padding: 3px;
+        box-shadow: var(--am-shadow-2);
+    }
+    .brain-theme button {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-tag);
+        font-weight: 600;
+        color: var(--am-ink-4);
+        background: transparent; border: 0;
+        padding: 4px 10px; border-radius: var(--am-rad-2);
+        cursor: pointer; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .brain-theme button.is-active { background: var(--am-paper-3); color: var(--am-ink); }
+
+    .brain-session-bar {
+        display: flex; align-items: center; gap: var(--am-sp-3);
+        padding: var(--am-sp-3) var(--am-sp-5);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+    }
+    .brain-session-back {
+        font-family: var(--am-font-sans); font-size: var(--am-fs-small);
+        color: var(--am-ink-4); background: transparent; border: 0;
+        cursor: pointer; padding: 4px 8px; border-radius: var(--am-rad-2);
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .brain-session-back:hover { background: var(--am-paper-2); color: var(--am-ink-2); }
+    .brain-session-title {
+        margin-left: auto;
+        font-family: var(--am-font-serif);
+        font-size: var(--am-fs-body);
+        color: var(--am-ink-3);
+        font-style: italic;
+    }
+</style>
+</head>
+<body class="brain-app">
+
+<!-- Top app header ─────────────────────────────────────────────── -->
+<header class="am-app-header">
+    <div class="am-app-title">
+        <span class="am-app-title__mark">
+            <!-- A simple inline "brain" mark — two soft hemispheres -->
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.5 4.5c-1.7 0-3 1.2-3 2.7 0 .8-.6 1-1 1.2-.8.5-.9 1.7-.2 2.3.1.9.3 1.7 1 2 .2.9.7 1.6 1.6 1.8.1.9.7 1.7 1.6 1.8.2.9.9 1.7 2 1.7V4.5Z"/>
+                <path d="M14.5 4.5c1.7 0 3 1.2 3 2.7 0 .8.6 1 1 1.2.8.5.9 1.7.2 2.3-.1.9-.3 1.7-1 2-.2.9-.7 1.6-1.6 1.8-.1.9-.7 1.7-1.6 1.8-.2.9-.9 1.7-2 1.7V4.5Z"/>
+            </svg>
+        </span>
+        <span>Brain</span>
+    </div>
+    <nav class="am-tabs">
+        <button class="am-tab is-active">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            Work
+        </button>
+        <button class="am-tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Browse
+        </button>
+        <button class="am-tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+            Actions
+        </button>
+    </nav>
+    <div class="am-app-header__right">
+        <span class="am-meta" style="font-family: var(--am-font-mono); font-size: var(--am-fs-small);">gpt-5.4-mini</span>
+        <button class="am-btn am-btn--icon" aria-label="New" title="New chat">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+    </div>
+</header>
+
+<!-- Three-column body ───────────────────────────────────────────── -->
+<div class="brain-body">
+
+    <!-- LEFT RAIL — sidebar -->
+    <aside class="brain-rail am-sidebar">
+        <div class="am-sidebar__section">
+            <div class="am-sidebar__title">Stats</div>
+            <div class="am-stats">
+                <div class="am-stat">
+                    <div class="am-stat__value">10</div>
+                    <div class="am-stat__label">Active</div>
+                </div>
+                <div class="am-stat">
+                    <div class="am-stat__value is-danger">4</div>
+                    <div class="am-stat__label">Overdue</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="am-sidebar__section">
+            <div class="am-sidebar__title">Filter</div>
+            <div class="am-sidebar__item is-active">All Active</div>
+            <div class="am-sidebar__item">Inbox</div>
+            <div class="am-sidebar__item">To Do</div>
+            <div class="am-sidebar__item">In Progress</div>
+            <div class="am-sidebar__item">Waiting</div>
+            <div class="am-sidebar__item">Completed</div>
+        </div>
+
+        <div class="am-sidebar__section">
+            <div class="am-sidebar__title">Projects</div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">CAGE</div>
+                <div class="am-nav-row__meta">1/1 tasks</div>
+                <div class="am-nav-row__progress"><span style="width: 100%;"></span></div>
+            </div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">NHMRC Investigator</div>
+                <div class="am-nav-row__meta">0/1 tasks</div>
+                <div class="am-nav-row__progress"><span style="width: 0%;"></span></div>
+            </div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">Stan Perron Fellowship</div>
+                <div class="am-nav-row__meta">1/1 tasks</div>
+                <div class="am-nav-row__progress"><span style="width: 100%;"></span></div>
+            </div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">Kaligin Manuscript 35</div>
+                <div class="am-nav-row__meta">1/2 tasks</div>
+                <div class="am-nav-row__progress"><span style="width: 50%;"></span></div>
+            </div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">
+                    Reviews
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--am-ink-5);"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
+                <div class="am-nav-row__meta">3/4 tasks</div>
+                <div class="am-nav-row__progress"><span style="width: 75%;"></span></div>
+            </div>
+            <button class="am-btn am-btn--sm" style="width: 100%; margin-top: var(--am-sp-3);">+ Add Project</button>
+        </div>
+
+        <div class="am-sidebar__section">
+            <div class="am-sidebar__title">Areas</div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">Research</div>
+                <div class="am-nav-row__meta">1/2 tasks</div>
+            </div>
+            <div class="am-nav-row">
+                <div class="am-nav-row__title">Establish the Kailume…</div>
+                <div class="am-nav-row__meta">—</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MIDDLE — tasks pane -->
+    <section class="brain-side">
+        <div class="brain-side__toolbar">
+            <div class="am-search" style="flex: 1; max-width: 380px;">
+                <svg class="am-search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/></svg>
+                <input class="am-input" type="search" placeholder="Search tasks…">
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="am-meta">Group:</span>
+                <select class="am-select" style="width: 110px;">
+                    <option>None</option>
+                    <option>Project</option>
+                    <option>Due date</option>
+                </select>
+            </div>
+            <button class="am-btn am-btn--primary">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Add Task
+            </button>
+        </div>
+
+        <div class="brain-side__list">
+            <div class="am-task">
+                <div class="am-task__check is-progress"></div>
+                <div class="am-task__handle">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg>
+                </div>
+                <div class="am-task__main">
+                    <div class="am-task__title">DUF / DMYTR — return sequence selection</div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check is-progress"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Large scale epistemic benchmarks &gt; 100 cases on DUG</div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check is-progress"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Finance App — Fiscus</div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check is-progress"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Plan more for meeting with Jonathan and Peter.</div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Read Pierce 2nd article</div>
+                    <div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-13</span></div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">ASO work for May and Steve;</div>
+                    <div class="am-task__sub"><span class="am-task__due is-soon">2026-05-20</span></div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">NHMRC Investigator Grant: Initial Setup &amp; Planning</div>
+                    <div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-08</span></div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Manuscript draft (with andamentum + whetstone)</div>
+                    <div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-08</span></div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Review &ldquo;Integrating 730,947 exome sequences with biomedical literature improves gene discovery&rdquo;</div>
+                    <div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-08</span></div>
+                </div>
+            </div>
+
+            <div class="am-task">
+                <div class="am-task__check is-waiting"></div>
+                <div class="am-task__handle"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4h.01M5 8h.01M5 12h.01M11 4h.01M11 8h.01M11 12h.01"/></svg></div>
+                <div class="am-task__main">
+                    <div class="am-task__title">Adjunct appointment — Full?</div>
+                </div>
+            </div>
+
+            <!-- Add-task inline -->
+            <div class="am-task" style="cursor: text;">
+                <div class="am-task__check" style="opacity: 0.4;"></div>
+                <div class="am-task__handle" style="opacity: 0;"></div>
+                <div class="am-task__main">
+                    <div class="am-task__title" style="color: var(--am-ink-5); font-weight: 400; font-style: italic;">Add a task…</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- RIGHT — chat -->
+    <section class="brain-main">
+        <div class="brain-session-bar">
+            <button class="brain-session-back">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m10 4-4 4 4 4"/></svg>
+                Sessions
+            </button>
+            <div class="brain-session-title">New Chat</div>
+        </div>
+
+        <div class="brain-main__scroll">
+            <div class="am-chat" style="padding: 0; max-width: none;">
+
+                <!-- Turn 1: user → router → tool log → ask_user -->
+                <div class="am-chat__turn">
+                    <div class="am-chat__msg am-chat__msg--user">Can you do a survey of news stories on CNN and BBC News (world edition)?</div>
+                </div>
+
+                <div class="am-chat__turn">
+                    <details class="am-toollog" open>
+                        <summary class="am-toollog__summary">Tools used · Router: research · 2 calls</summary>
+                        <div class="am-toollog__body">
+                            <div class="am-toollog__entry"><span class="am-toollog__entry__name">brain_search</span> <span class="am-toollog__entry__args">{"query":"news stories on CNN and BBC News world edition survey"}</span></div>
+                            <div class="am-toollog__entry"><span class="am-toollog__ok">→</span> <span class="am-toollog__entry__result">[b9a620d7-d3e0-4fb0-957f-807bd3d32dc3] Ollama news | {'record_type': 'action', 'status': 'done'}</span></div>
+                            <div class="am-toollog__entry"><span class="am-toollog__entry__name">ask_user</span> <span class="am-toollog__entry__args">{"question":"What time window should the survey cover (today, past 24 hours, past week, or a custom date range)?"}</span></div>
+                        </div>
+                    </details>
+
+                    <div class="am-router" style="margin-top: var(--am-sp-2);">
+                        <span class="am-router__label">Router selected:</span>
+                        <span>research</span>
+                        <span class="am-router__reason">— the request asks for a survey of news stories from specific sources, which requires external research and synthesis. I need the <code class="am-mono" style="font-size: 11px; background: rgba(124,106,79,0.1); padding: 0 4px; border-radius: 2px;">research</code> capability to perform a deep web survey, assuming I would be provided with the necessary URLs to search.</span>
+                    </div>
+
+                    <div class="am-chat__msg am-chat__msg--assistant" style="margin-top: var(--am-sp-4);">
+                        <p>I can do that, but I need one detail: what time window should the survey cover (today, past 24 hours, past week, or a custom date range)?</p>
+                    </div>
+                </div>
+
+                <!-- Turn 2: user reply -->
+                <div class="am-chat__turn">
+                    <div class="am-chat__msg am-chat__msg--user">just past 24 hours.</div>
+                </div>
+
+                <!-- Turn 3: assistant prose -->
+                <div class="am-chat__turn">
+                    <div class="am-chat__msg am-chat__msg--assistant">
+                        <p>Here's a concise survey of the main stories on <strong>CNN</strong> and <strong>BBC News World edition</strong> over the <strong>past 24 hours</strong>.</p>
+
+                        <h3>Overall takeaway</h3>
+                        <p>Both outlets covered a similar cluster of fast-moving international stories, but they differed in emphasis:</p>
+                        <ul>
+                            <li><strong>CNN</strong> leaned more toward U.S.-centred geopolitics, especially Cuba, Iran, China, and Israel-Gaza.</li>
+                            <li><strong>BBC World</strong> spread attention more broadly across Europe, the UK, global incidents, BBC Verify analysis, and also covered several of the same breaking stories.</li>
+                        </ul>
+
+                        <h3>Main overlap</h3>
+                        <p>Both CNN and BBC prominently covered:</p>
+                        <ul>
+                            <li><strong>Italy:</strong> the car-into-pedestrians incident that injured multiple people.</li>
+                            <li><strong>Israel–Gaza:</strong> renewed strikes in the northern Strip and a fresh round of cease-fire diplomacy in Doha.</li>
+                            <li><strong>Argentina:</strong> the mid-term election result and its impact on the peso.</li>
+                        </ul>
+
+                        <aside class="typeset-callout tone-info"><p>Sources used: 12 articles · <a href="#">view bibliography</a></p></aside>
+                    </div>
+
+                    <div class="am-artefacts" style="margin-top: var(--am-sp-4);">
+                        <div class="am-artefacts__header">
+                            <span class="am-artefacts__header__icon">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4.5 6 9.5a2 2 0 1 0 2.8 2.8L13.5 7a3.5 3.5 0 1 0-5-5L3 7.5"/></svg>
+                            </span>
+                            1 document created
+                        </div>
+                        <div class="am-artefacts__list">
+                            <a class="am-artefacts__row" href="#">
+                                <span class="am-artefacts__row__icon">
+                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+                                </span>
+                                <span class="am-artefacts__row__title">Research: Survey of major news stories on CNN and BBC News World edition in the past 24 hours. Summarize the m…</span>
+                                <span class="am-artefacts__row__tag">research</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active thinking -->
+                <div class="am-chat__turn">
+                    <div class="am-thinking">
+                        <span class="am-thinking__dots"><span class="am-thinking__dot"></span><span class="am-thinking__dot"></span><span class="am-thinking__dot"></span></span>
+                        <span>writing follow-up brief…</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Composer -->
+        <div class="am-composer">
+            <div class="am-composer__row">
+                <button class="am-btn am-btn--icon" aria-label="Attach" title="Attach">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3 3 0 1 1 4 4l-9 9a1 1 0 1 1-1-1l8-8"/></svg>
+                </button>
+                <textarea class="am-composer__input" rows="1" placeholder="Ask anything…"></textarea>
+                <button class="am-btn am-btn--icon" aria-label="Send" style="color: var(--am-ink);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                </button>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Theme toggle -->
+<div class="brain-theme" role="group" aria-label="Theme">
+    <button data-theme-btn="light" class="is-active">Light</button>
+    <button data-theme-btn="dark">Dark</button>
+</div>
+
+<script>
+    const root = document.documentElement;
+    const buttons = document.querySelectorAll('[data-theme-btn]');
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        buttons.forEach(b => b.classList.toggle('is-active', b.dataset.themeBtn === t));
+        try { localStorage.setItem('andamentum-theme', t); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+    try {
+        const saved = localStorage.getItem('andamentum-theme');
+        if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch (e) {}
+</script>
+</body>
+</html>

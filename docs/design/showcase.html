@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — design system showcase</title>
+<link rel="stylesheet" href="components.css">
+<style>
+    /* Showcase-only chrome. Not part of the system itself. */
+    .sg-page {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 var(--am-sp-7) var(--am-sp-10);
+    }
+    .sg-hero {
+        padding: var(--am-sp-10) 0 var(--am-sp-9);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: var(--am-sp-8);
+        align-items: end;
+    }
+    .sg-hero h1 {
+        font-family: var(--am-font-serif);
+        font-size: 56px;
+        font-weight: 700;
+        line-height: 1.05;
+        margin: 0 0 var(--am-sp-3);
+        color: var(--am-ink);
+        letter-spacing: -1.5px;
+    }
+    .sg-hero .lede {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        color: var(--am-ink-3);
+        line-height: 1.5;
+        margin: 0;
+        max-width: 50ch;
+    }
+    .sg-hero__aside {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        color: var(--am-ink-5);
+        line-height: 1.7;
+        border-left: var(--am-hair) solid var(--am-rule);
+        padding-left: var(--am-sp-5);
+    }
+    .sg-hero__aside strong {
+        display: block;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        font-size: var(--am-fs-eyebrow);
+        color: var(--am-ink-4);
+        font-weight: 600;
+        margin-top: var(--am-sp-3);
+        margin-bottom: 2px;
+    }
+    .sg-hero__aside strong:first-child { margin-top: 0; }
+
+    .sg-section {
+        padding: var(--am-sp-9) 0;
+        border-bottom: var(--am-hair) solid var(--am-rule);
+    }
+    .sg-section:last-of-type { border-bottom: none; }
+
+    .sg-section__head {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: var(--am-sp-7);
+        margin-bottom: var(--am-sp-7);
+        align-items: start;
+    }
+    .sg-section__num {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-eyebrow);
+        font-weight: 600;
+        color: var(--am-ink-5);
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        padding-top: 6px;
+    }
+    .sg-section__title {
+        font-family: var(--am-font-serif);
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 0 0 var(--am-sp-2);
+        line-height: 1.15;
+        letter-spacing: -0.5px;
+    }
+    .sg-section__intro {
+        font-family: var(--am-font-serif);
+        font-size: 18px;
+        color: var(--am-ink-3);
+        line-height: 1.55;
+        max-width: 65ch;
+    }
+
+    .sg-block {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: var(--am-sp-7);
+        padding: var(--am-sp-6) 0;
+        border-top: var(--am-hair) solid var(--am-rule-2);
+    }
+    .sg-block:first-of-type { border-top: none; padding-top: 0; }
+    .sg-block__label {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        color: var(--am-ink-3);
+        font-weight: 500;
+        line-height: 1.5;
+    }
+    .sg-block__label small {
+        display: block;
+        color: var(--am-ink-5);
+        font-size: var(--am-fs-micro);
+        font-weight: 400;
+        margin-top: 4px;
+        line-height: 1.55;
+    }
+    .sg-block__demo { min-width: 0; }
+
+    .sg-rule { border-top: var(--am-hair) solid var(--am-rule-2); margin: var(--am-sp-4) 0; }
+
+    /* Toolbar: theme toggle floats top-right */
+    .sg-toolbar {
+        position: fixed;
+        top: var(--am-sp-4);
+        right: var(--am-sp-4);
+        z-index: 50;
+        display: flex;
+        gap: var(--am-sp-2);
+        background: var(--am-paper);
+        border: var(--am-hair) solid var(--am-rule);
+        border-radius: var(--am-rad-3);
+        padding: 4px;
+        box-shadow: var(--am-shadow-2);
+    }
+    .sg-toolbar button {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        font-weight: 500;
+        color: var(--am-ink-4);
+        background: transparent;
+        border: 0;
+        padding: 6px 12px;
+        border-radius: var(--am-rad-2);
+        cursor: pointer;
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    .sg-toolbar button.is-active {
+        background: var(--am-paper-3);
+        color: var(--am-ink);
+    }
+
+    /* Swatch grids */
+    .sg-swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: var(--am-sp-3);
+    }
+    .sg-swatch {
+        border: var(--am-hair) solid var(--am-rule-2);
+        border-radius: var(--am-rad-3);
+        overflow: hidden;
+        background: var(--am-paper);
+    }
+    .sg-swatch__chip {
+        height: 80px;
+        border-bottom: var(--am-hair) solid var(--am-rule-2);
+    }
+    .sg-swatch__body {
+        padding: var(--am-sp-3);
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-micro);
+        line-height: 1.45;
+    }
+    .sg-swatch__name { color: var(--am-ink-2); font-weight: 600; font-family: var(--am-font-mono); font-size: var(--am-fs-micro); }
+    .sg-swatch__hex  { color: var(--am-ink-5); font-family: var(--am-font-mono); }
+
+    .sg-type-row {
+        display: grid;
+        grid-template-columns: 100px 1fr;
+        gap: var(--am-sp-5);
+        padding: var(--am-sp-3) 0;
+        border-top: var(--am-hair) solid var(--am-rule-2);
+        align-items: baseline;
+    }
+    .sg-type-row:first-of-type { border-top: none; }
+    .sg-type-row__meta {
+        font-family: var(--am-font-mono);
+        font-size: var(--am-fs-micro);
+        color: var(--am-ink-5);
+        font-variant-numeric: tabular-nums;
+    }
+    .sg-type-row__sample { color: var(--am-ink); line-height: 1.3; }
+
+    .sg-row { display: flex; flex-wrap: wrap; gap: var(--am-sp-3); align-items: center; }
+    .sg-col { display: flex; flex-direction: column; gap: var(--am-sp-3); }
+
+    .sg-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--am-sp-5); }
+    .sg-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--am-sp-3); }
+
+    /* Code preview */
+    .sg-code {
+        background: var(--am-paper-2);
+        border-radius: var(--am-rad-2);
+        padding: var(--am-sp-3);
+        font-family: var(--am-font-mono);
+        font-size: var(--am-fs-micro);
+        color: var(--am-ink-3);
+        line-height: 1.65;
+        white-space: pre;
+        overflow-x: auto;
+        border: var(--am-hair) solid var(--am-rule-2);
+    }
+
+    .sg-toc {
+        position: sticky;
+        top: var(--am-sp-7);
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-small);
+        line-height: 1.9;
+    }
+    .sg-toc a {
+        display: block;
+        color: var(--am-ink-4);
+        text-decoration: none;
+        border-bottom: 0;
+    }
+    .sg-toc a:hover { color: var(--am-ink-2); }
+    .sg-toc__title {
+        font-family: var(--am-font-sans);
+        font-size: var(--am-fs-eyebrow);
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--am-ink-5);
+        font-weight: 600;
+        margin-bottom: var(--am-sp-2);
+    }
+
+    .sg-layout {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: var(--am-sp-9);
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .sg-layout { grid-template-columns: 1fr; }
+        .sg-toc { position: static; }
+        .sg-section__head, .sg-block { grid-template-columns: 1fr; gap: var(--am-sp-3); }
+        .sg-hero { grid-template-columns: 1fr; }
+    }
+
+    /* Mini app frame used in chrome demo */
+    .sg-frame {
+        border: var(--am-hair) solid var(--am-rule);
+        border-radius: var(--am-rad-3);
+        overflow: hidden;
+        background: var(--am-paper);
+    }
+
+    /* Modal demo container (not fixed — we want it inline) */
+    .sg-modal-inline {
+        position: relative;
+        background: rgba(40, 30, 12, 0.18);
+        padding: var(--am-sp-7);
+        border-radius: var(--am-rad-3);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 280px;
+    }
+    :root[data-theme="dark"] .sg-modal-inline,
+    :root:not([data-theme="light"]) .sg-modal-inline {
+        background: rgba(0, 0, 0, 0.4);
+    }
+</style>
+</head>
+<body>
+
+<div class="sg-toolbar" role="group" aria-label="Theme">
+    <button data-theme-btn="light" class="is-active">☀ Light</button>
+    <button data-theme-btn="dark">☾ Dark</button>
+</div>
+
+<main class="sg-page">
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     Hero
+     ───────────────────────────────────────────────────────────────────── -->
+<header class="sg-hero">
+    <div>
+        <div class="am-eyebrow" style="margin-bottom: var(--am-sp-3);">Andamentum · v1.0</div>
+        <h1>A design system that reads like a book.</h1>
+        <p class="lede">Andamentum is a scholarly, letterpress-honest design system for documents and the apps that produce them. Cream paper, serif headings, hairline rules, muted earth tones — extended to a complete vocabulary of app chrome.</p>
+    </div>
+    <aside class="sg-hero__aside">
+        <strong>Philosophy</strong>
+        Restrained, considered, typographic. The page is the foundation; chrome is a margin around it.
+        <strong>Type</strong>
+        Source Serif 4 for prose, Inter for UI and metadata, SF Mono for code.
+        <strong>Palette</strong>
+        Warm cream paper, ink in seven steps, muted semantic tones. Dark mode is vellum-by-lamplight, not negative space.
+        <strong>Coverage</strong>
+        Documents, app chrome, lists, chat, instrumentation, settings, tagging — everything a productivity or agent app needs.
+    </aside>
+</header>
+
+<div class="sg-layout" style="margin-top: var(--am-sp-9);">
+
+    <!-- Table of contents -->
+    <nav class="sg-toc">
+        <div class="sg-toc__title">Contents</div>
+        <a href="#tokens">Tokens</a>
+        <a href="#typography">Typography</a>
+        <a href="#document">Document</a>
+        <a href="#buttons">Buttons &amp; chips</a>
+        <a href="#inputs">Inputs &amp; forms</a>
+        <a href="#badges">Badges &amp; status</a>
+        <a href="#cards">Cards &amp; lists</a>
+        <a href="#chat">Chat &amp; tool log</a>
+        <a href="#overlays">Modals &amp; toasts</a>
+        <a href="#empty">Empty &amp; progress</a>
+        <a href="#rows">Specialised rows</a>
+        <a href="#chrome">App chrome</a>
+        <a href="#more">More patterns</a>
+    </nav>
+
+    <div>
+
+<!-- ── 1. TOKENS ───────────────────────────────────────────────────── -->
+<section class="sg-section" id="tokens">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 01 — Tokens</div>
+        <div>
+            <h2 class="sg-section__title">Tokens</h2>
+            <p class="sg-section__intro">Every colour, type size, and spacing step lives behind a CSS custom property. Edit a token to reskin the system; never edit a component rule to change palette.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Paper<small>The cream surface family. Step deeper for asides, code blocks, recessed inputs.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-swatches">
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-paper)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-paper</div><div class="sg-swatch__hex">primary surface</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-paper-2)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-paper-2</div><div class="sg-swatch__hex">recess (asides)</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-paper-3)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-paper-3</div><div class="sg-swatch__hex">deeper (code)</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-paper-4)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-paper-4</div><div class="sg-swatch__hex">strongest hairline</div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Ink<small>Seven steps of text colour. Pick the lightest step that holds contrast against the background.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-swatches">
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink</div><div class="sg-swatch__hex">titles, h1</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-2)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-2</div><div class="sg-swatch__hex">body</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-3)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-3</div><div class="sg-swatch__hex">secondary</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-4)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-4</div><div class="sg-swatch__hex">tertiary</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-5)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-5</div><div class="sg-swatch__hex">meta</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-6)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-6</div><div class="sg-swatch__hex">muted</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-ink-7)"></div><div class="sg-swatch__body"><div class="sg-swatch__name">--am-ink-7</div><div class="sg-swatch__hex">hairline strong</div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Semantic<small>Info / warning / success / danger / note. Background, accent, and ink for each.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-swatches">
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-info-bg); border-left: 4px solid var(--am-info-accent);"></div><div class="sg-swatch__body"><div class="sg-swatch__name">info</div><div class="sg-swatch__hex" style="color: var(--am-info-ink);">— informational</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-warn-bg); border-left: 4px solid var(--am-warn-accent);"></div><div class="sg-swatch__body"><div class="sg-swatch__name">warn</div><div class="sg-swatch__hex" style="color: var(--am-warn-ink);">— caution</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-success-bg); border-left: 4px solid var(--am-success-accent);"></div><div class="sg-swatch__body"><div class="sg-swatch__name">success</div><div class="sg-swatch__hex" style="color: var(--am-success-ink);">— confirmed</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-danger-bg); border-left: 4px solid var(--am-danger-accent);"></div><div class="sg-swatch__body"><div class="sg-swatch__name">danger</div><div class="sg-swatch__hex" style="color: var(--am-danger-ink);">— attention</div></div></div>
+                <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--am-note-bg); border-left: 4px solid var(--am-note-accent);"></div><div class="sg-swatch__body"><div class="sg-swatch__name">note</div><div class="sg-swatch__hex" style="color: var(--am-note-ink);">— neutral</div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Spacing<small>4-step base. Use steps; don't introduce intermediate values.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-grid-3" style="grid-template-columns: repeat(5, 1fr);">
+                <div><div style="background: var(--am-ink-7); width: var(--am-sp-1); height: 24px;"></div><div class="am-meta" style="margin-top:6px;">--am-sp-1<br><span style="color:var(--am-ink-5)">4px</span></div></div>
+                <div><div style="background: var(--am-ink-7); width: var(--am-sp-2); height: 24px;"></div><div class="am-meta" style="margin-top:6px;">--am-sp-2<br><span style="color:var(--am-ink-5)">8px</span></div></div>
+                <div><div style="background: var(--am-ink-7); width: var(--am-sp-4); height: 24px;"></div><div class="am-meta" style="margin-top:6px;">--am-sp-4<br><span style="color:var(--am-ink-5)">16px</span></div></div>
+                <div><div style="background: var(--am-ink-7); width: var(--am-sp-6); height: 24px;"></div><div class="am-meta" style="margin-top:6px;">--am-sp-6<br><span style="color:var(--am-ink-5)">24px</span></div></div>
+                <div><div style="background: var(--am-ink-7); width: var(--am-sp-9); height: 24px;"></div><div class="am-meta" style="margin-top:6px;">--am-sp-9<br><span style="color:var(--am-ink-5)">48px</span></div></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 2. TYPOGRAPHY ─────────────────────────────────────────────── -->
+<section class="sg-section" id="typography">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 02 — Typography</div>
+        <div>
+            <h2 class="sg-section__title">Typography</h2>
+            <p class="sg-section__intro">Source Serif 4 carries the document. Inter handles every piece of UI and metadata. SF Mono is reserved for code and machine output. There is no fourth font.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Scale</div>
+        <div class="sg-block__demo">
+            <div class="sg-type-row"><div class="sg-type-row__meta">display · 32 / 1.25<br>serif · 700</div><div class="sg-type-row__sample" style="font-family: var(--am-font-serif); font-size: 32px; font-weight: 700; letter-spacing: -0.3px;">The metformin question</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">h2 · 22 / 1.3<br>serif · 700</div><div class="sg-type-row__sample" style="font-family: var(--am-font-serif); font-size: 22px; font-weight: 700;">Findings &amp; counter-evidence</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">lede · 20 / 1.5<br>serif · 400</div><div class="sg-type-row__sample" style="font-family: var(--am-font-serif); font-size: 20px; font-weight: 400; color: var(--am-ink-3);">The evidence is mixed, showing reduced mortality in some populations.</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">prose · 19 / 1.85<br>serif · 400</div><div class="sg-type-row__sample" style="font-family: var(--am-font-serif); font-size: 19px; line-height: 1.85;">A paragraph of reading-view body text. Andamentum runs prose loose — 1.85 line-height, 60-character measure, never tight.</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">h3 · 18 / 1.3<br>serif · 600</div><div class="sg-type-row__sample" style="font-family: var(--am-font-serif); font-size: 18px; font-weight: 600;">Verification &amp; scrutiny</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">body · 16 / 1.55<br>sans · 400</div><div class="sg-type-row__sample" style="font-family: var(--am-font-sans); font-size: 16px;">UI body — buttons, list rows, settings labels.</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">meta · 14 / 1.5<br>sans · 400</div><div class="sg-type-row__sample" style="font-family: var(--am-font-sans); font-size: 14px; color: var(--am-ink-3);">Secondary metadata, sidebar items, table cells.</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">small · 13 / 1.5<br>sans · 500</div><div class="sg-type-row__sample" style="font-family: var(--am-font-sans); font-size: 13px; color: var(--am-ink-4);">Captions, due dates, tertiary labels.</div></div>
+            <div class="sg-type-row"><div class="sg-type-row__meta">tag · 11 / 1.4<br>sans · 600 caps</div><div class="sg-type-row__sample" style="font-family: var(--am-font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--am-ink-5);">Eyebrow · Section · Tag</div></div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Pairing<small>Serif body, sans metadata.</small></div>
+        <div class="sg-block__demo">
+            <h3 style="font-family: var(--am-font-serif); font-size: 22px; font-weight: 700; color: var(--am-ink); margin: 0 0 var(--am-sp-1);">Heading set in Source Serif 4</h3>
+            <p style="font-family: var(--am-font-sans); font-size: var(--am-fs-small); color: var(--am-ink-5); margin: 0 0 var(--am-sp-3);">2026-04-15 · gemma4:26b · metformin_smoke_test</p>
+            <p style="font-family: var(--am-font-serif); font-size: var(--am-fs-prose); line-height: var(--am-lh-prose); color: var(--am-ink-2); max-width: 60ch;">Body prose runs in the serif at 19 pixels. Long lines breathe. The sans-serif metadata above carries date, model, and run identifier — short, factual, never decorative.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ── 3. DOCUMENT ─────────────────────────────────────────────── -->
+<section class="sg-section" id="document">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 03 — Document</div>
+        <div>
+            <h2 class="sg-section__title">Document (typeset)</h2>
+            <p class="sg-section__intro">The <code class="am-mono">.typeset-*</code> family. This is the centre of gravity — reading view, assistant prose, and report exports all use these rules. Carried over from the original CSS, token-mapped, dark-mode aware.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Callout — opening verdict</div>
+        <div class="sg-block__demo">
+            <aside class="typeset-callout"><p>The evidence is mixed, showing reduced mortality in some populations but no significant effect on major cardiovascular events in others.</p></aside>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Callout — tone variants</div>
+        <div class="sg-block__demo">
+            <div class="sg-col">
+                <aside class="typeset-callout tone-info"><p><strong>Note.</strong> The 2024 update reorganised the cohort definition. Earlier figures are not directly comparable.</p></aside>
+                <aside class="typeset-callout tone-warning"><p><strong>Heads-up.</strong> Sample size is small (n = 41); take effect-size estimates with caution.</p></aside>
+                <aside class="typeset-callout tone-success"><p><strong>Confirmed.</strong> Verification passed on all six checks.</p></aside>
+                <aside class="typeset-callout tone-note"><p>A neutral aside the reader can skip without losing the thread of the paragraph.</p></aside>
+                <aside class="typeset-callout tone-quote"><p>The intervention &ldquo;may produce a small but durable reduction in HbA1c&rdquo; — though the authors qualify the claim heavily.</p></aside>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Items — label/value pairs</div>
+        <div class="sg-block__demo">
+            <div class="typeset-items variant-pairs">
+                <div class="typeset-item"><div class="typeset-item-label">What was studied?</div><div class="typeset-item-body">Metformin's effect on cardiovascular mortality in type 2 diabetes.</div></div>
+                <div class="typeset-item"><div class="typeset-item-label">What did we find?</div><div class="typeset-item-body">Mixed evidence — reduced mortality in some populations, no significant effect on MACE in others.</div></div>
+                <div class="typeset-item"><div class="typeset-item-label">How confident?</div><div class="typeset-item-body">High (0.88). Posterior P(Y) = 0.0474</div></div>
+                <div class="typeset-item"><div class="typeset-item-label">How thorough?</div><div class="typeset-item-body">37 evidence sources examined, 4/6 verification checks passed.</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Card — finding with badge</div>
+        <div class="sg-block__demo">
+            <div class="typeset-card">
+                <div class="typeset-card-body">
+                    <p>Metformin use is significantly associated with a reduction in both cardiovascular-related mortality and all-cause mortality in individuals with type 2 diabetes or coronary artery disease.</p>
+                    <span class="typeset-badge" data-value="supported">supported</span>
+                    <sup class="typeset-refs">2, 10</sup>
+                </div>
+                <details class="typeset-card-details">
+                    <summary>Details</summary>
+                    <p><strong>Scope:</strong> Patients with type 2 diabetes or coronary artery disease.</p>
+                    <p><strong>Verification:</strong> Scrutiny: pass.</p>
+                </details>
+            </div>
+            <div class="typeset-card">
+                <div class="typeset-card-body">
+                    <p>Metformin use is associated with significantly lower levels of the cardiac biomarker CK-MB compared to non-metformin use.</p>
+                    <span class="typeset-badge" data-value="challenged">challenged</span>
+                </div>
+                <div class="typeset-card-source"><a href="#">https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/</a></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">References</div>
+        <div class="sg-block__demo">
+            <div class="typeset-reference">
+                <div class="typeset-ref-number">1.</div>
+                <div class="typeset-ref-content">
+                    <div class="typeset-ref-body">The meta-analysis reports a statistically significant reduction in pooled CK-MB levels (SMD -0.15, P = 0.04) for metformin use compared to non-metformin use.</div>
+                    <span class="typeset-badge" data-value="supports">supports</span>
+                    <div class="typeset-ref-source"><a href="#">link.springer.com/article/10.1186/s12933-019-0900-7</a></div>
+                </div>
+            </div>
+            <div class="typeset-reference">
+                <div class="typeset-ref-number">2.</div>
+                <div class="typeset-ref-content">
+                    <div class="typeset-ref-body">The meta-analysis found that metformin use was not significantly associated with a reduced risk of major cardiovascular events in patients with type 2 diabetes.</div>
+                    <span class="typeset-badge" data-value="contradicts">contradicts</span>
+                    <div class="typeset-ref-source"><a href="#">pmc.ncbi.nlm.nih.gov/articles/PMC9539433/</a></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Sidebar — footnote grid</div>
+        <div class="sg-block__demo">
+            <aside class="typeset-aside typeset-sidebar">
+                <div class="typeset-sidebar-group">
+                    <div class="typeset-sidebar-title">Investigation</div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Evidence items</span><span class="typeset-sidebar-value">37</span></div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Claims</span><span class="typeset-sidebar-value">2</span></div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Uncertainties</span><span class="typeset-sidebar-value">9</span></div>
+                </div>
+                <div class="typeset-sidebar-group">
+                    <div class="typeset-sidebar-title">Confidence</div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Score</span><span class="typeset-sidebar-value">0.88 HIGH</span></div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Posterior P(Y)</span><span class="typeset-sidebar-value">0.047</span></div>
+                </div>
+                <div class="typeset-sidebar-group">
+                    <div class="typeset-sidebar-title">Model</div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">LLM</span><span class="typeset-sidebar-value">gemma4:26b</span></div>
+                    <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Embeddings</span><span class="typeset-sidebar-value">embeddinggemma</span></div>
+                </div>
+            </aside>
+        </div>
+    </div>
+</section>
+
+<!-- ── 4. BUTTONS ─────────────────────────────────────────────── -->
+<section class="sg-section" id="buttons">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 04 — Buttons &amp; chips</div>
+        <div>
+            <h2 class="sg-section__title">Buttons &amp; chips</h2>
+            <p class="sg-section__intro">Buttons are flat, hairline-bordered, never gradient. Primary is solid ink, default is paper with a single hairline. Chips are softer — a tag of behaviour, not a commitment.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Buttons<small>Primary, default, ghost, danger.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <button class="am-btn am-btn--primary">Add Task</button>
+                <button class="am-btn">Cancel</button>
+                <button class="am-btn am-btn--ghost">View details</button>
+                <button class="am-btn am-btn--danger">Delete</button>
+                <button class="am-btn" disabled>Disabled</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Sizes</div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <button class="am-btn am-btn--primary am-btn--sm">Small</button>
+                <button class="am-btn am-btn--primary">Default</button>
+                <button class="am-btn am-btn--primary am-btn--lg">Large</button>
+                <button class="am-btn am-btn--icon" aria-label="add">+</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Chips</div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <button class="am-chip is-active">All Active</button>
+                <button class="am-chip">Inbox</button>
+                <button class="am-chip">To Do</button>
+                <button class="am-chip">In Progress</button>
+                <button class="am-chip">Waiting</button>
+                <button class="am-chip">Completed</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 5. INPUTS ─────────────────────────────────────────────── -->
+<section class="sg-section" id="inputs">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 05 — Inputs &amp; forms</div>
+        <div>
+            <h2 class="sg-section__title">Inputs &amp; forms</h2>
+            <p class="sg-section__intro">Inputs sit on paper with a single hairline border. Focus pulls the brown link colour and a soft aura — the same colour the system reserves for &ldquo;you are touching this thing&rdquo;.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Text input</div>
+        <div class="sg-block__demo" style="max-width: 480px;">
+            <label class="am-label" for="t1">Task title</label>
+            <input id="t1" class="am-input" type="text" placeholder="What needs doing?">
+            <div class="am-help">Press <code class="am-mono">⌘ ↵</code> to add and start another.</div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Search</div>
+        <div class="sg-block__demo" style="max-width: 480px;">
+            <div class="am-search">
+                <svg class="am-search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/></svg>
+                <input class="am-input" type="search" placeholder="Search tasks…">
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Textarea</div>
+        <div class="sg-block__demo" style="max-width: 600px;">
+            <label class="am-label" for="t2">Notes</label>
+            <textarea id="t2" class="am-textarea" placeholder="Add a longer note…"></textarea>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Select</div>
+        <div class="sg-block__demo" style="max-width: 320px;">
+            <label class="am-label" for="t3">Group by</label>
+            <select id="t3" class="am-select">
+                <option>None</option>
+                <option>Project</option>
+                <option>Due date</option>
+                <option>Priority</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Checkbox &amp; radio<small>Wrap the <code>&lt;input&gt;</code> + label in <code>.am-checkbox-row</code>.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-col">
+                <label class="am-checkbox-row">
+                    <input class="am-checkbox" type="checkbox">
+                    System
+                </label>
+                <label class="am-checkbox-row">
+                    <input class="am-checkbox" type="checkbox" checked>
+                    Include archived documents
+                </label>
+                <label class="am-checkbox-row is-disabled">
+                    <input class="am-checkbox" type="checkbox" disabled>
+                    Disabled
+                </label>
+                <div style="display: flex; gap: 16px;">
+                    <label class="am-checkbox-row">
+                        <input class="am-radio" type="radio" name="ex-kind" checked>
+                        All kinds
+                    </label>
+                    <label class="am-checkbox-row">
+                        <input class="am-radio" type="radio" name="ex-kind">
+                        Research
+                    </label>
+                    <label class="am-checkbox-row">
+                        <input class="am-radio" type="radio" name="ex-kind">
+                        Tasks
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 6. BADGES ─────────────────────────────────────────────── -->
+<section class="sg-section" id="badges">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 06 — Badges &amp; status</div>
+        <div>
+            <h2 class="sg-section__title">Badges &amp; status</h2>
+            <p class="sg-section__intro">Tiny, uppercase, tracked. Badges classify; dots indicate. Both inherit from the semantic palette.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Document badges<small>For finding cards / evidence rows.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <span class="typeset-badge" data-value="supports">supports</span>
+                <span class="typeset-badge" data-value="supported">supported</span>
+                <span class="typeset-badge" data-value="contradicts">contradicts</span>
+                <span class="typeset-badge" data-value="challenged">challenged</span>
+                <span class="typeset-badge">neutral</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">UI badges</div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <span class="am-badge am-badge--info">info</span>
+                <span class="am-badge am-badge--success">success</span>
+                <span class="am-badge am-badge--warn">warn</span>
+                <span class="am-badge am-badge--danger">danger</span>
+                <span class="am-badge am-badge--note">note</span>
+                <span class="am-badge">default</span>
+                <span class="am-badge am-badge--outline">outline</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Dots<small>For inline status, sidebar nav, list-row indicators.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <span class="am-dot am-dot--info"></span> <span class="am-meta">queued</span>
+                <span class="am-dot am-dot--success" style="margin-left:16px;"></span> <span class="am-meta">running</span>
+                <span class="am-dot am-dot--warn" style="margin-left:16px;"></span> <span class="am-meta">attention</span>
+                <span class="am-dot am-dot--danger" style="margin-left:16px;"></span> <span class="am-meta">failed</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Tags<small>Removable classifiers on content rows. Different from chips — chips select filters; tags label content.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-col">
+                <div class="am-tags">
+                    <span class="am-tag">Raúl Castro <button class="am-tag__close" aria-label="Remove">×</button></span>
+                    <span class="am-tag">Trump <button class="am-tag__close" aria-label="Remove">×</button></span>
+                    <span class="am-tag">Ollama <button class="am-tag__close" aria-label="Remove">×</button></span>
+                    <button class="am-tag-add" aria-label="Add tag">+</button>
+                </div>
+                <div class="am-tags">
+                    <span class="am-tag am-tag--info">research</span>
+                    <span class="am-tag am-tag--warn">draft</span>
+                    <span class="am-tag am-tag--success">verified</span>
+                    <span class="am-tag am-tag--danger">retracted</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 7. CARDS & LISTS ─────────────────────────────────────────────── -->
+<section class="sg-section" id="cards">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 07 — Cards &amp; lists</div>
+        <div>
+            <h2 class="sg-section__title">Cards &amp; lists</h2>
+            <p class="sg-section__intro">Cards are bordered and quiet. Lists are hairline-separated rows on paper. Andamentum strongly prefers a single hairline to a drop-shadow.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Card<small>Default + quiet variant.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-grid-2">
+                <div class="am-card">
+                    <div class="am-card__eyebrow">Document · 2026-04-15</div>
+                    <h3 class="am-card__title">What does the published literature say about metformin and cardiovascular mortality?</h3>
+                    <p class="am-card__body">Mixed evidence — reduced mortality in some populations, no significant effect on MACE in others. 37 sources examined, 0 of 2 claims established.</p>
+                    <div class="am-card__footer">
+                        <span class="am-badge am-badge--warn">CHALLENGED</span>
+                        <span>15 sources</span>
+                        <span style="margin-left:auto;">2 findings</span>
+                    </div>
+                </div>
+                <div class="am-card am-card--quiet">
+                    <div class="am-card__eyebrow">Action · running</div>
+                    <h3 class="am-card__title">Morning brief — world news survey</h3>
+                    <p class="am-card__body">Surveys CNN, BBC World, Reuters every weekday at 06:00 AWST. Last run: 14 minutes ago.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">List<small>Generic hairline-separated rows.</small></div>
+        <div class="sg-block__demo">
+            <div class="am-list am-list--bordered">
+                <div class="am-row">
+                    <div class="am-row__main">
+                        <div class="am-row__title">DUF / DMYTR — return sequence selection</div>
+                        <div class="am-row__meta">Research · updated yesterday</div>
+                    </div>
+                    <div class="am-row__aside">2026-05-13</div>
+                </div>
+                <div class="am-row">
+                    <div class="am-row__main">
+                        <div class="am-row__title">Large-scale epistemic benchmarks &gt; 100 cases on DUG</div>
+                        <div class="am-row__meta">In progress · 4 sub-tasks</div>
+                    </div>
+                    <div class="am-row__aside">—</div>
+                </div>
+                <div class="am-row">
+                    <div class="am-row__main">
+                        <div class="am-row__title">Finance App — Fiscus</div>
+                        <div class="am-row__meta">Project · 1/1 task</div>
+                    </div>
+                    <div class="am-row__aside">2026-05-20</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 8. CHAT ─────────────────────────────────────────────── -->
+<section class="sg-section" id="chat">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 08 — Chat &amp; instrumentation</div>
+        <div>
+            <h2 class="sg-section__title">Chat &amp; tool log</h2>
+            <p class="sg-section__intro">The user speaks in short bubbles; the assistant replies in typeset prose. Tool calls collapse behind a quiet disclosure. The router reasons in italic.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">User · assistant exchange</div>
+        <div class="sg-block__demo">
+            <div class="am-chat" style="padding: 0;">
+                <div class="am-chat__turn">
+                    <div class="am-chat__msg am-chat__msg--user">Can you do a survey of news stories on CNN and BBC News (world edition)?</div>
+                </div>
+                <div class="am-chat__turn">
+                    <details class="am-toollog">
+                        <summary class="am-toollog__summary">Tools used · Router: research · 2 calls</summary>
+                        <div class="am-toollog__body">
+                            <div class="am-toollog__entry"><span class="am-toollog__entry__name">brain_search</span><span class="am-toollog__entry__args">({"query":"news stories on CNN and BBC News world edition survey"})</span></div>
+                            <div class="am-toollog__entry"><span class="am-toollog__ok">→</span> <span class="am-toollog__entry__result">[b9a620d7-d3e0-4fb0-957f-807bd3d32dc3] Ollama news | {'record_type': 'action', 'status': 'done'}</span></div>
+                            <div class="am-toollog__entry"><span class="am-toollog__entry__name">ask_user</span><span class="am-toollog__entry__args">({"question":"What time window should the survey cover?"})</span></div>
+                        </div>
+                    </details>
+
+                    <div class="am-router" style="margin-top: var(--am-sp-2);">
+                        <span class="am-router__label">Router selected:</span>
+                        <span>research</span>
+                        <span class="am-router__reason">— the request asks for a survey of news stories from specific sources, which requires external research and synthesis.</span>
+                    </div>
+
+                    <div class="am-chat__msg am-chat__msg--assistant" style="margin-top: var(--am-sp-4);">
+                        <p>Here's a concise survey of the main stories on <strong>CNN</strong> and <strong>BBC News World edition</strong> over the past 24 hours.</p>
+                        <h3>Overall takeaway</h3>
+                        <p>Both outlets covered a similar cluster of fast-moving international stories, but they differed in emphasis:</p>
+                        <ul>
+                            <li><strong>CNN</strong> leaned more toward U.S.-centred geopolitics, especially Cuba, Iran, China, and Israel-Gaza.</li>
+                            <li><strong>BBC World</strong> spread attention more broadly across Europe, the UK, global incidents, and BBC Verify analysis.</li>
+                        </ul>
+                    </div>
+
+                    <div class="am-artefacts" style="margin-top: var(--am-sp-4);">
+                        <div class="am-artefacts__header">
+                            <span class="am-artefacts__header__icon">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4.5 6 9.5a2 2 0 1 0 2.8 2.8L13.5 7a3.5 3.5 0 1 0-5-5L3 7.5"/></svg>
+                            </span>
+                            1 document created
+                        </div>
+                        <div class="am-artefacts__list">
+                            <a class="am-artefacts__row" href="#">
+                                <span class="am-artefacts__row__icon">
+                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h6l3 3v9H4z"/><path d="M10 2v3h3"/></svg>
+                                </span>
+                                <span class="am-artefacts__row__title">Research: Survey of major news stories on CNN and BBC News World edition in the past 24 hours. Summarize the m…</span>
+                                <span class="am-artefacts__row__tag">research</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="am-thinking" style="margin-top: var(--am-sp-4);">
+                        <span class="am-thinking__dots"><span class="am-thinking__dot"></span><span class="am-thinking__dot"></span><span class="am-thinking__dot"></span></span>
+                        <span>thinking…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Composer</div>
+        <div class="sg-block__demo">
+            <div class="am-composer" style="border: var(--am-hair) solid var(--am-rule); border-radius: var(--am-rad-3);">
+                <div class="am-composer__row">
+                    <button class="am-btn am-btn--icon" aria-label="Attach" title="Attach">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3 3 0 1 1 4 4l-9 9a1 1 0 1 1-1-1l8-8"/></svg>
+                    </button>
+                    <textarea class="am-composer__input" rows="1" placeholder="Ask anything…"></textarea>
+                    <button class="am-btn am-btn--icon" aria-label="Send" style="color: var(--am-ink);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 9. OVERLAYS ─────────────────────────────────────────────── -->
+<section class="sg-section" id="overlays">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 09 — Overlays</div>
+        <div>
+            <h2 class="sg-section__title">Modals &amp; toasts</h2>
+            <p class="sg-section__intro">Modals carry the deepest shadow andamentum uses — and even that is restrained. Toasts are paper-coloured with no left bar; the title alone takes the tone, so the toast pile sits quietly until you read it.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Modal</div>
+        <div class="sg-block__demo">
+            <div class="sg-modal-inline">
+                <div class="am-modal" style="position: static;">
+                    <div class="am-modal__header">
+                        <div class="am-modal__title">New task</div>
+                        <button class="am-modal__close" aria-label="Close">×</button>
+                    </div>
+                    <div class="am-modal__body">
+                        <label class="am-label" for="m1">Title</label>
+                        <input id="m1" class="am-input" type="text" placeholder="What needs doing?">
+                        <div style="height: var(--am-sp-4);"></div>
+                        <label class="am-label" for="m2">Project</label>
+                        <select id="m2" class="am-select">
+                            <option>NHMRC Investigator</option>
+                            <option>CAGE</option>
+                            <option>Kaligin Manuscript 35</option>
+                        </select>
+                    </div>
+                    <div class="am-modal__footer">
+                        <button class="am-btn am-btn--ghost">Cancel</button>
+                        <button class="am-btn am-btn--primary">Create task</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Toasts</div>
+        <div class="sg-block__demo">
+            <div class="sg-col">
+                <div class="am-toast am-toast--success"><div><div class="am-toast__title">Task created</div><div class="am-toast__body">&ldquo;Read Pierce 2nd article&rdquo; added to Research.</div></div></div>
+                <div class="am-toast am-toast--info"><div><div class="am-toast__title">Sync complete</div><div class="am-toast__body">12 documents indexed, 3 updated.</div></div></div>
+                <div class="am-toast am-toast--warn"><div><div class="am-toast__title">Action skipped</div><div class="am-toast__body">Morning brief was paused — last 2 runs failed.</div></div></div>
+                <div class="am-toast am-toast--danger"><div><div class="am-toast__title">Source unreachable</div><div class="am-toast__body">bbc.com/news returned 503. Will retry in 10m.</div></div></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 10. EMPTY & PROGRESS ─────────────────────────────────────────────── -->
+<section class="sg-section" id="empty">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 10 — Empty &amp; progress</div>
+        <div>
+            <h2 class="sg-section__title">Empty states &amp; progress</h2>
+            <p class="sg-section__intro">An empty state is a small invitation, not a billboard. Progress bars run in quiet ink-grey by default; only the <code class="am-mono">--danger</code> variant takes colour, and only when the progress represents something genuinely failing.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Empty state</div>
+        <div class="sg-block__demo">
+            <div class="am-card" style="padding: 0;">
+                <div class="am-empty">
+                    <div class="am-empty__mark">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                    </div>
+                    <h3 class="am-empty__title">No tasks here yet</h3>
+                    <p class="am-empty__hint">Add a task above, or drag one from another project. Tasks added here are filed under &ldquo;Research&rdquo;.</p>
+                    <button class="am-btn am-btn--primary">Add task</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Progress</div>
+        <div class="sg-block__demo" style="max-width: 360px;">
+            <div class="sg-col">
+                <div>
+                    <div class="am-meta" style="margin-bottom:6px;">Indexing documents <span style="float:right; font-variant-numeric: tabular-nums;">62%</span></div>
+                    <div class="am-progress"><div class="am-progress__bar" style="width: 62%;"></div></div>
+                </div>
+                <div>
+                    <div class="am-meta" style="margin-bottom:6px;">Sync — 4/12 failed <span style="float:right; font-variant-numeric: tabular-nums;">89%</span></div>
+                    <div class="am-progress am-progress--danger"><div class="am-progress__bar" style="width: 89%;"></div></div>
+                </div>
+                <div>
+                    <div class="am-meta" style="margin-bottom:6px;">Reviews (3 / 4)</div>
+                    <div class="am-progress am-progress--thin"><div class="am-progress__bar" style="width: 75%;"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 11. SPECIALISED ROWS ─────────────────────────────────────── -->
+<section class="sg-section" id="rows">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 11 — Specialised rows</div>
+        <div>
+            <h2 class="sg-section__title">Specialised rows</h2>
+            <p class="sg-section__intro">Tasks, scheduled actions, watched sources, settings panels. These aren't generic chrome — they're patterns common to productivity, automation, and knowledge-management apps. Each gets a shared rhythm: hairline below, status on the left, meta on the right, no shadows.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Task status family<small>The six statuses your app uses, in the andamentum palette.</small></div>
+        <div class="sg-block__demo">
+            <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--am-sp-2); border: var(--am-hair) solid var(--am-rule-3); border-radius: var(--am-rad-3); overflow: hidden;">
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: var(--am-hair) solid var(--am-rule-2);">
+                    <div class="am-task__check is-inbox" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">Inbox</div>
+                </div>
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: var(--am-hair) solid var(--am-rule-2);">
+                    <div class="am-task__check is-todo" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">To Do</div>
+                </div>
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: var(--am-hair) solid var(--am-rule-2);">
+                    <div class="am-task__check is-progress" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">In Progress</div>
+                </div>
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: var(--am-hair) solid var(--am-rule-2);">
+                    <div class="am-task__check is-waiting" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">Waiting</div>
+                </div>
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: var(--am-hair) solid var(--am-rule-2);">
+                    <div class="am-task__check is-done" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">Done</div>
+                </div>
+                <div style="padding: var(--am-sp-4) var(--am-sp-2); display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                    <div class="am-task__check is-cancelled" style="width: 20px; height: 20px;"></div>
+                    <div class="am-meta" style="font-weight: 600; color: var(--am-ink-2);">Cancelled</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Task rows<small>All six statuses in a list.</small></div>
+        <div class="sg-block__demo">
+            <div class="am-list am-list--bordered">
+                <div class="am-task"><div class="am-task__check is-inbox"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Inbox — raw capture from a meeting</div></div></div>
+                <div class="am-task"><div class="am-task__check is-todo"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Read Pierce 2nd article</div><div class="am-task__sub"><span class="am-task__due">2026-05-22</span></div></div></div>
+                <div class="am-task"><div class="am-task__check is-progress"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">DUF / DMYTR — return sequence selection</div></div></div>
+                <div class="am-task"><div class="am-task__check is-progress"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Large scale epistemic benchmarks &gt; 100 cases on DUG</div></div></div>
+                <div class="am-task"><div class="am-task__check"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">ASO work for May and Steve</div><div class="am-task__sub"><span class="am-task__due is-soon">2026-05-20</span></div></div></div>
+                <div class="am-task"><div class="am-task__check is-waiting"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Adjunct appointment — full?</div></div></div>
+                <div class="am-task"><div class="am-task__check"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Read Pierce 2nd article</div><div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-13</span></div></div></div>
+                <div class="am-task"><div class="am-task__check is-done"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Manuscript draft (with andamentum + whetstone)</div><div class="am-task__sub"><span class="am-task__due">2026-05-08</span></div></div></div>
+                <div class="am-task is-cancelled"><div class="am-task__check is-cancelled"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Old plan for the Q4 review</div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Action rows<small>Scheduled actions.</small></div>
+        <div class="sg-block__demo">
+            <div class="am-list am-list--bordered">
+                <div class="am-action-row"><span class="am-dot am-dot--success"></span><div class="am-action-row__title">Morning brief — world news</div><div class="am-action-row__sched">daily · 06:00 AWST</div><span class="am-badge am-badge--success">RUNNING</span></div>
+                <div class="am-action-row"><span class="am-dot am-dot--warn"></span><div class="am-action-row__title">Literature watch — type-2 diabetes</div><div class="am-action-row__sched">weekly · Mon 09:00</div><span class="am-badge am-badge--warn">PAUSED</span></div>
+                <div class="am-action-row"><span class="am-dot"></span><div class="am-action-row__title">CV refresh from arXiv</div><div class="am-action-row__sched">monthly</div><span class="am-badge">IDLE</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Source rows<small>Watched feeds / pages.</small></div>
+        <div class="sg-block__demo">
+            <div class="am-list am-list--bordered">
+                <div class="am-source-row"><span class="am-source-row__favicon">B</span><div class="am-source-row__main"><div class="am-source-row__title">BBC News — World</div><div class="am-source-row__url">bbc.com/news/world</div></div><span class="am-meta">12 today</span></div>
+                <div class="am-source-row"><span class="am-source-row__favicon">C</span><div class="am-source-row__main"><div class="am-source-row__title">CNN — International</div><div class="am-source-row__url">edition.cnn.com/world</div></div><span class="am-meta">17 today</span></div>
+                <div class="am-source-row"><span class="am-source-row__favicon">A</span><div class="am-source-row__main"><div class="am-source-row__title">arXiv stat.ME</div><div class="am-source-row__url">arxiv.org/list/stat.ME</div></div><span class="am-meta">3 today</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Settings</div>
+        <div class="sg-block__demo">
+            <div class="am-card" style="padding: 0;">
+                <div class="am-settings-section">
+                    <h3 class="am-settings-section__title">Daily routine</h3>
+                    <p class="am-settings-section__intro">Controls when the daily briefing is generated and how the morning queue is built.</p>
+                    <div class="am-settings-row">
+                        <div>
+                            <div class="am-settings-row__label">Wake time</div>
+                            <div class="am-settings-row__help">The time the morning brief is generated and queued in your inbox.</div>
+                        </div>
+                        <div><input class="am-input" type="time" value="06:00"></div>
+                    </div>
+                    <div class="am-settings-row">
+                        <div>
+                            <div class="am-settings-row__label">Default LLM</div>
+                            <div class="am-settings-row__help">Used when no per-action override is set.</div>
+                        </div>
+                        <div>
+                            <select class="am-select">
+                                <option>gemma4:26b</option>
+                                <option>claude-haiku-4.5</option>
+                                <option>gpt-5.4-mini</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── 12. APP CHROME ─────────────────────────────────────────────── -->
+<section class="sg-section" id="chrome">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 12 — App chrome</div>
+        <div>
+            <h2 class="sg-section__title">App chrome</h2>
+            <p class="sg-section__intro">Header with title and top-level tabs; left rail with stats, filters, projects, areas; main area for content. A fully built worked example lives in <a href="brain-mockup.html" class="typeset-callout" style="all: revert; color: var(--am-link); text-decoration: underline; text-decoration-color: var(--am-link-rule);">brain-mockup.html</a>.</p>
+        </div>
+    </div>
+
+    <div class="sg-frame">
+        <div class="am-app-header">
+            <div class="am-app-title">
+                <span class="am-app-title__mark">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 4c-2 0-3 1.5-3 3 0 1-1 1-1.5 1.5C4 9 4 11 5 11.5c0 1 0 2 1 2.5 0 1 .5 2 2 2 0 1 1 2 2 2 0-7 0-13-1-14Z"/><path d="M15 4c2 0 3 1.5 3 3 0 1 1 1 1.5 1.5C20 9 20 11 19 11.5c0 1 0 2-1 2.5 0 1-.5 2-2 2 0 1-1 2-2 2 0-7 0-13 1-14Z"/></svg>
+                </span>
+                <span>Brain</span>
+            </div>
+            <nav class="am-tabs">
+                <button class="am-tab is-active">Work</button>
+                <button class="am-tab">Browse</button>
+                <button class="am-tab">Actions</button>
+            </nav>
+            <div class="am-app-header__right">
+                <span>gpt-5.4-mini</span>
+                <button class="am-btn am-btn--icon" aria-label="New">+</button>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 220px 1fr; min-height: 360px;">
+            <aside class="am-sidebar" style="height: auto;">
+                <div class="am-sidebar__section">
+                    <div class="am-sidebar__title">Stats</div>
+                    <div class="am-stats">
+                        <div class="am-stat"><div class="am-stat__value">10</div><div class="am-stat__label">Active</div></div>
+                        <div class="am-stat"><div class="am-stat__value is-danger">4</div><div class="am-stat__label">Overdue</div></div>
+                    </div>
+                </div>
+                <div class="am-sidebar__section">
+                    <div class="am-sidebar__title">Filter</div>
+                    <div class="am-sidebar__item is-active">All Active</div>
+                    <div class="am-sidebar__item">Inbox</div>
+                    <div class="am-sidebar__item">To Do</div>
+                    <div class="am-sidebar__item">In Progress</div>
+                    <div class="am-sidebar__item">Waiting</div>
+                    <div class="am-sidebar__item">Completed</div>
+                </div>
+                <div class="am-sidebar__section">
+                    <div class="am-sidebar__title">Projects</div>
+                    <div class="am-nav-row">
+                        <div class="am-nav-row__title">CAGE</div>
+                        <div class="am-nav-row__meta">1/1 tasks</div>
+                        <div class="am-nav-row__progress"><span style="width: 100%;"></span></div>
+                    </div>
+                    <div class="am-nav-row">
+                        <div class="am-nav-row__title">NHMRC Investigator</div>
+                        <div class="am-nav-row__meta">0/1 tasks</div>
+                        <div class="am-nav-row__progress"><span style="width: 0%;"></span></div>
+                    </div>
+                    <div class="am-nav-row">
+                        <div class="am-nav-row__title">Kaligin Manuscript 35</div>
+                        <div class="am-nav-row__meta">1/2 tasks</div>
+                        <div class="am-nav-row__progress"><span style="width: 50%;"></span></div>
+                    </div>
+                </div>
+            </aside>
+            <main style="padding: var(--am-sp-5) var(--am-sp-6);">
+                <div style="display: flex; align-items: center; gap: var(--am-sp-3); margin-bottom: var(--am-sp-4);">
+                    <div class="am-search" style="flex: 1; max-width: 320px;">
+                        <svg class="am-search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/></svg>
+                        <input class="am-input" type="search" placeholder="Search tasks…">
+                    </div>
+                    <select class="am-select" style="width: 140px;"><option>Group: none</option></select>
+                    <button class="am-btn am-btn--primary">+ Add Task</button>
+                </div>
+                <div class="am-list am-list--bordered">
+                    <div class="am-task"><div class="am-task__check is-progress"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">DUF / DMYTR — return sequence selection</div></div></div>
+                    <div class="am-task"><div class="am-task__check is-progress"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Large scale epistemic benchmarks &gt; 100 cases on DUG</div></div></div>
+                    <div class="am-task"><div class="am-task__check"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Read Pierce 2nd article</div><div class="am-task__sub"><span class="am-task__due is-overdue">2026-05-13</span></div></div></div>
+                    <div class="am-task"><div class="am-task__check is-done"></div><div class="am-task__handle">≡</div><div class="am-task__main"><div class="am-task__title">Manuscript draft (with andamentum + whetstone)</div></div></div>
+                </div>
+            </main>
+        </div>
+    </div>
+</section>
+
+<!-- ── 13. ADDITIONAL PATTERNS ─────────────────────────────────────── -->
+<section class="sg-section" id="more">
+    <div class="sg-section__head">
+        <div class="sg-section__num">§ 13 — Additional patterns</div>
+        <div>
+            <h2 class="sg-section__title">Additional patterns</h2>
+            <p class="sg-section__intro">Tooltip, dropdown, avatar, keyboard shortcut, toggle, form validation states, in-page sub-tabs, pagination, timeline, stepper, footnote / margin-note. Smaller patterns most apps need at some point.</p>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Tooltip<small>Default is dark on light. Variant <code>--paper</code> for paper-on-paper.</small></div>
+        <div class="sg-block__demo">
+            <div style="position: relative; display: inline-flex; gap: 24px; padding: 24px 0;">
+                <button class="am-btn">Hover-style</button>
+                <div class="am-tooltip" style="position: static;">Saved automatically every 30 seconds.</div>
+                <div class="am-tooltip am-tooltip--paper" style="position: static;">Paper variant. Pairs with focus rings, not hover.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Dropdown menu<small>Generic popover list. Position via JS; styling only here.</small></div>
+        <div class="sg-block__demo">
+            <div class="am-menu" style="position: static; display: inline-block; max-width: 240px;">
+                <div class="am-menu__group">
+                    <button class="am-menu__item">
+                        <span class="am-menu__item__icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg></span>
+                        New document
+                        <span class="am-menu__item__shortcut">⌘N</span>
+                    </button>
+                    <button class="am-menu__item">
+                        <span class="am-menu__item__icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M3 8h10M3 12h6"/></svg></span>
+                        New from template
+                        <span class="am-menu__item__shortcut">⌘⇧N</span>
+                    </button>
+                </div>
+                <div class="am-menu__group">
+                    <div class="am-menu__label">Document</div>
+                    <button class="am-menu__item">Rename</button>
+                    <button class="am-menu__item">Duplicate</button>
+                    <button class="am-menu__item">Export…</button>
+                </div>
+                <div class="am-menu__group">
+                    <button class="am-menu__item is-danger">
+                        <span class="am-menu__item__icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6 4V2.5h4V4M5 4l1 9h4l1-9"/></svg></span>
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Avatar<small>Initials in serif. Sizes <code>--sm</code> / default / <code>--lg</code>.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-row">
+                <span class="am-avatar am-avatar--sm">JS</span>
+                <span class="am-avatar">JS</span>
+                <span class="am-avatar am-avatar--lg">JS</span>
+                <span class="am-avatar" style="background: var(--am-info-bg); color: var(--am-info-ink); border-color: transparent;">RN</span>
+                <span class="am-avatar" style="background: var(--am-success-bg); color: var(--am-success-ink); border-color: transparent;">MK</span>
+                <span class="am-avatar" style="background: var(--am-warn-bg); color: var(--am-warn-ink); border-color: transparent;">SP</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Keyboard shortcut<small><code>.am-kbd</code> — small mono pill.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-row" style="font-family: var(--am-font-sans); font-size: var(--am-fs-meta); color: var(--am-ink-3);">
+                Open command palette <span class="am-kbd">⌘ K</span>
+                <span style="margin-left: 24px;">Save</span> <span class="am-kbd">⌘ S</span>
+                <span style="margin-left: 24px;">Submit</span> <span class="am-kbd">⌘ ↵</span>
+                <span style="margin-left: 24px;">Search</span> <span class="am-kbd">/</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Toggle switch<small>For binary settings that need a glanceable on/off.</small></div>
+        <div class="sg-block__demo">
+            <div class="sg-col">
+                <label class="am-checkbox-row">
+                    <input class="am-toggle" type="checkbox" checked>
+                    Daily briefing
+                </label>
+                <label class="am-checkbox-row">
+                    <input class="am-toggle" type="checkbox">
+                    Send notifications to email
+                </label>
+                <label class="am-checkbox-row is-disabled">
+                    <input class="am-toggle" type="checkbox" disabled checked>
+                    Auto-archive completed (disabled)
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Form validation<small><code>.is-error</code> / <code>.is-warn</code> on inputs; <code>.am-help--*</code> for messages.</small></div>
+        <div class="sg-block__demo" style="max-width: 480px;">
+            <div class="sg-col">
+                <div>
+                    <label class="am-label" for="ve1">Project title</label>
+                    <input id="ve1" class="am-input is-error" type="text" value="">
+                    <div class="am-help am-help--error">Required — give the project a short name.</div>
+                </div>
+                <div>
+                    <label class="am-label" for="ve2">Deadline</label>
+                    <input id="ve2" class="am-input is-warn" type="date" value="2025-01-01">
+                    <div class="am-help am-help--warn">This date is in the past.</div>
+                </div>
+                <div>
+                    <label class="am-label" for="ve3">URL</label>
+                    <input id="ve3" class="am-input" type="url" value="https://example.com">
+                    <div class="am-help am-help--success">Reachable. Last checked 2 minutes ago.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">In-page sub-tabs<small><code>.am-tabs--sub</code> — underline-only active state.</small></div>
+        <div class="sg-block__demo">
+            <nav class="am-tabs am-tabs--sub">
+                <button class="am-tab is-active">Findings</button>
+                <button class="am-tab">Sources</button>
+                <button class="am-tab">Methodology</button>
+                <button class="am-tab">Discussion</button>
+            </nav>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Pagination</div>
+        <div class="sg-block__demo">
+            <nav class="am-pagination" aria-label="Pagination">
+                <button disabled aria-label="Previous">‹</button>
+                <button>1</button>
+                <button>2</button>
+                <button class="is-current" aria-current="page">3</button>
+                <button>4</button>
+                <button>5</button>
+                <span class="am-pagination__gap">…</span>
+                <button>27</button>
+                <button aria-label="Next">›</button>
+            </nav>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Timeline / activity feed</div>
+        <div class="sg-block__demo">
+            <div class="am-timeline">
+                <div class="am-timeline__entry is-current">
+                    <div class="am-timeline__date">2026-05-17 · 14:22</div>
+                    <h4 class="am-timeline__title">Morning briefing generated</h4>
+                    <p class="am-timeline__body">12 sources scanned, 8 stories surfaced, 1 follow-up question queued.</p>
+                </div>
+                <div class="am-timeline__entry is-success">
+                    <div class="am-timeline__date">2026-05-17 · 09:04</div>
+                    <h4 class="am-timeline__title">Manuscript draft marked done</h4>
+                    <p class="am-timeline__body">Closed by user after 6 working sessions over 11 days.</p>
+                </div>
+                <div class="am-timeline__entry is-danger">
+                    <div class="am-timeline__date">2026-05-16 · 21:18</div>
+                    <h4 class="am-timeline__title">Source unreachable — bbc.com/news</h4>
+                    <p class="am-timeline__body">Returned 503 on 4 consecutive retries. Paused for 24h.</p>
+                </div>
+                <div class="am-timeline__entry">
+                    <div class="am-timeline__date">2026-05-16 · 06:00</div>
+                    <h4 class="am-timeline__title">Daily routine started</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Stepper / wizard progress</div>
+        <div class="sg-block__demo">
+            <ol class="am-stepper" style="list-style: none; padding: 0; margin: 0;">
+                <li class="am-stepper__step is-done">
+                    <span class="am-stepper__num">1</span>
+                    <span class="am-stepper__label">Source selection</span>
+                </li>
+                <li class="am-stepper__step is-done">
+                    <span class="am-stepper__num">2</span>
+                    <span class="am-stepper__label">Query &amp; scope</span>
+                </li>
+                <li class="am-stepper__step is-current">
+                    <span class="am-stepper__num">3</span>
+                    <span class="am-stepper__label">Verification</span>
+                </li>
+                <li class="am-stepper__step">
+                    <span class="am-stepper__num">4</span>
+                    <span class="am-stepper__label">Review &amp; publish</span>
+                </li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="sg-block">
+        <div class="sg-block__label">Footnote &amp; margin note<small>Inline marker <code>.typeset-fn</code> + <code>.typeset-footnotes</code>; sidenote <code>.typeset-margin-note</code>.</small></div>
+        <div class="sg-block__demo">
+            <article class="typeset-document" style="padding: 0; max-width: none;">
+                <section class="typeset-prose" style="position: relative;">
+                    <p>This paragraph contains a classic superscript footnote<a href="#fn-1" class="typeset-fn" id="fnref-1">1</a> and, in wide layouts, a marginal note floats beside the column without breaking the line.<aside class="typeset-margin-note">A marginal note. Tufte-style — runs in italic serif, beside the reading column, ignored if you don't want it.</aside> The reading rhythm is preserved either way.</p>
+
+                    <ol class="typeset-footnotes">
+                        <li id="fn-1">A note set in the same body face as the document. Numbered, indented, with a hairline above the list. <a href="#fnref-1">↩</a></li>
+                    </ol>
+                </section>
+            </article>
+        </div>
+    </div>
+</section>
+
+    </div>
+</div>
+
+</main>
+
+<script>
+    // Theme toggle
+    const root = document.documentElement;
+    const buttons = document.querySelectorAll('[data-theme-btn]');
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        buttons.forEach(b => b.classList.toggle('is-active', b.dataset.themeBtn === t));
+        try { localStorage.setItem('andamentum-theme', t); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+    try {
+        const saved = localStorage.getItem('andamentum-theme');
+        if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch (e) {}
+</script>
+</body>
+</html>

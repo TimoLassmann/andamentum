@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — timeline / activity feed</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header { font-family: var(--am-font-sans); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--am-ink-5); padding-bottom: var(--am-sp-3); border-bottom: var(--am-hair) solid var(--am-rule); margin-bottom: var(--am-sp-6); }
+    .snip-header h1 { font-family: var(--am-font-serif); font-size: 22px; font-weight: 700; color: var(--am-ink); margin: 4px 0 0; letter-spacing: -0.2px; text-transform: none; }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+<header class="snip-header">Andamentum · snippet<h1>timeline / activity feed</h1></header>
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+
+<!-- Timeline / activity feed. Each entry can carry a tone class:
+     .is-current / .is-success / .is-warn / .is-danger. -->
+
+<div class="am-timeline">
+
+    <div class="am-timeline__entry is-current">
+        <div class="am-timeline__date">2026-05-17 · 14:22</div>
+        <h4 class="am-timeline__title">Morning briefing generated</h4>
+        <p class="am-timeline__body">12 sources scanned, 8 stories surfaced, 1 follow-up question queued.</p>
+    </div>
+
+    <div class="am-timeline__entry is-success">
+        <div class="am-timeline__date">2026-05-17 · 09:04</div>
+        <h4 class="am-timeline__title">Manuscript draft marked done</h4>
+        <p class="am-timeline__body">Closed by user after 6 working sessions over 11 days.</p>
+    </div>
+
+    <div class="am-timeline__entry is-danger">
+        <div class="am-timeline__date">2026-05-16 · 21:18</div>
+        <h4 class="am-timeline__title">Source unreachable — bbc.com/news</h4>
+        <p class="am-timeline__body">Returned 503 on 4 consecutive retries. Paused for 24h.</p>
+    </div>
+
+    <div class="am-timeline__entry">
+        <div class="am-timeline__date">2026-05-16 · 06:00</div>
+        <h4 class="am-timeline__title">Daily routine started</h4>
+    </div>
+
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+</body>
+</html>

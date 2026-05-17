@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andamentum — modal / dialog</title>
+<link rel="stylesheet" href="../components.css">
+<style>
+    /* Snippet preview wrapper only — not part of the system. */
+    body { padding: 48px 32px; max-width: 880px; margin: 0 auto; }
+    .snip-header {
+        font-family: var(--am-font-sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--am-ink-5);
+        padding-bottom: var(--am-sp-3);
+        border-bottom: var(--am-hair) solid var(--am-rule);
+        margin-bottom: var(--am-sp-6);
+    }
+    .snip-header h1 {
+        font-family: var(--am-font-serif);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--am-ink);
+        margin: 4px 0 0;
+        letter-spacing: -0.2px;
+        text-transform: none;
+    }
+    .snip-stack > * + * { margin-top: var(--am-sp-4); }
+</style>
+</head>
+<body>
+
+<header class="snip-header">
+    Andamentum · snippet
+    <h1>modal / dialog</h1>
+</header>
+
+<!-- ─── snippet markup ─────────────────────────────────────────── -->
+<div class="snip-stack">
+<!-- Andamentum · modal / dialog
+     Wrap your modal in .am-modal-backdrop for a real overlay; the
+     backdrop is fixed-position and dim-blurs everything below. -->
+<div class="am-modal-backdrop">
+    <div class="am-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="am-modal__header">
+            <div class="am-modal__title" id="modal-title">New task</div>
+            <button class="am-modal__close" aria-label="Close">×</button>
+        </div>
+
+        <div class="am-modal__body">
+            <label class="am-label" for="m-title">Title</label>
+            <input id="m-title" class="am-input" type="text" placeholder="What needs doing?">
+
+            <div style="height: 16px;"></div>
+
+            <label class="am-label" for="m-project">Project</label>
+            <select id="m-project" class="am-select">
+                <option>NHMRC Investigator</option>
+                <option>CAGE</option>
+                <option>Kaligin Manuscript 35</option>
+            </select>
+        </div>
+
+        <div class="am-modal__footer">
+            <button class="am-btn am-btn--ghost">Cancel</button>
+            <button class="am-btn am-btn--primary">Create task</button>
+        </div>
+    </div>
+</div>
+</div>
+<!-- ─── end snippet ────────────────────────────────────────────── -->
+
+</body>
+</html>
