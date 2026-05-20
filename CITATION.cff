@@ -15,18 +15,23 @@ license: MIT
 repository-code: "https://github.com/<your-github-handle>/andamentum"
 url: "https://github.com/<your-github-handle>/andamentum"
 abstract: >-
-  Composable agentic systems for scientific automation.
-  A single Python package of tightly-scoped sub-modules for building
-  agentic reasoning pipelines: formal epistemology, web research,
-  document store with hybrid search, manuscript review, document
-  authoring, scientific figure rendering, semantic chunking, source
-  extraction, vision critique, readability and style checking, and
-  typesetting.
+  Composable research tooling for scientific work. A single Python
+  package of tightly-scoped sub-modules covering the document-handling
+  pipeline a researcher uses end-to-end: document authoring,
+  multi-lens manuscript review, publication-quality figure rendering,
+  source extraction from PDF / HTML / DOCX / PPTX, semantic chunking,
+  personal knowledge-base with hybrid search, web research with
+  verification, vision critique, readability and style checking, and
+  typesetting. Designed with explicit-model-argument APIs and in-code
+  responsible-use protections (fetch gating against robots.txt and
+  paywalled publishers, confidentiality tripwires, AI-provenance
+  watermarking, opt-in audit log).
 keywords:
-  - scientific-automation
-  - large-language-models
-  - agentic-systems
-  - epistemology
+  - scientific-research-tools
   - manuscript-review
+  - figure-rendering
+  - document-authoring
+  - knowledge-base
   - retrieval-augmented-generation
+  - responsible-ai
   - python
