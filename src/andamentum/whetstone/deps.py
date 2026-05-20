@@ -23,3 +23,4 @@ class ReviewDeps:
     correlation_id: str = ""
     target_min_chars: int = 2_000  # passed to chunker.extract_units
     target_max_chars: int = 10_000
+    proofread: bool = True  # run proofread.analyze() and append as deterministic findings

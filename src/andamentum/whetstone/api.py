@@ -47,6 +47,7 @@ async def review_document(
     document_type: Literal[
         "auto", "academic", "external_communication", "general"
     ] = "auto",
+    proofread: bool = True,
 ) -> ReviewResult:
     """Review a document. Returns critical-review findings + a synthesis.
 
@@ -181,6 +182,7 @@ async def review_document(
         correlation_id=uuid.uuid4().hex[:8],
         target_min_chars=target_min_chars,
         target_max_chars=target_max_chars,
+        proofread=proofread,
     )
 
     started = time.monotonic()

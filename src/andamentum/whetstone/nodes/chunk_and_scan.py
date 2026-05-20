@@ -33,6 +33,7 @@ from ..structural.crossrefs import extract_cross_references
 from ..structural.deterministic_findings import synthesize_deterministic_findings
 from ..structural.document_map import build_document_map
 from ..structural.numerics import extract_numeric_claims
+from ..structural.proofread_adapter import proofread_to_findings
 from ..structural.terms import extract_term_glossary
 from ..structural.types import SectionRef, StructuralFacts
 
@@ -113,9 +114,35 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             markdown=markdown_for_checklist,
         )
         logger.info(
-            "[scan] %d deterministic finding(s)",
+            "[scan] %d deterministic finding(s) before proofread",
             len(ctx.state.deterministic_findings),
         )
+
+        # ── 6. Proofread layer (deterministic, no LLM, opt-out via deps) ──
+        # Style / readability flags from `andamentum.proofread` join the
+        # same deterministic_findings pool. They flow through the docx /
+        # HTML / markdown renderers as Word comments anchored at their
+        # source spans. The whole pass is pure functions over text and
+        # adds milliseconds, not minutes.
+        if ctx.deps.proofread:
+            from andamentum.proofread import analyze as _proofread_analyze
+
+            pr_result = _proofread_analyze(ctx.state.markdown)
+            pr_findings = proofread_to_findings(
+                result=pr_result,
+                markdown=ctx.state.markdown,
+                sections=ctx.state.sections,
+            )
+            ctx.state.deterministic_findings.extend(pr_findings)
+            logger.info(
+                "[scan] +%d proofread finding(s) (weasel=%d passive=%d "
+                "duplicate=%d weak_opener=%d)",
+                len(pr_findings),
+                len(pr_result.weasel_words),
+                len(pr_result.passive_voice),
+                len(pr_result.duplicate_words),
+                len(pr_result.weak_openers),
+            )
 
         # ── 6. Branch: with model → next LLM phase; without → End now ──
         if ctx.deps.model is None:
