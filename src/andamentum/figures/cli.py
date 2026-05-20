@@ -11,7 +11,7 @@ from pathlib import Path
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-figures",
-        description="Publication-quality scientific figure generation",
+        description="Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -151,4 +151,10 @@ def _run_plot(args: argparse.Namespace) -> None:
         print("Warnings:")
         for note in result.advisor_notes:
             print(f"  - {note}")
+        print(
+            "\nThe renderer auto-applied one or more visual changes "
+            "(see Warnings above). Mirror these in your figure caption "
+            "so reviewers can see what was decided automatically.",
+            file=sys.stderr,
+        )
     print(f"\nLegend:\n  {result.legend}")

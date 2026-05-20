@@ -1,4 +1,7 @@
-"""andamentum.figures — Publication-quality scientific figure generation.
+"""andamentum.figures — Publication-quality scientific figure rendering.
+
+Deterministic plotting of your data with journal-matched sizing.
+No generative AI — figure() plots only the numbers you give it.
 
 Quick start::
 

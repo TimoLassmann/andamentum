@@ -99,6 +99,17 @@ def figure(
 
     Raises:
         ValueError: If kind is banned (pie, 3D, etc.) or data is invalid.
+
+    Caption guidance:
+        ``figure()`` plots only — it neither generates nor modifies
+        data points. When ``FigureResult.advisor_notes`` is non-empty,
+        those notes describe auto-applied visual changes (bar
+        orientation flip, log-scale auto-pick, sort order, x-tick
+        rotation) that the renderer chose for you. **Mirror them in
+        your figure caption** so reviewers can see what was decided
+        automatically. Example: "Bars plotted horizontally because of
+        label length; y-axis log-scaled because the data spans three
+        orders of magnitude."
     """
     # ── 1. Check banned kinds ────────────────────────────────────────────
     check_banned(kind)
