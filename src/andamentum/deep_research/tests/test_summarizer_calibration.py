@@ -53,7 +53,6 @@ CLOUD_MODEL = "openai:gpt-5.4-nano"
 
 PAGE_KALIGN_PRIMARY = """
 Kalign — a novel and accurate multiple sequence alignment program.
-Lassmann T, Sonnhammer ELL.
 
 Background: Multiple sequence alignment is one of the most fundamental
 problems in computational molecular biology. We present a new MSA
