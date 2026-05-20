@@ -21,7 +21,10 @@ from andamentum.proofread import (
 )
 from andamentum.whetstone import review_document
 from andamentum.whetstone.structural.proofread_adapter import (
+    _enclosing_paragraph,
+    _enclosing_sentence,
     _expand_to_word_boundaries,
+    _is_sentence_break_after,
     _locate_in_section,
     proofread_to_findings,
 )
@@ -66,6 +69,171 @@ def test_expand_to_word_boundaries_snaps_to_whitespace() -> None:
     assert "brown" in text[start:end]
 
 
+# ---------------------------------------------------------------------------
+# Anchor-ladder unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_sentence_break_after_capital_letter() -> None:
+    text = "First sentence. Second sentence."
+    # `.` at position 14, next is space, then 'S' (capital)
+    assert _is_sentence_break_after(text, 14) is True
+
+
+def test_is_sentence_break_after_abbreviation_does_not_trip() -> None:
+    text = "Dr. Smith found something."
+    # `.` at position 2 — followed by space, then 'S' (capital) — this IS
+    # an unavoidable false positive of the simple heuristic. The function's
+    # purpose is anchor selection, not perfect tokenisation; a slightly-too-
+    # short sentence anchor is acceptable.
+    assert _is_sentence_break_after(text, 2) is True
+
+    # But "e.g.," with lowercase follow-on is correctly NOT a sentence break.
+    text2 = "e.g., metformin reduces mortality."
+    assert _is_sentence_break_after(text2, 1) is False  # `.` after `e`
+    assert _is_sentence_break_after(text2, 3) is False  # `.` after `g`
+
+
+def test_is_sentence_break_decimal_number_not_break() -> None:
+    text = "The value was 3.14 in our sample."
+    # `.` at position 15 — followed by '1' (digit, not whitespace).
+    assert _is_sentence_break_after(text, 15) is False
+
+
+def test_enclosing_sentence_extracts_one_sentence() -> None:
+    text = "First sentence here. Middle sentence containing weasel words. Last sentence trails."
+    # offset 48 lands inside "Middle sentence containing weasel words."
+    start, end = _enclosing_sentence(text, 48)
+    extracted = text[start:end]
+    assert extracted == "Middle sentence containing weasel words."
+
+
+def test_enclosing_paragraph_breaks_on_blank_line() -> None:
+    text = "Paragraph one is here.\n\nParagraph two has a flag in it.\n\nParagraph three."
+    # offset in paragraph two
+    start, end = _enclosing_paragraph(text, 35)
+    extracted = text[start:end]
+    assert extracted == "Paragraph two has a flag in it."
+
+
+def test_anchor_ladder_prefers_sentence_when_unique() -> None:
+    """A flag in a unique sentence anchors on the sentence, not the paragraph."""
+    section_text = (
+        "First sentence is unique. The methods were significantly more robust. "
+        "Closing sentence is also unique."
+    )
+    sections = [
+        SectionRef(
+            id="sec_001",
+            title="Methods",
+            text=section_text,
+            char_start=0,
+            char_end=len(section_text),
+        )
+    ]
+    pr = _empty_proofread_result()
+    pr.weasel_words = [
+        WeaselFinding(
+            word="significantly",
+            span=Span(start=43, end=56),
+            sentence_index=1,
+        )
+    ]
+    findings = proofread_to_findings(result=pr, sections=sections)
+    assert len(findings) == 1
+    anchor = findings[0].quotes[0].text
+    # Should anchor on the enclosing sentence — tight, not paragraph-wide.
+    assert anchor == "The methods were significantly more robust."
+    # Crucially: anchor doesn't include the closing sentence.
+    assert "Closing sentence" not in anchor
+
+
+def test_anchor_ladder_falls_back_to_paragraph_when_sentence_duplicated() -> None:
+    """When the enclosing sentence appears twice in the section, fall back to
+    the enclosing paragraph."""
+    section_text = (
+        "Some intro.\n\n"
+        "We measured it carefully.\n\n"
+        "Paragraph with very interesting findings. We measured it carefully.\n\n"
+        "Final note."
+    )
+    sections = [
+        SectionRef(
+            id="sec_001",
+            title="S",
+            text=section_text,
+            char_start=0,
+            char_end=len(section_text),
+        )
+    ]
+    # Flag "very" in the third paragraph. The sentence containing it is
+    # "Paragraph with very interesting findings." — only ONE occurrence —
+    # so sentence anchoring wins. Let's craft a case where the SENTENCE is
+    # duplicated to actually exercise the paragraph fallback.
+    section_text = (
+        "First paragraph here.\n\n"
+        "It was good. It was clear. It was good.\n\n"
+        "Second paragraph. It was good. Closing line.\n\n"
+        "Trailer."
+    )
+    sections = [
+        SectionRef(
+            id="sec_001",
+            title="S",
+            text=section_text,
+            char_start=0,
+            char_end=len(section_text),
+        )
+    ]
+    # Flag "good" in the FIRST "It was good." of the second paragraph
+    # (chars 30-34). That sentence "It was good." appears three times in
+    # the section, so sentence-level anchor is non-unique. Paragraph
+    # "It was good. It was clear. It was good." is unique → that wins.
+    span_start = section_text.index("good", 23)
+    pr = _empty_proofread_result()
+    pr.weasel_words = [
+        WeaselFinding(
+            word="good", span=Span(start=span_start, end=span_start + 4), sentence_index=1
+        )
+    ]
+    findings = proofread_to_findings(result=pr, sections=sections)
+    assert len(findings) == 1
+    anchor = findings[0].quotes[0].text
+    # Anchor is the enclosing paragraph (sentence was duplicated)
+    assert anchor == "It was good. It was clear. It was good."
+
+
+def test_anchor_ladder_falls_back_to_padded_when_paragraph_duplicated() -> None:
+    """Last resort: the same paragraph appears verbatim twice → padded fallback."""
+    repeated = "Identical paragraph with a very common opening."
+    section_text = f"{repeated}\n\nMiddle paragraph here.\n\n{repeated}"
+    sections = [
+        SectionRef(
+            id="sec_001",
+            title="S",
+            text=section_text,
+            char_start=0,
+            char_end=len(section_text),
+        )
+    ]
+    # Flag "very" in the FIRST occurrence of the repeated paragraph.
+    first_very = section_text.index("very")
+    pr = _empty_proofread_result()
+    pr.weasel_words = [
+        WeaselFinding(
+            word="very", span=Span(start=first_very, end=first_very + 4), sentence_index=0
+        )
+    ]
+    findings = proofread_to_findings(result=pr, sections=sections)
+    assert len(findings) == 1
+    anchor = findings[0].quotes[0].text
+    # Both sentence and paragraph anchors are duplicated → padded fallback.
+    # Padded anchor is wider than just the flag but bounded.
+    assert "very" in anchor
+    # It should not span the whole section.
+    assert len(anchor) < len(section_text)
+
+
 def test_locate_in_section_finds_correct_section() -> None:
     sections = [
         SectionRef(id="sec_001", title="Intro", text="x", char_start=0, char_end=100),
@@ -103,9 +271,7 @@ def test_weasel_finding_becomes_anchored_finding() -> None:
         )
     ]
 
-    findings = proofread_to_findings(
-        result=pr, markdown=markdown, sections=sections
-    )
+    findings = proofread_to_findings(result=pr, sections=sections)
 
     assert len(findings) == 1
     finding = findings[0]
@@ -118,11 +284,12 @@ def test_weasel_finding_becomes_anchored_finding() -> None:
     assert len(finding.quotes) == 1
     q = finding.quotes[0]
     assert q.section_id == "sec_001"
-    # The anchor should be wider than just the flagged word
-    assert len(q.text) > len("significantly")
-    assert "significantly" in q.text
+    # New ladder: anchor on the *enclosing sentence* — tight and unique.
+    assert q.text == "The methods were significantly more robust than prior work."
     # In-section offsets — char_start/char_end refer to the section's text
     assert q.text == markdown[q.char_start : q.char_end]
+    # The anchor should NOT pull in the next sentence.
+    assert "We measured everything" not in q.text
 
 
 def test_all_categories_produce_unique_categories() -> None:
@@ -165,9 +332,7 @@ def test_all_categories_produce_unique_categories() -> None:
         )
     ]
 
-    findings = proofread_to_findings(
-        result=pr, markdown=markdown, sections=sections
-    )
+    findings = proofread_to_findings(result=pr, sections=sections)
     categories = {f.category for f in findings}
     assert categories == {
         "style:weasel",
@@ -195,9 +360,7 @@ def test_flag_outside_any_section_is_skipped() -> None:
         WeaselFinding(word="over", span=Span(start=18, end=22), sentence_index=0)
     ]
 
-    findings = proofread_to_findings(
-        result=pr, markdown=markdown, sections=sections
-    )
+    findings = proofread_to_findings(result=pr, sections=sections)
     assert findings == []
 
 

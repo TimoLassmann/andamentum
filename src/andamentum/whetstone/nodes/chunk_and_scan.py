@@ -130,7 +130,6 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             pr_result = _proofread_analyze(ctx.state.markdown)
             pr_findings = proofread_to_findings(
                 result=pr_result,
-                markdown=ctx.state.markdown,
                 sections=ctx.state.sections,
             )
             ctx.state.deterministic_findings.extend(pr_findings)
