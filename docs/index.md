@@ -11,10 +11,11 @@ Andamentum is a single Python package of tightly-scoped sub-modules for building
 | [**document_store**](./document_store/overview.md) | SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal RRF search and LLM metadata extraction. |
 | **whetstone** | Structured multi-lens review of your own drafts → markdown / HTML / .docx with track changes. |
 | **scribe** | Block-based document authoring (paragraph, heading, figure, table) backed by SQLite, one-way render to .docx. |
-| **figures** | Publication-quality scientific figure generation (9 chart types, 7 journal palettes, journal-matched sizing). |
+| **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (9 chart types, 7 journal palettes). |
 | **chunker** | Structural-first semantic chunking of long markdown into 2k–10k char self-contained units. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
+| **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
 | **core** | Shared model-resolution, `AgentRunner`, embedding infrastructure used by all sub-modules. |
 
@@ -41,7 +42,7 @@ from andamentum.vision_critique import critique_figure
 
 ## CLIs
 
-Eight scripts installed by the package. Run `--help` on any binary for full flag reference.
+Nine scripts installed by the package. Run `--help` on any binary for full flag reference.
 
 | Script | What it does | LLM? |
 |---|---|---|
@@ -49,9 +50,10 @@ Eight scripts installed by the package. Run `--help` on any binary for full flag
 | `andamentum-research` | Web research over local SearxNG. | required |
 | `andamentum-whetstone` | Multi-lens draft review → markdown / HTML / .docx with track changes. | required (or `--no-llm`) |
 | `andamentum-scribe` | Block-based document authoring; renders to .docx. | none |
-| `andamentum-figures` | Publication-quality scientific figures. | none |
+| `andamentum-figures` | Publication-quality scientific figure rendering (deterministic plotting). | none |
 | `andamentum-chunker` | Structural-first semantic chunking. | required |
 | `andamentum-harvest` | Universal source → markdown extraction. | none |
 | `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON. | required (multimodal) |
+| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers). | none |
 
 `andamentum-epistemic`, `andamentum-research`, and `andamentum-chunker` resolve their LLM via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`. The CLI exits with a clear error if neither is set — no hidden defaults.
