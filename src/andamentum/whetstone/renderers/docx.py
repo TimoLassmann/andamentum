@@ -42,8 +42,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .._watermark import (
+    BANNER_TITLE,
+    DISCLAIMER_SHORT,
+    provenance_line,
+    stamp_docx_core_properties,
+)
 from ..schemas import Edit, Finding, ReviewResult
 from ._panel_layout import body_markdown
+
+
+# The default tracked-change author. Deliberately includes "(AI)" so the
+# Word File→Info pane and the tracked-changes attribution make AI
+# authorship unmissable. Override via --allow-author-override on the CLI
+# only; misrepresenting AI-generated edits as a human reviewer's may
+# constitute research misconduct under most institutional codes.
+DEFAULT_AI_AUTHOR = "andamentum-whetstone (AI)"
 
 
 def render_docx(
@@ -51,7 +65,9 @@ def render_docx(
     *,
     source_docx_path: str | Path,
     output_path: str | Path,
-    author: str = "Whetstone Review",
+    author: str = DEFAULT_AI_AUTHOR,
+    model: str | None = None,
+    visible_watermark: bool = True,
 ) -> Any:
     """Render a ReviewResult as a .docx with track changes + comments.
 
@@ -99,6 +115,14 @@ def render_docx(
             result.panel_synthesis, list(result.expert_reviews)
         )
 
+    if visible_watermark:
+        banner = (
+            f"> **⚠ {BANNER_TITLE}.** {DISCLAIMER_SHORT}\n"
+            f">\n"
+            f"> *Produced by {provenance_line(model=model)}.*\n\n"
+        )
+        review_summary = banner + (review_summary or "")
+
     novelty_findings_text = _collect_novelty_findings(result)
 
     _, patch_result = finalize_reviewed_document(
@@ -114,6 +138,8 @@ def render_docx(
         # Novelty-check payload (empty string when not used)
         novelty_findings=novelty_findings_text,
     )
+    # Invisible metadata: always on, regardless of visible_watermark.
+    stamp_docx_core_properties(Path(output_path), model=model)
     return patch_result
 
 

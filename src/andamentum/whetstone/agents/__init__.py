@@ -34,6 +34,7 @@ from .lens import (
     LensIssueProposal,
     LensReadOutput,
     build_lens_agent_definition,
+    is_subgraph_lens,
     list_available_lenses,
 )
 from .novelty_claim_extractor import (
@@ -67,8 +68,13 @@ _REGISTRY: dict[str, AgentDefinition] = {
     NOVELTY_CLAIM_EXTRACTOR_AGENT.name: NOVELTY_CLAIM_EXTRACTOR_AGENT,
 }
 
-# Register every available lens under its lens.<name> key.
+# Register every prompt-based lens under its lens.<name> key. Sub-graph
+# lenses (those registered in ``whetstone/lenses/__init__.py``) manage
+# their own AgentDefinitions inside their sub-package and never appear
+# in the generic LENS_PROMPTS dispatch.
 for _lens_name in list_available_lenses():
+    if is_subgraph_lens(_lens_name):
+        continue
     _defn = build_lens_agent_definition(_lens_name)
     _REGISTRY[_defn.name] = _defn
 

@@ -43,8 +43,21 @@ async def review_document(
     check_novelty: bool = False,
     novelty_search_depth: int = 2,
     novelty_cache_dir: Path | None = None,
+    confirm_own_draft: bool = False,
+    document_type: Literal[
+        "auto", "academic", "external_communication", "general"
+    ] = "auto",
 ) -> ReviewResult:
     """Review a document. Returns critical-review findings + a synthesis.
+
+    **Whetstone is for sharpening your own drafts.** It is NOT a peer-review
+    tool. Do not call ``review_document`` on manuscripts, grants, or other
+    documents shared with you in confidence (e.g. as a journal reviewer or
+    grant panel member). Most publishers and funders explicitly prohibit
+    this use. When ``model`` resolves to a cloud provider, the full document
+    text is sent to that provider; choose a local model (``ollama:...``)
+    when handling data that should not leave your machine. See
+    ``RESPONSIBLE_USE.md`` and ``src/andamentum/whetstone/RESPONSIBLE_USE.md``.
 
     Two pipelines:
 
@@ -158,6 +171,8 @@ async def review_document(
         check_novelty=check_novelty,
         novelty_search_depth=novelty_search_depth,
         novelty_cache_dir=novelty_cache_dir,
+        confirm_own_draft=confirm_own_draft,
+        document_type=document_type,
         custom_criteria=list(custom_criteria) if custom_criteria else [],
     )
     deps = ReviewDeps(

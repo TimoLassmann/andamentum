@@ -9,6 +9,7 @@ from andamentum.whetstone.agents import (
     LensReadOutput,
     build_lens_agent_definition,
     get_agent,
+    is_subgraph_lens,
     list_available_lenses,
 )
 
@@ -26,7 +27,13 @@ def test_list_available_lenses_includes_canonical_set() -> None:
 
 
 def test_known_lenses_build() -> None:
+    """Every prompt-based lens builds into an AgentDefinition. Sub-graph
+    lenses (e.g. ``strunk``) live in ``whetstone/lenses/`` and have
+    their own ``AgentDefinition``s per rule — they're not built via
+    ``build_lens_agent_definition``."""
     for name in list_available_lenses():
+        if is_subgraph_lens(name):
+            continue
         agent = build_lens_agent_definition(name)
         assert agent.name == f"lens.{name}"
         assert agent.prompt, f"lens {name!r} has empty prompt"
@@ -42,8 +49,12 @@ def test_unknown_lens_raises_helpful_error() -> None:
 
 
 def test_lens_agents_are_in_the_registry() -> None:
-    """Every lens registered at module import should be retrievable."""
+    """Every prompt-based lens registered at module import should be
+    retrievable. Sub-graph lenses don't use the lens.<name> registry
+    key — they dispatch via ``SUBGRAPH_LENS_ENTRYPOINTS``."""
     for name in list_available_lenses():
+        if is_subgraph_lens(name):
+            continue
         agent = get_agent(f"lens.{name}")
         assert agent.name == f"lens.{name}"
 
@@ -81,8 +92,12 @@ def test_lens_read_output_default_empty() -> None:
 
 
 def test_output_trailer_in_every_lens_prompt() -> None:
-    """Sanity check: the universal trailer is appended to every persona."""
+    """Sanity check: the universal trailer is appended to every persona.
+    Sub-graph lenses (``strunk``) have one prompt per rule, not one
+    persona prompt, so the trailer convention doesn't apply."""
     for name in list_available_lenses():
+        if is_subgraph_lens(name):
+            continue
         agent = build_lens_agent_definition(name)
         assert "Output instructions" in agent.prompt, f"lens {name!r} missing trailer"
         assert "VERBATIM span" in agent.prompt, f"lens {name!r} missing quote rule"

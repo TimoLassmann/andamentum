@@ -745,7 +745,7 @@ def test_cli_validates_panel_with_no_llm() -> None:
 
 
 def test_cli_accepts_panel_mode() -> None:
-    """--mode panel parses cleanly with --model."""
+    """--mode panel parses cleanly with --model + --i-am-the-author."""
     from andamentum.whetstone.cli import _build_parser, _validate_args
 
     parser = _build_parser()
@@ -762,9 +762,78 @@ def test_cli_accepts_panel_mode() -> None:
             "5",
             "--panel-disciplines",
             "Statistics, Robotics",
+            "--i-am-the-author",
         ]
     )
     _validate_args(args)  # should not raise
     assert args.mode == "panel"
     assert args.n_experts == 5
     assert args.panel_disciplines == "Statistics, Robotics"
+    assert args.i_am_the_author is True
+
+
+def test_panel_mode_requires_authorship_affirmation() -> None:
+    """--mode panel without --i-am-the-author is refused."""
+    from andamentum.whetstone.cli import _build_parser, _validate_args
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "paper.md",
+            "--out",
+            "out.md",
+            "--mode",
+            "panel",
+            "--model",
+            "openai:gpt-5.4-nano",
+        ]
+    )
+    with pytest.raises(SystemExit):
+        _validate_args(args)
+
+
+def test_panel_mode_accepts_env_var_affirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ANDAMENTUM_PANEL_OWN_AUTHOR=1 substitutes for --i-am-the-author."""
+    from andamentum.whetstone.cli import _build_parser, _validate_args
+
+    monkeypatch.setenv("ANDAMENTUM_PANEL_OWN_AUTHOR", "1")
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "paper.md",
+            "--out",
+            "out.md",
+            "--mode",
+            "panel",
+            "--model",
+            "openai:gpt-5.4-nano",
+        ]
+    )
+    _validate_args(args)  # should not raise
+
+
+def test_panel_mode_env_var_other_values_do_not_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only ANDAMENTUM_PANEL_OWN_AUTHOR=1 affirms; "0" or other values refuse."""
+    from andamentum.whetstone.cli import _build_parser, _validate_args
+
+    monkeypatch.setenv("ANDAMENTUM_PANEL_OWN_AUTHOR", "0")
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "paper.md",
+            "--out",
+            "out.md",
+            "--mode",
+            "panel",
+            "--model",
+            "openai:gpt-5.4-nano",
+        ]
+    )
+    with pytest.raises(SystemExit):
+        _validate_args(args)

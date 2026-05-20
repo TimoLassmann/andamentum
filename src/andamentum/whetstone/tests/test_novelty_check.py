@@ -361,6 +361,82 @@ async def test_cache_hit_avoids_recomputation(tmp_path: Path):
     assert result["assessment"] == "From cache"
 
 
+async def test_cache_dir_none_skips_disk_io(tmp_path: Path):
+    """With ``cache_dir=None`` no files are written and no files are read.
+
+    This is the default — hashed digests of unpublished novelty claims
+    should not persist on disk between runs unless the user opts in.
+    """
+    from andamentum.whetstone.nodes.novelty_check import _check_one_claim
+
+    claim = NoveltyClaim(
+        claim_text="We present the first ABC.",
+        short_summary="first ABC",
+        why_load_bearing="x",
+    )
+    deps = ReviewDeps(model="fake:test")
+
+    fake_report = mock.MagicMock()
+    fake_report.__dict__ = {
+        "claim": "first ABC",
+        "is_novel": True,
+        "confidence": 0.8,
+        "assessment": "novel",
+        "similar_work": [],
+        "sources": [],
+        "search_queries_used": [],
+    }
+    with mock.patch(
+        "andamentum.deep_research.run_novelty_check",
+        return_value=mock.MagicMock(
+            **{
+                "claim": "first ABC",
+                "is_novel": True,
+                "confidence": 0.8,
+                "assessment": "novel",
+                "similar_work": [],
+                "sources": [],
+                "search_queries_used": [],
+            }
+        ),
+    ):
+        # asdict needs a real dataclass. Use a tiny one for the patch.
+        from dataclasses import dataclass
+
+        @dataclass
+        class _R:
+            claim: str = "first ABC"
+            is_novel: bool = True
+            confidence: float = 0.8
+            assessment: str = "novel"
+            similar_work: list = None  # type: ignore[assignment]
+            sources: list = None  # type: ignore[assignment]
+            search_queries_used: list = None  # type: ignore[assignment]
+
+            def __post_init__(self) -> None:
+                if self.similar_work is None:
+                    self.similar_work = []
+                if self.sources is None:
+                    self.sources = []
+                if self.search_queries_used is None:
+                    self.search_queries_used = []
+
+        with mock.patch(
+            "andamentum.deep_research.run_novelty_check",
+            new=mock.AsyncMock(return_value=_R()),
+        ):
+            result = await _check_one_claim(
+                claim=claim,
+                deps=deps,
+                cache_dir=None,
+                search_depth=1,
+            )
+
+    # No files written to tmp_path (we never asked for caching).
+    assert list(tmp_path.iterdir()) == []
+    assert result["is_novel"] is True
+
+
 # ── Adapter ────────────────────────────────────────────────────────────
 
 

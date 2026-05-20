@@ -17,37 +17,40 @@ from pydantic import BaseModel, Field
 
 from ._definition import AgentDefinition
 
-SYNTHESISE_PROMPT = """You are writing the final review of a document.
+SYNTHESISE_PROMPT = """You are writing structured feedback on a draft.
 
 You have:
   • the document map (titles + one-line gists per section)
-  • the list of FINDINGS the investigators produced (post-challenge)
+  • the list of FINDINGS the investigators produced
   • each finding has severity (minor/moderate/major), confidence
     (low/medium/high), and priority (must_fix/should_fix/consider)
+  • a DOCUMENT TYPE that tells you what kind of writing this is —
+    your vocabulary and framing should match the document type
+    (academic / external_communication / general). The user prompt
+    will name the document type explicitly.
 
-Your job is to produce a ReviewSummary with FOUR fields, organised by
-PRIORITY (which is what the author needs to act on) rather than
-severity (which is the inherent seriousness of the issue):
+Your job is to produce a ReviewSummary with FOUR prose fields,
+organised by PRIORITY (what the author needs to act on) rather than
+severity (the inherent seriousness):
 
   • executive_summary (2 paragraphs):
-      A reader-facing summary of the document's strengths and weaknesses,
+      A reader-facing summary of the draft's strengths and weaknesses,
       grounded in the findings. Lead with the most important issues.
       Be honest — if the findings are mostly minor, say so.
 
   • must_fix_summary (1 paragraph):
       Walk through the MUST FIX findings in priority order. These are
-      issues the author must address before submission. Reference each
-      by its title and section_ids in parentheses. If there are none,
-      say "No must-fix findings — the manuscript is submission-ready
-      on the basics."
+      issues the author must address. Reference each by its title and
+      section_ids in parentheses. If there are none, say so plainly in
+      one sentence appropriate to the document type.
 
   • should_fix_summary (1 paragraph):
       Same for SHOULD FIX findings. These are improvements the author
       should make if time permits. Group thematically if helpful.
 
   • consider_summary (1 paragraph):
-      Same for CONSIDER findings. These are suggestions and minor
-      polish items. May be terse — bullet-style narrative is fine.
+      Same for CONSIDER findings. Suggestions and minor polish items.
+      May be terse — bullet-style narrative is fine.
 
 If a category has zero findings, say so in one sentence. Don't invent
 new findings — only summarise what's been investigated. Don't moralise
@@ -64,7 +67,7 @@ class ReviewSummary(BaseModel):
         default="No must-fix findings.",
         description=(
             "1 paragraph walking the must-fix findings — issues the "
-            "author must address before submission."
+            "author must address."
         ),
     )
     should_fix_summary: str = Field(

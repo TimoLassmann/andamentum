@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import NoReturn, Sequence
@@ -31,7 +32,13 @@ _LOGGER_NAME = "andamentum.whetstone"
 
 
 _HELP_DESCRIPTION = """\
-Sharpen your draft with structured review.
+Sharpen YOUR OWN DRAFT with structured review.
+
+Whetstone is NOT a peer-review tool. Do not run it on manuscripts,
+grants, or any other documents shared with you in confidence (as a
+journal reviewer, grant panel member, examiner, or editor). Most
+publishers and funders currently prohibit sharing such documents
+with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 
 INPUT
     Path or URL to a document. Supported: .pdf, .docx, .html, .md, .txt
@@ -92,10 +99,12 @@ REVIEW OPTIONS
                                Default: rigorous
                                Available: rigorous, writer, methodology,
                                           statistician, consistency,
-                                          claim_evidence, overclaim
+                                          claim_evidence, overclaim, strunk
                                Notes:
                                  consistency reads the WHOLE document
                                    (cross-section drift / contradictions)
+                                 strunk applies Elements of Style rules
+                                   via a per-rule pydantic-graph sub-graph
                                  claim_evidence runs only on Abstract /
                                    Results / Discussion / Conclusion
                                  overclaim flags unsupported strength
@@ -225,6 +234,39 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--i-am-the-author",
+        action="store_true",
+        help=(
+            "Required for --mode panel. Affirms that the document being "
+            "reviewed is your own draft, not a manuscript shared with you "
+            "confidentially (as a peer reviewer, examiner, or grant panel "
+            "member). Set ANDAMENTUM_PANEL_OWN_AUTHOR=1 to pre-affirm."
+        ),
+    )
+    parser.add_argument(
+        "--confirm-own-draft",
+        action="store_true",
+        help=(
+            "Bypass the confidentiality-marker tripwire (which refuses "
+            "to run when the document contains phrases like 'Manuscript "
+            "ID:', 'Reviewer Instructions', 'Editorial Office', etc.). "
+            "Pass this flag only when the matched marker is a legitimate "
+            "false positive in your own draft."
+        ),
+    )
+    parser.add_argument(
+        "--document-type",
+        choices=("auto", "academic", "external_communication", "general"),
+        default="auto",
+        help=(
+            "What kind of document this is. 'auto' (default) runs a "
+            "one-shot classifier using --model. Explicit values skip the "
+            "classifier. The journal-specific checklist (CoI / data / "
+            "ethics / abstract / keywords / H1 title) fires only for "
+            "'academic'; synthesis vocabulary adapts accordingly."
+        ),
+    )
+    parser.add_argument(
         "--guidelines",
         default="",
         metavar="TEXT",
@@ -268,7 +310,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Comma-separated lens names. "
             "Available: rigorous, writer, methodology, statistician, "
-            "consistency, claim_evidence, overclaim. "
+            "consistency, claim_evidence, overclaim, strunk. "
             "Default: rigorous"
         ),
     )
@@ -307,6 +349,37 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--persist-novelty-cache",
+        action="store_true",
+        help=(
+            "Persist per-claim novelty-check results to "
+            "~/.cache/whetstone/novelty/ so re-runs on the same draft are "
+            "cheap. Off by default — hashed digests of unpublished novelty "
+            "claims should not sit on disk unless you explicitly opt in."
+        ),
+    )
+    visible_wm = parser.add_mutually_exclusive_group()
+    visible_wm.add_argument(
+        "--visible-watermark",
+        dest="visible_watermark",
+        action="store_true",
+        default=True,
+        help=(
+            "Include a visible 'AI-generated review content' banner in the "
+            "review report (default for review-mode output)."
+        ),
+    )
+    visible_wm.add_argument(
+        "--no-visible-watermark",
+        dest="visible_watermark",
+        action="store_false",
+        help=(
+            "Suppress the visible banner. Invisible provenance metadata "
+            "(docx core properties, HTML <meta>, markdown HTML-comment) "
+            "is still written regardless of this flag."
+        ),
+    )
+    parser.add_argument(
         "--apply-patches",
         type=Path,
         default=None,
@@ -319,9 +392,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--patch-author",
-        default="Reviewer",
+        default=None,
         metavar="NAME",
-        help="Author name for track-changes when --apply-patches is used. Default: Reviewer.",
+        help=(
+            "Author name for track-changes when --apply-patches is used. "
+            "Default: 'andamentum-whetstone (AI)'. Overriding to a custom "
+            "name requires --allow-author-override (misrepresenting "
+            "AI-generated edits as a human reviewer's may constitute "
+            "research misconduct)."
+        ),
+    )
+    parser.add_argument(
+        "--allow-author-override",
+        action="store_true",
+        help=(
+            "Explicitly authorise a non-default --patch-author value. "
+            "Required when --patch-author is set to anything other than "
+            "the AI-attribution default."
+        ),
     )
     parser.add_argument(
         "--patch-report",
@@ -353,8 +441,10 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     if args.patch_report is not None:
         _die(1, "--patch-report is only valid with --apply-patches.")
-    if args.patch_author != "Reviewer":
+    if args.patch_author is not None:
         _die(1, "--patch-author is only valid with --apply-patches.")
+    if args.allow_author_override:
+        _die(1, "--allow-author-override is only valid with --apply-patches.")
 
     if not args.no_llm and not args.model:
         _die(
@@ -375,6 +465,18 @@ def _validate_args(args: argparse.Namespace) -> None:
             1,
             "--mode panel requires --model — every panel-mode phase is "
             "an LLM call. Drop --no-llm or use --mode review.",
+        )
+    if args.mode == "panel" and not (
+        args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
+    ):
+        _die(
+            1,
+            "--mode panel requires --i-am-the-author. Panel-mode output is "
+            "shaped exactly like a journal peer-review report (3-5 fictional "
+            "reviewer biosketches + Accept/Reject recommendation). Affirm "
+            "that the document being reviewed is your own draft, not a "
+            "manuscript shared with you confidentially. Pass "
+            "--i-am-the-author, or set ANDAMENTUM_PANEL_OWN_AUTHOR=1.",
         )
     if args.no_llm and args.mode == "guidelines":
         _die(
@@ -447,6 +549,16 @@ def _validate_apply_patches_args(args: argparse.Namespace) -> None:
         _die(1, f"patches file not found: {args.apply_patches}")
     if args.patch_report is not None and not args.patch_report.exists():
         _die(1, f"patch report file not found: {args.patch_report}")
+    if args.patch_author is not None and not args.allow_author_override:
+        _die(
+            1,
+            "--patch-author overrides the AI-attribution default — "
+            "pass --allow-author-override to confirm you intend this. "
+            "Attributing AI-generated edits to a human name may "
+            "constitute research misconduct under most institutional codes.",
+        )
+    if args.allow_author_override and args.patch_author is None:
+        _die(1, "--allow-author-override requires --patch-author NAME.")
 
 
 def _die(code: int, message: str) -> NoReturn:
@@ -506,6 +618,14 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
     custom_criteria = _parse_criteria(args.criteria) if args.criteria else None
 
+    # Always-on one-line scope banner — short, unmissable, not gated on
+    # --verbose. Goes to stderr so it doesn't pollute piped output.
+    print(
+        "Note: whetstone is for your own drafts. Not a peer-review tool. "
+        "See RESPONSIBLE_USE.md.",
+        file=sys.stderr,
+    )
+
     logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
         _log_run_config(console, args, perspectives, editor_criteria)
@@ -526,8 +646,21 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             custom_criteria=custom_criteria,
             check_novelty=args.check_novelty,
             novelty_search_depth=args.novelty_search_depth,
+            novelty_cache_dir=(
+                Path.home() / ".cache" / "whetstone" / "novelty"
+                if args.persist_novelty_cache
+                else None
+            ),
+            confirm_own_draft=args.confirm_own_draft,
+            document_type=args.document_type,
         )
     except Exception as exc:
+        # Confidentiality tripwire — its own error class so we can give a
+        # focused error code (1: configuration) instead of pipeline-crash (3).
+        from ._confidentiality import ConfidentialityMarkerError
+
+        if isinstance(exc, ConfidentialityMarkerError):
+            _die(1, str(exc))
         # Distinguish "couldn't load the input" from "review crashed"
         # so users know whether to fix their input or their config.
         msg = str(exc)
@@ -552,13 +685,30 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         for out in args.out:
             ext = out.suffix.lower()
             out.parent.mkdir(parents=True, exist_ok=True)
+            model_id = None if args.no_llm else args.model
             if ext == ".md":
-                render_markdown(result, out)
+                render_markdown(
+                    result,
+                    out,
+                    model=model_id,
+                    visible_watermark=args.visible_watermark,
+                )
             elif ext == ".html":
-                render_html(result, out)
+                render_html(
+                    result,
+                    out,
+                    model=model_id,
+                    visible_watermark=args.visible_watermark,
+                )
             elif ext == ".docx":
                 assert baseline_docx is not None  # validated above
-                render_docx(result, source_docx_path=baseline_docx, output_path=out)
+                render_docx(
+                    result,
+                    source_docx_path=baseline_docx,
+                    output_path=out,
+                    model=model_id,
+                    visible_watermark=args.visible_watermark,
+                )
             written.append(out)
             logger.info("[output] wrote %s", out)
     finally:
@@ -570,6 +720,12 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 pass
 
     _print_summary(console, result, written)
+
+    # Disclosure reminder — always shown at end of run. AI assistance must
+    # be disclosed in submitted artifacts per most journal / funder rules.
+    from ._watermark import DISCLOSURE_REMINDER
+
+    print(f"\nNote: {DISCLOSURE_REMINDER}", file=sys.stderr)
 
 
 def _log_run_config(
@@ -741,6 +897,16 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
     output_path: Path = args.out[0]
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    from .renderers.docx import DEFAULT_AI_AUTHOR
+    resolved_author = args.patch_author if args.patch_author is not None else DEFAULT_AI_AUTHOR
+    if args.allow_author_override:
+        print(
+            f"WARNING: attributing AI-generated patches to '{resolved_author}' "
+            f"instead of the default '{DEFAULT_AI_AUTHOR}'. Misrepresenting "
+            f"AI work as human authorship may constitute research misconduct.",
+            file=sys.stderr,
+        )
+
     try:
         _, patch_result = finalize_reviewed_document(
             original_file_path=Path(args.input),
@@ -748,9 +914,14 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
             review_summary=review_summary,
             issues_count=len(patches),
             output_path=output_path,
-            author=args.patch_author,
+            author=resolved_author,
             use_patch_authors=False,
         )
+        # Apply invisible AI-provenance metadata so the modified manuscript
+        # carries discoverable AI authorship even without a visible banner.
+        from ._watermark import stamp_docx_core_properties
+
+        stamp_docx_core_properties(output_path, model=None)
     except Exception as exc:
         _die(3, f"patch application failed: {exc}")
 

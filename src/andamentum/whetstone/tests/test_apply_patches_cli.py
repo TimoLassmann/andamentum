@@ -297,3 +297,133 @@ def test_apply_patches_invalid_patch_object(tmp_path: Path) -> None:
             ]
         )
     assert excinfo.value.code == 1
+
+
+# ── AI-author attribution gate ─────────────────────────────────────────
+
+
+def test_default_author_is_ai_attributed(tmp_path: Path) -> None:
+    """With no --patch-author flag, the docx is tagged as AI-authored."""
+    src = tmp_path / "draft.docx"
+    _make_docx(src, ["The quick brown fox jumps over the lazy dog."])
+    patches_path = tmp_path / "patches.json"
+    patches_path.write_text(
+        json.dumps(
+            [
+                {
+                    "patch_type": "text_edit",
+                    "text_pattern": "lazy dog",
+                    "new_text": "sleeping dog",
+                    "explanation": "X",
+                    "confidence": 0.9,
+                }
+            ]
+        )
+    )
+    out = tmp_path / "out.docx"
+    main([str(src), "--apply-patches", str(patches_path), "--out", str(out)])
+
+    # The tracked-insert author attribute should contain the AI default.
+    doc = Document(str(out))
+    body = doc.element.body
+    ins_authors = {
+        ins.get(f"{{{NS['w']}}}author")
+        for ins in body.iter(f"{{{NS['w']}}}ins")
+    }
+    assert any("andamentum-whetstone" in (a or "") for a in ins_authors)
+
+
+def test_patch_author_override_requires_explicit_flag(tmp_path: Path) -> None:
+    """--patch-author NAME without --allow-author-override refuses to run."""
+    src = tmp_path / "draft.docx"
+    _make_docx(src, ["hello"])
+    patches_path = tmp_path / "patches.json"
+    patches_path.write_text("[]")
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            str(src),
+            "--apply-patches",
+            str(patches_path),
+            "--out",
+            str(tmp_path / "out.docx"),
+            "--patch-author",
+            "Dr Smith",
+        ]
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        _validate_args(args)
+    assert excinfo.value.code == 1
+
+
+def test_allow_author_override_without_patch_author_rejected(
+    tmp_path: Path,
+) -> None:
+    """--allow-author-override on its own is meaningless and refused."""
+    src = tmp_path / "draft.docx"
+    _make_docx(src, ["hello"])
+    patches_path = tmp_path / "patches.json"
+    patches_path.write_text("[]")
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            str(src),
+            "--apply-patches",
+            str(patches_path),
+            "--out",
+            str(tmp_path / "out.docx"),
+            "--allow-author-override",
+        ]
+    )
+    with pytest.raises(SystemExit):
+        _validate_args(args)
+
+
+def test_explicit_author_override_works_with_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With both flags set, the override takes effect and prints a warning."""
+    src = tmp_path / "draft.docx"
+    _make_docx(src, ["The quick brown fox jumps over the lazy dog."])
+    patches_path = tmp_path / "patches.json"
+    patches_path.write_text(
+        json.dumps(
+            [
+                {
+                    "patch_type": "text_edit",
+                    "text_pattern": "lazy dog",
+                    "new_text": "sleeping dog",
+                    "explanation": "X",
+                    "confidence": 0.9,
+                }
+            ]
+        )
+    )
+    out = tmp_path / "out.docx"
+    main(
+        [
+            str(src),
+            "--apply-patches",
+            str(patches_path),
+            "--out",
+            str(out),
+            "--patch-author",
+            "Dr Smith",
+            "--allow-author-override",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert "Dr Smith" in captured.err
+    assert "research misconduct" in captured.err
+
+    doc = Document(str(out))
+    body = doc.element.body
+    ins_authors = {
+        ins.get(f"{{{NS['w']}}}author")
+        for ins in body.iter(f"{{{NS['w']}}}ins")
+    }
+    assert any(a == "Dr Smith" for a in ins_authors)

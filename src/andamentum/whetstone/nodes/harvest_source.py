@@ -18,6 +18,7 @@ from pydantic_graph import BaseNode, GraphRunContext
 
 from andamentum.harvest import extract
 
+from .._confidentiality import check_confidentiality
 from ..deps import ReviewDeps
 from ..schemas import ReviewResult
 from ..state import ReviewState
@@ -62,6 +63,12 @@ class HarvestSource(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         logger.info(
             "[harvest] done — %d chars of markdown", len(ctx.state.markdown)
         )
+
+        # Confidentiality tripwire: refuse to run on documents that look
+        # like peer-review submissions / editorial-office correspondence
+        # unless the user has explicitly affirmed this is their own draft.
+        if not ctx.state.confirm_own_draft:
+            check_confidentiality(ctx.state.markdown)
 
         # Defer the import to avoid a circular ChunkAndScan ↔ this file at module load.
         from .chunk_and_scan import ChunkAndScan
