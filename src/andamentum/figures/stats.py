@@ -1,7 +1,7 @@
-"""Statistical helpers for figure generation.
+"""Statistical helpers for figure rendering.
 
 Provides bootstrap confidence intervals and data aggregation utilities.
-These are the minimal statistics needed for figure generation — not a
+These are the minimal statistics needed for figure rendering — not a
 statistics library.
 """
 
