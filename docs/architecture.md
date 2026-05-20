@@ -1,7 +1,7 @@
 # Architecture summary
 
 A one-page orientation to the `andamentum` package. For deeper detail
-see `doc/epistemic/overview.md` and the per-sub-module README files.
+see `docs/epistemic/overview.md` and the per-sub-module README files.
 
 ## What it is
 
@@ -13,7 +13,7 @@ evidence, judging it against the claim, scrutinising it, optionally
 investigating gaps, and synthesising a report with an honest posterior.
 
 The other sub-modules are supporting infrastructure: document
-authoring (`scribe`), figure generation (`figures`), document review
+authoring (`scribe`), figure rendering (`figures`), document review
 (`whetstone`), web research (`deep_research`), personal knowledge base
 (`document_store`), markdown chunking (`chunker`), source extraction
 (`harvest`), readability analysis (`proofread`), vision critique
@@ -113,7 +113,7 @@ src/andamentum/
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
 ├── whetstone/        — multi-lens document review over user drafts
 ├── scribe/           — block-based document authoring → .docx
-├── figures/          — publication-quality figure generation
+├── figures/          — publication-quality figure rendering
 ├── chunker/          — structural-first semantic markdown chunking
 ├── harvest/          — universal source → markdown extraction
 ├── vision_critique/  — bounded LLM critique of rendered figures
@@ -125,16 +125,13 @@ src/andamentum/
 
 - `CLAUDE.md` — full project conventions, sub-module dependencies,
   command reference, and the canonical green-state baseline.
-- `doc/epistemic/overview.md` — long-form epistemic-module
+- `docs/epistemic/overview.md` — long-form epistemic-module
   walkthrough, including the philosophical foundations (Peirce,
   Popper, Lakatos, IBE).
-- `doc/epistemic/epistemic_flow.html` — the same content as an
+- `docs/epistemic/epistemic_flow.html` — the same content as an
   illustrated HTML page.
 - `src/andamentum/epistemic/providers/CONTRIBUTING.md` — how to add a
   new evidence provider.
-- `docs/superpowers/plans/` — historical design plans for major
-  refactors. The most recent (description-driven dispatch) is the
-  current architecture.
 
 ## Pre-release checkpoint
 

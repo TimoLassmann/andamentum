@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use andamentum in academic work, please cite it as below."
+title: andamentum
+type: software
+authors:
+  - family-names: Lassmann
+    given-names: Timo
+    affiliation: "Telethon Kids Institute"
+    # TODO: add ORCID before release
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "0.3.0rc3"
+date-released: "2026-05-16"
+license: MIT
+# TODO: replace <your-github-handle> with your actual GitHub handle before release
+repository-code: "https://github.com/<your-github-handle>/andamentum"
+url: "https://github.com/<your-github-handle>/andamentum"
+abstract: >-
+  Composable agentic systems for scientific automation.
+  A single Python package of tightly-scoped sub-modules for building
+  agentic reasoning pipelines: formal epistemology, web research,
+  document store with hybrid search, manuscript review, document
+  authoring, scientific figure rendering, semantic chunking, source
+  extraction, vision critique, readability and style checking, and
+  typesetting.
+keywords:
+  - scientific-automation
+  - large-language-models
+  - agentic-systems
+  - epistemology
+  - manuscript-review
+  - retrieval-augmented-generation
+  - python
