@@ -40,8 +40,8 @@ def _build_parser() -> argparse.ArgumentParser:
     init.add_argument(
         "--scaffold",
         default=None,
-        choices=["article", "grant"],
-        help="Pre-populate canonical sections",
+        choices=["article"],
+        help="Pre-populate canonical sections (currently only 'article'; no grant scaffold by design)",
     )
 
     ls = sub.add_parser("list-sections", help="List sections with counts")

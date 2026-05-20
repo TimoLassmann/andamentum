@@ -109,9 +109,14 @@ class Document:
     ) -> "Document":
         """Create a new document and return its handle.
 
-        If `scaffold` is given (e.g. "article", "grant"), the document is
-        pre-populated with the corresponding section structure. See
-        scaffolds.py for available scaffolds.
+        If `scaffold` is given (currently only "article" is supported),
+        the document is pre-populated with the corresponding section
+        structure. See scaffolds.py for available scaffolds.
+
+        Note: scribe deliberately ships no grant-application scaffold.
+        Funder rules on AI-assisted grant drafting are tightening
+        (NHMRC, ARC, NIH NOT-OD-25-122 and equivalents); the project
+        chooses not to make AI-assisted grant drafting more frictionless.
         """
         from .scaffolds import SCAFFOLDS
 

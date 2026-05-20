@@ -124,3 +124,48 @@ def test_render_unknown_format_raises(monkeypatch, tmp_path):
     doc = Document.create(title="P", database="t")
     with pytest.raises(ValueError, match="Unsupported format"):
         doc.render(str(tmp_path / "x"), format="pdf")
+
+
+def test_render_stamps_ai_marker_keyword_when_present(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCRIBE_DIR", str(tmp_path))
+    doc = Document.create(title="P", database="t")
+    doc.append(Paragraph("This text [ai-drafted] needs author review."))
+    out = tmp_path / "out.docx"
+
+    doc.render(str(out), format="docx")
+
+    docx = DocxDocument(str(out))
+    assert "andamentum:contains-ai-markers" in (docx.core_properties.keywords or "")
+
+
+def test_render_does_not_stamp_when_no_ai_markers(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCRIBE_DIR", str(tmp_path))
+    doc = Document.create(title="P", database="t")
+    doc.append(Paragraph("Plain content."))
+    out = tmp_path / "out.docx"
+
+    doc.render(str(out), format="docx")
+
+    docx = DocxDocument(str(out))
+    assert "andamentum:contains-ai-markers" not in (docx.core_properties.keywords or "")
+
+
+def test_render_appends_ai_keyword_to_existing_keywords(monkeypatch, tmp_path):
+    """If the template has its own keywords, andamentum's marker is appended."""
+    monkeypatch.setenv("SCRIBE_DIR", str(tmp_path))
+
+    template_path = tmp_path / "template.docx"
+    template = DocxDocument()
+    template.core_properties.keywords = "existing-keyword"
+    template.save(str(template_path))
+
+    doc = Document.create(title="P", database="t", template=str(template_path))
+    doc.append(Paragraph("Content [ai-edited] here."))
+    out = tmp_path / "out.docx"
+
+    doc.render(str(out), format="docx")
+
+    docx = DocxDocument(str(out))
+    keywords = docx.core_properties.keywords or ""
+    assert "existing-keyword" in keywords
+    assert "andamentum:contains-ai-markers" in keywords

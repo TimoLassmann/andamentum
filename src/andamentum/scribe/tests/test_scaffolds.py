@@ -20,18 +20,13 @@ def test_article_scaffold_creates_standard_sections(monkeypatch, tmp_path):
     ]
 
 
-def test_grant_scaffold_creates_standard_sections(monkeypatch, tmp_path):
+def test_grant_scaffold_removed(monkeypatch, tmp_path):
+    """Grant scaffold deliberately removed — funder AI-disclosure rules
+    are tightening and scribe chooses not to make AI-assisted grant
+    drafting more frictionless."""
     monkeypatch.setenv("SCRIBE_DIR", str(tmp_path))
-    doc = Document.create(title="G", database="t", scaffold="grant")
-    sections = [s["name"] for s in doc.list_sections()]
-    assert sections == [
-        "Specific Aims",
-        "Background and Significance",
-        "Innovation",
-        "Approach",
-        "Timeline and Milestones",
-        "References",
-    ]
+    with pytest.raises(ValueError, match="Unknown scaffold"):
+        Document.create(title="G", database="t", scaffold="grant")
 
 
 def test_scaffold_includes_guide_metadata_on_placeholder_paragraphs(
