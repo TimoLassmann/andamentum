@@ -165,7 +165,23 @@ async def _run_lens(
     section: "SectionRef",
     lens: str,
 ) -> list[Finding]:
-    """One lens-agent call against one section. Returns Findings."""
+    """One lens call against one section. Returns Findings.
+
+    Two dispatch paths:
+
+    * Sub-graph lenses (``strunk``, …) live in ``whetstone/lenses/`` and
+      have their own pydantic-graph DAGs. We hand the section + model
+      directly to their entrypoint and let them produce ``Finding``s.
+    * Persona / prompt-based lenses (the original seven) take the
+      existing path: build a pydantic-ai agent from the registered
+      ``AgentDefinition`` and convert ``LensIssueProposal``s into
+      ``Finding``s here.
+    """
+    from ..lenses import SUBGRAPH_LENS_ENTRYPOINTS
+
+    if lens in SUBGRAPH_LENS_ENTRYPOINTS:
+        return await SUBGRAPH_LENS_ENTRYPOINTS[lens](section, model=deps.model)
+
     prompt = f"""SECTION ID: {section.id}
 SECTION TITLE: {section.title}
 

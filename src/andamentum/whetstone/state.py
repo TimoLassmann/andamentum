@@ -112,10 +112,28 @@ class ReviewState:
     custom_criteria: list[str] = field(default_factory=list)
     custom_evaluations: list[CustomEvaluation] = field(default_factory=list)
 
+    # ── Confidentiality affirmation (orthogonal to mode) ───────────────
+    # Set to True to bypass the confidentiality-marker tripwire that
+    # otherwise refuses to run on documents containing "Manuscript ID:",
+    # "Reviewer Instructions:", etc. — strings that suggest the document
+    # is a peer-review submission rather than the user's own draft.
+    confirm_own_draft: bool = False
+
+    # ── Document type (orthogonal to mode; resolved during ChunkAndScan)
+    # "auto" → classifier runs in ChunkAndScan and replaces this with one
+    # of the three resolved values. Explicit values skip the classifier.
+    # On any classifier failure or in --no-llm mode, defaults to "general".
+    document_type: Literal[
+        "auto", "academic", "external_communication", "general"
+    ] = "auto"
+
     # ── Novelty check (orthogonal to mode; opt-in) ─────────────────────
     check_novelty: bool = False
     novelty_search_depth: int = 2  # 1=quick, 2=balanced, 3=thorough
-    novelty_cache_dir: Path | None = None  # None → ~/.cache/whetstone/novelty
+    # On-disk novelty cache is OFF by default — hashed digests of unpublished
+    # novelty claims should not persist on disk between runs without the user
+    # explicitly asking for that trade-off. Set to a Path to opt in.
+    novelty_cache_dir: Path | None = None
 
     # ── Flow control ───────────────────────────────────────────────────
     current_phase: Literal[

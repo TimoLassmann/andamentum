@@ -12,10 +12,12 @@ Disabled by default (``state.check_novelty=False``); the user opts in
 via the ``check_novelty`` keyword on ``review_document`` or the
 ``--check-novelty`` CLI flag.
 
-Caching: NoveltyReports are cached on disk per
-``sha256(claim_short_summary)`` so re-running on the same draft is
-cheap. Default cache dir: ``~/.cache/whetstone/novelty/``. Overridden
-by ``state.novelty_cache_dir``.
+Caching: OFF by default. Hashed digests of unpublished novelty claims
+should not persist on disk between runs without the user explicitly
+asking for that trade-off. The user opts in by passing a Path to
+``novelty_cache_dir`` (or ``--persist-novelty-cache`` on the CLI,
+which sets it to ``~/.cache/whetstone/novelty/``). When unset, no
+disk I/O happens.
 
 Failure mode: per-claim try/except — a single claim's check failing
 (network error, deep_research crash) doesn't abort the whole node. The
@@ -91,11 +93,8 @@ class NoveltyCheck(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             len(claims.claims),
         )
 
-        cache_dir = (
-            ctx.state.novelty_cache_dir
-            if ctx.state.novelty_cache_dir is not None
-            else Path.home() / ".cache" / "whetstone" / "novelty"
-        )
+        # Disk cache is OFF by default — see module docstring.
+        cache_dir = ctx.state.novelty_cache_dir
 
         async def check_one(claim: NoveltyClaim) -> Finding | None:
             try:
@@ -154,20 +153,29 @@ async def _check_one_claim(
     *,
     claim: NoveltyClaim,
     deps: ReviewDeps,
-    cache_dir: Path,
+    cache_dir: Path | None,
     search_depth: int,
 ) -> dict[str, Any]:
-    """Return a NoveltyReport-like dict for one claim, hitting cache when possible."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = hashlib.sha256(claim.short_summary.encode("utf-8")).hexdigest()[:16]
-    cache_path = cache_dir / f"{cache_key}.json"
+    """Return a NoveltyReport-like dict for one claim.
 
-    if cache_path.exists():
-        try:
-            return json.loads(cache_path.read_text())
-        except Exception as exc:
-            logger.warning("[novelty_check] cache read failed for %s: %s", cache_key, exc)
-            # Fall through and recompute
+    Hits the on-disk cache when ``cache_dir`` is not None. When None
+    (the default) no disk I/O happens — every call invokes
+    ``run_novelty_check`` and the result is used in-memory only.
+    """
+    cache_path: Path | None = None
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_key = hashlib.sha256(claim.short_summary.encode("utf-8")).hexdigest()[:16]
+        cache_path = cache_dir / f"{cache_key}.json"
+
+        if cache_path.exists():
+            try:
+                return json.loads(cache_path.read_text())
+            except Exception as exc:
+                logger.warning(
+                    "[novelty_check] cache read failed for %s: %s", cache_key, exc
+                )
+                # Fall through and recompute
 
     # Lazy import deep_research so v2 doesn't pay the import cost when novelty is off
     from andamentum.deep_research import run_novelty_check
@@ -186,10 +194,11 @@ async def _check_one_claim(
         if hasattr(w.get("relevance"), "value"):
             w["relevance"] = w["relevance"].value
 
-    try:
-        cache_path.write_text(json.dumps(report_dict, indent=2))
-    except Exception as exc:
-        logger.warning("[novelty_check] cache write failed: %s", exc)
+    if cache_path is not None:
+        try:
+            cache_path.write_text(json.dumps(report_dict, indent=2))
+        except Exception as exc:
+            logger.warning("[novelty_check] cache write failed: %s", exc)
 
     return report_dict
 

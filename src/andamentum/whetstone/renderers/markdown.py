@@ -34,6 +34,10 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
+from .._watermark import (
+    banner_markdown,
+    metadata_markdown_comment,
+)
 from ._panel_layout import body_markdown
 
 _TITLE = "# Whetstone Review"
@@ -42,13 +46,25 @@ _TITLE = "# Whetstone Review"
 def render_markdown(
     result: ReviewResult,
     output_path: str | Path | None = None,
+    *,
+    model: str | None = None,
+    visible_watermark: bool = True,
 ) -> str:
     """Render a ReviewResult as markdown.
 
     Returns the markdown string. If ``output_path`` is given, also writes
     the string to that path (utf-8) — the path is created if missing.
+
+    ``visible_watermark`` (default True) adds a top-of-file banner
+    identifying this as AI-generated review content. The invisible
+    HTML-comment metadata header is always written regardless of this
+    flag — set it explicitly to False only when producing a derived
+    artifact that should not carry a visible banner.
     """
-    sections: list[str] = [_TITLE]
+    # Prelude (metadata header + title + optional banner) is appended
+    # AFTER the review-content sections are assembled, so the
+    # "looks clean" check counts review content only.
+    sections: list[str] = []
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
@@ -99,14 +115,18 @@ def render_markdown(
         # it if there's nothing else to show — the panel synthesis
         # already gives a holistic view.
         sections.append(_render_document_map(result.document_map))
-    elif result.document_map and len(sections) == 1:
+    elif result.document_map and not sections:
         sections.append(_render_document_map(result.document_map))
 
-    if len(sections) == 1:
-        # Only the title. Be explicit rather than emitting a blank file.
+    if not sections:
+        # No review content. Be explicit rather than emitting a blank file.
         sections.append("_No findings, edits, or questions — document looks clean._")
 
-    output = "\n\n---\n\n".join(sections) + "\n"
+    # Prepend prelude: invisible metadata header + visible title + optional banner.
+    prelude: list[str] = [metadata_markdown_comment(model=model), _TITLE]
+    if visible_watermark:
+        prelude.append(banner_markdown(model=model))
+    output = "\n\n---\n\n".join(prelude + sections) + "\n"
 
     if output_path is not None:
         path = Path(output_path)

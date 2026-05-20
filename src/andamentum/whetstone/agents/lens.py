@@ -104,5 +104,19 @@ def build_lens_agent_definition(lens_name: str) -> AgentDefinition:
 
 
 def list_available_lenses() -> list[str]:
-    """All lens names this build supports, sorted."""
-    return sorted(LENS_PROMPTS)
+    """All lens names this build supports (prompt-based + sub-graph), sorted."""
+    from ..lenses import SUBGRAPH_LENS_NAMES
+
+    return sorted(set(LENS_PROMPTS) | SUBGRAPH_LENS_NAMES)
+
+
+def is_subgraph_lens(name: str) -> bool:
+    """True for lenses backed by a pydantic-graph sub-graph (not a single prompt).
+
+    Used by the agent-registry bootstrap to skip sub-graph lenses
+    (they manage their own agent definitions internally) and by
+    ``CriticalRead._run_lens`` to dispatch the right execution path.
+    """
+    from ..lenses import SUBGRAPH_LENS_NAMES
+
+    return name in SUBGRAPH_LENS_NAMES

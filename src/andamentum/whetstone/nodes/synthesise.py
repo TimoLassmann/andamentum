@@ -49,6 +49,35 @@ class Synthesise(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         return End(_build_result(ctx.state, all_findings))
 
 
+_DOC_TYPE_VOCAB: dict[str, str] = {
+    "academic": (
+        "DOCUMENT TYPE: academic. This draft is scholarly writing — a "
+        "manuscript, thesis, conference paper, or similar. Use "
+        "vocabulary appropriate to academic writing: 'manuscript', "
+        "'draft', 'submission', 'methods', 'results', 'discussion'."
+    ),
+    "external_communication": (
+        "DOCUMENT TYPE: external_communication. This draft is written "
+        "for a broad non-academic audience — a blog post, LinkedIn "
+        "article, email, op-ed, or similar. Use vocabulary appropriate "
+        "to that genre: 'post', 'article', 'audience', 'tone', "
+        "'call to action', 'reader engagement'. Frame feedback for "
+        "publication on a public channel, not for academic submission."
+    ),
+    "general": (
+        "DOCUMENT TYPE: general. This draft is neither academic "
+        "writing nor external communication — likely a note, internal "
+        "document, book, technical writeup, or similar. Use neutral "
+        "vocabulary: 'document', 'draft', 'text', 'section'. Do not "
+        "assume academic submission norms apply."
+    ),
+}
+
+
+def _document_type_context(document_type: str) -> str:
+    return _DOC_TYPE_VOCAB.get(document_type, _DOC_TYPE_VOCAB["general"])
+
+
 async def _run_synthesis(
     deps: ReviewDeps,
     state: ReviewState,
@@ -62,14 +91,18 @@ async def _run_synthesis(
         f"  [{f.priority}|{f.severity}|{f.confidence}] {f.title}\n      sections: {', '.join(f.sections_involved)}\n      {f.rationale}"
         for f in findings
     )
-    prompt = f"""DOCUMENT MAP:
+    type_context = _document_type_context(state.document_type)
+    prompt = f"""{type_context}
+
+DOCUMENT MAP:
 {map_lines}
 
 FINDINGS ({len(findings)} total) — each tagged [priority|severity|confidence]:
-{finding_lines or "  (no findings — clean document)"}
+{finding_lines or "  (no findings — clean draft)"}
 
-Write a ReviewSummary with executive_summary (2 paragraphs) and
-priority-bucketed paragraphs (must_fix / should_fix / consider)."""
+Produce a ReviewSummary with executive_summary (2 paragraphs) and
+priority-bucketed paragraphs (must_fix / should_fix / consider).
+Match vocabulary to the DOCUMENT TYPE shown above."""
 
     agent = build_pydantic_ai_agent("synthesise", deps.model)
     result = await agent.run(prompt)

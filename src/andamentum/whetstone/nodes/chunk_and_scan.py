@@ -24,6 +24,7 @@ from pydantic_graph import BaseNode, End, GraphRunContext
 
 from andamentum.chunker import extract_units
 
+from .._document_type import classify as classify_document_type
 from ..deps import ReviewDeps
 from ..schemas import ReviewMetrics, ReviewResult
 from ..state import ReviewState
@@ -74,7 +75,20 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         ]
         logger.info("[scan] %d sections produced", len(ctx.state.sections))
 
-        # ── 2. Extract structural facts ───────────────────────────────
+        # ── 2. Classify document type (one LLM call; "auto" only) ─────
+        # The classifier gates the journal-specific checklist below and
+        # steers synthesis vocabulary. Any failure → "general".
+        if ctx.state.document_type == "auto":
+            ctx.state.document_type = await classify_document_type(
+                model=ctx.deps.model,
+                section_titles=[s.title for s in ctx.state.sections],
+                markdown=ctx.state.markdown,
+            )
+            logger.info(
+                "[scan] document_type resolved to '%s'", ctx.state.document_type
+            )
+
+        # ── 3. Extract structural facts ───────────────────────────────
         ctx.state.structural_facts = StructuralFacts(
             citation_graph=extract_citations(ctx.state.sections),
             term_glossary=extract_term_glossary(ctx.state.sections),
@@ -82,21 +96,28 @@ class ChunkAndScan(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             cross_references=extract_cross_references(ctx.state.sections),
         )
 
-        # ── 3. Build document map (deterministic; Skim node will enrich) ──
+        # ── 4. Build document map (deterministic; Skim node will enrich) ──
         ctx.state.document_map = build_document_map(ctx.state.sections)
 
-        # ── 4. Synthesise deterministic findings ──────────────────────
+        # ── 5. Synthesise deterministic findings ──────────────────────
+        # The journal-specific checklist (CoI / data / ethics / abstract /
+        # keywords / H1 title) only fires for academic documents. Other
+        # document types skip it by passing markdown="" — the function's
+        # own contract treats that as "skip checklist".
+        markdown_for_checklist = (
+            ctx.state.markdown if ctx.state.document_type == "academic" else ""
+        )
         ctx.state.deterministic_findings = synthesize_deterministic_findings(
             sections=ctx.state.sections,
             facts=ctx.state.structural_facts,
-            markdown=ctx.state.markdown,
+            markdown=markdown_for_checklist,
         )
         logger.info(
             "[scan] %d deterministic finding(s)",
             len(ctx.state.deterministic_findings),
         )
 
-        # ── 5. Branch: with model → next LLM phase; without → End now ──
+        # ── 6. Branch: with model → next LLM phase; without → End now ──
         if ctx.deps.model is None:
             ctx.state.current_phase = "done"
             logger.info("[scan] no model — skipping LLM phases (--no-llm mode)")

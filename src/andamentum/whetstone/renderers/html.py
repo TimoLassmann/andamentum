@@ -13,6 +13,10 @@ from typing import Any
 
 from andamentum.typeset import render as typeset_render
 
+from .._watermark import (
+    DISCLAIMER_SHORT,
+    banner_html_callout,
+)
 from ..schemas import (
     AuthorQuestion,
     CustomEvaluation,
@@ -34,11 +38,7 @@ from ._panel_layout import (
 
 _TITLE = "Whetstone Review"
 _SUBTITLE = "Structured feedback on a draft"
-_DISCLAIMER = (
-    "This report was generated for your own drafts. Whetstone is not a "
-    "peer-review tool — do not use it on manuscripts other authors have "
-    "sent you confidentially."
-)
+_DISCLAIMER = DISCLAIMER_SHORT  # Re-export of the shared constant.
 
 
 def render_html(
@@ -46,6 +46,8 @@ def render_html(
     output_path: str | Path | None = None,
     *,
     style: str = "article",
+    model: str | None = None,
+    visible_watermark: bool = True,
 ) -> str:
     """Render a ReviewResult as a self-contained HTML page.
 
@@ -58,7 +60,14 @@ def render_html(
     atoms: list[dict[str, Any]] = []
 
     atoms.append({"kind": "heading", "content": _TITLE, "subtitle": _SUBTITLE})
+    # Existing disclaimer kept as a "note" tone.
     atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
+    # Visible AI-provenance banner: a warning-tone callout on top of the
+    # existing note. Off by default for derived artifacts, on by default
+    # for standalone review reports.
+    if visible_watermark:
+        atoms.append(banner_html_callout())
+    _ = model  # reserved for future inclusion in the banner text
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
@@ -107,7 +116,10 @@ def render_html(
     if result.document_map and not panel_mode:
         atoms.extend(_document_map_atoms(result.document_map))
 
-    if len(atoms) <= 2:  # only heading + disclaimer
+    # Count prelude atoms (heading + disclaimer note + optional AI banner)
+    # so the "looks clean" message fires only when there's no review content.
+    prelude_atoms = 2 + (1 if visible_watermark else 0)
+    if len(atoms) <= prelude_atoms:
         atoms.append(
             {
                 "kind": "callout",
