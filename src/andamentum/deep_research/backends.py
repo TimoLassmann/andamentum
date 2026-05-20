@@ -10,9 +10,18 @@ from urllib.parse import urlparse
 
 import httpx
 
+from andamentum.core.fetch_gate import (
+    PaywallBlocked,
+    RobotsBlocked,
+    check_fetch_allowed,
+    user_agent_for,
+)
+
 from .models import SearchResult, FetchedPage
 
 logger = logging.getLogger(__name__)
+
+_USER_AGENT = user_agent_for("research")
 
 
 # ── Protocol ────────────────────────────────────────────────────────────
@@ -50,12 +59,17 @@ class HttpxSearchBackend:
         self,
         searxng_url: str = "http://127.0.0.1:4070",
         http_client: httpx.AsyncClient | None = None,
+        *,
+        tdm_allowed_hosts: frozenset[str] = frozenset(),
     ):
         self.searxng_url = searxng_url
         self._owns_client = http_client is None
         self._http = http_client or httpx.AsyncClient(
-            timeout=30.0, follow_redirects=True
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": _USER_AGENT},
         )
+        self._tdm_allowed_hosts = tdm_allowed_hosts
 
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
         """Search via SearXNG JSON API."""
@@ -108,6 +122,16 @@ class HttpxSearchBackend:
         is_safe, reason = is_safe_url(url)
         if not is_safe:
             raise RuntimeError(f"URL blocked by SSRF protection: {reason}")
+
+        try:
+            await check_fetch_allowed(
+                url,
+                user_agent=_USER_AGENT,
+                tdm_allowed_hosts=self._tdm_allowed_hosts,
+                client=self._http,
+            )
+        except (PaywallBlocked, RobotsBlocked) as exc:
+            raise RuntimeError(f"fetch refused by gate: {exc}") from exc
 
         resp = await self._http.get(url)
         resp.raise_for_status()

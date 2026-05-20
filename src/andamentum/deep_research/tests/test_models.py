@@ -281,18 +281,25 @@ class TestFetchedPageTruncationVisibility:
 
         from andamentum.deep_research import text_utils
         from andamentum.deep_research import content_extractor as _ce_mod
+        from andamentum.deep_research import backends as _backends_mod
+
+        async def _gate_noop(url, **kwargs):
+            return None
 
         orig_safe = text_utils.is_safe_url
         orig_extract = _ce_mod.extract_content
+        orig_gate = _backends_mod.check_fetch_allowed
         try:
             text_utils.is_safe_url = _always_safe  # type: ignore[assignment]
             _ce_mod.extract_content = _fake_extract  # type: ignore[assignment]
+            _backends_mod.check_fetch_allowed = _gate_noop  # type: ignore[assignment]
 
             from ..backends import HttpxSearchBackend
 
             backend = HttpxSearchBackend.__new__(HttpxSearchBackend)
             backend._http = _FakeHttp()  # type: ignore[assignment]
             backend._owns_client = False
+            backend._tdm_allowed_hosts = frozenset()
 
             result = await backend.fetch_page("https://example.com/page")
 
@@ -306,6 +313,7 @@ class TestFetchedPageTruncationVisibility:
         finally:
             text_utils.is_safe_url = orig_safe  # type: ignore[assignment]
             _ce_mod.extract_content = orig_extract  # type: ignore[assignment]
+            _backends_mod.check_fetch_allowed = orig_gate  # type: ignore[assignment]
 
     async def test_fetched_page_not_truncated_when_short(self, monkeypatch):
         """When content is under 50k chars, truncated=False and original_length matches."""
@@ -334,18 +342,25 @@ class TestFetchedPageTruncationVisibility:
 
         from andamentum.deep_research import text_utils
         from andamentum.deep_research import content_extractor as _ce_mod
+        from andamentum.deep_research import backends as _backends_mod
+
+        async def _gate_noop(url, **kwargs):
+            return None
 
         orig_safe = text_utils.is_safe_url
         orig_extract = _ce_mod.extract_content
+        orig_gate = _backends_mod.check_fetch_allowed
         try:
             text_utils.is_safe_url = _always_safe  # type: ignore[assignment]
             _ce_mod.extract_content = _fake_extract  # type: ignore[assignment]
+            _backends_mod.check_fetch_allowed = _gate_noop  # type: ignore[assignment]
 
             from ..backends import HttpxSearchBackend
 
             backend = HttpxSearchBackend.__new__(HttpxSearchBackend)
             backend._http = _FakeHttp()  # type: ignore[assignment]
             backend._owns_client = False
+            backend._tdm_allowed_hosts = frozenset()
 
             result = await backend.fetch_page("https://example.com/short")
 
@@ -356,3 +371,4 @@ class TestFetchedPageTruncationVisibility:
         finally:
             text_utils.is_safe_url = orig_safe  # type: ignore[assignment]
             _ce_mod.extract_content = orig_extract  # type: ignore[assignment]
+            _backends_mod.check_fetch_allowed = orig_gate  # type: ignore[assignment]

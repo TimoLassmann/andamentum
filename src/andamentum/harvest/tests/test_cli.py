@@ -59,7 +59,7 @@ def test_harvest_cli_creates_parent_dirs(tmp_path: Path) -> None:
 def test_harvest_cli_fetch_error_exits_2(monkeypatch) -> None:
     """FetchError is exit code 2."""
 
-    async def boom(source):
+    async def boom(source, **_kwargs):
         raise FetchError("boom")
 
     monkeypatch.setattr(api_mod, "resolve", boom)
@@ -74,7 +74,7 @@ def test_harvest_cli_extraction_error_exits_3(monkeypatch) -> None:
     """ExtractionError is exit code 3."""
     from andamentum.harvest.fetch import Fetched
 
-    async def fake_resolve(source):
+    async def fake_resolve(source, **_kwargs):
         return Fetched(data=b"<html></html>", format="html", source_url="x")
 
     async def fake_traf(data, source_url):

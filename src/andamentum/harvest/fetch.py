@@ -19,8 +19,19 @@ from urllib.parse import urlparse
 
 import httpx
 
+from andamentum.core.fetch_gate import (
+    PaywallBlocked,
+    RobotsBlocked,
+    check_fetch_allowed,
+    user_agent_for,
+)
+
 from .errors import FetchError, UnsupportedFormatError
 from .url_safety import is_safe_url
+
+# Identifies andamentum-harvest to remote hosts so abuse-desks can contact the
+# project rather than block the netblock. Per RFC 9110 §10.1.5.
+_USER_AGENT = user_agent_for("harvest")
 
 Format = Literal["pdf", "html", "docx", "pptx", "markdown", "plain"]
 
@@ -82,13 +93,26 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
 # ----------------------------------------------------------------------------
 
 
-async def resolve(source: str | Path) -> Fetched:
+async def resolve(
+    source: str | Path,
+    *,
+    tdm_allowed_hosts: frozenset[str] = frozenset(),
+) -> Fetched:
     """Bring `source` into memory and detect its format.
 
     Accepts:
-      - http(s):// URL  → httpx GET (SSRF-protected)
+      - http(s):// URL  → httpx GET (SSRF-protected, robots.txt + paywall gated)
       - file:// URI     → local file read
       - filesystem path → local file read (str or pathlib.Path)
+
+    Parameters
+    ----------
+    source:
+        URL or file path.
+    tdm_allowed_hosts:
+        Hostnames the caller attests they hold a text-and-data-mining
+        licence for. A match here disarms the paywall tripwire for that
+        host. Default empty: tripwire fully active.
     """
     if isinstance(source, Path):
         return _read_file(source)
@@ -97,7 +121,7 @@ async def resolve(source: str | Path) -> Fetched:
         raise FetchError(f"unsupported source type: {type(source).__name__}")
 
     if source.startswith(("http://", "https://")):
-        return await _fetch_url(source)
+        return await _fetch_url(source, tdm_allowed_hosts=tdm_allowed_hosts)
     if source.startswith("file://"):
         # Strip "file://" prefix and treat as a path
         return _read_file(Path(source[len("file://") :]))
@@ -111,7 +135,11 @@ async def resolve(source: str | Path) -> Fetched:
 # ----------------------------------------------------------------------------
 
 
-async def _fetch_url(url: str) -> Fetched:
+async def _fetch_url(
+    url: str,
+    *,
+    tdm_allowed_hosts: frozenset[str] = frozenset(),
+) -> Fetched:
     safe, reason = _is_safe_url(url)
     if not safe:
         raise FetchError(f"URL blocked: {reason} ({url})")
@@ -120,8 +148,18 @@ async def _fetch_url(url: str) -> Fetched:
         async with httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
-            headers={"User-Agent": "andamentum-harvest/0.1"},
+            headers={"User-Agent": _USER_AGENT},
         ) as client:
+            try:
+                await check_fetch_allowed(
+                    url,
+                    user_agent=_USER_AGENT,
+                    tdm_allowed_hosts=tdm_allowed_hosts,
+                    client=client,
+                )
+            except (PaywallBlocked, RobotsBlocked) as exc:
+                raise FetchError(str(exc)) from exc
+
             resp = await client.get(url)
             resp.raise_for_status()
     except httpx.HTTPError as exc:

@@ -30,6 +30,7 @@ async def run_research(
     backend: Any = None,  # SearchBackend — typed loosely to avoid import at module level
     verbose: bool = False,
     reporter: Any = None,  # SearchReporter — typed loosely to avoid mandatory import
+    tdm_allowed_hosts: frozenset[str] = frozenset(),
 ) -> "ResearchResult":
     """Run a complete research session.
 
@@ -40,8 +41,12 @@ async def run_research(
         searxng_url: SearXNG instance URL for default backend
         max_results: Max search results per query
         max_pages: Max pages to fetch per iteration
-        backend: Optional SearchBackend override
+        backend: Optional SearchBackend override (when supplied, ``tdm_allowed_hosts``
+            does not apply — the caller-provided backend is responsible for its own gating)
         verbose: Print progress
+        tdm_allowed_hosts: Hostnames the caller attests they hold a TDM licence
+            for. Disarms the paywalled-publisher tripwire for those hosts. Default
+            empty: tripwire fully active. Only consulted when ``backend`` is None.
 
     Returns:
         ResearchResult with output, iterations, searches, pages_fetched, verification, errors
@@ -86,7 +91,10 @@ async def run_research(
     # Set up backend
     owns_backend = backend is None
     if owns_backend:
-        backend = HttpxSearchBackend(searxng_url=searxng_url)
+        backend = HttpxSearchBackend(
+            searxng_url=searxng_url,
+            tdm_allowed_hosts=tdm_allowed_hosts,
+        )
 
     # Resolve model (provides localhost default for ollama: prefix)
     model_instance = _resolve_model(model)

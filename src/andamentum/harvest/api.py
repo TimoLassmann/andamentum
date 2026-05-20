@@ -28,7 +28,11 @@ Format = Literal["pdf", "html", "docx", "pptx", "markdown", "plain"]
 logger = logging.getLogger(__name__)
 
 
-async def extract(source: str | Path) -> str:
+async def extract(
+    source: str | Path,
+    *,
+    tdm_allowed_hosts: frozenset[str] = frozenset(),
+) -> str:
     """Convert any document source to clean markdown.
 
     Parameters
@@ -36,6 +40,10 @@ async def extract(source: str | Path) -> str:
     source:
         A URL string ("http://..." / "https://...") OR a local file path
         (str or pathlib.Path). "file://" URIs are also accepted.
+    tdm_allowed_hosts:
+        Hostnames the caller attests they hold a text-and-data-mining
+        licence for. Disarms the paywalled-publisher tripwire for those
+        hosts. Default empty: tripwire fully active.
 
     Returns
     -------
@@ -47,13 +55,15 @@ async def extract(source: str | Path) -> str:
     Raises
     ------
     FetchError
-        URL unreachable, file missing, SSRF block.
+        URL unreachable, file missing, SSRF block, robots.txt disallow,
+        or paywall tripwire (host on the curated paywalled-publisher list
+        and not in ``tdm_allowed_hosts``).
     UnsupportedFormatError
         Source format detected but no backend can handle it.
     ExtractionError
         Every applicable backend failed (or returned empty content).
     """
-    fetched = await resolve(source)
+    fetched = await resolve(source, tdm_allowed_hosts=tdm_allowed_hosts)
     return await _dispatch(fetched)
 
 

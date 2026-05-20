@@ -53,6 +53,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print progress to stderr.",
     )
+    parser.add_argument(
+        "--tdm-host",
+        action="append",
+        default=[],
+        metavar="HOST",
+        help=(
+            "Hostname for which you attest to holding a text-and-data-mining "
+            "licence. Disarms the paywalled-publisher tripwire for this host. "
+            "Repeatable. Example: --tdm-host nature.com --tdm-host sciencedirect.com"
+        ),
+    )
     return parser
 
 
@@ -62,8 +73,9 @@ def _die(code: int, message: str) -> NoReturn:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    tdm_hosts = frozenset(h.strip().lower() for h in args.tdm_host if h.strip())
     try:
-        markdown = await extract(args.source)
+        markdown = await extract(args.source, tdm_allowed_hosts=tdm_hosts)
     except FetchError as exc:
         _die(2, f"could not fetch {args.source!r}: {exc}")
     except UnsupportedFormatError as exc:
