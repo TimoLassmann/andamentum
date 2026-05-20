@@ -53,6 +53,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--json", action="store_true", dest="json_output", help="Output result as JSON"
     )
+    parser.add_argument(
+        "--tdm-host",
+        action="append",
+        default=[],
+        metavar="HOST",
+        help=(
+            "Hostname for which you attest to holding a text-and-data-mining "
+            "licence. Disarms the paywalled-publisher tripwire for this host. "
+            "Repeatable. Example: --tdm-host nature.com --tdm-host sciencedirect.com"
+        ),
+    )
     return parser
 
 
@@ -142,6 +153,8 @@ async def _run(args: argparse.Namespace) -> None:
         )
         reporter = RichReporter(console)
 
+    tdm_hosts = frozenset(h.strip().lower() for h in args.tdm_host if h.strip())
+
     result = await run_research(
         args.query,
         model=model,
@@ -151,6 +164,7 @@ async def _run(args: argparse.Namespace) -> None:
         max_pages=args.max_pages,
         verbose=args.verbose,
         reporter=reporter,
+        tdm_allowed_hosts=tdm_hosts,
     )
 
     if args.json_output:

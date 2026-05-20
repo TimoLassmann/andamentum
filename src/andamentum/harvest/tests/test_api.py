@@ -23,7 +23,7 @@ def patched_resolve(monkeypatch):
 
     holder: dict[str, Fetched] = {}
 
-    async def fake_resolve(source):
+    async def fake_resolve(source, **_kwargs):
         return holder["fetched"]
 
     monkeypatch.setattr(api_mod, "resolve", fake_resolve)
