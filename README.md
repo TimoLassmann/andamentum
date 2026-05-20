@@ -1,22 +1,52 @@
 # andamentum
 
-Composable agentic systems for scientific automation.
+Composable research tooling for scientific work.
 
-Andamentum is a single Python package of twelve tightly-scoped sub-modules
-for building agentic reasoning pipelines:
+Andamentum is a single Python package of tightly-scoped sub-modules. Each module
+does one thing well; together they cover the document-handling pipeline a
+researcher uses end-to-end — from extracting a PDF to drafting a paper to
+critiquing the result.
 
-- **`andamentum.epistemic`** — formal epistemology, claim analysis, multi-agent verification
-- **`andamentum.deep_research`** — web research pipeline with iterative search, verification, and synthesis
-- **`andamentum.document_store`** — SQLite + FTS5 + vector search storage with automatic chunking and LLM metadata extraction
-- **`andamentum.whetstone`** — sharpen your own drafts with editing, specialist review, or multi-expert panel feedback (track changes, HTML, or markdown output)
-- **`andamentum.scribe`** — block-based document authoring (paragraph, heading, figure, table) backed by SQLite; renders to .docx
-- **`andamentum.figures`** — publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (9 chart types)
-- **`andamentum.chunker`** — structural-first semantic chunking of long markdown into self-contained units
-- **`andamentum.harvest`** — universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain)
-- **`andamentum.vision_critique`** — bounded vision critique of rendered figures via local multimodal models
-- **`andamentum.proofread`** — deterministic readability + style checking (no LLM)
-- **`andamentum.typeset`** — typesetting system used by other modules for HTML / PDF output
-- **`andamentum.core`** — shared model-resolution, `AgentRunner`, and embedding infrastructure
+The package is built with two design commitments that distinguish it from
+generic AI tooling:
+
+- **Responsible by construction.** Confidentiality tripwires, robots.txt and
+  paywalled-publisher gating, AI-provenance watermarks, and explicit local-vs-
+  cloud awareness — implemented as in-code refusals and stamps, not markdown
+  disclaimers. See [`RESPONSIBLE_USE.md`](./RESPONSIBLE_USE.md).
+- **No hidden defaults.** Every public function that calls an LLM takes
+  `model=` as a keyword-only argument. There is no shared config module, no
+  ambient defaults, no env-var-driven behaviour selection.
+
+## What's in the package
+
+**Authoring**
+- `andamentum.scribe` — block-based document drafting (paragraph, heading,
+  figure, table) backed by SQLite; renders to .docx
+- `andamentum.figures` — deterministic publication-quality figure rendering
+  with journal-matched sizing (9 chart types, 7 journal palettes)
+- `andamentum.typeset` — HTML / PDF typesetting used by other modules
+
+**Reviewing your own drafts**
+- `andamentum.whetstone` — multi-lens review of your own drafts with track
+  changes, panel mode, novelty check, and Strunk-rule lens
+- `andamentum.proofread` — deterministic readability + style checking (no LLM)
+- `andamentum.vision_critique` — bounded vision critique of rendered figures
+  via local multimodal models
+
+**Sourcing and indexing**
+- `andamentum.harvest` — universal source → markdown extraction (PDF / HTML /
+  DOCX / PPTX / Markdown / plain)
+- `andamentum.chunker` — structural-first semantic chunking of long markdown
+  into 2k–10k char self-contained units
+- `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge
+  base with 4-signal RRF search and LLM metadata extraction
+- `andamentum.deep_research` — web research pipeline (search → fetch → extract
+  → verify → synthesise) over a local SearXNG instance
+
+**Shared infrastructure**
+- `andamentum.core` — model resolution, agent runners, fetch gating, and
+  embedding clients
 
 ## Installation
 
@@ -28,52 +58,49 @@ Everything works out of the box. There are no optional extras to remember.
 
 ## Quickstart
 
-```python
-from andamentum.epistemic import EpistemicRepository
-from andamentum.deep_research import ResearchState
-from andamentum.document_store import ingest, search
-```
-
-Each public function takes `model=` as a keyword-only argument. The Python API has
-no hidden defaults — you always specify which model to use.
+Review a draft you wrote yourself:
 
 ```python
-from andamentum.epistemic.runner import DefaultAgentRunner
+import asyncio
+from andamentum.whetstone import review_document
 
-runner = DefaultAgentRunner(model="anthropic:claude-haiku-4-5")
+result = asyncio.run(
+    review_document(
+        "draft.md",
+        model="anthropic:claude-haiku-4-5",
+        confirm_own_draft=True,
+    )
+)
+print(result.summary)
 ```
 
-## Command-line tools
-
-Nine CLIs are installed with the package. Run `--help` on any of them for the
-full flag reference.
-
-| Command | What it does |
-|---|---|
-| `andamentum-epistemic` | Formal-epistemology pipeline. Two modes: `ask "<question>"` (research mode — system attempts decomposition, falls back to open research if the question doesn't decompose) or `verify "<claim>"` (single-claim verification, SciFact-style) |
-| `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) |
-| `andamentum-whetstone` | Multi-lens review of your own draft → markdown / HTML / .docx with track changes. `--apply-patches PATCHES.json` applies a pre-built JSON patch list to a .docx (no LLM) |
-| `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx |
-| `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. |
-| `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units |
-| `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) |
-| `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required |
-| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text |
-
-`andamentum-epistemic`, `andamentum-research`, `andamentum-whetstone`,
-`andamentum-chunker`, and `andamentum-vision-critique` need an LLM. Set
-`ANDAMENTUM_MAIN_LLM_MODEL` once to avoid passing `--model` on every invocation:
+Every public function that calls an LLM takes `model=` as a keyword-only
+argument. Set `ANDAMENTUM_MAIN_LLM_MODEL` once to avoid passing `--model` on
+every CLI invocation:
 
 ```bash
 export ANDAMENTUM_MAIN_LLM_MODEL=anthropic:claude-haiku-4-5
 ```
 
-`andamentum-scribe`, `andamentum-figures`, `andamentum-harvest`, and
-`andamentum-proofread` have no LLM dependency.
+## Command-line tools
+
+Eight CLIs are installed with the package. Run `--help` on any of them for
+the full flag reference.
+
+| Command | What it does | LLM? |
+|---|---|---|
+| `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
+| `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
+| `andamentum-whetstone` | Multi-lens review of your own draft → markdown / HTML / .docx with track changes. `--apply-patches PATCHES.json` applies a pre-built JSON patch list to a .docx (no LLM) | required (or `--no-llm`) |
+| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
+| `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
+| `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
+| `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
+| `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearXNG instance | required |
 
 ## Documentation
 
-See [`docs/`](./docs/) for module-level narrative documentation and
+See [`docs/`](./docs/) for module-level documentation and
 [`examples/`](./examples/) for runnable code demonstrating common workflows.
 
 ## Intended use and limits
@@ -92,24 +119,32 @@ The short version:
   incorporate output from andamentum's LLM-using sub-modules must
   disclose that use per ICMJE / NIH / NHMRC / ARC / COPE / your
   institution's rules.
-- **`harvest` does not enforce publisher Terms of Service.** You
-  are responsible for respecting `robots.txt`, publisher ToS, and
-  any applicable TDM (text-and-data-mining) licensing for the URLs
-  you fetch. Bulk extraction from paywalled academic publishers
-  without a TDM licence is contractually prohibited.
+- **`harvest` and `deep_research` consult `robots.txt`** before every
+  external fetch and refuse paywalled academic publishers (Elsevier,
+  Springer Nature, Wiley, IEEE, ACM, NEJM, JAMA, Cell Press, Nature,
+  Science) unless the caller passes `tdm_allowed_hosts` (API) or
+  `--tdm-host` (CLI). Bulk extraction without a TDM licence is
+  contractually prohibited by these publishers.
 - **`figures` plots data, it does not generate it.** Deterministic
   matplotlib wrapper. Auto-applied visual decisions are reported
   in `FigureResult.advisor_notes` — mirror them in your captions.
-- **`epistemic` is research-stage software.** Its verdicts reflect
-  what a single LLM-driven pipeline concluded; they are not
-  statements of clinical, regulatory, or legal truth.
 - **Cloud inference sends your content to the provider.** Use local
   Ollama models for inputs subject to ethics, NDA, MTA, DUA, or
-  institutional data-classification rules. Tiered cloud-call gates
-  for the CLIs are planned for a future release.
+  institutional data-classification rules.
 
 `andamentum` is MIT-licensed and ships without warranty. The full
 guidance lives in [`RESPONSIBLE_USE.md`](./RESPONSIBLE_USE.md).
+
+## Pre-release / experimental
+
+The package includes an additional sub-module that ships installed but is not
+yet publicly documented:
+
+- **`andamentum.epistemic`** — still under active development. The API is
+  unstable and the published documentation does not yet describe it; if you
+  discover it via `pip show -f andamentum` or `andamentum-epistemic --help`,
+  treat it as experimental. A dedicated release will accompany the
+  documentation when the module stabilises.
 
 ## License
 
@@ -117,11 +152,8 @@ MIT. See [`LICENSE`](./LICENSE).
 
 ## Acknowledgements
 
-andamentum stands on a substantial body of open-source software and
-publicly-funded data infrastructure. The full bibliography (including
-the philosophy-of-science literature that informs the epistemic
-pipeline) will be published alongside the epistemic module when that
-system stabilises.
+andamentum builds on a substantial body of open-source software and
+publicly-funded data infrastructure.
 
 ### Software
 
@@ -144,8 +176,7 @@ system stabilises.
   (Google) — local embedding and LLM inference.
 - **[textstat](https://github.com/textstat/textstat)** — readability
   metrics used by `proofread`.
-- **[scikit-learn](https://scikit-learn.org/)** — HDBSCAN clustering
-  in `epistemic.dedup`.
+- **[scikit-learn](https://scikit-learn.org/)** — used internally.
   Pedregosa et al. (2011). "Scikit-learn: Machine Learning in Python",
   *JMLR* 12: 2825–2830.
 
@@ -161,8 +192,7 @@ system stabilises.
   Du, N., Farajtabar, M., Ahmed, A., Smola, A., Song, L. (2015).
   "Dirichlet-Hawkes Processes with Applications to Clustering
   Continuous-Time Document Streams", *KDD '15*.
-- **HDBSCAN** — density-based clustering used for evidence
-  deduplication.
+- **HDBSCAN** — density-based clustering.
   Campello, R.J.G.B., Moulavi, D., Sander, J. (2013).
   "Density-Based Clustering Based on Hierarchical Density
   Estimates", *PAKDD '13*. McInnes, L., Healy, J., Astels, S.
@@ -175,10 +205,9 @@ system stabilises.
 
 ### Data sources
 
-`epistemic` evidence providers query the following public APIs.
-Users running the pipeline are bound by each provider's terms of
-use and rate limits. Where the provider asks to be credited in
-publications, please respect that.
+Users running the web-research pipeline are bound by each provider's
+terms of use and rate limits. Where the provider asks to be credited
+in publications, please respect that.
 
 - **PubMed / E-utilities** — NCBI / National Library of Medicine.
   Please set an `NCBI_API_KEY` for the 10 req/s rate, otherwise the
