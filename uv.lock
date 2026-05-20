@@ -207,7 +207,7 @@ wheels = [
 
 [[package]]
 name = "andamentum"
-version = "0.2.0"
+version = "0.3.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
