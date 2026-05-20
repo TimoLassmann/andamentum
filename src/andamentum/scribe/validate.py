@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .models import ValidationIssue
-from .parser import find_unresolved_markers
+from .parser import find_ai_markers, find_unresolved_markers
 
 if TYPE_CHECKING:  # pragma: no cover
     from .api import Document
@@ -64,6 +64,23 @@ def validate_document(doc: "Document") -> list[ValidationIssue]:
                 ValidationIssue(
                     severity="info",
                     message=f"Unresolved citation marker [{marker}] in block.",
+                    location=blk.id,
+                )
+            )
+
+    # AI-provenance markers in paragraphs — warn so the author confirms
+    # the marker is intended and remembers to disclose AI assistance in
+    # methods/acknowledgements per their journal's policy.
+    for blk in doc.query(type="paragraph"):
+        for marker in find_ai_markers(blk.content):
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    message=(
+                        f"AI-provenance marker [{marker}] in block — "
+                        f"remember to disclose AI assistance in your "
+                        f"methods/acknowledgements per your journal's policy."
+                    ),
                     location=blk.id,
                 )
             )

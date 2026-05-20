@@ -26,11 +26,37 @@ from typing import TYPE_CHECKING, Any
 from docx import Document as DocxDocument
 from docx.shared import Inches
 
-from .parser import inline_runs
+from .parser import find_ai_markers, inline_runs
 
 if TYPE_CHECKING:  # pragma: no cover
     from .api import Document
     from docx.document import Document as _DocxDoc
+
+
+_AI_MARKER_KEYWORD = "andamentum:contains-ai-markers"
+
+
+def _stamp_ai_marker_keyword(out: "_DocxDoc") -> None:
+    """Tag the docx's core properties with an AI-provenance keyword.
+
+    Visible in Word's File→Info pane and recoverable by any docx-reading
+    tool. Surfaces AI-assistance to readers (editors, integrity workflows)
+    without forcing them to parse the body text. Uses the standard Dublin
+    Core ``keywords`` field — no custom-properties XML needed.
+    """
+    existing = (out.core_properties.keywords or "").strip()
+    if _AI_MARKER_KEYWORD in existing:
+        return
+    out.core_properties.keywords = (
+        f"{existing}, {_AI_MARKER_KEYWORD}" if existing else _AI_MARKER_KEYWORD
+    )
+
+
+def _document_contains_ai_markers(doc: "Document") -> bool:
+    for blk in doc.query(type="paragraph"):
+        if find_ai_markers(blk.content):
+            return True
+    return False
 
 
 def _emit_paragraph(out: "_DocxDoc", content: str) -> None:
@@ -72,6 +98,9 @@ def render_to_docx(doc: "Document", output_path: str) -> None:
         out = DocxDocument(doc.template)
     else:
         out = DocxDocument()
+
+    if _document_contains_ai_markers(doc):
+        _stamp_ai_marker_keyword(out)
 
     for blk in doc.query():
         if blk.type == "heading":

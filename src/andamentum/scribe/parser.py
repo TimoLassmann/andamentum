@@ -20,6 +20,11 @@ import re
 _CITATION_KEY_RE = re.compile(r"(?<![A-Za-z0-9])@([A-Za-z][A-Za-z0-9_:.-]*)")
 _BRACKET_GROUP_RE = re.compile(r"\[(?P<body>[^\[\]]*)\]")
 _UNRESOLVED_MARKERS = ("verify", "citation needed")
+# AI-provenance markers — surfaced by validate() and stamped into .docx
+# document properties so downstream readers (editors, integrity tools) can
+# discover that AI assistance contributed to a section. Authors opt in by
+# typing the marker; the project does not auto-insert them.
+AI_MARKERS = ("ai-drafted", "ai-edited")
 
 # Inline-formatting tokenizer: order matters — code spans first (so we
 # don't mis-tokenise asterisks inside backticks), then bold, then italic.
@@ -48,6 +53,16 @@ def find_unresolved_markers(markdown: str) -> list[str]:
     for match in _BRACKET_GROUP_RE.finditer(markdown):
         body = match.group("body").strip().lower()
         if body in _UNRESOLVED_MARKERS:
+            out.append(body)
+    return out
+
+
+def find_ai_markers(markdown: str) -> list[str]:
+    """Return AI-provenance markers (`[ai-drafted]`, `[ai-edited]`) found in body."""
+    out: list[str] = []
+    for match in _BRACKET_GROUP_RE.finditer(markdown):
+        body = match.group("body").strip().lower()
+        if body in AI_MARKERS:
             out.append(body)
     return out
 

@@ -36,31 +36,6 @@ ARTICLE: list[tuple[str, str]] = [
     ("References", ""),
 ]
 
-GRANT: list[tuple[str, str]] = [
-    (
-        "Specific Aims",
-        "One-page overview. State the long-term goal, the specific aims, and why the work matters.",
-    ),
-    (
-        "Background and Significance",
-        "Establish the problem, cite key prior work, identify the gap your work fills.",
-    ),
-    (
-        "Innovation",
-        "What is conceptually or methodologically new. Distinguish from incremental work.",
-    ),
-    (
-        "Approach",
-        "For each aim: rationale, methods, expected outcomes, alternative strategies, pitfalls.",
-    ),
-    (
-        "Timeline and Milestones",
-        "Project schedule with measurable deliverables per period.",
-    ),
-    ("References", ""),
-]
-
 SCAFFOLDS: dict[str, list[tuple[str, str]]] = {
     "article": ARTICLE,
-    "grant": GRANT,
 }
