@@ -330,6 +330,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run only the deterministic structural pass. No --model required.",
     )
     parser.add_argument(
+        "--no-proofread",
+        action="store_true",
+        help=(
+            "Disable the deterministic proofread pass (weasel words, passive "
+            "voice, duplicate words, weak sentence openers). On by default — "
+            "its findings flow into the same report as the LLM-driven lenses."
+        ),
+    )
+    parser.add_argument(
         "--check-novelty",
         action="store_true",
         help=(
@@ -653,6 +662,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             ),
             confirm_own_draft=args.confirm_own_draft,
             document_type=args.document_type,
+            proofread=not args.no_proofread,
         )
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a

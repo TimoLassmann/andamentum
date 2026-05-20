@@ -155,7 +155,10 @@ This work was supported by a Test University internal grant.
 
 This study was approved by the Test University IRB (protocol #42).
 """
-    result = await review_document(clean)
+    # proofread=False — this test checks the structural substrate, not the
+    # surface-style layer; proofread legitimately flags weasel words and
+    # passive voice that the fixture happens to contain.
+    result = await review_document(clean, proofread=False)
     # No structural faults AND no missing checklist items → no findings.
     titles = [f.title for f in result.deterministic_findings]
     assert result.deterministic_findings == [], f"Got findings: {titles}"

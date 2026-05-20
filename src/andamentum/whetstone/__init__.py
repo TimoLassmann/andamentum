@@ -12,9 +12,17 @@ and the in-code protections (confidentiality-marker tripwire, tiered
 watermarking, locked AI-author attribution, panel-mode authorship gate).
 
 Without a ``model`` only the deterministic substrate runs (chunking +
-structural extractors). With a model, the full critical-review pipeline
-runs: lens reading → bounded reflection–investigation loop → optional
-editor → challenge → author questions → synthesis.
+structural extractors + surface-style proofread). With a model, the full
+critical-review pipeline runs: lens reading → bounded reflection–
+investigation loop → optional editor → challenge → author questions →
+synthesis.
+
+The proofread pass (weasel words, passive voice, duplicate words, weak
+sentence openers) runs by default in every mode — pure deterministic
+checks, no LLM, no network, adds milliseconds. Findings flow through the
+same renderers as the LLM-driven lenses and appear as Word comments in
+the .docx output. Disable with ``proofread=False`` (or ``--no-proofread``
+from the CLI) when you want to suppress that layer.
 """
 
 from .api import review_document
