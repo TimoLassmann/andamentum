@@ -1,0 +1,13 @@
+[
+  {
+    "source": "biorxiv",
+    "id": "10.1101/2023.01.01.000000",
+    "subfield": "neuroscience",
+    "_note": "PLACEHOLDER — replace with real ids. Run `discover` to find bioRxiv preprints that were later published (candidates.json lists title + journal), then pin the ones you want here as seeds.json (committed, so the corpus is reproducible)."
+  },
+  {
+    "source": "arxiv",
+    "id": "2401.00000",
+    "subfield": "cs.CL"
+  }
+]

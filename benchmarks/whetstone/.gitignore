@@ -1,0 +1,8 @@
+# Downloaded corpus (bioRxiv/arXiv PDFs + harvested markdown) and run outputs
+# are large, third-party, and ephemeral — tracked locally, never committed.
+# Ignore the contents but keep the directories (via .gitkeep) so the layout is
+# self-documenting.
+corpus/*
+runs/*
+!corpus/.gitkeep
+!runs/.gitkeep
