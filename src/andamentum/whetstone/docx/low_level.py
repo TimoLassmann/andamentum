@@ -475,8 +475,12 @@ class DocxEditor:
             self.trees[comments_path] = tree
 
         else:
-            # create a brand-new comments.xml and register it
-            root = etree.Element(f"{{{NS['w']}}}comments")
+            # create a brand-new comments.xml and register it.
+            # Must bind the `w:` prefix via XMLElementBuilder.create_part_root:
+            # a bare etree.Element() here serialises the root (and every
+            # comment under it) with lxml's auto `ns0:` prefix, which Word
+            # silently ignores — the comments end up in the file but invisible.
+            root = XMLElementBuilder.create_part_root("comments")
             tree = etree.ElementTree(root)
             self.trees[comments_path] = tree
 
@@ -1051,6 +1055,11 @@ class DocxEditor:
         change_id = 0
         comments_path, comments_tree = self._load_or_create_comments_tree()
         comments_root = comments_tree.getroot()
+        # Comments are placed in a single document-level pass AFTER all
+        # paragraphs are rebuilt, so each anchors precisely to its own target
+        # span (no last-run pile-up). Collected here as
+        # (cid, author, comment_text, target_text).
+        pending_comments: list[tuple[int, str, str, str]] = []
 
         for para_idx, pd in enumerate(self.paragraphs):
             # Special handling for page break or review paragraphs
@@ -1126,18 +1135,21 @@ class DocxEditor:
             self._normalize_whitespace_changes(pd.p_elem, pd.attribution_tracker)
             # 4) split off large common-prefix/suffix changes
             self._split_affix_changes(pd.p_elem, pd.attribution_tracker)
-            # Create separate comments for each agent
+            # Create separate comments for each agent. The comment BODY goes
+            # into comments.xml now; the in-document RANGE markers are placed
+            # in a single document-level pass after this loop (see
+            # _place_pending_comments) so each anchors to its own target span.
             if pd.comments:
-                for comment_author, comment_text in pd.comments:
+                for comment_author, comment_text, target_text in pd.comments:
                     cid = change_id + 1
                     change_id = cid
-                    # 1) insert anchor tags into the paragraph XML
-                    self._insert_comment_anchor(pd.p_elem, cid)
-                    # 2) create separate comment element for this agent
                     comment_el = XMLElementBuilder.create_comment_element(
                         cid=cid, author=comment_author, text=comment_text
                     )
                     comments_root.append(comment_el)
+                    pending_comments.append(
+                        (cid, comment_author, comment_text, target_text)
+                    )
 
             # Legacy single comment support (fallback)
             elif pd.comment:
@@ -1155,12 +1167,79 @@ class DocxEditor:
                 comment_el = XMLElementBuilder.create_comment_element(cid=cid, author=comment_author, text=pd.comment)
                 comments_root.append(comment_el)
 
+        # Place all comment ranges precisely, document-level, in one pass.
+        self._place_pending_comments(pending_comments)
+
         # finalize and write unchanged parts
         self._ensure_comments_relationship()
         self._ensure_comments_content_type()
         for path, tree in self.trees.items():
             tree.write(path, xml_declaration=True, encoding="UTF-8", standalone="yes")
         self._zip(output_path)
+
+    def _place_pending_comments(self, pending) -> None:
+        """Place each comment's range markers at its resolved text span.
+
+        Builds a document-level normalised index over the FINAL run
+        structure (after all paragraph rebuilds) and, for each pending
+        comment, locates its target text and brackets the matching runs
+        with ``commentRangeStart`` / ``commentRangeEnd`` /
+        ``commentReference``. The span may cross runs and paragraphs.
+
+        Targets were validated to resolve at apply time, so a miss here is
+        unexpected (e.g. a paragraph was rebuilt with altered text by an
+        edit). Such misses are logged loudly and skipped — never anchored
+        to a wrong location.
+        """
+        if not pending:
+            return
+        from .anchor import DocIndex
+
+        # Build paragraphs-of-runs over the final document, keyed by run
+        # element. Only direct-child runs (the structure produced by the
+        # rebuild) are indexed.
+        paragraphs_runs: list[list[tuple[Any, str]]] = []
+        for pd in self.paragraphs:
+            runs: list[tuple[Any, str]] = []
+            for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
+                text = "".join(
+                    t.text or "" for t in r.findall(f"{{{NS['w']}}}t")
+                )
+                if text:
+                    runs.append((r, text))
+            paragraphs_runs.append(runs)
+
+        index = DocIndex(paragraphs_runs)
+        for cid, _author, _text, target in pending:
+            span = index.find(target)
+            if span is None:
+                logger.warning(
+                    "[anchor] write-time placement miss for comment %s "
+                    "(validated at apply but not found in rebuilt runs): %r",
+                    cid,
+                    (target or "")[:80],
+                )
+                continue
+            self._place_comment_range(span.start_key, span.end_key, cid)
+
+    def _place_comment_range(self, start_run, end_run, cid) -> None:
+        """Bracket the runs ``start_run``..``end_run`` with comment markers.
+
+        ``start_run`` and ``end_run`` are ``<w:r>`` elements (possibly in
+        different paragraphs). Inserts ``commentRangeStart`` immediately
+        before ``start_run`` and ``commentRangeEnd`` + the reference run
+        immediately after ``end_run``. End markers are inserted first so
+        inserting the start marker can't shift the end run's index.
+        """
+        crs, cre, rref = XMLElementBuilder.create_comment_range_elements(cid)
+
+        end_parent = end_run.getparent()
+        end_idx = end_parent.index(end_run)
+        end_parent.insert(end_idx + 1, cre)
+        end_parent.insert(end_idx + 2, rref)
+
+        start_parent = start_run.getparent()
+        start_parent.insert(start_parent.index(start_run), crs)
 
 
 class DocumentReview:
