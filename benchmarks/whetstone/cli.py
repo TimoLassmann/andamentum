@@ -258,6 +258,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # API keys live in .env, not the shell — load them before any model call.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
     args = build_parser().parse_args(argv)
 
     # Resolve models only for the commands that need them (so `fetch`/`report`
