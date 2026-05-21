@@ -14,6 +14,14 @@ from typing import Any
 from ._definition import AgentDefinition
 from .author_question import AUTHOR_QUESTION_AGENT, AuthorQuestionOutput
 from .challenge import CHALLENGE_AGENT, ChallengeVerdict
+from .claim_support import CLAIM_SUPPORT_AGENT, ClaimSupport
+from .consolidate import CONSOLIDATE_AGENT, SameOrDistinct
+from .digest_extractor import (
+    DIGEST_EXTRACTOR_AGENT,
+    RawClaim,
+    SectionClaims,
+)
+from .section_classifier import SECTION_CLASSIFIER_AGENT, SectionClass
 from .custom_reviewer import CUSTOM_REVIEWER_AGENT
 from .editor import EDITOR_AGENT, EditorOutput, EditProposal
 from .expert_generator import EXPERT_GENERATOR_AGENT
@@ -50,6 +58,10 @@ from .synthesise import SYNTHESISE_AGENT, ReviewSummary
 _REGISTRY: dict[str, AgentDefinition] = {
     EDITOR_AGENT.name: EDITOR_AGENT,
     CHALLENGE_AGENT.name: CHALLENGE_AGENT,
+    CONSOLIDATE_AGENT.name: CONSOLIDATE_AGENT,
+    DIGEST_EXTRACTOR_AGENT.name: DIGEST_EXTRACTOR_AGENT,
+    CLAIM_SUPPORT_AGENT.name: CLAIM_SUPPORT_AGENT,
+    SECTION_CLASSIFIER_AGENT.name: SECTION_CLASSIFIER_AGENT,
     SYNTHESISE_AGENT.name: SYNTHESISE_AGENT,
     AUTHOR_QUESTION_AGENT.name: AUTHOR_QUESTION_AGENT,
     REFLECTION_AGENT.name: REFLECTION_AGENT,
@@ -146,6 +158,11 @@ __all__ = [
     # Output schemas re-exported so node code can import from one place
     "AuthorQuestionOutput",
     "ChallengeVerdict",
+    "ClaimSupport",
+    "SameOrDistinct",
+    "SectionClass",
+    "RawClaim",
+    "SectionClaims",
     "EditProposal",
     "EditorOutput",
     "ExtractedItemsList",

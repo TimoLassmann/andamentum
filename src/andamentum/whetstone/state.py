@@ -68,6 +68,10 @@ class ReviewState:
     structural_facts: StructuralFacts = field(default_factory=StructuralFacts)
     document_map: list[SectionCard] = field(default_factory=list)
     deterministic_findings: list[Finding] = field(default_factory=list)
+    # Section ids worth prose review (label "review" from the section
+    # classifier). None until CriticalRead classifies; reused by
+    # ReconcileClaims so reference/boilerplate sections are skipped once.
+    reviewable_section_ids: set[str] | None = None
 
     # ── Critical-review pool (lens reads + reflection loop) ────────────
     findings: list[Finding] = field(default_factory=list)
@@ -144,6 +148,8 @@ class ReviewState:
         "edit",
         "challenge",
         "author_questions",
+        "reconcile_claims",
+        "consolidate",
         "synthesise",
         "extract_keywords",
         "generate_panel",

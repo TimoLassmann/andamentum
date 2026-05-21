@@ -142,6 +142,48 @@ def test_target_spanning_heading_and_body(tmp_path: Path) -> None:
     assert end_para > start_para, "expected the range to span two paragraphs"
 
 
+def test_comment_anchors_in_body_not_prepended_report(tmp_path: Path) -> None:
+    """A comment whose target text is ALSO restated in the prepended review
+    report must anchor to the manuscript body, not the report.
+
+    The report is prepended before a page break; the body follows it. We
+    assert the comment range starts AFTER the page break.
+    """
+    src = tmp_path / "src.docx"
+    out = tmp_path / "out.docx"
+    doc = DocxDocument()
+    doc.add_paragraph("The funding section is a TODO placeholder in the manuscript.")
+    doc.save(str(src))
+
+    patches = [
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="funding section is a TODO",
+            comment_text="Funding is a placeholder.",
+            explanation="Funding is a placeholder.",
+        )
+    ]
+    # The review report restates the same phrase — without the fix the
+    # comment would anchor onto this report text (it appears first).
+    _, res = finalize_reviewed_document(
+        original_file_path=src,
+        patches=patches,
+        review_summary="The funding section is a TODO and must be completed.",
+        issues_count=1,
+        output_path=out,
+        author="t",
+    )
+    assert res.applied_patches == 1
+
+    with zipfile.ZipFile(out) as z:
+        doc_xml = z.read("word/document.xml").decode("utf-8")
+    assert _comment_ids(doc_xml) == [1]
+    page_break_pos = doc_xml.find('<w:br w:type="page"/>')
+    range_pos = doc_xml.find('<w:commentRangeStart w:id="1"/>')
+    assert page_break_pos != -1 and range_pos != -1
+    assert range_pos > page_break_pos, "comment anchored in the report, not the body"
+
+
 def test_comment_text_not_duplicated(tmp_path: Path) -> None:
     """The comment body must not contain a duplicated 'Note:' re-append of
     its own text (the dedup fix)."""

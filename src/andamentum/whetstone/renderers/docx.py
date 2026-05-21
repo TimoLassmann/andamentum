@@ -105,7 +105,9 @@ def render_docx(
     patches = _to_document_patches(result, DocumentPatch)
     findings = list(result.findings) + list(result.deterministic_findings)
 
-    review_summary = result.summary or _fallback_summary(result)
+    review_summary = _strip_leading_exec_heading(
+        result.summary or _fallback_summary(result)
+    )
     if result.panel_synthesis is not None:
         # Panel mode: the synthesis is the authoritative summary. ``result.summary``
         # is intentionally empty (see panel_synthesise.py); render the synthesis
@@ -186,6 +188,10 @@ def _finding_to_patch(finding: Finding, DocumentPatch):
     body = finding.title
     if finding.rationale:
         body = f"{finding.title}\n\n{finding.rationale}"
+    # Cross-perspective corroboration recorded by Consolidate: surface it so
+    # the author sees the comment is not a lone opinion.
+    if len(finding.corroborated_by) >= 2:
+        body = f"{body}\n\nRaised by {len(finding.corroborated_by)} perspectives: {', '.join(finding.corroborated_by)}."
     # explanation == comment_text on purpose: the comment body is already the
     # complete title+rationale, so the patch editor must NOT re-append it as a
     # "Note:" (which produced duplicated comment text). explanation is required
@@ -197,6 +203,23 @@ def _finding_to_patch(finding: Finding, DocumentPatch):
         explanation=body,
         confidence=_confidence_to_float(finding.confidence),
     )
+
+
+def _strip_leading_exec_heading(summary: str) -> str:
+    """Drop a leading ``## Executive Summary`` heading from the summary.
+
+    The docx report header (``_build_report_header``) supplies its own
+    ``## Executive Summary`` heading; v2's synthesised summary leads with the
+    same heading, which produced "Executive Summary" twice in the rendered
+    .docx. Stripped only here — the markdown/HTML renderers have no report
+    header and keep the heading.
+    """
+    from andamentum.whetstone.docx.constants import EXECUTIVE_SUMMARY_HEADER
+
+    stripped = summary.lstrip()
+    if stripped.startswith(EXECUTIVE_SUMMARY_HEADER):
+        return stripped[len(EXECUTIVE_SUMMARY_HEADER):].lstrip("\n")
+    return summary
 
 
 def _confidence_to_float(level: str) -> float:

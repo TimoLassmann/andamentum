@@ -59,6 +59,11 @@ class Finding(BaseModel):
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
     category: str = ""  # short clustering tag picked by the lens
     priority: Literal["must_fix", "should_fix", "consider"] = "consider"
+    corroborated_by: list[str] = Field(default_factory=list)
+    # Perspectives that independently raised this (same) finding, recorded
+    # when Consolidate merges redundant findings. Empty for un-merged
+    # findings. ≥2 entries means cross-perspective corroboration (which
+    # Consolidate also reflects as a confidence bump).
     # priority is derived from severity by default (see _derive_priority);
     # downstream nodes (reflection, challenge) may override it explicitly.
 

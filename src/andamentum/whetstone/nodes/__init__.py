@@ -26,6 +26,7 @@ Custom-criteria pipeline (mode="custom"):
 from .author_questions import AuthorQuestions
 from .challenge import Challenge
 from .chunk_and_scan import ChunkAndScan
+from .consolidate import Consolidate
 from .critical_read import CriticalRead
 from .custom_reviewer import CustomReviewer
 from .edit_sections import EditSections
@@ -37,6 +38,7 @@ from .generate_expert_panel import GenerateExpertPanel
 from .harvest_source import HarvestSource
 from .novelty_check import NoveltyCheck
 from .panel_synthesise import PanelSynthesise
+from .reconcile_claims import ReconcileClaims
 from .reflect_and_investigate import ReflectAndInvestigate
 from .synthesise import Synthesise
 
@@ -44,6 +46,7 @@ __all__ = [
     "AuthorQuestions",
     "Challenge",
     "ChunkAndScan",
+    "Consolidate",
     "CriticalRead",
     "CustomReviewer",
     "EditSections",
@@ -55,6 +58,7 @@ __all__ = [
     "HarvestSource",
     "NoveltyCheck",
     "PanelSynthesise",
+    "ReconcileClaims",
     "ReflectAndInvestigate",
     "Synthesise",
 ]

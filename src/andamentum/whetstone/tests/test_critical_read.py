@@ -17,6 +17,7 @@ from andamentum.whetstone.agents.lens import LensIssueProposal, LensReadOutput
 from andamentum.whetstone.deps import ReviewDeps
 from andamentum.whetstone.nodes.critical_read import (
     _build_document_context,
+    _reviewable_sections,
     _run_lens,
 )
 from andamentum.whetstone.schemas import SectionCard
@@ -203,6 +204,42 @@ async def test_run_lens_injects_document_context_into_prompt() -> None:
     assert fake.last_prompt is not None
     assert "section 2 of 3" in fake.last_prompt
     assert "missing from the document" in fake.last_prompt.lower()
+
+
+# ── section classification → reviewable filtering ───────────────────────
+
+
+async def test_reviewable_sections_filters_by_classifier() -> None:
+    from andamentum.whetstone.agents.section_classifier import SectionClass
+    from andamentum.whetstone.state import ReviewState
+
+    @dataclass
+    class _R:
+        output: object
+
+    class _Classifier:
+        def __call__(self, name: str, model):
+            class _Agent:
+                async def run(self, prompt: str):
+                    # Route by the title shown in the prompt.
+                    kind = "reference" if "References" in prompt else "review"
+                    return _R(output=SectionClass(kind=kind))  # type: ignore[arg-type]
+
+            return _Agent()
+
+    state = ReviewState(source="x")
+    state.sections = [
+        _section(id="s1", title="Results"),
+        _section(id="s2", title="References"),
+    ]
+    with patch(
+        "andamentum.whetstone.nodes.critical_read.build_pydantic_ai_agent",
+        new=_Classifier(),
+    ):
+        kept = await _reviewable_sections(_deps(), state)
+
+    assert [s.id for s in kept] == ["s1"]
+    assert state.reviewable_section_ids == {"s1"}
 
 
 # ── Plumbing ────────────────────────────────────────────────────────────

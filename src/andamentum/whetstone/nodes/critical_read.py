@@ -57,7 +57,7 @@ class CriticalRead(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
     ) -> "ReflectAndInvestigate":
         ctx.state.current_phase = "critical_read"
-        sections = ctx.state.sections
+        sections = await _reviewable_sections(ctx.deps, ctx.state)
         all_lenses = ctx.state.perspectives
         per_section_lenses = [
             lens for lens in all_lenses if not LENS_MULTI_SECTION.get(lens, False)
@@ -150,6 +150,63 @@ class CriticalRead(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         from .reflect_and_investigate import ReflectAndInvestigate
 
         return ReflectAndInvestigate()
+
+
+async def _reviewable_sections(
+    deps: ReviewDeps, state: ReviewState
+) -> list["SectionRef"]:
+    """Sections worth reviewing as prose, per the section classifier.
+
+    Classifies every section once (``review`` / ``reference`` / ``boilerplate``),
+    records the reviewable ids on the state so ReconcileClaims reuses them, and
+    returns only the ``review`` sections. General — no heading/keyword/position
+    or document-type assumption; a bibliography or boilerplate block is skipped
+    wherever it sits.
+    """
+    sections = state.sections
+    sem = asyncio.Semaphore(_MAX_CONCURRENT)
+
+    async def classify(section: "SectionRef") -> tuple[str, str]:
+        async with sem:
+            try:
+                kind = await _classify_section(deps, section)
+            except Exception as exc:
+                logger.warning(
+                    "[classify] %s crashed: %s — treating as reviewable",
+                    section.id,
+                    exc,
+                )
+                kind = "review"
+        return section.id, kind
+
+    results = await asyncio.gather(*[classify(s) for s in sections])
+    reviewable = {sid for sid, kind in results if kind == "review"}
+    state.reviewable_section_ids = reviewable
+    skipped = len(sections) - len(reviewable)
+    if skipped:
+        logger.info(
+            "[classify] %d section(s) reviewable, %d skipped "
+            "(reference/boilerplate)",
+            len(reviewable),
+            skipped,
+        )
+    return [s for s in sections if s.id in reviewable]
+
+
+async def _classify_section(deps: ReviewDeps, section: "SectionRef") -> str:
+    """One section-classifier call. Returns 'review' | 'reference' | 'boilerplate'."""
+    from ..agents import SectionClass
+
+    snippet = section.text[:1200]
+    prompt = f"""SECTION TITLE: {section.title}
+
+SECTION TEXT (start):
+{snippet}
+
+Classify this section."""
+    agent = build_pydantic_ai_agent("section_classifier", deps.model)
+    result = await agent.run(prompt)
+    return cast(SectionClass, result.output).kind
 
 
 def _lens_targets_section(lens: str, section: "SectionRef") -> bool:

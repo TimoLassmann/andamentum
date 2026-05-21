@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
+from andamentum.core import DEFAULT_EMBEDDING_MODEL
+
 # Re-using the chunker's embedding callable type — same signature.
 EmbeddingFn = Callable[[list[str]], Awaitable[list[list[float]]]]
 
@@ -20,6 +22,9 @@ class ReviewDeps:
 
     model: Any = None  # pydantic-ai model instance; None for Phase 1 (no LLM)
     embedding_fn: EmbeddingFn | None = None
+    # Local embedding model for Consolidate's similarity substrate. Used when
+    # embedding_fn is not injected; overridable, sensible default.
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     correlation_id: str = ""
     target_min_chars: int = 2_000  # passed to chunker.extract_units
     target_max_chars: int = 10_000

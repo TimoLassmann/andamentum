@@ -16,6 +16,8 @@ import uuid
 from pathlib import Path
 from typing import Literal, Sequence
 
+from andamentum.core import DEFAULT_EMBEDDING_MODEL
+
 from .deps import EmbeddingFn, ReviewDeps
 from .graph import review_graph
 from .nodes import HarvestSource
@@ -33,6 +35,7 @@ async def review_document(
     editor: bool = False,
     editor_criteria: Sequence[str] = ("clarity", "concision", "grammar"),
     embedding_fn: EmbeddingFn | None = None,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     target_min_chars: int = 2_000,
     target_max_chars: int = 10_000,
     mode: Literal["review", "panel", "guidelines", "custom"] = "review",
@@ -121,6 +124,11 @@ async def review_document(
     embedding_fn:
         Custom embedding function for the chunker. Defaults to local
         Ollama (``embeddinggemma:latest``) inside the chunker module.
+    embedding_model:
+        Local embedding model the Consolidate phase uses to spot similar
+        comments. Defaults to ``embeddinggemma:latest``; overridable.
+        Used only when ``embedding_fn`` is not supplied. Ollama must be
+        running — Consolidate fails loud if it cannot embed.
     target_min_chars / target_max_chars:
         Section size band, passed to chunker.extract_units.
     mode:
@@ -179,6 +187,7 @@ async def review_document(
     deps = ReviewDeps(
         model=_resolve_model(model) if model else None,
         embedding_fn=embedding_fn,
+        embedding_model=embedding_model,
         correlation_id=uuid.uuid4().hex[:8],
         target_min_chars=target_min_chars,
         target_max_chars=target_max_chars,
