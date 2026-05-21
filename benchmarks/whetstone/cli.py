@@ -234,19 +234,25 @@ def _resolve(model_arg: str | None) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="whetstone-bench", description=__doc__)
-    p.add_argument("--corpus-dir", default=str(_DEFAULT_CORPUS))
-    p.add_argument("--out-dir", default=str(_DEFAULT_RUNS))
-    p.add_argument("--n", type=int, default=5, help="papers (pilot default 5)")
-    p.add_argument("--seeds", default="", help="curated seed JSON (else discover)")
-    p.add_argument(
+    # Shared options live on a parent parser so they're accepted AFTER the
+    # subcommand (e.g. `discover --n 15`), which is what people type.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--corpus-dir", default=str(_DEFAULT_CORPUS))
+    common.add_argument("--out-dir", default=str(_DEFAULT_RUNS))
+    common.add_argument("--n", type=int, default=5, help="papers (pilot default 5)")
+    common.add_argument(
+        "--seeds", default="", help="curated seed JSON (else seeds.json)"
+    )
+    common.add_argument(
         "--model", default=None, help="model for BOTH arms (ollama:/openai:/…)"
     )
-    p.add_argument("--judge-model", default=None, help="model for adjudication")
-    p.add_argument("--seed", type=int, default=1, help="worksheet blinding seed")
+    common.add_argument("--judge-model", default=None, help="model for adjudication")
+    common.add_argument("--seed", type=int, default=1, help="worksheet blinding seed")
+
+    p = argparse.ArgumentParser(prog="whetstone-bench", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
     for name in ("discover", "fetch", "arms", "adjudicate", "report", "html", "all"):
-        sub.add_parser(name)
+        sub.add_parser(name, parents=[common])
     return p
 
 
