@@ -160,7 +160,7 @@ async def test_critical_read_skips_off_target_sections_for_targeted_lens():
 
     per_section_calls: list[tuple[str, str]] = []
 
-    async def fake_run_lens(deps, section, lens):  # noqa: ARG001
+    async def fake_run_lens(deps, section, lens, doc_context=""):  # noqa: ARG001
         per_section_calls.append((section.id, lens))
         return []
 
@@ -205,7 +205,7 @@ async def test_critical_read_runs_all_sections_for_unrestricted_lens():
 
     per_section_calls: list[tuple[str, str]] = []
 
-    async def fake_run_lens(deps, section, lens):  # noqa: ARG001
+    async def fake_run_lens(deps, section, lens, doc_context=""):  # noqa: ARG001
         per_section_calls.append((section.id, lens))
         return []
 

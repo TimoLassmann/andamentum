@@ -69,7 +69,7 @@ async def test_critical_read_routes_consistency_through_multi_section_runner():
     per_section_calls: list[tuple[str, str]] = []
     multi_section_calls: list[str] = []
 
-    async def fake_run_lens(deps, section, lens):  # noqa: ARG001
+    async def fake_run_lens(deps, section, lens, doc_context=""):  # noqa: ARG001
         per_section_calls.append((section.id, lens))
         return []
 
