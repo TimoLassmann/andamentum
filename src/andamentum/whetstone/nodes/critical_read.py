@@ -82,8 +82,13 @@ class CriticalRead(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
         async def read_section(section: "SectionRef", lens: str) -> list[Finding]:
             nonlocal completed
             async with sem:
+                doc_context = _build_document_context(
+                    ctx.state.document_map, section.id
+                )
                 try:
-                    findings = await _run_lens(ctx.deps, section, lens)
+                    findings = await _run_lens(
+                        ctx.deps, section, lens, doc_context=doc_context
+                    )
                 except Exception as exc:
                     logger.warning(
                         "[critical_read] %s × %s crashed: %s",
@@ -160,10 +165,49 @@ def _lens_targets_section(lens: str, section: "SectionRef") -> bool:
     return classify_section_kind(section.title) in targets
 
 
+def _build_document_context(document_map, current_section_id: str) -> str:
+    """Compact preamble giving a per-section lens awareness of the WHOLE
+    document — so it doesn't flag content as "missing" when it merely lives
+    in another section the agent can't see.
+
+    Lists every section's title (+ a short gist) as a table of contents,
+    marks the section currently under review, and instructs the lens to
+    comment only on the visible text. Domain-agnostic; ~one line per
+    section. Empty string when no map is available.
+    """
+    if not document_map:
+        return ""
+    total = len(document_map)
+    position = next(
+        (i + 1 for i, c in enumerate(document_map) if c.section_id == current_section_id),
+        None,
+    )
+    toc_lines: list[str] = []
+    for c in document_map:
+        marker = "▶ " if c.section_id == current_section_id else "  "
+        gist = (c.one_line_gist or "").strip()
+        if len(gist) > 80:
+            gist = gist[:77] + "…"
+        toc_lines.append(f"{marker}{c.title}" + (f" — {gist}" if gist else ""))
+    toc = "\n".join(toc_lines)
+    pos = f"section {position} of {total}" if position else "one section"
+    return (
+        f"DOCUMENT CONTEXT — you are reviewing {pos} of a larger document.\n"
+        f"The document contains these sections (you can only see the text of "
+        f"the one marked ▶):\n"
+        f"{toc}\n\n"
+        f"Review ONLY the section text below. Do NOT report something as "
+        f"missing from the document (e.g. \"no methods section\", \"no "
+        f"references\", \"no discussion\") — it may exist in another section "
+        f"listed above that you cannot see here.\n\n"
+    )
+
+
 async def _run_lens(
     deps: ReviewDeps,
     section: "SectionRef",
     lens: str,
+    doc_context: str = "",
 ) -> list[Finding]:
     """One lens call against one section. Returns Findings.
 
@@ -176,13 +220,17 @@ async def _run_lens(
       existing path: build a pydantic-ai agent from the registered
       ``AgentDefinition`` and convert ``LensIssueProposal``s into
       ``Finding``s here.
+
+    ``doc_context`` is the whole-document preamble (see
+    :func:`_build_document_context`) prepended to the prose-lens prompt so
+    the agent knows what exists in sections it cannot see.
     """
     from ..lenses import SUBGRAPH_LENS_ENTRYPOINTS
 
     if lens in SUBGRAPH_LENS_ENTRYPOINTS:
         return await SUBGRAPH_LENS_ENTRYPOINTS[lens](section, model=deps.model)
 
-    prompt = f"""SECTION ID: {section.id}
+    prompt = f"""{doc_context}SECTION ID: {section.id}
 SECTION TITLE: {section.title}
 
 SECTION TEXT — your only evidence; quote VERBATIM:

@@ -171,12 +171,17 @@ Verdict: stand | weaken | withdraw. Default to "stand" unless evidence refutes."
 
 
 def _weaken(finding: Finding, reason: str) -> Finding:
-    """Lower the finding's confidence by one tier; record the reason."""
+    """Lower the finding's confidence by one tier.
+
+    The challenge agent's reasoning is internal deliberation — it is logged
+    for traceability but deliberately NOT appended to the rationale, which
+    is the reviewer-facing comment body.
+    """
     new_confidence = {"high": "medium", "medium": "low", "low": "low"}[finding.confidence]
+    logger.debug("[challenge] weakened %s — %s", finding.id, reason)
     return finding.model_copy(
         update={
             "confidence": new_confidence,  # type: ignore[arg-type]
-            "rationale": (finding.rationale + f"\n[Challenged: {reason}]").strip(),
             "source": "challenged",
         }
     )

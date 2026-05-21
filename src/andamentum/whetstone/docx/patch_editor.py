@@ -6,6 +6,7 @@ This module extends the existing DocxEditor to support applying structured patch
 while preserving all the sophisticated formatting and track changes functionality.
 """
 
+import logging
 import time
 from typing import List, Optional, Tuple
 
@@ -13,6 +14,8 @@ from .low_level import DocxEditor
 from ..models import DocumentPatch, PatchApplicationResult
 from .text_processor import TextProcessor
 from .validator import PatchValidator
+
+logger = logging.getLogger("andamentum.whetstone")
 
 
 class PatchDocxEditor(DocxEditor):
@@ -35,6 +38,20 @@ class PatchDocxEditor(DocxEditor):
         super().__init__(input_path, author, context_size)
         self.applied_patches: List[DocumentPatch] = []
         self.failed_patches: List[DocumentPatch] = []
+        self._doc_index = None  # lazy DocIndex over the baseline paragraphs
+
+    def _get_doc_index(self):
+        """Lazily build a document-level normalised anchor index over the
+        baseline paragraphs (one segment per paragraph). Used to resolve a
+        comment's target text — including targets that span a heading→body
+        paragraph boundary, which paragraph-substring matching can't find."""
+        if self._doc_index is None:
+            from .anchor import DocIndex
+
+            self._doc_index = DocIndex(
+                [[(i, p.modified)] for i, p in enumerate(self.paragraphs)]
+            )
+        return self._doc_index
 
     def apply_patches(self, patches, use_patch_authors: bool = False) -> PatchApplicationResult:
         """
@@ -103,6 +120,16 @@ class PatchDocxEditor(DocxEditor):
 
         processing_time = time.time() - start_time
 
+        logger.info(
+            "[anchor] %d/%d patch(es) anchored (%d comment(s), %d edit(s)); "
+            "%d could not be anchored",
+            applied_count,
+            len(patches),
+            applied_comments,
+            applied_edits,
+            len(failed_patches),
+        )
+
         return PatchApplicationResult(
             total_patches=len(patches),
             applied_patches=applied_count,
@@ -124,6 +151,11 @@ class PatchDocxEditor(DocxEditor):
         Returns:
             Tuple of (success: bool, failure_reason: str)
         """
+        # Comments are anchored at the document level (the target text may
+        # span a heading→body paragraph boundary) — handled separately.
+        if patch.patch_type == "comment":
+            return self._apply_comment_patch(patch)
+
         # Locate the target paragraph
         paragraph_index = self._locate_patch_target(patch)
 
@@ -137,8 +169,6 @@ class PatchDocxEditor(DocxEditor):
         try:
             if patch.patch_type == "text_edit":
                 return self._apply_text_edit_patch(patch, paragraph_index)
-            elif patch.patch_type == "comment":
-                return self._apply_comment_patch(patch, paragraph_index)
             else:
                 return False, f"Unknown patch type: {patch.patch_type}"
 
@@ -304,40 +334,52 @@ class PatchDocxEditor(DocxEditor):
 
         return True, ""
 
-    def _apply_comment_patch(self, patch: DocumentPatch, paragraph_index: int) -> Tuple[bool, str]:
-        """
-        Apply a comment patch to a specific paragraph.
+    def _apply_comment_patch(self, patch: DocumentPatch) -> Tuple[bool, str]:
+        """Resolve a comment's target text at the document level and attach it.
 
-        Args:
-            patch: Comment patch to apply
-            paragraph_index: Target paragraph index
+        Uses the normalised :class:`DocIndex` so a target that spans a
+        heading→body paragraph boundary still resolves. The comment is
+        attached to its START paragraph (so that paragraph is rebuilt into
+        precise runs); the actual range is placed at write time against
+        the resolved text span.
 
-        Returns:
-            Tuple of (success: bool, failure_reason: str)
+        Fail-loud: when the target cannot be located, the comment is NOT
+        placed — it's reported as a failure, and the closest matching
+        region is logged so the mismatch is visible.
         """
         if not patch.comment_text:
             return False, "Comment patch missing comment_text"
+        target = (patch.text_pattern or "").strip()
+        if not target:
+            return False, "Comment patch missing text_pattern"
 
-        paragraph = self.paragraphs[paragraph_index]
+        index = self._get_doc_index()
+        span = index.find(target)
+        if span is None:
+            score, snippet = index.closest(target)
+            logger.info(
+                "[anchor] comment NOT anchored — target text not found in document.\n"
+                "         target  : %r\n"
+                "         closest (similarity=%.2f): %r",
+                target[:160],
+                score,
+                snippet[:160],
+            )
+            return False, "Could not anchor comment: target text not found in document"
 
-        # Format the comment with explanation if available
+        # span.start_key is the paragraph index where the target begins.
+        paragraph = self.paragraphs[span.start_key]
+
+        # Format the comment. (When explanation == comment_text — as the
+        # finding→patch adapter now arranges — no "Note:" is appended.)
         comment_content = patch.comment_text
         if patch.explanation and patch.explanation != patch.comment_text:
             comment_content = f"{patch.comment_text}\n\nNote: {patch.explanation}"
 
-        # Add as separate comment
-        paragraph.comments.append((self.author, comment_content))
-
-        # Also update legacy single comment for backward compatibility
-        existing_comment = paragraph.comment or ""
-        if existing_comment:
-            paragraph.comment = f"{existing_comment}\n\n{comment_content}"
-        else:
-            paragraph.comment = comment_content
-
-        # Set the change author for proper attribution (was missing!)
+        # Carry the target text so the write pass can place the range
+        # precisely (3-tuple: author, content, target).
+        paragraph.comments.append((self.author, comment_content, target))
         paragraph.change_author = self.author
-
         return True, ""
 
     def get_patch_summary(self) -> dict:
