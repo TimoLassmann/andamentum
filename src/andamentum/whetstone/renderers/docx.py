@@ -186,11 +186,15 @@ def _finding_to_patch(finding: Finding, DocumentPatch):
     body = finding.title
     if finding.rationale:
         body = f"{finding.title}\n\n{finding.rationale}"
+    # explanation == comment_text on purpose: the comment body is already the
+    # complete title+rationale, so the patch editor must NOT re-append it as a
+    # "Note:" (which produced duplicated comment text). explanation is required
+    # on DocumentPatch; setting it equal suppresses the duplication.
     return DocumentPatch(
         patch_type="comment",
         text_pattern=anchor,
         comment_text=body,
-        explanation=finding.rationale or finding.title,
+        explanation=body,
         confidence=_confidence_to_float(finding.confidence),
     )
 

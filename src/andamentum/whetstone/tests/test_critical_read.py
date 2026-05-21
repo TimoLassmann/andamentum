@@ -15,7 +15,11 @@ from unittest.mock import patch
 
 from andamentum.whetstone.agents.lens import LensIssueProposal, LensReadOutput
 from andamentum.whetstone.deps import ReviewDeps
-from andamentum.whetstone.nodes.critical_read import _run_lens
+from andamentum.whetstone.nodes.critical_read import (
+    _build_document_context,
+    _run_lens,
+)
+from andamentum.whetstone.schemas import SectionCard
 from andamentum.whetstone.structural.types import SectionRef
 
 
@@ -158,6 +162,47 @@ async def test_run_lens_includes_section_title_and_id_in_prompt() -> None:
     assert "Methods" in fake.last_prompt
     # And the prompt names the lens persona, so the system prompt aligns.
     assert "methodology reviewer" in fake.last_prompt.lower()
+
+
+# ── document-context preamble ───────────────────────────────────────────
+
+
+def _doc_map() -> list[SectionCard]:
+    return [
+        SectionCard(section_id="sec_001", title="Introduction", one_line_gist="We study X."),
+        SectionCard(section_id="sec_002", title="Methods", one_line_gist="We did Y."),
+        SectionCard(section_id="sec_003", title="Results", one_line_gist="We found Z."),
+    ]
+
+
+def test_build_document_context_lists_all_sections_and_marks_current() -> None:
+    ctx = _build_document_context(_doc_map(), "sec_002")
+    # Position + total
+    assert "section 2 of 3" in ctx
+    # Every section title appears (table of contents)
+    assert "Introduction" in ctx and "Methods" in ctx and "Results" in ctx
+    # The current section is marked
+    assert "▶ Methods" in ctx
+    # Scope discipline instruction present
+    assert "missing from the document" in ctx.lower()
+
+
+def test_build_document_context_empty_when_no_map() -> None:
+    assert _build_document_context([], "sec_001") == ""
+
+
+async def test_run_lens_injects_document_context_into_prompt() -> None:
+    section = _section(id="sec_002", title="Methods")
+    fake = _FakeAgent(LensReadOutput(issues=[]))
+    ctx = _build_document_context(_doc_map(), "sec_002")
+    with patch(
+        "andamentum.whetstone.nodes.critical_read.build_pydantic_ai_agent",
+        return_value=fake,
+    ):
+        await _run_lens(deps=_deps(), section=section, lens="rigorous", doc_context=ctx)
+    assert fake.last_prompt is not None
+    assert "section 2 of 3" in fake.last_prompt
+    assert "missing from the document" in fake.last_prompt.lower()
 
 
 # ── Plumbing ────────────────────────────────────────────────────────────

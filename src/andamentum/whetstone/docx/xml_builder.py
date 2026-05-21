@@ -25,6 +25,36 @@ class XMLElementBuilder:
     """
 
     @staticmethod
+    def create_part_root(local_name: str) -> etree.Element:
+        """Create the root element of a NEW WordprocessingML XML part.
+
+        Use this for any element that becomes the root of an independent
+        part inside the .docx zip (e.g. ``comments.xml``). It binds the
+        WordprocessingML namespace to the ``w:`` prefix explicitly via
+        ``nsmap``.
+
+        Why this matters: lxml assigns an auto-generated prefix
+        (``ns0:``) to an unbound namespace at serialisation time.
+        Microsoft Word looks for the ``w:`` prefix specifically on a
+        part's elements and silently ignores content under any other
+        prefix — so a ``comments.xml`` written with ``ns0:comment``
+        elements contains comments that never appear in Word. Routing
+        every new-part root through this helper makes that mistake
+        impossible to reintroduce.
+
+        Sub-elements appended under a root created here do NOT need their
+        own ``nsmap`` — they inherit the ``w:`` binding from the root at
+        serialisation time.
+
+        Args:
+            local_name: the part root's local tag name, e.g. ``"comments"``.
+
+        Returns:
+            An lxml element ``<w:{local_name}>`` with ``w:`` bound.
+        """
+        return etree.Element(f"{{{NS['w']}}}{local_name}", nsmap=NS)
+
+    @staticmethod
     def create_change_container(
         change_type: str, cid: int, author: str, text: str, rPr: Optional[etree.Element] = None
     ) -> etree.Element:
