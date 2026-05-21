@@ -28,7 +28,7 @@ from ..schemas import AuthorQuestion, Finding, ReviewResult
 from ..state import ReviewState
 
 if TYPE_CHECKING:
-    from .synthesise import Synthesise
+    from .reconcile_claims import ReconcileClaims
 
 
 logger = logging.getLogger("andamentum.whetstone")
@@ -43,16 +43,16 @@ class AuthorQuestions(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
 
     async def run(
         self, ctx: GraphRunContext[ReviewState, ReviewDeps]
-    ) -> "Synthesise":
+    ) -> "ReconcileClaims":
         ctx.state.current_phase = "author_questions"
 
         unresolved = _select_unresolved(ctx.state.challenged_findings or ctx.state.findings)
         unresolved = unresolved[:_MAX_AUTHOR_QUESTIONS]
         if not unresolved:
             logger.info("[author_questions] no unresolved findings — skipping")
-            from .synthesise import Synthesise
+            from .reconcile_claims import ReconcileClaims
 
-            return Synthesise()
+            return ReconcileClaims()
 
         logger.info(
             "[author_questions] formulating %d question(s) for the author",
@@ -80,9 +80,9 @@ class AuthorQuestions(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             "[author_questions] done — %d question(s) emitted", len(good)
         )
 
-        from .synthesise import Synthesise
+        from .reconcile_claims import ReconcileClaims
 
-        return Synthesise()
+        return ReconcileClaims()
 
 
 def _select_unresolved(findings: list[Finding]) -> list[Finding]:

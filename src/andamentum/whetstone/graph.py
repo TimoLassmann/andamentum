@@ -33,9 +33,13 @@ Edges (review mode):
                                                                                   │
                                                                                   └► AuthorQuestions
                                                                                          │
-                                                                                         └► Synthesise
+                                                                                         └► ReconcileClaims
                                                                                                 │
-                                                                                                └► End[ReviewResult]
+                                                                                                └► Consolidate
+                                                                                                       │
+                                                                                                       └► Synthesise
+                                                                                                       │
+                                                                                                       └► End[ReviewResult]
 """
 
 from pydantic_graph import Graph
@@ -44,6 +48,7 @@ from .nodes import (
     AuthorQuestions,
     Challenge,
     ChunkAndScan,
+    Consolidate,
     CriticalRead,
     CustomReviewer,
     EditSections,
@@ -55,6 +60,7 @@ from .nodes import (
     HarvestSource,
     NoveltyCheck,
     PanelSynthesise,
+    ReconcileClaims,
     ReflectAndInvestigate,
     Synthesise,
 )
@@ -70,6 +76,8 @@ review_graph = Graph(
         EditSections,
         Challenge,
         AuthorQuestions,
+        ReconcileClaims,
+        Consolidate,
         Synthesise,
         # Panel-mode nodes
         ExtractKeywords,

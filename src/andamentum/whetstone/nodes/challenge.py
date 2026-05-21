@@ -111,11 +111,25 @@ class Challenge(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
             if verdict.verdict == "stand":
                 challenged.append(_with_source(finding, "challenged"))
                 stood += 1
+                logger.info('[challenge] stand    — "%s"', finding.title)
             elif verdict.verdict == "weaken":
-                challenged.append(_weaken(finding, verdict.reason))
+                weakened_finding = _weaken(finding, verdict.reason)
+                challenged.append(weakened_finding)
                 weakened += 1
+                logger.info(
+                    '[challenge] weaken   — "%s" (%s→%s): %s',
+                    finding.title,
+                    finding.confidence,
+                    weakened_finding.confidence,
+                    verdict.reason or "(no reason given)",
+                )
             else:  # "withdraw" → finding is dropped; do not append.
                 withdrawn += 1
+                logger.info(
+                    '[challenge] withdraw — "%s": %s',
+                    finding.title,
+                    verdict.reason or "(no reason given)",
+                )
         ctx.state.challenged_findings = challenged
         logger.info(
             "[challenge] done — %d stood, %d weakened, %d withdrawn",

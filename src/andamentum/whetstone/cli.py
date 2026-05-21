@@ -27,6 +27,7 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
+from andamentum.core import DEFAULT_EMBEDDING_MODEL
 
 _LOGGER_NAME = "andamentum.whetstone"
 
@@ -216,6 +217,16 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
         "ollama:gemma4:31b-nvfp4). Required unless --no-llm.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        metavar="MODEL",
+        help=(
+            "Local Ollama embedding model used by the Consolidate phase to "
+            "spot similar comments. Default: "
+            f"{DEFAULT_EMBEDDING_MODEL}. Ollama must be running."
+        ),
     )
     parser.add_argument(
         "--n-experts",
@@ -643,6 +654,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         result = await review_document(
             args.input,
             model=None if args.no_llm else args.model,
+            embedding_model=args.embedding_model,
             perspectives=perspectives,
             reflection_round_cap=args.rounds,
             challenge=not args.no_challenge,

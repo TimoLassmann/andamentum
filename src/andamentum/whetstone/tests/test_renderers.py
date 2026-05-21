@@ -235,6 +235,24 @@ def test_docx_confidence_levels_map_to_floats():
     assert _confidence_to_float("medium") < _confidence_to_float("high") <= 1.0
 
 
+def test_docx_strips_duplicate_executive_summary_heading():
+    """The report header supplies its own Executive Summary heading; the
+    summary's leading one is dropped so it isn't shown twice."""
+    from andamentum.whetstone.renderers.docx import _strip_leading_exec_heading
+
+    out = _strip_leading_exec_heading("## Executive Summary\n\nProse here.\n\n## MUST FIX\n\nx")
+    assert not out.lstrip().startswith("## Executive Summary")
+    assert out.startswith("Prose here.")
+    assert "## MUST FIX" in out  # other headings preserved
+
+
+def test_docx_leaves_non_exec_heading_summary_untouched():
+    from andamentum.whetstone.renderers.docx import _strip_leading_exec_heading
+
+    s = "Some summary with no leading heading."
+    assert _strip_leading_exec_heading(s) == s
+
+
 # ── DOCX adapter — panel mode ──────────────────────────────────────────
 
 

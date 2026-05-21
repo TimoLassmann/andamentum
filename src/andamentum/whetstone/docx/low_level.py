@@ -102,6 +102,10 @@ class ParagraphData:
         self.comment = ""  # Legacy single comment - kept for compatibility
         self.comments = []  # New: List of (author, comment_text) tuples for separate comments
         self.change_author = None  # Legacy single author - kept for compatibility
+        # True for paragraphs synthesised by prepend_review_section (the
+        # prepended review report). Comment anchoring excludes these so a
+        # finding's quote can't match the report's restatement of itself.
+        self.is_review_report = False
 
         # Multi-author attribution tracking
         self.attribution_tracker = ChangeAttributionTracker(full, "Original")
@@ -894,6 +898,7 @@ class DocxEditor:
             para_data.modified = text
             para_data.original = text
             para_data.comment = ""
+            para_data.is_review_report = True
             prepended_paragraphs.insert(0, para_data)
 
         self.paragraphs = prepended_paragraphs + self.paragraphs
@@ -1197,9 +1202,12 @@ class DocxEditor:
 
         # Build paragraphs-of-runs over the final document, keyed by run
         # element. Only direct-child runs (the structure produced by the
-        # rebuild) are indexed.
+        # rebuild) are indexed. The prepended review report is excluded so a
+        # finding's quote can't anchor onto the report's own restatement of it.
         paragraphs_runs: list[list[tuple[Any, str]]] = []
         for pd in self.paragraphs:
+            if getattr(pd, "is_review_report", False):
+                continue
             runs: list[tuple[Any, str]] = []
             for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
                 text = "".join(
