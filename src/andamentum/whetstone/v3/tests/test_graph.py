@@ -6,6 +6,7 @@ import types
 from contextlib import ExitStack
 from unittest.mock import patch
 
+from andamentum.whetstone.v3.consolidate import _Consolidation
 from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
 from andamentum.whetstone.v3.gaps import _DemandList
 from andamentum.whetstone.v3.graph import run_review_v3
@@ -45,6 +46,8 @@ def _router(defn, _model):
                 )
             elif name == "v3_gap_analysis":
                 out = _DemandList(demands=[])  # no gaps → loop exits at once
+            elif name == "v3_consolidate":
+                out = _Consolidation(groups=[])  # no merges in this smoke test
             elif name in ("v3_synthesise", "v3_critique_revise"):
                 out = StructuredReview(
                     synopsis="A short methods paper.",
@@ -59,7 +62,7 @@ def _router(defn, _model):
 
 
 async def test_graph_runs_end_to_end_to_review_result() -> None:
-    mods = ["extract", "review", "gaps", "synth"]
+    mods = ["extract", "review", "gaps", "consolidate", "synth"]
     with ExitStack() as stack:
         for m in mods:
             stack.enter_context(

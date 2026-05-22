@@ -3,8 +3,8 @@
 Linear flow with the gap loop encapsulated in its own node:
 
     Sectionize(D) → ExtractClaims(A) → BuildModel(D) → ReviewCriteria(A)
-      → VerifyFindings(D) → GapLoop(A/D) → Gate(D) → Synthesise(A)
-      → CritiqueRevise(A) → Finalize(D) → End[ReviewResult]
+      → VerifyFindings(D) → GapLoop(A/D) → Consolidate(A) → Gate(D)
+      → Synthesise(A) → CritiqueRevise(A) → Finalize(D) → End[ReviewResult]
 
 Each node wraps a tested phase function; the deterministic/agent split is kept
 at the node level. Entry point: `run_review_v3(markdown, *, model=…)`.
@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ..schemas import ReviewResult
+from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
 from .extract import build_claims
 from .digest import build_document_model
@@ -103,7 +104,7 @@ class VerifyFindings(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Consolidate":
         model = ctx.state.document_model
         assert model is not None
         ctx.state.findings = await gap_loop(
@@ -111,6 +112,16 @@ class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
             ctx.state.findings,
             agent_model=ctx.deps.agent_model,
             cap=ctx.deps.cap,
+            criterion_names=[c.name for c in ctx.deps.criteria],
+        )
+        return Consolidate()
+
+
+@dataclass
+class Consolidate(BaseNode[V3State, V3Deps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
+        ctx.state.findings = await consolidate(
+            ctx.state.findings, agent_model=ctx.deps.agent_model
         )
         return Gate()
 
@@ -160,6 +171,7 @@ review_graph_v3 = Graph(
         ReviewCriteria,
         VerifyFindings,
         GapLoop,
+        Consolidate,
         Gate,
         Synthesise,
         CritiqueRevise,

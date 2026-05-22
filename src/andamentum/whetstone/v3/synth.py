@@ -117,7 +117,11 @@ def _to_wfinding(f: Finding, model: DocumentModel) -> WFinding:
                 text=f.quote,
             )
         )
-    title = f.issue if len(f.issue) <= 80 else f.issue[:77] + "…"
+    # A v3 Finding carries one `issue` statement — no separate title/rationale.
+    # The criterion is the short label; the issue is the body. Mapping the same
+    # text into both fields duplicates it, because every renderer shows title
+    # AND rationale (docx concatenates them, markdown/html stack them).
+    title = f.criterion or "Finding"
     return WFinding(
         title=title,
         severity=f.severity,
