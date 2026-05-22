@@ -19,6 +19,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import NoReturn, Sequence
 
@@ -670,9 +671,11 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             doc_type = (
                 "academic" if args.document_type == "auto" else args.document_type
             )
+            _t0 = time.perf_counter()
             result = await review_document_v3(
                 args.input, model=args.model, cap=args.rounds, document_type=doc_type
             )
+            result.metrics.wall_seconds = time.perf_counter() - _t0
         else:
             result = await review_document(
                 args.input,
@@ -764,7 +767,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             except OSError:
                 pass
 
-    _print_summary(console, result, written)
+    _print_summary(console, result, written, v3=args.v3)
 
     # Disclosure reminder — always shown at end of run. AI assistance must
     # be disclosed in submitted artifacts per most journal / funder rules.
@@ -784,6 +787,14 @@ def _log_run_config(
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("input:", str(args.input))
+    if args.v3:
+        table.add_row("pipeline:", "v3 (whole-document, SPECS criteria, gap loop)")
+        table.add_row("model:", args.model or "")
+        table.add_row("document type:", args.document_type)
+        table.add_row("gap-loop cap:", str(args.rounds))
+        table.add_row("outputs:", ", ".join(str(o) for o in args.out))
+        console.print(Panel(table, title="whetstone v3", border_style="cyan"))
+        return
     table.add_row("mode:", args.mode)
     table.add_row("model:", args.model or "[i](deterministic only)[/i]")
     if args.mode == "panel":
@@ -811,14 +822,19 @@ def _log_run_config(
     console.print(Panel(table, title="whetstone v2", border_style="cyan"))
 
 
-def _print_summary(console: Console, result, written: list[Path]) -> None:
+def _print_summary(
+    console: Console, result, written: list[Path], *, v3: bool = False
+) -> None:
     """Render a Rich summary table after the run completes."""
     m = result.metrics
     table = Table(show_header=False, box=None, padding=(0, 1))
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("wall time:", f"{m.wall_seconds:.1f}s")
-    table.add_row("LLM calls:", str(m.llm_calls))
+    # llm_calls / reflection rounds are v2 telemetry; v3 doesn't track them yet,
+    # so omit rather than print misleading zeros (the [v3.gaps] log shows rounds).
+    if not v3:
+        table.add_row("LLM calls:", str(m.llm_calls))
     table.add_row("sections:", str(m.sections_processed))
     table.add_row(
         "findings:",
@@ -828,7 +844,8 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
     )
     table.add_row("edits:", str(m.edits_count))
     table.add_row("author questions:", str(len(result.author_questions)))
-    table.add_row("rounds used:", str(m.reflection_rounds_used))
+    if not v3:
+        table.add_row("rounds used:", str(m.reflection_rounds_used))
     table.add_row("outputs:", "\n".join(str(p) for p in written))
     console.print(Panel(table, title="review complete", border_style="green"))
 
