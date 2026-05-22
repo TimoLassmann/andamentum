@@ -1,0 +1,221 @@
+"""The gap re-examination loop — re-grounds the review in the real source.
+
+Reviewing the digest alone is unsafe (a missed claim is invisible from inside
+the representation). This bounded loop re-reads the ORIGINAL source to (a)
+re-check existing findings' veracity against the text and (b) surface issues
+the forward pass missed. Demand-routed and capped (the termination guarantee),
+in the spirit of deep_research / epistemic lazy escalation.
+
+Functions here; the graph nodes wrap them in Phase 5. Deterministic pieces
+(coverage summary, loop control, verify) are separated from the agent pieces
+(gap analysis, satisfy).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Literal, cast
+
+from pydantic import BaseModel, Field
+
+from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
+from andamentum.core.models import resolve_model
+
+from .model import DocumentModel
+from .review import Finding, _CriterionFindings, verify_findings
+
+logger = logging.getLogger("andamentum.whetstone.v3")
+
+_DEFAULT_CAP = 2
+
+
+class Demand(BaseModel):
+    """A pull request for more work, routed to its minimal satisfier."""
+
+    kind: Literal["reexamine", "recheck"]
+    detail: str = ""  # what to look for (reexamine) / why (recheck)
+    target_section_id: str | None = None  # for reexamine
+    finding_index: int | None = None  # for recheck (index into the numbered list shown)
+
+    def signature(self) -> str:
+        return f"{self.kind}|{self.target_section_id}|{self.finding_index}|{self.detail[:40]}"
+
+
+class _DemandList(BaseModel):
+    demands: list[Demand] = Field(default_factory=list)
+
+
+class _Holds(BaseModel):
+    holds: bool = Field(
+        description="True if the finding is genuinely supported by the text."
+    )
+    reason: str = ""
+
+
+# ── Deterministic: coverage summary + loop control ──────────────────────────
+
+
+def coverage_summary(findings: list[Finding], model: DocumentModel) -> str:
+    """Light reflection input: findings per criterion + which sections have any."""
+    by_crit: dict[str, int] = {}
+    for f in findings:
+        by_crit[f.criterion] = by_crit.get(f.criterion, 0) + 1
+    touched = {f.span.section_id for f in findings if f.span}
+    crit_line = ", ".join(f"{k}:{v}" for k, v in sorted(by_crit.items())) or "(none)"
+    untouched = [s.id for s in model.sections if s.id not in touched]
+    return (
+        f"findings by criterion: {crit_line}\n"
+        f"sections with no finding yet: {', '.join(untouched) or '(none)'}"
+    )
+
+
+# ── Agents: gap analysis + satisfy ──────────────────────────────────────────
+
+_GAP_PROMPT = """You are re-examining a review before it is finalised. Your job \
+is NOT to re-list every section — it is to find what is worth a second look:
+  • findings that should be re-checked against the real text (they may be wrong
+    or overstated) → emit a "recheck" demand with the finding's index;
+  • places the review likely MISSED something worth raising → emit a "reexamine"
+    demand naming the section and what to look for.
+
+Be sparing. Emit only high-value demands. If nothing needs a second look, emit
+an empty list. Do NOT repeat demands already listed as previously requested."""
+
+
+async def analyze_gaps(
+    model: DocumentModel,
+    findings: list[Finding],
+    prior: set[str],
+    *,
+    agent_model: str,
+) -> list[Demand]:
+    defn = AgentDefinition(
+        name="v3_gap_analysis",
+        prompt=_GAP_PROMPT,
+        output_model=_DemandList,
+        retries=2,
+        output_retries=2,
+    )
+    agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    numbered = (
+        "\n".join(
+            f"  [{i}] ({f.criterion}/{f.severity}) {f.issue} — quote: {f.quote!r}"
+            for i, f in enumerate(findings)
+        )
+        or "  (no findings yet)"
+    )
+    gists = "\n".join(f"  - {g.section_id} {g.title}: {g.gist}" for g in model.gists)
+    prior_block = "\n".join(f"  - {p}" for p in sorted(prior)) or "  (none)"
+    result = await agent.run(
+        f"CURRENT FINDINGS:\n{numbered}\n\n"
+        f"COVERAGE:\n{coverage_summary(findings, model)}\n\n"
+        f"SECTIONS:\n{gists}\n\n"
+        f"PREVIOUSLY REQUESTED (do not repeat):\n{prior_block}\n\n"
+        f"What is worth a second look?"
+    )
+    demands = cast(_DemandList, result.output).demands
+    return [d for d in demands if d.signature() not in prior]
+
+
+async def _satisfy_reexamine(
+    demand: Demand, model: DocumentModel, *, agent_model: str
+) -> list[Finding]:
+    section = model.section_by_id(demand.target_section_id or "")
+    if section is None:
+        return []
+    defn = AgentDefinition(
+        name="v3_reexamine",
+        prompt=(
+            "Re-read this section of the document and report any real problems "
+            "matching the request. Quote VERBATIM (non-verbatim quotes are "
+            "dropped). Report nothing if there is no real problem."
+        ),
+        output_model=_CriterionFindings,
+        retries=2,
+        output_retries=2,
+    )
+    agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    res = await agent.run(
+        f"REQUEST: {demand.detail}\n\nSECTION ({section.title}):\n{section.text}"
+    )
+    raw = cast(_CriterionFindings, res.output).findings
+    return [
+        Finding(
+            criterion="re-examination",
+            issue=r.issue,
+            quote=r.quote,
+            severity=r.severity,
+        )
+        for r in raw
+    ]
+
+
+async def _satisfy_recheck(
+    demand: Demand, findings: list[Finding], model: DocumentModel, *, agent_model: str
+) -> bool:
+    """Re-verify a finding against its real section text. Returns True to KEEP."""
+    if demand.finding_index is None or not (0 <= demand.finding_index < len(findings)):
+        return True
+    f = findings[demand.finding_index]
+    section = model.section_by_id(f.span.section_id) if f.span else None
+    context = section.text if section else model.source
+    defn = AgentDefinition(
+        name="v3_recheck",
+        prompt=(
+            "Decide whether a review finding is genuinely supported by the "
+            "document text shown. Answer holds=true only if the text really "
+            "bears out the finding; otherwise holds=false."
+        ),
+        output_model=_Holds,
+        retries=2,
+        output_retries=2,
+    )
+    agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    res = await agent.run(
+        f"FINDING: {f.issue}\nQUOTE: {f.quote!r}\n\nDOCUMENT TEXT:\n{context}"
+    )
+    return bool(cast(_Holds, res.output).holds)
+
+
+# ── Orchestration (the loop) ────────────────────────────────────────────────
+
+
+async def gap_loop(
+    model: DocumentModel,
+    findings: list[Finding],
+    *,
+    agent_model: str,
+    cap: int = _DEFAULT_CAP,
+) -> list[Finding]:
+    """Re-examine findings + surface misses against the source, bounded by *cap*."""
+    current = list(findings)
+    prior: set[str] = set()
+    for round_idx in range(1, cap + 1):
+        try:
+            demands = await analyze_gaps(model, current, prior, agent_model=agent_model)
+        except Exception as exc:
+            logger.warning("[v3.gaps] analysis crashed: %s", exc)
+            break
+        if not demands:
+            logger.info("[v3.gaps] round %d — no demands, exiting", round_idx)
+            break
+        logger.info("[v3.gaps] round %d — %d demand(s)", round_idx, len(demands))
+        for d in demands:
+            prior.add(d.signature())
+        drop_idxs: set[int] = set()
+        new: list[Finding] = []
+        for d in demands:
+            try:
+                if d.kind == "reexamine":
+                    new += await _satisfy_reexamine(d, model, agent_model=agent_model)
+                elif d.kind == "recheck":
+                    keep = await _satisfy_recheck(
+                        d, current, model, agent_model=agent_model
+                    )
+                    if not keep and d.finding_index is not None:
+                        drop_idxs.add(d.finding_index)
+            except Exception as exc:
+                logger.warning("[v3.gaps] satisfy crashed: %s", exc)
+        current = [f for i, f in enumerate(current) if i not in drop_idxs]
+        current += verify_findings(new, model)
+    return current
