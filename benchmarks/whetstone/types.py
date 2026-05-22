@@ -66,6 +66,20 @@ class AdjudicatedFinding(BaseModel):
     note: str = ""
 
 
+class Comparison(BaseModel):
+    """The judge's grounded comparative verdict for one paper.
+
+    Produced from the per-issue adjudication (not the raw papers), so the
+    reasoning is anchored to issues the reader can verify. ``more_useful`` is
+    the judge's call on which review better serves the author; ``reasoning``
+    must cite specific adjudicated issues.
+    """
+
+    more_useful: Literal["whetstone", "whole-doc", "comparable", "inconsistent"]
+    reasoning: str = ""
+    order_consistent: bool = True  # did the two order-swapped judge runs agree?
+
+
 class PaperResult(BaseModel):
     """Everything produced for one paper: both arms + the adjudication."""
 
@@ -74,3 +88,6 @@ class PaperResult(BaseModel):
     arm_b: ArmOutput
     adjudications: list[AdjudicatedFinding] = Field(default_factory=list)
     verdict_match: Optional[bool] = None  # did A's synthesis match B's top weaknesses?
+    comparison: Optional[Comparison] = (
+        None  # judge's grounded "which is better" verdict
+    )

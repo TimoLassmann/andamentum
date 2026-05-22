@@ -6,6 +6,7 @@ from benchmarks.whetstone.types import (
     AdjudicatedFinding,
     ArmFinding,
     ArmOutput,
+    Comparison,
     PaperRef,
     PaperResult,
 )
@@ -35,6 +36,10 @@ def _result() -> PaperResult:
                 locality="cross_section",
             )
         ],
+        comparison=Comparison(
+            more_useful="whole-doc",
+            reasoning="B caught the unsupported central claim that A missed.",
+        ),
     )
 
 
@@ -50,6 +55,15 @@ def test_build_html_is_self_contained_and_shows_both_arms() -> None:
     # The architecture-gap (b_only critical cross_section) is surfaced.
     assert "architecture gap" in html.lower()
     assert "the central claim is unsupported" in html
+    # The top comparison section: grounded verdict + scorecard.
+    assert "comparative verdict" in html.lower()
+    assert "More useful" in html
+    assert "B caught the unsupported central claim" in html  # the reasoning prose
+    assert "whetstone-only minor (noise)" in html  # a scorecard axis
+    # The judge's per-issue adjudication is shown with bucket/severity badges.
+    assert "Judge adjudication" in html
+    assert "whole-doc only" in html  # bucket label for the b_only issue
+    assert "am-badge--danger" in html  # critical severity badge
 
 
 def test_build_html_escapes_finding_text() -> None:
