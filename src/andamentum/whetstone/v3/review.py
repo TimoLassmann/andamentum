@@ -72,7 +72,11 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
 
 
 async def review_criterion(
-    criterion: Criterion, model: DocumentModel, *, agent_model: str
+    criterion: Criterion,
+    model: DocumentModel,
+    *,
+    agent_model: str,
+    full_text: str | None = None,
 ) -> list[Finding]:
     defn = AgentDefinition(
         name=f"v3_review_{criterion.name.lower()}",
@@ -83,9 +87,12 @@ async def review_criterion(
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
     questions = "\n".join(f"  {i}. {q}" for i, q in enumerate(criterion.questions, 1))
+    # "Raw text if it fits": when the caller passes the full document, include it
+    # as extra grounding alongside the compact projection.
+    full = f"\n\nFULL DOCUMENT:\n{full_text}" if full_text else ""
     prompt = (
         f"CRITERION: {criterion.name}\n\nQUESTIONS:\n{questions}\n\n"
-        f"{_project(criterion, model)}\n\n"
+        f"{_project(criterion, model)}{full}\n\n"
         f"Report real problems for the {criterion.name} criterion."
     )
     result = await agent.run(prompt)
@@ -99,7 +106,11 @@ async def review_criterion(
 
 
 async def run_criteria(
-    criteria: list[Criterion], model: DocumentModel, *, agent_model: str
+    criteria: list[Criterion],
+    model: DocumentModel,
+    *,
+    agent_model: str,
+    full_text: str | None = None,
 ) -> list[Finding]:
     """Fan the generic review over the active criterion set (parallel)."""
     sem = asyncio.Semaphore(_MAX_CONCURRENT)
@@ -107,7 +118,9 @@ async def run_criteria(
     async def one(c: Criterion) -> list[Finding]:
         async with sem:
             try:
-                return await review_criterion(c, model, agent_model=agent_model)
+                return await review_criterion(
+                    c, model, agent_model=agent_model, full_text=full_text
+                )
             except Exception as exc:
                 logger.warning("[v3.review] %s crashed: %s", c.name, exc)
                 return []
