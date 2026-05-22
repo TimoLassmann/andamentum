@@ -159,7 +159,12 @@ def cmd_arms(args: argparse.Namespace) -> int:
 
 
 def cmd_adjudicate(args: argparse.Namespace) -> int:
-    from .adjudicate import adjudicate, build_worksheet, judge_verdict_match
+    from .adjudicate import (
+        adjudicate,
+        build_worksheet,
+        compare_reviews,
+        judge_verdict_match,
+    )
 
     runs = Path(args.out_dir)
     arms_files = sorted(runs.glob("*.arms.json"))
@@ -173,7 +178,13 @@ def cmd_adjudicate(args: argparse.Namespace) -> int:
         result = PaperResult.model_validate_json(path.read_text("utf-8"))
 
         async def go():
-            adj = await adjudicate(result.arm_a, result.arm_b, model=args.judge_model)
+            adj = await adjudicate(
+                result.arm_a,
+                result.arm_b,
+                model=args.judge_model,
+                slug=result.paper.slug,
+                seed=args.seed,
+            )
             match = await judge_verdict_match(
                 result.arm_a.verdict, result.arm_b.verdict, model=args.judge_model
             )
@@ -182,6 +193,10 @@ def cmd_adjudicate(args: argparse.Namespace) -> int:
         adj, match = asyncio.run(go())
         result.adjudications = adj
         result.verdict_match = match
+        # Grounded comparative verdict — blinded, two-run order-swap consistency.
+        result.comparison = asyncio.run(
+            compare_reviews(result, model=args.judge_model, seed=args.seed)
+        )
         path.with_suffix(".adj.json").write_text(
             result.model_dump_json(indent=2), encoding="utf-8"
         )

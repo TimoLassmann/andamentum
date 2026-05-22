@@ -36,30 +36,6 @@ def _finding_cards(out: ArmOutput) -> str:
     return "\n".join(cards)
 
 
-def _gap_callout(result: PaperResult) -> str:
-    """The money items: critical, cross-section issues B caught and A missed."""
-    gaps = [
-        f
-        for f in result.adjudications
-        if f.bucket == "b_only"
-        and f.severity == "critical"
-        and f.locality == "cross_section"
-    ]
-    if not gaps:
-        return (
-            '<aside class="typeset-callout tone-success">'
-            "<p>No critical cross-section issue was found by the whole-document "
-            "read that whetstone missed.</p></aside>"
-        )
-    items = "".join(f"<li>{_esc(g.text)}</li>" for g in gaps)
-    return (
-        '<aside class="typeset-callout tone-danger">'
-        f"<p><strong>{len(gaps)} architecture gap(s)</strong> — critical, "
-        "cross-section issues the whole-document read caught that whetstone "
-        f"missed:</p><ul>{items}</ul></aside>"
-    )
-
-
 def _stat(value: int, label: str, danger: bool = False) -> str:
     cls = "am-stat__value is-danger" if danger else "am-stat__value"
     return (
@@ -68,22 +44,114 @@ def _stat(value: int, label: str, danger: bool = False) -> str:
     )
 
 
+# Map each adjudication facet to a design-system badge tone.
+_BUCKET_TONE = {"both": "note", "a_only": "info", "b_only": "warn"}
+_SEVERITY_TONE = {"critical": "danger", "minor": "note"}
+_LOCALITY_TONE = {"cross_section": "info", "local": "note"}
+_BUCKET_LABEL = {"both": "both", "a_only": "whetstone only", "b_only": "whole-doc only"}
+
+
+def _badge(text: str, tone: str) -> str:
+    return f'<span class="am-badge am-badge--{tone}">{_esc(text)}</span>'
+
+
+_VERDICT_TONE = {
+    "whetstone": "info",
+    "whole-doc": "warn",
+    "comparable": "note",
+    "inconsistent": "danger",
+}
+
+
+def _comparison_section(result: PaperResult) -> str:
+    """Top-of-paper 'which is better, and why' — the grounded judge verdict
+    plus a deterministic scorecard. The verdict prose is a judgement (cites
+    issues you can check below); the scorecard is fact (counts of judge tags).
+    The judge is blinded and run twice with the order swapped; a flip shows as
+    'inconsistent'."""
+    s = summarise_paper(result)
+    if result.comparison:
+        c = result.comparison
+        flag = (
+            ""
+            if c.order_consistent
+            else ' <span class="am-badge am-badge--danger">order-sensitive</span>'
+        )
+        verdict = (
+            '<div class="eyebrow">Judge\'s comparative verdict '
+            "(blinded, order-checked)</div>"
+            f"<p><strong>More useful: {_badge(c.more_useful, _VERDICT_TONE.get(c.more_useful, 'note'))}</strong>{flag}</p>"
+            f"<p>{_esc(c.reasoning)}</p>"
+        )
+    else:
+        verdict = '<div class="eyebrow">Judge\'s comparative verdict</div><p>—</p>'
+
+    vmatch = "—" if s.verdict_match is None else ("yes" if s.verdict_match else "no")
+    tiles = "".join(
+        [
+            _stat(s.both_critical, "critical: both caught"),
+            _stat(
+                s.b_only_critical_crosssection,
+                "architecture gaps",
+                danger=s.b_only_critical_crosssection > 0,
+            ),
+            _stat(s.a_only_critical, "critical: whetstone-only"),
+            _stat(len(result.arm_a.findings), "whetstone findings"),
+            _stat(len(result.arm_b.findings), "whole-doc findings"),
+            _stat(s.a_only_minor, "whetstone-only minor (noise)"),
+        ]
+    )
+    return (
+        '<div class="comparison"><div class="am-card am-card--quiet">'
+        f"{verdict}</div>"
+        f'<div class="am-stats">{tiles}</div>'
+        f'<p class="typeset-meta">Central problem identified by whetstone\'s '
+        f"synthesis: {vmatch}</p></div>"
+    )
+
+
+def _adjudication_panel(result: PaperResult) -> str:
+    """The judge's per-issue verdict: every aligned issue + its bucket /
+    severity / locality, so the LLM judge's classification is visible (and
+    auditable against the blinded worksheet), not just the derived counts."""
+    adj = result.adjudications
+    if not adj:
+        return ""
+    # Order: architecture gaps first, then other b_only, then a_only, then both.
+    order = {"b_only": 0, "a_only": 1, "both": 2}
+    rows = sorted(
+        adj,
+        key=lambda f: (order.get(f.bucket, 3), 0 if f.severity == "critical" else 1),
+    )
+    cards = []
+    for f in rows:
+        badges = (
+            _badge(
+                _BUCKET_LABEL.get(f.bucket, f.bucket),
+                _BUCKET_TONE.get(f.bucket, "note"),
+            )
+            + _badge(f.severity, _SEVERITY_TONE.get(f.severity, "note"))
+            + _badge(
+                f.locality.replace("_", "-"), _LOCALITY_TONE.get(f.locality, "note")
+            )
+        )
+        note = f"<p>{_esc(f.note)}</p>" if f.note else ""
+        cards.append(
+            f'<div class="am-card"><div class="am-tags">{badges}</div>'
+            f"<p>{_esc(f.text)}</p>{note}</div>"
+        )
+    return (
+        f'<div class="eyebrow">Judge adjudication ({len(adj)} aligned issue(s))</div>'
+        f'<div class="adjudication">{"".join(cards)}</div>'
+    )
+
+
 def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
     p = result.paper
-    s = summarise_paper(result)
     hide = " hidden" if hidden else ""
     title = _esc(p.title or p.id)
     meta_bits = [p.source, p.id, p.subfield]
     meta = " · ".join(_esc(b) for b in meta_bits if b)
-
-    stats = "".join(
-        [
-            _stat(s.both, "found by both"),
-            _stat(s.a_only, "whetstone only"),
-            _stat(s.b_only, "whole-doc only"),
-            _stat(s.b_only_critical_crosssection, "architecture gaps", danger=True),
-        ]
-    )
 
     return f"""<section class="paper" id="paper-{idx}"{hide}>
   <header class="typeset-heading">
@@ -91,9 +159,7 @@ def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
     <p class="typeset-meta">{meta}</p>
   </header>
 
-  <div class="am-stats">{stats}</div>
-
-  {_gap_callout(result)}
+  {_comparison_section(result)}
 
   <div class="verdicts">
     <div class="am-card am-card--quiet">
@@ -105,6 +171,8 @@ def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
       <p>{_esc(result.arm_b.verdict) or "—"}</p>
     </div>
   </div>
+
+  {_adjudication_panel(result)}
 
   <div class="panes">
     <div class="pane">
@@ -145,6 +213,9 @@ _EXTRA_CSS = """
   .verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--am-sp-5);
               margin-top: var(--am-sp-5); }
   .pane > .am-card { margin-bottom: var(--am-sp-3); }
+  .adjudication { margin-top: var(--am-sp-3); }
+  .adjudication > .am-card { margin-bottom: var(--am-sp-3); }
+  .adjudication .am-tags { margin-bottom: var(--am-sp-2); }
   .eyebrow { font-family: var(--am-font-ui, Inter, sans-serif); font-size: 10px;
              font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px;
              color: var(--am-ink-5); margin-bottom: var(--am-sp-3); }

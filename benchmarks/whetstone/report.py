@@ -23,6 +23,10 @@ class PaperReadout(BaseModel):
     # other diagnostic slices
     b_only_critical_local: int = 0  # whetstone SHOULD have caught (lens bug)
     a_only_total: int = 0  # whetstone-only: real catches or noise
+    # scorecard axes
+    both_critical: int = 0  # critical issues both arms caught
+    a_only_critical: int = 0  # critical issues only whetstone caught
+    a_only_minor: int = 0  # whetstone-only minor/local — the noise proxy
     verdict_match: bool | None = None
 
 
@@ -61,6 +65,9 @@ def summarise_paper(result: PaperResult) -> PaperReadout:
             1 for f in adj if _is(f, "b_only", "critical", "local")
         ),
         a_only_total=sum(1 for f in adj if f.bucket == "a_only"),
+        both_critical=sum(1 for f in adj if _is(f, "both", "critical")),
+        a_only_critical=sum(1 for f in adj if _is(f, "a_only", "critical")),
+        a_only_minor=sum(1 for f in adj if _is(f, "a_only", "minor")),
         verdict_match=result.verdict_match,
     )
 
