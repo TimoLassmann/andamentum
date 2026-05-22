@@ -219,6 +219,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "ollama:gemma4:31b-nvfp4). Required unless --no-llm.",
     )
     parser.add_argument(
+        "--v3",
+        action="store_true",
+        help=(
+            "Use the experimental v3 whole-document pipeline (claims digest + "
+            "SPECS criteria + gap loop) instead of the v2 section-by-section "
+            "review. Requires --model. Most v2-only flags (perspectives, panel, "
+            "editor, …) are ignored; --document-type selects the criterion set "
+            "and --rounds sets the gap-loop cap."
+        ),
+    )
+    parser.add_argument(
         "--embedding-model",
         default=DEFAULT_EMBEDDING_MODEL,
         metavar="MODEL",
@@ -480,6 +491,8 @@ def _validate_args(args: argparse.Namespace) -> None:
             "--editor requires --model (the editor agent is an LLM call). "
             "Drop --editor or --no-llm.",
         )
+    if args.v3 and args.no_llm:
+        _die(1, "--v3 requires --model (the v3 pipeline is LLM-driven). Drop --no-llm.")
     if args.no_llm and args.mode == "panel":
         _die(
             1,
@@ -651,31 +664,41 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         _log_run_config(console, args, perspectives, editor_criteria)
 
     try:
-        result = await review_document(
-            args.input,
-            model=None if args.no_llm else args.model,
-            embedding_model=args.embedding_model,
-            perspectives=perspectives,
-            reflection_round_cap=args.rounds,
-            challenge=not args.no_challenge,
-            editor=args.editor,
-            editor_criteria=editor_criteria,
-            mode=args.mode,
-            n_experts=args.n_experts,
-            panel_disciplines=panel_disciplines or None,
-            guidelines=guidelines_text,
-            custom_criteria=custom_criteria,
-            check_novelty=args.check_novelty,
-            novelty_search_depth=args.novelty_search_depth,
-            novelty_cache_dir=(
-                Path.home() / ".cache" / "whetstone" / "novelty"
-                if args.persist_novelty_cache
-                else None
-            ),
-            confirm_own_draft=args.confirm_own_draft,
-            document_type=args.document_type,
-            proofread=not args.no_proofread,
-        )
+        if args.v3:
+            from .v3 import review_document_v3
+
+            doc_type = (
+                "academic" if args.document_type == "auto" else args.document_type
+            )
+            result = await review_document_v3(
+                args.input, model=args.model, cap=args.rounds, document_type=doc_type
+            )
+        else:
+            result = await review_document(
+                args.input,
+                model=None if args.no_llm else args.model,
+                embedding_model=args.embedding_model,
+                perspectives=perspectives,
+                reflection_round_cap=args.rounds,
+                challenge=not args.no_challenge,
+                editor=args.editor,
+                editor_criteria=editor_criteria,
+                mode=args.mode,
+                n_experts=args.n_experts,
+                panel_disciplines=panel_disciplines or None,
+                guidelines=guidelines_text,
+                custom_criteria=custom_criteria,
+                check_novelty=args.check_novelty,
+                novelty_search_depth=args.novelty_search_depth,
+                novelty_cache_dir=(
+                    Path.home() / ".cache" / "whetstone" / "novelty"
+                    if args.persist_novelty_cache
+                    else None
+                ),
+                confirm_own_draft=args.confirm_own_draft,
+                document_type=args.document_type,
+                proofread=not args.no_proofread,
+            )
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
         # focused error code (1: configuration) instead of pipeline-crash (3).
@@ -920,7 +943,10 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     from .renderers.docx import DEFAULT_AI_AUTHOR
-    resolved_author = args.patch_author if args.patch_author is not None else DEFAULT_AI_AUTHOR
+
+    resolved_author = (
+        args.patch_author if args.patch_author is not None else DEFAULT_AI_AUTHOR
+    )
     if args.allow_author_override:
         print(
             f"WARNING: attributing AI-generated patches to '{resolved_author}' "
