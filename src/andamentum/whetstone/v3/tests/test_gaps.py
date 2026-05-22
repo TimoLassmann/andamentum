@@ -7,8 +7,14 @@ from unittest.mock import patch
 
 from andamentum.whetstone.v3.gaps import Demand, coverage_summary, gap_loop
 from andamentum.whetstone.v3.model import DocumentModel, Section, Span
-from andamentum.whetstone.v3.review import _CriterionFindings, _RawFinding, Finding
-from andamentum.whetstone.v3.gaps import _DemandList, _Holds
+from andamentum.whetstone.v3.review import Finding
+from andamentum.whetstone.v3.gaps import (
+    _DemandList,
+    _Holds,
+    _ReexamineFinding,
+    _ReexamineFindings,
+    _snap_criterion,
+)
 
 
 def _model(src: str) -> DocumentModel:
@@ -29,7 +35,7 @@ def _route(*, demands, reexamine=None, holds=True):
                 if name == "v3_gap_analysis":
                     out = _DemandList(demands=demands)
                 elif name == "v3_reexamine":
-                    out = _CriterionFindings(findings=reexamine or [])
+                    out = _ReexamineFindings(findings=reexamine or [])
                 else:  # v3_recheck
                     out = _Holds(holds=holds)
                 return types.SimpleNamespace(output=out)
@@ -40,6 +46,13 @@ def _route(*, demands, reexamine=None, holds=True):
         patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
         patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
     )
+
+
+def test_snap_criterion_matches_and_falls_back() -> None:
+    names = ["Story", "Presentation", "Correctness"]
+    assert _snap_criterion("correctness", names) == "Correctness"  # case-insensitive
+    assert _snap_criterion("the Presentation criterion", names) == "Presentation"
+    assert _snap_criterion("nonsense", names) == "Story"  # fallback to first
 
 
 def test_coverage_summary_counts_and_untouched() -> None:
@@ -71,16 +84,26 @@ async def test_reexamine_adds_a_verified_finding() -> None:
     model = _model(src)
     demand = Demand(kind="reexamine", detail="check evaluation", target_section_id="s1")
     new = [
-        _RawFinding(
-            issue="no baseline", quote="omits a baseline comparison", severity="major"
+        _ReexamineFinding(
+            issue="no baseline",
+            quote="omits a baseline comparison",
+            severity="major",
+            criterion="Evaluations",
         )
     ]
     p1, p2 = _route(demands=[demand], reexamine=new)
     with p1, p2:
-        out = await gap_loop(model, [], agent_model="stub", cap=2)
+        out = await gap_loop(
+            model,
+            [],
+            agent_model="stub",
+            cap=2,
+            criterion_names=["Evaluations", "Story"],
+        )
     assert len(out) == 1
     assert out[0].issue == "no baseline"
     assert out[0].span is not None  # verified/located
+    assert out[0].criterion == "Evaluations"  # classified, not "re-examination"
 
 
 async def test_recheck_drops_a_finding_that_does_not_hold() -> None:
@@ -107,7 +130,11 @@ async def test_loop_terminates_via_demand_memory() -> None:
     src = "Some text with a baseline mentioned."
     model = _model(src)
     demand = Demand(kind="reexamine", detail="x", target_section_id="s1")
-    new = [_RawFinding(issue="i", quote="a baseline mentioned", severity="minor")]
+    new = [
+        _ReexamineFinding(
+            issue="i", quote="a baseline mentioned", severity="minor", criterion="Story"
+        )
+    ]
     p1, p2 = _route(demands=[demand], reexamine=new)
     with p1, p2:
         out = await gap_loop(model, [], agent_model="stub", cap=5)

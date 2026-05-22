@@ -21,8 +21,9 @@ from pydantic import BaseModel, Field
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
+from .criteria import SPECS
 from .model import DocumentModel
-from .review import Finding, _CriterionFindings, verify_findings
+from .review import Finding, Severity, verify_findings
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -50,6 +51,34 @@ class _Holds(BaseModel):
         description="True if the finding is genuinely supported by the text."
     )
     reason: str = ""
+
+
+class _ReexamineFinding(BaseModel):
+    issue: str = Field(description="Short description of the problem (1-2 sentences).")
+    quote: str = Field(description="A VERBATIM span from the section it concerns.")
+    severity: Severity = "moderate"
+    criterion: str = Field(
+        description="Which review criterion this problem falls under "
+        "(use one of the names provided, verbatim)."
+    )
+
+
+class _ReexamineFindings(BaseModel):
+    findings: list[_ReexamineFinding] = Field(default_factory=list)
+
+
+def _snap_criterion(value: str, names: list[str]) -> str:
+    """Map the agent's criterion onto the active set (case-insensitive) so a
+    re-examined finding lands under a real criterion rather than a generic
+    label. Falls back to the first criterion if nothing matches."""
+    v = value.strip().lower()
+    for n in names:
+        if n.lower() == v:
+            return n
+    for n in names:
+        if n.lower() in v or v in n.lower():
+            return n
+    return names[0] if names else "Finding"
 
 
 # ── Deterministic: coverage summary + loop control ──────────────────────────
@@ -118,7 +147,11 @@ async def analyze_gaps(
 
 
 async def _satisfy_reexamine(
-    demand: Demand, model: DocumentModel, *, agent_model: str
+    demand: Demand,
+    model: DocumentModel,
+    *,
+    agent_model: str,
+    criterion_names: list[str],
 ) -> list[Finding]:
     section = model.section_by_id(demand.target_section_id or "")
     if section is None:
@@ -128,20 +161,24 @@ async def _satisfy_reexamine(
         prompt=(
             "Re-read this section of the document and report any real problems "
             "matching the request. Quote VERBATIM (non-verbatim quotes are "
-            "dropped). Report nothing if there is no real problem."
+            "dropped). Classify each problem under one of the review criteria "
+            "listed. Report nothing if there is no real problem."
         ),
-        output_model=_CriterionFindings,
+        output_model=_ReexamineFindings,
         retries=2,
         output_retries=2,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
     res = await agent.run(
-        f"REQUEST: {demand.detail}\n\nSECTION ({section.title}):\n{section.text}"
+        f"REQUEST: {demand.detail}\n\n"
+        f"CRITERIA (classify each problem as one of these): "
+        f"{', '.join(criterion_names)}\n\n"
+        f"SECTION ({section.title}):\n{section.text}"
     )
-    raw = cast(_CriterionFindings, res.output).findings
+    raw = cast(_ReexamineFindings, res.output).findings
     return [
         Finding(
-            criterion="re-examination",
+            criterion=_snap_criterion(r.criterion, criterion_names),
             issue=r.issue,
             quote=r.quote,
             severity=r.severity,
@@ -186,8 +223,10 @@ async def gap_loop(
     *,
     agent_model: str,
     cap: int = _DEFAULT_CAP,
+    criterion_names: list[str] | None = None,
 ) -> list[Finding]:
     """Re-examine findings + surface misses against the source, bounded by *cap*."""
+    names = criterion_names or [c.name for c in SPECS]
     current = list(findings)
     prior: set[str] = set()
     for round_idx in range(1, cap + 1):
@@ -207,7 +246,9 @@ async def gap_loop(
         for d in demands:
             try:
                 if d.kind == "reexamine":
-                    new += await _satisfy_reexamine(d, model, agent_model=agent_model)
+                    new += await _satisfy_reexamine(
+                        d, model, agent_model=agent_model, criterion_names=names
+                    )
                 elif d.kind == "recheck":
                     keep = await _satisfy_recheck(
                         d, current, model, agent_model=agent_model
