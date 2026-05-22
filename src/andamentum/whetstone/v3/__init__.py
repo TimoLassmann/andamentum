@@ -9,3 +9,7 @@ section-by-section lens reads. Only extraction is per-section; everything else
 reasons over the model. Every LLM-emitted span is string-match-verified against
 the source (the `locate` primitive), so hallucinations cannot survive.
 """
+
+from .graph import review_document_v3, run_review_v3
+
+__all__ = ["run_review_v3", "review_document_v3"]
