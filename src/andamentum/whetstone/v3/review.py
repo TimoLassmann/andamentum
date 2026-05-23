@@ -24,7 +24,10 @@ from .model import DocumentModel, Span
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
-_MAX_CONCURRENT = 5
+# Dropped from 5 → 2: the 5 SPECS criterion reviews all firing at once
+# was the most obvious burst contributor (every review-crash log shows
+# all 5 criteria crashing simultaneously).
+_MAX_CONCURRENT = 2
 
 Severity = Literal["minor", "moderate", "major"]
 

@@ -22,7 +22,10 @@ from .model import Claim, Section, Span
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
-_MAX_CONCURRENT = 4
+# Dropped from 4 → 2: per-section extract fans out across many sections
+# at once, and the resulting concurrent burst was saturating the OpenAI
+# connection path (Connection-error waves in batches of exactly N).
+_MAX_CONCURRENT = 2
 _MAX_REQUOTE = 3
 
 

@@ -34,9 +34,10 @@ logger = logging.getLogger("andamentum.whetstone")
 # already low-stakes, not worth a refutation pass.
 _CHALLENGEABLE_SEVERITIES = {"moderate", "major"}
 
-# Concurrency cap on parallel challenge calls. Tuned for small local
-# models (Ollama serialises internally above ~8 concurrent requests).
-_MAX_CONCURRENT_CHALLENGES = 6
+# Concurrency cap on parallel challenge calls. Dropped from 6 → 2 to
+# avoid stale-connection / NAT-table saturation against the OpenAI edge
+# (waves of `Connection error` in batches of exactly N parallel calls).
+_MAX_CONCURRENT_CHALLENGES = 2
 
 
 @dataclass

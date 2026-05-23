@@ -43,9 +43,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("andamentum.whetstone")
 
-# Concurrency cap on parallel lens-reading calls. Tuned for small local
-# Ollama models which serialise above ~4 concurrent requests anyway.
-_MAX_CONCURRENT = 4
+# Concurrency cap on parallel lens-reading calls. Dropped from 4 → 2
+# because high concurrency was causing stale-connection / NAT-table
+# saturation against the OpenAI edge (waves of `Connection error` in
+# batches of exactly N parallel calls). Ollama serialises internally,
+# so this doesn't hurt local throughput either.
+_MAX_CONCURRENT = 2
 
 
 @dataclass

@@ -33,7 +33,8 @@ from ..state import ReviewState
 
 logger = logging.getLogger("andamentum.whetstone")
 
-_MAX_CONCURRENT_EVALUATIONS = 4
+# Dropped from 4 → 2 to avoid stale-connection / NAT-table saturation.
+_MAX_CONCURRENT_EVALUATIONS = 2
 _MAX_DOCUMENT_CHARS = 30_000  # generous; truncation only kicks in for very long docs
 
 
