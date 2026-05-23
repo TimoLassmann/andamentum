@@ -29,9 +29,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("andamentum.whetstone")
 
-# Cap on parallelism so we don't overload local model servers / hit
-# cloud rate limits on tiny accounts.
-_MAX_CONCURRENT_GENERATIONS = 5
+# Cap on parallelism. Dropped from 5 → 2 to avoid stale-connection /
+# NAT-table saturation against the OpenAI edge during long bench runs.
+_MAX_CONCURRENT_GENERATIONS = 2
 
 
 @dataclass

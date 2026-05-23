@@ -34,7 +34,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger("andamentum.whetstone")
 
 _MAX_AUTHOR_QUESTIONS = 8
-_MAX_CONCURRENT = 4
+# Dropped from 4 → 2 to avoid stale-connection / NAT-table saturation.
+_MAX_CONCURRENT = 2
 
 
 @dataclass

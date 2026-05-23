@@ -58,7 +58,10 @@ logger = logging.getLogger("andamentum.whetstone")
 # cheap. Not empirically calibrated for embeddinggemma — tune from a real run.
 _SIMILARITY_THRESHOLD = 0.7
 
-_MAX_CONCURRENT_ADJUDICATIONS = 6
+# Dropped from 6 → 2: pair adjudications fan out per candidate (often 60-90),
+# and the resulting concurrent burst was saturating the OpenAI connection
+# path (Connection-error waves in batches of N parallel calls).
+_MAX_CONCURRENT_ADJUDICATIONS = 2
 
 
 @dataclass

@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("andamentum.whetstone")
 
-_MAX_CONCURRENT_REVIEWS = 5
+# Dropped from 5 → 2 to avoid stale-connection / NAT-table saturation.
+_MAX_CONCURRENT_REVIEWS = 2
 _MAX_DOCUMENT_CHARS = 30_000  # generous — single section excerpt per expert is small
 
 

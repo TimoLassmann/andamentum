@@ -46,8 +46,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("andamentum.whetstone")
 
-_MAX_CONCURRENT_EXTRACT = 4
-_MAX_CONCURRENT_VERIFY = 6
+# Dropped from 4/6 → 2: per-section extract and per-claim verify fan
+# out widely, and the resulting concurrent burst was saturating the
+# OpenAI connection path (Connection-error waves in batches of N).
+_MAX_CONCURRENT_EXTRACT = 2
+_MAX_CONCURRENT_VERIFY = 2
 # Section kinds whose full text forms the evidence context a claim is checked
 # against (where results/data/citations live). Falls back to all reviewable
 # sections when none of these are present (e.g. a non-academic document).

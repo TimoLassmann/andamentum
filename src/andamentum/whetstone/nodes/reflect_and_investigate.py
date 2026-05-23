@@ -53,7 +53,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("andamentum.whetstone")
-_MAX_CONCURRENT_INVESTIGATIONS = 4
+# Dropped from 4 → 2 to avoid stale-connection / NAT-table saturation.
+_MAX_CONCURRENT_INVESTIGATIONS = 2
 
 
 @dataclass
