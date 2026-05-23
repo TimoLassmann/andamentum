@@ -49,11 +49,22 @@ the author. Some findings make essentially the SAME underlying point, possibly \
 about different parts of the document — for example several separate notes that \
 a method step is under-specified, or repeated versions of one overstated claim.
 
-Group together findings a reader would see as the same issue. For each group of \
-TWO OR MORE, write one merged issue statement that captures the shared point \
-(note that it recurs across the document if it does). Be conservative: only \
-group clear duplicates of the same point. Leave genuinely distinct findings out \
-of every group — do not force unrelated items together."""
+Group together findings a reader would see as IDENTICAL — same underlying \
+critique, same recommended action. For each group of TWO OR MORE, write one \
+merged issue statement that captures the shared point.
+
+Be aggressively conservative. Defaults:
+  • When in doubt, DON'T merge — leave findings distinct.
+  • Two findings about the SAME paragraph but raising DIFFERENT concerns \
+(e.g. "missing baseline" vs "missing uncertainty") are NOT duplicates.
+  • Two findings about the same conceptual issue (e.g. "claim overstated") \
+in DIFFERENT sections may be the same point — but only if a reader fixing one \
+would naturally fix the other. If fixing them requires different edits, keep \
+them separate.
+
+Most distinct-looking findings ARE distinct. Most groups should have exactly \
+two members; groups of 4+ should be rare. If you can't articulate the shared \
+point in one sentence, the findings probably aren't duplicates."""
 
 
 def _severity_of(f: Finding) -> int:

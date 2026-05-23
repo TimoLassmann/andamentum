@@ -9,7 +9,6 @@ findings, mirroring the digest).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Literal, cast
 
@@ -23,11 +22,6 @@ from .locate import locate
 from .model import DocumentModel, Span
 
 logger = logging.getLogger("andamentum.whetstone.v3")
-
-# Dropped from 5 → 2: the 5 SPECS criterion reviews all firing at once
-# was the most obvious burst contributor (every review-crash log shows
-# all 5 criteria crashing simultaneously).
-_MAX_CONCURRENT = 2
 
 Severity = Literal["minor", "moderate", "major"]
 
@@ -50,13 +44,26 @@ class _CriterionFindings(BaseModel):
     findings: list[_RawFinding] = Field(default_factory=list)
 
 
-_PROMPT = """You are reviewing a document on ONE criterion. Answer the criterion's \
-questions and report ONLY real problems — not a checklist of everything.
+_PROMPT = """You are reviewing a document on ONE criterion. Work through each \
+of the criterion's questions and surface every real problem you find. Don't \
+pad with trivia, but also don't omit a substantive issue because you've \
+already flagged a few.
+
+You may also be shown PRIOR-STAGE FINDINGS — issues that earlier criteria in \
+the cascade already raised. Don't re-list those. Where relevant, connect your \
+findings to them (e.g. an evaluation gap that compounds a story-level overclaim \
+already flagged, or a correctness issue that explains a presentation problem \
+already noted). The cascade exists so later stages can reason across the \
+document rather than re-discovering what's already on the table.
+
+For a typical academic paper expect roughly 3-6 findings per criterion — \
+fewer if the document is genuinely sound on this axis, more if real issues \
+stack up. Don't artificially limit yourself; the consolidation step downstream \
+will merge any near-duplicates.
 
 For each problem: a short issue description, a VERBATIM quote from the document \
 it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
-(minor / moderate / major). If the document is sound on this criterion, return \
-no findings."""
+(minor / moderate / major)."""
 
 
 def _project(criterion: Criterion, model: DocumentModel) -> str:
@@ -80,6 +87,7 @@ async def review_criterion(
     *,
     agent_model: str,
     full_text: str | None = None,
+    prior_findings: list[Finding] | None = None,
 ) -> list[Finding]:
     defn = AgentDefinition(
         name=f"v3_review_{criterion.name.lower()}",
@@ -93,9 +101,17 @@ async def review_criterion(
     # "Raw text if it fits": when the caller passes the full document, include it
     # as extra grounding alongside the compact projection.
     full = f"\n\nFULL DOCUMENT:\n{full_text}" if full_text else ""
+    # SPECS-style cascade: prior criteria's findings are surfaced so this stage
+    # can connect/build instead of re-discovering. Don't re-list them.
+    prior = ""
+    if prior_findings:
+        lines = "\n".join(
+            f"  - [{f.criterion}/{f.severity}] {f.issue}" for f in prior_findings
+        )
+        prior = f"\n\nPRIOR-STAGE FINDINGS (already raised — connect, don't repeat):\n{lines}"
     prompt = (
         f"CRITERION: {criterion.name}\n\nQUESTIONS:\n{questions}\n\n"
-        f"{_project(criterion, model)}{full}\n\n"
+        f"{_project(criterion, model)}{full}{prior}\n\n"
         f"Report real problems for the {criterion.name} criterion."
     )
     result = await agent.run(prompt)
@@ -115,21 +131,35 @@ async def run_criteria(
     agent_model: str,
     full_text: str | None = None,
 ) -> list[Finding]:
-    """Fan the generic review over the active criterion set (parallel)."""
-    sem = asyncio.Semaphore(_MAX_CONCURRENT)
+    """Run the criterion set as a sequential SPECS-style cascade.
 
-    async def one(c: Criterion) -> list[Finding]:
-        async with sem:
-            try:
-                return await review_criterion(
-                    c, model, agent_model=agent_model, full_text=full_text
-                )
-            except Exception as exc:
-                logger.warning("[v3.review] %s crashed: %s", c.name, exc)
-                return []
+    Each criterion sees the accumulated findings of all earlier criteria, so
+    later stages can connect to issues earlier ones raised (e.g. Correctness
+    builds on Story's overclaim flag; Significance threads through Evaluations'
+    baseline gap) rather than re-discovering each criterion's slice in
+    isolation. This mirrors the AAAI-26 SPECS pipeline shape.
 
-    results = await asyncio.gather(*[one(c) for c in criteria])
-    return [f for fs in results for f in fs]
+    Previously parallel; the cascade trades wall-clock for cross-criterion
+    coherence — the load-bearing benefit on papers where issues thread across
+    criteria. A single criterion crashing is caught and logged so the rest of
+    the cascade still benefits from the findings already accumulated.
+    """
+    accumulated: list[Finding] = []
+    for c in criteria:
+        try:
+            stage = await review_criterion(
+                c,
+                model,
+                agent_model=agent_model,
+                full_text=full_text,
+                prior_findings=accumulated,
+            )
+            logger.info("[v3.review] %s → %d finding(s)", c.name, len(stage))
+            accumulated.extend(stage)
+        except Exception as exc:
+            logger.warning("[v3.review] %s crashed: %s", c.name, exc)
+            continue
+    return accumulated
 
 
 def verify_findings(findings: list[Finding], model: DocumentModel) -> list[Finding]:
