@@ -20,11 +20,13 @@ SRC = (
 
 
 def _router(defn, _model):
-    """One fake agent for every v3 agent, routed by definition name."""
+    """Stub for the legacy build_pydantic_ai_agent path (extract, gaps,
+    consolidate, synth — everything except review, which now constructs
+    its own Agent via ``review._build_agent``)."""
     name = defn.name
 
     class _Agent:
-        async def run(self, _prompt):
+        async def run(self, _prompt, **_kwargs):
             if name == "v3_extract_claims":
                 out = _ClaimSpans(
                     claims=[
@@ -34,16 +36,6 @@ def _router(defn, _model):
                 )
             elif name == "v3_requote":
                 out = _Requote(quote="")  # give up → unmatched claims drop
-            elif name.startswith("v3_review_"):
-                out = _CriterionFindings(
-                    findings=[
-                        _RawFinding(
-                            issue="accuracy unsupported by a baseline",
-                            quote="We achieve 95% accuracy on the benchmark.",
-                            severity="major",
-                        )
-                    ]
-                )
             elif name == "v3_gap_analysis":
                 out = _DemandList(demands=[])  # no gaps → loop exits at once
             elif name == "v3_consolidate":
@@ -61,10 +53,32 @@ def _router(defn, _model):
     return _Agent()
 
 
+def _build_review_agent_stub(_criterion, _agent_model):
+    """Stub for the new ``review._build_agent`` helper. Returns one finding
+    per criterion regardless of which criterion is asking — the test
+    only cares that the cascade produces *something* per stage."""
+
+    class _Agent:
+        async def run(self, _prompt, **_kwargs):
+            return types.SimpleNamespace(
+                output=_CriterionFindings(
+                    findings=[
+                        _RawFinding(
+                            issue="accuracy unsupported by a baseline",
+                            quote="We achieve 95% accuracy on the benchmark.",
+                            severity="major",
+                        )
+                    ]
+                )
+            )
+
+    return _Agent()
+
+
 async def test_graph_runs_end_to_end_to_review_result() -> None:
-    mods = ["extract", "review", "gaps", "consolidate", "synth"]
+    mods_using_legacy = ["extract", "gaps", "consolidate", "synth"]
     with ExitStack() as stack:
-        for m in mods:
+        for m in mods_using_legacy:
             stack.enter_context(
                 patch(
                     f"andamentum.whetstone.v3.{m}.build_pydantic_ai_agent", new=_router
@@ -73,6 +87,14 @@ async def test_graph_runs_end_to_end_to_review_result() -> None:
             stack.enter_context(
                 patch(f"andamentum.whetstone.v3.{m}.resolve_model", new=lambda x: None)
             )
+        # review.py no longer uses build_pydantic_ai_agent; it constructs
+        # its own Agent via _build_agent. Stub that directly.
+        stack.enter_context(
+            patch(
+                "andamentum.whetstone.v3.review._build_agent",
+                new=_build_review_agent_stub,
+            )
+        )
         result = await run_review_v3(SRC, model="stub", cap=1)
 
     # It produced a ReviewResult the renderers can consume.
