@@ -32,14 +32,39 @@ _MAX_REQUOTE = 3
 # ── Agents ────────────────────────────────────────────────────────────────
 
 _EXTRACT_PROMPT = """You are reading ONE section of a document. Return the \
-verbatim sentences that make a CLAIM — an assertion the author wants the reader \
-to believe: a result, a contribution, a comparison, a capability, or a factual \
+verbatim spans that make a CLAIM — an assertion the author wants the reader to \
+believe: a result, a contribution, a comparison, a capability, or a factual \
 assertion.
 
-Copy each claim EXACTLY from the section text, character for character. Do not \
-paraphrase, summarise, shorten, or fix anything — an exact copy is essential. \
-Skip pure background, method mechanics that assert nothing, and headings. If \
-the section makes no claims, return an empty list."""
+Multi-sentence claims. A claim often spans 2-3 sentences: a claim sentence \
+followed by a scope qualifier ("Our result is comparable to the best known \
+bound for this general convex online learning problem.") or an equation/bound \
+that is the load-bearing payload of the claim. When the second sentence is \
+necessary to judge the claim's scope or correctness, INCLUDE it as part of the \
+same verbatim span. Don't truncate at the first period if the qualifier \
+follows immediately. Each entry in your output is one claim; multi-sentence \
+spans count as ONE entry.
+
+Algorithms, equations, and figures.
+  - Algorithm pseudocode is EVIDENCE, not a claim. The claim is in the prose \
+that introduces or interprets the algorithm ("the magnitudes of parameter \
+updates are invariant to rescaling of the gradient"). Do not extract \
+individual pseudocode lines.
+  - HTML comment placeholders like ``<!-- formula-not-decoded -->`` mean an \
+equation was stripped from the source. Extract the surrounding prose sentence \
+that names the result ("Adam achieves O(√T) regret comparable to the best \
+known bound"). The equation itself is unrecoverable from this text — accept \
+that and use the prose claim.
+  - Figure captions are valid claim sources but usually redundant with the \
+paragraph that references them. Prefer the prose; only extract from a caption \
+if it carries a claim that doesn't appear in the prose.
+
+Copy each claim span EXACTLY from the section text, character for character. \
+Do not paraphrase, summarise, shorten, or fix anything — an exact copy is \
+essential. Do NOT rewrite math notation, glyph names, or Docling-style spaced \
+symbols (e.g. "β 1", "glyph[circledot]", "θ t -1"); keep them exactly as the \
+section text shows them. Skip pure background, method mechanics that assert \
+nothing, and headings. If the section makes no claims, return an empty list."""
 
 
 class _ClaimSpans(BaseModel):
