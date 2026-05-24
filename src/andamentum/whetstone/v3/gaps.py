@@ -31,6 +31,14 @@ logger = logging.getLogger("andamentum.whetstone.v3")
 
 _DEFAULT_CAP = 2
 
+# Per-round demand cap. analyze_gaps may emit any number of demands;
+# we truncate to this many before satisfying them. Structural ceiling
+# on LLM calls in the loop: _DEFAULT_CAP rounds * _DEFAULT_PER_ROUND_DEMANDS
+# demands per round = 6 calls. With both reexamine (full agent) and
+# recheck (single-call) demands costing seconds each, this keeps the
+# loop's wall-clock contribution bounded.
+_DEFAULT_PER_ROUND_DEMANDS = 3
+
 
 class Demand(BaseModel):
     """A pull request for more work, routed to its minimal satisfier."""
@@ -247,22 +255,45 @@ async def gap_loop(
     *,
     agent_model: str,
     cap: int = _DEFAULT_CAP,
+    per_round_demand_cap: int = _DEFAULT_PER_ROUND_DEMANDS,
     criterion_names: list[str] | None = None,
 ) -> list[Finding]:
-    """Re-examine findings + surface misses against the source, bounded by *cap*."""
+    """Re-examine findings + surface misses against the source, bounded by *cap*
+    rounds and *per_round_demand_cap* demands per round.
+
+    Timing instrumentation: each round logs start, demands fired, findings
+    added, and wall-clock duration. The audit found no timing data was
+    being emitted; the logs here let future audits see if the cap is the
+    right number.
+    """
+    import time
     names = criterion_names or [c.name for c in SPECS]
     current = list(findings)
     prior: set[str] = set()
     for round_idx in range(1, cap + 1):
+        round_start = time.monotonic()
         try:
             demands = await analyze_gaps(model, current, prior, agent_model=agent_model)
         except Exception as exc:
-            logger.warning("[v3.gaps] analysis crashed: %s", exc)
+            logger.warning("[v3.gaps] round %d — analysis crashed: %s", round_idx, exc)
             break
         if not demands:
-            logger.info("[v3.gaps] round %d — no demands, exiting", round_idx)
+            logger.info(
+                "[v3.gaps] round %d — no demands, exiting (%.1fs)",
+                round_idx, time.monotonic() - round_start,
+            )
             break
-        logger.info("[v3.gaps] round %d — %d demand(s)", round_idx, len(demands))
+        # Per-round cap. analyze_gaps' prompt says "Be sparing" but doesn't
+        # enforce a number; truncate here so a chatty round can't dominate
+        # the loop's wall-clock budget.
+        if len(demands) > per_round_demand_cap:
+            logger.info(
+                "[v3.gaps] round %d — %d demand(s) emitted, truncating to %d",
+                round_idx, len(demands), per_round_demand_cap,
+            )
+            demands = demands[:per_round_demand_cap]
+        else:
+            logger.info("[v3.gaps] round %d — %d demand(s)", round_idx, len(demands))
         for d in demands:
             prior.add(d.signature())
         drop_idxs: set[int] = set()
@@ -282,5 +313,11 @@ async def gap_loop(
             except Exception as exc:
                 logger.warning("[v3.gaps] satisfy crashed: %s", exc)
         current = [f for i, f in enumerate(current) if i not in drop_idxs]
-        current += verify_findings(new, model)
+        added_anchored = verify_findings(new, model)
+        current += added_anchored
+        logger.info(
+            "[v3.gaps] round %d — added %d finding(s), dropped %d, total %d (%.1fs)",
+            round_idx, len(added_anchored), len(drop_idxs), len(current),
+            time.monotonic() - round_start,
+        )
     return current
