@@ -20,7 +20,7 @@ import logging
 from typing import Literal, cast
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
@@ -158,6 +158,69 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
     return "\n\n".join(parts)
 
 
+# Max validator-driven re-quote attempts. The validator fires on every
+# structured-output completion; while ctx.retry < this value AND any
+# quote fails to anchor in the source, the validator raises ModelRetry
+# and the model gets another chance to re-quote. Once ctx.retry reaches
+# this value, the validator stops pushing and returns only the anchored
+# findings — verify_findings remains the deterministic floor.
+#
+# Set to 2 so the model gets up to two re-quote attempts (ctx.retry 0
+# and 1) before we accept whatever anchors. output_retries on the agent
+# is 3 = 2 validator retries + 1 reserve for pydantic-ai's own
+# structured-output coercion.
+_VALIDATOR_REQUOTE_ATTEMPTS = 2
+
+
+async def _validate_quotes_anchor(
+    ctx: RunContext[DocDeps], output: _CriterionFindings
+) -> _CriterionFindings:
+    """Anchor every finding's quote against the source.
+
+    On any unanchored quote and while ``ctx.retry < _VALIDATOR_REQUOTE_ATTEMPTS``
+    raise ``ModelRetry`` listing up to five offending quotes verbatim —
+    the model gets another chance to copy them exactly from the document.
+    Once attempts are exhausted, return only the anchored findings; the
+    downstream ``verify_findings`` re-runs ``locate`` to fill ``Span``s
+    and acts as the deterministic safety net.
+
+    Defensive ``partial_output`` guard: v3 doesn't stream
+    (``agent.run``, not ``agent.run_stream``), but validators get
+    called on partial chunks in streaming mode, where side effects
+    would fire repeatedly. The guard keeps the function safe if a
+    future caller switches to streaming.
+    """
+    if ctx.partial_output:
+        return output
+    source = ctx.deps.document_model.source
+    anchored: list[_RawFinding] = []
+    unanchored_quotes: list[str] = []
+    for finding in output.findings:
+        if locate(finding.quote, source) is not None:
+            anchored.append(finding)
+        else:
+            unanchored_quotes.append(finding.quote)
+    if unanchored_quotes and ctx.retry < _VALIDATOR_REQUOTE_ATTEMPTS:
+        preview = "\n".join(f"  - {q!r}" for q in unanchored_quotes[:5])
+        logger.info(
+            "[v3.validator] %d unanchored quote(s) on attempt %d; asking model to re-quote",
+            len(unanchored_quotes), ctx.retry,
+        )
+        raise ModelRetry(
+            f"{len(unanchored_quotes)} quote(s) are not present verbatim "
+            f"in the source. Re-quote each from the document exactly "
+            f"(copy-paste; do not paraphrase, expand abbreviations, "
+            f"or fix line breaks) — or remove the finding. Offending "
+            f"quotes:\n{preview}"
+        )
+    if unanchored_quotes:
+        logger.info(
+            "[v3.validator] attempts exhausted; keeping %d anchored, dropping %d",
+            len(anchored), len(unanchored_quotes),
+        )
+    return _CriterionFindings(findings=anchored)
+
+
 def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _CriterionFindings]:
     """Construct the criterion-review agent with tools + typed deps.
 
@@ -165,16 +228,22 @@ def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _Crit
     attached for every criterion — they're free, universal, and
     pure-Python. Layer 2/3 tools (deferred) would be attached based on
     ``criterion.tools``; that field exists but is empty for SPECS today.
+
+    ``output_retries=3`` makes room for the validator's two re-quote
+    attempts (see _VALIDATOR_REQUOTE_ATTEMPTS) plus one reserve for
+    pydantic-ai's own structured-output coercion.
     """
-    return Agent(
+    agent: Agent[DocDeps, _CriterionFindings] = Agent(
         resolve_model(agent_model),
         instructions=_PROMPT,
         output_type=_CriterionFindings,
         deps_type=DocDeps,
         tools=[read_section, search_paper],
         retries=2,
-        output_retries=2,
+        output_retries=3,
     )
+    agent.output_validator(_validate_quotes_anchor)
+    return agent
 
 
 async def review_criterion(
