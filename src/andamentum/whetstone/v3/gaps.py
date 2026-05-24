@@ -162,6 +162,7 @@ async def _satisfy_reexamine(
     *,
     agent_model: str,
     criterion_names: list[str],
+    prior_findings: list[Finding] | None = None,
 ) -> list[Finding]:
     section = model.section_by_id(demand.target_section_id or "")
     if section is None:
@@ -175,7 +176,12 @@ async def _satisfy_reexamine(
             "Re-read this section of the document and report any real problems "
             "matching the request. Quote VERBATIM (non-verbatim quotes are "
             "dropped). Classify each problem under one of the review criteria "
-            "listed. Report nothing if there is no real problem."
+            "listed. Report nothing if there is no real problem.\n\n"
+            "If the request points at a section that has already been reviewed "
+            "and the PRIOR FINDINGS block lists issues there, do NOT re-raise "
+            "those — only surface NEW issues the cascade missed. If everything "
+            "worth flagging in this section is already in PRIOR FINDINGS, "
+            "return an empty list."
         ),
         output_model=_ReexamineFindings,
         retries=2,
@@ -201,10 +207,24 @@ async def _satisfy_reexamine(
         )
         return _ReexamineFindings(findings=anchored)
 
+    # PRIOR FINDINGS block: shows the model what the cascade already raised
+    # (and what earlier gap rounds added), so it can focus on new issues
+    # rather than re-flagging known ones. Format chosen for token economy
+    # per audit 8B: criterion/severity/issue without quotes — the section
+    # text is already in the prompt below, the model can re-anchor itself.
+    prior_block = ""
+    if prior_findings:
+        prior_lines = "\n".join(
+            f"  - [{f.criterion}/{f.severity}] {f.issue}" for f in prior_findings
+        )
+        prior_block = (
+            f"\n\nPRIOR FINDINGS (already raised — do not re-list these):\n"
+            f"{prior_lines}"
+        )
     res = await agent.run(
         f"REQUEST: {demand.detail}\n\n"
         f"CRITERIA (classify each problem as one of these): "
-        f"{', '.join(criterion_names)}\n\n"
+        f"{', '.join(criterion_names)}{prior_block}\n\n"
         f"SECTION ({section.title}):\n{section.text}"
     )
     raw = cast(_ReexamineFindings, res.output).findings
@@ -301,8 +321,16 @@ async def gap_loop(
         for d in demands:
             try:
                 if d.kind == "reexamine":
+                    # Pass the accumulated findings as prior context so the
+                    # reexamine agent doesn't re-flag known issues
+                    # (audit 8A found strong cross-run topical overlap on
+                    # the same section issues).
                     new += await _satisfy_reexamine(
-                        d, model, agent_model=agent_model, criterion_names=names
+                        d,
+                        model,
+                        agent_model=agent_model,
+                        criterion_names=names,
+                        prior_findings=current,
                     )
                 elif d.kind == "recheck":
                     keep = await _satisfy_recheck(
