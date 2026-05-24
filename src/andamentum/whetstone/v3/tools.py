@@ -12,11 +12,14 @@ and beyond):
 Both are pure functions over the ``DocumentModel`` held in ``DocDeps``.
 No LLM calls, no network, no external deps beyond stdlib ``re``.
 
-Error-return discipline: when something goes wrong (unknown section id,
-malformed regex, query too long, regex timeout) the tools return a
-readable error *string* instead of raising. The agent reads the error
-the same way it reads any other tool result and corrects on its next
-turn — no pydantic-ai retries burned on what is effectively user error.
+Error-signalling discipline: when something goes wrong (unknown
+section id, malformed regex, query too long, regex timeout) the tools
+``raise ModelRetry(...)``. Pydantic-AI synthesises a ``RetryPromptPart``
+from the exception message and sends it back to the model on its next
+turn, just like it does for argument-schema mismatches. This routes
+through the per-tool retry counter (``retries=N`` on the agent); a
+model that loops on bad ids will surface as ``UnexpectedModelBehavior``
+after N misses, which ``run_criteria`` catches and degrades gracefully.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from pydantic_ai import RunContext
+from pydantic_ai import ModelRetry, RunContext
 
 from .model import DocumentModel, Section
 
@@ -75,8 +78,9 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
 
     Valid ids appear in the SECTIONS block of your prompt (for example
     ``"4.2"``, ``"abstract"``, or ``"sec_004"`` — whatever the digest
-    listed). If ``section_id`` doesn't match any section, returns a
-    readable error string explaining how to find a valid id.
+    listed). If ``section_id`` doesn't match any section, raises
+    ``ModelRetry`` so pydantic-ai sends the error back to the model and
+    lets it correct on its next turn.
 
     Use this when the digest's one-sentence gist isn't enough to answer
     a criterion question — for example, when prior-stage findings draw
@@ -85,9 +89,10 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
     section = ctx.deps.document_model.section_by_id(section_id)
     if section is None:
         logger.info("[v3.tool] read_section(%r) → no such section", section_id)
-        return (
-            f"no section with id {section_id!r}; check the SECTIONS block "
-            f"in your prompt for valid ids"
+        raise ModelRetry(
+            f"no section with id {section_id!r}; valid ids are listed in the "
+            f"SECTIONS block of your prompt. Re-issue read_section with one "
+            f"of them."
         )
     logger.info(
         "[v3.tool] read_section(%r) → %d chars", section_id, len(section.text)
@@ -101,7 +106,7 @@ async def search_paper(
     *,
     max_results: int = 5,
     regex: bool = False,
-) -> list[dict] | str:
+) -> list[dict]:
     """Search across the paper for ``query``.
 
     With ``regex=False`` (default) does a case-insensitive substring
@@ -122,8 +127,8 @@ async def search_paper(
     missing genuinely is missing.
 
     On regex-mode problems (invalid pattern, pattern too long, runaway
-    backtracking) returns a readable error string instead of raising;
-    the agent corrects on its next turn.
+    backtracking) raises ``ModelRetry`` so pydantic-ai sends the error
+    back to the model and lets it correct on its next turn.
     """
     source = ctx.deps.document_model.source
     sections = ctx.deps.document_model.sections
@@ -132,10 +137,10 @@ async def search_paper(
     if regex:
         if len(query) > _MAX_REGEX_LENGTH:
             logger.info("[v3.tool] search_paper(%r, regex) → too long", query[:40])
-            return (
+            raise ModelRetry(
                 f"regex pattern too long ({len(query)} chars; max "
-                f"{_MAX_REGEX_LENGTH}). Use a simpler pattern or set "
-                f"regex=False for plain substring search."
+                f"{_MAX_REGEX_LENGTH}). Use a simpler pattern, or call "
+                f"search_paper with regex=False for plain substring search."
             )
         try:
             pattern = re.compile(query, re.IGNORECASE)
@@ -143,9 +148,9 @@ async def search_paper(
             logger.info(
                 "[v3.tool] search_paper(%r, regex) → compile error: %s", query, e
             )
-            return (
-                f"invalid regex {query!r}: {e}. Try a simpler pattern "
-                f"or set regex=False for plain substring search."
+            raise ModelRetry(
+                f"invalid regex {query!r}: {e}. Try a simpler pattern, or "
+                f"call search_paper with regex=False for plain substring search."
             )
         try:
             positions = await asyncio.wait_for(
@@ -154,10 +159,10 @@ async def search_paper(
             )
         except asyncio.TimeoutError:
             logger.info("[v3.tool] search_paper(%r, regex) → timed out", query)
-            return (
+            raise ModelRetry(
                 f"regex {query!r} timed out (>{_REGEX_TIMEOUT_S}s) — "
-                f"likely catastrophic backtracking. Use a simpler pattern "
-                f"or set regex=False."
+                f"likely catastrophic backtracking. Use a simpler pattern, "
+                f"or call search_paper with regex=False for plain substring search."
             )
     else:
         positions = _substring_positions(query, source, max_results)

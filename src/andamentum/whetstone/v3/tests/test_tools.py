@@ -11,7 +11,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import cast
 
-from pydantic_ai import RunContext
+import pytest
+from pydantic_ai import ModelRetry, RunContext
 
 from andamentum.whetstone.v3.model import DocumentModel, Section
 from andamentum.whetstone.v3.tools import (
@@ -77,11 +78,14 @@ async def test_read_section_returns_text_for_known_id() -> None:
     assert text == "It combines AdaGrad and RMSProp."
 
 
-async def test_read_section_returns_error_string_for_unknown_id() -> None:
-    result = await read_section(_ctx(_model()), "999")
-    assert isinstance(result, str)
-    assert "no section with id" in result
-    assert "999" in result  # the bad id is echoed so the agent can correct
+async def test_read_section_raises_modelretry_for_unknown_id() -> None:
+    """Stage 1: unknown section ids surface via pydantic-ai's per-tool retry
+    machinery rather than as plain string returns. The model sees the same
+    text — just routed through ``RetryPromptPart`` instead of a tool result."""
+    with pytest.raises(ModelRetry) as exc:
+        await read_section(_ctx(_model()), "999")
+    assert "no section with id" in str(exc.value)
+    assert "999" in str(exc.value)  # the bad id is echoed so the agent can correct
 
 
 async def test_read_section_returns_abstract_when_asked() -> None:
@@ -168,16 +172,31 @@ async def test_search_paper_regex_character_class() -> None:
     assert len(matches) == 3
 
 
-async def test_search_paper_regex_compile_error_returns_string() -> None:
-    result = await search_paper(_ctx(_model()), "foo[", regex=True)
-    assert isinstance(result, str)
-    assert "invalid regex" in result.lower()
+async def test_search_paper_raises_modelretry_on_regex_compile_error() -> None:
+    with pytest.raises(ModelRetry) as exc:
+        await search_paper(_ctx(_model()), "foo[", regex=True)
+    assert "invalid regex" in str(exc.value).lower()
 
 
-async def test_search_paper_regex_rejects_overlong_pattern() -> None:
-    result = await search_paper(_ctx(_model()), "a" * 250, regex=True)
-    assert isinstance(result, str)
-    assert "too long" in result.lower()
+async def test_search_paper_raises_modelretry_on_overlong_pattern() -> None:
+    with pytest.raises(ModelRetry) as exc:
+        await search_paper(_ctx(_model()), "a" * 250, regex=True)
+    assert "too long" in str(exc.value).lower()
+
+
+async def test_search_paper_raises_modelretry_on_regex_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Force the timeout path by setting the wall-clock budget to zero.
+
+    Bounding regex via ``asyncio.wait_for`` means any non-zero work in the
+    thread misses the 0-second deadline. The tool surface should fail with
+    ``ModelRetry`` rather than ``asyncio.TimeoutError``.
+    """
+    monkeypatch.setattr("andamentum.whetstone.v3.tools._REGEX_TIMEOUT_S", 0.0)
+    with pytest.raises(ModelRetry) as exc:
+        await search_paper(_ctx(_model()), r"a+b", regex=True)
+    assert "timed out" in str(exc.value).lower()
 
 
 async def test_search_paper_regex_word_boundary_excludes_substrings() -> None:
