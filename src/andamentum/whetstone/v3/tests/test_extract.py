@@ -60,3 +60,31 @@ async def test_requote_recovers_a_locatable_span() -> None:
         claims = await build_claims([_section(src)], src, model="stub")
     assert len(claims) == 1
     assert claims[0].quote == "reduces error by forty percent"
+
+
+async def test_multi_sentence_claim_kept_intact() -> None:
+    """Issue 6: multi-sentence claims (claim + scope-qualifier pattern, or
+    claim + equation) must be preserved as a single verbatim span. The
+    schema (Claim.quote) and locate both already support multi-sentence
+    quotes; the prompt now explicitly tells the extractor to keep them
+    together when the second sentence carries the scope or correctness
+    payload."""
+    src = (
+        "We give a convergence proof and a regret O(T) for the online convex "
+        "function using the Adam algorithm. Our result is comparable to the "
+        "best known bound for this general convex online learning problem."
+    )
+    multi = (
+        "We give a convergence proof and a regret O(T) for the online convex "
+        "function using the Adam algorithm. Our result is comparable to the "
+        "best known bound for this general convex online learning problem."
+    )
+    with _fake_agents(extract_claims=[multi]):
+        claims = await build_claims([_section(src)], src, model="stub")
+    assert len(claims) == 1
+    # Multi-sentence span survives locate and is stored verbatim
+    assert claims[0].quote == multi
+    assert (
+        src[claims[0].span.start : claims[0].span.end]
+        == multi
+    )
