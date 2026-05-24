@@ -15,35 +15,35 @@ from ..passage_extraction import (
     _find_pointer_in_chunks,
     _locate_pointers,
     _merge_annotations,
-    _normalize_whitespace,
+    _normalize_for_pointer_match,
     extract_passages,
 )
 
 
-# ── _normalize_whitespace ─────────────────────────────────────────────────
+# ── _normalize_for_pointer_match ──────────────────────────────────────────
 
 
-class TestNormalizeWhitespace:
+class TestNormalizeForPointerMatch:
     def test_multiple_spaces(self):
-        assert _normalize_whitespace("hello   world") == "hello world"
+        assert _normalize_for_pointer_match("hello   world") == "hello world"
 
     def test_newlines(self):
-        assert _normalize_whitespace("hello\nworld") == "hello world"
+        assert _normalize_for_pointer_match("hello\nworld") == "hello world"
 
     def test_tabs(self):
-        assert _normalize_whitespace("hello\t\tworld") == "hello world"
+        assert _normalize_for_pointer_match("hello\t\tworld") == "hello world"
 
     def test_mixed_whitespace(self):
-        assert _normalize_whitespace("  hello \n\t world  ") == "hello world"
+        assert _normalize_for_pointer_match("  hello \n\t world  ") == "hello world"
 
     def test_empty_string(self):
-        assert _normalize_whitespace("") == ""
+        assert _normalize_for_pointer_match("") == ""
 
     def test_only_whitespace(self):
-        assert _normalize_whitespace("   \n\t  ") == ""
+        assert _normalize_for_pointer_match("   \n\t  ") == ""
 
     def test_no_change_needed(self):
-        assert _normalize_whitespace("hello world") == "hello world"
+        assert _normalize_for_pointer_match("hello world") == "hello world"
 
 
 # ── _find_pointer_in_chunks ──────────────────────────────────────────────
