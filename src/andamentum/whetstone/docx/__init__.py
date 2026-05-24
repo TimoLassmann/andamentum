@@ -16,7 +16,6 @@ from .result_types import (
     ValidationStatus,
     combine_validation_results,
 )
-from .text_processor import FuzzyMatchResult, SimilarityResult, TextProcessor
 from .token_processor import TokenData, TokenIterator, TokenProcessor
 from .validator import PatchValidator
 from .xml_builder import XMLElementBuilder, XMLPatternMatcher
@@ -36,9 +35,6 @@ __all__ = [
     "ValidationResult",
     "ValidationStatus",
     "combine_validation_results",
-    "FuzzyMatchResult",
-    "SimilarityResult",
-    "TextProcessor",
     "TokenData",
     "TokenIterator",
     "TokenProcessor",

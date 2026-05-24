@@ -6,13 +6,13 @@ This module extends the existing DocxEditor to support applying structured patch
 while preserving all the sophisticated formatting and track changes functionality.
 """
 
+import difflib
 import logging
 import time
 from typing import List, Optional, Tuple
 
 from .low_level import DocxEditor
 from ..models import DocumentPatch, PatchApplicationResult
-from .text_processor import TextProcessor
 from .validator import PatchValidator
 
 logger = logging.getLogger("andamentum.whetstone")
@@ -252,18 +252,11 @@ class PatchDocxEditor(DocxEditor):
         return best_match_idx
 
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
-        """
-        Calculate similarity between two text strings.
-
-        Args:
-            text1: First text string
-            text2: Second text string
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        result = TextProcessor.calculate_similarity(text1, text2)
-        return result.similarity
+        """Whole-string similarity score (0.0-1.0) used to find the best
+        paragraph match when an exact lookup fails. One-line wrap over
+        difflib — replaces the ~700-LOC TextProcessor module that was
+        only ever used here."""
+        return difflib.SequenceMatcher(None, text1, text2, autojunk=False).ratio()
 
     def _validate_patch_location(self, patch: DocumentPatch, paragraph_index: int) -> bool:
         """
