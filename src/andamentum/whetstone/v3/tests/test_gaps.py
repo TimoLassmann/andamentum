@@ -129,6 +129,38 @@ async def test_recheck_drops_a_finding_that_does_not_hold() -> None:
     assert out == []  # finding rechecked, didn't hold → dropped
 
 
+async def test_per_round_demand_cap_truncates_chatty_round() -> None:
+    """Issue 7: per-round demand cap. analyze_gaps may emit any number of
+    demands; gap_loop must truncate to at most ``per_round_demand_cap``
+    before satisfying them. Otherwise a chatty round dominates wall-clock
+    and structural ceiling on LLM calls is lost."""
+    src = "Some text with the method described."
+    model = _model(src)
+    # 5 distinct reexamine demands all pointing at s1. With cap=2 rounds and
+    # per_round_demand_cap=3, the loop should satisfy 3 in round 1 then exit
+    # in round 2 because the same demands are filtered by prior memory.
+    demands = [
+        Demand(kind="reexamine", detail=f"angle {i}", target_section_id="s1")
+        for i in range(5)
+    ]
+    reexamine = [
+        _ReexamineFinding(
+            issue="point", quote="the method described", severity="minor", criterion="Story"
+        )
+    ]
+    p1, p2 = _route(demands=demands, reexamine=reexamine)
+    with p1, p2:
+        # cap=1 isolates the per-round cap from cross-round prior-dedup —
+        # only one round runs, so the only thing that can drop demands is
+        # the truncation step.
+        out = await gap_loop(
+            model, [], agent_model="stub", cap=1, per_round_demand_cap=3
+        )
+    # 5 demands emitted, 3 retained after truncation. Each satisfies to one
+    # finding (same quote, anchors via verify_findings) → 3 findings total.
+    assert len(out) == 3
+
+
 async def test_loop_terminates_via_demand_memory() -> None:
     # The same demand is returned every round; memory must filter it so the
     # loop exits at round 2 rather than running forever.
