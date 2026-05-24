@@ -11,6 +11,15 @@ After normalisation the match is **exact** — no fuzzy thresholds, no
 dynamic-programming alignment. Anything that still doesn't match is a
 genuine miss and is reported (with the closest region, for diagnosis).
 
+The normalisation rules are shared with ``andamentum.core.text_match``
+(``MARKDOWN_MARKERS`` constant + ``normalize_for_match``) so the rules
+cannot drift between the flat string matcher used by whetstone v3 and
+the multi-segment indexing here. ``DocIndex`` keeps its own per-run
+loop because the cross-paragraph synthetic-separator behaviour
+(inserting a normalised space between paragraphs so a quote can match
+across a ``## Heading\\n\\nBody`` boundary) is docx-specific and not
+appropriate for the flat matcher.
+
 This module is pure and framework-free: it operates on ``(key, text)``
 segments, where for a .docx the key identifies a run. It has no docx or
 lxml dependency, so it is unit-testable in isolation.
@@ -22,43 +31,28 @@ import difflib
 from dataclasses import dataclass
 from typing import Any, Optional
 
-# Markdown markers dropped entirely during normalisation. Aggressive on
-# purpose: these never carry meaning for *locating* prose, and dropping
-# them lets a markdown-flavoured quote match plain Word text.
-_MARKDOWN_MARKERS: frozenset[str] = frozenset("#*_`[]~")
+from andamentum.core.text_match import MARKDOWN_MARKERS, normalize_for_match
+
+# Internal alias preserved for the DocIndex inline loop below — sharing
+# the exact frozenset from core.text_match guarantees the character
+# class can't drift.
+_MARKDOWN_MARKERS = MARKDOWN_MARKERS
 
 
 def normalize_with_map(text: str) -> tuple[str, list[int]]:
     """Normalise *text*; return ``(normalized, index_map)``.
 
-    Normalisation: drop markdown markers, lowercase, collapse every run
-    of whitespace (incl. newlines) to a single space, strip ends.
+    Thin shim over ``core.text_match.normalize_for_match`` with the
+    canonical defaults (drop markdown markers, strip edge quotes,
+    lowercase, collapse whitespace). The signature stays narrow so
+    existing callers (``DocIndex``, ``locate``) don't have to know
+    about kwargs.
 
     ``index_map[i]`` is the index in the ORIGINAL *text* of the character
     that produced normalised character ``i`` — so a match found in
     normalised space can be mapped back to original offsets.
     """
-    out: list[str] = []
-    idx_map: list[int] = []
-    prev_space = True  # collapse any leading whitespace
-    for i, ch in enumerate(text):
-        if ch in _MARKDOWN_MARKERS:
-            continue
-        if ch.isspace():
-            if prev_space:
-                continue
-            out.append(" ")
-            idx_map.append(i)
-            prev_space = True
-        else:
-            out.append(ch.lower())
-            idx_map.append(i)
-            prev_space = False
-    # strip a single trailing collapsed space
-    while out and out[-1] == " ":
-        out.pop()
-        idx_map.pop()
-    return "".join(out), idx_map
+    return normalize_for_match(text)
 
 
 @dataclass(frozen=True)
