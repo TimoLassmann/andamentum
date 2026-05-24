@@ -89,6 +89,13 @@ For each problem: a short issue description, a VERBATIM quote from the document 
 it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
 (minor / moderate / major).
 
+Every finding must be author-actionable: the issue description should name what \
+the author would change, add, or verify to resolve it. If you cannot say what a \
+fix would look like — even abstractly ("add a power-analysis sentence", \
+"reconcile the n=50 vs n=48 mismatch", "drop the 'first-ever' claim or cite a \
+prior-art search") — the finding is too vague to keep; either sharpen it or \
+omit it.
+
 Severity rubric — pick the level by what the author would have to do:
   - major: the paper's conclusions, validity, or reproducibility are at stake. \
 Ignoring this would leave the work wrong, unsupported, or unusable. Author \
