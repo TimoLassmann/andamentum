@@ -10,7 +10,13 @@ from unittest.mock import patch
 
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
-from andamentum.whetstone.v3.criteria import SPECS, Criterion, criterion_set_for
+from andamentum.whetstone.v3.criteria import (
+    EXTERNAL_COMMS,
+    GENERAL,
+    SPECS,
+    Criterion,
+    criterion_set_for,
+)
 from andamentum.whetstone.v3.model import DocumentModel, Section
 from andamentum.whetstone.v3.review import (
     Finding,
@@ -47,7 +53,6 @@ def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
 
 def test_specs_is_the_academic_default() -> None:
     assert criterion_set_for("academic") is SPECS
-    assert criterion_set_for("anything-unknown") is SPECS  # falls back
     assert [c.name for c in SPECS] == [
         "Story",
         "Presentation",
@@ -56,6 +61,52 @@ def test_specs_is_the_academic_default() -> None:
         "Significance",
     ]
     assert all(c.questions for c in SPECS)
+
+
+def test_external_comms_set_is_routed_for_external_communication() -> None:
+    """Issue 1: blog posts, articles, op-eds get their own criteria
+    (Hook/Argument/Evidence/Voice/Clarity), not SPECS — applying
+    Evaluations and Correctness to a non-academic piece produces
+    forced findings that don't serve the author."""
+    assert criterion_set_for("external_communication") is EXTERNAL_COMMS
+    assert [c.name for c in EXTERNAL_COMMS] == [
+        "Hook",
+        "Argument",
+        "Evidence",
+        "Voice",
+        "Clarity",
+    ]
+    assert all(c.questions for c in EXTERNAL_COMMS)
+
+
+def test_general_set_is_routed_for_general() -> None:
+    """Issue 1: notes, drafts, books, technical documentation get
+    GENERAL (Purpose/Structure/Completeness/Clarity)."""
+    assert criterion_set_for("general") is GENERAL
+    assert [c.name for c in GENERAL] == [
+        "Purpose",
+        "Structure",
+        "Completeness",
+        "Clarity",
+    ]
+    assert all(c.questions for c in GENERAL)
+
+
+def test_unknown_document_type_falls_back_to_general() -> None:
+    """Issue 1: the previous behaviour silently fell back to SPECS for
+    unknown types — meaning Evaluations and Correctness would run on
+    essays. GENERAL is the safe neutral default."""
+    assert criterion_set_for("anything-unknown") is GENERAL
+    assert criterion_set_for("") is GENERAL
+
+
+def test_three_sets_are_disjoint() -> None:
+    """Sanity check that the three criterion sets are distinct objects —
+    not aliases of each other (a copy/paste bug would silently regress
+    routing)."""
+    assert SPECS is not EXTERNAL_COMMS
+    assert SPECS is not GENERAL
+    assert EXTERNAL_COMMS is not GENERAL
 
 
 def _model(src: str) -> DocumentModel:
