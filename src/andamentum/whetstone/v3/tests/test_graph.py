@@ -26,6 +26,9 @@ def _router(defn, _model):
     name = defn.name
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             if name == "v3_extract_claims":
                 out = _ClaimSpans(
@@ -59,6 +62,9 @@ def _build_review_agent_stub(_criterion, _agent_model):
     only cares that the cascade produces *something* per stage."""
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             return types.SimpleNamespace(
                 output=_CriterionFindings(

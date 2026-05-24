@@ -73,6 +73,9 @@ async def test_run_criteria_tags_findings_by_criterion() -> None:
     )
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             # Accept deps/usage_limits kwargs from review_criterion silently.
             return types.SimpleNamespace(output=out)
@@ -96,6 +99,9 @@ async def test_run_criteria_logs_unexpected_model_behaviour_body() -> None:
     """
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             raise UnexpectedModelBehavior(
                 "stage-3 boom", body="upstream provider error payload"
@@ -123,6 +129,9 @@ async def test_run_criteria_logs_usage_limit_exceeded() -> None:
     generic crashes."""
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             raise UsageLimitExceeded("request_limit (18) exceeded")
 
@@ -147,6 +156,9 @@ async def test_run_criteria_still_catches_generic_exception() -> None:
     preserved; a non-typed crash still logs + continues."""
 
     class _Agent:
+        def output_validator(self, fn):  # absorbs the lock-and-refine validator
+            return fn
+
         async def run(self, _prompt, **_kwargs):
             raise RuntimeError("unexpected boom")
 

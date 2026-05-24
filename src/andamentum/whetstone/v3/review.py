@@ -17,7 +17,6 @@ and drops any that can't be anchored (the hallucination gate).
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
@@ -26,6 +25,7 @@ from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from andamentum.core.models import resolve_model
+from andamentum.core.text_match import find_span
 
 from .criteria import Criterion
 from .locate import locate
@@ -204,66 +204,87 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
 _VALIDATOR_REQUOTE_ATTEMPTS = 2
 
 
-def anchor_quotes_or_retry(
+def make_anchor_validator(
     source: str,
-    findings: Sequence[Any],
+    output_class: type,
     *,
-    ctx_retry: int,
     max_attempts: int = _VALIDATOR_REQUOTE_ATTEMPTS,
-) -> list[Any]:
-    """Generic verbatim-quote anchoring used by every v3 output validator.
+):
+    """Build an ``output_validator`` with lock-and-refine semantics.
 
-    Returns the subset of ``findings`` whose ``.quote`` locates in
-    ``source``. If any miss AND ``ctx_retry < max_attempts``, raises
-    ``ModelRetry`` listing up to five offending quotes verbatim so the
-    model can re-quote on its next turn. Otherwise returns the anchored
-    subset (callers wrap it in their output type — ``_CriterionFindings``,
-    ``_ReexamineFindings``, etc.).
+    The previous design asked the model to regenerate its ENTIRE
+    structured output when any single quote missed; smoke logs showed
+    the model reintroducing errors in previously-anchored quotes during
+    retry (validator fired with 4 anchored on attempt 0, then 3 anchored
+    on attempt 1 — net loss of 1 good finding).
 
-    ``findings`` items must have a ``.quote: str`` attribute. Caller is
-    responsible for the ``ctx.partial_output`` guard (rare, only matters
-    in streaming runs).
+    Lock-and-refine fixes this. The returned closure accumulates
+    anchored findings across retry attempts (closure state survives
+    within one ``agent.run`` call but is fresh per criterion). On each
+    attempt:
+
+    1. Findings with a quote that anchors in ``source`` get added to the
+       lock (keyed by quote text — duplicates are ignored).
+    2. If any quote in the current attempt is still unanchored AND
+       ``ctx.retry < max_attempts``, raise ``ModelRetry`` with the
+       count of locked findings and the verbatim text of the unanchored
+       ones. The model is told to refine ONLY the bad ones; locked
+       findings will be preserved regardless of what it emits next.
+    3. Otherwise return ``output_class(findings=list(locked.values()))``
+       — the accumulated lock, never the most-recent attempt's output.
+
+    The validator's contract: signal does not regress across retries.
+    Anchored findings from attempt 0 survive even if the model botches
+    its retry. The deterministic ``verify_findings`` pass below stays as
+    the safety net.
+
+    ``output_class`` is the structured-output type the agent returns
+    (``_CriterionFindings`` for the cascade, ``_ReexamineFindings`` for
+    the gap loop). Items in its ``findings`` list must have a
+    ``.quote: str`` attribute.
     """
-    anchored: list[Any] = []
-    unanchored_quotes: list[str] = []
-    for finding in findings:
-        if locate(finding.quote, source) is not None:
-            anchored.append(finding)
-        else:
-            unanchored_quotes.append(finding.quote)
-    if unanchored_quotes and ctx_retry < max_attempts:
-        preview = "\n".join(f"  - {q!r}" for q in unanchored_quotes[:5])
-        logger.info(
-            "[v3.validator] %d unanchored quote(s) on attempt %d; asking model to re-quote",
-            len(unanchored_quotes), ctx_retry,
-        )
-        raise ModelRetry(
-            f"{len(unanchored_quotes)} quote(s) are not present verbatim "
-            f"in the source. Re-quote each from the document exactly "
-            f"(copy-paste; do not paraphrase, expand abbreviations, "
-            f"or fix line breaks) — or remove the finding. Offending "
-            f"quotes:\n{preview}"
-        )
-    if unanchored_quotes:
-        logger.info(
-            "[v3.validator] attempts exhausted; keeping %d anchored, dropping %d",
-            len(anchored), len(unanchored_quotes),
-        )
-    return anchored
+    locked: dict[str, Any] = {}  # closure state: quote → finding
 
+    async def validator(ctx: RunContext[Any], output: Any) -> Any:
+        if ctx.partial_output:
+            return output
 
-async def _validate_quotes_anchor(
-    ctx: RunContext[DocDeps], output: _CriterionFindings
-) -> _CriterionFindings:
-    """Cascade-criterion output validator. See ``anchor_quotes_or_retry``."""
-    if ctx.partial_output:
-        return output
-    anchored = anchor_quotes_or_retry(
-        ctx.deps.document_model.source,
-        output.findings,
-        ctx_retry=ctx.retry,
-    )
-    return _CriterionFindings(findings=anchored)
+        # Add newly-anchored findings to the lock. Key by quote text so
+        # a model that re-emits a previously-locked finding doesn't
+        # double-count.
+        for f in output.findings:
+            if f.quote in locked:
+                continue
+            if find_span(f.quote, source) is not None:
+                locked[f.quote] = f
+
+        # What's in the model's current attempt that didn't anchor?
+        unanchored = [f.quote for f in output.findings if f.quote not in locked]
+
+        if unanchored and ctx.retry < max_attempts:
+            preview = "\n".join(f"  - {q!r}" for q in unanchored[:5])
+            logger.info(
+                "[v3.validator] %d locked, %d unanchored on attempt %d — refining bad ones",
+                len(locked), len(unanchored), ctx.retry,
+            )
+            raise ModelRetry(
+                f"LOCKED FINDINGS ({len(locked)} already verified verbatim "
+                f"in the source — these will be preserved). DO NOT re-emit "
+                f"or rewrite them in your next output; the system already "
+                f"has them.\n\n"
+                f"FINDINGS TO FIX ({len(unanchored)} quote(s) are not "
+                f"present verbatim in the source — re-quote each exactly "
+                f"from the document, or remove the finding):\n{preview}"
+            )
+
+        if unanchored:
+            logger.info(
+                "[v3.validator] attempts exhausted; keeping %d locked, dropping %d unanchored",
+                len(locked), len(unanchored),
+            )
+        return output_class(findings=list(locked.values()))
+
+    return validator
 
 
 def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _CriterionFindings]:
@@ -274,11 +295,13 @@ def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _Crit
     pure-Python. Layer 2/3 tools (deferred) would be attached based on
     ``criterion.tools``; that field exists but is empty for SPECS today.
 
-    ``output_retries=3`` makes room for the validator's two re-quote
-    attempts (see _VALIDATOR_REQUOTE_ATTEMPTS) plus one reserve for
-    pydantic-ai's own structured-output coercion.
+    ``output_retries=3`` makes room for the lock-and-refine validator's
+    two re-quote attempts (see ``_VALIDATOR_REQUOTE_ATTEMPTS``) plus one
+    reserve for pydantic-ai's own structured-output coercion. The
+    validator itself is registered in ``review_criterion`` per call,
+    because its closure state (the lock) must reset per criterion.
     """
-    agent: Agent[DocDeps, _CriterionFindings] = Agent(
+    return Agent(
         resolve_model(agent_model),
         instructions=_PROMPT,
         output_type=_CriterionFindings,
@@ -287,8 +310,6 @@ def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _Crit
         retries=2,
         output_retries=3,
     )
-    agent.output_validator(_validate_quotes_anchor)
-    return agent
 
 
 async def review_criterion(
@@ -299,6 +320,11 @@ async def review_criterion(
     prior_findings: list[Finding] | None = None,
 ) -> list[Finding]:
     agent = _build_agent(criterion, agent_model)
+    # Lock-and-refine validator: fresh per criterion (closure state
+    # must reset between criteria). Anchored findings accumulate
+    # across retry attempts within this run; only unanchored ones are
+    # re-requested from the model on retry.
+    agent.output_validator(make_anchor_validator(model.source, _CriterionFindings))
     questions = "\n".join(f"  {i}. {q}" for i, q in enumerate(criterion.questions, 1))
     # SPECS-style cascade: prior criteria's findings are surfaced so this stage
     # can connect/build instead of re-discovering. Don't re-list them.

@@ -18,14 +18,12 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
-from pydantic_ai import RunContext
-
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
 from .criteria import SPECS
 from .model import DocumentModel
-from .review import Finding, Severity, anchor_quotes_or_retry, verify_findings
+from .review import Finding, Severity, make_anchor_validator, verify_findings
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -189,23 +187,11 @@ async def _satisfy_reexamine(
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
 
-    # Attach the same verbatim-quote anchor validator the cascade uses
-    # (review.py). On unanchored quotes pydantic-ai sends the model back
-    # to re-quote (up to two attempts); on exhaustion the validator
-    # silently drops misses and verify_findings is the deterministic
-    # floor below — same shape as the cascade.
-    source = model.source
-
-    @agent.output_validator
-    async def _validate_quotes(
-        ctx: RunContext[None], output: _ReexamineFindings
-    ) -> _ReexamineFindings:
-        if ctx.partial_output:
-            return output
-        anchored = anchor_quotes_or_retry(
-            source, output.findings, ctx_retry=ctx.retry
-        )
-        return _ReexamineFindings(findings=anchored)
+    # Attach the lock-and-refine anchor validator (same one the cascade
+    # uses). Locked findings accumulate across retry attempts; on
+    # exhaustion the accumulated lock is returned. verify_findings below
+    # is the deterministic floor.
+    agent.output_validator(make_anchor_validator(model.source, _ReexamineFindings))
 
     # PRIOR FINDINGS block: shows the model what the cascade already raised
     # (and what earlier gap rounds added), so it can focus on new issues
