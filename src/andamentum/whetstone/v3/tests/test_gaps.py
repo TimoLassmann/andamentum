@@ -129,6 +129,66 @@ async def test_recheck_drops_a_finding_that_does_not_hold() -> None:
     assert out == []  # finding rechecked, didn't hold → dropped
 
 
+async def test_reexamine_receives_prior_findings_block() -> None:
+    """Issue 8: _satisfy_reexamine must surface accumulated findings to the
+    agent so it doesn't re-flag known issues. Audit 8A found strong
+    cross-run topical overlap on the same sections (s7 regret, s4
+    efficiency, s5 stepsize bound); the demand-signature dedup only
+    catches identical demands, not duplicate findings."""
+    received_prompts: list[tuple[str, str]] = []
+    src = "Some text describing the method."
+    model = _model(src)
+
+    def factory(defn, _model):
+        name = defn.name
+
+        class A:
+            def output_validator(self, fn):
+                return fn
+
+            async def run(self, p):
+                received_prompts.append((name, p))
+                if name == "v3_gap_analysis":
+                    return types.SimpleNamespace(
+                        output=_DemandList(
+                            demands=[
+                                Demand(
+                                    kind="reexamine",
+                                    detail="look here",
+                                    target_section_id="s1",
+                                )
+                            ]
+                        )
+                    )
+                # v3_reexamine: return no new findings
+                return types.SimpleNamespace(output=_ReexamineFindings(findings=[]))
+
+        return A()
+
+    prior = [
+        Finding(
+            criterion="Story",
+            issue="overclaim about Adam",
+            quote="Some text",
+            severity="major",
+            span=Span(section_id="s1", start=0, end=9),
+        )
+    ]
+    with (
+        patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
+    ):
+        await gap_loop(model, prior, agent_model="stub", cap=1)
+
+    # The reexamine call should have received a PRIOR FINDINGS block
+    reexamine_prompts = [p for name, p in received_prompts if name == "v3_reexamine"]
+    assert len(reexamine_prompts) == 1
+    prompt = reexamine_prompts[0]
+    assert "PRIOR FINDINGS" in prompt
+    assert "Story/major" in prompt
+    assert "overclaim about Adam" in prompt
+
+
 async def test_per_round_demand_cap_truncates_chatty_round() -> None:
     """Issue 7: per-round demand cap. analyze_gaps may emit any number of
     demands; gap_loop must truncate to at most ``per_round_demand_cap``
