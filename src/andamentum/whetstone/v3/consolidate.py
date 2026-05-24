@@ -49,6 +49,13 @@ the author. Some findings make essentially the SAME underlying point, possibly \
 about different parts of the document — for example several separate notes that \
 a method step is under-specified, or repeated versions of one overstated claim.
 
+Each finding is shown with its criterion, severity, section id, verbatim quote, \
+and issue text. Use ALL of these to decide whether two findings are the same \
+point. Two findings can have similar issue text but anchor on very different \
+quotes/sections (= distinct), or have different issue text but anchor on the \
+same span (= likely duplicates). The quote and section_id are the structural \
+ground truth; the issue text is one author's phrasing.
+
 Group together findings a reader would see as IDENTICAL — same underlying \
 critique, same recommended action. For each group of TWO OR MORE, write one \
 merged issue statement that captures the shared point.
@@ -61,10 +68,19 @@ Be aggressively conservative. Defaults:
 in DIFFERENT sections may be the same point — but only if a reader fixing one \
 would naturally fix the other. If fixing them requires different edits, keep \
 them separate.
+  • Two findings with similar issue text but anchored on DIFFERENT quotes \
+that point at structurally different problems (e.g. one says the math drops a \
+square root, the other says a stated bound is inconsistent with bias \
+correction) are NOT duplicates, even if both fall under the same section.
 
 Most distinct-looking findings ARE distinct. Most groups should have exactly \
 two members; groups of 4+ should be rare. If you can't articulate the shared \
-point in one sentence, the findings probably aren't duplicates."""
+point in one sentence that covers ALL members' quotes, the findings probably \
+aren't duplicates.
+
+You return only the group structure (which indices belong together) and the \
+merged issue statement. You do NOT pick or rewrite quotes — the system anchors \
+the merged finding on the most-severe member's quote deterministically."""
 
 
 def _severity_of(f: Finding) -> int:
@@ -85,8 +101,13 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
         output_retries=2,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    # Per-line format includes quote + section so the agent can tell apart
+    # two findings with similar issue text but different anchors. The agent
+    # NEVER picks or rewrites quotes (the docx anchor uses Finding.quote as
+    # an exact-match anchor — silently breaks if the quote changes).
     numbered = "\n".join(
-        f"  [{i}] ({f.criterion}/{f.severity}) {f.issue}"
+        f"  [{i}] ({f.criterion}/{f.severity}, section={f.span.section_id if f.span else '?'}) "
+        f"{f.issue}\n      quote: {f.quote!r}"
         for i, f in enumerate(findings)
     )
     try:

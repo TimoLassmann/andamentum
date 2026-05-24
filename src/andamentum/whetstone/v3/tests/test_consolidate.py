@@ -78,6 +78,75 @@ async def test_agent_crash_returns_findings_unchanged() -> None:
     assert out == findings
 
 
+async def test_agent_sees_quotes_and_sections_in_prompt() -> None:
+    """Issue 2: consolidate agent must receive quote + section_id per finding
+    so it can distinguish near-duplicates with similar issue text but
+    different anchors. The previous prompt input was only
+    `(criterion/severity) issue` — losing the structural ground truth."""
+    received_prompts: list[str] = []
+
+    def factory(_defn, _model):
+        class A:
+            async def run(self, p):
+                received_prompts.append(p)
+                return types.SimpleNamespace(output=_Consolidation(groups=[]))
+
+        return A()
+
+    findings = [
+        _f("Story", "issue alpha", "quote one", severity="major"),
+        _f("Correctness", "issue beta", "quote two", severity="minor"),
+    ]
+    with (
+        patch(
+            "andamentum.whetstone.v3.consolidate.build_pydantic_ai_agent", new=factory
+        ),
+        patch(
+            "andamentum.whetstone.v3.consolidate.resolve_model", new=lambda m: None
+        ),
+    ):
+        await consolidate(findings, agent_model="stub")
+
+    assert len(received_prompts) == 1
+    prompt = received_prompts[0]
+    # Both quotes appear verbatim in the prompt
+    assert "'quote one'" in prompt
+    assert "'quote two'" in prompt
+    # Section ids appear
+    assert "section=s1" in prompt
+    # Criterion + severity still present
+    assert "Story/major" in prompt
+    assert "Correctness/minor" in prompt
+
+
+async def test_merge_anchor_stays_deterministic_after_quote_input() -> None:
+    """Issue 2 (downstream invariant from 2C): even with quotes shown to the
+    agent, the merged finding's quote stays anchored on the most-severe
+    member deterministically. The agent never picks/rewrites quotes — the
+    docx renderer relies on Finding.quote being an exact-match anchor in
+    the source."""
+    findings = [
+        _f("Correctness", "minor variant", "qa", severity="minor"),
+        _f("Correctness", "major variant", "qb", severity="major"),
+    ]
+    grouped = _Consolidation(
+        groups=[_Group(member_indices=[0, 1], merged_issue="merged statement")]
+    )
+    p1, p2 = _route(grouped)
+    with p1, p2:
+        out = await consolidate(findings, agent_model="stub")
+
+    assert len(out) == 1
+    merged = out[0]
+    # Most-severe member's quote wins regardless of agent input ordering
+    assert merged.quote == "qb"
+    assert merged.severity == "major"
+    # Span comes from the most-severe member, not synthesised
+    assert merged.span is not None
+    assert merged.span.start == 0
+    assert merged.span.end == 2  # len("qb")
+
+
 async def test_short_list_skips_agent() -> None:
     findings = [_f("Story", "only one", "q")]
     # No patch needed — should return before building an agent.
