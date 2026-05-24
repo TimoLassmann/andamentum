@@ -41,17 +41,41 @@ def _findings_block(findings: list[Finding]) -> str:
     )
 
 
+def _synopsis_length_band(source: str) -> str:
+    """Pick a synopsis length appropriate to the document size.
+
+    Bands are tuned against the empirical observation that all four models
+    obeyed the previous fixed "2-3 sentences" instruction but produced
+    summaries that were too tight for ≥5000-word ML papers (could not
+    name where issues clustered) — see research synthesis §8 Issue 9 of
+    docs/plans/2026-05-24-whetstone-v3-prompt-quality.md.
+
+    Word-count thresholds:
+      - ≤1000 words: 1 sentence (short tech notes, single-page memos)
+      - 1000-5000 words: 2-4 sentences (standard paper, conference-style)
+      - >5000 words: 4-8 sentences (long manuscript, multi-contribution paper)
+    """
+    word_count = len(source.split())
+    if word_count <= 1000:
+        return "1 sentence"
+    if word_count <= 5000:
+        return "2-4 sentences"
+    return "4-8 sentences"
+
+
 async def synthesise(
     model: DocumentModel, findings: list[Finding], *, agent_model: str
 ) -> StructuredReview:
+    synopsis_length = _synopsis_length_band(model.source)
     defn = AgentDefinition(
         name="v3_synthesise",
         prompt=(
-            "Write one concise structured review of a document from the findings "
-            "and section gists. synopsis: 2-3 sentences on what the document is "
-            "and its overall state. strengths / weaknesses: short bullet points; "
-            "weaknesses should reflect the findings, most important first. Do not "
-            "invent issues beyond the findings."
+            f"Write one concise structured review of a document from the findings "
+            f"and section gists. synopsis: {synopsis_length} on what the document "
+            f"is and its overall state — name where the issues cluster if there "
+            f"are several, not just the global stance. strengths / weaknesses: "
+            f"short bullet points; weaknesses should reflect the findings, most "
+            f"important first. Do not invent issues beyond the findings."
         ),
         output_model=StructuredReview,
         retries=2,

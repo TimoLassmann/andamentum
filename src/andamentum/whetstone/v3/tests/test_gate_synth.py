@@ -11,6 +11,7 @@ from andamentum.whetstone.v3.review import Finding
 from andamentum.whetstone.v3.synth import (
     StructuredReview,
     _flatten,
+    _synopsis_length_band,
     synthesise,
     to_review_result,
 )
@@ -62,6 +63,36 @@ def test_to_review_result_maps_quotes_to_section_relative_offsets() -> None:
     assert rr.findings[0].category == "evaluations"
     assert rr.summary.startswith("## Summary")
     assert rr.document_map and rr.document_map[0].section_id == "s1"
+
+
+def test_synopsis_length_band_short_doc() -> None:
+    """Issue 9: ≤1000 words → 1-sentence band."""
+    source = "word " * 500  # 500 words
+    assert _synopsis_length_band(source) == "1 sentence"
+
+
+def test_synopsis_length_band_typical_paper() -> None:
+    """Issue 9: 1000-5000 words → 2-4 sentences band."""
+    source = "word " * 3000  # 3000 words
+    assert _synopsis_length_band(source) == "2-4 sentences"
+
+
+def test_synopsis_length_band_long_manuscript() -> None:
+    """Issue 9: >5000 words → 4-8 sentences band."""
+    source = "word " * 8000  # 8000 words
+    assert _synopsis_length_band(source) == "4-8 sentences"
+
+
+def test_synopsis_length_band_boundary_at_1000() -> None:
+    """Boundary case: exactly 1000 words → still in 1-sentence band (≤)."""
+    source = "word " * 1000
+    assert _synopsis_length_band(source) == "1 sentence"
+
+
+def test_synopsis_length_band_boundary_at_5000() -> None:
+    """Boundary case: exactly 5000 words → still in 2-4 sentences band (≤)."""
+    source = "word " * 5000
+    assert _synopsis_length_band(source) == "2-4 sentences"
 
 
 async def test_synthesise_returns_structured_review() -> None:
