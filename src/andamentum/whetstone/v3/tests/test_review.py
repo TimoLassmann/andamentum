@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import types
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.criteria import SPECS, criterion_set_for
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
+
+from andamentum.whetstone.v3.criteria import SPECS, Criterion, criterion_set_for
 from andamentum.whetstone.v3.model import DocumentModel, Section
 from andamentum.whetstone.v3.review import (
     Finding,
@@ -14,6 +19,30 @@ from andamentum.whetstone.v3.review import (
     run_criteria,
     verify_findings,
 )
+
+
+@contextmanager
+def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
+    """Attach a handler directly to the v3 logger. ``caplog`` is unreliable
+    here because ``whetstone/cli.py`` flips ``andamentum.whetstone.propagate``
+    to False, breaking propagation to the root caplog handler when CLI tests
+    run earlier in the same session."""
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _ListHandler(level=logging.WARNING)
+    logger = logging.getLogger("andamentum.whetstone.v3")
+    prior_level = logger.level
+    logger.setLevel(logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prior_level)
 
 
 def test_specs_is_the_academic_default() -> None:
@@ -55,6 +84,87 @@ async def test_run_criteria_tags_findings_by_criterion() -> None:
         findings = await run_criteria(SPECS, _model("x"), agent_model="stub")
     # one finding per criterion, each tagged with its criterion name
     assert {f.criterion for f in findings} == {c.name for c in SPECS}
+
+
+async def test_run_criteria_logs_unexpected_model_behaviour_body() -> None:
+    """Stage 3: UnexpectedModelBehavior.body should land in the log line.
+
+    Today this exception is caught by the trailing ``except Exception``
+    and logged with only ``str(exc)`` — the upstream response body
+    (e.g. Ollama's null-content HTTP 400 payload) is lost. With the
+    typed cascade in place we log the first 500 chars of ``body``.
+    """
+
+    class _Agent:
+        async def run(self, _prompt, **_kwargs):
+            raise UnexpectedModelBehavior(
+                "stage-3 boom", body="upstream provider error payload"
+            )
+
+    def _build(_criterion, _agent_model):
+        return _Agent()
+
+    one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
+    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
+        with _capture_v3_logs() as records:
+            findings = await run_criteria(
+                one_criterion, _model("x"), agent_model="stub"
+            )
+
+    assert findings == []  # the criterion gracefully skipped
+    log_text = "\n".join(r.getMessage() for r in records)
+    assert "Story" in log_text
+    assert "model behaviour error" in log_text
+    assert "upstream provider error payload" in log_text
+
+
+async def test_run_criteria_logs_usage_limit_exceeded() -> None:
+    """Stage 3: UsageLimitExceeded gets its own log line, distinct from
+    generic crashes."""
+
+    class _Agent:
+        async def run(self, _prompt, **_kwargs):
+            raise UsageLimitExceeded("request_limit (18) exceeded")
+
+    def _build(_criterion, _agent_model):
+        return _Agent()
+
+    one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
+    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
+        with _capture_v3_logs() as records:
+            findings = await run_criteria(
+                one_criterion, _model("x"), agent_model="stub"
+            )
+
+    assert findings == []
+    log_text = "\n".join(r.getMessage() for r in records)
+    assert "Story" in log_text
+    assert "usage limit hit" in log_text
+
+
+async def test_run_criteria_still_catches_generic_exception() -> None:
+    """Stage 3: the defence-in-depth ``except Exception`` catch is
+    preserved; a non-typed crash still logs + continues."""
+
+    class _Agent:
+        async def run(self, _prompt, **_kwargs):
+            raise RuntimeError("unexpected boom")
+
+    def _build(_criterion, _agent_model):
+        return _Agent()
+
+    one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
+    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
+        with _capture_v3_logs() as records:
+            findings = await run_criteria(
+                one_criterion, _model("x"), agent_model="stub"
+            )
+
+    assert findings == []
+    log_text = "\n".join(r.getMessage() for r in records)
+    assert "Story" in log_text
+    assert "crashed" in log_text
+    assert "unexpected boom" in log_text
 
 
 def test_verify_findings_drops_hallucinations_and_locates_real_ones() -> None:
