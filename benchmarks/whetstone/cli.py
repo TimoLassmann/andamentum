@@ -130,18 +130,21 @@ def cmd_html(args: argparse.Namespace) -> int:
 
 
 def cmd_arms(args: argparse.Namespace) -> int:
-    from .arms import run_arm_a, run_arm_b
+    from .arms import run_arm_a, run_arm_b, run_arm_b_v3
     from .loader import load_manifest
 
     corpus = Path(args.corpus_dir)
     runs = Path(args.out_dir)
     runs.mkdir(parents=True, exist_ok=True)
     refs = load_manifest(corpus / "manifest.json")
+    arm_b_label = "v3" if args.arm_b == "v3" else "whole-doc"
+    run_b = run_arm_b_v3 if args.arm_b == "v3" else run_arm_b
+    logger.info("[arms] Arm B = %s", arm_b_label)
 
     async def one(ref):
         a = await run_arm_a(ref, model=args.model)
-        b = await run_arm_b(ref, model=args.model)
-        result = PaperResult(paper=ref, arm_a=a, arm_b=b)
+        b = await run_b(ref, model=args.model)
+        result = PaperResult(paper=ref, arm_a=a, arm_b=b, arm_b_label=arm_b_label)
         (runs / f"{ref.slug}.arms.json").write_text(
             result.model_dump_json(indent=2), encoding="utf-8"
         )
@@ -263,6 +266,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     common.add_argument("--judge-model", default=None, help="model for adjudication")
     common.add_argument("--seed", type=int, default=1, help="worksheet blinding seed")
+    common.add_argument(
+        "--arm-b",
+        choices=("whole", "v3"),
+        default="whole",
+        help="pipeline for Arm B (default: 'whole' = whole-document baseline; "
+        "'v3' runs whetstone v3 head-to-head against v2)",
+    )
 
     p = argparse.ArgumentParser(prog="whetstone-bench", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)

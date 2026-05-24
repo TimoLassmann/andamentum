@@ -1,0 +1,22 @@
+{
+  "arxiv_1406.2661_v1": {
+    "System 2": "A",
+    "System 1": "B"
+  },
+  "arxiv_1412.6980_v1": {
+    "System 1": "A",
+    "System 2": "B"
+  },
+  "arxiv_1512.03385_v1": {
+    "System 1": "A",
+    "System 2": "B"
+  },
+  "arxiv_1706.03762_v1": {
+    "System 1": "A",
+    "System 2": "B"
+  },
+  "arxiv_1810.04805_v1": {
+    "System 1": "A",
+    "System 2": "B"
+  }
+}
