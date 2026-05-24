@@ -1,0 +1,451 @@
+{
+  "paper": {
+    "source": "arxiv",
+    "id": "1412.6980",
+    "version": 1,
+    "title": "",
+    "subfield": "cs.LG",
+    "pdf_path": "/Users/timo/code/andamentum/benchmarks/whetstone/corpus/arxiv_1412.6980_v1.pdf",
+    "markdown_path": "/Users/timo/code/andamentum/benchmarks/whetstone/corpus/arxiv_1412.6980_v1.md"
+  },
+  "arm_a": {
+    "arm": "A",
+    "findings": [
+      {
+        "title": "Overclaim: optimizer superiority without performance metrics shown",
+        "detail": "The section claims that “Adam often outperforms other methods” and “Adam shows better convergence,” but provides no quantitative results, statistical variability, or even textual description of Figure 2 beyond qualitative speed/convergence statements. Without reporting numbers or experimental control details, the evidence-to-conclusion mapping is weak."
+      },
+      {
+        "title": "Overbroad performance claims without evidence here",
+        "detail": "The introduction claims multiple advantages and that the method "
+      },
+      {
+        "title": "Algorithm reference inside intro muddies logical separation",
+        "detail": "Algorithm 1 is embedded in the introduction with extensive pseudo-code and hyperparameters before the reader is told what bias correction is; this blurs what is established vs what is previewed."
+      },
+      {
+        "title": "Overconfident claim about “efficiency” change without support",
+        "detail": "The note that efficiency “can … be improved upon” by reordering computations is offered without any quantitative argument or even specifying what the computational bottleneck is. As written, it reads like advice rather than a validated methodological point."
+      },
+      {
+        "title": "SNR bounds rely on undefined expectations and unjustified ≈±1",
+        "detail": "The argument that “̂m_t/√̂v_t ≈ ±1” is supported only by the line “E[g]/E[g^2] = ±1”, but no conditions on g, its sign, stationarity, or bias are provided. As written, the claim that typical ratios concentrate near ±1 is not justified from the stated update rule and could fail for common gradient distributions where E[g^2]≫E[g]^2 or where g changes sign."
+      },
+      {
+        "title": "Trust-region/automatic annealing conclusions exceed presented math",
+        "detail": "The section uses algebraic bounds on the effective step magnitude to claim a “trust region” and “automatic annealing” toward an optimum. However, the bounds alone do not establish that SNR necessarily decreases near optima (or that this implies improved optimization behavior) without further assumptions about how moments relate to the true gradient."
+      },
+      {
+        "title": "sec_006 introduces ζ without stating gradient/stationarity assumptions",
+        "detail": "The section defines ζ only via a brief claim about stationarity, but it does not specify the gradient process assumptions required for ζ to depend on time-stationarity of E[g_i^2]. This omission undermines the stated justification for the initialization-bias correction division term."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Without initialization bias correction, initial steps would be much larger when using a small β2 for sparse gradients.”. The document discusses initialization bias correction and provides theory/experiments, but it does not specifically show or cite evidence that without initialization bias correction the initial steps would be much larger when using a small β2 for sparse gradients. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Regret defined using placeholders",
+        "detail": "The manuscript introduces regret and its definition using two undecoded formula placeholders, so the exact regret expression cannot be checked from the provided text."
+      },
+      {
+        "title": "“Comparable to the best known bound” is not concretely specified",
+        "detail": "The section claims the result is comparable to “the best known bound” but does not name a specific baseline theorem/result or state the comparison’s assumptions. This makes the comparability claim unverifiable from the provided text."
+      },
+      {
+        "title": "Bounded pairwise iterate distances assumed without conditions to ensure them",
+        "detail": "Theorem 4.1 explicitly assumes a uniform bound on ‖θ_n−θ_m‖ for all pairs of Adam iterates. The section provides no mechanism or additional conditions (e.g., projection) to guarantee this property, so the convergence claim depends on an unstated/unsupported assumption."
+      },
+      {
+        "title": "Sec_008 claims exact Adam↔RProp/AdaGrad correspondences only under specific β and bias-correction conditions",
+        "detail": "The excerpt explicitly states retrieval conditions for RProp (β1=β2=1, yielding bias-correction terms equal to 1) and for AdaGrad (β1=1 and the limit β2→0, including bias correction vs. not holding without it). It also directly warns that without bias correction the β2→0 limit would lead to infinitely large bias and updates, so the correspondences are conditional on those implementation details."
+      },
+      {
+        "title": "Fisher-information/geometry justification is mostly asserted via citation",
+        "detail": "The section makes a Fisher-information approximation claim and then draws a geometry/conservativeness comparison to NGD, but within this excerpt it does not provide any derivation, justification, or supporting argument beyond citations."
+      },
+      {
+        "title": "RMSProp divergence claim is presented as conditional on small β2 and deferred to experiments",
+        "detail": "The excerpt states that RMSProp lacks a bias-correction term and that the effect is most severe for small β2, causing very large stepsizes and divergence, and it explicitly references empirical demonstrations elsewhere (section 6.4). Thus the causal explanation in this excerpt is conditional and not independently evidenced within sec_008."
+      },
+      {
+        "title": "Broad claim of 'practical deep learning problems' unsupported",
+        "detail": "The section asserts broad efficacy—\"we demonstrate how well Adam can solve practical deep learning problems\"—but provides no quantitative results or metrics here. This overreaches relative to the evidence actually presented in this subsection text."
+      },
+      {
+        "title": "Hyperparameter search description lacks experimental reproducibility",
+        "detail": "Stating that \"learning rate and momentum\" are searched over a \"dense grid\" does not specify which parameters are tuned for Adam versus baselines, the grid ranges, or the criterion for selecting \"best\" settings. Without these details, the validity of comparisons (fairness and sensitivity) cannot be judged from this section text."
+      },
+      {
+        "title": "Conclusions overreach: only qualitative convergence comparisons",
+        "detail": "The section claims “Adam yields similar convergence” and “both converge faster than AdaGrad” but provides no quantitative metrics, hyperparameters, or statistical uncertainty. Relying on “According to Figure 1” and vague “outperforms…by a large margin” makes the strength of the evidence unclear and may reflect plot scale or tuning rather than robust algorithmic differences."
+      },
+      {
+        "title": "Theoretical linkage is asserted without showing actual assumptions",
+        "detail": "The text says “consistent with our theoretical findings in sections 2 and 4” and “Similar to AdaGrad… faster convergence rate” but this section does not specify whether the theoretical conditions (e.g., sparsity regime, convexity/online setting, step-size schedules) match the MNIST/IMDB training setup. The evidence-to-claim mapping is therefore not verifiable from the experiment description alone."
+      },
+      {
+        "title": "Non-convex scope mismatch and unclear convergence target",
+        "detail": "They explicitly note “our convergence analysis does not apply to non-convex problems,” yet the remainder uses “convergence” language for Adam under dropout. It is unclear what notion of convergence is measured (training loss vs. validation, early stopping, gradient norms), which affects interpretability of the claims."
+      },
+      {
+        "title": "Incomplete experimental specification for dropout/regularization comparison",
+        "detail": "The dropout comparison lacks key hyperparameters (dropout rate, architecture details beyond “two fully connected hidden layers,” initialization, learning-rate schedule, batchnorm, etc.), while making strong comparative statements. This makes it hard to assess whether Adam’s advantage is robust or due to tuning/implementation choices."
+      },
+      {
+        "title": "Causal overreach: vanishing second moment -> geometry claim",
+        "detail": "The section links an observed behavior (“second moment estimate vanishes to zeros”) to a mechanistic conclusion about geometry (“poor approximation to the geometry of the cost function”). This attribution is not substantiated by the evidence shown or described here (figures are referenced but not quantified), and alternative explanations (e.g., hyperparameters, gradients sparsity) are not considered."
+      },
+      {
+        "title": "Unclear experimental basis: figures referenced but key details missing",
+        "detail": "The claim that “Adam and SGD eventually converge considerably faster than AdaGrad” is asserted with no accompanying metrics, statistical variability, or explicit training settings in this section. The argument relies on Figure 3 (cited but not described), and it is unclear how sensitive the comparison is to batch size, learning-rate schedule, or weight decay."
+      },
+      {
+        "title": "Methodological inconsistency in wording: 'CNN architecture' lacks dataset/control",
+        "detail": "While the architecture and preprocessing/dropout are described, the section does not specify crucial experimental controls (e.g., which optimizer settings were matched across methods; what constitutes “eventual” convergence; whether momentum variant uses same momentum coefficient). This weakens the connection between the narrative about layerwise learning rates and the specific optimizer comparisons shown."
+      },
+      {
+        "title": "“Regardless of hyper-parameter setting” comparison not fully supported",
+        "detail": "The concluding claim states Adam is equal or better than RMSProp for all hyper-parameter settings, but sec_013 describes results only for the bias-correction vs no bias-correction within a single VAE setup. The evidence shown does not clearly establish a head-to-head comparison across optimizers and hyper-parameter settings."
+      },
+      {
+        "title": "β2 sweep is misformatted/ambiguous in sec_013",
+        "detail": "The β2 sweep is written as “β2 ∈ (0.01, 0.001, 0.001)”, which is ambiguous because it mixes interval notation with discrete repeated values. This can confuse reproducibility and makes it unclear what β2 values were actually tested."
+      },
+      {
+        "title": "Mechanistic expectation not directly tested",
+        "detail": "The section asserts “smaller values of β2 … results in larger initialization bias; therefore we expect a larger adverse effect…,” but only compares bias-corrected vs not in one VAE setting. Without directly measuring initialization bias or isolating its contribution, the causal expectation is stronger than the provided evidence."
+      },
+      {
+        "title": "Overclaims beyond evidence breadth",
+        "detail": "The conclusion claims robustness and suitability to “a wide range of non-convex optimization problems,” but this section provides no evidence or bounds for that breadth. It also says experiments “confirm” the analysis without specifying which aspects (rate, regime, assumptions) match."
+      },
+      {
+        "title": "Convex convergence confirmation is underspecified",
+        "detail": "“The experiments confirm the analysis” is too vague: it does not state what convex problem classes, metrics, or parameter settings were used, nor whether the theoretical rate depends on stepsizes or other conditions. This makes the strength of the convergence claim hard to judge from the conclusion alone."
+      },
+      {
+        "title": "Combination-of-AdaGrad/RMSProp framing lacks novelty boundary",
+        "detail": "The conclusion attributes the method’s contributions to combining AdaGrad-like sparse handling and RMSProp-like non-stationary behavior, but does not indicate what is new beyond earlier generic discussion (e.g., bias correction/stepsize design). Without a clearer positioning against prior “combined” methods, the reader cannot assess novelty."
+      },
+      {
+        "title": "Sec_005 shows invariance only to uniform gradient scaling c, not diagonal rescaling",
+        "detail": "The derivation in sec_005 cancels a scalar factor c between m_hat and sqrt(v_hat), implying invariance to uniform rescaling. It does not explicitly cover diagonal (coordinate-wise) rescaling, which is what the abstract claims."
+      },
+      {
+        "title": "Algorithm 2 note: step-size expression shown but no ε or bias-correction factors specified",
+        "detail": "The only concrete computation line shown in Sec. 2 uses m_t and v_t but, in the provided text, does not introduce ε or explicitly show the bias-correction factors (e.g., using \\u02C6m_t, \\u02C6v_t). This limits verification of any claimed invariance/step-size behavior from this excerpt alone."
+      },
+      {
+        "title": "ζ connects to stationarity of E[g_i^2] but no derivation is shown",
+        "detail": "Although the text introduces a ζ term to relate E[v_t] to E[g_i^2], the displayed expectation equations needed to justify that relationship are omitted (rendered as formula-not-decoded), so the reader cannot verify how ζ enters the expectation relation."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The method is straightforward to implement and based on adaptive estimates of lower-order moments of the gradients.”. While the document states that the algorithm is straightforward and based on adaptive estimates of first/second (lower-order) moments of gradients, it provides no specific evidence, experiment, or citation within the text demonstrating that this implementation straightforwardness claim is substantiated. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The method is well suited for problems that are large in terms of data and/or parameters.”. The document claims Adam is well suited for large data/parameter problems, but the provided text contains no specific experiments, scaling results, or citations demonstrating performance specifically with large data/parameter settings. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The method exhibits invariance to diagonal rescaling of the gradients by adapting to the geometry of the objective function.”. The document asserts invariance to diagonal rescaling, but the provided text contains no experiment, derivation, or explicit citation demonstrating this property. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The hyper-parameters have intuitive interpretations and typically require little tuning.”. The text states that hyper-parameters have intuitive interpretations and typically require little tuning, but it provides no supporting experiment, quantitative analysis, or citation addressing tuning sensitivity or hyperparameter tuning requirements. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The work analyzes theoretical convergence properties and provides a regret bound on the convergence rate comparable to best known results under the online convex optimization framework.”. Although the abstract/introduction state a comparable regret bound, the provided document text excerpt does not include the actual theoretical results (e.g., a regret bound formula) or any citation backing that specific claim. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Adam does not require a stationary objective.”. The document asserts that Adam “does not require a stationary objective,” but the provided text contains no experiments/results or explicit citation demonstrating this property. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Empirically, Adam consistently outperforms other methods for a variety of models and datasets.”. While the introduction asserts that Adam empirically outperforms other methods and points to section 6, the provided document text contains no results, comparisons, figures/tables, or citations from section 6 to substantiate the claim. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Adam's update rule has an important property that its step sizes are carefully chosen.”. The document asserts that Adam’s step sizes are approximately bounded by the stepsize hyperparameter, but it does not specifically substantiate the claim that the step sizes are “carefully chosen” (there is no explicit explanation of careful step-size selection beyond this general boundedness statement). Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The effective stepsize has strong upper and lower bounds.”. The document does not present any explicit result, bound, or citation establishing that Adam’s effective stepsize has strong upper and lower bounds; it only informally states stepsizes are approximately bounded by the stepsize hyperparameter. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “This typical trust region makes it relatively easy to know the right scale of α in advance.”. The document does not provide any result, experiment, or citation about a “typical trust region” or about how it makes it easy to know the right scale of α in advance; it only states example default α values in the algorithm description. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “When data features are sparse, Adam can achieve O(log d √ T), an improvement over O( √ dT) for the non-adaptive method.”. The text mentions sparse gradients and gives a theoretical regret/convergence analysis, but it does not provide the specific rates O(log d √T) for sparse features or compare them to O(√dT) for a non-adaptive method, nor does it cite such a result. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The average regret of Adam converges to 0 as T goes to infinity.”. The provided text discusses a regret bound and convergence analysis in general, but it does not include any explicit result or citation that shows Adam’s average regret converges to 0 as T→∞. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The authors evaluate the proposed method empirically by investigating different popular machine learning models.”. The provided text does not include section 6 (experiments) where it would evaluate Adam against different popular machine learning models; no empirical comparison or model-specific results are shown in the excerpt. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “On the IMDB sparse feature setting, AdaGrad outperforms SGD with Nesterov momentum by a large margin both with and without dropout noise.”. The provided document text does not include any IMDB sparse-feature experiments, nor a comparison showing AdaGrad vs SGD with Nesterov momentum with/without dropout, nor any citation to support that specific claim. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Adam converges as fast as AdaGrad on the IMDB sparse feature setting.”. The provided text does not include any experiment or citation specifically comparing Adam to AdaGrad on the IMDB sparse feature setting, so the convergence-speed claim is not substantiated here. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Adam can take advantage of sparse features and obtain a faster convergence rate than normal SGD with momentum.”. The document states Adam works well with sparse gradients and claims faster convergence in practice, but the provided text contains no specific experiments or results comparing convergence speed versus SGD with momentum on sparse features, nor a citation supporting that particular comparative claim. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “Adam makes faster progress than the SFO quasi-Newton method in terms of number of iterations and wall-clock time.”. The provided document text does not include the experimental comparison details (iterations/wall-clock vs SFO quasi-Newton) or any citation substantiating that Adam is faster than the SFO method. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “SFO is 5-10x slower per iteration than Adam and has memory requirement linear in the number of minibatches.”. The provided text discusses Adam’s “little memory requirements” and computational efficiency but contains no comparison showing SFO is 5–10x slower than Adam per iteration and no evidence/citation that memory is linear in the number of minibatches. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Possibly unsubstantiated claim",
+        "detail": "This claim may not be supported by evidence or a citation in the document: “The authors show the effectiveness of Adam in deep CNNs.”. The document claims Adam works well in practice and outperforms other methods, but the provided text does not include any empirical deep CNN experiments, results, or citations specifically demonstrating effectiveness of Adam in deep CNNs. Flagged by a cross-section scan — confirm whether support exists."
+      },
+      {
+        "title": "Conflict-of-interest statement missing",
+        "detail": "No conflict-of-interest, competing-interests, or declaration-of-interest statement was found anywhere in the document. Most journals require an explicit declaration before a manuscript can enter peer review."
+      },
+      {
+        "title": "Data availability statement missing",
+        "detail": "No data availability, data accessibility, or data sharing statement was found. A data availability statement is required by most journals and many funders, even if the answer is 'data are available on request'."
+      },
+      {
+        "title": "Keywords section missing",
+        "detail": "No 'Keywords:' line or section header was found. Many journals use the keywords list for indexing and discoverability."
+      },
+      {
+        "title": "Document title not identified",
+        "detail": "No H1 heading was found in the first 1000 characters. The harvested markdown should begin with the manuscript's title — verify the source document was harvested correctly, or that this is not a body-only excerpt."
+      }
+    ],
+    "verdict": "## Executive Summary\n\nThis draft manuscript presents Adam with a clear scholarly structure—introduction, algorithmic description, initialization bias-correction, convergence analysis, related work, experiments, and conclusion. The contribution framing is recognizable, and the section ordering generally supports a reader’s expectations for methods→theory→experiments.\n\nHowever, multiple high-priority issues weaken the manuscript’s scholarly reliability and verifiability. Several core theoretical and experimental claims are either not checkable from the provided text (e.g., regret defined with placeholders; undetermined assumptions for key quantities like ζ; reliance on bounded-iterate assumptions without justification) or overreach beyond what the described evidence substantiates (e.g., superiority/“convergence” language without quantitative metrics, and causal mechanisms inferred from figures without sufficient quantification). In addition, required submission metadata commonly expected in academic venues—conflict-of-interest and data availability statements—are missing, and the harvested document appears to have formatting/decoding problems for formulas and figures.\n\n## MUST FIX\n\nAddress the MUST FIX items in priority order: (1) include a conflict-of-interest / declaration-of-interest statement (now missing anywhere in the manuscript); (2) add a data availability statement describing how datasets/results can be accessed (now missing); (3) fix the placeholder/undecoded regret definition in the convergence section so the exact regret expression is readable and checkable (sec_007); (4) repair the theoretical convergence dependencies by either providing conditions/mechanisms that justify the “bounded pairwise iterate distances” assumption used in Theorem 4.1 or revise the theorem statement so it does not rely on an unsupported global boundedness property (sec_007); (5) correct overclaims of optimizer superiority and faster convergence that are presented without adequate quantitative performance evidence, statistical uncertainty, or clear figure interpretation (sec_011, and also echoed in sec_010). Finally, ensure the experiment/conclusion claims in sec_010 and sec_011 are supported by explicit metrics, hyperparameters, and uncertainty/variability details rather than qualitative statements tied only to figures.\n\n## SHOULD FIX\n\nSeveral SHOULD FIX items likely require revision for clarity and academic rigor: tighten or qualify claims where the current text does not provide a concrete baseline comparison (e.g., “comparable to the best known bound” without specifying which bound/theorem and assumptions in sec_007); clarify or re-derive the SNR/trust-region style interpretations and the specific approximations they rely on (sec_005), and revise the “automatic annealing”/geometry conclusions so they follow from stated assumptions rather than algebraic bounds alone (sec_005); explicitly state the gradient/stationarity assumptions needed for ζ and for the initialization-bias-correction justification (sec_006). In the experiments, improve reproducibility and fairness of comparisons by specifying the hyperparameter search protocol in sufficient detail (sec_009), and strengthen the causal language linking observed moment behavior to mechanistic geometry interpretations with quantified evidence or alternative explanations (sec_012). Also resolve formatting ambiguity where β2 sweeps are written in an unclear notation (sec_013), and make non-convex convergence targets precise (what “converge” means operationally under dropout) (sec_011).\n\n## CONSIDER\n\nIf time permits, consider the following polish/secondary improvements: add missing manuscript components for submission discoverability (e.g., Keywords line; title/H1 verification in the first 1000 characters); reduce weasel words and over-hedging in multiple sections (e.g., ‘very’, ‘many’, ‘approximately’, ‘completely’, ‘often’, ‘about’, ‘several’) to strengthen precision; reduce passive voice where it hampers readability (many instances across sec_002–sec_012); and clarify logical flow where Algorithm 1 appears embedded in the introduction before bias correction is established (sec_003). Also consider correcting or substantiating cross-section “possibly unsubstantiated” statements by ensuring each such claim is explicitly supported by results, derivations, or citations in the manuscript (examples include broad “practical deep learning” efficacy and certain sparsity-rate statements)."
+  },
+  "arm_b": {
+    "arm": "B",
+    "findings": [
+      {
+        "title": "Correctness",
+        "detail": "Non-stationary/stochastic experiment claims are not supported with sufficient detail on how stochasticity is implemented/controlled across baselines (e.g., dropout/noise rates and whether they are applied consistently at train vs eval), making the reported robustness hard to interpret."
+      },
+      {
+        "title": "Correctness",
+        "detail": "The comparison/experimental significance is incomplete: the paper emphasizes a limited set of optimizers and provides no justification for omissions of widely used adaptive variants/schedules, limiting confidence that conclusions generalize."
+      },
+      {
+        "title": "Evaluations",
+        "detail": "Empirical “outperforms/robust” claims are asserted without enough evaluative detail to judge validity/causality (metrics, quantitative comparisons, variance/significance), and figures/labels are insufficiently described."
+      },
+      {
+        "title": "Evaluations",
+        "detail": "Baselines/optimizer settings are underspecified, preventing fair and reproducible comparisons (missing grid ranges, baseline momentum definitions, and key Adam hyperparameters like beta/epsilon/learning-rate schedule/weight decay)."
+      },
+      {
+        "title": "Presentation",
+        "detail": "Core presentation is broken by non-rendered glyph placeholders and “formula-not-decoded” HTML markers, leaving the theoretical/pseudocode sections with blank/garbled formulas that prevent understanding the method and results."
+      },
+      {
+        "title": "Story",
+        "detail": "Theoretical regret/convergence results are not verifiable because the document contains placeholders/undecoded formulas and omits the concrete bound/derivation needed to confirm the stated rates (e.g., main theorem/corollary expressions missing)."
+      },
+      {
+        "title": "Correctness",
+        "detail": "Step-size/inequality or auxiliary-parameter claims rely on obscured or incomplete mathematical definitions (undecoded inequality symbols and missing expectation/equation for parameters like ζ), making the correctness of the bound questionable."
+      },
+      {
+        "title": "Correctness",
+        "detail": "The section mentions that dropout noise is applied, but does not specify whether dropout is enabled during evaluation/validation (or how the evaluation cost in figures is computed), which affects the interpretation of reported results."
+      },
+      {
+        "title": "Evaluations",
+        "detail": "Evaluation metrics and plotted quantities are not precisely defined (loss/metric definitions, train vs test/validation, and normalization), so figure comparisons cannot be accurately interpreted or reproduced."
+      },
+      {
+        "title": "Evaluations",
+        "detail": "The section does not provide any concrete details about metrics, train/test splits, or compute budget for the reported CNN experiments (e.g., dataset split strategy, evaluation protocol, training duration/steps, batch size, or resource limits)."
+      },
+      {
+        "title": "Presentation",
+        "detail": "Notation/terminology/wording contain inconsistencies and likely typos that confuse readers (invalid parameter interval descriptions, unclear epsilon/placeholder notation, and garbled/incorrect terms/capitalization)."
+      },
+      {
+        "title": "Story",
+        "detail": "The problem/motivation and stated contribution are too broad or asserted at a high level without a clear, concrete mapping to specific formal assumptions/objective class and corresponding evidence/conditions in the document."
+      },
+      {
+        "title": "Presentation",
+        "detail": "Sectioning/signposting is inconsistent: the document body says “Section 2… section 3… section 4… section 6” but the pseudocode in Algorithm 1 references “section 2… and for a slightly more efficient (but less clear) order of computation” without clearly matching the later descriptive subsections; moreover there is no explicit pointer for where Algorithm 1 is defined relative to Section 2. This makes the main message of the major sections harder to locate quickly."
+      }
+    ],
+    "verdict": "## Summary\n\nThe document introduces Adam as an efficient first-order optimizer for stochastic objectives, including an algorithm description, initialization bias-correction, and a theoretical convergence/regret analysis in an online convex optimization setting. It also presents multiple experiments comparing Adam to other stochastic optimization methods and evaluating the effect of bias correction. However, the draft review is partly too strong: it attributes “non-stationary/stochastic robustness” to insufficient details, but the ground-truth claims only modestly specify robustness (e.g., “appropriate for non-stationary objectives” and “very noisy and/or sparse gradients”). The review should focus on what cannot be verified from the provided/visible material and avoid asserting that the theory is outright “questionable” beyond the document’s renderability issues.\n\n## Strengths\n\n- Includes the main paper components that are supported by the document: algorithm presentation (Algorithm 1), initialization bias correction (m̂_t and v̂_t), and a theoretical analysis under an online learning/convex framework with a regret bound.\n- Recognizes that the paper connects theory and experiments, including an experiment that evaluates the bias-correction terms (sections 2 and 3 referenced in the claims).\n- Mentions that experiments compare Adam to other stochastic optimization methods (e.g., SGD/momentum, AdaGrad, RMSProp, and SFO), which is consistent with the provided ground-truth claims.\n\n## Weaknesses\n\n- Overstates beyond support by claiming “core math and pseudocode are partially non-rendered/undecoded” and that this makes the “correctness questionable”; the document’s ground-truth text shows many formulas and equations, but your draft review’s verification issue appears to come from the *draft presentation/formatting*, not necessarily from incorrect math. Soften to: the mathematical expressions are not reliably visible/parseable in the current draft, limiting reader verification.\n- Replace broad robustness criticism with what the document actually claims: Adam is presented as “appropriate for non-stationary objectives” and “very noisy and/or sparse gradients,” but your review should ask for specific experimental protocol details (noise/dropout handling, train vs eval application) rather than implying that robustness claims cannot be interpreted due to stochasticity being implemented “insufficiently across baselines” (since that level of detail is not evidenced here).\n- Reframe experimental reproducibility critiques so they are clearly about missing/unclear reporting rather than about invalidity: request explicit metric definitions, quantitative results, variance/significance, compute budgets, and clear training/evaluation splits because these are commonly needed to assess “consistently outperforms” claims.\n- The draft review’s hyperparameter repro fairness points are broadly consistent with what is usually required, but the ground-truth claims themselves do not specify exact β1/β2, ε, weight decay, schedules, etc. Keep this weakness as “the draft review cannot verify whether these were sufficiently specified,” rather than asserting specific missing items unless you can confirm them from the draft.\n- Avoid claiming “algorithm signposting is unclear about where Algorithm 1 is defined relative to later sections” unless that is directly visible in the draft; the ground-truth claims state Algorithm 1 is described in section 2 and bias correction in section 3. Keep as a formatting/clarity issue only if your draft shows conflicting cross-references.\n- Acknowledge that the paper claims bounds (e.g., regret O(T) in the online convex setting, and step-size bounds on Δ_t) but adjust critique to: if key inequalities/definitions are not readable in the current draft, readers cannot check them—not that the bounds are inherently wrong."
+  },
+  "arm_b_label": "v3",
+  "adjudications": [
+    {
+      "text": "Claims of optimizer superiority / faster convergence are unsupported by quantitative metrics, statistical variability, or clearly described figures in the experiment sections.",
+      "bucket": "both",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Experimental/baseline settings are underspecified, making comparisons hard to reproduce or judge as fair (missing tuned hyperparameter grids, key Adam settings such as epsilon/weight decay/schedules, and baseline optimizer definitions).",
+      "bucket": "both",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The manuscript relies on malformed or missing formulas/notation placeholders, which blocks verification of the theory and algorithm derivations.",
+      "bucket": "both",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Theoretical regret/convergence claims cannot be checked because the concrete theorem/bound expressions and derivations are omitted or obscured.",
+      "bucket": "both",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Several mathematical claims depend on incomplete or unjustified assumptions/definitions (e.g., stationarity/expectations for ζ, step-size bounds, and related inequalities), making the correctness of the derivations questionable.",
+      "bucket": "both",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The paper makes broad motivation/contribution claims without a clear mapping to specific assumptions or evidence, so the story overreaches the presented support.",
+      "bucket": "both",
+      "severity": "minor",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Experimental robustness claims about stochasticity/noise or dropout are not sufficiently specified, including how noise is applied and controlled across training and evaluation.",
+      "bucket": "b_only",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The set of evaluated optimizers/variants is limited and the omissions of widely used alternatives are not justified, weakening the generality of the conclusions.",
+      "bucket": "b_only",
+      "severity": "minor",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Figure labels, metrics, and plotted quantities are not precisely defined, so the reported comparisons are hard to interpret or reproduce.",
+      "bucket": "b_only",
+      "severity": "minor",
+      "locality": "local",
+      "note": ""
+    },
+    {
+      "text": "The paper does not give concrete experimental protocol details such as data splits, compute budget, training duration, batch size, or resource limits for the CNN experiments.",
+      "bucket": "b_only",
+      "severity": "minor",
+      "locality": "local",
+      "note": ""
+    },
+    {
+      "text": "Notation/terminology contain typos and ambiguous interval/placeholder descriptions that confuse the reader.",
+      "bucket": "b_only",
+      "severity": "minor",
+      "locality": "local",
+      "note": ""
+    },
+    {
+      "text": "Sectioning and signposting are inconsistent, making it harder to locate the main arguments and the placement of Algorithm 1 relative to the surrounding sections.",
+      "bucket": "b_only",
+      "severity": "minor",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The manuscript includes several implementation-specific claims about performance or behavior that are not supported by enough detail to assess causality or reproducibility.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The claim that Adam is invariant to diagonal rescaling is not actually shown in the derivation excerpt, which only demonstrates invariance to uniform scalar rescaling.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "local",
+      "note": ""
+    },
+    {
+      "text": "The review notes that some conclusions about trust regions or automatic annealing go beyond what the displayed bounds alone establish.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The convergence discussion for non-convex settings is unclear because the manuscript itself says the analysis does not apply there, yet the text still uses convergence language in those contexts.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The manuscript’s empirical comparisons lack sufficient detail on controls such as dropout rate, architecture, or matched optimizer settings, limiting interpretation of observed differences.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "local",
+      "note": ""
+    },
+    {
+      "text": "The claim that Adam performs well across a wide range of non-convex problems is broader than the evidence presented in the excerpt.",
+      "bucket": "a_only",
+      "severity": "minor",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The conclusion’s claim of novelty/combinatorial contribution is not clearly distinguished from earlier discussion of related adaptive methods.",
+      "bucket": "a_only",
+      "severity": "minor",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "The manuscript appears to make many specific empirical claims about particular datasets/models (e.g., IMDB, SFO, CNNs) without showing the corresponding evidence in the provided text.",
+      "bucket": "a_only",
+      "severity": "critical",
+      "locality": "cross_section",
+      "note": ""
+    },
+    {
+      "text": "Standard front-matter elements are missing from the harvested document, including a title, keywords, conflict-of-interest statement, and data availability statement.",
+      "bucket": "a_only",
+      "severity": "minor",
+      "locality": "local",
+      "note": ""
+    }
+  ],
+  "verdict_match": true,
+  "comparison": {
+    "more_useful": "whetstone",
+    "reasoning": "whetstone is more useful overall because it catches the major cross-section problems that are clearly supported by the manuscript: the missing/undecoded regret formulas, the incomplete theoretical derivations, and the unsupported superiority/faster-convergence claims in the experiments. It also correctly flags that the non-convex “convergence” language is overstated given the text’s own admission that the analysis does not apply there. the v3 review raises several valid reproducibility concerns too, but it includes more speculative or softened points and even advises against some criticisms that are actually grounded in the manuscript’s unreadable math/figure reporting, so its signal-to-noise is a bit weaker.",
+    "order_consistent": true
+  }
+}

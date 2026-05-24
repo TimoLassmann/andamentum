@@ -57,18 +57,33 @@ def _deblind_bucket(blind: str, m: dict[str, str]) -> str:
     return "a_only" if arm == "A" else "b_only"
 
 
-def _deblind_verdict(blind: str, m: dict[str, str]) -> str:
-    """system_1 / system_2 / comparable → whetstone / whole-doc / comparable."""
+def _deblind_verdict(
+    blind: str, m: dict[str, str], *, arm_b_label: str = "whole-doc"
+) -> str:
+    """system_1 / system_2 / comparable → whetstone / {arm_b_label} / comparable.
+
+    Arm A is always whetstone v2; Arm B's deblinded label depends on which
+    pipeline ran ("whole-doc" baseline by default, or "v3").
+    """
     if blind == "comparable":
         return "comparable"
-    return "whetstone" if m[blind] == "A" else "whole-doc"
+    return "whetstone" if m[blind] == "A" else arm_b_label
 
 
-def _deblind_text(text: str, m: dict[str, str]) -> str:
+_ARM_B_PHRASE = {
+    "whole-doc": "the whole-document review",
+    "v3": "the v3 review",
+}
+
+
+def _deblind_text(
+    text: str, m: dict[str, str], *, arm_b_label: str = "whole-doc"
+) -> str:
     """Replace 'System 1/2' in the judge's prose with the real system names."""
+    arm_b_phrase = _ARM_B_PHRASE.get(arm_b_label, f"the {arm_b_label} review")
     out = text
     for sys in ("system_1", "system_2"):
-        name = "whetstone" if m[sys] == "A" else "the whole-document review"
+        name = "whetstone" if m[sys] == "A" else arm_b_phrase
         out = re.sub(sys.replace("_", " "), name, out, flags=re.IGNORECASE)
     return out
 
@@ -294,14 +309,21 @@ async def compare_reviews(
     they flip under the swap, it's position-sensitive → ``inconsistent``."""
     slug = result.paper.slug
     paper_text = _load_paper_text(result)
+    arm_b_label = result.arm_b_label
     runs = []
     for swap in (False, True):
         m = _mapping(slug, seed, swap=swap)
         bv = await _compare_once(result, m, model=model, paper_text=paper_text)
-        runs.append((m, _deblind_verdict(bv.more_useful, m), bv.reasoning))
+        runs.append(
+            (
+                m,
+                _deblind_verdict(bv.more_useful, m, arm_b_label=arm_b_label),
+                bv.reasoning,
+            )
+        )
 
     (m0, v0, r0), (_m1, v1, _r1) = runs
-    reasoning0 = _deblind_text(r0, m0)
+    reasoning0 = _deblind_text(r0, m0, arm_b_label=arm_b_label)
     if v0 == v1:
         logger.info("[compare] %s → %s (order-consistent)", slug, v0)
         return Comparison(more_useful=v0, reasoning=reasoning0, order_consistent=True)

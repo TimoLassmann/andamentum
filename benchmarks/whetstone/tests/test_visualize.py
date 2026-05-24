@@ -73,6 +73,24 @@ def test_build_html_escapes_finding_text() -> None:
     assert "&lt;b&gt;bad &amp; risky&lt;/b&gt;" in html
 
 
+def test_v3_mode_relabels_arm_b_in_the_rendered_html() -> None:
+    """When Arm B = v3, the visualiser must use v3 labels (not 'whole-doc')."""
+    r = _result()
+    r.arm_b_label = "v3"
+    r.comparison = Comparison(  # type: ignore[assignment]
+        more_useful="v3", reasoning="v3 caught the unsupported central claim."
+    )
+    html = build_html([r], css="")
+    # Section titles use the v3 label, not the whole-document one.
+    assert "whetstone v3" in html
+    assert "Whole-document top weaknesses" not in html
+    # Bucket label for b_only swaps to "v3 only".
+    assert "v3 only" in html
+    assert "whole-doc only" not in html
+    # App title reflects the v2-vs-v3 mode.
+    assert "whetstone v2) vs B (whetstone v3" in html
+
+
 def test_build_html_lists_every_paper_in_sidebar() -> None:
     r1 = _result()
     r2 = _result()

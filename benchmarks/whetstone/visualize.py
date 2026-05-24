@@ -48,7 +48,32 @@ def _stat(value: int, label: str, danger: bool = False) -> str:
 _BUCKET_TONE = {"both": "note", "a_only": "info", "b_only": "warn"}
 _SEVERITY_TONE = {"critical": "danger", "minor": "note"}
 _LOCALITY_TONE = {"cross_section": "info", "local": "note"}
-_BUCKET_LABEL = {"both": "both", "a_only": "whetstone only", "b_only": "whole-doc only"}
+
+# Display labels per Arm B variant. Arm A is always whetstone v2. The
+# short label is for badges/stats; the long label is for verdict prose and
+# section titles ("Whole-document top weaknesses" vs "v3 top weaknesses").
+_ARM_B_DISPLAY = {
+    "whole-doc": {
+        "short": "whole-doc",
+        "long": "whole-document",
+        "verdict_panel_title": "Whole-document top weaknesses",
+        "app_title_suffix": "A (whetstone v2) vs B (whole document)",
+    },
+    "v3": {
+        "short": "v3",
+        "long": "whetstone v3",
+        "verdict_panel_title": "v3 top weaknesses",
+        "app_title_suffix": "A (whetstone v2) vs B (whetstone v3)",
+    },
+}
+
+
+def _arm_b(result: PaperResult) -> dict[str, str]:
+    return _ARM_B_DISPLAY.get(result.arm_b_label, _ARM_B_DISPLAY["whole-doc"])
+
+
+def _bucket_labels(arm_b_short: str) -> dict[str, str]:
+    return {"both": "both", "a_only": "whetstone only", "b_only": f"{arm_b_short} only"}
 
 
 def _badge(text: str, tone: str) -> str:
@@ -58,6 +83,7 @@ def _badge(text: str, tone: str) -> str:
 _VERDICT_TONE = {
     "whetstone": "info",
     "whole-doc": "warn",
+    "v3": "warn",
     "comparable": "note",
     "inconsistent": "danger",
 }
@@ -70,6 +96,7 @@ def _comparison_section(result: PaperResult) -> str:
     The judge is blinded and run twice with the order swapped; a flip shows as
     'inconsistent'."""
     s = summarise_paper(result)
+    b = _arm_b(result)
     if result.comparison:
         c = result.comparison
         flag = (
@@ -97,7 +124,7 @@ def _comparison_section(result: PaperResult) -> str:
             ),
             _stat(s.a_only_critical, "critical: whetstone-only"),
             _stat(len(result.arm_a.findings), "whetstone findings"),
-            _stat(len(result.arm_b.findings), "whole-doc findings"),
+            _stat(len(result.arm_b.findings), f"{b['short']} findings"),
             _stat(s.a_only_minor, "whetstone-only minor (noise)"),
         ]
     )
@@ -123,11 +150,12 @@ def _adjudication_panel(result: PaperResult) -> str:
         adj,
         key=lambda f: (order.get(f.bucket, 3), 0 if f.severity == "critical" else 1),
     )
+    bucket_labels = _bucket_labels(_arm_b(result)["short"])
     cards = []
     for f in rows:
         badges = (
             _badge(
-                _BUCKET_LABEL.get(f.bucket, f.bucket),
+                bucket_labels.get(f.bucket, f.bucket),
                 _BUCKET_TONE.get(f.bucket, "note"),
             )
             + _badge(f.severity, _SEVERITY_TONE.get(f.severity, "note"))
@@ -152,6 +180,7 @@ def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
     title = _esc(p.title or p.id)
     meta_bits = [p.source, p.id, p.subfield]
     meta = " · ".join(_esc(b) for b in meta_bits if b)
+    b = _arm_b(result)
 
     return f"""<section class="paper" id="paper-{idx}"{hide}>
   <header class="typeset-heading">
@@ -167,7 +196,7 @@ def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
       <p>{_esc(result.arm_a.verdict) or "—"}</p>
     </div>
     <div class="am-card am-card--quiet">
-      <div class="eyebrow">Whole-document top weaknesses</div>
+      <div class="eyebrow">{b["verdict_panel_title"]}</div>
       <p>{_esc(result.arm_b.verdict) or "—"}</p>
     </div>
   </div>
@@ -176,11 +205,11 @@ def _paper_section(idx: int, result: PaperResult, *, hidden: bool) -> str:
 
   <div class="panes">
     <div class="pane">
-      <div class="eyebrow">System A — whetstone ({len(result.arm_a.findings)})</div>
+      <div class="eyebrow">System A — whetstone v2 ({len(result.arm_a.findings)})</div>
       {_finding_cards(result.arm_a)}
     </div>
     <div class="pane">
-      <div class="eyebrow">System B — whole-document ({len(result.arm_b.findings)})</div>
+      <div class="eyebrow">System B — {b["long"]} ({len(result.arm_b.findings)})</div>
       {_finding_cards(result.arm_b)}
     </div>
   </div>
@@ -230,6 +259,13 @@ def build_html(results: list[PaperResult], *, css: str) -> str:
     )
     sidebar = _sidebar(results)
     total_gaps = sum(summarise_paper(r).b_only_critical_crosssection for r in results)
+    # If all papers ran the same Arm B, use that label in the app title;
+    # otherwise fall back to a neutral "mixed" header.
+    arm_b_labels = {r.arm_b_label for r in results} if results else {"whole-doc"}
+    if len(arm_b_labels) == 1:
+        app_title_suffix = _ARM_B_DISPLAY[next(iter(arm_b_labels))]["app_title_suffix"]
+    else:
+        app_title_suffix = "A (whetstone v2) vs B (mixed)"
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -243,7 +279,7 @@ def build_html(results: list[PaperResult], *, css: str) -> str:
 </head>
 <body class="am-app">
 <header class="am-app-header">
-  <div class="am-app-title">Whetstone evaluation — A (whetstone) vs B (whole document)</div>
+  <div class="am-app-title">Whetstone evaluation — {app_title_suffix}</div>
   <div class="am-app-header__right"><span class="am-badge am-badge--danger">{total_gaps} architecture gaps</span></div>
 </header>
 <div class="layout">

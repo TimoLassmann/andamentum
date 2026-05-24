@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field
 
 Source = Literal["biorxiv", "arxiv"]
 Arm = Literal["A", "B"]
+# Which review pipeline ran as Arm B. Arm A is always whetstone v2. Default
+# preserves the original benchmark mode (whetstone v2 vs a whole-document
+# baseline). "v3" swaps Arm B for the v3 pipeline (v2 vs v3 head-to-head).
+ArmBLabel = Literal["whole-doc", "v3"]
 Bucket = Literal["both", "a_only", "b_only"]
 Severity = Literal["critical", "minor"]
 Locality = Literal["cross_section", "local"]
@@ -75,7 +79,7 @@ class Comparison(BaseModel):
     must cite specific adjudicated issues.
     """
 
-    more_useful: Literal["whetstone", "whole-doc", "comparable", "inconsistent"]
+    more_useful: Literal["whetstone", "whole-doc", "v3", "comparable", "inconsistent"]
     reasoning: str = ""
     order_consistent: bool = True  # did the two order-swapped judge runs agree?
 
@@ -86,6 +90,7 @@ class PaperResult(BaseModel):
     paper: PaperRef
     arm_a: ArmOutput
     arm_b: ArmOutput
+    arm_b_label: ArmBLabel = "whole-doc"  # which pipeline ran as Arm B
     adjudications: list[AdjudicatedFinding] = Field(default_factory=list)
     verdict_match: Optional[bool] = None  # did A's synthesis match B's top weaknesses?
     comparison: Optional[Comparison] = (

@@ -1,9 +1,11 @@
-"""The two review arms, run on the SAME model.
+"""The review arms, all run on the SAME model.
 
-Arm A — whetstone's chunked pipeline (``review_document``).
-Arm B — one whole-document critical-review prompt to the same model.
+Arm A — whetstone v2 (``review_document``), the chunked pipeline.
+Arm B — one of:
+  • ``run_arm_b``    — single whole-document critical-review prompt (baseline).
+  • ``run_arm_b_v3`` — whetstone v3 (whole-document, SPECS criteria, gap loop).
 
-Both take the model as a string and resolve it through the shared
+All take the model as a string and resolve it through the shared
 ``core.models`` infrastructure, so ``ollama:…`` / ``openai:…`` / ``bedrock:…``
 all work. They consume the identical harvested markdown (the path for A, the
 text for B) so extraction can't confound the comparison.
@@ -25,7 +27,15 @@ logger = logging.getLogger("whetstone.bench")
 
 
 async def run_arm_a(ref: PaperRef, *, model: str) -> ArmOutput:
-    """Whetstone review. Findings = LLM + deterministic; verdict = synthesis."""
+    """Whetstone review. Findings = LLM + deterministic; verdict = synthesis.
+
+    Style-flag findings (``category="style:weasel"`` etc. from the proofread
+    pass) are deliberately excluded from the judge's view: the comparison arm
+    has no equivalent surface-style pass, so including ~25-35% of v2's count
+    as proofread items biases the judge by sheer volume. They still appear in
+    the actual whetstone output (markdown's "Deterministic findings" section,
+    docx comments) — this filter only affects the benchmark adapter.
+    """
     from andamentum.whetstone import review_document
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm A"
@@ -34,6 +44,7 @@ async def run_arm_a(ref: PaperRef, *, model: str) -> ArmOutput:
         ArmFinding(title=f.title, detail=f.rationale)
         for f in (list(result.findings) + list(result.deterministic_findings))
         if f.category != "novelty"
+        and not (f.category or "").startswith("style:")
     ]
     logger.info("[arm A] %s → %d finding(s)", ref.slug, len(findings))
     return ArmOutput(arm="A", findings=findings, verdict=result.summary or "")
@@ -89,3 +100,21 @@ async def run_arm_b(ref: PaperRef, *, model: str) -> ArmOutput:
     verdict = "\n".join(f"{i}. {w}" for i, w in enumerate(out.central_weaknesses, 1))
     logger.info("[arm B] %s → %d finding(s)", ref.slug, len(out.findings))
     return ArmOutput(arm="B", findings=list(out.findings), verdict=verdict)
+
+
+# ── Arm B (alt): whetstone v3 ───────────────────────────────────────────
+
+
+async def run_arm_b_v3(ref: PaperRef, *, model: str) -> ArmOutput:
+    """Whetstone v3 review (whole-document, SPECS criteria, gap loop)."""
+    from andamentum.whetstone.v3 import review_document_v3
+
+    assert ref.markdown_path, f"{ref.slug}: harvest before running arm B (v3)"
+    result = await review_document_v3(ref.markdown_path, model=model)
+    findings = [
+        ArmFinding(title=f.title, detail=f.rationale)
+        for f in result.findings
+        if f.category != "novelty"
+    ]
+    logger.info("[arm B/v3] %s → %d finding(s)", ref.slug, len(findings))
+    return ArmOutput(arm="B", findings=findings, verdict=result.summary or "")
