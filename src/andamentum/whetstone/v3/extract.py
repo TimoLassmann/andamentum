@@ -51,7 +51,15 @@ class _ClaimSpans(BaseModel):
 _REQUOTE_PROMPT = """A claim was identified in a section, but the text quoted \
 for it was not found verbatim in the section. Given the section text and the \
 claim, copy the EXACT verbatim span (character for character) from the section \
-that states this claim. Output only that span, exactly as it appears."""
+that states this claim. Output only that span, exactly as it appears.
+
+Punctuation must match byte-for-byte: copy the exact dash variant (- vs – vs —), \
+exact quote marks (straight " ' vs curly “ ” ‘ ’), ellipses (… vs ...), and any \
+accents or special characters as they appear in the section. Whitespace, case, \
+and markdown emphasis (**, *, _) do not matter — but every other character must \
+be identical. Do not rewrite math notation, glyph names, or Docling-style \
+spaced symbols (e.g. "β 1", "glyph[circledot]", "θ t -1"); keep them exactly \
+as the section text shows them."""
 
 
 class _Requote(BaseModel):
