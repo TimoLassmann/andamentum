@@ -22,12 +22,15 @@ turn — no pydantic-ai retries burned on what is effectively user error.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from dataclasses import dataclass
 
 from pydantic_ai import RunContext
 
 from .model import DocumentModel, Section
+
+logger = logging.getLogger("andamentum.whetstone.v3")
 
 # Width of the snippet returned per match — chars on each side of the
 # hit, so the total snippet is ~200 chars. Small enough that dozens of
@@ -81,10 +84,14 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
     """
     section = ctx.deps.document_model.section_by_id(section_id)
     if section is None:
+        logger.info("[v3.tool] read_section(%r) → no such section", section_id)
         return (
             f"no section with id {section_id!r}; check the SECTIONS block "
             f"in your prompt for valid ids"
         )
+    logger.info(
+        "[v3.tool] read_section(%r) → %d chars", section_id, len(section.text)
+    )
     return section.text
 
 
@@ -121,8 +128,10 @@ async def search_paper(
     source = ctx.deps.document_model.source
     sections = ctx.deps.document_model.sections
 
+    mode = "regex" if regex else "substring"
     if regex:
         if len(query) > _MAX_REGEX_LENGTH:
+            logger.info("[v3.tool] search_paper(%r, regex) → too long", query[:40])
             return (
                 f"regex pattern too long ({len(query)} chars; max "
                 f"{_MAX_REGEX_LENGTH}). Use a simpler pattern or set "
@@ -131,6 +140,9 @@ async def search_paper(
         try:
             pattern = re.compile(query, re.IGNORECASE)
         except re.error as e:
+            logger.info(
+                "[v3.tool] search_paper(%r, regex) → compile error: %s", query, e
+            )
             return (
                 f"invalid regex {query!r}: {e}. Try a simpler pattern "
                 f"or set regex=False for plain substring search."
@@ -141,6 +153,7 @@ async def search_paper(
                 timeout=_REGEX_TIMEOUT_S,
             )
         except asyncio.TimeoutError:
+            logger.info("[v3.tool] search_paper(%r, regex) → timed out", query)
             return (
                 f"regex {query!r} timed out (>{_REGEX_TIMEOUT_S}s) — "
                 f"likely catastrophic backtracking. Use a simpler pattern "
@@ -149,7 +162,11 @@ async def search_paper(
     else:
         positions = _substring_positions(query, source, max_results)
 
-    return [_build_match(start, end, source, sections) for start, end in positions]
+    matches = [_build_match(start, end, source, sections) for start, end in positions]
+    logger.info(
+        "[v3.tool] search_paper(%r, %s) → %d match(es)", query, mode, len(matches)
+    )
+    return matches
 
 
 # ── pure helpers ────────────────────────────────────────────────────

@@ -43,8 +43,8 @@ Severity = Literal["minor", "moderate", "major"]
 # tool_calls_limit = caps tool-call iterations specifically.
 # total_tokens_limit = secondary backstop against runaway prompt growth
 #   when read_section drags large sections back into the context.
-_REQUEST_LIMIT = 12
-_TOOL_CALLS_LIMIT = 5
+_REQUEST_LIMIT = 18
+_TOOL_CALLS_LIMIT = 10
 _TOTAL_TOKENS_LIMIT = 80_000
 
 
