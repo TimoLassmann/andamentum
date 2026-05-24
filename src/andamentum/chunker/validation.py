@@ -5,29 +5,37 @@ runner to resolve truth-file anchors against source. The structural-first
 chunker doesn't need anchor matching for its main path (it knows positions
 directly), but exposing this is the contract benchmark cases rely on.
 
+This module is now a thin shim over ``andamentum.core.text_match.find_span``
+— the single canonical answer to "is this verbatim in the source." The
+tier-named ``AnchorMatch.method`` ("exact" / "whitespace_normalised" /
+"fuzzy") is preserved as the public contract so existing callers
+(``whetstone/anchoring.py``, ``whetstone/lenses/strunk/nodes/*``,
+``whetstone/nodes/edit_sections.py``) don't have to change.
+
 Tiers (in priority order):
-  1. exact            — substring match, case-sensitive
-  2. whitespace_normalised — collapse all whitespace, lowercase
-  3. fuzzy            — rapidfuzz token-set ratio > threshold
+  1. exact                  — byte-identical substring (case-sensitive,
+                              preserves the chunker's load-bearing
+                              byte-identical contract for FTS5).
+  2. whitespace_normalised  — exact in normalised space (markdown
+                              stripped, smart quotes stripped, case
+                              folded, whitespace collapsed). Picks up
+                              markdown + quote stripping from the
+                              shared canonical contract; before
+                              consolidation this tier was case-fold +
+                              whitespace-collapse only.
+  3. fuzzy                  — rapidfuzz token_set_ratio ≥ 0.85 over a
+                              sliding window of [0.7×, 1.5×] anchor
+                              length.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
-# rapidfuzz is widely available; fall back to no fuzzy matching if absent.
-try:
-    from rapidfuzz import fuzz as _fuzz
+from andamentum.core.text_match import find_span
 
-    _HAS_RAPIDFUZZ = True
-except ImportError:  # pragma: no cover
-    _fuzz = None  # type: ignore[assignment]
-    _HAS_RAPIDFUZZ = False
-
-_WS_RE = re.compile(r"\s+")
-_FUZZY_MIN_SCORE = 85  # 0-100; rapidfuzz token_set_ratio
+_FUZZY_MIN_SCORE = 0.85  # rapidfuzz token_set_ratio threshold (0.0-1.0)
 
 
 @dataclass
@@ -39,63 +47,42 @@ class AnchorMatch:
     method: Literal["exact", "whitespace_normalised", "fuzzy", "best_effort"]
 
 
-def _normalise(s: str) -> str:
-    return _WS_RE.sub(" ", s).strip().lower()
-
-
 def find_anchor(
     anchor: str,
     text: str,
     *,
     search_from: int,
 ) -> AnchorMatch | None:
-    """Find `anchor` in `text` starting at `search_from`. Tiered match.
+    """Find ``anchor`` in ``text`` starting at ``search_from``. Tiered match.
 
-    Returns the FIRST match after `search_from` using the highest-priority
-    tier that succeeds.
+    Returns the FIRST match after ``search_from`` using the highest-priority
+    tier that succeeds. The method label in the returned ``AnchorMatch``
+    names which tier produced the result.
     """
     if not anchor:
         return None
 
-    # Tier 1: exact substring
-    pos = text.find(anchor, search_from)
-    if pos != -1:
-        return AnchorMatch(start=pos, end=pos + len(anchor), method="exact")
+    match = find_span(
+        anchor,
+        text,
+        within=(search_from, len(text)),
+        fuzzy="rapidfuzz",
+        fuzzy_threshold=_FUZZY_MIN_SCORE,
+    )
+    if match is None:
+        return None
 
-    # Tier 2: whitespace-normalised match (slide a window of equivalent length)
-    # We compare normalised anchor to normalised candidates of similar size.
-    norm_anchor = _normalise(anchor)
-    if norm_anchor:
-        # Heuristic: scan windows of [len(anchor) * 0.8, len(anchor) * 1.6]
-        for window_len in range(int(len(anchor) * 0.8), int(len(anchor) * 1.6) + 1):
-            for start in range(search_from, len(text) - window_len + 1):
-                candidate = text[start : start + window_len]
-                if _normalise(candidate) == norm_anchor:
-                    return AnchorMatch(
-                        start=start,
-                        end=start + window_len,
-                        method="whitespace_normalised",
-                    )
+    # Translate the unified API's method label into the chunker-specific
+    # public vocabulary that existing callers depend on.
+    method: Literal["exact", "whitespace_normalised", "fuzzy", "best_effort"]
+    if match.method == "exact":
+        method = "exact"
+    elif match.method == "normalized":
+        method = "whitespace_normalised"
+    else:
+        method = "fuzzy"
 
-    # Tier 3: fuzzy match
-    if _HAS_RAPIDFUZZ and _fuzz is not None:
-        for window_len in range(int(len(anchor) * 0.7), int(len(anchor) * 1.5) + 1):
-            best_score = 0
-            best_start = -1
-            for start in range(search_from, len(text) - window_len + 1):
-                candidate = text[start : start + window_len]
-                score = _fuzz.token_set_ratio(anchor, candidate)
-                if score > best_score:
-                    best_score = score
-                    best_start = start
-            if best_score >= _FUZZY_MIN_SCORE and best_start >= 0:
-                return AnchorMatch(
-                    start=best_start,
-                    end=best_start + window_len,
-                    method="fuzzy",
-                )
-
-    return None
+    return AnchorMatch(start=match.start, end=match.end, method=method)
 
 
 # `make_validator` (the LLM ModelRetry validator) was removed when the
