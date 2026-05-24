@@ -10,7 +10,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -26,7 +31,9 @@ class ExtractsRelevantQuotes(Evaluator[dict, object, dict]):
         if not quotes:
             return EvaluationReason(value=False, reason="No relevant quotes extracted")
         if all(len(q.strip()) < 20 for q in quotes):
-            return EvaluationReason(value=False, reason="All quotes are trivially short")
+            return EvaluationReason(
+                value=False, reason="All quotes are trivially short"
+            )
         return EvaluationReason(value=True, reason=f"Extracted {len(quotes)} quote(s)")
 
 
@@ -37,7 +44,11 @@ class IdentifiesKeyFindings(Evaluator[dict, object, dict]):
         expected = ctx.expected_output or {}
         must_mention = expected.get("must_mention", [])  # type: ignore[union-attr]
         if not must_mention:
-            return {"key_findings": EvaluationReason(value=True, reason="No must_mention specified")}
+            return {
+                "key_findings": EvaluationReason(
+                    value=True, reason="No must_mention specified"
+                )
+            }
 
         quotes = getattr(ctx.output, "relevant_quotes", [])
         context = getattr(ctx.output, "experimental_context", "")
@@ -62,9 +73,13 @@ class IdentifiesLimitations(Evaluator[dict, object, dict]):
         limitations = getattr(ctx.output, "limitations", [])
 
         if should_find_limitations and not limitations:
-            return EvaluationReason(value=False, reason="Expected limitations but none found")
+            return EvaluationReason(
+                value=False, reason="Expected limitations but none found"
+            )
         if should_find_limitations and limitations:
-            return EvaluationReason(value=True, reason=f"Found {len(limitations)} limitation(s)")
+            return EvaluationReason(
+                value=True, reason=f"Found {len(limitations)} limitation(s)"
+            )
         return EvaluationReason(value=True, reason="Limitation check passed")
 
 
@@ -107,7 +122,9 @@ CASES = [
             "must_mention": ["599,912", "100 g"],
             "has_limitations": True,
         },
-        metadata={"tests": "Source has contradictory findings for different endpoints. Must extract the nuance, not just one direction."},
+        metadata={
+            "tests": "Source has contradictory findings for different endpoints. Must extract the nuance, not just one direction."
+        },
     ),
     Case(
         name="signal_buried_in_noise",
@@ -131,7 +148,9 @@ CASES = [
             "must_mention": ["-6.6", "37%", "suicidal"],
             "has_limitations": True,
         },
-        metadata={"tests": "Commercial press release with actual data buried among hype. Must extract the trial data and ignore the marketing."},
+        metadata={
+            "tests": "Commercial press release with actual data buried among hype. Must extract the trial data and ignore the marketing."
+        },
     ),
     Case(
         name="methodological_detail_matters",
@@ -154,7 +173,9 @@ CASES = [
             "must_mention": ["4.1 years", "recall bias"],
             "has_limitations": True,
         },
-        metadata={"tests": "Must extract both the finding AND recognise the embedded methodological weaknesses as limitations."},
+        metadata={
+            "tests": "Must extract both the finding AND recognise the embedded methodological weaknesses as limitations."
+        },
     ),
     Case(
         name="database_with_confidence_scores",
@@ -178,7 +199,9 @@ CASES = [
             "must_mention": ["APP", "PSEN1", "PSEN2"],
             "has_limitations": False,
         },
-        metadata={"tests": "Structured database output with varying confidence levels. Must extract variants AND note the confidence differences (expert panel vs 1 submitter). APOE is a distractor — risk factor for late-onset, not early-onset."},
+        metadata={
+            "tests": "Structured database output with varying confidence levels. Must extract variants AND note the confidence differences (expert panel vs 1 submitter). APOE is a distractor — risk factor for late-onset, not early-onset."
+        },
     ),
     Case(
         name="preprint_with_extraordinary_claim",
@@ -203,7 +226,9 @@ CASES = [
             "must_mention": ["54%", "5 minutes"],
             "has_limitations": True,
         },
-        metadata={"tests": "Extraordinary claim from a preprint with serious methodological issues. Must extract the data but also capture the significant limitations and the response paper."},
+        metadata={
+            "tests": "Extraordinary claim from a preprint with serious methodological issues. Must extract the data but also capture the significant limitations and the response paper."
+        },
     ),
 ]
 

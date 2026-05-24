@@ -11,7 +11,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -28,9 +33,14 @@ class ScrutinyVerdictCorrect(Evaluator[dict, object, dict]):
         expected_pass = expected.get("passes_scrutiny")  # type: ignore[union-attr]
         actual_pass = getattr(output, "passes_scrutiny", None)
         if actual_pass is None:
-            return EvaluationReason(value=False, reason="Output missing passes_scrutiny field")
+            return EvaluationReason(
+                value=False, reason="Output missing passes_scrutiny field"
+            )
         if actual_pass == expected_pass:
-            return EvaluationReason(value=True, reason=f"Correctly {'accepted' if actual_pass else 'rejected'} claim")
+            return EvaluationReason(
+                value=True,
+                reason=f"Correctly {'accepted' if actual_pass else 'rejected'} claim",
+            )
         return EvaluationReason(
             value=False,
             reason=f"Expected passes_scrutiny={expected_pass}, got {actual_pass}",
@@ -48,14 +58,25 @@ class RecommendationValid(Evaluator[dict, object, dict]):
         passes = getattr(output, "passes_scrutiny", None)
 
         if rec not in self.VALID:
-            return EvaluationReason(value=False, reason=f"Invalid recommendation '{rec}', expected one of {self.VALID}")
+            return EvaluationReason(
+                value=False,
+                reason=f"Invalid recommendation '{rec}', expected one of {self.VALID}",
+            )
 
         if passes and rec == "demote":
-            return EvaluationReason(value=False, reason="Inconsistent: passes_scrutiny=True but recommends demote")
+            return EvaluationReason(
+                value=False,
+                reason="Inconsistent: passes_scrutiny=True but recommends demote",
+            )
         if not passes and rec == "promote":
-            return EvaluationReason(value=False, reason="Inconsistent: passes_scrutiny=False but recommends promote")
+            return EvaluationReason(
+                value=False,
+                reason="Inconsistent: passes_scrutiny=False but recommends promote",
+            )
 
-        return EvaluationReason(value=True, reason=f"Recommendation '{rec}' is valid and consistent")
+        return EvaluationReason(
+            value=True, reason=f"Recommendation '{rec}' is valid and consistent"
+        )
 
 
 class ConfidenceInRange(Evaluator[dict, object, dict]):
@@ -66,8 +87,12 @@ class ConfidenceInRange(Evaluator[dict, object, dict]):
         if conf is None:
             return EvaluationReason(value=False, reason="Missing confidence_estimate")
         if not (0.0 <= conf <= 1.0):
-            return EvaluationReason(value=False, reason=f"confidence_estimate {conf} outside [0,1]")
-        return EvaluationReason(value=True, reason=f"Confidence {conf:.2f} in valid range")
+            return EvaluationReason(
+                value=False, reason=f"confidence_estimate {conf} outside [0,1]"
+            )
+        return EvaluationReason(
+            value=True, reason=f"Confidence {conf:.2f} in valid range"
+        )
 
 
 class IssuesDetected(Evaluator[dict, object, dict]):
@@ -78,9 +103,13 @@ class IssuesDetected(Evaluator[dict, object, dict]):
         should_find_issues = expected.get("should_find_issues", False)  # type: ignore[union-attr]
         issues = getattr(ctx.output, "issues_found", [])
         if should_find_issues and len(issues) == 0:
-            return EvaluationReason(value=False, reason="Expected issues to be found but none were reported")
+            return EvaluationReason(
+                value=False, reason="Expected issues to be found but none were reported"
+            )
         if should_find_issues and len(issues) > 0:
-            return EvaluationReason(value=True, reason=f"Correctly found {len(issues)} issue(s)")
+            return EvaluationReason(
+                value=True, reason=f"Correctly found {len(issues)} issue(s)"
+            )
         return EvaluationReason(value=True, reason="Issue detection check passed")
 
 
@@ -116,7 +145,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": True, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Can the agent promote despite a retracted study in the mix, recognising the other evidence is independent?"},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Can the agent promote despite a retracted study in the mix, recognising the other evidence is independent?",
+        },
     ),
     Case(
         name="true_but_trivially_scoped",
@@ -131,7 +163,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": True, "should_find_issues": True},
-        metadata={"difficulty": "medium", "tests": "Strong evidence but scope is narrow — agent should promote but note scope limitation"},
+        metadata={
+            "difficulty": "medium",
+            "tests": "Strong evidence but scope is narrow — agent should promote but note scope limitation",
+        },
     ),
     # ── SHOULD FAIL: subtle problems ──
     Case(
@@ -147,7 +182,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": False, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Large prestigious study but uncontrolled confounders + contradicted by larger study. Causal claim from observational data."},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Large prestigious study but uncontrolled confounders + contradicted by larger study. Causal claim from observational data.",
+        },
     ),
     Case(
         name="survivorship_bias",
@@ -162,7 +200,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": False, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Survivorship bias explicitly noted. Must recognise that excluding failures from the denominator invalidates the claim."},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Survivorship bias explicitly noted. Must recognise that excluding failures from the denominator invalidates the claim.",
+        },
     ),
     Case(
         name="ecological_fallacy",
@@ -177,7 +218,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": False, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Published in NEJM (high-prestige journal) but is a well-known example of ecological fallacy and spurious correlation. Must not be swayed by journal prestige."},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Published in NEJM (high-prestige journal) but is a well-known example of ecological fallacy and spurious correlation. Must not be swayed by journal prestige.",
+        },
     ),
     Case(
         name="scope_mismatch_between_evidence_and_claim",
@@ -192,7 +236,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": False, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Claim says 'ineffective' but evidence shows they work for severe depression. Scope mismatch: evidence differentiates by severity, claim doesn't. Third source contradicts."},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Claim says 'ineffective' but evidence shows they work for severe depression. Scope mismatch: evidence differentiates by severity, claim doesn't. Third source contradicts.",
+        },
     ),
     Case(
         name="genuinely_uncertain_emerging_field",
@@ -208,7 +255,10 @@ CASES = [
             ],
         },
         expected_output={"passes_scrutiny": False, "should_find_issues": True},
-        metadata={"difficulty": "hard", "tests": "Strong preclinical evidence from top journals, but claim is about humans and evidence is from mice + tiny Phase I. Must distinguish species gap."},
+        metadata={
+            "difficulty": "hard",
+            "tests": "Strong preclinical evidence from top journals, but claim is about humans and evidence is from mice + tiny Phase I. Must distinguish species gap.",
+        },
     ),
 ]
 

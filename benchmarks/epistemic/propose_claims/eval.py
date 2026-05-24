@@ -13,7 +13,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -31,10 +36,17 @@ class ProducesClaimsInRange(Evaluator[dict, object, dict]):
         max_claims = expected.get("max_claims", 10)  # type: ignore[union-attr]
 
         if len(claims) < min_claims:
-            return EvaluationReason(value=False, reason=f"Only {len(claims)} claims, expected ≥{min_claims}")
+            return EvaluationReason(
+                value=False, reason=f"Only {len(claims)} claims, expected ≥{min_claims}"
+            )
         if len(claims) > max_claims:
-            return EvaluationReason(value=False, reason=f"{len(claims)} claims, expected ≤{max_claims}")
-        return EvaluationReason(value=True, reason=f"{len(claims)} claims in expected range [{min_claims}, {max_claims}]")
+            return EvaluationReason(
+                value=False, reason=f"{len(claims)} claims, expected ≤{max_claims}"
+            )
+        return EvaluationReason(
+            value=True,
+            reason=f"{len(claims)} claims in expected range [{min_claims}, {max_claims}]",
+        )
 
 
 class ClaimsHaveRequiredFields(Evaluator[dict, object, dict]):
@@ -55,7 +67,9 @@ class ClaimsHaveRequiredFields(Evaluator[dict, object, dict]):
                 issues.append(f"Claim {i}: missing evidence_refs")
         if issues:
             return EvaluationReason(value=False, reason="; ".join(issues))
-        return EvaluationReason(value=True, reason=f"All {len(claims)} claims have required fields")
+        return EvaluationReason(
+            value=True, reason=f"All {len(claims)} claims have required fields"
+        )
 
 
 class ClaimsAnswerObjective(Evaluator[dict, object, dict]):
@@ -66,7 +80,9 @@ class ClaimsAnswerObjective(Evaluator[dict, object, dict]):
         objective = ctx.inputs.get("objective", "").lower()
         key_words = [w for w in objective.split() if len(w) > 4]
         if not key_words or not claims:
-            return EvaluationReason(value=True, reason="Skipped (no key words or no claims)")
+            return EvaluationReason(
+                value=True, reason="Skipped (no key words or no claims)"
+            )
 
         any_related = False
         for claim in claims:
@@ -75,7 +91,9 @@ class ClaimsAnswerObjective(Evaluator[dict, object, dict]):
                 any_related = True
                 break
         if any_related:
-            return EvaluationReason(value=True, reason="At least one claim references objective terms")
+            return EvaluationReason(
+                value=True, reason="At least one claim references objective terms"
+            )
         return EvaluationReason(
             value=False,
             reason="No claims appear to reference the objective's key terms",
@@ -114,7 +132,9 @@ CASES = [
             ],
         },
         expected_output={"min_claims": 1, "max_claims": 4},
-        metadata={"tests": "Evidence says 'no significant difference'. A good claim must reflect this rather than claiming superiority of either approach. E003 is weak (N=19, no control) — should it be cited?"},
+        metadata={
+            "tests": "Evidence says 'no significant difference'. A good claim must reflect this rather than claiming superiority of either approach. E003 is weak (N=19, no control) — should it be cited?"
+        },
     ),
     Case(
         name="evidence_doesnt_answer_question",
@@ -133,7 +153,9 @@ CASES = [
             ],
         },
         expected_output={"min_claims": 1, "max_claims": 3},
-        metadata={"tests": "Evidence consistently says 'no benefit found'. The correct claim is a negative finding. Agent should NOT invent positive claims when evidence doesn't support them."},
+        metadata={
+            "tests": "Evidence consistently says 'no benefit found'. The correct claim is a negative finding. Agent should NOT invent positive claims when evidence doesn't support them."
+        },
     ),
     Case(
         name="scope_limiting_is_critical",
@@ -154,7 +176,9 @@ CASES = [
             ],
         },
         expected_output={"min_claims": 2, "max_claims": 5},
-        metadata={"tests": "Multi-dimensional question where 'better' spans GHG, mining impacts, recycling, grid dependency. Claims must be appropriately scoped — not a blanket 'yes' or 'no'."},
+        metadata={
+            "tests": "Multi-dimensional question where 'better' spans GHG, mining impacts, recycling, grid dependency. Claims must be appropriately scoped — not a blanket 'yes' or 'no'."
+        },
     ),
     Case(
         name="strong_evidence_narrow_question",
@@ -174,7 +198,9 @@ CASES = [
             ],
         },
         expected_output={"min_claims": 1, "max_claims": 3},
-        metadata={"tests": "Clear answer (~0.80) but with the interesting 'missing heritability' problem. Agent should formulate a direct answer and may note the GWAS gap."},
+        metadata={
+            "tests": "Clear answer (~0.80) but with the interesting 'missing heritability' problem. Agent should formulate a direct answer and may note the GWAS gap."
+        },
     ),
     Case(
         name="mixed_quality_evidence_same_direction",
@@ -193,7 +219,9 @@ CASES = [
             ],
         },
         expected_output={"min_claims": 1, "max_claims": 3},
-        metadata={"tests": "Three credible sources + one Reddit anecdote all pointing same direction. Should the agent cite E003? Good claims should reference E001/E002/E004 and ignore or deprioritise E003."},
+        metadata={
+            "tests": "Three credible sources + one Reddit anecdote all pointing same direction. Should the agent cite E003? Good claims should reference E001/E002/E004 and ignore or deprioritise E003."
+        },
     ),
 ]
 

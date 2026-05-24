@@ -330,10 +330,7 @@ async def save_case(req: SaveCaseRequest) -> SaveCaseResponse:
     if not req.overwrite and (input_path.exists() or truth_path.exists()):
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"case {name!r} already exists "
-                f"(pass overwrite=true to replace)"
-            ),
+            detail=(f"case {name!r} already exists (pass overwrite=true to replace)"),
         )
 
     truth_doc = {

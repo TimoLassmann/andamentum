@@ -145,8 +145,7 @@ async def _async_main(args: argparse.Namespace) -> int:
     if failures:
         print()
         print(
-            f"FAIL: {len(failures)} provider(s) below "
-            f"triage_accuracy={args.threshold}:"
+            f"FAIL: {len(failures)} provider(s) below triage_accuracy={args.threshold}:"
         )
         for r in failures:
             print(f"  - {r.provider}: {r.triage_accuracy:.2f}")

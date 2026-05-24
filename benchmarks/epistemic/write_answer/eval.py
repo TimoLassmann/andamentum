@@ -10,7 +10,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -26,7 +31,9 @@ class HasTitle(Evaluator[dict, object, dict]):
         if not title or len(title.strip()) < 5:
             return EvaluationReason(value=False, reason="Title is empty or too short")
         if len(title) > 200:
-            return EvaluationReason(value=False, reason=f"Title too long ({len(title)} chars)")
+            return EvaluationReason(
+                value=False, reason=f"Title too long ({len(title)} chars)"
+            )
         return EvaluationReason(value=True, reason=f"Title present: '{title[:60]}...'")
 
 
@@ -39,7 +46,9 @@ class AnswerSubstantive(Evaluator[dict, object, dict]):
             return EvaluationReason(value=False, reason="Answer is empty")
         word_count = len(answer.split())
         if word_count < 50:
-            return EvaluationReason(value=False, reason=f"Answer too short ({word_count} words)")
+            return EvaluationReason(
+                value=False, reason=f"Answer too short ({word_count} words)"
+            )
         return EvaluationReason(value=True, reason=f"Answer is {word_count} words")
 
 
@@ -50,7 +59,11 @@ class AnswerMentionsKeyTerms(Evaluator[dict, object, dict]):
         expected = ctx.expected_output or {}
         must_mention = expected.get("must_mention", [])  # type: ignore[union-attr]
         if not must_mention:
-            return {"key_terms": EvaluationReason(value=True, reason="No must_mention specified")}
+            return {
+                "key_terms": EvaluationReason(
+                    value=True, reason="No must_mention specified"
+                )
+            }
 
         answer = getattr(ctx.output, "answer", "").lower()
         results = {}
@@ -72,12 +85,28 @@ class AnswerReflectsUncertainty(Evaluator[dict, object, dict]):
             return EvaluationReason(value=True, reason="No uncertainties to check")
 
         answer = getattr(ctx.output, "answer", "").lower()
-        hedge_words = ["however", "caveat", "limitation", "uncertain", "unclear",
-                       "debate", "caution", "note that", "although", "while",
-                       "insufficient", "cannot", "premature", "limited"]
+        hedge_words = [
+            "however",
+            "caveat",
+            "limitation",
+            "uncertain",
+            "unclear",
+            "debate",
+            "caution",
+            "note that",
+            "although",
+            "while",
+            "insufficient",
+            "cannot",
+            "premature",
+            "limited",
+        ]
         has_hedging = any(w in answer for w in hedge_words)
         if has_hedging:
-            return EvaluationReason(value=True, reason="Answer reflects uncertainty with appropriate hedging")
+            return EvaluationReason(
+                value=True,
+                reason="Answer reflects uncertainty with appropriate hedging",
+            )
         return EvaluationReason(
             value=False,
             reason="Uncertainties were provided but answer lacks hedging language",
@@ -127,7 +156,9 @@ CASES = [
         expected_output={
             "must_mention": ["transfer", "FTC"],
         },
-        metadata={"tests": "The honest answer is 'no, not for general cognition'. Agent must not soften this to be diplomatic — the evidence is clear."},
+        metadata={
+            "tests": "The honest answer is 'no, not for general cognition'. Agent must not soften this to be diplomatic — the evidence is clear."
+        },
     ),
     Case(
         name="contradictory_claims_different_stages",
@@ -158,7 +189,9 @@ CASES = [
         expected_output={
             "must_mention": ["language", "Sesame Street"],
         },
-        metadata={"tests": "Three claims at different epistemic stages. Answer must calibrate confidence per-claim, not give a single verdict. Claim 3 (social media → depression) is only HYPOTHESIS with low adversarial balance — must be hedged heavily."},
+        metadata={
+            "tests": "Three claims at different epistemic stages. Answer must calibrate confidence per-claim, not give a single verdict. Claim 3 (social media → depression) is only HYPOTHESIS with low adversarial balance — must be hedged heavily."
+        },
     ),
     Case(
         name="answer_must_acknowledge_limits",
@@ -186,7 +219,9 @@ CASES = [
         expected_output={
             "must_mention": ["definition", "uncertain"],
         },
-        metadata={"tests": "Three blocking uncertainties, two HYPOTHESIS claims, no robust evidence. The honest answer is 'we cannot answer this reliably'. Agent must not fabricate confidence."},
+        metadata={
+            "tests": "Three blocking uncertainties, two HYPOTHESIS claims, no robust evidence. The honest answer is 'we cannot answer this reliably'. Agent must not fabricate confidence."
+        },
     ),
     Case(
         name="synthesis_with_adversarial_results",
@@ -217,7 +252,9 @@ CASES = [
         expected_output={
             "must_mention": ["PREDIMED", "retract"],
         },
-        metadata={"tests": "Claim 1 is ROBUST but the key trial was retracted/republished. Agent must mention this — it's the most important nuance. A faithful answer includes the retraction context."},
+        metadata={
+            "tests": "Claim 1 is ROBUST but the key trial was retracted/republished. Agent must mention this — it's the most important nuance. A faithful answer includes the retraction context."
+        },
     ),
 ]
 
