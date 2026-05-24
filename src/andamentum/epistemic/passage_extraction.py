@@ -14,6 +14,8 @@ import difflib
 import re
 from dataclasses import dataclass
 
+from andamentum.core.text_match import normalize_for_match
+
 from .embeddings import _MAX_EMBED_CHARS, _OVERLAP_CHARS, _chunk_text, embed_texts
 from .similarity import (
     cosine_similarity as _cosine_similarity,
@@ -72,9 +74,16 @@ class LocatedPassage:
 _STRIDE = _MAX_EMBED_CHARS - _OVERLAP_CHARS  # 1800
 
 
-def _normalize_whitespace(text: str) -> str:
-    """Collapse all whitespace to single spaces and strip edges."""
-    return re.sub(r"\s+", " ", text).strip()
+def _normalize_for_pointer_match(text: str) -> str:
+    """Pointer-to-chunk attribution normalises both sides via the
+    project-wide canonical contract (case fold + smart-quote strip +
+    whitespace collapse + markdown strip). Deep-research wraps verbatim
+    excerpts in curly quotes that don't appear in the raw page, so edge
+    quote-stripping is load-bearing here; markdown stripping is a no-op
+    on plain web text but keeps the rules uniform with the rest of the
+    system (see ``andamentum.core.text_match``)."""
+    normalized, _ = normalize_for_match(text)
+    return normalized
 
 
 def _find_pointer_in_chunks(pointer_text: str, chunks: list[str]) -> int | None:
@@ -87,14 +96,13 @@ def _find_pointer_in_chunks(pointer_text: str, chunks: list[str]) -> int | None:
     """
     # Strip surrounding quote marks (ASCII and smart quotes) — deep-research
     # wraps verbatim excerpts in quotes that don't appear in the raw page text.
-    cleaned = pointer_text.strip().strip("\"'\u201c\u201d\u2018\u2019")
-    norm_pointer = _normalize_whitespace(cleaned).lower()
+    norm_pointer = _normalize_for_pointer_match(pointer_text)
     if not norm_pointer:
         return None
 
     # Pass 1: exact substring
     for i, chunk in enumerate(chunks):
-        if norm_pointer in _normalize_whitespace(chunk).lower():
+        if norm_pointer in _normalize_for_pointer_match(chunk):
             return i
 
     # Pass 2: fuzzy match
@@ -102,7 +110,7 @@ def _find_pointer_in_chunks(pointer_text: str, chunks: list[str]) -> int | None:
     best_ratio = 0.0
     for i, chunk in enumerate(chunks):
         ratio = difflib.SequenceMatcher(
-            None, norm_pointer, _normalize_whitespace(chunk).lower()
+            None, norm_pointer, _normalize_for_pointer_match(chunk)
         ).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
