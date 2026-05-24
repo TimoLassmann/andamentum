@@ -147,7 +147,10 @@ class CritiqueRevise(BaseNode[V3State, V3Deps, ReviewResult]):
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
         ctx.state.review = await critique_and_revise(
-            model, ctx.state.review, agent_model=ctx.deps.agent_model
+            model,
+            ctx.state.review,
+            ctx.state.findings,
+            agent_model=ctx.deps.agent_model,
         )
         return Finalize()
 

@@ -90,26 +90,77 @@ async def synthesise(
 
 
 async def critique_and_revise(
-    model: DocumentModel, draft: StructuredReview, *, agent_model: str
+    model: DocumentModel,
+    draft: StructuredReview,
+    findings: list[Finding],
+    *,
+    agent_model: str,
 ) -> StructuredReview:
-    """Reread the draft against the document; drop unsupported statements."""
+    """Reread the draft against the document; drop unsupported statements.
+
+    Validates the three parts of the draft against three different ground
+    truths:
+
+    - **synopsis / strengths** are positive-character assertions ABOUT the
+      document. Validated against ``model.gists`` (what each section is)
+      and ``model.claims`` (what the author explicitly asserts). A
+      strength that contradicts the gists/claims is hallucinated.
+    - **weaknesses** are absence- or flaw-based reviewer notes that the
+      author would NOT assert themselves. Validated against the
+      ``findings`` list (which has already passed the hallucination gate
+      in ``gate.py``). A weakness with no corresponding finding is
+      hallucinated; a weakness that mirrors a real finding is kept even
+      if the author's claims don't mention the gap.
+
+    The previous version validated everything against ``model.claims``
+    alone, which structurally cannot support absence-based weaknesses —
+    the author doesn't claim what's missing. Empirical audit found
+    5/13 weaknesses in the smoke runs were absence-based and 4/13
+    typo/presentation; both classes would be silently deleted by the
+    old critique step. See plan
+    docs/plans/2026-05-24-whetstone-v3-prompt-quality.md §8 issue 1.
+    """
     defn = AgentDefinition(
         name="v3_critique_revise",
         prompt=(
-            "You are reviewing a draft review for faithfulness to the document. "
-            "Remove or soften any statement the document's claims do not support, "
-            "fix factual slips, and return the corrected structured review. Keep "
-            "what is well-supported."
+            "You are reviewing a draft review for faithfulness to the document.\n\n"
+            "Use THREE ground-truth blocks:\n"
+            "  - SECTION GISTS: what each section is about.\n"
+            "  - AUTHOR CLAIMS: what the author explicitly asserts.\n"
+            "  - SUPPORTED FINDINGS: reviewer-side observations the system has "
+            "already verified against the source (the hallucination gate has "
+            "already run on these).\n\n"
+            "Validate the draft's three parts against these ground truths:\n"
+            "  - synopsis: must be consistent with section gists and author claims. "
+            "Remove or soften any sentence that contradicts them.\n"
+            "  - strengths: must be supported by gists or author claims. Remove "
+            "any strength the document doesn't back up.\n"
+            "  - weaknesses: must correspond to a listed finding. Do NOT drop a "
+            "weakness just because the author doesn't assert the gap "
+            "themselves — absence-based weaknesses (\"no baseline comparison\", "
+            "\"lacks confidence intervals\") and typo/presentation issues "
+            "(\"broken notation\") are exactly the kind the findings list "
+            "exists to legitimise. Only drop a weakness if no finding supports "
+            "it.\n\n"
+            "Return the corrected structured review. Preserve what is well-supported."
         ),
         output_model=StructuredReview,
         retries=2,
         output_retries=2,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
-    claims = "\n".join(f"  - {c.quote}" for c in model.claims) or "  (none)"
+    gists_block = (
+        "\n".join(f"  - {g.title}: {g.gist}" for g in model.gists) or "  (none)"
+    )
+    claims_block = (
+        "\n".join(f"  - {c.quote}" for c in model.claims) or "  (none)"
+    )
+    findings_block = _findings_block(findings)
     res = await agent.run(
         f"DRAFT REVIEW:\n{draft.model_dump_json(indent=2)}\n\n"
-        f"DOCUMENT CLAIMS (ground truth):\n{claims}"
+        f"SECTION GISTS:\n{gists_block}\n\n"
+        f"AUTHOR CLAIMS:\n{claims_block}\n\n"
+        f"SUPPORTED FINDINGS:\n{findings_block}"
     )
     return cast(StructuredReview, res.output)
 
