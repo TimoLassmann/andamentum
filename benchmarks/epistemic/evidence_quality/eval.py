@@ -10,7 +10,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -28,11 +33,17 @@ class ScoresInRange(Evaluator[dict, object, dict]):
         for field in self.FIELDS:
             val = getattr(ctx.output, field, None)
             if val is None:
-                results[f"{field}_range"] = EvaluationReason(value=False, reason=f"Missing {field}")
+                results[f"{field}_range"] = EvaluationReason(
+                    value=False, reason=f"Missing {field}"
+                )
             elif not (0.0 <= val <= 1.0):
-                results[f"{field}_range"] = EvaluationReason(value=False, reason=f"{field}={val} outside [0,1]")
+                results[f"{field}_range"] = EvaluationReason(
+                    value=False, reason=f"{field}={val} outside [0,1]"
+                )
             else:
-                results[f"{field}_range"] = EvaluationReason(value=True, reason=f"{field}={val:.2f} OK")
+                results[f"{field}_range"] = EvaluationReason(
+                    value=True, reason=f"{field}={val:.2f} OK"
+                )
         return results
 
 
@@ -42,16 +53,27 @@ class QualityOrdering(Evaluator[dict, object, dict]):
     def evaluate(self, ctx: EvaluatorContext) -> dict[str, EvaluationReason]:
         expected = ctx.expected_output or {}
         results = {}
-        for dim in ["source_credibility", "relevance", "specificity", "recency_appropriate"]:
+        for dim in [
+            "source_credibility",
+            "relevance",
+            "specificity",
+            "recency_appropriate",
+        ]:
             val = getattr(ctx.output, dim, 0.5)
             lo = expected.get(f"min_{dim}")  # type: ignore[union-attr]
             hi = expected.get(f"max_{dim}")  # type: ignore[union-attr]
             if lo is not None and val < lo:
-                results[f"{dim}_ordering"] = EvaluationReason(value=False, reason=f"{dim} {val:.2f} < expected min {lo}")
+                results[f"{dim}_ordering"] = EvaluationReason(
+                    value=False, reason=f"{dim} {val:.2f} < expected min {lo}"
+                )
             elif hi is not None and val > hi:
-                results[f"{dim}_ordering"] = EvaluationReason(value=False, reason=f"{dim} {val:.2f} > expected max {hi}")
+                results[f"{dim}_ordering"] = EvaluationReason(
+                    value=False, reason=f"{dim} {val:.2f} > expected max {hi}"
+                )
             elif lo is not None or hi is not None:
-                results[f"{dim}_ordering"] = EvaluationReason(value=True, reason=f"{dim} {val:.2f} in expected range")
+                results[f"{dim}_ordering"] = EvaluationReason(
+                    value=True, reason=f"{dim} {val:.2f} in expected range"
+                )
         return results
 
 
@@ -61,8 +83,12 @@ class HasJustification(Evaluator[dict, object, dict]):
     def evaluate(self, ctx: EvaluatorContext) -> EvaluationReason:
         justification = getattr(ctx.output, "justification", "")
         if not justification or len(justification.strip()) < 10:
-            return EvaluationReason(value=False, reason="Justification is empty or too short")
-        return EvaluationReason(value=True, reason=f"Justification present ({len(justification)} chars)")
+            return EvaluationReason(
+                value=False, reason="Justification is empty or too short"
+            )
+        return EvaluationReason(
+            value=True, reason=f"Justification present ({len(justification)} chars)"
+        )
 
 
 # ── Task Function ────────────────────────────────────────────────────────
@@ -96,7 +122,9 @@ CASES = [
             "source_ref": "doi:10.1038/nature-retracted-example",
         },
         expected_output={"max_source_credibility": 0.3},
-        metadata={"tests": "Retracted paper from top journal. Prestige should NOT override retraction status."},
+        metadata={
+            "tests": "Retracted paper from top journal. Prestige should NOT override retraction status."
+        },
     ),
     Case(
         name="arxiv_from_known_group",
@@ -114,7 +142,9 @@ CASES = [
             "source_ref": "arxiv:2201.11903",
         },
         expected_output={"min_source_credibility": 0.6},
-        metadata={"tests": "Not peer-reviewed (arXiv) but from major lab, massively cited, independently replicated. Credibility is ambiguous."},
+        metadata={
+            "tests": "Not peer-reviewed (arXiv) but from major lab, massively cited, independently replicated. Credibility is ambiguous."
+        },
     ),
     Case(
         name="industry_funded_with_positive_results",
@@ -131,7 +161,9 @@ CASES = [
             "source_ref": "doi:10.1056/NEJMoa1501031",
         },
         expected_output={"min_source_credibility": 0.5, "max_source_credibility": 0.85},
-        metadata={"tests": "NEJM publication but industry-funded with surrogate endpoint. Should not get maximum credibility despite top journal."},
+        metadata={
+            "tests": "NEJM publication but industry-funded with surrogate endpoint. Should not get maximum credibility despite top journal."
+        },
     ),
     Case(
         name="who_guideline_as_evidence",
@@ -148,7 +180,9 @@ CASES = [
             "source_ref": "WHO/NMH/NHD/17.1",
         },
         expected_output={"min_source_credibility": 0.7, "max_relevance": 0.9},
-        metadata={"tests": "WHO guideline is authoritative but is a secondary synthesis, not primary evidence. Explicitly notes moderate quality."},
+        metadata={
+            "tests": "WHO guideline is authoritative but is a secondary synthesis, not primary evidence. Explicitly notes moderate quality."
+        },
     ),
     Case(
         name="high_quality_but_wrong_domain",
@@ -164,7 +198,9 @@ CASES = [
             "source_ref": "doi:10.1002/14651858.CD013574.pub2",
         },
         expected_output={"min_source_credibility": 0.8, "max_relevance": 0.3},
-        metadata={"tests": "Excellent methodology (Cochrane SR) but wrong domain — anxiety, not pain. Must score high credibility but low relevance."},
+        metadata={
+            "tests": "Excellent methodology (Cochrane SR) but wrong domain — anxiety, not pain. Must score high credibility but low relevance."
+        },
     ),
     Case(
         name="preregistered_null_result",
@@ -182,7 +218,9 @@ CASES = [
             "source_ref": "doi:10.1177/0956797614553946",
         },
         expected_output={"min_source_credibility": 0.8, "min_relevance": 0.8},
-        metadata={"tests": "Pre-registered replication failure directly contradicting the claim. High quality AND high relevance — as evidence AGAINST the claim."},
+        metadata={
+            "tests": "Pre-registered replication failure directly contradicting the claim. High quality AND high relevance — as evidence AGAINST the claim."
+        },
     ),
     Case(
         name="animal_model_for_human_claim",
@@ -199,7 +237,9 @@ CASES = [
             "source_ref": "doi:10.1038/nature05354",
         },
         expected_output={"min_source_credibility": 0.7, "max_relevance": 0.4},
-        metadata={"tests": "Top journal, rigorous methodology, but mouse model for a human lifespan claim. Relevance should be low due to species gap and dose scaling."},
+        metadata={
+            "tests": "Top journal, rigorous methodology, but mouse model for a human lifespan claim. Relevance should be low due to species gap and dose scaling."
+        },
     ),
 ]
 

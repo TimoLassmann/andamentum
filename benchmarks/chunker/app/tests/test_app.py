@@ -502,7 +502,10 @@ def test_fetch_502_on_extraction_failure(fake_harvest):
         # arXiv abstract → PDF
         ("https://arxiv.org/abs/1901.01753", "https://arxiv.org/pdf/1901.01753"),
         ("http://arxiv.org/abs/1901.01753", "http://arxiv.org/pdf/1901.01753"),
-        ("https://www.arxiv.org/abs/1901.01753", "https://www.arxiv.org/pdf/1901.01753"),
+        (
+            "https://www.arxiv.org/abs/1901.01753",
+            "https://www.arxiv.org/pdf/1901.01753",
+        ),
         # arXiv abstract with version suffix — version is stripped
         ("https://arxiv.org/abs/1901.01753v3", "https://arxiv.org/pdf/1901.01753"),
         ("https://arxiv.org/abs/cs.LG/0102003", "https://arxiv.org/pdf/cs.LG/0102003"),

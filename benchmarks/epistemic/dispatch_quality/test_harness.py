@@ -113,16 +113,32 @@ class TestTierOneForProvider:
     async def test_all_correct_gives_perfect_scores(self) -> None:
         """When the dispatch agent triages perfectly, hit_rate = 1.0,
         abstention_accuracy = 1.0, triage_accuracy = 1.0."""
-        provider = _MinimalProvider([
-            ("in-domain claim A", "q-A"),
-            ("in-domain claim B", "q-B"),
-            ("out-of-domain claim X", None),
-        ])
-        runner = _CannedRunner(by_claim={
-            "in-domain claim A": {"queries": ["q-A"], "reasoning": "fits", "confidence": 0.8},
-            "in-domain claim B": {"queries": ["q-B"], "reasoning": "fits", "confidence": 0.7},
-            "out-of-domain claim X": {"queries": [], "reasoning": "abstain", "confidence": 0.9},
-        })
+        provider = _MinimalProvider(
+            [
+                ("in-domain claim A", "q-A"),
+                ("in-domain claim B", "q-B"),
+                ("out-of-domain claim X", None),
+            ]
+        )
+        runner = _CannedRunner(
+            by_claim={
+                "in-domain claim A": {
+                    "queries": ["q-A"],
+                    "reasoning": "fits",
+                    "confidence": 0.8,
+                },
+                "in-domain claim B": {
+                    "queries": ["q-B"],
+                    "reasoning": "fits",
+                    "confidence": 0.7,
+                },
+                "out-of-domain claim X": {
+                    "queries": [],
+                    "reasoning": "abstain",
+                    "confidence": 0.9,
+                },
+            }
+        )
 
         result = await run_tier_one_for_provider(
             provider_name="testp",
@@ -140,14 +156,26 @@ class TestTierOneForProvider:
 
     async def test_in_domain_abstain_is_a_miss(self) -> None:
         """When the agent abstains on an in-domain claim, hit_rate drops."""
-        provider = _MinimalProvider([
-            ("in-domain claim", "expected query"),
-            ("out-of-domain claim", None),
-        ])
-        runner = _CannedRunner(by_claim={
-            "in-domain claim": {"queries": [], "reasoning": "wrongly abstained", "confidence": 0.5},
-            "out-of-domain claim": {"queries": [], "reasoning": "correctly abstained", "confidence": 0.9},
-        })
+        provider = _MinimalProvider(
+            [
+                ("in-domain claim", "expected query"),
+                ("out-of-domain claim", None),
+            ]
+        )
+        runner = _CannedRunner(
+            by_claim={
+                "in-domain claim": {
+                    "queries": [],
+                    "reasoning": "wrongly abstained",
+                    "confidence": 0.5,
+                },
+                "out-of-domain claim": {
+                    "queries": [],
+                    "reasoning": "correctly abstained",
+                    "confidence": 0.9,
+                },
+            }
+        )
 
         result = await run_tier_one_for_provider(
             provider_name="testp",
@@ -163,14 +191,26 @@ class TestTierOneForProvider:
     async def test_out_of_domain_commit_is_a_miss(self) -> None:
         """When the agent commits on an out-of-domain claim, abstention
         accuracy drops."""
-        provider = _MinimalProvider([
-            ("in-domain claim", "qid"),
-            ("out-of-domain claim", None),
-        ])
-        runner = _CannedRunner(by_claim={
-            "in-domain claim": {"queries": ["qid"], "reasoning": "fits", "confidence": 0.8},
-            "out-of-domain claim": {"queries": ["wrong"], "reasoning": "should have abstained", "confidence": 0.6},
-        })
+        provider = _MinimalProvider(
+            [
+                ("in-domain claim", "qid"),
+                ("out-of-domain claim", None),
+            ]
+        )
+        runner = _CannedRunner(
+            by_claim={
+                "in-domain claim": {
+                    "queries": ["qid"],
+                    "reasoning": "fits",
+                    "confidence": 0.8,
+                },
+                "out-of-domain claim": {
+                    "queries": ["wrong"],
+                    "reasoning": "should have abstained",
+                    "confidence": 0.6,
+                },
+            }
+        )
 
         result = await run_tier_one_for_provider(
             provider_name="testp",
@@ -183,16 +223,20 @@ class TestTierOneForProvider:
 
     async def test_outcomes_record_each_claim(self) -> None:
         """The result has one TierOneClaimOutcome per example tested."""
-        provider = _MinimalProvider([
-            ("a", "qa"),
-            ("b", None),
-            ("c", "qc"),
-        ])
-        runner = _CannedRunner(by_claim={
-            "a": {"queries": ["qa"], "reasoning": "x", "confidence": 0.7},
-            "c": {"queries": ["qc"], "reasoning": "y", "confidence": 0.7},
-            # "b" not in map → defaults to abstain
-        })
+        provider = _MinimalProvider(
+            [
+                ("a", "qa"),
+                ("b", None),
+                ("c", "qc"),
+            ]
+        )
+        runner = _CannedRunner(
+            by_claim={
+                "a": {"queries": ["qa"], "reasoning": "x", "confidence": 0.7},
+                "c": {"queries": ["qc"], "reasoning": "y", "confidence": 0.7},
+                # "b" not in map → defaults to abstain
+            }
+        )
 
         result = await run_tier_one_for_provider(
             provider_name="testp",
@@ -225,10 +269,7 @@ class TestTierOneForProvider:
             captured_provider_examples.append(
                 # The query_examples kwarg is the rendered string; recover the
                 # claim list by checking which claims appear in it.
-                [
-                    (c, q) for c, q in examples
-                    if c in kwargs.get("query_examples", "")
-                ]
+                [(c, q) for c, q in examples if c in kwargs.get("query_examples", "")]
             )
             return await original_run(defn, **kwargs)
 
@@ -258,11 +299,13 @@ class TestTierOneForProvider:
 
     async def test_provider_proxy_masks_correctly(self) -> None:
         """Unit-test the _ProviderWithMaskedExamples proxy directly."""
-        inner = _MinimalProvider([
-            ("a", "qa"),
-            ("b", "qb"),
-            ("c", None),
-        ])
+        inner = _MinimalProvider(
+            [
+                ("a", "qa"),
+                ("b", "qb"),
+                ("c", None),
+            ]
+        )
         proxy = _ProviderWithMaskedExamples(
             inner=inner,
             held_out_claims={"a", "c"},

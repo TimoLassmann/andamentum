@@ -10,7 +10,12 @@ Run:
 """
 
 from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext, EvaluationReason, LLMJudge
+from pydantic_evals.evaluators import (
+    Evaluator,
+    EvaluatorContext,
+    EvaluationReason,
+    LLMJudge,
+)
 
 from conftest import run_agent
 
@@ -27,7 +32,10 @@ class RecommendationValid(Evaluator[dict, object, dict]):
         rec = getattr(ctx.output, "recommendation", "")
         if rec in self.VALID:
             return EvaluationReason(value=True, reason=f"Valid recommendation: {rec}")
-        return EvaluationReason(value=False, reason=f"Invalid recommendation '{rec}', expected one of {self.VALID}")
+        return EvaluationReason(
+            value=False,
+            reason=f"Invalid recommendation '{rec}', expected one of {self.VALID}",
+        )
 
 
 class RecommendationMatchesExpected(Evaluator[dict, object, dict]):
@@ -37,11 +45,16 @@ class RecommendationMatchesExpected(Evaluator[dict, object, dict]):
         expected = ctx.expected_output or {}
         expected_recs = expected.get("expected_recommendations", [])  # type: ignore[union-attr]
         if not expected_recs:
-            return EvaluationReason(value=True, reason="No expected recommendation specified")
+            return EvaluationReason(
+                value=True, reason="No expected recommendation specified"
+            )
 
         rec = getattr(ctx.output, "recommendation", "")
         if rec in expected_recs:
-            return EvaluationReason(value=True, reason=f"Recommendation '{rec}' matches expected {expected_recs}")
+            return EvaluationReason(
+                value=True,
+                reason=f"Recommendation '{rec}' matches expected {expected_recs}",
+            )
         return EvaluationReason(
             value=False,
             reason=f"Recommendation '{rec}' not in expected {expected_recs}",
@@ -57,9 +70,13 @@ class CounterargumentsPresent(Evaluator[dict, object, dict]):
         counterargs = getattr(ctx.output, "counterarguments", [])
 
         if should_find and not counterargs:
-            return EvaluationReason(value=False, reason="Expected counterarguments but none found")
+            return EvaluationReason(
+                value=False, reason="Expected counterarguments but none found"
+            )
         if should_find and counterargs:
-            return EvaluationReason(value=True, reason=f"Found {len(counterargs)} counterargument(s)")
+            return EvaluationReason(
+                value=True, reason=f"Found {len(counterargs)} counterargument(s)"
+            )
         return EvaluationReason(value=True, reason="Counterargument check passed")
 
 
@@ -69,10 +86,17 @@ class QueriesGenerated(Evaluator[dict, object, dict]):
     def evaluate(self, ctx: EvaluatorContext) -> EvaluationReason:
         queries = getattr(ctx.output, "queries_executed", [])
         if not queries:
-            return EvaluationReason(value=False, reason="No adversarial queries generated")
+            return EvaluationReason(
+                value=False, reason="No adversarial queries generated"
+            )
         if len(queries) < 2:
-            return EvaluationReason(value=False, reason=f"Only {len(queries)} query, expected ≥2 for thorough search")
-        return EvaluationReason(value=True, reason=f"{len(queries)} adversarial queries generated")
+            return EvaluationReason(
+                value=False,
+                reason=f"Only {len(queries)} query, expected ≥2 for thorough search",
+            )
+        return EvaluationReason(
+            value=True, reason=f"{len(queries)} adversarial queries generated"
+        )
 
 
 class StrongestCriticismPresent(Evaluator[dict, object, dict]):
@@ -82,7 +106,10 @@ class StrongestCriticismPresent(Evaluator[dict, object, dict]):
         counterargs = getattr(ctx.output, "counterarguments", [])
         strongest = getattr(ctx.output, "strongest_criticism", "")
         if counterargs and (not strongest or len(strongest.strip()) < 10):
-            return EvaluationReason(value=False, reason="Has counterarguments but strongest_criticism is empty")
+            return EvaluationReason(
+                value=False,
+                reason="Has counterarguments but strongest_criticism is empty",
+            )
         return EvaluationReason(value=True, reason="Strongest criticism check passed")
 
 
@@ -119,7 +146,9 @@ CASES = [
             "expected_recommendations": ["weaken", "modify"],
             "should_find_counterarguments": True,
         },
-        metadata={"tests": "Consensus has genuinely shifted. Agent must recognise this isn't 'fringe criticism' but mainstream evidence reversal."},
+        metadata={
+            "tests": "Consensus has genuinely shifted. Agent must recognise this isn't 'fringe criticism' but mainstream evidence reversal."
+        },
     ),
     Case(
         name="valid_claim_with_noisy_criticism",
@@ -136,7 +165,9 @@ CASES = [
             "expected_recommendations": ["maintain"],
             "should_find_counterarguments": False,
         },
-        metadata={"tests": "Overwhelming scientific consensus. Adversarial search will find climate denial — agent must classify this as fringe/non-credible rather than legitimate criticism."},
+        metadata={
+            "tests": "Overwhelming scientific consensus. Adversarial search will find climate denial — agent must classify this as fringe/non-credible rather than legitimate criticism."
+        },
     ),
     Case(
         name="correct_but_scope_needs_modification",
@@ -156,7 +187,9 @@ CASES = [
             "expected_recommendations": ["modify", "weaken"],
             "should_find_counterarguments": True,
         },
-        metadata={"tests": "Claim uses 'significantly' but evidence is mixed. Cochrane found no clear effect. The CDC study is observational. Must distinguish RCT evidence from observational."},
+        metadata={
+            "tests": "Claim uses 'significantly' but evidence is mixed. Cochrane found no clear effect. The CDC study is observational. Must distinguish RCT evidence from observational."
+        },
     ),
     Case(
         name="technically_true_but_misleading",
@@ -175,7 +208,9 @@ CASES = [
             "expected_recommendations": ["maintain", "modify"],
             "should_find_counterarguments": True,
         },
-        metadata={"tests": "Claim is likely correct by most analyses, but the uncertainty in Chernobyl death estimates is a legitimate methodological criticism. Agent should find this nuance without over-weighting it."},
+        metadata={
+            "tests": "Claim is likely correct by most analyses, but the uncertainty in Chernobyl death estimates is a legitimate methodological criticism. Agent should find this nuance without over-weighting it."
+        },
     ),
     Case(
         name="replication_crisis_claim",
@@ -194,7 +229,9 @@ CASES = [
             "expected_recommendations": ["weaken", "refute"],
             "should_find_counterarguments": True,
         },
-        metadata={"tests": "Highly cited original finding that failed large-scale replication. The 6,000 citations should NOT be evidence for the claim — they reflect influence, not truth."},
+        metadata={
+            "tests": "Highly cited original finding that failed large-scale replication. The 6,000 citations should NOT be evidence for the claim — they reflect influence, not truth."
+        },
     ),
 ]
 

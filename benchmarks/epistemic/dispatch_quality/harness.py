@@ -72,9 +72,9 @@ class TierOneProviderResult:
     provider: str
     in_domain_count: int
     out_of_domain_count: int
-    hit_rate: float        # commit / in_domain (recall on in-domain claims)
+    hit_rate: float  # commit / in_domain (recall on in-domain claims)
     abstention_accuracy: float  # abstain / out_of_domain
-    triage_accuracy: float       # overall (commit-on-in + abstain-on-out) / total
+    triage_accuracy: float  # overall (commit-on-in + abstain-on-out) / total
     outcomes: list[TierOneClaimOutcome] = field(default_factory=list)
 
 
@@ -259,7 +259,8 @@ class _ProviderWithMaskedExamples:
     @property
     def query_examples(self) -> list[tuple[str, str | None]]:
         return [
-            (c, q) for c, q in self._inner.query_examples
+            (c, q)
+            for c, q in self._inner.query_examples
             if c not in self._held_out_claims
         ]
 
@@ -316,9 +317,7 @@ def render_tier_one_failures(results: list[TierOneProviderResult]) -> str:
     return "\n".join(lines)
 
 
-def save_results_json(
-    results: list[TierOneProviderResult], output_path: Path
-) -> None:
+def save_results_json(results: list[TierOneProviderResult], output_path: Path) -> None:
     """Write per-provider results as JSON for diffing across runs."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -326,9 +325,7 @@ def save_results_json(
         "aggregate": {
             "providers_evaluated": len(results),
             "mean_hit_rate": (
-                sum(r.hit_rate for r in results) / len(results)
-                if results
-                else 0.0
+                sum(r.hit_rate for r in results) / len(results) if results else 0.0
             ),
             "mean_abstention_accuracy": (
                 sum(r.abstention_accuracy for r in results) / len(results)

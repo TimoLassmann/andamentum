@@ -159,7 +159,9 @@ def _print_history(limit: int = 20) -> None:
             f"{len(run['agents']):>7}"
         )
         for a in run["agents"]:
-            print(f"  {'':20} {a['name']:<30} {a['pass_rate']:>6}%  ({a['assertions']})")
+            print(
+                f"  {'':20} {a['name']:<30} {a['pass_rate']:>6}%  ({a['assertions']})"
+            )
     print()
 
 
@@ -218,12 +220,28 @@ def _print_comparison(n: int = 2) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Run epistemic agent evals")
-    parser.add_argument("--model", default=None, help="Override model (e.g., bedrock:claude-haiku-4-5)")
-    parser.add_argument("--agent", default=None, help="Run only this agent's eval (e.g., scrutinise_claim)")
-    parser.add_argument("--max-concurrency", type=int, default=3, help="Max concurrent cases per eval")
+    parser.add_argument(
+        "--model", default=None, help="Override model (e.g., bedrock:claude-haiku-4-5)"
+    )
+    parser.add_argument(
+        "--agent",
+        default=None,
+        help="Run only this agent's eval (e.g., scrutinise_claim)",
+    )
+    parser.add_argument(
+        "--max-concurrency", type=int, default=3, help="Max concurrent cases per eval"
+    )
     parser.add_argument("--no-cache", action="store_true", help="Don't save results")
-    parser.add_argument("--history", action="store_true", help="Show past runs and exit")
-    parser.add_argument("--compare", type=int, nargs="?", const=2, help="Compare last N runs (default: 2)")
+    parser.add_argument(
+        "--history", action="store_true", help="Show past runs and exit"
+    )
+    parser.add_argument(
+        "--compare",
+        type=int,
+        nargs="?",
+        const=2,
+        help="Compare last N runs (default: 2)",
+    )
     args = parser.parse_args()
 
     if args.history:
@@ -274,16 +292,18 @@ async def main() -> None:
                 print(f"  Saved: {path.relative_to(EVALS_DIR)}")
         except Exception as e:
             print(f"  FAILED: {e}")
-            agent_results.append({
-                "agent": agent_name,
-                "model": model,
-                "pass_rate": 0,
-                "assertions_passed": 0,
-                "assertions_total": 0,
-                "num_cases": 0,
-                "num_failures": 1,
-                "error": str(e),
-            })
+            agent_results.append(
+                {
+                    "agent": agent_name,
+                    "model": model,
+                    "pass_rate": 0,
+                    "assertions_passed": 0,
+                    "assertions_total": 0,
+                    "num_cases": 0,
+                    "num_failures": 1,
+                    "error": str(e),
+                }
+            )
         print()
 
     # Save run manifest
@@ -299,7 +319,9 @@ async def main() -> None:
     total_assertions = sum(a.get("assertions_total", 0) for a in agent_results)
     for a in agent_results:
         status = f"{a.get('pass_rate', 0)}%" if "error" not in a else "ERROR"
-        print(f"  {a['agent']:<25} {status:>8}  ({a.get('assertions_passed', 0)}/{a.get('assertions_total', 0)})")
+        print(
+            f"  {a['agent']:<25} {status:>8}  ({a.get('assertions_passed', 0)}/{a.get('assertions_total', 0)})"
+        )
     print(f"  {'─' * 45}")
     overall = round(total_passed / max(total_assertions, 1) * 100, 1)
     print(f"  {'OVERALL':<25} {overall:>7}%  ({total_passed}/{total_assertions})")

@@ -41,6 +41,7 @@ def uniform(lo: float, hi: float, n: int) -> list[float]:
 
 # ── 1. Bar chart: Gene expression across treatment groups ────────────────────
 
+
 def showcase_bar():
     return figure(
         data={
@@ -63,6 +64,7 @@ def showcase_bar():
 
 
 # ── 2. Line chart: Dose-response with confidence bands ──────────────────────
+
 
 def showcase_line():
     time = [0, 2, 4, 8, 12, 24, 48]
@@ -89,6 +91,7 @@ def showcase_line():
 
 # ── 3. Scatter plot: Correlation between two biomarkers ──────────────────────
 
+
 def showcase_scatter():
     n = 150
     x = gauss(50, 15, n)
@@ -107,6 +110,7 @@ def showcase_scatter():
 
 
 # ── 4. Box plot: Alignment accuracy across methods ──────────────────────────
+
 
 def showcase_box():
     methods = ["Kalign", "MAFFT", "MUSCLE", "ClustalΩ", "T-Coffee"]
@@ -131,10 +135,13 @@ def showcase_box():
 
 # ── 5. Violin plot: Expression distributions across tissues ──────────────────
 
+
 def showcase_violin():
     tissues = ["Brain", "Liver", "Kidney", "Heart", "Lung"]
     data: dict[str, list] = {"Tissue": [], "log2(TPM+1)": []}
-    for t, mu, sigma in zip(tissues, [8.5, 5.2, 6.8, 4.1, 7.3], [1.5, 2.0, 1.8, 1.2, 2.5]):
+    for t, mu, sigma in zip(
+        tissues, [8.5, 5.2, 6.8, 4.1, 7.3], [1.5, 2.0, 1.8, 1.2, 2.5]
+    ):
         n = 300
         vals = gauss(mu, sigma, n)
         data["Tissue"].extend([t] * n)
@@ -153,6 +160,7 @@ def showcase_violin():
 
 
 # ── 6. Strip plot: Small clinical trial (individual patient data) ────────────
+
 
 def showcase_strip():
     arms = ["Placebo", "Low Dose", "High Dose"]
@@ -177,6 +185,7 @@ def showcase_strip():
 
 # ── 7. Swarm plot: Moderate-sample immune cell counts ────────────────────────
 
+
 def showcase_swarm():
     groups = ["Healthy", "Mild", "Severe"]
     data: dict[str, list] = {"Group": [], "CD8+ cells/μL": []}
@@ -200,6 +209,7 @@ def showcase_swarm():
 
 # ── 8. Histogram: P-value distribution (well-calibrated test) ───────────────
 
+
 def showcase_histogram():
     # Mix of uniform (null) and left-skewed (true positives)
     null_pvals = uniform(0, 1, 800)
@@ -218,6 +228,7 @@ def showcase_histogram():
 
 
 # ── 9. Heatmap: Drug sensitivity correlation matrix ──────────────────────────
+
 
 def showcase_heatmap():
     drugs = ["Cisplatin", "Doxorubicin", "Paclitaxel", "Gemcitabine", "5-FU"]
@@ -246,12 +257,15 @@ def showcase_heatmap():
 
 # ── 10. Auto-detection showcase ──────────────────────────────────────────────
 
+
 def showcase_auto():
     """Let the advisor pick the chart type — demonstrates kind='auto'."""
     return figure(
         data={
             "Condition": ["WT"] * 25 + ["KO"] * 25 + ["Rescue"] * 25,
-            "Migration Rate (μm/h)": gauss(12, 3, 25) + gauss(5, 2, 25) + gauss(10, 3, 25),
+            "Migration Rate (μm/h)": gauss(12, 3, 25)
+            + gauss(5, 2, 25)
+            + gauss(10, 3, 25),
         },
         # kind="auto" is the default — advisor should pick "box"
         title="Cell Migration Rate",
@@ -263,6 +277,7 @@ def showcase_auto():
 
 
 # ── 11. Showcase mode (presentation) ────────────────────────────────────────
+
 
 def showcase_presentation():
     return figure(
@@ -282,6 +297,7 @@ def showcase_presentation():
 
 
 # ── Gallery generator ────────────────────────────────────────────────────────
+
 
 def generate_gallery(results: list[tuple[str, object]]) -> None:
     """Generate an HTML gallery of all showcase figures."""
@@ -311,13 +327,19 @@ def generate_gallery(results: list[tuple[str, object]]) -> None:
         pdf_name = Path(r.path).name
         html_parts.append('<div class="card">')
         html_parts.append(f"<h3>{name}</h3>")
-        html_parts.append(f'<object data="{pdf_name}" type="application/pdf" width="100%" height="300px">')
+        html_parts.append(
+            f'<object data="{pdf_name}" type="application/pdf" width="100%" height="300px">'
+        )
         html_parts.append(f'<p><a href="{pdf_name}">View PDF</a></p>')
         html_parts.append("</object>")
         html_parts.append(f'<div class="legend">{r.legend}</div>')
-        html_parts.append(f'<div class="meta">Kind: {r.kind} | Palette: {r.palette} | {r.data_summary} | {r.width_inches}" × {r.height_inches}"</div>')
+        html_parts.append(
+            f'<div class="meta">Kind: {r.kind} | Palette: {r.palette} | {r.data_summary} | {r.width_inches}" × {r.height_inches}"</div>'
+        )
         if r.advisor_notes:
-            html_parts.append(f'<div class="notes">⚠ {" | ".join(r.advisor_notes)}</div>')
+            html_parts.append(
+                f'<div class="notes">⚠ {" | ".join(r.advisor_notes)}</div>'
+            )
         html_parts.append("</div>")
 
     html_parts.extend(["</div>", "</body></html>"])
@@ -328,6 +350,7 @@ def generate_gallery(results: list[tuple[str, object]]) -> None:
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     showcases = [
@@ -356,10 +379,10 @@ def main() -> None:
 
     generate_gallery(results)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {len(results)} figures generated in {OUTPUT}/")
     print("  Open gallery.html to inspect all figures visually.")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

@@ -33,7 +33,9 @@ async def test_run_case_produces_metrics_with_structural_split():
         truth=ResolvedTruth(
             convention="t",
             units=[
-                ResolvedTruthUnit(title="Section 1", start_offset=0, end_offset=sec1_end),
+                ResolvedTruthUnit(
+                    title="Section 1", start_offset=0, end_offset=sec1_end
+                ),
                 ResolvedTruthUnit(
                     title="Section 2", start_offset=sec2_start, end_offset=len(src)
                 ),
