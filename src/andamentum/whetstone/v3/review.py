@@ -1,10 +1,17 @@
-"""Generic criterion review (agent) + verify-findings (deterministic).
+"""Generic criterion review (agent + tools) + verify-findings (deterministic).
 
-One review function, run per criterion in the active set. Each reads its
-projection of the document model + asks the criterion's atomic questions, and
-emits findings with verbatim quotes. VerifyFindings then locates every quote in
-the source and drops any that can't be found (the hallucination gate for
-findings, mirroring the digest).
+One review function, run per criterion in the active set. The agent receives:
+
+- a SECTIONS table-of-contents block (id + title + size + gist),
+- CLAIMS BY SECTION (verbatim spans grouped under their origin section),
+- CITATIONS PRESENT (when the criterion's facets request it),
+- prior-stage findings (from the SPECS cascade),
+
+and two layer-1 tools (``read_section``, ``search_paper`` — see
+``whetstone/v3/tools.py``) it can call to investigate the source beyond
+what the digest gave it. Findings come back as ``_RawFinding``s with
+verbatim quotes; VerifyFindings then locates each quote in the source
+and drops any that can't be anchored (the hallucination gate).
 """
 
 from __future__ import annotations
@@ -13,17 +20,32 @@ import logging
 from typing import Literal, cast
 
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
-from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
 from .criteria import Criterion
 from .locate import locate
 from .model import DocumentModel, Span
+from .tools import DocDeps, read_section, search_paper
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
 Severity = Literal["minor", "moderate", "major"]
+
+# Per-criterion budgets. The cascade runs five criteria sequentially, so
+# the per-call budget needs to be tight enough that one stalled stage
+# doesn't dominate the run, but generous enough to allow a few tool
+# calls when the agent wants to investigate.
+#
+# request_limit = total model requests (initial + tool turns + final).
+# tool_calls_limit = caps tool-call iterations specifically.
+# total_tokens_limit = secondary backstop against runaway prompt growth
+#   when read_section drags large sections back into the context.
+_REQUEST_LIMIT = 12
+_TOOL_CALLS_LIMIT = 5
+_TOTAL_TOKENS_LIMIT = 80_000
 
 
 class Finding(BaseModel):
@@ -63,22 +85,95 @@ will merge any near-duplicates.
 
 For each problem: a short issue description, a VERBATIM quote from the document \
 it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
-(minor / moderate / major)."""
+(minor / moderate / major).
+
+You have two tools available to investigate the source beyond the digest:
+  - read_section(section_id) — read a section in full when the gist isn't \
+enough.
+  - search_paper(query) — find where a term appears in the paper; pass \
+regex=True for patterns like (limitation|caveat|weakness) or Theorem [0-9]+.
+
+Use them when:
+  - the digest doesn't tell you enough to answer a criterion question;
+  - prior-stage findings draw attention to a section worth reading in full;
+  - you're considering flagging an absence — verify with a search first.
+
+Section ids are in the SECTIONS block (e.g. 4.2, abstract, sec_004)."""
 
 
 def _project(criterion: Criterion, model: DocumentModel) -> str:
-    """The criterion's slice of the document model, as prompt text."""
+    """The criterion's slice of the document model, as prompt text.
+
+    The SECTIONS block is always emitted (regardless of the criterion's
+    declared facets) because the agent needs section ids to invoke
+    ``read_section``. Claims and citations remain facet-gated.
+    """
     parts: list[str] = []
+
+    # SECTIONS — always emitted. Doubles as the navigation aid for
+    # `read_section` (gives the agent every valid section_id) and as
+    # the document outline (size hints for where the substance lives,
+    # gists for semantic flavour).
+    gist_by_id = {g.section_id: g.gist for g in model.gists}
+    if model.sections:
+        section_lines = []
+        for s in model.sections:
+            gist = gist_by_id.get(s.id, "").strip()
+            gist_part = f" — {gist}" if gist else ""
+            section_lines.append(
+                f"  - [{s.id}] {s.title} ({len(s.text):,} chars){gist_part}"
+            )
+        parts.append("SECTIONS (id | title | size | gist):\n" + "\n".join(section_lines))
+    else:
+        parts.append("SECTIONS: (none)")
+
+    # CLAIMS BY SECTION — facet-gated. Groups verbatim claims under
+    # their origin section_id so the agent sees "what each section
+    # asserts" without having to read every section.
     if "claims" in criterion.facets:
-        claims = "\n".join(f"  - {c.quote}" for c in model.claims) or "  (none)"
-        parts.append(f"CLAIMS:\n{claims}")
-    if "gists" in criterion.facets:
-        gists = "\n".join(f"  - {g.title}: {g.gist}" for g in model.gists) or "  (none)"
-        parts.append(f"SECTION GISTS:\n{gists}")
+        claims_by_section: dict[str, list[str]] = {}
+        for c in model.claims:
+            claims_by_section.setdefault(c.span.section_id, []).append(c.quote)
+        if claims_by_section:
+            lines: list[str] = []
+            # Walk sections in their declared order so the output is stable
+            # and matches the SECTIONS block above.
+            for s in model.sections:
+                section_claims = claims_by_section.get(s.id)
+                if not section_claims:
+                    continue
+                lines.append(f"  [{s.id}]:")
+                for quote in section_claims:
+                    lines.append(f"    - {quote!r}")
+            parts.append("CLAIMS BY SECTION:\n" + "\n".join(lines))
+        else:
+            parts.append("CLAIMS BY SECTION: (none)")
+
+    # CITATIONS PRESENT — facet-gated, unchanged from earlier.
     if "citations" in criterion.facets:
         markers = sorted({c.marker for c in model.citations})
         parts.append(f"CITATIONS PRESENT: {', '.join(markers) or '(none)'}")
+
     return "\n\n".join(parts)
+
+
+def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _CriterionFindings]:
+    """Construct the criterion-review agent with tools + typed deps.
+
+    Layer-1 tools (read_section, search_paper) are unconditionally
+    attached for every criterion — they're free, universal, and
+    pure-Python. Layer 2/3 tools (deferred) would be attached based on
+    ``criterion.tools``; that field exists but is empty for SPECS today.
+    """
+    return Agent(
+        resolve_model(agent_model),
+        instructions=_PROMPT,
+        output_type=_CriterionFindings,
+        deps_type=DocDeps,
+        tools=[read_section, search_paper],
+        retries=2,
+        output_retries=2,
+    )
 
 
 async def review_criterion(
@@ -86,21 +181,10 @@ async def review_criterion(
     model: DocumentModel,
     *,
     agent_model: str,
-    full_text: str | None = None,
     prior_findings: list[Finding] | None = None,
 ) -> list[Finding]:
-    defn = AgentDefinition(
-        name=f"v3_review_{criterion.name.lower()}",
-        prompt=_PROMPT,
-        output_model=_CriterionFindings,
-        retries=2,
-        output_retries=2,
-    )
-    agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    agent = _build_agent(criterion, agent_model)
     questions = "\n".join(f"  {i}. {q}" for i, q in enumerate(criterion.questions, 1))
-    # "Raw text if it fits": when the caller passes the full document, include it
-    # as extra grounding alongside the compact projection.
-    full = f"\n\nFULL DOCUMENT:\n{full_text}" if full_text else ""
     # SPECS-style cascade: prior criteria's findings are surfaced so this stage
     # can connect/build instead of re-discovering. Don't re-list them.
     prior = ""
@@ -111,10 +195,18 @@ async def review_criterion(
         prior = f"\n\nPRIOR-STAGE FINDINGS (already raised — connect, don't repeat):\n{lines}"
     prompt = (
         f"CRITERION: {criterion.name}\n\nQUESTIONS:\n{questions}\n\n"
-        f"{_project(criterion, model)}{full}{prior}\n\n"
+        f"{_project(criterion, model)}{prior}\n\n"
         f"Report real problems for the {criterion.name} criterion."
     )
-    result = await agent.run(prompt)
+    result = await agent.run(
+        prompt,
+        deps=DocDeps(document_model=model),
+        usage_limits=UsageLimits(
+            request_limit=_REQUEST_LIMIT,
+            tool_calls_limit=_TOOL_CALLS_LIMIT,
+            total_tokens_limit=_TOTAL_TOKENS_LIMIT,
+        ),
+    )
     raw = cast(_CriterionFindings, result.output).findings
     return [
         Finding(
@@ -129,7 +221,6 @@ async def run_criteria(
     model: DocumentModel,
     *,
     agent_model: str,
-    full_text: str | None = None,
 ) -> list[Finding]:
     """Run the criterion set as a sequential SPECS-style cascade.
 
@@ -139,10 +230,10 @@ async def run_criteria(
     baseline gap) rather than re-discovering each criterion's slice in
     isolation. This mirrors the AAAI-26 SPECS pipeline shape.
 
-    Previously parallel; the cascade trades wall-clock for cross-criterion
-    coherence — the load-bearing benefit on papers where issues thread across
-    criteria. A single criterion crashing is caught and logged so the rest of
-    the cascade still benefits from the findings already accumulated.
+    The cascade trades wall-clock for cross-criterion coherence — the
+    load-bearing benefit on papers where issues thread across criteria. A
+    single criterion crashing is caught and logged so the rest of the cascade
+    still benefits from the findings already accumulated.
     """
     accumulated: list[Finding] = []
     for c in criteria:
@@ -151,7 +242,6 @@ async def run_criteria(
                 c,
                 model,
                 agent_model=agent_model,
-                full_text=full_text,
                 prior_findings=accumulated,
             )
             logger.info("[v3.review] %s → %d finding(s)", c.name, len(stage))

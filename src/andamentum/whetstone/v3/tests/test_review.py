@@ -43,17 +43,15 @@ async def test_run_criteria_tags_findings_by_criterion() -> None:
         ]
     )
 
-    def _factory(defn, model):
-        class _Agent:
-            async def run(self, _p):
-                return types.SimpleNamespace(output=out)
+    class _Agent:
+        async def run(self, _prompt, **_kwargs):
+            # Accept deps/usage_limits kwargs from review_criterion silently.
+            return types.SimpleNamespace(output=out)
 
+    def _build(_criterion, _agent_model):
         return _Agent()
 
-    with (
-        patch("andamentum.whetstone.v3.review.build_pydantic_ai_agent", new=_factory),
-        patch("andamentum.whetstone.v3.review.resolve_model", new=lambda m: None),
-    ):
+    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
         findings = await run_criteria(SPECS, _model("x"), agent_model="stub")
     # one finding per criterion, each tagged with its criterion name
     assert {f.criterion for f in findings} == {c.name for c in SPECS}

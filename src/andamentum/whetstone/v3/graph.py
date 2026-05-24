@@ -36,27 +36,10 @@ class V3Deps:
     criteria: list[Criterion] = field(
         default_factory=lambda: criterion_set_for("academic")
     )
-    # Include the full markdown alongside the digest when the paper fits this
-    # budget. Default 80k chars (~20k tokens) covers nearly all conference and
-    # journal papers, since most academic markdown runs 40-80k chars.
-    #
-    # Token accounting at the Significance call (last in the cascade, sees the
-    # most accumulated context): ~20k full-text + ~1.5k digest + ~1.5k prior
-    # findings + ~1k prompt = ~24k tokens input.
-    #
-    # Tuning guide by model context window:
-    #   • 200k+ (gpt-5.x, Claude Opus 4.x):  default 80k — uses ~12% of window.
-    #   • 128k (modern Ollama: gemma-3, llama-3.3, qwen-3, phi-4):
-    #                                         default 80k — uses ~19% of window.
-    #   • 32k (older / smaller local models, default-quant 7-8B): set to
-    #     `raw_text_budget=20_000` — at 80k this would hit ~75% of context and
-    #     degrade quality on most architectures in the last quartile.
-    #   • 8k (very old / heavily-quantized local models): set to `0` to opt back
-    #     into digest-only mode (the original v3 design intent).
-    #
-    # The compact digest itself is always provided regardless of this setting —
-    # the budget only governs whether the FULL text rides along too.
-    raw_text_budget: int = 80_000
+    # The full markdown is no longer always-passed alongside the digest;
+    # instead the criterion-review agents get layer-1 tools
+    # (read_section / search_paper) and ask for source content on demand.
+    # See docs/plans/2026-05-24-whetstone-v3-layer1-tools-pid.md §3.
 
 
 @dataclass
@@ -99,16 +82,10 @@ class ReviewCriteria(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "VerifyFindings":
         model = ctx.state.document_model
         assert model is not None
-        full_text = (
-            ctx.state.source
-            if len(ctx.state.source) <= ctx.deps.raw_text_budget
-            else None
-        )
         ctx.state.findings = await run_criteria(
             ctx.deps.criteria,
             model,
             agent_model=ctx.deps.agent_model,
-            full_text=full_text,
         )
         return VerifyFindings()
 
