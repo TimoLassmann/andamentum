@@ -31,6 +31,11 @@ def _route(*, demands, reexamine=None, holds=True):
         name = defn.name
 
         class A:
+            def output_validator(self, fn):
+                # _satisfy_reexamine registers an anchor validator on the
+                # real agent; the mock just swallows it.
+                return fn
+
             async def run(self, _p):
                 if name == "v3_gap_analysis":
                     out = _DemandList(demands=demands)

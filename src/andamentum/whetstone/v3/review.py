@@ -17,7 +17,8 @@ and drops any that can't be anchored (the hallucination gate).
 from __future__ import annotations
 
 import logging
-from typing import Literal, cast
+from collections.abc import Sequence
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -44,9 +45,9 @@ Severity = Literal["minor", "moderate", "major"]
 # tool_calls_limit = caps tool-call iterations specifically.
 # total_tokens_limit = secondary backstop against runaway prompt growth
 #   when read_section drags large sections back into the context.
-_REQUEST_LIMIT = 18
-_TOOL_CALLS_LIMIT = 10
-_TOTAL_TOKENS_LIMIT = 80_000
+_REQUEST_LIMIT = 200
+_TOOL_CALLS_LIMIT = 100
+_TOTAL_TOKENS_LIMIT = 1_000_000
 
 
 class Finding(BaseModel):
@@ -98,6 +99,18 @@ Use them when:
   - the digest doesn't tell you enough to answer a criterion question;
   - prior-stage findings draw attention to a section worth reading in full;
   - you're considering flagging an absence — verify with a search first.
+
+Tool-use discipline:
+  - Don't re-read a section you've already loaded in this conversation. \
+Refer back to the earlier tool result; the section text is already in your \
+context.
+  - When a search returns zero hits, treat the absence as the answer. Do not \
+rephrase the same negative-result query with adjacent terms — if the concept \
+isn't there, broaden ONCE if needed (e.g. add a synonym) and then accept the \
+finding.
+  - When a search returns hits but you want more context around them, call \
+read_section on the matching section rather than re-searching with a longer \
+query that pulls in the surrounding text.
 
 Section ids are in the SECTIONS block (e.g. 4.2, abstract, sec_004)."""
 
@@ -172,39 +185,38 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
 _VALIDATOR_REQUOTE_ATTEMPTS = 2
 
 
-async def _validate_quotes_anchor(
-    ctx: RunContext[DocDeps], output: _CriterionFindings
-) -> _CriterionFindings:
-    """Anchor every finding's quote against the source.
+def anchor_quotes_or_retry(
+    source: str,
+    findings: Sequence[Any],
+    *,
+    ctx_retry: int,
+    max_attempts: int = _VALIDATOR_REQUOTE_ATTEMPTS,
+) -> list[Any]:
+    """Generic verbatim-quote anchoring used by every v3 output validator.
 
-    On any unanchored quote and while ``ctx.retry < _VALIDATOR_REQUOTE_ATTEMPTS``
-    raise ``ModelRetry`` listing up to five offending quotes verbatim —
-    the model gets another chance to copy them exactly from the document.
-    Once attempts are exhausted, return only the anchored findings; the
-    downstream ``verify_findings`` re-runs ``locate`` to fill ``Span``s
-    and acts as the deterministic safety net.
+    Returns the subset of ``findings`` whose ``.quote`` locates in
+    ``source``. If any miss AND ``ctx_retry < max_attempts``, raises
+    ``ModelRetry`` listing up to five offending quotes verbatim so the
+    model can re-quote on its next turn. Otherwise returns the anchored
+    subset (callers wrap it in their output type — ``_CriterionFindings``,
+    ``_ReexamineFindings``, etc.).
 
-    Defensive ``partial_output`` guard: v3 doesn't stream
-    (``agent.run``, not ``agent.run_stream``), but validators get
-    called on partial chunks in streaming mode, where side effects
-    would fire repeatedly. The guard keeps the function safe if a
-    future caller switches to streaming.
+    ``findings`` items must have a ``.quote: str`` attribute. Caller is
+    responsible for the ``ctx.partial_output`` guard (rare, only matters
+    in streaming runs).
     """
-    if ctx.partial_output:
-        return output
-    source = ctx.deps.document_model.source
-    anchored: list[_RawFinding] = []
+    anchored: list[Any] = []
     unanchored_quotes: list[str] = []
-    for finding in output.findings:
+    for finding in findings:
         if locate(finding.quote, source) is not None:
             anchored.append(finding)
         else:
             unanchored_quotes.append(finding.quote)
-    if unanchored_quotes and ctx.retry < _VALIDATOR_REQUOTE_ATTEMPTS:
+    if unanchored_quotes and ctx_retry < max_attempts:
         preview = "\n".join(f"  - {q!r}" for q in unanchored_quotes[:5])
         logger.info(
             "[v3.validator] %d unanchored quote(s) on attempt %d; asking model to re-quote",
-            len(unanchored_quotes), ctx.retry,
+            len(unanchored_quotes), ctx_retry,
         )
         raise ModelRetry(
             f"{len(unanchored_quotes)} quote(s) are not present verbatim "
@@ -218,6 +230,20 @@ async def _validate_quotes_anchor(
             "[v3.validator] attempts exhausted; keeping %d anchored, dropping %d",
             len(anchored), len(unanchored_quotes),
         )
+    return anchored
+
+
+async def _validate_quotes_anchor(
+    ctx: RunContext[DocDeps], output: _CriterionFindings
+) -> _CriterionFindings:
+    """Cascade-criterion output validator. See ``anchor_quotes_or_retry``."""
+    if ctx.partial_output:
+        return output
+    anchored = anchor_quotes_or_retry(
+        ctx.deps.document_model.source,
+        output.findings,
+        ctx_retry=ctx.retry,
+    )
     return _CriterionFindings(findings=anchored)
 
 

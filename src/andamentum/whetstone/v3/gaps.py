@@ -18,12 +18,14 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from pydantic_ai import RunContext
+
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
 from .criteria import SPECS
 from .model import DocumentModel
-from .review import Finding, Severity, verify_findings
+from .review import Finding, Severity, anchor_quotes_or_retry, verify_findings
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -156,6 +158,9 @@ async def _satisfy_reexamine(
     section = model.section_by_id(demand.target_section_id or "")
     if section is None:
         return []
+    # output_retries=3 makes room for the anchor validator's two re-quote
+    # attempts plus one reserve for pydantic-ai's own structured-output
+    # coercion — matches the cascade's _build_agent.
     defn = AgentDefinition(
         name="v3_reexamine",
         prompt=(
@@ -166,9 +171,28 @@ async def _satisfy_reexamine(
         ),
         output_model=_ReexamineFindings,
         retries=2,
-        output_retries=2,
+        output_retries=3,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+
+    # Attach the same verbatim-quote anchor validator the cascade uses
+    # (review.py). On unanchored quotes pydantic-ai sends the model back
+    # to re-quote (up to two attempts); on exhaustion the validator
+    # silently drops misses and verify_findings is the deterministic
+    # floor below — same shape as the cascade.
+    source = model.source
+
+    @agent.output_validator
+    async def _validate_quotes(
+        ctx: RunContext[None], output: _ReexamineFindings
+    ) -> _ReexamineFindings:
+        if ctx.partial_output:
+            return output
+        anchored = anchor_quotes_or_retry(
+            source, output.findings, ctx_retry=ctx.retry
+        )
+        return _ReexamineFindings(findings=anchored)
+
     res = await agent.run(
         f"REQUEST: {demand.detail}\n\n"
         f"CRITERIA (classify each problem as one of these): "
