@@ -21,6 +21,7 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from andamentum.core.models import resolve_model
@@ -246,6 +247,22 @@ async def run_criteria(
             )
             logger.info("[v3.review] %s → %d finding(s)", c.name, len(stage))
             accumulated.extend(stage)
+        except UnexpectedModelBehavior as exc:
+            # Per-tool retry caps, output_retries exhaustion, content filter,
+            # IncompleteToolCall, and provider-side oddities (e.g. the Ollama
+            # "invalid message content type: <nil>" HTTP 400) all surface here.
+            # When the provider attached a response body, log the first 500
+            # chars — enough to identify what went wrong upstream.
+            body = getattr(exc, "body", None)
+            body_part = f" — body: {str(body)[:500]!r}" if body else ""
+            logger.warning(
+                "[v3.review] %s: model behaviour error (%s)%s",
+                c.name, exc, body_part,
+            )
+            continue
+        except UsageLimitExceeded as exc:
+            logger.warning("[v3.review] %s: usage limit hit (%s)", c.name, exc)
+            continue
         except Exception as exc:
             logger.warning("[v3.review] %s crashed: %s", c.name, exc)
             continue
