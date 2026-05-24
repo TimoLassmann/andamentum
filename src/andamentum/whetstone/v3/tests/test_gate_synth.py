@@ -12,6 +12,7 @@ from andamentum.whetstone.v3.synth import (
     StructuredReview,
     _flatten,
     _synopsis_length_band,
+    critique_and_revise,
     synthesise,
     to_review_result,
 )
@@ -93,6 +94,63 @@ def test_synopsis_length_band_boundary_at_5000() -> None:
     """Boundary case: exactly 5000 words → still in 2-4 sentences band (≤)."""
     source = "word " * 5000
     assert _synopsis_length_band(source) == "2-4 sentences"
+
+
+async def test_critique_receives_three_ground_truth_blocks() -> None:
+    """Issue 1: critique_and_revise must surface SECTION GISTS, AUTHOR
+    CLAIMS, and SUPPORTED FINDINGS as separate labeled blocks. The
+    previous version validated against claims alone, which structurally
+    cannot support absence-based weaknesses."""
+    from andamentum.whetstone.v3.model import Claim, SectionGist
+
+    received_prompts: list[str] = []
+    revised = StructuredReview(synopsis="ok", strengths=["s"], weaknesses=["w"])
+
+    def factory(_defn, _model):
+        class A:
+            async def run(self, p):
+                received_prompts.append(p)
+                return types.SimpleNamespace(output=revised)
+
+        return A()
+
+    model = DocumentModel(
+        source="some doc text",
+        sections=[Section(id="s1", title="Intro", text="some doc text", start=0, end=13)],
+        claims=[Claim(id="c1", quote="some doc text", span=Span(section_id="s1", start=0, end=13))],
+        gists=[SectionGist(section_id="s1", title="Intro", gist="the intro")],
+    )
+    draft = StructuredReview(synopsis="draft", strengths=["a"], weaknesses=["no baseline"])
+    findings = [
+        Finding(
+            criterion="Evaluations",
+            issue="lacks baseline comparison",
+            quote="some doc",
+            severity="major",
+            span=Span(section_id="s1", start=0, end=8),
+        )
+    ]
+    with (
+        patch("andamentum.whetstone.v3.synth.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.v3.synth.resolve_model", new=lambda m: None),
+    ):
+        out = await critique_and_revise(model, draft, findings, agent_model="stub")
+
+    assert out is revised
+    assert len(received_prompts) == 1
+    prompt = received_prompts[0]
+    # All three ground-truth blocks must appear
+    assert "SECTION GISTS" in prompt
+    assert "AUTHOR CLAIMS" in prompt
+    assert "SUPPORTED FINDINGS" in prompt
+    # Finding text should be in the SUPPORTED FINDINGS block so the agent
+    # knows to preserve weaknesses matching it
+    assert "lacks baseline comparison" in prompt
+    # Gist + claim still shown
+    assert "the intro" in prompt
+    assert "some doc text" in prompt
+    # Draft itself shown (model_dump_json includes the keys)
+    assert "no baseline" in prompt
 
 
 async def test_synthesise_returns_structured_review() -> None:
