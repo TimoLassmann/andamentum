@@ -89,6 +89,18 @@ For each problem: a short issue description, a VERBATIM quote from the document 
 it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
 (minor / moderate / major).
 
+Severity rubric — pick the level by what the author would have to do:
+  - major: the paper's conclusions, validity, or reproducibility are at stake. \
+Ignoring this would leave the work wrong, unsupported, or unusable. Author \
+must address before the paper is sound.
+  - moderate: a real weakness that a competent reader will notice and that \
+weakens the paper, but conclusions survive if it stays. Author should fix to \
+strengthen the work.
+  - minor: a local improvement — wording, typo, formatting, a single sentence \
+that could be sharper. Safe to ignore; nice to fix.
+
+When uncertain between two severity tiers, pick the lower one.
+
 You have two tools available to investigate the source beyond the digest:
   - read_section(section_id) — read a section in full when the gist isn't \
 enough.
