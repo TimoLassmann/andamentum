@@ -93,6 +93,44 @@ async def test_read_section_returns_abstract_when_asked() -> None:
     assert text == "We propose Adam."
 
 
+async def test_read_section_returns_reminder_on_second_call() -> None:
+    """Per-DocDeps cache catches duplicate read_section calls within a
+    criterion. The second call returns a short reminder string rather
+    than the full section text — the model already has the text in
+    its conversation history."""
+    ctx = _ctx(_model())
+    first = await read_section(ctx, "1")
+    second = await read_section(ctx, "1")
+    assert first == "It combines AdaGrad and RMSProp."
+    assert "already loaded" in second
+    assert "Introduction" in second  # section title surfaced for orientation
+    # Full text NOT returned the second time
+    assert "It combines AdaGrad" not in second
+
+
+async def test_read_section_cache_is_per_docdeps() -> None:
+    """Different DocDeps instances have isolated seen_sections — one
+    criterion's cache state must not leak into another's."""
+    model = _model()
+    ctx_a = _ctx(model)
+    ctx_b = _ctx(model)
+    full_a = await read_section(ctx_a, "1")
+    full_b = await read_section(ctx_b, "1")
+    # Both criteria get the full section text; the cache is per-DocDeps
+    assert full_a == full_b == "It combines AdaGrad and RMSProp."
+
+
+async def test_read_section_unknown_id_does_not_pollute_cache() -> None:
+    """A ModelRetry for an unknown id must not add anything to
+    seen_sections — otherwise a subsequent valid call could be mistakenly
+    short-circuited."""
+    ctx = _ctx(_model())
+    with pytest.raises(ModelRetry):
+        await read_section(ctx, "999")
+    text = await read_section(ctx, "1")
+    assert text == "It combines AdaGrad and RMSProp."
+
+
 # ── search_paper: substring mode (default) ───────────────────────────
 
 

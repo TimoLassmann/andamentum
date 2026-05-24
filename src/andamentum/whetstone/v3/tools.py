@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic_ai import ModelRetry, RunContext
 
@@ -67,10 +67,19 @@ class DocDeps:
 
     Layer 2 will extend this with novelty-search counters and a
     deep_research handle; layer 3 may add a code-interpreter handle.
-    For now it carries only the ``DocumentModel`` the tools read from.
+
+    ``seen_sections`` is a per-DocDeps cache of which section ids
+    ``read_section`` has already returned in full. Each criterion's
+    ``review_criterion`` call builds a fresh ``DocDeps``, so the cache
+    catches *within-criterion* duplicate loads (the model sometimes
+    re-reads a section it already loaded earlier in the same
+    conversation). Cross-criterion duplicates aren't avoidable here —
+    different criteria have different model contexts and genuinely
+    need their own copy of the section text.
     """
 
     document_model: DocumentModel
+    seen_sections: set[str] = field(default_factory=set)
 
 
 async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
@@ -94,6 +103,19 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
             f"SECTIONS block of your prompt. Re-issue read_section with one "
             f"of them."
         )
+    if section_id in ctx.deps.seen_sections:
+        logger.info(
+            "[v3.tool] read_section(%r) → already loaded earlier (returning reminder)",
+            section_id,
+        )
+        return (
+            f"(section {section_id!r} '{section.title}' was already loaded "
+            f"earlier in this conversation — refer back to that prior tool "
+            f"result instead of re-loading. Re-loading the same section "
+            f"bloats your context and crowds out the budget you need for "
+            f"the rest of the criterion.)"
+        )
+    ctx.deps.seen_sections.add(section_id)
     logger.info(
         "[v3.tool] read_section(%r) → %d chars", section_id, len(section.text)
     )

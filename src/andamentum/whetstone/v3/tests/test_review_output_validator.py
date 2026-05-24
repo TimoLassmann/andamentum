@@ -27,6 +27,7 @@ from andamentum.whetstone.v3.review import (
     _CriterionFindings,
     _RawFinding,
     _validate_quotes_anchor,
+    anchor_quotes_or_retry,
 )
 from andamentum.whetstone.v3.tools import DocDeps
 
@@ -182,6 +183,40 @@ async def test_validator_caps_preview_at_five_quotes() -> None:
     assert "bogus quote number 4" in message
     assert "bogus quote number 5" not in message
     assert "bogus quote number 7" not in message
+
+
+# ── anchor_quotes_or_retry (the shared helper used by review.py + gaps.py) ──
+
+
+def test_anchor_quotes_or_retry_returns_anchored_subset_when_attempts_exhausted() -> None:
+    """The shared helper drops unanchorable findings silently once
+    ``ctx_retry >= max_attempts`` — same floor as today's
+    ``verify_findings``. Both review and gaps depend on this fallback."""
+    source = "Adam combines AdaGrad and RMSProp."
+
+    class _F:
+        def __init__(self, quote: str) -> None:
+            self.quote = quote
+
+    findings = [_F("Adam combines AdaGrad and RMSProp."), _F("we cured cancer")]
+    result = anchor_quotes_or_retry(source, findings, ctx_retry=2)
+    assert len(result) == 1
+    assert result[0].quote == "Adam combines AdaGrad and RMSProp."
+
+
+def test_anchor_quotes_or_retry_raises_when_attempts_remain() -> None:
+    """While ``ctx_retry < max_attempts`` and any quote misses, raise
+    ``ModelRetry`` with the offending quote(s) verbatim."""
+    source = "Adam combines AdaGrad and RMSProp."
+
+    class _F:
+        def __init__(self, quote: str) -> None:
+            self.quote = quote
+
+    findings = [_F("paraphrased not in source")]
+    with pytest.raises(ModelRetry) as exc:
+        anchor_quotes_or_retry(source, findings, ctx_retry=0)
+    assert "paraphrased not in source" in str(exc.value)
 
 
 async def test_validator_is_safe_under_partial_output() -> None:
