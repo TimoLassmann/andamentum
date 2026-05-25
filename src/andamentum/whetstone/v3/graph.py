@@ -16,9 +16,10 @@ from dataclasses import dataclass, field
 
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
-from ..schemas import ReviewResult
+from ..schemas import Edit, ReviewResult
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
+from .editor import DEFAULT_EDITOR_CRITERIA, run_editor
 from .extract import build_claims
 from .digest import build_document_model
 from .gaps import gap_loop
@@ -40,6 +41,10 @@ class V3Deps:
     # instead the criterion-review agents get layer-1 tools
     # (read_section / search_paper) and ask for source content on demand.
     # See docs/plans/2026-05-24-whetstone-v3-layer1-tools-pid.md §3.
+    editor_enabled: bool = False
+    editor_criteria: list[str] = field(
+        default_factory=lambda: list(DEFAULT_EDITOR_CRITERIA)
+    )
 
 
 @dataclass
@@ -50,6 +55,7 @@ class V3State:
     document_model: DocumentModel | None = None
     findings: list[Finding] = field(default_factory=list)
     review: StructuredReview | None = None
+    edits: list[Edit] = field(default_factory=list)
 
 
 @dataclass
@@ -143,13 +149,34 @@ class Synthesise(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class CritiqueRevise(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Finalize":
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "EditSections":
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
         ctx.state.review = await critique_and_revise(
             model,
             ctx.state.review,
             ctx.state.findings,
+            agent_model=ctx.deps.agent_model,
+        )
+        return EditSections()
+
+
+@dataclass
+class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
+    """Optional per-section editor pass. Off by default.
+
+    Gated on ``ctx.deps.editor_enabled``. When enabled, runs the
+    editor agent once per section (≤5 concurrent) and populates
+    ``ctx.state.edits`` with anchored ``Edit`` objects that the docx
+    renderer turns into track-changes.
+    """
+
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Finalize":
+        if not ctx.deps.editor_enabled:
+            return Finalize()
+        ctx.state.edits = await run_editor(
+            ctx.state.sections,
+            criteria=ctx.deps.editor_criteria,
             agent_model=ctx.deps.agent_model,
         )
         return Finalize()
@@ -160,7 +187,14 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> End[ReviewResult]:
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
-        return End(to_review_result(model, ctx.state.findings, ctx.state.review))
+        return End(
+            to_review_result(
+                model,
+                ctx.state.findings,
+                ctx.state.review,
+                ctx.state.edits,
+            )
+        )
 
 
 review_graph_v3 = Graph(
@@ -175,6 +209,7 @@ review_graph_v3 = Graph(
         Gate,
         Synthesise,
         CritiqueRevise,
+        EditSections,
         Finalize,
     ]
 )
@@ -189,6 +224,8 @@ async def run_review_v3(
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,
     guidelines_text: str | None = None,
+    editor: bool = False,
+    editor_criteria: list[str] | None = None,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -254,7 +291,15 @@ async def run_review_v3(
             )
         active_criteria = criterion_set_for(document_type)
 
-    deps = V3Deps(agent_model=model, cap=cap, criteria=active_criteria)
+    deps = V3Deps(
+        agent_model=model,
+        cap=cap,
+        criteria=active_criteria,
+        editor_enabled=editor,
+        editor_criteria=(
+            list(editor_criteria) if editor_criteria else list(DEFAULT_EDITOR_CRITERIA)
+        ),
+    )
     state = V3State(source=markdown)
     result = await review_graph_v3.run(Sectionize(), state=state, deps=deps)
     return result.output
@@ -269,6 +314,8 @@ async def review_document_v3(
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,
     guidelines_text: str | None = None,
+    editor: bool = False,
+    editor_criteria: list[str] | None = None,
 ) -> ReviewResult:
     """v3 entry from a source path/URL: harvest → markdown → review.
 
@@ -291,4 +338,6 @@ async def review_document_v3(
         confirm_own_draft=confirm_own_draft,
         criteria=criteria,
         guidelines_text=guidelines_text,
+        editor=editor,
+        editor_criteria=editor_criteria,
     )
