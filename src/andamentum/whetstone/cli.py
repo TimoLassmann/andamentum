@@ -949,10 +949,101 @@ def _markdown_to_baseline_docx(markdown: str) -> Path:
     return out
 
 
+# ── Subcommand front-end (Phase F) ──────────────────────────────────────────
+#
+# The CLI is internally a single flat argparse parser (the canonical surface
+# tests build against), with a thin subcommand alias layer in front of it.
+# Recognised verbs:
+#
+#   review         — default; the bare positional invocation also routes here
+#                    (`andamentum-whetstone draft.md --model X --out r.md`)
+#   panel          — equivalent to `--mode panel`
+#   proofread      — shells out to `andamentum.proofread` (no whetstone review
+#                    pipeline at all; the two are intentionally disjoint)
+#   apply-patches  — equivalent to `--apply-patches PATH`; INPUT and PATCHES
+#                    become positional args in the subcommand form
+#
+# The flat-flag form keeps working for every existing test + script. Users
+# who want the subcommand UX get it. v2's mode flag stays callable until
+# Phase I deletes v2.
+
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
+    {"review", "panel", "proofread", "apply-patches"}
+)
+
+
+def _rewrite_subcommand(argv: list[str]) -> list[str]:
+    """Translate a subcommand-style invocation into the underlying flat-CLI
+    argv. Returns ``argv`` unchanged when no subcommand verb is present
+    (back-compat for the existing bare-positional form)."""
+    if not argv:
+        return argv
+    head = argv[0]
+    rest = argv[1:]
+    if head == "review":
+        # `review draft.md --model X --out r.md`  →  `draft.md --model X --out r.md`
+        return rest
+    if head == "panel":
+        # `panel draft.md ...`  →  `draft.md --mode panel ...`
+        if not rest or rest[0].startswith("-"):
+            return ["--mode", "panel", *rest]
+        return [rest[0], "--mode", "panel", *rest[1:]]
+    if head == "apply-patches":
+        # `apply-patches draft.docx --patches p.json --out r.docx`  →
+        # `draft.docx --apply-patches p.json --out r.docx`
+        # The subcommand requires the patches as a positional or via --patches.
+        if not rest or rest[0].startswith("-"):
+            _die(
+                1,
+                "apply-patches subcommand: positional INPUT required.\n"
+                "Usage: andamentum-whetstone apply-patches INPUT.docx "
+                "--patches PATCHES.json --out OUTPUT.docx",
+            )
+        out: list[str] = [rest[0]]
+        skip_next = False
+        for i, tok in enumerate(rest[1:], start=1):
+            if skip_next:
+                skip_next = False
+                continue
+            if tok == "--patches":
+                if i + 1 >= len(rest):
+                    _die(1, "apply-patches: --patches needs a value.")
+                out.extend(["--apply-patches", rest[i + 1]])
+                skip_next = True
+            else:
+                out.append(tok)
+        return out
+    return argv
+
+
+def _run_proofread_subcommand(argv: list[str]) -> int:
+    """The proofread subcommand is a thin shell over ``andamentum.proofread.cli``.
+    Whetstone's idea-review pipeline and the deterministic style check are
+    intentionally separate jobs (see the project memory entry on this).
+    Passes through stdin / file / URL handling unchanged."""
+    from andamentum.proofread.cli import main as proofread_main
+
+    return proofread_main(argv)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
-    """Entry point — invoked by the ``andamentum-whetstone`` script."""
+    """Entry point — invoked by the ``andamentum-whetstone`` script.
+
+    Accepts either the bare-positional form (``andamentum-whetstone draft.md
+    --model X --out r.md``) or the subcommand form (``andamentum-whetstone
+    review draft.md ...`` / ``... panel ...`` / ``... proofread draft.md`` /
+    ``... apply-patches draft.docx --patches p.json --out r.docx``)."""
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "proofread":
+        # proofread short-circuits the whetstone pipeline entirely
+        rc = _run_proofread_subcommand(raw[1:])
+        raise SystemExit(rc)
+
+    if raw and raw[0] in _KNOWN_SUBCOMMANDS:
+        raw = _rewrite_subcommand(raw)
+
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
     _validate_args(args)
 
     console = Console(stderr=True)
