@@ -534,27 +534,40 @@ def _validate_args(args: argparse.Namespace) -> None:
             "--mode custom requires --model — the custom reviewer is an "
             "LLM call. Drop --no-llm or use --mode review.",
         )
-    if args.mode == "guidelines" and not args.guidelines:
-        _die(
-            1,
-            "--mode guidelines requires --guidelines (text or @file).",
-        )
-    if args.mode == "custom" and not args.criteria:
-        _die(
-            1,
-            "--mode custom requires --criteria (semicolon-separated or repeated).",
-        )
-    if args.mode != "guidelines" and args.guidelines:
-        _die(
-            1,
-            f"--guidelines is only valid with --mode guidelines (got "
-            f"--mode {args.mode}).",
-        )
-    if args.mode != "custom" and args.criteria:
-        _die(
-            1,
-            f"--criteria is only valid with --mode custom (got --mode {args.mode}).",
-        )
+    if args.v3:
+        # v3 has no "mode" — --criteria and --guidelines are direct
+        # passthroughs to the unified criterion-input surface and are
+        # mutually exclusive (the API itself enforces this with a
+        # ValueError; we surface a friendlier message earlier).
+        if args.criteria and args.guidelines:
+            _die(
+                1,
+                "--criteria and --guidelines are mutually exclusive in v3. "
+                "Pass one or the other — both are routes to the same v3 "
+                "active-criteria slot.",
+            )
+    else:
+        if args.mode == "guidelines" and not args.guidelines:
+            _die(
+                1,
+                "--mode guidelines requires --guidelines (text or @file).",
+            )
+        if args.mode == "custom" and not args.criteria:
+            _die(
+                1,
+                "--mode custom requires --criteria (semicolon-separated or repeated).",
+            )
+        if args.mode != "guidelines" and args.guidelines:
+            _die(
+                1,
+                f"--guidelines is only valid with --mode guidelines (got "
+                f"--mode {args.mode}).",
+            )
+        if args.mode != "custom" and args.criteria:
+            _die(
+                1,
+                f"--criteria is only valid with --mode custom (got --mode {args.mode}).",
+            )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
     if args.n_experts < 1:
@@ -678,6 +691,19 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         if args.v3:
             from .v3 import review_document_v3
 
+            # v3 takes a pre-decomposed Criterion list or free-text
+            # guidelines — never both. The validator above guarantees
+            # we don't see both flags here.
+            v3_criteria = None
+            v3_guidelines = None
+            if args.criteria:
+                from .v3 import Criterion as _V3Criterion
+
+                parsed = _parse_criteria(args.criteria)
+                v3_criteria = [_V3Criterion(name=s, questions=[s]) for s in parsed]
+            if args.guidelines:
+                v3_guidelines = guidelines_text
+
             _t0 = time.perf_counter()
             result = await review_document_v3(
                 args.input,
@@ -685,6 +711,8 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 cap=args.rounds,
                 document_type=args.document_type,
                 confirm_own_draft=args.confirm_own_draft,
+                criteria=v3_criteria,
+                guidelines_text=v3_guidelines,
             )
             result.metrics.wall_seconds = time.perf_counter() - _t0
         else:

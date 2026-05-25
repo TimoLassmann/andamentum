@@ -187,42 +187,74 @@ async def run_review_v3(
     cap: int = 2,
     document_type: str = "auto",
     confirm_own_draft: bool = False,
+    criteria: list[Criterion] | None = None,
+    guidelines_text: str | None = None,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
 
-    When ``document_type="auto"`` (the default), a one-shot LLM
-    classifier picks one of the six routed types (academic,
-    external_communication, essay, tutorial, creative, general) using
-    the same ``model`` as the rest of the run. Classifier failures
-    default to ``"general"``. Explicit document-type values skip the
-    classifier.
+    The active criterion set is resolved with the following precedence:
+
+    1. ``criteria=[...]`` (explicit caller-supplied list) — used as-is,
+       skips both extractor and classifier
+    2. ``guidelines_text="..."`` (free-text reviewer brief / journal
+       guidelines) — decomposed into a ``list[Criterion]`` by one LLM
+       call (see :func:`extract_criteria_from_guidelines`); skips
+       classifier
+    3. Default — ``criterion_set_for(document_type)``. When
+       ``document_type="auto"`` a one-shot LLM classifier picks one of
+       the six routed types (academic, external_communication, essay,
+       tutorial, creative, general). Classifier failures default to
+       ``"general"``.
+
+    ``criteria`` and ``guidelines_text`` are mutually exclusive —
+    passing both raises ``ValueError``. They represent two different
+    ways to supply the active set and choosing between them must be
+    explicit.
 
     Refuses to run on text containing confidentiality markers
     (``"Manuscript ID:"``, ``"Reviewer Instructions"``, etc.) — the
     safety gate that protects against accidentally using whetstone on
     peer-review material. Override with ``confirm_own_draft=True`` only
     when the matched marker is a legitimate false positive in the user's
-    own draft. The check runs BEFORE the classifier so no LLM ever sees
-    confidential text.
+    own draft. The check runs BEFORE any LLM call.
     """
+    if criteria is not None and guidelines_text is not None:
+        raise ValueError(
+            "run_review_v3: pass either `criteria=` (pre-decomposed) or "
+            "`guidelines_text=` (free-text to extract from), not both. "
+            "These are two different ways to supply the active criterion "
+            "set and choosing between them must be explicit."
+        )
+
     if not confirm_own_draft:
         from .._confidentiality import check_confidentiality
 
         check_confidentiality(markdown)
 
-    if document_type == "auto":
-        from .._document_type import classify
+    if criteria is not None:
+        active_criteria = criteria
+    elif guidelines_text is not None:
+        from .extract_criteria import extract_criteria_from_guidelines
 
-        # sectionize is deterministic; calling it here AND inside the
-        # graph's first node is cheap (no LLM), so we do it once for the
-        # classifier and once for the run.
-        titles = [s.title for s in sectionize(markdown)]
-        document_type = await classify(
-            model=model, section_titles=titles, markdown=markdown
+        active_criteria = await extract_criteria_from_guidelines(
+            guidelines_text, model=model
         )
+    else:
+        # Only classify when the result is actually consumed — i.e. we
+        # are falling back to the document-type default set.
+        if document_type == "auto":
+            from .._document_type import classify
 
-    deps = V3Deps(agent_model=model, cap=cap, criteria=criterion_set_for(document_type))
+            # sectionize is deterministic; calling it here AND inside
+            # the graph's first node is cheap (no LLM).
+            titles = [s.title for s in sectionize(markdown)]
+            document_type = await classify(
+                model=model, section_titles=titles, markdown=markdown
+            )
+        active_criteria = criterion_set_for(document_type)
+
+    deps = V3Deps(agent_model=model, cap=cap, criteria=active_criteria)
     state = V3State(source=markdown)
     result = await review_graph_v3.run(Sectionize(), state=state, deps=deps)
     return result.output
@@ -235,15 +267,16 @@ async def review_document_v3(
     cap: int = 2,
     document_type: str = "auto",
     confirm_own_draft: bool = False,
+    criteria: list[Criterion] | None = None,
+    guidelines_text: str | None = None,
 ) -> ReviewResult:
     """v3 entry from a source path/URL: harvest → markdown → review.
 
     Opt-in alongside the v2 `review_document`; v2 remains the default
     until v3 is validated. Raw markdown can be passed directly to
-    `run_review_v3`. ``document_type`` defaults to ``"auto"`` (classifier
-    routes to one of six criterion sets — see :func:`run_review_v3`).
-    ``confirm_own_draft`` bypasses the confidentiality-marker tripwire
-    — see :func:`run_review_v3` for the gate semantics.
+    `run_review_v3`. See :func:`run_review_v3` for argument semantics
+    (criterion-set resolution precedence, confidentiality gate,
+    classifier behaviour).
     """
     from pathlib import Path
 
@@ -256,4 +289,6 @@ async def review_document_v3(
         cap=cap,
         document_type=document_type,
         confirm_own_draft=confirm_own_draft,
+        criteria=criteria,
+        guidelines_text=guidelines_text,
     )
