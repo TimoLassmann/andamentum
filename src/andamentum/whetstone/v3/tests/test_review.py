@@ -11,9 +11,12 @@ from unittest.mock import patch
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
 from andamentum.whetstone.v3.criteria import (
+    CREATIVE,
+    ESSAY,
     EXTERNAL_COMMS,
     GENERAL,
     SPECS,
+    TUTORIAL,
     Criterion,
     criterion_set_for,
 )
@@ -92,6 +95,51 @@ def test_general_set_is_routed_for_general() -> None:
     assert all(c.questions for c in GENERAL)
 
 
+def test_essay_set_is_routed_for_essay() -> None:
+    """Phase A: personal/narrative/opinion essays get ESSAY
+    (Thesis/Narrative arc/Specificity/Voice/Fresh observation) — not
+    the academic SPECS or the generic GENERAL."""
+    assert criterion_set_for("essay") is ESSAY
+    assert [c.name for c in ESSAY] == [
+        "Thesis",
+        "Narrative arc",
+        "Specificity",
+        "Voice",
+        "Fresh observation",
+    ]
+    assert all(c.questions for c in ESSAY)
+
+
+def test_tutorial_set_is_routed_for_tutorial() -> None:
+    """Phase A: how-tos / walkthroughs / cookbooks get TUTORIAL
+    (Goal/Prerequisites/Step ordering/Correctness/Completeness) —
+    the reader is trying to accomplish a task."""
+    assert criterion_set_for("tutorial") is TUTORIAL
+    assert [c.name for c in TUTORIAL] == [
+        "Goal",
+        "Prerequisites",
+        "Step ordering",
+        "Correctness",
+        "Completeness",
+    ]
+    assert all(c.questions for c in TUTORIAL)
+
+
+def test_creative_set_is_routed_for_creative() -> None:
+    """Phase A: short fiction / memoir / narrative non-fiction get
+    CREATIVE (Premise/Character & voice/Scene & sensory grounding/
+    Tension/Prose craft) — story craft is the substance."""
+    assert criterion_set_for("creative") is CREATIVE
+    assert [c.name for c in CREATIVE] == [
+        "Premise",
+        "Character & voice",
+        "Scene & sensory grounding",
+        "Tension",
+        "Prose craft",
+    ]
+    assert all(c.questions for c in CREATIVE)
+
+
 def test_unknown_document_type_falls_back_to_general() -> None:
     """Issue 1: the previous behaviour silently fell back to SPECS for
     unknown types — meaning Evaluations and Correctness would run on
@@ -100,13 +148,19 @@ def test_unknown_document_type_falls_back_to_general() -> None:
     assert criterion_set_for("") is GENERAL
 
 
-def test_three_sets_are_disjoint() -> None:
-    """Sanity check that the three criterion sets are distinct objects —
+def test_six_sets_are_disjoint() -> None:
+    """Sanity check that the six criterion sets are distinct objects —
     not aliases of each other (a copy/paste bug would silently regress
     routing)."""
-    assert SPECS is not EXTERNAL_COMMS
-    assert SPECS is not GENERAL
-    assert EXTERNAL_COMMS is not GENERAL
+    all_sets = [SPECS, EXTERNAL_COMMS, ESSAY, TUTORIAL, CREATIVE, GENERAL]
+    # Every pair is a distinct object
+    for i, a in enumerate(all_sets):
+        for j, b in enumerate(all_sets):
+            if i != j:
+                assert a is not b, (
+                    f"criterion sets at positions {i} and {j} are the same "
+                    f"object — copy/paste bug in v3/criteria.py"
+                )
 
 
 def _model(src: str) -> DocumentModel:

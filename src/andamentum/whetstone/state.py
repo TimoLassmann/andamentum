@@ -128,7 +128,13 @@ class ReviewState:
     # of the three resolved values. Explicit values skip the classifier.
     # On any classifier failure or in --no-llm mode, defaults to "general".
     document_type: Literal[
-        "auto", "academic", "external_communication", "general"
+        "auto",
+        "academic",
+        "external_communication",
+        "essay",
+        "tutorial",
+        "creative",
+        "general",
     ] = "auto"
 
     # ── Novelty check (orthogonal to mode; opt-in) ─────────────────────

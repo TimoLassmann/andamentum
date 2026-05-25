@@ -185,10 +185,29 @@ async def run_review_v3(
     *,
     model: str,
     cap: int = 2,
-    document_type: str = "academic",
+    document_type: str = "auto",
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
-    `ReviewResult` the existing renderers consume unchanged."""
+    `ReviewResult` the existing renderers consume unchanged.
+
+    When ``document_type="auto"`` (the default), a one-shot LLM
+    classifier picks one of the six routed types (academic,
+    external_communication, essay, tutorial, creative, general) using
+    the same ``model`` as the rest of the run. Classifier failures
+    default to ``"general"``. Explicit document-type values skip the
+    classifier.
+    """
+    if document_type == "auto":
+        from .._document_type import classify
+
+        # sectionize is deterministic; calling it here AND inside the
+        # graph's first node is cheap (no LLM), so we do it once for the
+        # classifier and once for the run.
+        titles = [s.title for s in sectionize(markdown)]
+        document_type = await classify(
+            model=model, section_titles=titles, markdown=markdown
+        )
+
     deps = V3Deps(agent_model=model, cap=cap, criteria=criterion_set_for(document_type))
     state = V3State(source=markdown)
     result = await review_graph_v3.run(Sectionize(), state=state, deps=deps)
@@ -200,12 +219,14 @@ async def review_document_v3(
     *,
     model: str,
     cap: int = 2,
-    document_type: str = "academic",
+    document_type: str = "auto",
 ) -> ReviewResult:
     """v3 entry from a source path/URL: harvest → markdown → review.
 
-    Opt-in alongside the v2 `review_document`; v2 remains the default until v3
-    is validated. Raw markdown can be passed directly to `run_review_v3`.
+    Opt-in alongside the v2 `review_document`; v2 remains the default
+    until v3 is validated. Raw markdown can be passed directly to
+    `run_review_v3`. ``document_type`` defaults to ``"auto"`` (classifier
+    routes to one of six criterion sets — see :func:`run_review_v3`).
     """
     from pathlib import Path
 

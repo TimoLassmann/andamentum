@@ -279,14 +279,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--document-type",
-        choices=("auto", "academic", "external_communication", "general"),
+        choices=(
+            "auto",
+            "academic",
+            "external_communication",
+            "essay",
+            "tutorial",
+            "creative",
+            "general",
+        ),
         default="auto",
         help=(
             "What kind of document this is. 'auto' (default) runs a "
             "one-shot classifier using --model. Explicit values skip the "
-            "classifier. The journal-specific checklist (CoI / data / "
-            "ethics / abstract / keywords / H1 title) fires only for "
-            "'academic'; synthesis vocabulary adapts accordingly."
+            "classifier. Six document types route to different criterion "
+            "sets (academic / external_communication / essay / tutorial "
+            "/ creative / general); the journal-specific checklist (CoI "
+            "/ data / ethics / abstract / keywords / H1 title) fires "
+            "only for 'academic'; synthesis vocabulary adapts to type."
         ),
     )
     parser.add_argument(
@@ -668,12 +678,12 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         if args.v3:
             from .v3 import review_document_v3
 
-            doc_type = (
-                "academic" if args.document_type == "auto" else args.document_type
-            )
             _t0 = time.perf_counter()
             result = await review_document_v3(
-                args.input, model=args.model, cap=args.rounds, document_type=doc_type
+                args.input,
+                model=args.model,
+                cap=args.rounds,
+                document_type=args.document_type,
             )
             result.metrics.wall_seconds = time.perf_counter() - _t0
         else:

@@ -22,10 +22,20 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger("andamentum.whetstone")
 
-DocumentType = Literal["academic", "external_communication", "general"]
+DocumentType = Literal[
+    "academic",
+    "external_communication",
+    "essay",
+    "tutorial",
+    "creative",
+    "general",
+]
 DOCUMENT_TYPES: tuple[DocumentType, ...] = (
     "academic",
     "external_communication",
+    "essay",
+    "tutorial",
+    "creative",
     "general",
 )
 
@@ -40,17 +50,21 @@ class DocumentTypeDecision(BaseModel):
 
     document_type: DocumentType = Field(
         description=(
-            "academic: manuscripts, theses, conference papers, white papers — "
-            "scholarly writing intended for academic publication. "
-            "external_communication: blog posts, LinkedIn articles, emails, "
-            "op-eds, press releases — text written for a broad non-academic "
-            "audience. general: notes, drafts, books, technical "
-            "documentation, internal writeups — anything that fits neither."
+            "academic: manuscripts, theses, conference papers, white "
+            "papers — scholarly writing intended for academic "
+            "publication. external_communication: blog posts, LinkedIn "
+            "articles, emails, op-eds, press releases — text written for "
+            "a broad non-academic audience. essay: personal essays, "
+            "narrative essays, opinion essays — first-person argument "
+            "from observation or experience. tutorial: how-tos, "
+            "technical walkthroughs, cookbooks — reader is trying to "
+            "accomplish a task. creative: short fiction, memoir, "
+            "narrative non-fiction — story craft is the substance. "
+            "general: notes, drafts, technical documentation, internal "
+            "writeups — anything that fits none of the above."
         )
     )
-    reasoning: str = Field(
-        description="One short sentence explaining the choice."
-    )
+    reasoning: str = Field(description="One short sentence explaining the choice.")
 
 
 def _build_prompt(section_titles: list[str], body_sample: str) -> str:
@@ -60,9 +74,10 @@ def _build_prompt(section_titles: list[str], body_sample: str) -> str:
         else "(no section headings detected)"
     )
     return (
-        "Classify the document below as one of three categories: "
-        "academic, external_communication, or general. Return the "
-        "category plus a one-sentence rationale.\n\n"
+        "Classify the document below as one of six categories: "
+        "academic, external_communication, essay, tutorial, creative, "
+        "or general. Return the category plus a one-sentence "
+        "rationale.\n\n"
         "SECTION TITLES:\n"
         f"{titles_block}\n\n"
         "BODY SAMPLE (first part of the document):\n"

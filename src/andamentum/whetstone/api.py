@@ -48,7 +48,13 @@ async def review_document(
     novelty_cache_dir: Path | None = None,
     confirm_own_draft: bool = False,
     document_type: Literal[
-        "auto", "academic", "external_communication", "general"
+        "auto",
+        "academic",
+        "external_communication",
+        "essay",
+        "tutorial",
+        "creative",
+        "general",
     ] = "auto",
     proofread: bool = True,
 ) -> ReviewResult:
