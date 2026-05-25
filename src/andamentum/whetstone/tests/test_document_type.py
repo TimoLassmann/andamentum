@@ -102,9 +102,7 @@ class TestClassifyPureFunction:
                 return await super().run(prompt)
 
         with mock.patch("pydantic_ai.Agent", CapturingAgent):
-            await classify(
-                model="fake:test", section_titles=["S"], markdown=long_md
-            )
+            await classify(model="fake:test", section_titles=["S"], markdown=long_md)
 
         # Body sample is bounded — full 50k must not be in the prompt.
         assert len(captured["prompt"]) < 5_000
@@ -185,9 +183,7 @@ class TestIntegrationChecklistGate:
 
 
 class TestNoLLMDefaultsToGeneral:
-    async def test_auto_with_no_model_defaults_to_general(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_auto_with_no_model_defaults_to_general(self, tmp_path: Path) -> None:
         """--no-llm + document_type='auto' → classifier returns 'general'.
         Verified by checking the journal checklist did NOT fire."""
         manuscript = _write_manuscript(tmp_path, with_markers=False)
@@ -229,4 +225,7 @@ class TestSynthesisVocabularyContext:
 
         assert "manuscript" in _document_type_context("academic")
         assert "audience" in _document_type_context("external_communication")
+        assert "essay" in _document_type_context("essay")
+        assert "tutorial" in _document_type_context("tutorial")
+        assert "scene" in _document_type_context("creative")
         assert "neutral" in _document_type_context("general").lower()

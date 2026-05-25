@@ -64,12 +64,35 @@ _DOC_TYPE_VOCAB: dict[str, str] = {
         "'call to action', 'reader engagement'. Frame feedback for "
         "publication on a public channel, not for academic submission."
     ),
+    "essay": (
+        "DOCUMENT TYPE: essay. This draft is a personal, narrative, or "
+        "opinion essay — first-person argument from observation or "
+        "experience, not formal evidence. Use vocabulary appropriate "
+        "to that genre: 'essay', 'piece', 'argument', 'voice', 'scene', "
+        "'observation', 'thesis'. Frame feedback for an author "
+        "sharpening prose and argument, not for academic submission."
+    ),
+    "tutorial": (
+        "DOCUMENT TYPE: tutorial. This draft is a how-to, technical "
+        "walkthrough, cookbook, or recipe-style document — the reader "
+        "is trying to accomplish a task. Use vocabulary appropriate "
+        "to that genre: 'tutorial', 'guide', 'step', 'prerequisites', "
+        "'reader', 'goal', 'outcome'. Frame feedback around task "
+        "completion and reader success, not academic argument."
+    ),
+    "creative": (
+        "DOCUMENT TYPE: creative. This draft is short fiction, memoir, "
+        "or narrative non-fiction — story craft is the substance. "
+        "Use vocabulary appropriate to that genre: 'piece', 'scene', "
+        "'character', 'voice', 'tension', 'prose', 'image'. Frame "
+        "feedback around narrative craft, not academic argument or "
+        "task completion."
+    ),
     "general": (
-        "DOCUMENT TYPE: general. This draft is neither academic "
-        "writing nor external communication — likely a note, internal "
-        "document, book, technical writeup, or similar. Use neutral "
-        "vocabulary: 'document', 'draft', 'text', 'section'. Do not "
-        "assume academic submission norms apply."
+        "DOCUMENT TYPE: general. This draft is none of the above — "
+        "likely a note, internal document, technical writeup, or "
+        "similar. Use neutral vocabulary: 'document', 'draft', 'text', "
+        "'section'. Do not assume academic submission norms apply."
     ),
 }
 
@@ -84,8 +107,7 @@ async def _run_synthesis(
     findings: list[Finding],
 ) -> ReviewSummary:
     map_lines = "\n".join(
-        f"  • {c.section_id} — {c.title}: {c.one_line_gist}"
-        for c in state.document_map
+        f"  • {c.section_id} — {c.title}: {c.one_line_gist}" for c in state.document_map
     )
     finding_lines = "\n".join(
         f"  [{f.priority}|{f.severity}|{f.confidence}] {f.title}\n      sections: {', '.join(f.sections_involved)}\n      {f.rationale}"
