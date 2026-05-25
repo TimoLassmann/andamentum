@@ -684,6 +684,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 model=args.model,
                 cap=args.rounds,
                 document_type=args.document_type,
+                confirm_own_draft=args.confirm_own_draft,
             )
             result.metrics.wall_seconds = time.perf_counter() - _t0
         else:

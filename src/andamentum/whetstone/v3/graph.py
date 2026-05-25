@@ -186,6 +186,7 @@ async def run_review_v3(
     model: str,
     cap: int = 2,
     document_type: str = "auto",
+    confirm_own_draft: bool = False,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -196,7 +197,20 @@ async def run_review_v3(
     the same ``model`` as the rest of the run. Classifier failures
     default to ``"general"``. Explicit document-type values skip the
     classifier.
+
+    Refuses to run on text containing confidentiality markers
+    (``"Manuscript ID:"``, ``"Reviewer Instructions"``, etc.) — the
+    safety gate that protects against accidentally using whetstone on
+    peer-review material. Override with ``confirm_own_draft=True`` only
+    when the matched marker is a legitimate false positive in the user's
+    own draft. The check runs BEFORE the classifier so no LLM ever sees
+    confidential text.
     """
+    if not confirm_own_draft:
+        from .._confidentiality import check_confidentiality
+
+        check_confidentiality(markdown)
+
     if document_type == "auto":
         from .._document_type import classify
 
@@ -220,6 +234,7 @@ async def review_document_v3(
     model: str,
     cap: int = 2,
     document_type: str = "auto",
+    confirm_own_draft: bool = False,
 ) -> ReviewResult:
     """v3 entry from a source path/URL: harvest → markdown → review.
 
@@ -227,10 +242,18 @@ async def review_document_v3(
     until v3 is validated. Raw markdown can be passed directly to
     `run_review_v3`. ``document_type`` defaults to ``"auto"`` (classifier
     routes to one of six criterion sets — see :func:`run_review_v3`).
+    ``confirm_own_draft`` bypasses the confidentiality-marker tripwire
+    — see :func:`run_review_v3` for the gate semantics.
     """
     from pathlib import Path
 
     from andamentum.harvest import extract
 
     md = await extract(Path(source)) if Path(source).exists() else source
-    return await run_review_v3(md, model=model, cap=cap, document_type=document_type)
+    return await run_review_v3(
+        md,
+        model=model,
+        cap=cap,
+        document_type=document_type,
+        confirm_own_draft=confirm_own_draft,
+    )
