@@ -25,6 +25,14 @@ from .digest import build_document_model
 from .gaps import gap_loop
 from .gate import gate_and_aggregate
 from .model import Claim, DocumentModel, Section
+from .novelty import (
+    NoveltyEvidence,
+    NoveltyTarget,
+    flag_novelty_targets,
+    judge_novelty,
+    run_novelty_searches,
+    verdicts_to_findings,
+)
 from .review import Finding, run_criteria, verify_findings
 from .sectionize import sectionize
 from .synth import StructuredReview, critique_and_revise, synthesise, to_review_result
@@ -45,6 +53,9 @@ class V3Deps:
     editor_criteria: list[str] = field(
         default_factory=lambda: list(DEFAULT_EDITOR_CRITERIA)
     )
+    check_novelty: bool = False
+    novelty_target_cap: int = 8
+    novelty_search_depth: int = 2
 
 
 @dataclass
@@ -56,6 +67,8 @@ class V3State:
     findings: list[Finding] = field(default_factory=list)
     review: StructuredReview | None = None
     edits: list[Edit] = field(default_factory=list)
+    novelty_targets: list[NoveltyTarget] = field(default_factory=list)
+    novelty_evidence: list[NoveltyEvidence] = field(default_factory=list)
 
 
 @dataclass
@@ -122,10 +135,56 @@ class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class Consolidate(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "FlagNoveltyTargets":
         ctx.state.findings = await consolidate(
             ctx.state.findings, agent_model=ctx.deps.agent_model
         )
+        return FlagNoveltyTargets()
+
+
+@dataclass
+class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
+    """Extract ≤``novelty_target_cap`` novelty claims for verification.
+    No-op when ``check_novelty=False`` (default)."""
+
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "RunNoveltySearches":
+        if not ctx.deps.check_novelty:
+            return RunNoveltySearches()
+        ctx.state.novelty_targets = await flag_novelty_targets(
+            ctx.state.sections,
+            ctx.state.source,
+            agent_model=ctx.deps.agent_model,
+            cap=ctx.deps.novelty_target_cap,
+        )
+        return RunNoveltySearches()
+
+
+@dataclass
+class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
+    """Parallel deep_research per target. Per-target failures are
+    captured in NoveltyEvidence.error rather than aborting the loop."""
+
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "JudgeNovelty":
+        if not ctx.deps.check_novelty or not ctx.state.novelty_targets:
+            return JudgeNovelty()
+        ctx.state.novelty_evidence = await run_novelty_searches(
+            ctx.state.novelty_targets,
+            agent_model=ctx.deps.agent_model,
+            search_depth=ctx.deps.novelty_search_depth,
+        )
+        return JudgeNovelty()
+
+
+@dataclass
+class JudgeNovelty(BaseNode[V3State, V3Deps, ReviewResult]):
+    """Pure adaptation: evidence → verdict → Finding. Verdicts where
+    is_novel=True are silenced (no Finding emitted)."""
+
+    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
+        if not ctx.deps.check_novelty or not ctx.state.novelty_evidence:
+            return Gate()
+        verdicts = judge_novelty(ctx.state.novelty_evidence)
+        ctx.state.findings.extend(verdicts_to_findings(verdicts))
         return Gate()
 
 
@@ -206,6 +265,9 @@ review_graph_v3 = Graph(
         VerifyFindings,
         GapLoop,
         Consolidate,
+        FlagNoveltyTargets,
+        RunNoveltySearches,
+        JudgeNovelty,
         Gate,
         Synthesise,
         CritiqueRevise,
@@ -226,6 +288,9 @@ async def run_review_v3(
     guidelines_text: str | None = None,
     editor: bool = False,
     editor_criteria: list[str] | None = None,
+    check_novelty: bool = False,
+    novelty_target_cap: int = 8,
+    novelty_search_depth: int = 2,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -299,6 +364,9 @@ async def run_review_v3(
         editor_criteria=(
             list(editor_criteria) if editor_criteria else list(DEFAULT_EDITOR_CRITERIA)
         ),
+        check_novelty=check_novelty,
+        novelty_target_cap=novelty_target_cap,
+        novelty_search_depth=novelty_search_depth,
     )
     state = V3State(source=markdown)
     result = await review_graph_v3.run(Sectionize(), state=state, deps=deps)
@@ -316,6 +384,9 @@ async def review_document_v3(
     guidelines_text: str | None = None,
     editor: bool = False,
     editor_criteria: list[str] | None = None,
+    check_novelty: bool = False,
+    novelty_target_cap: int = 8,
+    novelty_search_depth: int = 2,
 ) -> ReviewResult:
     """v3 entry from a source path/URL: harvest → markdown → review.
 
@@ -340,4 +411,7 @@ async def review_document_v3(
         guidelines_text=guidelines_text,
         editor=editor,
         editor_criteria=editor_criteria,
+        check_novelty=check_novelty,
+        novelty_target_cap=novelty_target_cap,
+        novelty_search_depth=novelty_search_depth,
     )
