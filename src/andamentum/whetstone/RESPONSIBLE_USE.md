@@ -12,8 +12,9 @@ the in-code protections that exist to make accidental misuse hard.
 - Supervisors and co-authors editing a draft with the author's
   knowledge.
 - PIs auditing a lab's pre-submission output.
-- Anyone running the deterministic structural substrate (`--no-llm`)
-  for style and consistency checks on their own text.
+- Anyone running the `andamentum-whetstone proofread <source>`
+  subcommand for deterministic style + readability checks on their
+  own text (no LLM call — wraps `andamentum.proofread`).
 
 ## Who whetstone is NOT for
 
@@ -63,8 +64,7 @@ andamentum-whetstone draft.md \
 ```
 
 Whetstone supports local-only operation throughout the review
-pipeline. The deterministic structural substrate (`--no-llm`)
-involves no model calls at all.
+pipeline. The `proofread` subcommand involves no model calls at all.
 
 ## In-code protections — what whetstone does for you
 
@@ -90,16 +90,15 @@ andamentum-whetstone draft.md --confirm-own-draft ...
 
 ### Panel-mode authorship affirmation
 
-`--mode panel` produces output shaped exactly like a journal
+The `panel` subcommand produces output shaped exactly like a journal
 peer-review report (3–5 fictional reviewer biosketches, scored
 per-criterion, with an Accept/Minor/Major/Reject recommendation).
 That format is the highest laundering risk in the tool, so panel
 mode requires an explicit affirmation:
 
 ```bash
-andamentum-whetstone draft.md \
-    --mode panel --model ... \
-    --i-am-the-author
+andamentum-whetstone panel draft.md \
+    --model ... --i-am-the-author --out panel.md
 ```
 
 Or pre-set `ANDAMENTUM_PANEL_OWN_AUTHOR=1` once per shell session.
@@ -130,23 +129,18 @@ your modified manuscript) the visible banner is OFF by default to
 avoid polluting your submission — the invisible metadata is still
 written. Override with `--visible-watermark` / `--no-visible-watermark`.
 
-### Novelty-cache hygiene
+### Novelty-check network surface
 
 `--check-novelty` extracts your unpublished novelty claims and
-issues search queries derived from them. **The on-disk per-claim
-cache is OFF by default** — hashed digests of unpublished claims
-should not sit on your filesystem between runs without explicit
-opt-in. To enable the cache (for repeat runs on the same draft):
+issues search queries derived from them. The v3 novelty pipeline
+deliberately does NOT persist a per-claim cache to disk — hashed
+digests of unpublished claims should not sit on your filesystem
+between runs. Repeated runs re-query deep_research.
 
-```bash
-andamentum-whetstone draft.md \
-    --check-novelty --persist-novelty-cache ...
-```
-
-Even with the cache enabled, **the search queries themselves leave
-your machine** through deep_research → your local SearXNG → public
-search engines. Treat `--check-novelty` as a network-leak surface;
-do not run it on someone else's unpublished work.
+**The search queries themselves leave your machine** through
+deep_research → your local SearXNG → public search engines. Treat
+`--check-novelty` as a network-leak surface; do not run it on
+someone else's unpublished work.
 
 ## Suggested AI-disclosure wording
 
@@ -166,9 +160,8 @@ For NHMRC / ARC submissions, follow the funder's current AI-use
 disclosure form. For thesis writing, follow your institution's
 research-integrity code.
 
-If you only ran the deterministic substrate (`--no-llm`), no
-AI-content disclosure is required — the deterministic pipeline
-makes no model calls.
+If you only ran the `proofread` subcommand (no LLM, no model
+calls), no AI-content disclosure is required.
 
 ## What whetstone does NOT and CANNOT verify for you
 

@@ -28,8 +28,8 @@ generic AI tooling:
 - `andamentum.typeset` — HTML / PDF typesetting used by other modules
 
 **Reviewing your own drafts**
-- `andamentum.whetstone` — multi-lens review of your own drafts with track
-  changes, panel mode, novelty check, and Strunk-rule lens
+- `andamentum.whetstone` — criterion-cascade review of your own drafts
+  with track changes, panel mode, and optional novelty check
 - `andamentum.proofread` — deterministic readability + style checking (no LLM)
 - `andamentum.vision_critique` — bounded vision critique of rendered figures
   via local multimodal models
@@ -91,7 +91,7 @@ the full flag reference.
 |---|---|---|
 | `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
-| `andamentum-whetstone` | Multi-lens review of your own draft → markdown / HTML / .docx with track changes. `--apply-patches PATCHES.json` applies a pre-built JSON patch list to a .docx (no LLM) | required (or `--no-llm`) |
+| `andamentum-whetstone` | Criterion-cascade review of your own draft → markdown / HTML / .docx with track changes. Four subcommands: `review` (default), `panel` (multi-expert), `proofread` (no LLM), `apply-patches` (no LLM) | required for `review` + `panel` |
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
 | `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
 | `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
