@@ -525,7 +525,20 @@ async def _inspect(args: argparse.Namespace) -> None:
         print(f"  {prov}: {n}")
 
 
+_EXPERIMENTAL_BANNER = (
+    "\033[33m⚠ EXPERIMENTAL:\033[0m andamentum.epistemic is under active "
+    "development. Output shape, agent names, and CLI flags may change "
+    "without notice. Do not depend on this module in production "
+    "workflows yet. See README §'Pre-release / experimental'.\n"
+)
+
+
 def main() -> None:
+    # Always print the experimental banner to stderr — every invocation,
+    # before any work. Users running this from scripts will see it; users
+    # running interactively will too. The ANSI yellow only shows in TTYs.
+    print(_EXPERIMENTAL_BANNER, file=sys.stderr)
+
     parser = _build_parser()
     args = parser.parse_args()
 

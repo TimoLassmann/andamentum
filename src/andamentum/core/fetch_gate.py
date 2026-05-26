@@ -297,15 +297,14 @@ def user_agent_for(component: str) -> str:
     Examples
     --------
     >>> user_agent_for("harvest")
-    'andamentum-harvest/<version> (+https://github.com/<your-github-handle>/andamentum)'
+    'andamentum-harvest/<version> (+https://github.com/TimoLassmann/andamentum)'
 
-    The placeholder ``<your-github-handle>`` is intentional — the publishing
-    user replaces it before release. Identifies andamentum to remote hosts
-    per RFC 9110 §10.1.5 so abuse desks can contact the project.
+    Identifies andamentum to remote hosts per RFC 9110 §10.1.5 so abuse
+    desks can contact the project.
     """
     from andamentum import __version__ as _version
 
     return (
         f"andamentum-{component}/{_version} "
-        f"(+https://github.com/<your-github-handle>/andamentum)"
+        f"(+https://github.com/TimoLassmann/andamentum)"
     )

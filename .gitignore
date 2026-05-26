@@ -29,6 +29,11 @@ dist/
 /*.docx
 /*.pdf
 
+# Smoke-run / scratch review outputs at repo root — keep them under
+# docs/results/smoke/ if they're worth keeping, otherwise discard.
+/smoke_*.md
+/reviewed*.docx
+
 # Git worktrees (kept inside the repo so Claude Code's permission scope covers them)
 .worktrees/
 

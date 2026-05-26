@@ -4,6 +4,13 @@ Article-optimised: trafilatura strips nav/ads/cookie banners aggressively
 and emits clean prose with `##` headings preserved. Excellent on real
 articles; near-useless on link-card homepages (returns one structureless
 run of text).
+
+**Optional dependency.** Trafilatura is GPL-3.0; to keep the default
+``andamentum`` install MIT-clean it's only pulled in by
+``pip install andamentum[html-articles]``. When the package isn't
+installed this backend raises ``ExtractionError`` (a ``HarvestError``
+subclass) which the dispatcher in ``harvest/api.py`` catches and falls
+back to docling.
 """
 
 from __future__ import annotations
@@ -16,13 +23,23 @@ from ..errors import ExtractionError
 async def extract(data: bytes, source_url: str) -> str:
     """Run trafilatura on raw HTML bytes; return markdown.
 
-    Raises ExtractionError if trafilatura returned no content (typical for
-    JavaScript-rendered or paywalled pages).
+    Raises ExtractionError if trafilatura isn't installed, or if it
+    returned no content (typical for JavaScript-rendered or paywalled
+    pages).
     """
     # Trafilatura is sync; the cost is small enough we don't bother with
     # to_thread. Logger noise from missing-link-attribute warnings on every
     # anchor is suppressed per request.
-    import trafilatura
+    try:
+        import trafilatura
+    except ImportError as exc:
+        raise ExtractionError(
+            "trafilatura is not installed",
+            attempted=["trafilatura"],
+            diagnostics={
+                "trafilatura": "missing; install with `pip install andamentum[html-articles]` to enable. Falling back to docling.",
+            },
+        ) from exc
 
     logging.getLogger("trafilatura").setLevel(logging.ERROR)
 
