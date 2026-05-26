@@ -641,14 +641,9 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             # Panel mode runs its own graph (different shape — multi-
             # expert fan-out + synthesis); criterion-cascade kwargs do
             # not apply.
-            from andamentum.harvest import extract as harvest_extract
-            from pathlib import Path as _Path
+            from .v3.graph import _harvest_or_treat_as_markdown
 
-            md = (
-                await harvest_extract(_Path(args.input))
-                if _Path(args.input).exists()
-                else args.input
-            )
+            md = await _harvest_or_treat_as_markdown(args.input)
             result = await run_panel_v3(
                 md,
                 model=args.model,
@@ -765,39 +760,32 @@ def _log_run_config(
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("input:", str(args.input))
-    if args.v3:
-        table.add_row("pipeline:", "v3 (whole-document, SPECS criteria, gap loop)")
-        table.add_row("model:", args.model or "")
-        table.add_row("document type:", args.document_type)
-        table.add_row("gap-loop cap:", str(args.rounds))
-        table.add_row("outputs:", ", ".join(str(o) for o in args.out))
-        console.print(Panel(table, title="whetstone v3", border_style="cyan"))
-        return
-    table.add_row("mode:", args.mode)
-    table.add_row("model:", args.model or "[i](deterministic only)[/i]")
+    table.add_row("model:", args.model or "")
+    table.add_row("document type:", args.document_type)
     if args.mode == "panel":
+        table.add_row("pipeline:", "panel (multi-expert simulated peer review)")
         table.add_row("n_experts:", str(args.n_experts))
         if args.panel_disciplines:
             table.add_row("disciplines:", args.panel_disciplines)
-    elif args.mode == "guidelines":
-        guideline_preview = (
-            f"@{args.guidelines[1:]}"
-            if args.guidelines.startswith("@")
-            else f"<{len(args.guidelines)} chars inline>"
-        )
-        table.add_row("guidelines:", guideline_preview)
-    elif args.mode == "custom":
-        criteria_preview = "; ".join(args.criteria) if args.criteria else "(none)"
-        table.add_row("criteria:", criteria_preview)
     else:
-        table.add_row("perspectives:", ", ".join(perspectives))
+        table.add_row("pipeline:", "review (criterion cascade + gap loop)")
+        if args.criteria:
+            criteria_preview = "; ".join(args.criteria)
+            table.add_row("criteria:", criteria_preview)
+        elif args.guidelines:
+            guideline_preview = (
+                f"@{args.guidelines[1:]}"
+                if args.guidelines.startswith("@")
+                else f"<{len(args.guidelines)} chars inline>"
+            )
+            table.add_row("guidelines:", guideline_preview)
         table.add_row("editor:", "on" if args.editor else "off")
         if args.editor:
             table.add_row("editor criteria:", ", ".join(editor_criteria))
-        table.add_row("challenge:", "off" if args.no_challenge else "on")
-        table.add_row("rounds (cap):", str(args.rounds))
+        table.add_row("novelty check:", "on" if args.check_novelty else "off")
+        table.add_row("gap-loop cap:", str(args.rounds))
     table.add_row("outputs:", ", ".join(str(o) for o in args.out))
-    console.print(Panel(table, title="whetstone v2", border_style="cyan"))
+    console.print(Panel(table, title="whetstone", border_style="cyan"))
 
 
 def _print_summary(
