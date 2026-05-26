@@ -3,7 +3,7 @@
 The single canonical answer to "is this target verbatim in this source, and
 if so, where?" The previous codebase had FIVE different implementations of
 this with materially different normalisation rules — see
-docs/plans/2026-05-24-string-match-consolidation.md for the inventory.
+docs/.internal/plans/2026-05-24-string-match-consolidation.md for the inventory.
 
 The contract:
 

@@ -144,7 +144,7 @@ policy restricts.
   TTY-aware one-time stderr warning for `andamentum-research` and
   `andamentum-epistemic`; silent for the pipeline CLIs) are planned
   for a future release (see
-  `docs/plans/2026-05-16-responsible-release.md`).
+  `docs/.internal/plans/2026-05-16-responsible-release.md`).
 
 ## Audit log (opt-in)
 

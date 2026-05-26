@@ -8,7 +8,7 @@ question:
 > **critical** issues that a whole-document read catches?
 
 Full design, rubric, and methodology:
-**`docs/plans/2026-05-21-whetstone-benchmark-prd.md`**.
+**`docs/.internal/plans/2026-05-21-whetstone-benchmark-prd.md`**.
 
 ## Layout (planned)
 

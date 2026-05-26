@@ -6,25 +6,23 @@ authors:
   - family-names: Lassmann
     given-names: Timo
     affiliation: "Telethon Kids Institute"
-    # TODO: add ORCID before release
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"  # add when ORCID is registered
 version: "0.3.0rc3"
 date-released: "2026-05-16"
 license: MIT
-# TODO: replace <your-github-handle> with your actual GitHub handle before release
-repository-code: "https://github.com/<your-github-handle>/andamentum"
-url: "https://github.com/<your-github-handle>/andamentum"
+repository-code: "https://github.com/TimoLassmann/andamentum"
+url: "https://github.com/TimoLassmann/andamentum"
 abstract: >-
   Composable research tooling for scientific work. A single Python
   package of tightly-scoped sub-modules covering the document-handling
   pipeline a researcher uses end-to-end: document authoring,
-  multi-lens manuscript review, publication-quality figure rendering,
-  source extraction from PDF / HTML / DOCX / PPTX, semantic chunking,
-  personal knowledge-base with hybrid search, web research with
-  verification, vision critique, readability and style checking, and
-  typesetting. Designed with explicit-model-argument APIs and in-code
-  responsible-use protections (fetch gating against robots.txt and
-  paywalled publishers, confidentiality tripwires, AI-provenance
+  criterion-cascade manuscript review, publication-quality figure
+  rendering, source extraction from PDF / HTML / DOCX / PPTX, semantic
+  chunking, personal knowledge-base with hybrid search, web research
+  with verification, vision critique, readability and style checking,
+  and typesetting. Designed with explicit-model-argument APIs and
+  in-code responsible-use protections (fetch gating against robots.txt
+  and paywalled publishers, confidentiality tripwires, AI-provenance
   watermarking, opt-in audit log).
 keywords:
   - scientific-research-tools

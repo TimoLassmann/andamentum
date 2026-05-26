@@ -232,7 +232,6 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sqlite-vec" },
     { name = "textstat" },
-    { name = "trafilatura" },
 ]
 
 [package.optional-dependencies]
@@ -242,7 +241,11 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "trafilatura" },
     { name = "uvicorn" },
+]
+html-articles = [
+    { name = "trafilatura" },
 ]
 
 [package.metadata]
@@ -271,10 +274,11 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.10.0" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
     { name = "textstat", specifier = ">=0.7.4" },
-    { name = "trafilatura", specifier = ">=2.0.0" },
+    { name = "trafilatura", marker = "extra == 'dev'", specifier = ">=2.0.0" },
+    { name = "trafilatura", marker = "extra == 'html-articles'", specifier = ">=2.0.0" },
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.27" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["html-articles", "dev"]
 
 [[package]]
 name = "annotated-doc"

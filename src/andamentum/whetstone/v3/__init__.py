@@ -1,7 +1,7 @@
 """Whetstone v3 — whole-document, digest-focused, SPECS-criterion review.
 
 A clean rebuild of the review pipeline, built alongside v2 and swapped in once
-validated. See docs/plans/2026-05-22-whetstone-v3-whole-doc-specs.md.
+validated. See docs/.internal/plans/2026-05-22-whetstone-v3-whole-doc-specs.md.
 
 The core shift: reasoning happens once, over the whole paper, via a compact
 verified *document model* (claims as located verbatim spans), instead of
