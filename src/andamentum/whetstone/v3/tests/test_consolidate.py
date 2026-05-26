@@ -101,9 +101,7 @@ async def test_agent_sees_quotes_and_sections_in_prompt() -> None:
         patch(
             "andamentum.whetstone.v3.consolidate.build_pydantic_ai_agent", new=factory
         ),
-        patch(
-            "andamentum.whetstone.v3.consolidate.resolve_model", new=lambda m: None
-        ),
+        patch("andamentum.whetstone.v3.consolidate.resolve_model", new=lambda m: None),
     ):
         await consolidate(findings, agent_model="stub")
 

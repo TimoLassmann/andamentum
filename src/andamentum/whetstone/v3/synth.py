@@ -87,6 +87,9 @@ async def synthesise(
     res = await agent.run(
         f"FINDINGS:\n{_findings_block(findings)}\n\nSECTIONS:\n{gists}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     return cast(StructuredReview, res.output)
 
 
@@ -161,6 +164,9 @@ async def critique_and_revise(
         f"AUTHOR CLAIMS:\n{claims_block}\n\n"
         f"SUPPORTED FINDINGS:\n{findings_block}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     return cast(StructuredReview, res.output)
 
 
@@ -213,6 +219,8 @@ def to_review_result(
     findings: list[Finding],
     review: StructuredReview,
     edits: list[Edit] | None = None,
+    llm_calls: int = 0,
+    gap_rounds_used: int = 0,
 ) -> ReviewResult:
     edits = edits or []
     gist_by_section = {g.section_id: g.gist for g in model.gists}
@@ -229,8 +237,10 @@ def to_review_result(
             for s in model.sections
         ],
         metrics=ReviewMetrics(
+            llm_calls=llm_calls,
             investigated_findings_count=len(findings),
             sections_processed=len(model.sections),
             edits_count=len(edits),
+            reflection_rounds_used=gap_rounds_used,
         ),
     )

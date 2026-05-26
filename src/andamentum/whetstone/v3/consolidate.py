@@ -111,7 +111,10 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
         for i, f in enumerate(findings)
     )
     try:
+        from ._metrics import bump_from_result
+
         result = await agent.run(f"FINDINGS:\n{numbered}\n\nGroup the near-duplicates.")
+        bump_from_result(result)
         groups = cast(_Consolidation, result.output).groups
     except Exception as exc:
         logger.warning("[v3.consolidate] crashed, leaving findings as-is: %s", exc)

@@ -797,21 +797,18 @@ def _print_summary(
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("wall time:", f"{m.wall_seconds:.1f}s")
-    # llm_calls / reflection rounds are v2 telemetry; v3 doesn't track them yet,
-    # so omit rather than print misleading zeros (the [v3.gaps] log shows rounds).
-    if not v3:
-        table.add_row("LLM calls:", str(m.llm_calls))
+    table.add_row("LLM calls:", str(m.llm_calls))
     table.add_row("sections:", str(m.sections_processed))
-    table.add_row(
-        "findings:",
-        f"{m.deterministic_findings_count} deterministic + "
-        f"{m.investigated_findings_count} investigated "
-        f"({m.challenged_findings_count} challenged)",
-    )
+    # v3 reports criterion-cascade findings as "investigated"; there is
+    # no separate deterministic / challenged column anymore.
+    table.add_row("findings:", str(m.investigated_findings_count))
     table.add_row("edits:", str(m.edits_count))
     table.add_row("author questions:", str(len(result.author_questions)))
-    if not v3:
-        table.add_row("rounds used:", str(m.reflection_rounds_used))
+    # Gap-loop rounds are stored on the same metric field v2 used for
+    # the reflection loop — the underlying mechanism is similar
+    # ("re-examine until no new demands or cap hit").
+    if m.reflection_rounds_used:
+        table.add_row("gap-loop rounds:", str(m.reflection_rounds_used))
     table.add_row("outputs:", "\n".join(str(p) for p in written))
     console.print(Panel(table, title="review complete", border_style="green"))
 

@@ -116,6 +116,9 @@ async def extract_criteria_from_guidelines(
     result = await agent.run(
         f"GUIDELINES / BRIEF:\n{stripped}\n\nExtract up to {max_criteria} criteria."
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(result)
     extracted = cast(_ExtractionResult, result.output).criteria
 
     if not extracted:

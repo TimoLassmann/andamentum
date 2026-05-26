@@ -190,6 +190,9 @@ async def _run_editor_on_section(
         f"is already well-written."
     )
     res = await agent.run(user_prompt)
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     output = cast(EditorOutput, res.output)
 
     edits: list[Edit] = []

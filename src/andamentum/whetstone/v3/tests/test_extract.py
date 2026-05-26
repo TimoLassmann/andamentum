@@ -84,7 +84,4 @@ async def test_multi_sentence_claim_kept_intact() -> None:
     assert len(claims) == 1
     # Multi-sentence span survives locate and is stored verbatim
     assert claims[0].quote == multi
-    assert (
-        src[claims[0].span.start : claims[0].span.end]
-        == multi
-    )
+    assert src[claims[0].span.start : claims[0].span.end] == multi
