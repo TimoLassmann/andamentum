@@ -218,7 +218,7 @@ def _strip_leading_exec_heading(summary: str) -> str:
 
     stripped = summary.lstrip()
     if stripped.startswith(EXECUTIVE_SUMMARY_HEADER):
-        return stripped[len(EXECUTIVE_SUMMARY_HEADER):].lstrip("\n")
+        return stripped[len(EXECUTIVE_SUMMARY_HEADER) :].lstrip("\n")
     return summary
 
 

@@ -101,7 +101,11 @@ async def test_graph_runs_end_to_end_to_review_result() -> None:
                 new=_build_review_agent_stub,
             )
         )
-        result = await run_review_v3(SRC, model="stub", cap=1)
+        # Explicit document_type="academic" — the test asserts the
+        # SPECS criterion category set, so we must skip the classifier
+        # (which with model="stub" would default to "general" → GENERAL
+        # criterion set with different category names).
+        result = await run_review_v3(SRC, model="stub", cap=1, document_type="academic")
 
     # It produced a ReviewResult the renderers can consume.
     assert result.summary.startswith("## Summary")

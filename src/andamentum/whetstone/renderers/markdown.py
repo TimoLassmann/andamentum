@@ -68,8 +68,16 @@ def render_markdown(
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
+    # section_id → title map, used by the finding renderer to label
+    # each per-finding location header (e.g. "Methods · s1").
+    section_titles = {c.section_id: c.title for c in result.document_map}
+
     if result.summary.strip():
         sections.append(result.summary.strip())
+
+    # ── Document map at the TOP — orientation before findings ──────
+    if result.document_map and not panel_mode:
+        sections.append(_render_document_map(result.document_map))
 
     # ── Panel-mode sections (priority order) ─────────────────────────
     if result.panel_synthesis is not None:
@@ -99,23 +107,25 @@ def render_markdown(
 
     llm_findings = list(result.findings)
     if llm_findings:
-        sections.append(_render_findings(llm_findings, heading="Findings (LLM-investigated)"))
+        sections.append(
+            _render_findings(
+                llm_findings,
+                heading="Findings",
+                section_titles=section_titles,
+            )
+        )
 
     if result.deterministic_findings:
         sections.append(
             _render_findings(
                 result.deterministic_findings,
                 heading="Deterministic findings (structural)",
+                section_titles=section_titles,
             )
         )
 
-    if result.document_map and not panel_mode:
-        # Document map is most useful in review mode where findings
-        # reference specific section_ids. In panel mode we only show
-        # it if there's nothing else to show — the panel synthesis
-        # already gives a holistic view.
-        sections.append(_render_document_map(result.document_map))
-    elif result.document_map and not sections:
+    # Fallback: if there's nothing but a panel, still emit the doc map.
+    if result.document_map and panel_mode and not sections:
         sections.append(_render_document_map(result.document_map))
 
     if not sections:
@@ -177,12 +187,37 @@ _PRIORITY_HEADINGS = {
 }
 
 
-def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
+def _render_findings(
+    findings: Iterable[Finding],
+    *,
+    heading: str,
+    section_titles: dict[str, str] | None = None,
+) -> str:
+    """Editorial-annotation layout: per-finding section header → quoted
+    passage (blockquote) → comment paragraph.
+
+    Mirrors the HTML renderer's layout so the two outputs read the same.
+    The section_titles map (section_id → title) comes from the document
+    map; missing ids render with a question-mark placeholder.
+    """
+    findings = list(findings)
+    section_titles = section_titles or {}
     by_priority: dict[str, list[Finding]] = defaultdict(list)
     for f in findings:
         by_priority[f.priority].append(f)
 
-    lines = [f"## {heading} ({sum(len(v) for v in by_priority.values())})", ""]
+    counts = [
+        f"{len(by_priority.get(p, []))} {label}"
+        for p, label in (
+            ("must_fix", "must-fix"),
+            ("should_fix", "should-fix"),
+            ("consider", "consider"),
+        )
+        if by_priority.get(p)
+    ]
+    counts_line = " · ".join(counts) if counts else "0 findings"
+    lines = [f"## {heading} ({len(findings)})", "", f"_{counts_line}_", ""]
+
     for priority in ("must_fix", "should_fix", "consider"):
         group = by_priority.get(priority, [])
         if not group:
@@ -190,25 +225,41 @@ def _render_findings(findings: Iterable[Finding], *, heading: str) -> str:
         lines.append(f"### {_PRIORITY_HEADINGS[priority]} ({len(group)})")
         lines.append("")
         for f in group:
-            persona = f" · _{f.perspective}_" if f.perspective else ""
-            sev_tag = f"_{f.severity}_, "
-            lines.append(
-                f"- **{f.title}** _({sev_tag}{f.confidence} confidence{persona})_"
+            # Per-finding location header — pulls the section title from
+            # the document map so the reader sees "Methods · s1" rather
+            # than an opaque "s1".
+            section_id = (
+                f.quotes[0].section_id
+                if f.quotes
+                else (f.sections_involved[0] if f.sections_involved else "")
             )
+            section_title = section_titles.get(section_id, "(no section)")
+            loc = f"#### {section_title}" + (f" · `{section_id}`" if section_id else "")
+            lines.append(loc)
+            lines.append("")
+
+            # Quoted passage — the thing being commented on. Verbatim
+            # span from the source, wrapped in a blockquote so it
+            # visually leads the comment that follows.
+            for q in f.quotes[:1]:
+                preview = q.text.replace("\n", " ").strip()
+                lines.append(f"> {preview}")
+                lines.append("")
+
+            # Comment — title row with severity / confidence chips,
+            # then body. Severity / confidence ride as bracketed
+            # markers so plain-markdown readers see them as text.
+            persona = f" · _{f.perspective}_" if f.perspective else ""
+            chips = f"[{f.severity}] [{f.confidence} confidence]{persona}"
+            lines.append(f"**{f.title}** &nbsp; {chips}")
             if f.rationale:
-                lines.append(f"  {f.rationale}")
-            if f.sections_involved:
-                lines.append(f"  · sections: {', '.join(f.sections_involved)}")
-            for q in f.quotes[:3]:
-                preview = q.text.replace("\n", " ")[:140]
-                lines.append(f"  > [{q.section_id}] {preview}")
+                lines.append("")
+                lines.append(f.rationale)
             lines.append("")
     return "\n".join(lines).rstrip()
 
 
-def _render_panel_synthesis(
-    s: PanelSynthesis, reviews: list[ExpertReview]
-) -> str:
+def _render_panel_synthesis(s: PanelSynthesis, reviews: list[ExpertReview]) -> str:
     """Top-of-report panel synthesis with score table + consensus/divergence."""
     return "## Panel synthesis\n\n" + body_markdown(s, reviews)
 
@@ -232,10 +283,8 @@ def _render_expert_reviews(reviews: Iterable[ExpertReview]) -> str:
             f"{_oneline(r.scientific_rigor_justification)} |",
             f"| Methodology | {r.methodology_score}/10 | "
             f"{_oneline(r.methodology_justification)} |",
-            f"| Novelty | {r.novelty_score}/10 | "
-            f"{_oneline(r.novelty_justification)} |",
-            f"| Clarity | {r.clarity_score}/10 | "
-            f"{_oneline(r.clarity_justification)} |",
+            f"| Novelty | {r.novelty_score}/10 | {_oneline(r.novelty_justification)} |",
+            f"| Clarity | {r.clarity_score}/10 | {_oneline(r.clarity_justification)} |",
             "",
         ]
         if r.strengths:

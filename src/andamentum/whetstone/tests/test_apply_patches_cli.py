@@ -154,7 +154,6 @@ def test_patch_report_without_apply_patches_rejected(tmp_path: Path) -> None:
             "paper.md",
             "--out",
             str(tmp_path / "out.md"),
-            "--no-llm",
             "--patch-report",
             str(tmp_path / "report.md"),
         ]
@@ -171,7 +170,6 @@ def test_patch_author_without_apply_patches_rejected(tmp_path: Path) -> None:
             "paper.md",
             "--out",
             str(tmp_path / "out.md"),
-            "--no-llm",
             "--patch-author",
             "Alice",
         ]

@@ -1,9 +1,18 @@
-"""CLI for whetstone v2 — ``andamentum-whetstone``.
+"""CLI for whetstone — ``andamentum-whetstone``.
 
-Single positional argument (the input document, anything ``harvest`` can
-read), one or more ``--out`` files (format inferred from the extension),
-and a small set of well-named options. ``--help`` is exhaustive on
-purpose: this is the surface most users will touch.
+Four subcommands:
+
+    andamentum-whetstone [review] INPUT --model M --out OUT [...]
+        Criterion-cascade review (the default; verb is optional).
+
+    andamentum-whetstone panel INPUT --model M --out OUT [...]
+        Multi-expert simulated peer review.
+
+    andamentum-whetstone proofread INPUT [...]
+        Deterministic style + readability check (no LLM).
+
+    andamentum-whetstone apply-patches INPUT --patches P.json --out O.docx
+        Apply a pre-built JSON patch list to a .docx (no LLM).
 
 Exit codes:
     0 — success
@@ -28,8 +37,6 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-from andamentum.core import DEFAULT_EMBEDDING_MODEL
-
 _LOGGER_NAME = "andamentum.whetstone"
 
 
@@ -42,132 +49,59 @@ journal reviewer, grant panel member, examiner, or editor). Most
 publishers and funders currently prohibit sharing such documents
 with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 
-INPUT
-    Path or URL to a document. Supported: .pdf, .docx, .html, .md, .txt
-    (and any URL; HTML article-vs-listing is auto-detected).
+Subcommands (first positional, optional — defaults to `review`):
 
-OUTPUTS
-    --out FILE         An output file. Repeat for multiple formats.
-                       Format inferred from the extension:
-                         .md   → markdown report
-                         .html → HTML report (via typeset)
-                         .docx → Word with track-changes + comments
-                       For .docx: if INPUT is .docx we use it directly;
-                       otherwise a clean .docx is generated from the
-                       harvested text and patches are applied to that.
+  review        criterion-cascade review (the default)
+  panel         multi-expert simulated peer review
+  proofread     deterministic style + readability (no LLM)
+  apply-patches apply a pre-built JSON patch list to a .docx (no LLM)
 
-PATCH-ONLY MODE
-    --apply-patches PATH       Skip the review pipeline entirely and apply
-                               a pre-built JSON patch list to a .docx.
-                               INPUT must be a local .docx and there must
-                               be exactly one --out FILE ending in .docx.
-                               PATH is a JSON file containing an array of
-                               DocumentPatch objects (patch_type one of
-                               text_edit | comment | document_analysis).
-                               --model is not required.
-    --patch-author NAME        Author name for the track-changes
-                               attribution (default: Reviewer).
-    --patch-report PATH        Optional markdown file prepended to the
-                               output as a review summary section.
+INPUT is a path or URL to a document. Supported: .pdf, .docx, .html,
+.md, .txt; URLs auto-detect article vs index page. OUTPUTS: pass
+--out FILE one or more times; format is inferred from the extension
+(.md / .html / .docx).
 
-REVIEW OPTIONS
-    --mode {review,panel,guidelines,custom}
-                               Pipeline to run.
-                                 review (default) — lens-based critical
-                                   review with reflection loop.
-                                 panel — simulate 3-5 fictional expert
-                                   reviewers, scored, with a panel
-                                   synthesis. Costs ~2N+2 LLM calls.
-                                 guidelines — extract checkable items
-                                   from a journal's author guidelines
-                                   and evaluate each against the
-                                   manuscript. Requires --guidelines.
-                                 custom — evaluate the manuscript
-                                   against caller-supplied criteria
-                                   (one LLM call). Requires --criteria.
-    --model MODEL              pydantic-ai model id, e.g.
-                               openai:gpt-5.4-nano,
-                               ollama:gemma4:31b-nvfp4.
-                               Required unless --no-llm is given.
-    --editor                   Also generate concrete edits (rewrites).
-                               Default off — adds one LLM call per section.
-                               Ignored in panel mode.
-    --editor-criteria LIST     Comma-separated. Default:
-                               clarity,concision,grammar
-    --no-challenge             Skip the refutation phase
-                               (faster, slightly less reliable findings).
-                               Ignored in panel mode.
-    --perspectives LIST        Comma-separated lens names.
-                               Default: rigorous
-                               Available: rigorous, writer, methodology,
-                                          statistician, consistency,
-                                          claim_evidence, overclaim, strunk
-                               Notes:
-                                 consistency reads the WHOLE document
-                                   (cross-section drift / contradictions)
-                                 strunk applies Elements of Style rules
-                                   via a per-rule pydantic-graph sub-graph
-                                 claim_evidence runs only on Abstract /
-                                   Results / Discussion / Conclusion
-                                 overclaim flags unsupported strength
-                                   language ("first / novel / dramatic")
-                               Ignored in panel mode.
-    --rounds N                 Hard cap on rounds of the reflection–
-                               investigation loop. Default: 3.
-                               The loop typically exits earlier when the
-                               senior reviewer says "nothing more to do".
-                               Ignored in panel mode.
-    --n-experts N              In panel mode, how many experts to
-                               generate. Default 4.
-    --panel-disciplines LIST   In panel mode, an explicit comma-separated
-                               list of disciplines (skips keyword
-                               extraction).
-    --guidelines TEXT          In guidelines mode, the journal author
-                               guidelines as text. Use ``@path/to/file``
-                               to read from a file. Required when
-                               ``--mode guidelines``.
-    --criteria LIST            In custom mode, semicolon-separated list
-                               of criteria (e.g. "originality; depth of
-                               literature; clarity of methods"). May be
-                               repeated to supply criteria one at a time.
-                               Required when ``--mode custom``.
-    --no-llm                   Run only the deterministic structural pass
-                               (citations, terms, numerics, cross-refs).
-                               No --model required. Free, instant.
-    -v, --verbose              Print phase-by-phase progress to stderr.
+For .docx output, if INPUT is already .docx whetstone uses it as the
+track-changes baseline; otherwise it harvests INPUT to markdown and
+generates a clean baseline .docx to patch.
 """
 
 
 _HELP_EXAMPLES = """\
 EXAMPLES
-    # Quick deterministic-only check (no LLM, no cost)
-    andamentum-whetstone paper.pdf --no-llm --out review.md
 
-    # Apply a pre-built JSON patch list to a .docx (no LLM)
-    andamentum-whetstone draft.docx \\
-        --apply-patches patches.json --out draft.reviewed.docx \\
-        --patch-author "Claude" --patch-report review.md
+    # Default review (criterion cascade + gap loop)
+    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+        --out review.md
 
-    # Full critical review of a PDF, output in three formats
-    andamentum-whetstone paper.pdf \\
-        --model openai:gpt-5.4-nano \\
+    # Same review, multiple output formats in one pass
+    andamentum-whetstone paper.pdf --model openai:gpt-5.4-nano \\
         --out review.md --out review.html --out paper.reviewed.docx
 
-    # Edit-mode: get concrete rewrites in a tracked-change Word doc
-    andamentum-whetstone draft.docx \\
-        --model openai:gpt-5.4-nano --editor \\
-        --out draft.reviewed.docx
+    # Review with concrete edits as tracked-changes in Word
+    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+        --editor --out draft.reviewed.docx
 
-    # Multi-lens panel on an arXiv paper
-    andamentum-whetstone https://arxiv.org/pdf/1901.01753 \\
-        --model openai:gpt-5.4-nano \\
-        --perspectives rigorous,statistician,writer \\
-        --out panel-review.html
+    # Review with caller-supplied criteria
+    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+        --criteria "originality; depth of literature; clarity" \\
+        --out review.md
 
-    # Local model, deeper reflection loop (4 rounds), all outputs
-    andamentum-whetstone manuscript.pdf \\
-        --model ollama:gemma4:31b-nvfp4 --rounds 4 --editor \\
-        --out review.md --out review.html --out manuscript.reviewed.docx
+    # Review with free-text guidelines (one extractor call + cascade)
+    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+        --guidelines @/path/to/author-guidelines.md --out review.md
+
+    # Multi-expert panel review (different shape — N expert reviews + synthesis)
+    andamentum-whetstone panel draft.md --model openai:gpt-5.4-nano \\
+        --n-experts 4 --i-am-the-author --out panel-review.md
+
+    # Deterministic style + readability check (no LLM)
+    andamentum-whetstone proofread draft.md --format json
+
+    # Apply a pre-built JSON patch list to a .docx (no LLM)
+    andamentum-whetstone apply-patches draft.docx \\
+        --patches patches.json --out draft.reviewed.docx \\
+        --patch-author "Claude" --patch-report review.md
 
 EXIT CODES
     0  success
@@ -181,17 +115,18 @@ _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the argparse parser with the full help text."""
+    """Build the (single) flat argparse parser. The subcommand front-end
+    in :func:`main` rewrites verb-style invocations into flat argv before
+    parsing, so this single parser still serves all four subcommands."""
     parser = argparse.ArgumentParser(
         prog="andamentum-whetstone",
         description=_HELP_DESCRIPTION,
         epilog=_HELP_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "input",
-        help="Path or URL to the document to review.",
-    )
+
+    # ── Common: required positional + outputs + universal options ───────
+    parser.add_argument("input", help="Path or URL to the document.")
     parser.add_argument(
         "--out",
         action="append",
@@ -202,68 +137,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "Format inferred from extension (.md / .html / .docx).",
     )
     parser.add_argument(
-        "--mode",
-        choices=("review", "panel", "guidelines", "custom"),
-        default="review",
-        help=(
-            "Pipeline to run. review (default): lens-based critical "
-            "review. panel: simulate 3-5 fictional expert reviewers. "
-            "guidelines: evaluate document against journal author "
-            "guidelines (requires --guidelines). custom: evaluate "
-            "against caller-supplied criteria (requires --criteria)."
-        ),
-    )
-    parser.add_argument(
         "--model",
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
-        "ollama:gemma4:31b-nvfp4). Required unless --no-llm.",
+        "ollama:gemma4:31b-nvfp4). Required for review + panel subcommands.",
     )
     parser.add_argument(
-        "--v3",
-        action="store_true",
-        help=(
-            "Use the experimental v3 whole-document pipeline (claims digest + "
-            "SPECS criteria + gap loop) instead of the v2 section-by-section "
-            "review. Requires --model. Most v2-only flags (perspectives, panel, "
-            "editor, …) are ignored; --document-type selects the criterion set "
-            "and --rounds sets the gap-loop cap."
+        "--document-type",
+        choices=(
+            "auto",
+            "academic",
+            "external_communication",
+            "essay",
+            "tutorial",
+            "creative",
+            "general",
         ),
-    )
-    parser.add_argument(
-        "--embedding-model",
-        default=DEFAULT_EMBEDDING_MODEL,
-        metavar="MODEL",
+        default="auto",
         help=(
-            "Local Ollama embedding model used by the Consolidate phase to "
-            "spot similar comments. Default: "
-            f"{DEFAULT_EMBEDDING_MODEL}. Ollama must be running."
-        ),
-    )
-    parser.add_argument(
-        "--n-experts",
-        type=int,
-        default=4,
-        metavar="N",
-        help="In panel mode, how many experts to generate. Default: 4.",
-    )
-    parser.add_argument(
-        "--panel-disciplines",
-        default="",
-        metavar="LIST",
-        help=(
-            "In panel mode, an explicit comma-separated list of "
-            "disciplines (skips keyword extraction)."
-        ),
-    )
-    parser.add_argument(
-        "--i-am-the-author",
-        action="store_true",
-        help=(
-            "Required for --mode panel. Affirms that the document being "
-            "reviewed is your own draft, not a manuscript shared with you "
-            "confidentially (as a peer reviewer, examiner, or grant panel "
-            "member). Set ANDAMENTUM_PANEL_OWN_AUTHOR=1 to pre-affirm."
+            "Document type → routes to one of six criterion sets. 'auto' "
+            "(default) runs a one-shot classifier using --model; explicit "
+            "values skip the classifier."
         ),
     )
     parser.add_argument(
@@ -271,194 +165,161 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Bypass the confidentiality-marker tripwire (which refuses "
-            "to run when the document contains phrases like 'Manuscript "
-            "ID:', 'Reviewer Instructions', 'Editorial Office', etc.). "
-            "Pass this flag only when the matched marker is a legitimate "
-            "false positive in your own draft."
-        ),
-    )
-    parser.add_argument(
-        "--document-type",
-        choices=("auto", "academic", "external_communication", "general"),
-        default="auto",
-        help=(
-            "What kind of document this is. 'auto' (default) runs a "
-            "one-shot classifier using --model. Explicit values skip the "
-            "classifier. The journal-specific checklist (CoI / data / "
-            "ethics / abstract / keywords / H1 title) fires only for "
-            "'academic'; synthesis vocabulary adapts accordingly."
-        ),
-    )
-    parser.add_argument(
-        "--guidelines",
-        default="",
-        metavar="TEXT",
-        help=(
-            "In guidelines mode, the journal author guidelines text. "
-            "Use ``@path/to/file`` to read from a file. Required when "
-            "--mode guidelines."
-        ),
-    )
-    parser.add_argument(
-        "--criteria",
-        action="append",
-        default=None,
-        metavar="LIST",
-        help=(
-            "In custom mode, criteria to evaluate against. Either a "
-            "single semicolon-separated string or repeat the flag to "
-            "supply criteria one at a time. Required when --mode custom."
-        ),
-    )
-    parser.add_argument(
-        "--editor",
-        action="store_true",
-        help="Also generate concrete edits (rewrites). Adds one LLM call per section.",
-    )
-    parser.add_argument(
-        "--editor-criteria",
-        default="clarity,concision,grammar",
-        metavar="LIST",
-        help="Comma-separated editor criteria. Default: clarity,concision,grammar",
-    )
-    parser.add_argument(
-        "--no-challenge",
-        action="store_true",
-        help="Skip the refutation phase (faster, slightly less reliable findings).",
-    )
-    parser.add_argument(
-        "--perspectives",
-        default="rigorous",
-        metavar="LIST",
-        help=(
-            "Comma-separated lens names. "
-            "Available: rigorous, writer, methodology, statistician, "
-            "consistency, claim_evidence, overclaim, strunk. "
-            "Default: rigorous"
-        ),
-    )
-    parser.add_argument(
-        "--rounds",
-        type=int,
-        default=3,
-        metavar="N",
-        help=(
-            "Hard cap on rounds of the reflection-investigation loop. "
-            "Default: 3. The loop typically exits earlier."
-        ),
-    )
-    parser.add_argument(
-        "--no-llm",
-        action="store_true",
-        help="Run only the deterministic structural pass. No --model required.",
-    )
-    parser.add_argument(
-        "--no-proofread",
-        action="store_true",
-        help=(
-            "Disable the deterministic proofread pass (weasel words, passive "
-            "voice, duplicate words, weak sentence openers). On by default — "
-            "its findings flow into the same report as the LLM-driven lenses."
-        ),
-    )
-    parser.add_argument(
-        "--check-novelty",
-        action="store_true",
-        help=(
-            "Verify the manuscript's novelty claims against the literature "
-            "via deep_research. Adds 1 + (3-5)*2 LLM calls + several web "
-            "fetches. Disabled by default."
-        ),
-    )
-    parser.add_argument(
-        "--novelty-search-depth",
-        type=int,
-        default=2,
-        metavar="N",
-        help=(
-            "Search depth for --check-novelty. 1=quick, 2=balanced, 3=thorough. "
-            "Default: 2."
-        ),
-    )
-    parser.add_argument(
-        "--persist-novelty-cache",
-        action="store_true",
-        help=(
-            "Persist per-claim novelty-check results to "
-            "~/.cache/whetstone/novelty/ so re-runs on the same draft are "
-            "cheap. Off by default — hashed digests of unpublished novelty "
-            "claims should not sit on disk unless you explicitly opt in."
-        ),
-    )
-    visible_wm = parser.add_mutually_exclusive_group()
-    visible_wm.add_argument(
-        "--visible-watermark",
-        dest="visible_watermark",
-        action="store_true",
-        default=True,
-        help=(
-            "Include a visible 'AI-generated review content' banner in the "
-            "review report (default for review-mode output)."
-        ),
-    )
-    visible_wm.add_argument(
-        "--no-visible-watermark",
-        dest="visible_watermark",
-        action="store_false",
-        help=(
-            "Suppress the visible banner. Invisible provenance metadata "
-            "(docx core properties, HTML <meta>, markdown HTML-comment) "
-            "is still written regardless of this flag."
-        ),
-    )
-    parser.add_argument(
-        "--apply-patches",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help=(
-            "Skip the review pipeline; apply a pre-built JSON patch list "
-            "to INPUT (which must be a local .docx). PATH points to a "
-            "JSON array of DocumentPatch objects."
-        ),
-    )
-    parser.add_argument(
-        "--patch-author",
-        default=None,
-        metavar="NAME",
-        help=(
-            "Author name for track-changes when --apply-patches is used. "
-            "Default: 'andamentum-whetstone (AI)'. Overriding to a custom "
-            "name requires --allow-author-override (misrepresenting "
-            "AI-generated edits as a human reviewer's may constitute "
-            "research misconduct)."
-        ),
-    )
-    parser.add_argument(
-        "--allow-author-override",
-        action="store_true",
-        help=(
-            "Explicitly authorise a non-default --patch-author value. "
-            "Required when --patch-author is set to anything other than "
-            "the AI-attribution default."
-        ),
-    )
-    parser.add_argument(
-        "--patch-report",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help=(
-            "Optional markdown file prepended as a review-summary section "
-            "when --apply-patches is used."
+            "to run on text containing 'Manuscript ID:', 'Reviewer "
+            "Instructions', 'Editorial Office', etc.). Pass this only "
+            "when the matched marker is a false positive in your own draft."
         ),
     )
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Print progress to stderr.",
+        help="Print phase-by-phase progress to stderr.",
     )
+
+    # Watermark flags (mutually exclusive)
+    visible_wm = parser.add_mutually_exclusive_group()
+    visible_wm.add_argument(
+        "--visible-watermark",
+        dest="visible_watermark",
+        action="store_true",
+        default=True,
+        help="Include a visible 'AI-generated review content' banner "
+        "in the review report (default).",
+    )
+    visible_wm.add_argument(
+        "--no-visible-watermark",
+        dest="visible_watermark",
+        action="store_false",
+        help="Suppress the visible banner. Invisible provenance metadata "
+        "(docx core properties, HTML <meta>) is written regardless.",
+    )
+
+    # --mode is internal: set by the subcommand rewriter (`panel` verb →
+    # --mode panel). Users invoke the panel subcommand instead.
+    parser.add_argument(
+        "--mode",
+        choices=("review", "panel"),
+        default="review",
+        help=argparse.SUPPRESS,
+    )
+
+    # ── Review options ─────────────────────────────────────────────────
+    review_grp = parser.add_argument_group(
+        "review options (andamentum-whetstone [review] INPUT ...)"
+    )
+    review_grp.add_argument(
+        "--criteria",
+        action="append",
+        default=None,
+        metavar="LIST",
+        help="Caller-supplied criteria. Semicolon-separated, or repeat the "
+        "flag. Overrides the document-type default set.",
+    )
+    review_grp.add_argument(
+        "--guidelines",
+        default="",
+        metavar="TEXT",
+        help="Free-text reviewer brief / journal guidelines. Use "
+        "``@path/to/file`` to read from a file. One LLM call decomposes "
+        "the prose into a criterion list. Mutually exclusive with --criteria.",
+    )
+    review_grp.add_argument(
+        "--editor",
+        action="store_true",
+        help="Generate concrete edits (rewrites). Adds one LLM call per "
+        "section. The .docx renderer applies them as tracked changes.",
+    )
+    review_grp.add_argument(
+        "--editor-criteria",
+        default="clarity,concision,grammar",
+        metavar="LIST",
+        help="Comma-separated editor criteria. Default: clarity,concision,grammar.",
+    )
+    review_grp.add_argument(
+        "--check-novelty",
+        action="store_true",
+        help="Run the 3-node novelty check against deep_research. Adds 1 "
+        "extractor + N searches + N judge calls. Disabled by default.",
+    )
+    review_grp.add_argument(
+        "--novelty-search-depth",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Search depth for --check-novelty (1=quick, 2=balanced, "
+        "3=thorough). Default: 2.",
+    )
+    review_grp.add_argument(
+        "--rounds",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
+        "The loop typically exits earlier when no demands remain.",
+    )
+
+    # ── Panel options ──────────────────────────────────────────────────
+    panel_grp = parser.add_argument_group(
+        "panel options (andamentum-whetstone panel INPUT ...)"
+    )
+    panel_grp.add_argument(
+        "--n-experts",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Number of fictional expert reviewers to generate. Default: 4.",
+    )
+    panel_grp.add_argument(
+        "--panel-disciplines",
+        default="",
+        metavar="LIST",
+        help="Comma-separated explicit discipline list. When supplied, "
+        "skips the keyword-extraction LLM call.",
+    )
+    panel_grp.add_argument(
+        "--i-am-the-author",
+        action="store_true",
+        help="Required for the panel subcommand. Affirms that INPUT is "
+        "your own draft, not a manuscript shared with you confidentially. "
+        "Set ANDAMENTUM_PANEL_OWN_AUTHOR=1 to pre-affirm.",
+    )
+
+    # ── Apply-patches options ──────────────────────────────────────────
+    patches_grp = parser.add_argument_group(
+        "apply-patches options (andamentum-whetstone apply-patches INPUT.docx --patches P.json ...)"
+    )
+    patches_grp.add_argument(
+        "--apply-patches",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Skip the review pipeline and apply a pre-built JSON patch "
+        "list to INPUT. INPUT must be a local .docx; --out must be one "
+        ".docx file. PATH is a JSON array of DocumentPatch objects.",
+    )
+    patches_grp.add_argument(
+        "--patch-author",
+        default=None,
+        metavar="NAME",
+        help="Track-changes author attribution. Default: 'andamentum-"
+        "whetstone (AI)'. Overriding requires --allow-author-override.",
+    )
+    patches_grp.add_argument(
+        "--allow-author-override",
+        action="store_true",
+        help="Explicitly authorise a non-default --patch-author value. "
+        "Misrepresenting AI-generated edits as a human reviewer's may "
+        "constitute research misconduct.",
+    )
+    patches_grp.add_argument(
+        "--patch-report",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Optional markdown file prepended as a review-summary section.",
+    )
+
     return parser
 
 
@@ -478,72 +339,34 @@ def _validate_args(args: argparse.Namespace) -> None:
     if args.allow_author_override:
         _die(1, "--allow-author-override is only valid with --apply-patches.")
 
-    if not args.no_llm and not args.model:
+    if not args.model:
         _die(
             1,
-            "--model is required unless you pass --no-llm.\n"
-            "Examples:\n"
+            "--model is required.\nExamples:\n"
             "  --model openai:gpt-5.4-nano\n"
             "  --model ollama:gemma4:31b-nvfp4",
-        )
-    if args.no_llm and args.editor:
-        _die(
-            1,
-            "--editor requires --model (the editor agent is an LLM call). "
-            "Drop --editor or --no-llm.",
-        )
-    if args.v3 and args.no_llm:
-        _die(1, "--v3 requires --model (the v3 pipeline is LLM-driven). Drop --no-llm.")
-    if args.no_llm and args.mode == "panel":
-        _die(
-            1,
-            "--mode panel requires --model — every panel-mode phase is "
-            "an LLM call. Drop --no-llm or use --mode review.",
         )
     if args.mode == "panel" and not (
         args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
     ):
         _die(
             1,
-            "--mode panel requires --i-am-the-author. Panel-mode output is "
-            "shaped exactly like a journal peer-review report (3-5 fictional "
-            "reviewer biosketches + Accept/Reject recommendation). Affirm "
-            "that the document being reviewed is your own draft, not a "
-            "manuscript shared with you confidentially. Pass "
+            "panel subcommand requires --i-am-the-author. Panel-mode output "
+            "is shaped exactly like a journal peer-review report (3-5 "
+            "fictional reviewer biosketches + Accept/Reject recommendation). "
+            "Affirm that the document being reviewed is your own draft, not "
+            "a manuscript shared with you confidentially. Pass "
             "--i-am-the-author, or set ANDAMENTUM_PANEL_OWN_AUTHOR=1.",
         )
-    if args.no_llm and args.mode == "guidelines":
+    # --criteria and --guidelines are mutually exclusive — both route to
+    # the unified criterion-input surface (Phase C); the API itself
+    # enforces this with a ValueError, but we surface a friendlier
+    # message earlier here.
+    if args.criteria and args.guidelines:
         _die(
             1,
-            "--mode guidelines requires --model — every checkable item "
-            "is an LLM call. Drop --no-llm or use --mode review.",
-        )
-    if args.no_llm and args.mode == "custom":
-        _die(
-            1,
-            "--mode custom requires --model — the custom reviewer is an "
-            "LLM call. Drop --no-llm or use --mode review.",
-        )
-    if args.mode == "guidelines" and not args.guidelines:
-        _die(
-            1,
-            "--mode guidelines requires --guidelines (text or @file).",
-        )
-    if args.mode == "custom" and not args.criteria:
-        _die(
-            1,
-            "--mode custom requires --criteria (semicolon-separated or repeated).",
-        )
-    if args.mode != "guidelines" and args.guidelines:
-        _die(
-            1,
-            f"--guidelines is only valid with --mode guidelines (got "
-            f"--mode {args.mode}).",
-        )
-    if args.mode != "custom" and args.criteria:
-        _die(
-            1,
-            f"--criteria is only valid with --mode custom (got --mode {args.mode}).",
+            "--criteria and --guidelines are mutually exclusive. Pass one "
+            "or the other — both are routes to the same active-criteria slot.",
         )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
@@ -639,10 +462,10 @@ def _parse_criteria(values: list[str]) -> list[str]:
 
 async def _run(args: argparse.Namespace, console: Console) -> None:
     """Execute the review and write all requested outputs."""
-    from .api import review_document
     from .renderers import render_docx, render_html, render_markdown
+    from .v3 import Criterion, review_document_v3
+    from .v3.panel import run_panel_v3
 
-    perspectives = tuple(p.strip() for p in args.perspectives.split(",") if p.strip())
     editor_criteria = tuple(
         c.strip() for c in args.editor_criteria.split(",") if c.strip()
     )
@@ -650,7 +473,6 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         d.strip() for d in args.panel_disciplines.split(",") if d.strip()
     )
     guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
-    custom_criteria = _parse_criteria(args.criteria) if args.criteria else None
 
     # Always-on one-line scope banner — short, unmissable, not gated on
     # --verbose. Goes to stderr so it doesn't pollute piped output.
@@ -662,46 +484,48 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
 
     logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
-        _log_run_config(console, args, perspectives, editor_criteria)
+        _log_run_config(console, args, editor_criteria)
 
     try:
-        if args.v3:
-            from .v3 import review_document_v3
+        _t0 = time.perf_counter()
+        if args.mode == "panel":
+            # Panel mode runs its own graph (different shape — multi-
+            # expert fan-out + synthesis); criterion-cascade kwargs do
+            # not apply.
+            from .v3.graph import _harvest_or_treat_as_markdown
 
-            doc_type = (
-                "academic" if args.document_type == "auto" else args.document_type
-            )
-            _t0 = time.perf_counter()
-            result = await review_document_v3(
-                args.input, model=args.model, cap=args.rounds, document_type=doc_type
-            )
-            result.metrics.wall_seconds = time.perf_counter() - _t0
-        else:
-            result = await review_document(
-                args.input,
-                model=None if args.no_llm else args.model,
-                embedding_model=args.embedding_model,
-                perspectives=perspectives,
-                reflection_round_cap=args.rounds,
-                challenge=not args.no_challenge,
-                editor=args.editor,
-                editor_criteria=editor_criteria,
-                mode=args.mode,
+            md = await _harvest_or_treat_as_markdown(args.input)
+            result = await run_panel_v3(
+                md,
+                model=args.model,
                 n_experts=args.n_experts,
-                panel_disciplines=panel_disciplines or None,
-                guidelines=guidelines_text,
-                custom_criteria=custom_criteria,
+                panel_disciplines=list(panel_disciplines) or None,
+            )
+        else:
+            # Default review path — Phase C unified criteria/guidelines
+            # input is mutually exclusive (CLI validator enforces).
+            v3_criteria: list[Criterion] | None = None
+            v3_guidelines: str | None = None
+            if args.criteria:
+                parsed = _parse_criteria(args.criteria)
+                v3_criteria = [Criterion(name=s, questions=[s]) for s in parsed]
+            if args.guidelines:
+                v3_guidelines = guidelines_text
+
+            result = await review_document_v3(
+                args.input,
+                model=args.model,
+                cap=args.rounds,
+                document_type=args.document_type,
+                confirm_own_draft=args.confirm_own_draft,
+                criteria=v3_criteria,
+                guidelines_text=v3_guidelines,
+                editor=args.editor,
+                editor_criteria=list(editor_criteria) if editor_criteria else None,
                 check_novelty=args.check_novelty,
                 novelty_search_depth=args.novelty_search_depth,
-                novelty_cache_dir=(
-                    Path.home() / ".cache" / "whetstone" / "novelty"
-                    if args.persist_novelty_cache
-                    else None
-                ),
-                confirm_own_draft=args.confirm_own_draft,
-                document_type=args.document_type,
-                proofread=not args.no_proofread,
             )
+        result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
         # focused error code (1: configuration) instead of pipeline-crash (3).
@@ -733,7 +557,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         for out in args.out:
             ext = out.suffix.lower()
             out.parent.mkdir(parents=True, exist_ok=True)
-            model_id = None if args.no_llm else args.model
+            model_id = args.model
             if ext == ".md":
                 render_markdown(
                     result,
@@ -767,7 +591,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             except OSError:
                 pass
 
-    _print_summary(console, result, written, v3=args.v3)
+    _print_summary(console, result, written)
 
     # Disclosure reminder — always shown at end of run. AI assistance must
     # be disclosed in submitted artifacts per most journal / funder rules.
@@ -779,7 +603,6 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
 def _log_run_config(
     console: Console,
     args: argparse.Namespace,
-    perspectives: tuple[str, ...],
     editor_criteria: tuple[str, ...],
 ) -> None:
     """Render the input/options panel before the run starts."""
@@ -787,65 +610,53 @@ def _log_run_config(
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("input:", str(args.input))
-    if args.v3:
-        table.add_row("pipeline:", "v3 (whole-document, SPECS criteria, gap loop)")
-        table.add_row("model:", args.model or "")
-        table.add_row("document type:", args.document_type)
-        table.add_row("gap-loop cap:", str(args.rounds))
-        table.add_row("outputs:", ", ".join(str(o) for o in args.out))
-        console.print(Panel(table, title="whetstone v3", border_style="cyan"))
-        return
-    table.add_row("mode:", args.mode)
-    table.add_row("model:", args.model or "[i](deterministic only)[/i]")
+    table.add_row("model:", args.model or "")
+    table.add_row("document type:", args.document_type)
     if args.mode == "panel":
+        table.add_row("pipeline:", "panel (multi-expert simulated peer review)")
         table.add_row("n_experts:", str(args.n_experts))
         if args.panel_disciplines:
             table.add_row("disciplines:", args.panel_disciplines)
-    elif args.mode == "guidelines":
-        guideline_preview = (
-            f"@{args.guidelines[1:]}"
-            if args.guidelines.startswith("@")
-            else f"<{len(args.guidelines)} chars inline>"
-        )
-        table.add_row("guidelines:", guideline_preview)
-    elif args.mode == "custom":
-        criteria_preview = "; ".join(args.criteria) if args.criteria else "(none)"
-        table.add_row("criteria:", criteria_preview)
     else:
-        table.add_row("perspectives:", ", ".join(perspectives))
+        table.add_row("pipeline:", "review (criterion cascade + gap loop)")
+        if args.criteria:
+            criteria_preview = "; ".join(args.criteria)
+            table.add_row("criteria:", criteria_preview)
+        elif args.guidelines:
+            guideline_preview = (
+                f"@{args.guidelines[1:]}"
+                if args.guidelines.startswith("@")
+                else f"<{len(args.guidelines)} chars inline>"
+            )
+            table.add_row("guidelines:", guideline_preview)
         table.add_row("editor:", "on" if args.editor else "off")
         if args.editor:
             table.add_row("editor criteria:", ", ".join(editor_criteria))
-        table.add_row("challenge:", "off" if args.no_challenge else "on")
-        table.add_row("rounds (cap):", str(args.rounds))
+        table.add_row("novelty check:", "on" if args.check_novelty else "off")
+        table.add_row("gap-loop cap:", str(args.rounds))
     table.add_row("outputs:", ", ".join(str(o) for o in args.out))
-    console.print(Panel(table, title="whetstone v2", border_style="cyan"))
+    console.print(Panel(table, title="whetstone", border_style="cyan"))
 
 
-def _print_summary(
-    console: Console, result, written: list[Path], *, v3: bool = False
-) -> None:
+def _print_summary(console: Console, result, written: list[Path]) -> None:
     """Render a Rich summary table after the run completes."""
     m = result.metrics
     table = Table(show_header=False, box=None, padding=(0, 1))
     table.add_column(style="bold cyan", justify="right")
     table.add_column()
     table.add_row("wall time:", f"{m.wall_seconds:.1f}s")
-    # llm_calls / reflection rounds are v2 telemetry; v3 doesn't track them yet,
-    # so omit rather than print misleading zeros (the [v3.gaps] log shows rounds).
-    if not v3:
-        table.add_row("LLM calls:", str(m.llm_calls))
+    table.add_row("LLM calls:", str(m.llm_calls))
     table.add_row("sections:", str(m.sections_processed))
-    table.add_row(
-        "findings:",
-        f"{m.deterministic_findings_count} deterministic + "
-        f"{m.investigated_findings_count} investigated "
-        f"({m.challenged_findings_count} challenged)",
-    )
+    # v3 reports criterion-cascade findings as "investigated"; there is
+    # no separate deterministic / challenged column anymore.
+    table.add_row("findings:", str(m.investigated_findings_count))
     table.add_row("edits:", str(m.edits_count))
     table.add_row("author questions:", str(len(result.author_questions)))
-    if not v3:
-        table.add_row("rounds used:", str(m.reflection_rounds_used))
+    # Gap-loop rounds are stored on the same metric field v2 used for
+    # the reflection loop — the underlying mechanism is similar
+    # ("re-examine until no new demands or cap hit").
+    if m.reflection_rounds_used:
+        table.add_row("gap-loop rounds:", str(m.reflection_rounds_used))
     table.add_row("outputs:", "\n".join(str(p) for p in written))
     console.print(Panel(table, title="review complete", border_style="green"))
 
@@ -910,10 +721,101 @@ def _markdown_to_baseline_docx(markdown: str) -> Path:
     return out
 
 
+# ── Subcommand front-end (Phase F) ──────────────────────────────────────────
+#
+# The CLI is internally a single flat argparse parser (the canonical surface
+# tests build against), with a thin subcommand alias layer in front of it.
+# Recognised verbs:
+#
+#   review         — default; the bare positional invocation also routes here
+#                    (`andamentum-whetstone draft.md --model X --out r.md`)
+#   panel          — equivalent to `--mode panel`
+#   proofread      — shells out to `andamentum.proofread` (no whetstone review
+#                    pipeline at all; the two are intentionally disjoint)
+#   apply-patches  — equivalent to `--apply-patches PATH`; INPUT and PATCHES
+#                    become positional args in the subcommand form
+#
+# The flat-flag form keeps working for every existing test + script. Users
+# who want the subcommand UX get it. v2's mode flag stays callable until
+# Phase I deletes v2.
+
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
+    {"review", "panel", "proofread", "apply-patches"}
+)
+
+
+def _rewrite_subcommand(argv: list[str]) -> list[str]:
+    """Translate a subcommand-style invocation into the underlying flat-CLI
+    argv. Returns ``argv`` unchanged when no subcommand verb is present
+    (back-compat for the existing bare-positional form)."""
+    if not argv:
+        return argv
+    head = argv[0]
+    rest = argv[1:]
+    if head == "review":
+        # `review draft.md --model X --out r.md`  →  `draft.md --model X --out r.md`
+        return rest
+    if head == "panel":
+        # `panel draft.md ...`  →  `draft.md --mode panel ...`
+        if not rest or rest[0].startswith("-"):
+            return ["--mode", "panel", *rest]
+        return [rest[0], "--mode", "panel", *rest[1:]]
+    if head == "apply-patches":
+        # `apply-patches draft.docx --patches p.json --out r.docx`  →
+        # `draft.docx --apply-patches p.json --out r.docx`
+        # The subcommand requires the patches as a positional or via --patches.
+        if not rest or rest[0].startswith("-"):
+            _die(
+                1,
+                "apply-patches subcommand: positional INPUT required.\n"
+                "Usage: andamentum-whetstone apply-patches INPUT.docx "
+                "--patches PATCHES.json --out OUTPUT.docx",
+            )
+        out: list[str] = [rest[0]]
+        skip_next = False
+        for i, tok in enumerate(rest[1:], start=1):
+            if skip_next:
+                skip_next = False
+                continue
+            if tok == "--patches":
+                if i + 1 >= len(rest):
+                    _die(1, "apply-patches: --patches needs a value.")
+                out.extend(["--apply-patches", rest[i + 1]])
+                skip_next = True
+            else:
+                out.append(tok)
+        return out
+    return argv
+
+
+def _run_proofread_subcommand(argv: list[str]) -> int:
+    """The proofread subcommand is a thin shell over ``andamentum.proofread.cli``.
+    Whetstone's idea-review pipeline and the deterministic style check are
+    intentionally separate jobs (see the project memory entry on this).
+    Passes through stdin / file / URL handling unchanged."""
+    from andamentum.proofread.cli import main as proofread_main
+
+    return proofread_main(argv)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
-    """Entry point — invoked by the ``andamentum-whetstone`` script."""
+    """Entry point — invoked by the ``andamentum-whetstone`` script.
+
+    Accepts either the bare-positional form (``andamentum-whetstone draft.md
+    --model X --out r.md``) or the subcommand form (``andamentum-whetstone
+    review draft.md ...`` / ``... panel ...`` / ``... proofread draft.md`` /
+    ``... apply-patches draft.docx --patches p.json --out r.docx``)."""
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "proofread":
+        # proofread short-circuits the whetstone pipeline entirely
+        rc = _run_proofread_subcommand(raw[1:])
+        raise SystemExit(rc)
+
+    if raw and raw[0] in _KNOWN_SUBCOMMANDS:
+        raw = _rewrite_subcommand(raw)
+
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
     _validate_args(args)
 
     console = Console(stderr=True)
