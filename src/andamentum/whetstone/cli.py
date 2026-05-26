@@ -488,86 +488,35 @@ def _validate_args(args: argparse.Namespace) -> None:
     if args.allow_author_override:
         _die(1, "--allow-author-override is only valid with --apply-patches.")
 
-    if not args.no_llm and not args.model:
+    if not args.model:
         _die(
             1,
-            "--model is required unless you pass --no-llm.\n"
-            "Examples:\n"
+            "--model is required.\nExamples:\n"
             "  --model openai:gpt-5.4-nano\n"
             "  --model ollama:gemma4:31b-nvfp4",
-        )
-    if args.no_llm and args.editor:
-        _die(
-            1,
-            "--editor requires --model (the editor agent is an LLM call). "
-            "Drop --editor or --no-llm.",
-        )
-    if args.v3 and args.no_llm:
-        _die(1, "--v3 requires --model (the v3 pipeline is LLM-driven). Drop --no-llm.")
-    if args.no_llm and args.mode == "panel":
-        _die(
-            1,
-            "--mode panel requires --model — every panel-mode phase is "
-            "an LLM call. Drop --no-llm or use --mode review.",
         )
     if args.mode == "panel" and not (
         args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
     ):
         _die(
             1,
-            "--mode panel requires --i-am-the-author. Panel-mode output is "
-            "shaped exactly like a journal peer-review report (3-5 fictional "
-            "reviewer biosketches + Accept/Reject recommendation). Affirm "
-            "that the document being reviewed is your own draft, not a "
-            "manuscript shared with you confidentially. Pass "
+            "panel subcommand requires --i-am-the-author. Panel-mode output "
+            "is shaped exactly like a journal peer-review report (3-5 "
+            "fictional reviewer biosketches + Accept/Reject recommendation). "
+            "Affirm that the document being reviewed is your own draft, not "
+            "a manuscript shared with you confidentially. Pass "
             "--i-am-the-author, or set ANDAMENTUM_PANEL_OWN_AUTHOR=1.",
         )
-    if args.no_llm and args.mode == "guidelines":
+    # --criteria and --guidelines are mutually exclusive — both route to
+    # the unified criterion-input surface (Phase C); the API itself
+    # enforces this with a ValueError, but we surface a friendlier
+    # message earlier here.
+    if args.criteria and args.guidelines:
         _die(
             1,
-            "--mode guidelines requires --model — every checkable item "
-            "is an LLM call. Drop --no-llm or use --mode review.",
+            "--criteria and --guidelines are mutually exclusive. Pass one "
+            "or the other — both are routes to the same active-criteria slot.",
         )
-    if args.no_llm and args.mode == "custom":
-        _die(
-            1,
-            "--mode custom requires --model — the custom reviewer is an "
-            "LLM call. Drop --no-llm or use --mode review.",
-        )
-    if args.v3:
-        # v3 has no "mode" — --criteria and --guidelines are direct
-        # passthroughs to the unified criterion-input surface and are
-        # mutually exclusive (the API itself enforces this with a
-        # ValueError; we surface a friendlier message earlier).
-        if args.criteria and args.guidelines:
-            _die(
-                1,
-                "--criteria and --guidelines are mutually exclusive in v3. "
-                "Pass one or the other — both are routes to the same v3 "
-                "active-criteria slot.",
-            )
-    else:
-        if args.mode == "guidelines" and not args.guidelines:
-            _die(
-                1,
-                "--mode guidelines requires --guidelines (text or @file).",
-            )
-        if args.mode == "custom" and not args.criteria:
-            _die(
-                1,
-                "--mode custom requires --criteria (semicolon-separated or repeated).",
-            )
-        if args.mode != "guidelines" and args.guidelines:
-            _die(
-                1,
-                f"--guidelines is only valid with --mode guidelines (got "
-                f"--mode {args.mode}).",
-            )
-        if args.mode != "custom" and args.criteria:
-            _die(
-                1,
-                f"--criteria is only valid with --mode custom (got --mode {args.mode}).",
-            )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
     if args.n_experts < 1:
@@ -662,10 +611,10 @@ def _parse_criteria(values: list[str]) -> list[str]:
 
 async def _run(args: argparse.Namespace, console: Console) -> None:
     """Execute the review and write all requested outputs."""
-    from .api import review_document
     from .renderers import render_docx, render_html, render_markdown
+    from .v3 import Criterion, review_document_v3
+    from .v3.panel import run_panel_v3
 
-    perspectives = tuple(p.strip() for p in args.perspectives.split(",") if p.strip())
     editor_criteria = tuple(
         c.strip() for c in args.editor_criteria.split(",") if c.strip()
     )
@@ -673,7 +622,6 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         d.strip() for d in args.panel_disciplines.split(",") if d.strip()
     )
     guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
-    custom_criteria = _parse_criteria(args.criteria) if args.criteria else None
 
     # Always-on one-line scope banner — short, unmissable, not gated on
     # --verbose. Goes to stderr so it doesn't pollute piped output.
@@ -685,26 +633,39 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
 
     logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
-        _log_run_config(console, args, perspectives, editor_criteria)
+        _log_run_config(console, args, (), editor_criteria)
 
     try:
-        if args.v3:
-            from .v3 import review_document_v3
+        _t0 = time.perf_counter()
+        if args.mode == "panel":
+            # Panel mode runs its own graph (different shape — multi-
+            # expert fan-out + synthesis); criterion-cascade kwargs do
+            # not apply.
+            from andamentum.harvest import extract as harvest_extract
+            from pathlib import Path as _Path
 
-            # v3 takes a pre-decomposed Criterion list or free-text
-            # guidelines — never both. The validator above guarantees
-            # we don't see both flags here.
-            v3_criteria = None
-            v3_guidelines = None
+            md = (
+                await harvest_extract(_Path(args.input))
+                if _Path(args.input).exists()
+                else args.input
+            )
+            result = await run_panel_v3(
+                md,
+                model=args.model,
+                n_experts=args.n_experts,
+                panel_disciplines=list(panel_disciplines) or None,
+            )
+        else:
+            # Default review path — Phase C unified criteria/guidelines
+            # input is mutually exclusive (CLI validator enforces).
+            v3_criteria: list[Criterion] | None = None
+            v3_guidelines: str | None = None
             if args.criteria:
-                from .v3 import Criterion as _V3Criterion
-
                 parsed = _parse_criteria(args.criteria)
-                v3_criteria = [_V3Criterion(name=s, questions=[s]) for s in parsed]
+                v3_criteria = [Criterion(name=s, questions=[s]) for s in parsed]
             if args.guidelines:
                 v3_guidelines = guidelines_text
 
-            _t0 = time.perf_counter()
             result = await review_document_v3(
                 args.input,
                 model=args.model,
@@ -713,34 +674,12 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 confirm_own_draft=args.confirm_own_draft,
                 criteria=v3_criteria,
                 guidelines_text=v3_guidelines,
-            )
-            result.metrics.wall_seconds = time.perf_counter() - _t0
-        else:
-            result = await review_document(
-                args.input,
-                model=None if args.no_llm else args.model,
-                embedding_model=args.embedding_model,
-                perspectives=perspectives,
-                reflection_round_cap=args.rounds,
-                challenge=not args.no_challenge,
                 editor=args.editor,
-                editor_criteria=editor_criteria,
-                mode=args.mode,
-                n_experts=args.n_experts,
-                panel_disciplines=panel_disciplines or None,
-                guidelines=guidelines_text,
-                custom_criteria=custom_criteria,
+                editor_criteria=list(editor_criteria) if editor_criteria else None,
                 check_novelty=args.check_novelty,
                 novelty_search_depth=args.novelty_search_depth,
-                novelty_cache_dir=(
-                    Path.home() / ".cache" / "whetstone" / "novelty"
-                    if args.persist_novelty_cache
-                    else None
-                ),
-                confirm_own_draft=args.confirm_own_draft,
-                document_type=args.document_type,
-                proofread=not args.no_proofread,
             )
+        result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
         # focused error code (1: configuration) instead of pipeline-crash (3).
