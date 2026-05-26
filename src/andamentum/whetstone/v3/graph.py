@@ -244,14 +244,19 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
 @dataclass
 class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> End[ReviewResult]:
+        from ._metrics import current as current_counters
+
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
+        counters = current_counters()
         return End(
             to_review_result(
                 model,
                 ctx.state.findings,
                 ctx.state.review,
                 ctx.state.edits,
+                llm_calls=counters.llm_calls if counters else 0,
+                gap_rounds_used=counters.gap_rounds if counters else 0,
             )
         )
 
@@ -334,6 +339,12 @@ async def run_review_v3(
 
         check_confidentiality(markdown)
 
+    # Per-run metric counters live in a contextvar; helpers throughout
+    # v3 bump them after each agent.run(). Read at Finalize time.
+    from ._metrics import increment_llm_calls, start_run
+
+    start_run()
+
     if criteria is not None:
         active_criteria = criteria
     elif guidelines_text is not None:
@@ -354,6 +365,10 @@ async def run_review_v3(
             document_type = await classify(
                 model=model, section_titles=titles, markdown=markdown
             )
+            # Classifier is one LLM call; count it (classify() doesn't
+            # touch the metrics module itself to keep _document_type.py
+            # decoupled from v3 internals).
+            increment_llm_calls(1)
         active_criteria = criterion_set_for(document_type)
 
     deps = V3Deps(

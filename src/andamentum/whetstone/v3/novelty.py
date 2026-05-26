@@ -165,6 +165,9 @@ async def flag_novelty_targets(
             f"MANUSCRIPT:\n--- BEGIN ---\n{source}\n--- END ---\n\n"
             f"Extract up to {cap} of the most load-bearing novelty claims."
         )
+        from ._metrics import bump_from_result
+
+        bump_from_result(result)
         raw = cast(NoveltyTargetList, result.output).targets[:cap]
     except Exception as exc:
         logger.warning(

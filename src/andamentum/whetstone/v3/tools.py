@@ -116,9 +116,7 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
             f"the rest of the criterion.)"
         )
     ctx.deps.seen_sections.add(section_id)
-    logger.info(
-        "[v3.tool] read_section(%r) → %d chars", section_id, len(section.text)
-    )
+    logger.info("[v3.tool] read_section(%r) → %d chars", section_id, len(section.text))
     return section.text
 
 
@@ -236,9 +234,7 @@ def _regex_positions(
     return positions
 
 
-def _build_match(
-    start: int, end: int, source: str, sections: list[Section]
-) -> dict:
+def _build_match(start: int, end: int, source: str, sections: list[Section]) -> dict:
     """Build the dict representation of a single match for the agent."""
     snippet_start = max(0, start - _SNIPPET_PADDING)
     snippet_end = min(len(source), end + _SNIPPET_PADDING)

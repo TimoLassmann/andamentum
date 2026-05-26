@@ -71,7 +71,7 @@ async def test_existing_file_is_harvested(tmp_path) -> None:
 async def test_missing_path_raises_file_not_found() -> None:
     """A path-shaped string that doesn't exist must raise — silently
     treating it as raw markdown is the 2026-05-26 bug."""
-    with pytest.raises(FileNotFoundError, match="does not exist"):
+    with pytest.raises(FileNotFoundError, match="not found"):
         await _harvest_or_treat_as_markdown("/tmp/this-file-does-not-exist-xyz.md")
 
 
