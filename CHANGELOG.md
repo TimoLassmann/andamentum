@@ -1,5 +1,119 @@
 # Changelog
 
+## 0.3.0 — 2026-05-26
+
+First stable release. Headline change is the whetstone v3 consolidation:
+v2's lens-based section-by-section pipeline is gone; v3's criterion-
+cascade is the only review path. The rest of this entry covers
+follow-up polish and release-prep work since `0.3.0rc3`.
+
+### Whetstone v3 consolidation
+
+  - Six pluggable criterion sets routed by document type (academic /
+    external_communication / essay / tutorial / creative / general),
+    auto-detected by a one-shot classifier or set explicitly via
+    `--document-type`. Essays, tutorials, and creative writing get
+    criteria that fit the form instead of being forced through SPECS.
+  - `--criteria` / `--guidelines` collapsed into one unified
+    criterion-input surface. Pass either pre-decomposed `criteria=`
+    or free-text `guidelines_text=`; an extractor decomposes the
+    latter into a criterion list in one LLM call.
+  - Confidentiality tripwire (`_confidentiality.py`) ported to v3 and
+    runs as the very first step of `run_review_v3`, before any LLM
+    call including the auto-classifier.
+  - Editor phase ported as an optional node between Synthesise and
+    Finalize; concrete `Edit` objects feed the docx track-changes
+    renderer when `--editor` is passed.
+  - Novelty check restructured from v2's single-node-with-tool shape
+    into a deterministic 3-node pipeline (FlagNoveltyTargets →
+    RunNoveltySearches → JudgeNovelty). Reproducible flag-set,
+    bounded search budget, on-disk novelty cache dropped per the
+    no-hidden-home-dirs rule.
+  - Panel mode now lives in its own graph (`whetstone.v3.panel`).
+    Invoked via the new `andamentum-whetstone panel` subcommand;
+    keeps the existing N-expert biosketches + per-expert reviews +
+    panel synthesis shape, with the in-code authorship gate
+    (`--i-am-the-author`) preserved.
+
+### CLI: four subcommands
+
+  `andamentum-whetstone` is now organised around verbs:
+    review (default — criterion-cascade), panel, proofread, apply-patches.
+  Bare positional invocations still route to `review` so existing
+  scripts don't break. 7 dead v2 flags pruned (`--v3`,
+  `--embedding-model`, `--no-challenge`, `--perspectives`,
+  `--no-llm`, `--no-proofread`, `--persist-novelty-cache`).
+  Remaining flags organised into argparse argument groups so the
+  `--help` output reads cleanly.
+
+### Output layout
+
+  - HTML + markdown renderers rewritten to an editorial-annotation
+    layout: per-finding section header → quoted passage in
+    `tone-quote` callout → comment in `tone-warning` / `tone-note`
+    callout with severity / confidence chips. Composes existing
+    typeset atoms — no CSS edits, no new visual primitives.
+  - Document map moves from the bottom of the report to the top so
+    section ids in finding headers are interpretable on first read.
+  - The two stacked top banners (note + AI-watermark) merge into
+    one combined warning.
+  - No more collapsed `<details>` cards; comment body is visible
+    at first read.
+
+### Metrics + reliability
+
+  - Real LLM-call + gap-round counters wired throughout v3 (was
+    always `0` after the consolidation regression). Uses a
+    `ContextVar`-held counter so `asyncio.gather`'d tasks aggregate
+    into one total. Reads pydantic-ai's `result.usage().requests`
+    to capture tool-call expansion.
+  - Loud-fail on missing input path: a path-shaped string that
+    doesn't exist now raises `FileNotFoundError` with a clear
+    message; previously the path string was silently treated as raw
+    markdown content (the LLM "reviewed" the literal string
+    `/tmp/draft.md`).
+
+### Release-prep
+
+  - **Supply-chain hardening.** Added a `[tool.uv]` block with a
+    rolling 28-day cooldown — at resolve time `uv` ignores any
+    package version uploaded in the last 28 days, blocking
+    freshly-published malicious releases from being pulled before
+    the community has time to flag them. The lockfile remains the
+    actual pin; CI / containers should run `uv sync --locked` (or
+    `UV_LOCKED=1`) to refuse silent drift.
+  - **Dependency upper bounds.** Every direct dependency now has an
+    explicit upper bound (e.g. `pydantic>=2,<3`, `docling<3`,
+    `matplotlib<4`, `sqlite-vec<0.2`) so a future major bump can't
+    silently break the install.
+  - **License hygiene.** `trafilatura` (GPL-3.0) moved from the
+    default `dependencies` to a `[project.optional-dependencies]`
+    extra (`pip install andamentum[html-articles]`); the default
+    install is now MIT-clean. The harvest backend falls back to
+    `docling` automatically when trafilatura isn't installed.
+  - **PyPI metadata.** `[project.urls]` block added (Homepage,
+    Repository, Documentation, Changelog, Issues) so PyPI's package
+    page links back to the source.
+  - **Plans + smoke files relocated.** 16 internal design docs
+    moved from `docs/plans/` to `docs/.internal/plans/`. Smoke-run
+    review outputs at the repo root moved to `docs/results/smoke/`.
+    Both directories carry a README labelling them maintainer-only
+    so first-time users don't mistake them for documentation.
+  - `andamentum-epistemic` prints an explicit `⚠ EXPERIMENTAL`
+    banner to stderr on every invocation. The module ships
+    installed and is callable, but output shape / agent names /
+    flags may still change without notice.
+
+### Other
+
+  - Documentation refreshed for the v3-only surface (README,
+    docs/index.md, docs/architecture.md, both RESPONSIBLE_USE.md
+    files). `docs/whetstone/lenses/strunk.md` removed — the Strunk
+    lens was a v2-only feature deleted in the consolidation.
+  - `<your-github-handle>` placeholder in `CITATION.cff` and the
+    `harvest` / `deep_research` User-Agent string replaced with
+    `TimoLassmann`.
+
 ## 0.3.0rc3 — 2026-05-13
 
 Adds a **second report layout** alongside the classic one — Cochrane-
