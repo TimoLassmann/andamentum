@@ -111,7 +111,10 @@ def test_markdown_renders_every_section():
     assert "Executive Summary" in md
     assert "Author questions" in md
     assert "Edits (1)" in md
-    assert "Findings (LLM-investigated)" in md
+    # Heading was "Findings (LLM-investigated)" pre-consolidation; v3
+    # drops the (LLM-investigated) parenthetical since there's only the
+    # one criterion-cascade source of LLM findings now.
+    assert "## Findings" in md
     assert "Deterministic findings" in md
     assert "Document map" in md
     # Edit shows as diff block
@@ -135,8 +138,8 @@ def test_markdown_clean_document_says_so():
 
 def test_markdown_findings_grouped_by_priority():
     md = render_markdown(_sample_result())
-    # MUST FIX appears before CONSIDER in the LLM findings section
-    findings_section = md.split("## Findings (LLM-investigated)")[1].split("---")[0]
+    # MUST FIX appears before CONSIDER inside the LLM findings section.
+    findings_section = md.split("## Findings")[1].split("---")[0]
     assert findings_section.index("### MUST FIX") < findings_section.index(
         "### CONSIDER"
     )
