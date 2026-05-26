@@ -101,9 +101,11 @@ def test_markdown_keeps_severity_label_alongside_priority():
         deterministic_findings=[_f("major", title="Important")],
     )
     out = render_markdown(result)
-    # Severity should still appear as a tag alongside the priority bucket
-    # so reviewers can see both axes.
-    assert "_major_" in out
+    # Severity still appears as a tag alongside the priority bucket
+    # so reviewers can see both axes. After the Proposal-A layout
+    # rework the tag renders as a bracketed chip (`[major]`) rather
+    # than italic prose (`_major_`); the substance is unchanged.
+    assert "[major]" in out
 
 
 def test_markdown_clean_document_message():

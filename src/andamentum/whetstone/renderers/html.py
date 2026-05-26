@@ -13,10 +13,7 @@ from typing import Any
 
 from andamentum.typeset import render as typeset_render
 
-from .._watermark import (
-    DISCLAIMER_SHORT,
-    banner_html_callout,
-)
+from .._watermark import DISCLAIMER_SHORT
 from ..schemas import (
     AuthorQuestion,
     CustomEvaluation,
@@ -60,19 +57,38 @@ def render_html(
     atoms: list[dict[str, Any]] = []
 
     atoms.append({"kind": "heading", "content": _TITLE, "subtitle": _SUBTITLE})
-    # Existing disclaimer kept as a "note" tone.
-    atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
-    # Visible AI-provenance banner: a warning-tone callout on top of the
-    # existing note. Off by default for derived artifacts, on by default
-    # for standalone review reports.
+    # Single combined banner — both the "for your own drafts" scope
+    # statement and the AI-provenance watermark belong in the same
+    # callout. Two stacked callouts at the top of every report was
+    # visual noise; one is enough.
     if visible_watermark:
-        atoms.append(banner_html_callout())
+        atoms.append(
+            {
+                "kind": "callout",
+                "tone": "warning",
+                "content": (
+                    "**AI-generated review content.** "
+                    "Whetstone is for sharpening your own drafts — not a "
+                    "peer-review tool. See RESPONSIBLE_USE.md."
+                ),
+            }
+        )
+    else:
+        atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
     _ = model  # reserved for future inclusion in the banner text
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
+    # section_id → title map (fed into the findings renderer so each
+    # per-finding header reads "Methods · s1" not just "s1").
+    section_titles = {c.section_id: c.title for c in result.document_map}
+
     if result.summary.strip():
         atoms.extend(_summary_atoms(result.summary))
+
+    # ── Document map at the TOP — orientation before findings ──────
+    if result.document_map and not panel_mode:
+        atoms.extend(_document_map_atoms(result.document_map))
 
     # ── Panel-mode atoms (priority order) ───────────────────────────
     if result.panel_synthesis is not None:
@@ -102,7 +118,11 @@ def render_html(
 
     if result.findings:
         atoms.extend(
-            _findings_atoms(result.findings, heading="Findings (LLM-investigated)")
+            _findings_atoms(
+                result.findings,
+                heading="Findings",
+                section_titles=section_titles,
+            )
         )
 
     if result.deterministic_findings:
@@ -110,15 +130,13 @@ def render_html(
             _findings_atoms(
                 result.deterministic_findings,
                 heading="Deterministic findings (structural)",
+                section_titles=section_titles,
             )
         )
 
-    if result.document_map and not panel_mode:
-        atoms.extend(_document_map_atoms(result.document_map))
-
-    # Count prelude atoms (heading + disclaimer note + optional AI banner)
-    # so the "looks clean" message fires only when there's no review content.
-    prelude_atoms = 2 + (1 if visible_watermark else 0)
+    # Count prelude atoms (heading + single combined banner) so the
+    # "looks clean" message fires only when there's no review content.
+    prelude_atoms = 2
     if len(atoms) <= prelude_atoms:
         atoms.append(
             {
@@ -194,10 +212,23 @@ _PRIORITY_HEADINGS = {
 }
 
 
-def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = [
-        {"kind": "heading", "content": f"{heading} ({len(findings)})", "level": 2}
-    ]
+def _findings_atoms(
+    findings: list[Finding],
+    *,
+    heading: str,
+    section_titles: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Editorial-annotation layout: per-finding section header →
+    ``tone-quote`` callout with the verbatim passage → ``tone-warning``
+    callout with the comment body. Mirrors the markdown renderer.
+
+    No collapsed ``<details>``: everything is visible at first read.
+    The visual separation between the quote (serif italic, left rule,
+    no background) and the comment (sans-serif, accent left bar, tinted
+    background) carries the "passage → annotation" reading direction
+    without literal indentation.
+    """
+    section_titles = section_titles or {}
     by_priority: dict[str, list[Finding]] = {
         "must_fix": [],
         "should_fix": [],
@@ -205,37 +236,75 @@ def _findings_atoms(findings: list[Finding], *, heading: str) -> list[dict[str, 
     }
     for f in findings:
         by_priority.setdefault(f.priority, []).append(f)
+
+    counts = [
+        f"{len(by_priority.get(p, []))} {label}"
+        for p, label in (
+            ("must_fix", "must-fix"),
+            ("should_fix", "should-fix"),
+            ("consider", "consider"),
+        )
+        if by_priority.get(p)
+    ]
+    counts_line = " · ".join(counts) if counts else "0 findings"
+
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "prose",
+            "heading": f"{heading} ({len(findings)})",
+            "content": f"_{counts_line}_",
+        }
+    ]
+
     for priority in ("must_fix", "should_fix", "consider"):
         group = by_priority.get(priority, [])
         if not group:
             continue
         out.append(
             {
-                "kind": "heading",
-                "content": f"{_PRIORITY_HEADINGS[priority]} ({len(group)})",
-                "level": 3,
+                "kind": "prose",
+                "content": f"### {_PRIORITY_HEADINGS[priority]} ({len(group)})",
             }
         )
         for f in group:
-            persona = f" · _{f.perspective}_" if f.perspective else ""
-            details_lines = []
-            if f.rationale:
-                details_lines.append(f.rationale)
-            if f.sections_involved:
-                details_lines.append(f"\n\nsections: {', '.join(f.sections_involved)}")
-            for q in f.quotes[:3]:
-                preview = q.text.replace("\n", " ")[:200]
-                details_lines.append(f"\n\n> [{q.section_id}] {preview}")
-            out.append(
-                {
-                    "kind": "card",
-                    "content": (
-                        f"**{f.title}** _({f.severity}, {f.confidence} confidence"
-                        f"{persona})_"
-                    ),
-                    "details": "".join(details_lines) if details_lines else None,
-                }
+            section_id = (
+                f.quotes[0].section_id
+                if f.quotes
+                else (f.sections_involved[0] if f.sections_involved else "")
             )
+            section_title = section_titles.get(section_id, "(no section)")
+            loc = f"#### {section_title}" + (
+                f" &nbsp; <code>{section_id}</code>" if section_id else ""
+            )
+            out.append({"kind": "prose", "content": loc})
+
+            # Verbatim passage (serif italic with left rule via
+            # tone-quote — the existing typeset atom for "this is the
+            # author's text, set apart from review prose").
+            for q in f.quotes[:1]:
+                preview = q.text.replace("\n", " ").strip()
+                out.append(
+                    {
+                        "kind": "callout",
+                        "tone": "quote",
+                        "content": preview,
+                    }
+                )
+
+            # Comment block. Severity / confidence ride as neutral
+            # typeset-badge chips inline. tone-warning for major,
+            # tone-note for everything else (keeps the visual weight
+            # proportional to the severity).
+            tone = "warning" if f.severity == "major" else "note"
+            persona = f" · <em>{f.perspective}</em>" if f.perspective else ""
+            chips = (
+                f'<span class="typeset-badge">{f.severity}</span>'
+                f' <span class="typeset-badge">{f.confidence} confidence</span>'
+            )
+            title_line = f"**{f.title}** &nbsp; {chips}{persona}"
+            body = title_line + (f"\n\n{f.rationale}" if f.rationale else "")
+            out.append({"kind": "callout", "tone": tone, "content": body})
+
     return out
 
 
@@ -260,9 +329,7 @@ def _panel_synthesis_atoms(
         out.append({"kind": "heading", "content": "Reviewer scores", "level": 3})
         score_lines: list[str] = []
         for row in rows:
-            per_expert = " · ".join(
-                f"{name} {score}" for name, score in row.per_expert
-            )
+            per_expert = " · ".join(f"{name} {score}" for name, score in row.per_expert)
             score_lines.append(
                 f"- **{row.name}:** {row.average:.1f} avg, range "
                 f"{row.range_str} · {per_expert}"
@@ -270,9 +337,7 @@ def _panel_synthesis_atoms(
         out.append({"kind": "prose", "content": "\n".join(score_lines)})
 
     if s.consensus_strengths:
-        out.append(
-            {"kind": "heading", "content": "Consensus strengths", "level": 3}
-        )
+        out.append({"kind": "heading", "content": "Consensus strengths", "level": 3})
         out.append(
             {
                 "kind": "items",
@@ -280,9 +345,7 @@ def _panel_synthesis_atoms(
             }
         )
     if s.consensus_weaknesses:
-        out.append(
-            {"kind": "heading", "content": "Consensus weaknesses", "level": 3}
-        )
+        out.append({"kind": "heading", "content": "Consensus weaknesses", "level": 3})
         out.append(
             {
                 "kind": "items",
@@ -290,9 +353,7 @@ def _panel_synthesis_atoms(
             }
         )
     if s.divergent_opinions:
-        out.append(
-            {"kind": "heading", "content": "Divergent opinions", "level": 3}
-        )
+        out.append({"kind": "heading", "content": "Divergent opinions", "level": 3})
         out.append(
             {
                 "kind": "items",
@@ -313,22 +374,16 @@ def _panel_synthesis_atoms(
             out.append({"kind": "prose", "content": content})
 
     if s.key_decision_factors:
-        out.append(
-            {"kind": "heading", "content": "Key decision factors", "level": 3}
-        )
+        out.append({"kind": "heading", "content": "Key decision factors", "level": 3})
         out.append(
             {
                 "kind": "items",
-                "entries": [
-                    {"label": "★", "body": x} for x in s.key_decision_factors
-                ],
+                "entries": [{"label": "★", "body": x} for x in s.key_decision_factors],
             }
         )
 
     if s.review_summary.strip():
-        out.append(
-            {"kind": "heading", "content": "Detailed synthesis", "level": 3}
-        )
+        out.append({"kind": "heading", "content": "Detailed synthesis", "level": 3})
         out.append({"kind": "prose", "content": s.review_summary})
 
     return out
@@ -354,13 +409,9 @@ def _expert_reviews_atoms(reviews: list[ExpertReview]) -> list[dict[str, Any]]:
             f"clarity {r.clarity_score}/10"
         )
         if r.strengths:
-            details_lines.append(
-                "**Strengths.** " + "; ".join(r.strengths)
-            )
+            details_lines.append("**Strengths.** " + "; ".join(r.strengths))
         if r.weaknesses:
-            details_lines.append(
-                "**Weaknesses.** " + "; ".join(r.weaknesses)
-            )
+            details_lines.append("**Weaknesses.** " + "; ".join(r.weaknesses))
         if r.recommendation_justification.strip():
             details_lines.append(
                 f"**Why this recommendation.** {r.recommendation_justification}"
