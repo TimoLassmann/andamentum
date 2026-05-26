@@ -150,6 +150,9 @@ async def analyze_gaps(
         f"PREVIOUSLY REQUESTED (do not repeat):\n{prior_block}\n\n"
         f"What is worth a second look?"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(result)
     demands = cast(_DemandList, result.output).demands
     return [d for d in demands if d.signature() not in prior]
 
@@ -213,6 +216,9 @@ async def _satisfy_reexamine(
         f"{', '.join(criterion_names)}{prior_block}\n\n"
         f"SECTION ({section.title}):\n{section.text}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     raw = cast(_ReexamineFindings, res.output).findings
     return [
         Finding(
@@ -249,6 +255,9 @@ async def _satisfy_recheck(
     res = await agent.run(
         f"FINDING: {f.issue}\nQUOTE: {f.quote!r}\n\nDOCUMENT TEXT:\n{context}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     return bool(cast(_Holds, res.output).holds)
 
 
@@ -273,11 +282,15 @@ async def gap_loop(
     right number.
     """
     import time
+
+    from ._metrics import increment_gap_rounds
+
     names = criterion_names or [c.name for c in SPECS]
     current = list(findings)
     prior: set[str] = set()
     for round_idx in range(1, cap + 1):
         round_start = time.monotonic()
+        increment_gap_rounds()
         try:
             demands = await analyze_gaps(model, current, prior, agent_model=agent_model)
         except Exception as exc:
@@ -286,7 +299,8 @@ async def gap_loop(
         if not demands:
             logger.info(
                 "[v3.gaps] round %d — no demands, exiting (%.1fs)",
-                round_idx, time.monotonic() - round_start,
+                round_idx,
+                time.monotonic() - round_start,
             )
             break
         # Per-round cap. analyze_gaps' prompt says "Be sparing" but doesn't
@@ -295,7 +309,9 @@ async def gap_loop(
         if len(demands) > per_round_demand_cap:
             logger.info(
                 "[v3.gaps] round %d — %d demand(s) emitted, truncating to %d",
-                round_idx, len(demands), per_round_demand_cap,
+                round_idx,
+                len(demands),
+                per_round_demand_cap,
             )
             demands = demands[:per_round_demand_cap]
         else:
@@ -331,7 +347,10 @@ async def gap_loop(
         current += added_anchored
         logger.info(
             "[v3.gaps] round %d — added %d finding(s), dropped %d, total %d (%.1fs)",
-            round_idx, len(added_anchored), len(drop_idxs), len(current),
+            round_idx,
+            len(added_anchored),
+            len(drop_idxs),
+            len(current),
             time.monotonic() - round_start,
         )
     return current

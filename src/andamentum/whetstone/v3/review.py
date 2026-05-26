@@ -156,7 +156,9 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
             section_lines.append(
                 f"  - [{s.id}] {s.title} ({len(s.text):,} chars){gist_part}"
             )
-        parts.append("SECTIONS (id | title | size | gist):\n" + "\n".join(section_lines))
+        parts.append(
+            "SECTIONS (id | title | size | gist):\n" + "\n".join(section_lines)
+        )
     else:
         parts.append("SECTIONS: (none)")
 
@@ -265,7 +267,9 @@ def make_anchor_validator(
             preview = "\n".join(f"  - {q!r}" for q in unanchored[:5])
             logger.info(
                 "[v3.validator] %d locked, %d unanchored on attempt %d — refining bad ones",
-                len(locked), len(unanchored), ctx.retry,
+                len(locked),
+                len(unanchored),
+                ctx.retry,
             )
             raise ModelRetry(
                 f"LOCKED FINDINGS ({len(locked)} already verified verbatim "
@@ -280,14 +284,17 @@ def make_anchor_validator(
         if unanchored:
             logger.info(
                 "[v3.validator] attempts exhausted; keeping %d locked, dropping %d unanchored",
-                len(locked), len(unanchored),
+                len(locked),
+                len(unanchored),
             )
         return output_class(findings=list(locked.values()))
 
     return validator
 
 
-def _build_agent(criterion: Criterion, agent_model: str) -> Agent[DocDeps, _CriterionFindings]:
+def _build_agent(
+    criterion: Criterion, agent_model: str
+) -> Agent[DocDeps, _CriterionFindings]:
     """Construct the criterion-review agent with tools + typed deps.
 
     Layer-1 tools (read_section, search_paper) are unconditionally
@@ -348,6 +355,9 @@ async def review_criterion(
             total_tokens_limit=_TOTAL_TOKENS_LIMIT,
         ),
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(result)
     raw = cast(_CriterionFindings, result.output).findings
     return [
         Finding(
@@ -397,7 +407,9 @@ async def run_criteria(
             body_part = f" — body: {str(body)[:500]!r}" if body else ""
             logger.warning(
                 "[v3.review] %s: model behaviour error (%s)%s",
-                c.name, exc, body_part,
+                c.name,
+                exc,
+                body_part,
             )
             continue
         except UsageLimitExceeded as exc:

@@ -116,11 +116,21 @@ async def test_critique_receives_three_ground_truth_blocks() -> None:
 
     model = DocumentModel(
         source="some doc text",
-        sections=[Section(id="s1", title="Intro", text="some doc text", start=0, end=13)],
-        claims=[Claim(id="c1", quote="some doc text", span=Span(section_id="s1", start=0, end=13))],
+        sections=[
+            Section(id="s1", title="Intro", text="some doc text", start=0, end=13)
+        ],
+        claims=[
+            Claim(
+                id="c1",
+                quote="some doc text",
+                span=Span(section_id="s1", start=0, end=13),
+            )
+        ],
         gists=[SectionGist(section_id="s1", title="Intro", gist="the intro")],
     )
-    draft = StructuredReview(synopsis="draft", strengths=["a"], weaknesses=["no baseline"])
+    draft = StructuredReview(
+        synopsis="draft", strengths=["a"], weaknesses=["no baseline"]
+    )
     findings = [
         Finding(
             criterion="Evaluations",

@@ -29,22 +29,22 @@ logger = logging.getLogger("whetstone.bench")
 async def run_arm_a(ref: PaperRef, *, model: str) -> ArmOutput:
     """Whetstone review. Findings = LLM + deterministic; verdict = synthesis.
 
-    Style-flag findings (``category="style:weasel"`` etc. from the proofread
-    pass) are deliberately excluded from the judge's view: the comparison arm
-    has no equivalent surface-style pass, so including ~25-35% of v2's count
-    as proofread items biases the judge by sheer volume. They still appear in
-    the actual whetstone output (markdown's "Deterministic findings" section,
-    docx comments) — this filter only affects the benchmark adapter.
+    NOTE: post-Phase-I (v2 deletion), the v2 lens pipeline this arm
+    originally compared against no longer exists. The arm now invokes
+    the consolidated v3 ``review_document`` (the new canonical name);
+    arm A and arm B (v3) therefore exercise the same review path and
+    will produce identical output. Keep this arm in place as a guard
+    against accidental regression of the public ``review_document``
+    surface but expect arm A vs arm B results to converge.
     """
     from andamentum.whetstone import review_document
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm A"
-    result = await review_document(Path(ref.markdown_path), model=model)
+    result = await review_document(str(Path(ref.markdown_path)), model=model)
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
-        for f in (list(result.findings) + list(result.deterministic_findings))
+        for f in result.findings
         if f.category != "novelty"
-        and not (f.category or "").startswith("style:")
     ]
     logger.info("[arm A] %s → %d finding(s)", ref.slug, len(findings))
     return ArmOutput(arm="A", findings=findings, verdict=result.summary or "")
@@ -106,11 +106,19 @@ async def run_arm_b(ref: PaperRef, *, model: str) -> ArmOutput:
 
 
 async def run_arm_b_v3(ref: PaperRef, *, model: str) -> ArmOutput:
-    """Whetstone v3 review (whole-document, SPECS criteria, gap loop)."""
-    from andamentum.whetstone.v3 import review_document_v3
+    """Whetstone v3 review (whole-document, criterion-cascade, gap loop).
+
+    Post-Phase-I this is the same review path as arm A (the v3 graph is
+    now the only review path; ``review_document`` is just an alias for
+    ``run_review_v3``'s file-entry wrapper). Kept as an explicit
+    benchmark arm so historical comparisons against arm A's findings
+    remain interpretable.
+    """
+    from andamentum.whetstone import run_review
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm B (v3)"
-    result = await review_document_v3(ref.markdown_path, model=model)
+    text = Path(ref.markdown_path).read_text(encoding="utf-8")
+    result = await run_review(text, model=model)
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
         for f in result.findings

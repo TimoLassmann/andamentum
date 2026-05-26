@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
+from ..schemas import Edit
 from ..schemas import Finding as WFinding
 from ..schemas import Quote, ReviewMetrics, ReviewResult, SectionCard
 from .model import DocumentModel
@@ -86,6 +87,9 @@ async def synthesise(
     res = await agent.run(
         f"FINDINGS:\n{_findings_block(findings)}\n\nSECTIONS:\n{gists}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     return cast(StructuredReview, res.output)
 
 
@@ -137,9 +141,9 @@ async def critique_and_revise(
             "any strength the document doesn't back up.\n"
             "  - weaknesses: must correspond to a listed finding. Do NOT drop a "
             "weakness just because the author doesn't assert the gap "
-            "themselves — absence-based weaknesses (\"no baseline comparison\", "
-            "\"lacks confidence intervals\") and typo/presentation issues "
-            "(\"broken notation\") are exactly the kind the findings list "
+            'themselves — absence-based weaknesses ("no baseline comparison", '
+            '"lacks confidence intervals") and typo/presentation issues '
+            '("broken notation") are exactly the kind the findings list '
             "exists to legitimise. Only drop a weakness if no finding supports "
             "it.\n\n"
             "Return the corrected structured review. Preserve what is well-supported."
@@ -152,9 +156,7 @@ async def critique_and_revise(
     gists_block = (
         "\n".join(f"  - {g.title}: {g.gist}" for g in model.gists) or "  (none)"
     )
-    claims_block = (
-        "\n".join(f"  - {c.quote}" for c in model.claims) or "  (none)"
-    )
+    claims_block = "\n".join(f"  - {c.quote}" for c in model.claims) or "  (none)"
     findings_block = _findings_block(findings)
     res = await agent.run(
         f"DRAFT REVIEW:\n{draft.model_dump_json(indent=2)}\n\n"
@@ -162,6 +164,9 @@ async def critique_and_revise(
         f"AUTHOR CLAIMS:\n{claims_block}\n\n"
         f"SUPPORTED FINDINGS:\n{findings_block}"
     )
+    from ._metrics import bump_from_result
+
+    bump_from_result(res)
     return cast(StructuredReview, res.output)
 
 
@@ -210,12 +215,19 @@ def _to_wfinding(f: Finding, model: DocumentModel) -> WFinding:
 
 
 def to_review_result(
-    model: DocumentModel, findings: list[Finding], review: StructuredReview
+    model: DocumentModel,
+    findings: list[Finding],
+    review: StructuredReview,
+    edits: list[Edit] | None = None,
+    llm_calls: int = 0,
+    gap_rounds_used: int = 0,
 ) -> ReviewResult:
+    edits = edits or []
     gist_by_section = {g.section_id: g.gist for g in model.gists}
     return ReviewResult(
         summary=_flatten(review),
         findings=[_to_wfinding(f, model) for f in findings],
+        edits=list(edits),
         document_map=[
             SectionCard(
                 section_id=s.id,
@@ -225,7 +237,10 @@ def to_review_result(
             for s in model.sections
         ],
         metrics=ReviewMetrics(
+            llm_calls=llm_calls,
             investigated_findings_count=len(findings),
             sections_processed=len(model.sections),
+            edits_count=len(edits),
+            reflection_rounds_used=gap_rounds_used,
         ),
     )

@@ -193,7 +193,9 @@ async def test_validator_raises_on_second_attempt_too() -> None:
     model = _model()
     validator = make_anchor_validator(model.source, _CriterionFindings)
     output = _CriterionFindings(
-        findings=[_RawFinding(issue="still bad", quote="not in source", severity="minor")]
+        findings=[
+            _RawFinding(issue="still bad", quote="not in source", severity="minor")
+        ]
     )
     with pytest.raises(ModelRetry):
         await validator(_ctx(retry=1), output)
@@ -224,7 +226,9 @@ async def test_validator_returns_locked_on_third_attempt() -> None:
     final = await validator(
         _ctx(retry=2),
         _CriterionFindings(
-            findings=[_RawFinding(issue="bad", quote="still not in source", severity="minor")]
+            findings=[
+                _RawFinding(issue="bad", quote="still not in source", severity="minor")
+            ]
         ),
     )
     assert len(final.findings) == 1

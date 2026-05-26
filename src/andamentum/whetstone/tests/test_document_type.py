@@ -8,7 +8,6 @@ directly and verifying downstream gates fire correctly.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -19,7 +18,6 @@ from andamentum.whetstone._document_type import (
     DocumentTypeDecision,
     classify,
 )
-from andamentum.whetstone.api import review_document
 
 
 class FakeAgentResult:
@@ -102,131 +100,15 @@ class TestClassifyPureFunction:
                 return await super().run(prompt)
 
         with mock.patch("pydantic_ai.Agent", CapturingAgent):
-            await classify(
-                model="fake:test", section_titles=["S"], markdown=long_md
-            )
+            await classify(model="fake:test", section_titles=["S"], markdown=long_md)
 
         # Body sample is bounded — full 50k must not be in the prompt.
         assert len(captured["prompt"]) < 5_000
 
 
-# ── Integration: ChunkAndScan gates the journal checklist ────────────────
-
-
-def _write_manuscript(tmp_path: Path, *, with_markers: bool) -> Path:
-    """Write a small fake manuscript that triggers the journal checklist
-    when the gate is open. Without statements → multiple checklist findings.
-    """
-    p = tmp_path / "draft.md"
-    body = "# Title\n\n## Introduction\n\nBackground stuff.\n\n## Methods\n\nMethod stuff.\n"
-    if with_markers:
-        body += (
-            "\n## Conflict of interest\n\nNone declared.\n"
-            "\n## Data availability\n\nData available on request.\n"
-            "\n## Ethics\n\nApproved.\n"
-            "\n## Keywords\n\nfoo, bar, baz, qux\n"
-        )
-    p.write_text(body)
-    return p
-
-
-class TestIntegrationChecklistGate:
-    async def test_general_skips_journal_checklist(self, tmp_path: Path) -> None:
-        """When document_type is 'general', CoI / data / ethics findings
-        do not appear in deterministic_findings."""
-        manuscript = _write_manuscript(tmp_path, with_markers=False)
-
-        result = await review_document(
-            str(manuscript), model=None, document_type="general"
-        )
-
-        titles = " ".join(f.title for f in result.deterministic_findings).lower()
-        # The journal-checklist titles must not appear.
-        assert "conflict" not in titles
-        assert "data availability" not in titles
-        assert "ethics" not in titles
-
-    async def test_academic_runs_journal_checklist(self, tmp_path: Path) -> None:
-        """When document_type is 'academic', the checklist fires and
-        emits findings for the missing required statements."""
-        manuscript = _write_manuscript(tmp_path, with_markers=False)
-
-        result = await review_document(
-            str(manuscript), model=None, document_type="academic"
-        )
-
-        titles = " ".join(f.title for f in result.deterministic_findings).lower()
-        # At least one of the journal-checklist findings should fire.
-        assert (
-            "conflict" in titles
-            or "data" in titles
-            or "ethics" in titles
-            or "abstract" in titles
-        ), f"expected journal checklist to fire; got titles: {titles!r}"
-
-    async def test_external_communication_skips_journal_checklist(
-        self, tmp_path: Path
-    ) -> None:
-        manuscript = _write_manuscript(tmp_path, with_markers=False)
-
-        result = await review_document(
-            str(manuscript),
-            model=None,
-            document_type="external_communication",
-        )
-
-        titles = " ".join(f.title for f in result.deterministic_findings).lower()
-        assert "conflict" not in titles
-        assert "data availability" not in titles
-        assert "ethics" not in titles
-
-
-# ── Integration: --no-llm with auto defaults to general ─────────────────
-
-
-class TestNoLLMDefaultsToGeneral:
-    async def test_auto_with_no_model_defaults_to_general(
-        self, tmp_path: Path
-    ) -> None:
-        """--no-llm + document_type='auto' → classifier returns 'general'.
-        Verified by checking the journal checklist did NOT fire."""
-        manuscript = _write_manuscript(tmp_path, with_markers=False)
-
-        result = await review_document(
-            str(manuscript), model=None, document_type="auto"
-        )
-
-        titles = " ".join(f.title for f in result.deterministic_findings).lower()
-        assert "conflict" not in titles
-        assert "data availability" not in titles
-
-
-# ── Integration: synthesis injects document-type context ────────────────
-
-
-class TestSynthesisVocabularyContext:
-    """The synthesise node prepends a document-type-aware paragraph to
-    its prompt. We verify the per-category vocabulary strings exist
-    and are distinct, since the user-visible behaviour is downstream
-    LLM prose that we don't unit-test directly.
-    """
-
-    def test_vocab_table_has_all_three_categories(self) -> None:
-        from andamentum.whetstone.nodes.synthesise import _DOC_TYPE_VOCAB
-
-        assert set(_DOC_TYPE_VOCAB.keys()) == set(DOCUMENT_TYPES)
-        # Each entry is distinct, non-empty, and uses appropriate vocab.
-        academic = _DOC_TYPE_VOCAB["academic"]
-        external = _DOC_TYPE_VOCAB["external_communication"]
-        general = _DOC_TYPE_VOCAB["general"]
-        assert "manuscript" in academic
-        assert "post" in external or "article" in external
-        # General should NOT use academic-specific vocabulary in its body.
-        assert "manuscript" not in general.lower()
-
-    def test_document_type_context_picks_correct_entry(self) -> None:
-        from andamentum.whetstone.nodes.synthesise import _document_type_context
-
-        assert "manuscript" in _document_type_context("academic")
-        assert "audience" in _document_type_context("external_communication")
-        assert "neutral" in _document_type_context("general").lower()
+# The v2 integration tests (TestIntegrationChecklistGate,
+# TestNoLLMDefaultsToGeneral, TestSynthesisVocabularyContext) were
+# deleted with the v2 surface they exercised — the journal-checklist
+# gate lived in v2's structural/ and the synthesis vocab lived in
+# v2's nodes/synthesise.py. The classifier unit tests above are the
+# load-bearing coverage and survive intact.

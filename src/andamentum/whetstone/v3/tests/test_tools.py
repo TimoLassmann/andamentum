@@ -67,7 +67,9 @@ def _ctx(model: DocumentModel) -> RunContext[DocDeps]:
     is just `deps` access; constructing a real one requires a model and
     other plumbing we don't need for these unit tests. Cast at the
     boundary so the call sites stay clean and pyright-quiet."""
-    return cast(RunContext[DocDeps], SimpleNamespace(deps=DocDeps(document_model=model)))
+    return cast(
+        RunContext[DocDeps], SimpleNamespace(deps=DocDeps(document_model=model))
+    )
 
 
 # ── read_section ─────────────────────────────────────────────────────

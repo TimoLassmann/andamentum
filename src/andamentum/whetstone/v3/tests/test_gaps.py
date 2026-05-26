@@ -205,7 +205,10 @@ async def test_per_round_demand_cap_truncates_chatty_round() -> None:
     ]
     reexamine = [
         _ReexamineFinding(
-            issue="point", quote="the method described", severity="minor", criterion="Story"
+            issue="point",
+            quote="the method described",
+            severity="minor",
+            criterion="Story",
         )
     ]
     p1, p2 = _route(demands=demands, reexamine=reexamine)
