@@ -159,7 +159,7 @@ export ANDAMENTUM_AUDIT_LOG=/path/you/choose/andamentum-audit.log
 When enabled, every cloud call appends one line:
 
 ```
-2026-05-16T14:23:01Z whetstone --mode panel anthropic:claude-haiku-4-5 sha256:abc123 6234B
+2026-05-16T14:23:01Z whetstone panel anthropic:claude-haiku-4-5 sha256:abc123 6234B
 ```
 
 The file is created with `0o600` permissions on first write at the

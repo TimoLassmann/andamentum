@@ -86,11 +86,12 @@ external source
    └────┬─────┘           │ search+verify │           ▼
         │                 └───────────────┘    rendered output
         ▼
-   ┌────────────┐         ┌──────────┐
-   │ whetstone  │ ◀────── │proofread │
-   │ multi-lens │         │  style + │
-   │ review     │         │readability│
-   └────────────┘         └──────────┘
+   ┌─────────────┐        ┌──────────┐
+   │ whetstone   │        │proofread │
+   │ criterion-  │        │  style + │
+   │ cascade     │        │readability│
+   │ review      │        └──────────┘
+   └─────────────┘
         │
         ▼
    ┌─────────────────┐
@@ -145,7 +146,7 @@ src/andamentum/
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── scribe/           — block-based document authoring → .docx
 ├── figures/          — publication-quality figure rendering
-├── whetstone/        — multi-lens document review over user drafts
+├── whetstone/        — criterion-cascade document review over user drafts
 ├── proofread/        — deterministic readability + style checking
 └── vision_critique/  — bounded LLM critique of rendered figures
 ```
