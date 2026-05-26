@@ -373,6 +373,60 @@ async def run_review_v3(
     return result.output
 
 
+_PATH_EXTENSIONS: frozenset[str] = frozenset(
+    {".md", ".markdown", ".txt", ".html", ".htm", ".pdf", ".docx", ".pptx", ".tex"}
+)
+
+
+def _looks_like_filesystem_path(source: str) -> bool:
+    """Heuristic: does this string look like a file path the caller meant
+    us to read from disk? Used to distinguish a path that doesn't exist
+    (loud-fail) from raw markdown content the caller passed directly.
+
+    True if the string is short, single-line, and starts with a path
+    prefix OR ends with a recognised file extension. Conservatively
+    biased: a string that clearly looks like a content blob (multi-line,
+    long, no slashes) is not treated as a path attempt.
+    """
+    if not source or "\n" in source:
+        return False
+    if source.startswith(("/", "./", "../", "~/")):
+        return True
+    if len(source) > 500:
+        return False
+    # Heuristic: a single-segment-ish string ending in a recognised
+    # extension (e.g. "draft.md") was almost certainly meant as a file.
+    from pathlib import Path as _P
+
+    return _P(source).suffix.lower() in _PATH_EXTENSIONS
+
+
+async def _harvest_or_treat_as_markdown(source: str) -> str:
+    """Resolve ``source`` to markdown content. If it points to an existing
+    file, harvest it. If it looks like a file path but doesn't exist,
+    raise FileNotFoundError loudly — silently treating a missing path as
+    raw markdown content (the v3 bug fixed in 2026-05-26) made the LLM
+    review the string ``"/tmp/missing.md"`` as if it were the manuscript.
+    Only fall back to "treat source as raw markdown" when the string
+    clearly is not a path attempt."""
+    from pathlib import Path
+
+    from andamentum.harvest import extract
+
+    p = Path(source)
+    if p.exists():
+        return await extract(p)
+    if _looks_like_filesystem_path(source):
+        raise FileNotFoundError(
+            f"input file not found: {source!r}. The string looks like a "
+            "path attempt (starts with /, ./, ../, ~/, or ends in a "
+            "recognised extension like .md / .docx / .pdf). To pass raw "
+            "markdown content directly, include newlines or omit the "
+            "file extension; otherwise check the path."
+        )
+    return source
+
+
 async def review_document_v3(
     source: str,
     *,
@@ -396,11 +450,7 @@ async def review_document_v3(
     (criterion-set resolution precedence, confidentiality gate,
     classifier behaviour).
     """
-    from pathlib import Path
-
-    from andamentum.harvest import extract
-
-    md = await extract(Path(source)) if Path(source).exists() else source
+    md = await _harvest_or_treat_as_markdown(source)
     return await run_review_v3(
         md,
         model=model,
