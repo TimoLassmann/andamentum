@@ -557,7 +557,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         for out in args.out:
             ext = out.suffix.lower()
             out.parent.mkdir(parents=True, exist_ok=True)
-            model_id = None if args.no_llm else args.model
+            model_id = args.model
             if ext == ".md":
                 render_markdown(
                     result,
