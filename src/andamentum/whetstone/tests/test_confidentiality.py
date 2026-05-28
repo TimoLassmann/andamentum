@@ -63,6 +63,74 @@ class TestCheckConfidentiality:
         assert "--confirm-own-draft" in str(ei.value)
         assert "peer review" in str(ei.value).lower()
 
+    @pytest.mark.parametrize(
+        "text,expected_marker",
+        [
+            ("Grant panel review notes follow.", "Funding-panel review"),
+            ("Funding panel assessment for round 2026.", "Funding-panel review"),
+            (
+                "Assessor comments must remain confidential.",
+                "Assessor report / comments",
+            ),
+            ("Assessor report for application 12345.", "Assessor report / comments"),
+            (
+                "Peer review of grant application 5R01CA000000.",
+                "Peer review of grant/application",
+            ),
+            (
+                "This peer review of proposal X is confidential.",
+                "Peer review of grant/application",
+            ),
+        ],
+    )
+    def test_grant_review_act_markers_raise(
+        self, text: str, expected_marker: str
+    ) -> None:
+        """Phrases describing the *act of reviewing* someone else's grant fire.
+
+        Note: scheme prefixes (NHMRC APP, ARC DP, NIH RFA-) and role labels
+        (Lead CI, Chief Investigator) deliberately do NOT fire — they appear
+        in the user's own draft as much as in a reviewer's copy. The
+        responsible-use prohibition on grant peer-review lives in
+        RESPONSIBLE_USE.md, with --confirm-own-draft as the affirmation.
+        """
+        with pytest.raises(ConfidentialityMarkerError) as ei:
+            check_confidentiality(text)
+        assert ei.value.marker == expected_marker
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # User's own grant draft — must NOT fire.
+            "Lead CI: Dr Example. Coordinates the project.",
+            "The Lead investigator is responsible for delivery.",
+            "Chief Investigator A: Dr Smith",
+            "NHMRC APP1234567 funded the prior work.",
+            "Submitted to the Ideas Grant 2026 round.",
+            "Investigator Grant scheme: Leadership Level 2.",
+            "Funded under a Synergy Grant.",
+            "ARC DP240100000 — Discovery Project.",
+            "ARC DECRA2024 awarded.",
+            "Linkage Project with industry partners.",
+            "Discovery Project grant application for round 2026.",
+            "Funding opportunity RFA-CA-25-005 covers...",
+            "This application responds to PAR-24-100.",
+            "Application ID: APP1234567",
+            "Grant ID: 5R01CA000000-05",
+            # Plain narrative mentions of grants/funding.
+            "Our prior work was supported by a research grant.",
+            "We thank funding agencies for the support.",
+        ],
+    )
+    def test_grant_authoring_context_does_not_fire(self, text: str) -> None:
+        """Grant-authoring context (the user's own draft) must NOT fire.
+
+        Scheme codes, scheme names, and role labels appear in the user's
+        own drafts; gating on them would force a reflex --confirm-own-draft
+        bypass and defeat the tripwire's purpose.
+        """
+        check_confidentiality(text)
+
 
 # The v2 node-integration tests (TestNodeIntegration) were deleted with
 # the v2 review_document surface. v3's equivalent integration coverage

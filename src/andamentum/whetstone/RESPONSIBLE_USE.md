@@ -122,12 +122,34 @@ Every output artifact carries **invisible provenance metadata**:
   related tags in `<head>`.
 - Markdown: HTML-comment provenance header at top of file.
 
+For `.docx` outputs, a **second customXml provenance part** is
+also embedded inside the .docx zip at
+`customXml/andamentum-provenance.xml` (namespace
+`urn:andamentum:provenance:v1`). It carries the same provenance
+line — generator, version, model id, produced-at timestamp,
+`ai-generated="true"` — and is anchored via a package-root
+relationship so it survives a python-docx round-trip. The point
+of this second layer is that the core-properties fields (author,
+keywords, comments) are user-editable from Word's File → Info pane
+and from one-click "clear metadata" workflows; the customXml part
+requires manual zip surgery to remove. An editor or integrity team
+can read the part out with the `verify-provenance` subcommand:
+
+```bash
+andamentum-whetstone verify-provenance suspicious.docx
+andamentum-whetstone verify-provenance suspicious.docx --format json
+```
+
+Exit code: 0 if any provenance marker is found, 2 if readable
+but no markers found, 1 if the file can't be read as a .docx zip.
+
 For **review-report outputs** (the `.docx`/`.md`/`.html` summarising
 the review) there is also a **visible "AI-generated review content"
 banner** by default. For the `--apply-patches` path (which produces
 your modified manuscript) the visible banner is OFF by default to
-avoid polluting your submission — the invisible metadata is still
-written. Override with `--visible-watermark` / `--no-visible-watermark`.
+avoid polluting your submission — the invisible metadata and
+customXml provenance part are still written. Override with
+`--visible-watermark` / `--no-visible-watermark`.
 
 ### Novelty-check network surface
 

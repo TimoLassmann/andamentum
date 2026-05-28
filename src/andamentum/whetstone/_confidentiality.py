@@ -45,22 +45,69 @@ class ConfidentialityMarkerError(RuntimeError):
 # word-boundary substrings; some are full literal strings to avoid mis-firing
 # on common research-writing usage. Ordered so the most specific markers fire
 # first, but all are tested — the first match wins.
+#
+# DESIGN NOTE — what stays here vs. what does not:
+# This list is intentionally limited to phrases that describe "this document
+# was shared with you in confidence" — not phrases that identify a *type*
+# of document. Funder-scheme codes (NHMRC APP, ARC DP, NIH RFA-/PAR-),
+# scheme names ("Investigator Grant", "Linkage Project"), and role labels
+# ("Lead CI", "Chief Investigator A") all legitimately appear in the user's
+# OWN drafts; gating on them produces a false-positive rate so high that
+# users learn to reflex-bypass with --confirm-own-draft, defeating the gate.
+# The cross-country list would also be unbounded (UKRI, ERC, DFG, NSF, ...).
+# The responsible-use prohibition on grant peer-review lives in
+# RESPONSIBLE_USE.md; the affirmation surface is --confirm-own-draft.
 _CONFIDENTIALITY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bmanuscript\s+id\s*:", re.IGNORECASE), "Manuscript ID:"),
     (re.compile(r"\bms#\s*\d", re.IGNORECASE), "MS#"),
     (re.compile(r"\bsubmission\s+id\s*:", re.IGNORECASE), "Submission ID:"),
-    (re.compile(r"confidential\s*[-—]\s*do\s+not\s+(?:distribute|share)",
-                re.IGNORECASE), "Confidential — do not distribute"),
-    (re.compile(r"\bconfidential\s+manuscript\b", re.IGNORECASE),
-     "Confidential manuscript"),
-    (re.compile(r"\breviewer\s+instructions?\b", re.IGNORECASE),
-     "Reviewer Instructions"),
+    (
+        re.compile(
+            r"confidential\s*[-—]\s*do\s+not\s+(?:distribute|share)", re.IGNORECASE
+        ),
+        "Confidential — do not distribute",
+    ),
+    (
+        re.compile(r"\bconfidential\s+manuscript\b", re.IGNORECASE),
+        "Confidential manuscript",
+    ),
+    (
+        re.compile(r"\breviewer\s+instructions?\b", re.IGNORECASE),
+        "Reviewer Instructions",
+    ),
     (re.compile(r"\beditorial\s+office\b", re.IGNORECASE), "Editorial Office"),
     (re.compile(r"\bdecision\s+letter\b", re.IGNORECASE), "Decision Letter"),
-    (re.compile(r"this\s+manuscript\s+is\s+being\s+considered", re.IGNORECASE),
-     "This manuscript is being considered"),
-    (re.compile(r"please\s+(?:do\s+not\s+share|treat\s+as\s+confidential)",
-                re.IGNORECASE), "Please do not share / treat as confidential"),
+    (
+        re.compile(r"this\s+manuscript\s+is\s+being\s+considered", re.IGNORECASE),
+        "This manuscript is being considered",
+    ),
+    (
+        re.compile(
+            r"please\s+(?:do\s+not\s+share|treat\s+as\s+confidential)", re.IGNORECASE
+        ),
+        "Please do not share / treat as confidential",
+    ),
+    # Phrases that describe the *act of reviewing someone else's* funder
+    # submission (the prohibited use case) — not the document type itself.
+    # Kept because they only appear in cover-letters / panel correspondence
+    # that the *reviewer* would receive, not in an author's own draft.
+    (
+        re.compile(r"\bassessor\s+(?:report|comments?)\b", re.IGNORECASE),
+        "Assessor report / comments",
+    ),
+    (
+        re.compile(
+            r"\b(?:grant|funding)\s+panel\s+(?:review|assessment|member)\b",
+            re.IGNORECASE,
+        ),
+        "Funding-panel review",
+    ),
+    (
+        re.compile(
+            r"\bpeer\s+review\s+of\s+(?:grant|application|proposal)\b", re.IGNORECASE
+        ),
+        "Peer review of grant/application",
+    ),
 ]
 
 

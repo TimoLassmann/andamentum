@@ -1,0 +1,93 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly run picks up dependency-supply-chain rot (e.g. a freshly-pulled
+  # transitive package starts misbehaving) even with no code change.
+  schedule:
+    - cron: "0 7 * * 1"
+
+# Cancel in-flight runs on the same ref when a newer commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Project floor is 3.10 (per pyproject's requires-python); pyright
+        # config targets 3.13. We test the floor + the pyright target on
+        # both Linux and macOS, with the in-between minors on Linux only
+        # to keep the matrix manageable.
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          # Pin uv to avoid uv-version drift causing different lock
+          # resolutions across runs. Bump deliberately.
+          version: "0.5.x"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies (locked)
+        # --locked refuses to re-resolve; if uv.lock is stale relative to
+        # pyproject.toml, the job fails loudly. That is intentional —
+        # lock drift is a supply-chain concern.
+        run: uv sync --locked --extra dev
+
+      - name: Lint (ruff check)
+        run: uv run ruff check
+
+      - name: Format check (ruff format --check)
+        run: uv run ruff format --check
+
+      - name: Run tests (default markers)
+        # The ollama, benchmark, cloud, and live_provider markers are
+        # deselected by addopts in pyproject.toml; this runs the offline
+        # tier only. Network-dependent / paid markers are not part of
+        # the default CI surface.
+        run: uv run pytest
+
+  typecheck:
+    name: pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+      - name: Install dependencies (locked)
+        run: uv sync --locked --extra dev
+      - name: Pyright
+        # The canonical green state documented in CLAUDE.md tolerates 23
+        # pre-existing test-only typing errors (pydantic-graph variance,
+        # Decomposition dict-form fixtures). Pyright's exit is 1 when any
+        # errors are reported. Keep the step non-blocking until those are
+        # cleaned up, but still surface the diff in PRs.
+        run: uv run pyright || true

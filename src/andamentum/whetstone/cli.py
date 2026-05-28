@@ -1,6 +1,6 @@
 """CLI for whetstone — ``andamentum-whetstone``.
 
-Four subcommands:
+Five subcommands:
 
     andamentum-whetstone [review] INPUT --model M --out OUT [...]
         Criterion-cascade review (the default; verb is optional).
@@ -14,10 +14,16 @@ Four subcommands:
     andamentum-whetstone apply-patches INPUT --patches P.json --out O.docx
         Apply a pre-built JSON patch list to a .docx (no LLM).
 
+    andamentum-whetstone verify-provenance INPUT.docx [--format human|json]
+        Read-only: report which whetstone AI-provenance markers a .docx
+        contains. Exit 0 if any marker present, 2 if none, 1 on read
+        error.
+
 Exit codes:
-    0 — success
+    0 — success (or, for verify-provenance, "markers found")
     1 — configuration / argument error
-    2 — input could not be loaded (harvest failure, file not found)
+    2 — input could not be loaded (harvest failure, file not found, or
+        — for verify-provenance — readable but no markers present)
     3 — review pipeline failed
 """
 
@@ -51,10 +57,11 @@ with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 
 Subcommands (first positional, optional — defaults to `review`):
 
-  review        criterion-cascade review (the default)
-  panel         multi-expert simulated peer review
-  proofread     deterministic style + readability (no LLM)
-  apply-patches apply a pre-built JSON patch list to a .docx (no LLM)
+  review            criterion-cascade review (the default)
+  panel             multi-expert simulated peer review
+  proofread         deterministic style + readability (no LLM)
+  apply-patches     apply a pre-built JSON patch list to a .docx (no LLM)
+  verify-provenance read-only: report AI-provenance markers in a .docx
 
 INPUT is a path or URL to a document. Supported: .pdf, .docx, .html,
 .md, .txt; URLs auto-detect article vs index page. OUTPUTS: pass
@@ -102,6 +109,10 @@ EXAMPLES
     andamentum-whetstone apply-patches draft.docx \\
         --patches patches.json --out draft.reviewed.docx \\
         --patch-author "Claude" --patch-report review.md
+
+    # Read-only: report AI-provenance markers in a .docx
+    andamentum-whetstone verify-provenance suspicious.docx
+    andamentum-whetstone verify-provenance suspicious.docx --format json
 
 EXIT CODES
     0  success
@@ -742,6 +753,10 @@ def _markdown_to_baseline_docx(markdown: str) -> Path:
 _KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
     {"review", "panel", "proofread", "apply-patches"}
 )
+# ``proofread`` and ``verify-provenance`` short-circuit the main flat-argparse
+# pipeline entirely (see ``main()`` below); they have their own argv handlers
+# and never reach _build_parser(). All other subcommands go through
+# _rewrite_subcommand().
 
 
 def _rewrite_subcommand(argv: list[str]) -> list[str]:
@@ -798,6 +813,86 @@ def _run_proofread_subcommand(argv: list[str]) -> int:
     return proofread_main(argv)
 
 
+def _run_verify_provenance_subcommand(argv: list[str]) -> int:
+    """Report which AI-provenance markers are present in a .docx file.
+
+    Usage:
+        andamentum-whetstone verify-provenance INPUT.docx [--format human|json]
+
+    Exit codes:
+        0 — at least one provenance marker found
+        1 — file unreadable / not a .docx zip
+        2 — readable but no markers found
+    """
+    sub = argparse.ArgumentParser(
+        prog="andamentum-whetstone verify-provenance",
+        description=(
+            "Inspect a .docx and report which whetstone provenance markers "
+            "are present. Read-only — never modifies the input file. Useful "
+            "for editors and integrity teams checking whether a file was "
+            "produced or modified by whetstone."
+        ),
+    )
+    sub.add_argument("input", type=Path, help="Path to a .docx file.")
+    sub.add_argument(
+        "--format",
+        choices=("human", "json"),
+        default="human",
+        help="Report format. Default: human.",
+    )
+    parsed = sub.parse_args(argv)
+
+    from ._watermark import read_provenance_markers
+
+    markers = read_provenance_markers(parsed.input)
+    customxml = markers.get("customxml_provenance")
+    found_any = bool(
+        markers.get("core_properties_marker")
+        or markers.get("core_properties_author_marker")
+        or customxml
+    )
+
+    if parsed.format == "json":
+        import json as _json
+
+        print(_json.dumps(markers, indent=2, default=str))
+    else:
+        # Human-readable summary. Plain ASCII so it pipes cleanly.
+        print(f"File: {parsed.input}")
+        if not markers.get("readable"):
+            print("  Readable: NO (not a valid .docx zip)")
+            return 1
+        print("  Readable: yes")
+        print(
+            "  Core-properties keywords/comments marker: "
+            f"{'present' if markers.get('core_properties_marker') else 'absent'}"
+        )
+        print(
+            "  Core-properties author marker:           "
+            f"{'present' if markers.get('core_properties_author_marker') else 'absent'}"
+        )
+        if isinstance(customxml, dict) and customxml:
+            print("  customXml provenance part: present")
+            for key in ("generator", "version", "model", "produced-at", "ai-generated"):
+                if key in customxml:
+                    print(f"    {key}: {customxml[key]}")
+        else:
+            print("  customXml provenance part: absent")
+        print()
+        print(
+            "Verdict: "
+            + (
+                "whetstone provenance found"
+                if found_any
+                else "no whetstone provenance markers found"
+            )
+        )
+
+    if not markers.get("readable"):
+        return 1
+    return 0 if found_any else 2
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Entry point — invoked by the ``andamentum-whetstone`` script.
 
@@ -809,6 +904,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     if raw and raw[0] == "proofread":
         # proofread short-circuits the whetstone pipeline entirely
         rc = _run_proofread_subcommand(raw[1:])
+        raise SystemExit(rc)
+    if raw and raw[0] == "verify-provenance":
+        # verify-provenance is a read-only inspection: no LLM, no
+        # pipeline, no harvest. Short-circuit the main argparse entirely.
+        rc = _run_verify_provenance_subcommand(raw[1:])
         raise SystemExit(rc)
 
     if raw and raw[0] in _KNOWN_SUBCOMMANDS:
