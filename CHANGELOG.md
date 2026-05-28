@@ -35,10 +35,11 @@ follow-up polish and release-prep work since `0.3.0rc3`.
     panel synthesis shape, with the in-code authorship gate
     (`--i-am-the-author`) preserved.
 
-### CLI: four subcommands
+### CLI: five subcommands
 
   `andamentum-whetstone` is now organised around verbs:
-    review (default — criterion-cascade), panel, proofread, apply-patches.
+    review (default — criterion-cascade), panel, proofread,
+    apply-patches, verify-provenance.
   Bare positional invocations still route to `review` so existing
   scripts don't break. 7 dead v2 flags pruned (`--v3`,
   `--embedding-model`, `--no-challenge`, `--perspectives`,
@@ -103,6 +104,39 @@ follow-up polish and release-prep work since `0.3.0rc3`.
     banner to stderr on every invocation. The module ships
     installed and is callable, but output shape / agent names /
     flags may still change without notice.
+  - **Dual-use hardening for whetstone.**
+    - Confidentiality tripwire extended with three phrases that
+      describe the *act of reviewing someone else's grant*
+      (`Assessor report/comments`, `Funding-panel review`,
+      `Peer review of grant/application/proposal`). Scheme
+      prefixes (NHMRC APP, ARC DP, NIH RFA-) and role labels
+      (`Lead CI`, `Chief Investigator A`) deliberately do NOT
+      fire — they appear in the user's own draft as well, and
+      gating on them would produce a false-positive rate high
+      enough to train users into reflex `--confirm-own-draft`
+      bypass. The category-level prohibition lives in
+      `RESPONSIBLE_USE.md`.
+    - `.docx` provenance now has a second invisible layer: a
+      `customXml/andamentum-provenance.xml` part inside the docx
+      zip (namespace `urn:andamentum:provenance:v1`), anchored
+      via a package-root relationship so it survives the next
+      python-docx round-trip. The layer-1 core-properties fields
+      (author, keywords, comments) are user-editable from Word's
+      File → Info pane; the customXml part requires manual zip
+      surgery to remove, so the provenance survives the most
+      common "scrub before sharing" actions.
+    - New `andamentum-whetstone verify-provenance INPUT.docx`
+      subcommand — read-only inspection that reports which AI-
+      provenance markers a `.docx` carries (core-properties +
+      customXml). `--format json` for machine-readable output.
+      Exit 0 if any marker present, 2 if readable but clean, 1
+      on read error.
+  - **CI workflow.** `.github/workflows/test.yml` runs pytest,
+    ruff check, ruff format check, and pyright (non-blocking on
+    the 23 pre-existing test-only typing errors) across
+    Python 3.10 / 3.11 / 3.12 / 3.13 on Linux and macOS.
+    `uv sync --locked` refuses silent lock drift. A weekly
+    cron run picks up supply-chain rot in dependencies.
 
 ### Other
 

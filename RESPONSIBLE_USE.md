@@ -31,6 +31,17 @@ with the code — possibility is not endorsement.
   any other confidentiality agreement. Most publishers and funders
   currently prohibit sharing such documents with AI tools, including
   cloud LLMs. See [`src/andamentum/whetstone/RESPONSIBLE_USE.md`](./src/andamentum/whetstone/RESPONSIBLE_USE.md).
+- **Peer review of grant applications, fellowships, or research
+  proposals.** Same reasoning — and the prohibition is now explicit
+  in funder policy: NIH NOT-OD-25-122 (AI in peer review), NHMRC AI
+  guidance, ARC AI policy, and UKRI's generative-AI guidance all
+  prohibit submitting application content to cloud LLMs during
+  review. The confidentiality tripwire catches the act of writing
+  "Assessor report", "Funding-panel review", or "Peer review of
+  grant/proposal", but does NOT catch scheme prefixes (NHMRC APP,
+  ARC DP, NIH RFA-) or role labels — those appear in your own draft
+  too. The prohibition is your responsibility regardless of what
+  the gate detects.
 - **Clinical decision support, diagnostic, or therapeutic
   recommendation.** `andamentum-epistemic` is research-stage software;
   its verdicts reflect what a single LLM-driven pipeline concluded
