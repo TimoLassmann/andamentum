@@ -251,10 +251,7 @@ async def check_fetch_allowed(
         # Strip port if present, e.g. "example.com:8080" → "example.com"
         bare_host = host.split(":", 1)[0]
         normalised_allow = {h.lower().strip() for h in tdm_allowed_hosts}
-        if (
-            paywall_match not in normalised_allow
-            and bare_host not in normalised_allow
-        ):
+        if paywall_match not in normalised_allow and bare_host not in normalised_allow:
             raise PaywallBlocked(url=url, host=bare_host)
         # Allowed via TDM acknowledgment — emit an audit-grade INFO line so
         # any logging handler installed by the caller can record it.
@@ -272,7 +269,12 @@ async def check_fetch_allowed(
     if entry is None:
         owns_client = client is None
         if owns_client:
-            client = httpx.AsyncClient(follow_redirects=True)
+            # follow_redirects=False: robots.txt lives at a fixed path on the
+            # host we already validated. Chasing a cross-host 3xx here would
+            # be an unvalidated SSRF hop, so we don't. A redirected robots.txt
+            # is treated as unreachable → permissive (all-allowed), matching
+            # the network-error path.
+            client = httpx.AsyncClient(follow_redirects=False)
         try:
             entry = await _fetch_robots_txt(
                 parsed.scheme, host, user_agent=user_agent, client=client

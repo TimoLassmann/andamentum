@@ -47,12 +47,18 @@ W16CID_NS = "http://schemas.microsoft.com/office/word/2016/wordml/cid"
 REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 
-REL_COMMENTS_EXT = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
-REL_COMMENTS_IDS = "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds"
+REL_COMMENTS_EXT = (
+    "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
+)
+REL_COMMENTS_IDS = (
+    "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds"
+)
 REL_PEOPLE = "http://schemas.microsoft.com/office/2011/relationships/people"
 
 CT_COMMENTS_EXT = "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
-CT_COMMENTS_IDS = "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml"
+CT_COMMENTS_IDS = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml"
+)
 CT_PEOPLE = "application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml"
 
 
@@ -80,8 +86,7 @@ def build_v1_classic(out: Path) -> list[str]:
         "to irrelevant information."
     )
     doc.add_paragraph(
-        "The discussion overstates novelty without a concrete baseline "
-        "comparison."
+        "The discussion overstates novelty without a concrete baseline comparison."
     )
     doc.save(str(src))
 
@@ -262,8 +267,7 @@ def build_v4_modern(v3: Path, out: Path, cids: list[str], author: str) -> None:
         )
     if "people.xml" not in rels:
         additions += (
-            f'<Relationship Id="rIdPeople" Type="{REL_PEOPLE}" '
-            f'Target="people.xml"/>'
+            f'<Relationship Id="rIdPeople" Type="{REL_PEOPLE}" Target="people.xml"/>'
         )
     if additions:
         rels = rels.replace("</Relationships>", additions + "</Relationships>")

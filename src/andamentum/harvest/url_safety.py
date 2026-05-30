@@ -18,6 +18,8 @@ import re
 import socket
 from urllib.parse import urlparse
 
+import httpx
+
 # Default-allowed local endpoints when callers opt in via ``allow_searxng=True``.
 SEARXNG_WHITELIST = frozenset({"localhost:4070", "127.0.0.1:4070"})
 
@@ -135,3 +137,73 @@ def is_safe_url(url: str, *, allow_searxng: bool = False) -> tuple[bool, str]:
         return False, f"hostname resolves to non-public IP {resolved}"
 
     return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Redirect-safe fetching
+# ---------------------------------------------------------------------------
+#
+# ``is_safe_url`` validates ONE url. But an httpx client with
+# ``follow_redirects=True`` transparently chases 3xx ``Location`` headers to
+# new hosts WITHOUT re-checking them — so a public-looking URL that
+# 302-redirects to ``http://169.254.169.254/`` (cloud metadata) or an
+# internal host silently defeats the entire SSRF defence above.
+# ``fetch_with_safe_redirects`` closes that hole: it follows redirects
+# manually, re-running ``is_safe_url`` on every hop before issuing the
+# request.
+
+
+class SsrfBlocked(Exception):
+    """Raised when a URL — or any redirect target it leads to — fails the
+    SSRF safety check."""
+
+
+# HTTP status codes that carry a ``Location`` header to follow.
+_REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+
+
+async def fetch_with_safe_redirects(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    allow_searxng: bool = False,
+    max_redirects: int = 5,
+) -> httpx.Response:
+    """GET *url*, following redirects but validating EVERY hop with
+    :func:`is_safe_url`.
+
+    Each redirect target is re-checked before it is fetched, so a malicious
+    redirect to a private / loopback / cloud-metadata address is blocked even
+    when the initial URL looked public. ``follow_redirects`` is forced off
+    per request (overriding any client default) so this function — not httpx —
+    controls the hop chain.
+
+    Args:
+        client: The httpx client to issue requests on.
+        url: The initial URL to fetch.
+        allow_searxng: Forwarded to :func:`is_safe_url`; permits the
+            whitelisted local SearXNG endpoint as a (redirect) target.
+        max_redirects: Maximum number of hops to follow before giving up.
+
+    Returns:
+        The first non-redirect :class:`httpx.Response`.
+
+    Raises:
+        SsrfBlocked: if the initial URL or any redirect target is unsafe, or
+            if the redirect chain exceeds ``max_redirects``.
+    """
+    current = url
+    for _ in range(max_redirects + 1):
+        safe, reason = is_safe_url(current, allow_searxng=allow_searxng)
+        if not safe:
+            raise SsrfBlocked(f"URL blocked: {reason} ({current})")
+        resp = await client.get(current, follow_redirects=False)
+        if resp.status_code not in _REDIRECT_STATUS:
+            return resp
+        location = resp.headers.get("location")
+        if not location:
+            # A redirect status with no Location — nothing to follow.
+            return resp
+        # Resolve relative redirects against the URL that produced them.
+        current = str(resp.url.join(location))
+    raise SsrfBlocked(f"too many redirects (>{max_redirects}) starting at {url}")

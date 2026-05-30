@@ -27,7 +27,7 @@ from andamentum.core.fetch_gate import (
 )
 
 from .errors import FetchError, UnsupportedFormatError
-from .url_safety import is_safe_url
+from .url_safety import SsrfBlocked, fetch_with_safe_redirects, is_safe_url
 
 # Identifies andamentum-harvest to remote hosts so abuse-desks can contact the
 # project rather than block the netblock. Per RFC 9110 §10.1.5.
@@ -53,7 +53,10 @@ _EXT_TO_FORMAT: dict[str, Format] = {
 _MIME_TO_FORMAT: list[tuple[str, Format]] = [
     ("application/pdf", "pdf"),
     ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
-    ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+    (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pptx",
+    ),
     ("application/msword", "docx"),
     ("application/vnd.ms-powerpoint", "pptx"),
     ("text/html", "html"),
@@ -145,9 +148,14 @@ async def _fetch_url(
         raise FetchError(f"URL blocked: {reason} ({url})")
 
     try:
+        # follow_redirects is False at the client level: the main GET drives
+        # the redirect chain through fetch_with_safe_redirects (which
+        # re-validates every hop), and the robots.txt fetch that
+        # check_fetch_allowed issues on this same client therefore does not
+        # silently chase a cross-host redirect either.
         async with httpx.AsyncClient(
             timeout=30.0,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": _USER_AGENT},
         ) as client:
             try:
@@ -160,8 +168,10 @@ async def _fetch_url(
             except (PaywallBlocked, RobotsBlocked) as exc:
                 raise FetchError(str(exc)) from exc
 
-            resp = await client.get(url)
+            resp = await fetch_with_safe_redirects(client, url)
             resp.raise_for_status()
+    except SsrfBlocked as exc:
+        raise FetchError(str(exc)) from exc
     except httpx.HTTPError as exc:
         raise FetchError(f"HTTP fetch failed for {url}: {exc}") from exc
 
@@ -262,7 +272,9 @@ def _sniff_magic(data: bytes) -> Format | None:
     printable = sum(1 for c in decoded if c.isprintable() or c in "\n\t\r")
     if printable / max(len(decoded), 1) > 0.95:
         # Distinguish markdown vs plain by looking for markdown signals
-        if any(line.startswith(("#", "- ", "* ", "1.")) for line in decoded.splitlines()):
+        if any(
+            line.startswith(("#", "- ", "* ", "1.")) for line in decoded.splitlines()
+        ):
             return "markdown"
         return "plain"
     return None

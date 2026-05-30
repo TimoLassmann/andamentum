@@ -21,7 +21,9 @@ class TestProse:
         assert "World" in html
 
     def test_prose_with_heading_field(self) -> None:
-        html = render([{"kind": "prose", "content": "Body.", "heading": "Section Title"}])
+        html = render(
+            [{"kind": "prose", "content": "Body.", "heading": "Section Title"}]
+        )
         assert "Section Title" in html
         assert "Body" in html
 
@@ -34,7 +36,9 @@ class TestHeading:
         assert "typeset-heading" in html
 
     def test_heading_with_subtitle(self) -> None:
-        html = render([{"kind": "heading", "content": "Title", "subtitle": "A subtitle"}])
+        html = render(
+            [{"kind": "heading", "content": "Title", "subtitle": "A subtitle"}]
+        )
         assert "typeset-subtitle" in html
         assert "A subtitle" in html
 
@@ -52,7 +56,9 @@ class TestHeading:
         assert "2026-04-16" in html
 
     def test_heading_with_meta_string(self) -> None:
-        html = render([{"kind": "heading", "content": "Title", "meta": "Some meta text"}])
+        html = render(
+            [{"kind": "heading", "content": "Title", "meta": "Some meta text"}]
+        )
         assert "Some meta text" in html
 
 
@@ -76,49 +82,82 @@ class TestCallout:
 
 class TestItems:
     def test_pairs_variant_renders(self) -> None:
-        doc = [{"kind": "items", "entries": [
-            {"label": "Question", "body": "Answer here."},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "entries": [
+                    {"label": "Question", "body": "Answer here."},
+                ],
+            }
+        ]
         html = render(doc)
         assert "Question" in html
         assert "Answer here" in html
         assert "typeset-items" in html
 
     def test_right_variant(self) -> None:
-        doc = [{"kind": "items", "variant": "right", "entries": [
-            {"label": "2024", "body": "PhD, Bioinformatics."},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "variant": "right",
+                "entries": [
+                    {"label": "2024", "body": "PhD, Bioinformatics."},
+                ],
+            }
+        ]
         html = render(doc)
         assert "variant-right" in html
         assert "2024" in html
 
     def test_left_variant(self) -> None:
-        doc = [{"kind": "items", "variant": "left", "entries": [
-            {"label": "2024", "body": "Keynote at ISMB."},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "variant": "left",
+                "entries": [
+                    {"label": "2024", "body": "Keynote at ISMB."},
+                ],
+            }
+        ]
         html = render(doc)
         assert "variant-left" in html
 
     def test_multiple_entries(self) -> None:
-        doc = [{"kind": "items", "entries": [
-            {"label": "A", "body": "First"},
-            {"label": "B", "body": "Second"},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "entries": [
+                    {"label": "A", "body": "First"},
+                    {"label": "B", "body": "Second"},
+                ],
+            }
+        ]
         html = render(doc)
         assert "First" in html
         assert "Second" in html
 
     def test_items_with_heading(self) -> None:
-        doc = [{"kind": "items", "heading": "Key Findings", "entries": [
-            {"label": "Q", "body": "A"},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "heading": "Key Findings",
+                "entries": [
+                    {"label": "Q", "body": "A"},
+                ],
+            }
+        ]
         html = render(doc)
         assert "Key Findings" in html
 
     def test_body_rendered_as_markdown(self) -> None:
-        doc = [{"kind": "items", "entries": [
-            {"label": "Note", "body": "Has **bold** text."},
-        ]}]
+        doc = [
+            {
+                "kind": "items",
+                "entries": [
+                    {"label": "Note", "body": "Has **bold** text."},
+                ],
+            }
+        ]
         html = render(doc)
         assert "<strong>bold</strong>" in html
 
@@ -130,10 +169,17 @@ class TestAside:
         assert "typeset-aside" in html
 
     def test_aside_with_groups_dict(self) -> None:
-        html = render([{"kind": "aside", "groups": {
-            "Stats": {"Evidence": 37, "Claims": 2},
-            "Meta": {"Model": "gemma4:26b"},
-        }}])
+        html = render(
+            [
+                {
+                    "kind": "aside",
+                    "groups": {
+                        "Stats": {"Evidence": 37, "Claims": 2},
+                        "Meta": {"Model": "gemma4:26b"},
+                    },
+                }
+            ]
+        )
         assert "Evidence" in html
         assert "37" in html
         assert "gemma4:26b" in html
@@ -152,12 +198,16 @@ class TestCard:
         assert "typeset-badge" in html
 
     def test_card_with_details(self) -> None:
-        html = render([{"kind": "card", "content": "Claim.", "details": "Scope: T2D patients."}])
+        html = render(
+            [{"kind": "card", "content": "Claim.", "details": "Scope: T2D patients."}]
+        )
         assert "<details" in html
         assert "Scope" in html
 
     def test_card_with_source(self) -> None:
-        html = render([{"kind": "card", "content": "X.", "source": "https://example.com"}])
+        html = render(
+            [{"kind": "card", "content": "X.", "source": "https://example.com"}]
+        )
         assert "https://example.com" in html
 
     def test_card_with_refs(self) -> None:
@@ -172,7 +222,9 @@ class TestReference:
         assert "typeset-reference" in html
 
     def test_reference_with_source_link(self) -> None:
-        html = render([{"kind": "reference", "content": "X.", "source": "https://example.com"}])
+        html = render(
+            [{"kind": "reference", "content": "X.", "source": "https://example.com"}]
+        )
         assert "href" in html
         assert "https://example.com" in html
 
@@ -198,21 +250,29 @@ class TestReference:
         assert "typeset-reference-group" in html
 
     def test_reference_source_label_overrides_url(self) -> None:
-        html = render([{
-            "kind": "reference",
-            "content": "X.",
-            "source": "https://example.com/very/long/path",
-            "source_label": "example.com",
-        }])
+        html = render(
+            [
+                {
+                    "kind": "reference",
+                    "content": "X.",
+                    "source": "https://example.com/very/long/path",
+                    "source_label": "example.com",
+                }
+            ]
+        )
         assert 'href="https://example.com/very/long/path"' in html
         assert ">example.com<" in html
 
     def test_reference_source_label_defaults_to_url(self) -> None:
-        html = render([{
-            "kind": "reference",
-            "content": "X.",
-            "source": "https://example.com",
-        }])
+        html = render(
+            [
+                {
+                    "kind": "reference",
+                    "content": "X.",
+                    "source": "https://example.com",
+                }
+            ]
+        )
         assert ">https://example.com<" in html
 
 
@@ -222,12 +282,16 @@ class TestAnchorIds:
         assert 'id="top"' in html
 
     def test_prose_id_on_h2_when_heading_set(self) -> None:
-        html = render([{
-            "kind": "prose",
-            "content": "Body.",
-            "heading": "Sources",
-            "id": "sources",
-        }])
+        html = render(
+            [
+                {
+                    "kind": "prose",
+                    "content": "Body.",
+                    "heading": "Sources",
+                    "id": "sources",
+                }
+            ]
+        )
         assert '<h2 id="sources">' in html
 
     def test_prose_id_on_section_when_no_heading(self) -> None:
@@ -239,12 +303,16 @@ class TestAnchorIds:
         assert '<div class="typeset-card" id="claim-1">' in html
 
     def test_card_source_label(self) -> None:
-        html = render([{
-            "kind": "card",
-            "content": "Claim.",
-            "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/",
-            "source_label": "PMC12028114",
-        }])
+        html = render(
+            [
+                {
+                    "kind": "card",
+                    "content": "Claim.",
+                    "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/",
+                    "source_label": "PMC12028114",
+                }
+            ]
+        )
         assert 'href="https://pmc.ncbi.nlm.nih.gov/articles/PMC12028114/"' in html
         assert ">PMC12028114<" in html
 
@@ -280,15 +348,35 @@ class TestRenderShell:
 class TestEndToEnd:
     def test_full_document_renders_all_atoms(self) -> None:
         doc = [
-            {"kind": "heading", "content": "Test Report", "subtitle": "A subtitle", "meta": {"date": "2026-04-16"}},
+            {
+                "kind": "heading",
+                "content": "Test Report",
+                "subtitle": "A subtitle",
+                "meta": {"date": "2026-04-16"},
+            },
             {"kind": "callout", "content": "Key finding here.", "tone": "note"},
-            {"kind": "items", "heading": "Key Facts", "entries": [
-                {"label": "Q1", "body": "Answer 1."},
-                {"label": "Q2", "body": "Answer 2."},
-            ]},
+            {
+                "kind": "items",
+                "heading": "Key Facts",
+                "entries": [
+                    {"label": "Q1", "body": "Answer 1."},
+                    {"label": "Q2", "body": "Answer 2."},
+                ],
+            },
             {"kind": "prose", "content": "## Summary\n\nThe evidence shows..."},
-            {"kind": "card", "content": "Claim statement.", "badge": "supported", "refs": ["e1"]},
-            {"kind": "reference", "content": "Source description.", "number": 1, "source": "https://example.com", "badge": "supports"},
+            {
+                "kind": "card",
+                "content": "Claim statement.",
+                "badge": "supported",
+                "refs": ["e1"],
+            },
+            {
+                "kind": "reference",
+                "content": "Source description.",
+                "number": 1,
+                "source": "https://example.com",
+                "badge": "supports",
+            },
             {"kind": "aside", "groups": {"Stats": {"Items": 42}}},
         ]
         html = render(doc, style="article")
@@ -319,9 +407,71 @@ class TestEndToEnd:
 
     def test_render_to_file(self, tmp_path: object) -> None:
         from pathlib import Path
+
         assert isinstance(tmp_path, Path)
         doc: list[dict[str, object]] = [{"kind": "prose", "content": "File test."}]
         path = render_to_file(doc, tmp_path / "out.html")
         assert path.exists()
         content = path.read_text()
         assert "File test" in content
+
+
+class TestEscaping:
+    """Plain-text and attribute fields carry LLM / fetched-web content, so they
+    must be escaped — a typeset document is HTML the user opens. Markdown-bodied
+    fields (content/body) are intentionally NOT escaped here."""
+
+    def test_heading_subtitle_is_escaped(self) -> None:
+        html = render(
+            [
+                {
+                    "kind": "heading",
+                    "content": "T",
+                    "subtitle": "<script>alert(1)</script>",
+                }
+            ]
+        )
+        assert "<script>alert(1)</script>" not in html
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+    def test_card_source_javascript_scheme_is_neutralised(self) -> None:
+        html = render(
+            [{"kind": "card", "content": "c", "source": "javascript:alert(1)"}]
+        )
+        # The dangerous scheme must never reach an href; the bare string may
+        # still appear as inert (escaped) link text, which is harmless.
+        assert 'href="javascript:' not in html
+        assert 'href="#"' in html
+
+    def test_card_source_attribute_breakout_is_escaped(self) -> None:
+        html = render(
+            [
+                {
+                    "kind": "card",
+                    "content": "c",
+                    "source": "https://example.com",
+                    "source_label": '"><img src=x onerror=alert(1)>',
+                }
+            ]
+        )
+        assert "<img src=x onerror=alert(1)>" not in html
+        assert "&lt;img" in html
+
+    def test_sidebar_values_are_escaped(self) -> None:
+        html = render(
+            [
+                {
+                    "kind": "aside",
+                    "groups": {"G": {"<b>k</b>": "<i>v</i>"}},
+                }
+            ]
+        )
+        assert "<b>k</b>" not in html
+        assert "<i>v</i>" not in html
+        assert "&lt;b&gt;k&lt;/b&gt;" in html
+
+    def test_http_source_is_preserved(self) -> None:
+        html = render(
+            [{"kind": "card", "content": "c", "source": "https://example.com/p"}]
+        )
+        assert 'href="https://example.com/p"' in html
