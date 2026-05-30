@@ -260,18 +260,12 @@ class TestFetchedPageTruncationVisibility:
 
         long_content = "word " * 20000  # ~100k chars
 
-        class _FakeResp:
-            status_code = 200
-            content = long_content.encode()
-            url = httpx.URL("https://example.com/page")
-            headers = {"content-type": "text/html"}
-
-            def raise_for_status(self):
-                pass
-
-        class _FakeHttp:
-            async def get(self, url, **kwargs):
-                return _FakeResp()
+        def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=long_content.encode(),
+                headers={"content-type": "text/html"},
+            )
 
         def _always_safe(url):
             return True, "ok"
@@ -297,11 +291,15 @@ class TestFetchedPageTruncationVisibility:
             from ..backends import HttpxSearchBackend
 
             backend = HttpxSearchBackend.__new__(HttpxSearchBackend)
-            backend._http = _FakeHttp()  # type: ignore[assignment]
-            backend._owns_client = False
+            backend._http = httpx.AsyncClient(
+                transport=httpx.MockTransport(_handler), follow_redirects=False
+            )
+            backend._owns_client = True
             backend._tdm_allowed_hosts = frozenset()
 
-            result = await backend.fetch_page("https://example.com/page")
+            # Public-IP host so the SSRF check passes without a DNS lookup.
+            result = await backend.fetch_page("https://8.8.8.8/page")
+            await backend._http.aclose()
 
             assert result.truncated is True, "Expected truncated=True for long content"
             assert result.original_length == len(long_content), (
@@ -321,18 +319,12 @@ class TestFetchedPageTruncationVisibility:
 
         short_content = "Hello world. " * 10  # ~130 chars
 
-        class _FakeResp:
-            status_code = 200
-            content = short_content.encode()
-            url = httpx.URL("https://example.com/short")
-            headers = {"content-type": "text/html"}
-
-            def raise_for_status(self):
-                pass
-
-        class _FakeHttp:
-            async def get(self, url, **kwargs):
-                return _FakeResp()
+        def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=short_content.encode(),
+                headers={"content-type": "text/html"},
+            )
 
         def _always_safe(url):
             return True, "ok"
@@ -358,11 +350,15 @@ class TestFetchedPageTruncationVisibility:
             from ..backends import HttpxSearchBackend
 
             backend = HttpxSearchBackend.__new__(HttpxSearchBackend)
-            backend._http = _FakeHttp()  # type: ignore[assignment]
-            backend._owns_client = False
+            backend._http = httpx.AsyncClient(
+                transport=httpx.MockTransport(_handler), follow_redirects=False
+            )
+            backend._owns_client = True
             backend._tdm_allowed_hosts = frozenset()
 
-            result = await backend.fetch_page("https://example.com/short")
+            # Public-IP host so the SSRF check passes without a DNS lookup.
+            result = await backend.fetch_page("https://8.8.8.8/short")
+            await backend._http.aclose()
 
             assert result.truncated is False
             assert result.original_length == len(short_content)

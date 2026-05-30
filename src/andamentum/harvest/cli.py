@@ -36,6 +36,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "is ambiguous and picks the better-structured output."
         ),
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument(
         "source",
         help="URL (http://... / https://... / file://...) or local file path.",

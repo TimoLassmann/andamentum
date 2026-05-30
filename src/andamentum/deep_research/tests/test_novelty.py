@@ -96,8 +96,11 @@ class TestCheckNovelty:
         assert report.similar_work[0].relevance == Relevance.DIRECT
 
     @pytest.mark.asyncio
-    async def test_novel_claim_empty_research(self):
-        """Research returns no output — claim appears novel."""
+    async def test_empty_research_is_undetermined(self):
+        """Research returns no output — novelty is UNDETERMINED, not asserted.
+
+        A failed/empty search must not claim the work is novel (that would
+        falsely reassure the author); is_novel is None."""
 
         async def research_fn(**kwargs):
             return {"output": None}
@@ -106,12 +109,13 @@ class TestCheckNovelty:
             raise AssertionError("Should not be called")
 
         report = await _check_novelty_with_deps("novel claim", research_fn, assess_fn)
-        assert report.is_novel is True
-        assert report.confidence == 0.3
+        assert report.is_novel is None
+        assert report.confidence == 0.0
 
     @pytest.mark.asyncio
-    async def test_research_failure_returns_low_confidence(self):
-        """Research function raises — returns low-confidence novel."""
+    async def test_research_failure_is_undetermined(self):
+        """Research function raises — novelty is UNDETERMINED (is_novel=None),
+        never silently asserted as novel."""
 
         async def research_fn(**kwargs):
             raise ConnectionError("SearXNG down")
@@ -120,8 +124,8 @@ class TestCheckNovelty:
             raise AssertionError("Should not be called")
 
         report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
-        assert report.is_novel is True
-        assert report.confidence == 0.2
+        assert report.is_novel is None
+        assert report.confidence == 0.0
         assert "Could not complete search" in report.assessment
 
     @pytest.mark.asyncio

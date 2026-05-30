@@ -158,11 +158,15 @@ class AgentRunner:
         from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
         # Guard: output_model must be concrete for direct execution.
-        # Dynamic-schema agents (output_model=None) use _run_one_dynamic.
+        # Dynamic-schema agents (output_model=None) are run with an explicit
+        # output type instead — via run_agent_with_fallback(output_type=...)
+        # or build_pydantic_ai_agent — not through AgentRunner.run.
         if defn.output_model is None:
             raise ValueError(
-                f"Agent {defn.name}: output_model is None. "
-                "Dynamic-schema agents must be executed via _run_one_dynamic()."
+                f"Agent {defn.name}: output_model is None. Dynamic-schema "
+                "agents must be run with an explicit output type — e.g. "
+                "run_agent_with_fallback(output_type=...) or "
+                "build_pydantic_ai_agent — not via AgentRunner.run."
             )
 
         user_message = "\n".join(f"{k}: {v}" for k, v in kwargs.items())
@@ -189,9 +193,7 @@ class AgentRunner:
                     "Agent %s: tool-based output failed, falling back to PromptedOutput",
                     defn.name,
                 )
-                return await self._run_prompted_fallback(
-                    defn, user_message, validators
-                )
+                return await self._run_prompted_fallback(defn, user_message, validators)
 
     async def _run_prompted_fallback(
         self,

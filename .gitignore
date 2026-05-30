@@ -15,6 +15,11 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
+# Local databases (document-store / scribe SQLite files written at runtime)
+*.db
+*.sqlite
+*.sqlite3
+
 # Editor and OS noise
 .DS_Store
 

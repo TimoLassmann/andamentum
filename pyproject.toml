@@ -12,6 +12,31 @@ license = { text = "MIT" }
 authors = [
     { name = "Timo Lassmann" },
 ]
+keywords = [
+    "agents",
+    "llm",
+    "epistemology",
+    "deep-research",
+    "knowledge-base",
+    "manuscript-review",
+    "scientific-computing",
+    "rag",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
 # Dependency constraints carry both a lower bound (oldest version we've
 # tested against) AND an upper bound capping the next major version so
 # a downstream resolver can't silently pull in a new major that breaks
@@ -58,12 +83,21 @@ andamentum-vision-critique = "andamentum.vision_critique.cli:main"
 andamentum-proofread    = "andamentum.proofread.cli:main"
 
 [project.optional-dependencies]
-# trafilatura is GPL-3.0; keeping it out of the default install so the
-# MIT default stays MIT-clean. Install with `pip install andamentum[html-articles]`
-# if you want best-in-class HTML article extraction. The harvest backend
-# falls back to docling automatically when trafilatura is not installed.
+# trafilatura (Apache-2.0, MIT-compatible) is kept out of the default
+# install to keep the dependency surface small, not for licensing reasons:
+# the harvest backend falls back to docling automatically when trafilatura
+# is not installed. Install `andamentum[html-articles]` for best-in-class
+# HTML article extraction.
 html-articles = [
     "trafilatura>=2.0.0,<3",
+]
+# PDF rendering in andamentum.typeset (render_pdf, the typeset CLI's .pdf
+# output) needs WeasyPrint (BSD-3-Clause, MIT-compatible). It also requires
+# system libraries (pango, cairo) — see the render_pdf error message. Kept
+# optional because most rendering targets HTML/.docx and WeasyPrint's native
+# deps are heavy. Install `andamentum[pdf]` to enable it.
+pdf = [
+    "weasyprint>=60,<67",
 ]
 dev = [
     "pytest>=8.0.0,<9",
@@ -94,15 +128,28 @@ exclude-newer = "28 days"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/andamentum"]
+# Tests + their fixtures are not part of the importable runtime surface;
+# keep them out of the installed wheel (they still ship in the sdist).
+exclude = [
+    "**/tests",
+    "**/tests/**",
+    "**/conftest.py",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/andamentum",
-    "doc",
+    "docs",
     "examples",
     "README.md",
     "LICENSE",
+    "RESPONSIBLE_USE.md",
+    "CHANGELOG.md",
     "pyproject.toml",
+]
+exclude = [
+    # Internal plans / freezes / working notes — not for the public tarball.
+    "docs/.internal/**",
 ]
 
 [tool.pyright]

@@ -63,6 +63,10 @@ class SearxngManager:
         self.image = image
         self.host_port = host_port
         self.internal_port = internal_port
+        # Linux binds the published port to loopback explicitly. On macOS the
+        # empty bind is required for Podman's gvproxy port-forwarding to work;
+        # it is NOT an open relay — gvproxy still publishes the port on the
+        # host's 127.0.0.1, so the container is not reachable from the network.
         default_bind = "" if sys.platform == "darwin" else "127.0.0.1"
         self.bind_host = (
             bind_host

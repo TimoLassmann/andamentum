@@ -157,9 +157,7 @@ class ExpertProfile(BaseModel):
     """
 
     name: str = Field(description="Full name of the fictional expert.")
-    position: str = Field(
-        description="Current academic position and institution."
-    )
+    position: str = Field(description="Current academic position and institution.")
     education: str = Field(
         description="Educational background (degrees, institutions, years)."
     )
@@ -179,13 +177,9 @@ class ExpertReview(BaseModel):
     that resolution.
     """
 
-    expert_name: str = Field(
-        description="Name of the expert providing the review."
-    )
+    expert_name: str = Field(description="Name of the expert providing the review.")
     discipline: str = Field(description="Expert's academic discipline.")
-    overall_score: int = Field(
-        ge=1, le=10, description="Overall quality score 1-10."
-    )
+    overall_score: int = Field(ge=1, le=10, description="Overall quality score 1-10.")
     overall_assessment: str = Field(
         description="Brief overall assessment (2-3 sentences)."
     )
@@ -245,12 +239,8 @@ class PanelSynthesis(BaseModel):
     average_overall_score: float = Field(
         description="Average overall score across all experts."
     )
-    score_range: str = Field(
-        description="Range of overall scores (e.g. '7-9')."
-    )
-    number_of_experts: int = Field(
-        description="Total number of expert reviewers."
-    )
+    score_range: str = Field(description="Range of overall scores (e.g. '7-9').")
+    number_of_experts: int = Field(description="Total number of expert reviewers.")
     consensus_strengths: list[str] = Field(
         default_factory=list,
         description="Strengths identified by multiple experts (3-5 items).",
@@ -354,7 +344,9 @@ class CustomEvaluation(BaseModel):
     model the LLM filled.
     """
 
-    criterion: str = Field(description="Original criterion text supplied by the caller.")
+    criterion: str = Field(
+        description="Original criterion text supplied by the caller."
+    )
     status: Literal["pass", "fail", "unclear"] = Field(
         description="pass = met; fail = not met; unclear = ambiguous or NA."
     )
@@ -383,6 +375,10 @@ class ReviewResult(BaseModel):
     summary: str = ""  # filled in Phase 4 (Synthesise)
     findings: list[Finding] = Field(default_factory=list)  # post-LLM, Phase 2+
     deterministic_findings: list[Finding] = Field(default_factory=list)
+    # Criteria whose reviewer call crashed and contributed nothing — recorded
+    # so renderers can flag partial coverage instead of presenting an
+    # incomplete cascade as a complete review.
+    failed_criteria: list[str] = Field(default_factory=list)
     edits: list[Edit] = Field(default_factory=list)  # concrete rewrites (Edit phase)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)

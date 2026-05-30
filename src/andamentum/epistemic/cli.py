@@ -18,6 +18,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="andamentum-epistemic",
         description="Formal epistemology for AI research — evidence-based claims with traceability.",
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     sub = parser.add_subparsers(dest="command")
 
     # Subcommand: ask (primary interface)

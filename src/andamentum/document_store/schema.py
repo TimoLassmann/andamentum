@@ -10,10 +10,14 @@ Initializes the database with all required tables:
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from pathlib import Path
 from typing import Optional
 
 from .connection import get_connection, DEFAULT_DB_PATH
+
+logger = logging.getLogger(__name__)
 
 
 def init_all_tables(db_path: Optional[Path] = None) -> None:
@@ -104,8 +108,11 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 cursor.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)"
                 )
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         if "document_tier" not in existing_columns:
             try:
@@ -115,28 +122,40 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 cursor.execute(
                     "CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)"
                 )
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         if "indexed_at" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN indexed_at TEXT")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         if "metadata" not in existing_columns:
             try:
                 cursor.execute(
                     "ALTER TABLE documents ADD COLUMN metadata TEXT DEFAULT '{}'"
                 )
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         if "doc_embedding" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN doc_embedding TEXT")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         if "cluster_id" not in existing_columns:
             try:
@@ -144,8 +163,11 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 cursor.execute(
                     "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"
                 )
-            except Exception:
-                pass
+            except sqlite3.OperationalError as exc:
+                # Idempotent re-run / concurrent migration (e.g. column already
+                # added by another opener). Surfaced, not silently swallowed;
+                # anything that isn't a recoverable schema race propagates.
+                logger.warning("document-store schema migration step skipped: %s", exc)
 
         try:
             cursor.execute("""
@@ -154,7 +176,11 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                     embedding FLOAT[768]
                 )
             """)
-        except Exception:
-            pass
+        except sqlite3.OperationalError as exc:
+            # sqlite-vec extension unavailable, or the table already exists in
+            # an incompatible form. Logged rather than silently ignored.
+            logger.warning(
+                "document-store doc_embeddings (vec0) setup skipped: %s", exc
+            )
 
         conn.commit()

@@ -5,12 +5,12 @@ and emits clean prose with `##` headings preserved. Excellent on real
 articles; near-useless on link-card homepages (returns one structureless
 run of text).
 
-**Optional dependency.** Trafilatura is GPL-3.0; to keep the default
-``andamentum`` install MIT-clean it's only pulled in by
-``pip install andamentum[html-articles]``. When the package isn't
-installed this backend raises ``ExtractionError`` (a ``HarvestError``
-subclass) which the dispatcher in ``harvest/api.py`` catches and falls
-back to docling.
+**Optional dependency.** Trafilatura (Apache-2.0, MIT-compatible) is kept
+out of the default install to keep the dependency surface small, not for
+licensing reasons; it's pulled in by ``pip install andamentum[html-articles]``.
+When the package isn't installed this backend raises ``ExtractionError``
+(a ``HarvestError`` subclass) which the dispatcher in ``harvest/api.py``
+catches and falls back to docling.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ async def extract(data: bytes, source_url: str) -> str:
     text = trafilatura.extract(
         data,
         url=source_url,
-        include_links=True,        # let scoring see link density
+        include_links=True,  # let scoring see link density
         include_tables=True,
         include_images=False,
         favor_recall=False,
@@ -67,6 +67,8 @@ async def extract(data: bytes, source_url: str) -> str:
         raise ExtractionError(
             "trafilatura returned no content",
             attempted=["trafilatura"],
-            diagnostics={"trafilatura": "empty output (likely JS-rendered or paywalled)"},
+            diagnostics={
+                "trafilatura": "empty output (likely JS-rendered or paywalled)"
+            },
         )
     return text

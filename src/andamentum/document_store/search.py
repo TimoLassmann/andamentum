@@ -426,7 +426,7 @@ async def search_unified(
 
     Runs four signals and fuses them with Reciprocal Rank Fusion (RRF, k=60):
     1. FTS5 keyword search
-    2. Chunk-level semantic search (hybrid BM25 + embeddings, with cross-encoder re-ranking)
+    2. Chunk-level semantic search (hybrid BM25 + embeddings)
     3. Document-level semantic search (doc_embeddings vec0)
     4. DHP temporal cluster scoring
 
@@ -450,9 +450,7 @@ async def search_unified(
         try:
             embed_svc = EmbeddingService(model=embedding_model)
             try:
-                query_embedding = await embed_svc.embed_text(
-                    query, text_type="query"
-                )
+                query_embedding = await embed_svc.embed_text(query, text_type="query")
             finally:
                 await embed_svc.close()
             logger.debug(f"Generated embedding with {len(query_embedding)} dimensions")
@@ -599,7 +597,6 @@ async def search_multi_database(
     """Search across multiple named databases with RRF fusion.
 
     Enhanced with production-quality features inherited from search_unified():
-    - Cross-encoder re-ranking for better precision
     - Rich metadata in results (match type, tags)
 
     Args:

@@ -120,7 +120,8 @@ class HttpxSearchBackend:
 
     async def fetch_page(self, url: str) -> FetchedPage:
         """Fetch page content and extract markdown via content-type routing."""
-        from andamentum.harvest.url_safety import (
+        from andamentum.core.url_safety import (
+            ResponseTooLarge,
             SsrfBlocked,
             fetch_with_safe_redirects,
         )
@@ -148,6 +149,8 @@ class HttpxSearchBackend:
             resp = await fetch_with_safe_redirects(self._http, url)
         except SsrfBlocked as exc:
             raise RuntimeError(f"URL blocked by SSRF protection: {exc}") from exc
+        except ResponseTooLarge as exc:
+            raise RuntimeError(f"Response too large for {url}: {exc}") from exc
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")

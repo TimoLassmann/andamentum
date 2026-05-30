@@ -5,10 +5,12 @@ Combines the strengths of the two pre-consolidation implementations:
 - Cloud metadata blocklist, hostname-pattern blocklist, SearXNG whitelist
   (was deep_research)
 
-Why it lives in ``harvest``: harvest is the leaf service responsible for
-fetching bytes from URLs, so the safety check naturally belongs alongside
-the fetcher. Other modules (deep_research) MAY depend on harvest per the
-layering rule.
+Why it lives in ``core``: SSRF safety is shared infrastructure with no
+andamentum dependencies of its own (stdlib + httpx only), and more than one
+leaf module needs it — ``harvest`` and ``deep_research`` fetch arbitrary web
+URLs, and ``vision_critique`` fetches image URLs. ``core`` is the shared base
+every sub-module may import, so the check belongs here alongside
+``core.fetch_gate``. Sub-modules MUST NOT import url-safety from a sibling.
 """
 
 from __future__ import annotations
@@ -37,6 +39,10 @@ CLOUD_METADATA_HOSTS = frozenset(
 
 BLOCKED_SCHEMES = frozenset({"file", "ftp", "gopher", "data", "javascript"})
 ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+# Default ceiling on a fetched response body (50 MiB). Bounds memory against a
+# host that streams an unbounded body. Callers can override per fetch.
+DEFAULT_MAX_RESPONSE_BYTES = 50 * 1024 * 1024
 
 _LOCALHOST_RE = re.compile(
     r"^(localhost|127\.\d+\.\d+\.\d+|::1|\[::1\])$", re.IGNORECASE
@@ -140,7 +146,7 @@ def is_safe_url(url: str, *, allow_searxng: bool = False) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Redirect-safe fetching
+# Redirect-safe, size-capped fetching
 # ---------------------------------------------------------------------------
 #
 # ``is_safe_url`` validates ONE url. But an httpx client with
@@ -149,8 +155,8 @@ def is_safe_url(url: str, *, allow_searxng: bool = False) -> tuple[bool, str]:
 # 302-redirects to ``http://169.254.169.254/`` (cloud metadata) or an
 # internal host silently defeats the entire SSRF defence above.
 # ``fetch_with_safe_redirects`` closes that hole: it follows redirects
-# manually, re-running ``is_safe_url`` on every hop before issuing the
-# request.
+# manually, re-running ``is_safe_url`` on every hop, and streams the body with
+# a hard size cap so a malicious host can't exhaust memory.
 
 
 class SsrfBlocked(Exception):
@@ -158,8 +164,52 @@ class SsrfBlocked(Exception):
     SSRF safety check."""
 
 
+class ResponseTooLarge(Exception):
+    """Raised when a fetched response body exceeds the allowed size cap."""
+
+
 # HTTP status codes that carry a ``Location`` header to follow.
 _REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+
+
+async def _read_body_capped(resp: httpx.Response, max_bytes: int | None) -> bytes:
+    """Stream ``resp``'s body into memory, raising if it exceeds ``max_bytes``.
+
+    A declared ``Content-Length`` over the cap is rejected before reading; the
+    streamed total is also checked hop-by-hop so a lying / chunked sender can't
+    slip past the header check.
+    """
+    if max_bytes is None:
+        return await resp.aread()
+
+    declared = resp.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+        raise ResponseTooLarge(
+            f"declared Content-Length {declared} exceeds cap of {max_bytes} bytes"
+        )
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in resp.aiter_bytes():
+        total += len(chunk)
+        if total > max_bytes:
+            raise ResponseTooLarge(
+                f"response body exceeds cap of {max_bytes} bytes"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _materialise(resp: httpx.Response, body: bytes) -> httpx.Response:
+    """Return a non-streaming Response carrying *body*, preserving status,
+    headers and URL so callers can use ``.content`` / ``.text`` / ``.url`` /
+    ``.raise_for_status()`` exactly as with a normal ``client.get``."""
+    return httpx.Response(
+        status_code=resp.status_code,
+        headers=resp.headers,
+        content=body,
+        request=resp.request,
+    )
 
 
 async def fetch_with_safe_redirects(
@@ -168,15 +218,17 @@ async def fetch_with_safe_redirects(
     *,
     allow_searxng: bool = False,
     max_redirects: int = 5,
+    max_bytes: int | None = DEFAULT_MAX_RESPONSE_BYTES,
 ) -> httpx.Response:
     """GET *url*, following redirects but validating EVERY hop with
-    :func:`is_safe_url`.
+    :func:`is_safe_url`, and streaming the body under a size cap.
 
     Each redirect target is re-checked before it is fetched, so a malicious
     redirect to a private / loopback / cloud-metadata address is blocked even
-    when the initial URL looked public. ``follow_redirects`` is forced off
-    per request (overriding any client default) so this function — not httpx —
-    controls the hop chain.
+    when the initial URL looked public. ``follow_redirects`` is forced off per
+    request (overriding any client default) so this function — not httpx —
+    controls the hop chain. The terminal body is streamed and capped at
+    ``max_bytes`` (pass ``None`` to disable the cap).
 
     Args:
         client: The httpx client to issue requests on.
@@ -184,26 +236,33 @@ async def fetch_with_safe_redirects(
         allow_searxng: Forwarded to :func:`is_safe_url`; permits the
             whitelisted local SearXNG endpoint as a (redirect) target.
         max_redirects: Maximum number of hops to follow before giving up.
+        max_bytes: Hard ceiling on the response body size, or ``None``.
 
     Returns:
-        The first non-redirect :class:`httpx.Response`.
+        The first non-redirect :class:`httpx.Response`, body already read.
 
     Raises:
         SsrfBlocked: if the initial URL or any redirect target is unsafe, or
             if the redirect chain exceeds ``max_redirects``.
+        ResponseTooLarge: if the body exceeds ``max_bytes``.
     """
     current = url
     for _ in range(max_redirects + 1):
         safe, reason = is_safe_url(current, allow_searxng=allow_searxng)
         if not safe:
             raise SsrfBlocked(f"URL blocked: {reason} ({current})")
-        resp = await client.get(current, follow_redirects=False)
-        if resp.status_code not in _REDIRECT_STATUS:
-            return resp
-        location = resp.headers.get("location")
-        if not location:
-            # A redirect status with no Location — nothing to follow.
-            return resp
-        # Resolve relative redirects against the URL that produced them.
-        current = str(resp.url.join(location))
+
+        request = client.build_request("GET", current)
+        resp = await client.send(request, stream=True, follow_redirects=False)
+        try:
+            location = resp.headers.get("location")
+            if resp.status_code in _REDIRECT_STATUS and location:
+                # Resolve relative redirects against the URL that produced them.
+                current = str(resp.url.join(location))
+                continue
+            body = await _read_body_capped(resp, max_bytes)
+        finally:
+            await resp.aclose()
+        return _materialise(resp, body)
+
     raise SsrfBlocked(f"too many redirects (>{max_redirects}) starting at {url}")

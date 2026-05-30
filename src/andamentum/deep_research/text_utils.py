@@ -2,7 +2,7 @@
 
 The SSRF / URL-safety helpers (``is_safe_url``, ``is_internal_ip``,
 ``SEARXNG_WHITELIST``, ``CLOUD_METADATA_HOSTS``, ``BLOCKED_SCHEMES``,
-``ALLOWED_SCHEMES``) live in ``andamentum.harvest.url_safety``. They are
+``ALLOWED_SCHEMES``) live in ``andamentum.core.url_safety``. They are
 re-exported here so existing import paths and the runtime
 ``text_utils.is_safe_url`` monkey-patch in tests keep working.
 
@@ -14,7 +14,7 @@ is now an LLM call (``topic_verifier`` agent, see
 loop in ``nodes.py``.
 """
 
-from andamentum.harvest.url_safety import (
+from andamentum.core.url_safety import (
     ALLOWED_SCHEMES,
     BLOCKED_SCHEMES,
     CLOUD_METADATA_HOSTS,

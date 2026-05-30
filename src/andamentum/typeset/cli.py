@@ -30,6 +30,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "Format is inferred from the output extension (.html / .pdf)."
         ),
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument(
         "source",
         help="Markdown file path. Use '-' to read from stdin.",

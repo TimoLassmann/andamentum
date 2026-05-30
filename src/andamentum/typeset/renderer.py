@@ -525,9 +525,10 @@ def render_pdf(
         import weasyprint  # type: ignore[import-untyped]
     except ImportError as exc:
         raise ImportError(
-            "WeasyPrint is required for PDF rendering.  "
-            "Install it with: pip install weasyprint  "
-            "On macOS: brew install pango libffi"
+            "WeasyPrint is required for PDF rendering. "
+            "Install it with the optional extra: pip install 'andamentum[pdf]' "
+            "(or: pip install weasyprint). "
+            "It also needs system libraries — on macOS: brew install pango libffi."
         ) from exc
 
     html = render(

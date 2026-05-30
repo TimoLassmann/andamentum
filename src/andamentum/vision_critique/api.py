@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, BinaryContent
 
 from andamentum.core.models import resolve_model
+from andamentum.core.url_safety import fetch_with_safe_redirects
 
 from .prompts import build_prompt
 from .schemas import FigureCritique
@@ -65,6 +66,11 @@ async def critique_figure(
         If ``image`` is a path that does not exist.
     httpx.HTTPError
         If ``image`` is a URL that cannot be fetched.
+    andamentum.core.url_safety.SsrfBlocked
+        If ``image`` is a URL (or redirect target) that resolves to a
+        private / loopback / cloud-metadata address.
+    andamentum.core.url_safety.ResponseTooLarge
+        If the fetched image exceeds the response size cap.
     pydantic_ai.UnexpectedModelBehavior
         If the model fails to produce schema-conforming output after
         pydantic-ai's built-in retries.
@@ -94,8 +100,10 @@ async def _normalise_image(
 
     # str — could be a URL or a path
     if image.startswith(("http://", "https://")):
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(image)
+        # SSRF-protected fetch: every redirect hop is re-validated and the
+        # body is size-capped (shared with harvest / deep_research).
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            response = await fetch_with_safe_redirects(client, image)
             response.raise_for_status()
             content_type = response.headers.get("content-type", "").split(";")[0]
             return response.content, content_type or "image/png"

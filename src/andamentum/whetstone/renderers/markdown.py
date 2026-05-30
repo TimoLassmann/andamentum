@@ -75,6 +75,16 @@ def render_markdown(
     if result.summary.strip():
         sections.append(result.summary.strip())
 
+    # ── Partial-coverage notice — a criterion crashed and reviewed nothing ──
+    if result.failed_criteria:
+        names = ", ".join(result.failed_criteria)
+        sections.append(
+            "> ⚠️ **Partial review.** The following "
+            f"{'criterion' if len(result.failed_criteria) == 1 else 'criteria'} "
+            f"failed to run and contributed no findings: {names}. "
+            "Treat the coverage below as incomplete."
+        )
+
     # ── Document map at the TOP — orientation before findings ──────
     if result.document_map and not panel_mode:
         sections.append(_render_document_map(result.document_map))

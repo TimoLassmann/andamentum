@@ -18,6 +18,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="andamentum-research",
         description="Deep research with iterative search, verification, and synthesis.",
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument("query", help="Research question")
     parser.add_argument(
         "--model",

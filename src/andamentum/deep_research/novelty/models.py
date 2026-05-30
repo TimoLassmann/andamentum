@@ -28,7 +28,11 @@ class NoveltyReport:
     """Result of a novelty check."""
 
     claim: str
-    is_novel: bool
+    # ``None`` means undetermined — the search could not be completed, so the
+    # report makes no novelty claim either way. Consumers must distinguish
+    # None from True/False rather than coercing (e.g. ``bool(None)`` would
+    # silently read as "not novel").
+    is_novel: bool | None
     confidence: float  # 0.0 - 1.0
     assessment: str  # Human-readable explanation
     similar_work: List[SimilarWork] = field(default_factory=list)

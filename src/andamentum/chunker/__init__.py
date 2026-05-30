@@ -14,13 +14,11 @@ from .embeddings import EmbeddingFn, make_ollama_embedder
 from .extractor import ExecutorFn, extract_units, make_runner_executor
 from .judge import JudgeVerdict
 from .types import (
-    ChunkingFailedError,
     ChunkingResult,
     Gap,
     Unit,
 )
 
-__version__ = "0.2.0"
 
 __all__ = [
     # Functions / callables
@@ -28,7 +26,6 @@ __all__ = [
     "make_ollama_embedder",
     "make_runner_executor",
     # Data types
-    "ChunkingFailedError",
     "ChunkingResult",
     "EmbeddingFn",
     "ExecutorFn",

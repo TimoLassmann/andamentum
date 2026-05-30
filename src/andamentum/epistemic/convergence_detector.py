@@ -6,7 +6,7 @@ domains (different error modes) converges on the same conclusion.
 Architecture: Layer 1 (framework-agnostic, no model calls)
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 import uuid
 
@@ -179,7 +179,7 @@ def detect_convergence(
         explanation=explanation,
         missing_domains=missing_domains,
         strongest_per_domain=strongest_per_domain,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 
@@ -205,7 +205,7 @@ def _empty_convergence(claim_id: str, objective_id: str) -> ConvergentEvidence:
         explanation="Cannot assess convergence without evidence.",
         missing_domains=list(DOMAIN_DIMENSION_WEIGHTS.keys()),
         strongest_per_domain={},
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 

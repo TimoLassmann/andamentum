@@ -13,6 +13,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="andamentum-figures",
         description="Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing.",
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     sub = parser.add_subparsers(dest="command")
 
     # plot subcommand

@@ -220,7 +220,7 @@ class DocumentStore:
         if content is None:
             raise ValueError(
                 "Content must be provided. Document conversion has been moved upstream. "
-                "Use andamentum-convert to convert documents to markdown before calling add()."
+                "Use andamentum-harvest to convert documents to markdown before calling add()."
             )
 
         if not title:

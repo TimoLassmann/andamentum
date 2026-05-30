@@ -29,8 +29,11 @@ layers are present.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DISCLAIMER_SHORT = (
     "This report was generated for your own drafts. Whetstone is not a "
@@ -109,11 +112,21 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
     try:
         from docx import Document as DocxDocument
     except ImportError:
+        logger.warning(
+            "python-docx not available; cannot stamp AI provenance into %s",
+            docx_path,
+        )
         return
 
     try:
         doc = DocxDocument(str(docx_path))
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "could not open %s to stamp AI provenance (%s); "
+            "artifact ships WITHOUT a core-properties watermark",
+            docx_path,
+            exc,
+        )
         return
     prov = provenance_line(model=model)
 
@@ -125,8 +138,8 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
             doc.core_properties.author = (
                 f"{existing_contrib}; {ai_contrib}" if existing_contrib else ai_contrib
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("could not stamp AI-provenance author on %s: %s", docx_path, exc)
 
     # Keywords: append, don't clobber. This is where most detection
     # tooling will look.
@@ -137,8 +150,10 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
             doc.core_properties.keywords = (
                 f"{existing_kw}, {ai_keyword}" if existing_kw else ai_keyword
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "could not stamp AI-provenance keyword on %s: %s", docx_path, exc
+        )
 
     # Comments: SHORT line — python-docx enforces a 255-char limit.
     # The full disclaimer lives in the visible banner / RESPONSIBLE_USE.md.
@@ -147,12 +162,20 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
         existing_desc = (doc.core_properties.comments or "").strip()
         if "andamentum-whetstone" not in existing_desc and len(ai_desc) <= 255:
             doc.core_properties.comments = ai_desc
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "could not stamp AI-provenance comment on %s: %s", docx_path, exc
+        )
 
     try:
         doc.save(str(docx_path))
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "could not save AI-provenance watermark to %s (%s); "
+            "artifact may ship WITHOUT a core-properties watermark",
+            docx_path,
+            exc,
+        )
         return
 
     # Layer 2: customXml part. Stamped AFTER python-docx saves so we can
@@ -160,7 +183,10 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
     # leaves layer 1 untouched.
     try:
         write_provenance_customxml(docx_path, model=model)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "could not write customXml provenance part to %s: %s", docx_path, exc
+        )
         return
 
 

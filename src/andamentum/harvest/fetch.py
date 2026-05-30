@@ -26,8 +26,14 @@ from andamentum.core.fetch_gate import (
     user_agent_for,
 )
 
+from andamentum.core.url_safety import (
+    ResponseTooLarge,
+    SsrfBlocked,
+    fetch_with_safe_redirects,
+    is_safe_url,
+)
+
 from .errors import FetchError, UnsupportedFormatError
-from .url_safety import SsrfBlocked, fetch_with_safe_redirects, is_safe_url
 
 # Identifies andamentum-harvest to remote hosts so abuse-desks can contact the
 # project rather than block the netblock. Per RFC 9110 §10.1.5.
@@ -78,14 +84,14 @@ class Fetched:
 
 # ----------------------------------------------------------------------------
 # SSRF protection — thin alias preserving the in-module name used by tests
-# and the fetch path. Implementation lives in ``harvest.url_safety``.
+# and the fetch path. Implementation lives in ``core.url_safety``.
 # ----------------------------------------------------------------------------
 
 
 def _is_safe_url(url: str) -> tuple[bool, str]:
     """Block URLs that resolve to private/loopback IPs (basic SSRF protection).
 
-    Delegates to ``harvest.url_safety.is_safe_url`` so harvest and
+    Delegates to ``core.url_safety.is_safe_url`` so harvest and
     deep_research share one implementation.
     """
     return is_safe_url(url)
@@ -170,7 +176,7 @@ async def _fetch_url(
 
             resp = await fetch_with_safe_redirects(client, url)
             resp.raise_for_status()
-    except SsrfBlocked as exc:
+    except (SsrfBlocked, ResponseTooLarge) as exc:
         raise FetchError(str(exc)) from exc
     except httpx.HTTPError as exc:
         raise FetchError(f"HTTP fetch failed for {url}: {exc}") from exc

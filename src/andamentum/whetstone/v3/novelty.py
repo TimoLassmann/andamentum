@@ -219,6 +219,17 @@ async def _check_one_target(
         )
         return NoveltyEvidence(target=target, error=str(exc))
 
+    # is_novel=None means deep_research could not determine novelty (search
+    # failed / no evidence). Route that into the existing no-signal path so no
+    # spurious "prior work" Finding is emitted — undetermined is not a verdict.
+    report_is_novel = getattr(report, "is_novel", True)
+    if report_is_novel is None:
+        return NoveltyEvidence(
+            target=target,
+            error="novelty undetermined: "
+            + str(getattr(report, "assessment", ""))[:300],
+        )
+
     similar = [
         SimilarWorkRef(
             title=getattr(sw, "title", "(untitled)"),
@@ -230,7 +241,7 @@ async def _check_one_target(
     ]
     return NoveltyEvidence(
         target=target,
-        is_novel=bool(getattr(report, "is_novel", True)),
+        is_novel=bool(report_is_novel),
         confidence=float(getattr(report, "confidence", 0.0)),
         assessment=str(getattr(report, "assessment", ""))[:600],
         similar_work=similar,

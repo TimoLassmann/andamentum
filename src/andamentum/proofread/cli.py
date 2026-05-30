@@ -43,6 +43,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "PPTX / Markdown / plain). Use '-' to read raw text from stdin."
         ),
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument(
         "source",
         help=(

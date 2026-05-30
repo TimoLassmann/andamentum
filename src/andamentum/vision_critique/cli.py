@@ -34,6 +34,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "ratio, suggested fixes from a fixed set, confidence)."
         ),
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument(
         "image",
         help="Local image path or http(s)://... URL (PNG/JPEG/WebP/GIF).",

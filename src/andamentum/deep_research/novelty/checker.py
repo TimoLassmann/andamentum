@@ -62,7 +62,9 @@ async def run_novelty_check(
     from ..orchestrator import run_research
     from ..agents.novelty import build_assessment_prompt
 
-    async def research_fn(*, query: str, max_iterations: int, verbose: bool) -> dict[str, Any]:
+    async def research_fn(
+        *, query: str, max_iterations: int, verbose: bool
+    ) -> dict[str, Any]:
         result = await run_research(
             query=query,
             max_iterations=max_iterations,
@@ -147,10 +149,10 @@ async def _check_novelty_with_deps(
     except Exception as e:
         return NoveltyReport(
             claim=claim,
-            is_novel=True,
-            confidence=0.2,
+            is_novel=None,  # undetermined: the search did not complete
+            confidence=0.0,
             assessment=f"Could not complete search for prior work: {e}. "
-            "Claim may or may not be novel - manual verification recommended.",
+            "Novelty is UNDETERMINED — manual verification required.",
             similar_work=[],
             sources=[],
             search_queries_used=search_queries,
@@ -161,10 +163,10 @@ async def _check_novelty_with_deps(
     if output is None:
         return NoveltyReport(
             claim=claim,
-            is_novel=True,
-            confidence=0.3,
+            is_novel=None,  # undetermined: no evidence was gathered
+            confidence=0.0,
             assessment="Research completed but no evidence was gathered. "
-            "Claim appears novel based on empty search results.",
+            "Novelty is UNDETERMINED — manual verification required.",
             similar_work=[],
             sources=[],
             search_queries_used=search_queries,
