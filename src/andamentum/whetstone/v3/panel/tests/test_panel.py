@@ -14,6 +14,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 
 from andamentum.whetstone.schemas import (
     ExpertProfile,
@@ -341,3 +342,39 @@ def test_panel_graph_is_importable_and_has_entry_node() -> None:
     state = PanelState(source=SRC)
     assert deps.n_experts == 4
     assert state.expert_profiles == []
+
+
+# ---------------------------------------------------------------------------
+# Confidentiality tripwire (parity with review_document)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_panel_v3_refuses_confidential_marker_without_affirmation() -> None:
+    """run_panel_v3 (the public ``run_panel``) must refuse confidentiality-
+    marked text unless the caller affirms authorship — the marker scan fires
+    before any LLM call, so no model is needed."""
+    from andamentum.whetstone._confidentiality import ConfidentialityMarkerError
+
+    marked = (
+        "Manuscript ID: 4242\n\n"
+        "Please do not share this document outside the review panel.\n"
+    )
+    with pytest.raises(ConfidentialityMarkerError):
+        await run_panel_v3(marked, model="stub", n_experts=1)
+
+
+async def test_run_panel_v3_confirm_own_draft_bypasses_marker_scan() -> None:
+    """confirm_own_draft=True disarms the tripwire (mirrors --i-am-the-author).
+    With a stub model the graph won't really call out, but the scan must not
+    be what stops it."""
+    from andamentum.whetstone._confidentiality import ConfidentialityMarkerError
+
+    marked = "Manuscript ID: 4242\n\nbody text follows.\n"
+    try:
+        await run_panel_v3(marked, model="stub", n_experts=1, confirm_own_draft=True)
+    except ConfidentialityMarkerError:  # pragma: no cover
+        raise AssertionError("confirm_own_draft must bypass the marker scan")
+    except Exception:
+        # Any other failure (e.g. the stub model) is fine — we only assert the
+        # confidentiality tripwire did not fire.
+        pass

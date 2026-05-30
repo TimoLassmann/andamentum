@@ -26,7 +26,7 @@ from andamentum.whetstone.v3.graph import (
     "candidate",
     [
         "/tmp/draft.md",
-        "/Users/timo/draft.md",
+        "/Users/researcher/draft.md",
         "./draft.md",
         "../draft.md",
         "~/draft.md",

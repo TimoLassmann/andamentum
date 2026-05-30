@@ -28,6 +28,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="andamentum-chunker",
         description="Verifiable semantic chunking of long text.",
     )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     parser.add_argument("input", help="Path to text/markdown file to chunk")
     parser.add_argument(
         "--model",
@@ -51,18 +58,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default="general",
         choices=["academic", "web", "code", "transcript", "general"],
         help="Domain hint that adjusts the prompt (default: general)",
-    )
-    parser.add_argument(
-        "--window-size",
-        type=int,
-        default=10_000,
-        help="Cursor advances within this many chars per call (default: 10000)",
-    )
-    parser.add_argument(
-        "--lookahead",
-        type=int,
-        default=4_000,
-        help="Extra chars the model can see past the window (default: 4000)",
     )
     parser.add_argument(
         "-o",
@@ -97,8 +92,6 @@ async def _main_async(args: argparse.Namespace) -> int:
         src,
         primary_executor=primary_executor,
         backup_executors=backup_executors,
-        window_size=args.window_size,
-        lookahead=args.lookahead,
         domain=args.domain,
     )
 

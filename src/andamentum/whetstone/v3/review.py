@@ -372,7 +372,7 @@ async def run_criteria(
     model: DocumentModel,
     *,
     agent_model: str,
-) -> list[Finding]:
+) -> tuple[list[Finding], list[str]]:
     """Run the criterion set as a sequential SPECS-style cascade.
 
     Each criterion sees the accumulated findings of all earlier criteria, so
@@ -385,8 +385,14 @@ async def run_criteria(
     load-bearing benefit on papers where issues thread across criteria. A
     single criterion crashing is caught and logged so the rest of the cascade
     still benefits from the findings already accumulated.
+
+    Returns ``(findings, failed_criteria)`` where ``failed_criteria`` names the
+    criteria that crashed and contributed nothing — so the caller can surface
+    the partial coverage in the result rather than presenting a silently
+    incomplete review as complete.
     """
     accumulated: list[Finding] = []
+    failed: list[str] = []
     for c in criteria:
         try:
             stage = await review_criterion(
@@ -411,14 +417,24 @@ async def run_criteria(
                 exc,
                 body_part,
             )
+            failed.append(c.name)
             continue
         except UsageLimitExceeded as exc:
             logger.warning("[v3.review] %s: usage limit hit (%s)", c.name, exc)
+            failed.append(c.name)
             continue
         except Exception as exc:
             logger.warning("[v3.review] %s crashed: %s", c.name, exc)
+            failed.append(c.name)
             continue
-    return accumulated
+    if failed:
+        logger.warning(
+            "[v3.review] %d/%d criteria produced no findings (crashed): %s",
+            len(failed),
+            len(criteria),
+            ", ".join(failed),
+        )
+    return accumulated, failed
 
 
 def verify_findings(findings: list[Finding], model: DocumentModel) -> list[Finding]:

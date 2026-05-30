@@ -128,12 +128,19 @@ _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 def _build_parser() -> argparse.ArgumentParser:
     """Build the (single) flat argparse parser. The subcommand front-end
     in :func:`main` rewrites verb-style invocations into flat argv before
-    parsing, so this single parser still serves all four subcommands."""
+    parsing, so this single parser still serves all five subcommands."""
     parser = argparse.ArgumentParser(
         prog="andamentum-whetstone",
         description=_HELP_DESCRIPTION,
         epilog=_HELP_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
     )
 
     # ── Common: required positional + outputs + universal options ───────
@@ -511,6 +518,12 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 model=args.model,
                 n_experts=args.n_experts,
                 panel_disciplines=list(panel_disciplines) or None,
+                # The panel subcommand already required --i-am-the-author
+                # (gated above) — that affirmation is what disarms the
+                # confidentiality tripwire, mirroring review's
+                # --confirm-own-draft. Library callers of run_panel_v3 that
+                # omit confirm_own_draft still get the marker scan.
+                confirm_own_draft=True,
             )
         else:
             # Default review path — Phase C unified criteria/guidelines

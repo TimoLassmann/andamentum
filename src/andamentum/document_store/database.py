@@ -6,6 +6,7 @@ Handles SQLite operations for document metadata using unified documents table.
 import hashlib
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Mapping, Optional
@@ -13,6 +14,12 @@ from typing import Any, Mapping, Optional
 import aiosqlite
 
 from .models import DocumentMetadata, DocumentType
+
+# A metadata field name is interpolated into a SQLite JSON path
+# (``json_extract(metadata, '$.<field>')``) which cannot be parameterised.
+# Restrict it to identifier characters + dots (for nested paths) so a caller
+# cannot inject SQL via a crafted key. Values are always bound as parameters.
+_SAFE_METADATA_FIELD = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.]*$")
 
 logger = logging.getLogger(__name__)
 
@@ -481,6 +488,11 @@ async def find_by_metadata(
         for field, value in filters.items():
             if field.startswith("_"):
                 continue  # Skip internal fields like _history
+            if not _SAFE_METADATA_FIELD.match(field):
+                raise ValueError(
+                    f"Unsafe metadata field name {field!r}: only letters, "
+                    "digits, underscore and dot are allowed."
+                )
             if value is None:
                 conditions.append(f"json_extract(metadata, '$.{field}') IS NULL")
             else:

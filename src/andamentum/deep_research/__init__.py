@@ -52,7 +52,6 @@ from .novelty import (
 )
 from .state import ResearchState
 
-__version__ = "0.1.0"
 
 __all__ = [
     # End-user one-shots

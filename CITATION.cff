@@ -7,8 +7,8 @@ authors:
     given-names: Timo
     affiliation: "Telethon Kids Institute"
     # orcid: "https://orcid.org/0000-0000-0000-0000"  # add when ORCID is registered
-version: "0.3.0rc3"
-date-released: "2026-05-16"
+version: "0.3.0"
+date-released: "2026-05-30"
 license: MIT
 repository-code: "https://github.com/TimoLassmann/andamentum"
 url: "https://github.com/TimoLassmann/andamentum"
@@ -23,7 +23,7 @@ abstract: >-
   and typesetting. Designed with explicit-model-argument APIs and
   in-code responsible-use protections (fetch gating against robots.txt
   and paywalled publishers, confidentiality tripwires, AI-provenance
-  watermarking, opt-in audit log).
+  watermarking).
 keywords:
   - scientific-research-tools
   - manuscript-review

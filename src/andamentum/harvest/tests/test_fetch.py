@@ -5,9 +5,13 @@ from pathlib import Path
 import httpx
 import pytest
 
+from andamentum.core.url_safety import (
+    ResponseTooLarge,
+    SsrfBlocked,
+    fetch_with_safe_redirects,
+)
 from andamentum.harvest.errors import FetchError, UnsupportedFormatError
 from andamentum.harvest.fetch import _detect_format, _is_safe_url, resolve
-from andamentum.harvest.url_safety import SsrfBlocked, fetch_with_safe_redirects
 
 
 # ---------- format detection -----------------------------------------------
@@ -195,3 +199,37 @@ async def test_redirect_loop_is_bounded():
             await fetch_with_safe_redirects(
                 client, "http://8.8.8.8/loop", max_redirects=3
             )
+
+
+# ---------- SSRF: response size cap ----------------------------------------
+
+
+async def test_response_over_size_cap_is_refused():
+    """A terminal body larger than max_bytes raises ResponseTooLarge."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * 5000)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=False
+    ) as client:
+        with pytest.raises(ResponseTooLarge):
+            await fetch_with_safe_redirects(
+                client, "http://8.8.8.8/big", max_bytes=1000
+            )
+
+
+async def test_response_within_size_cap_is_returned():
+    """A body within max_bytes is returned intact."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * 500)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=False
+    ) as client:
+        resp = await fetch_with_safe_redirects(
+            client, "http://8.8.8.8/ok", max_bytes=1000
+        )
+    assert resp.status_code == 200
+    assert resp.content == b"x" * 500

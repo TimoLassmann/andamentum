@@ -10,7 +10,6 @@ def test_public_all():
         "make_ollama_embedder",
         "make_runner_executor",
         # Data types
-        "ChunkingFailedError",
         "ChunkingResult",
         "EmbeddingFn",
         "ExecutorFn",

@@ -22,7 +22,6 @@ from .models import (
     ValidationIssue,
 )
 
-__version__ = "0.1.0"
 
 __all__ = [
     # Functions / callables

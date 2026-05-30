@@ -22,7 +22,7 @@ def analyze(text: str) -> ProofreadResult:
     Returns
     -------
     ProofreadResult
-        A pydantic object with five readability scores, lists of findings
+        A pydantic object with six readability scores, lists of findings
         (weasel words, passive voice, duplicate words, weak openers),
         adverb stats, and a one-line ``summary``.
     """

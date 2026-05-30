@@ -189,9 +189,10 @@ async def test_run_criteria_tags_findings_by_criterion() -> None:
         return _Agent()
 
     with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
-        findings = await run_criteria(SPECS, _model("x"), agent_model="stub")
+        findings, failed = await run_criteria(SPECS, _model("x"), agent_model="stub")
     # one finding per criterion, each tagged with its criterion name
     assert {f.criterion for f in findings} == {c.name for c in SPECS}
+    assert failed == []  # nothing crashed
 
 
 async def test_run_criteria_logs_unexpected_model_behaviour_body() -> None:
@@ -218,11 +219,12 @@ async def test_run_criteria_logs_unexpected_model_behaviour_body() -> None:
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
     with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
         with _capture_v3_logs() as records:
-            findings = await run_criteria(
+            findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )
 
     assert findings == []  # the criterion gracefully skipped
+    assert failed == ["Story"]  # ...but the failure is recorded, not silent
     log_text = "\n".join(r.getMessage() for r in records)
     assert "Story" in log_text
     assert "model behaviour error" in log_text
@@ -246,11 +248,12 @@ async def test_run_criteria_logs_usage_limit_exceeded() -> None:
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
     with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
         with _capture_v3_logs() as records:
-            findings = await run_criteria(
+            findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )
 
     assert findings == []
+    assert failed == ["Story"]
     log_text = "\n".join(r.getMessage() for r in records)
     assert "Story" in log_text
     assert "usage limit hit" in log_text
@@ -273,11 +276,12 @@ async def test_run_criteria_still_catches_generic_exception() -> None:
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
     with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
         with _capture_v3_logs() as records:
-            findings = await run_criteria(
+            findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )
 
     assert findings == []
+    assert failed == ["Story"]
     log_text = "\n".join(r.getMessage() for r in records)
     assert "Story" in log_text
     assert "crashed" in log_text

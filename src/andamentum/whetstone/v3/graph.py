@@ -65,6 +65,7 @@ class V3State:
     claims: list[Claim] = field(default_factory=list)
     document_model: DocumentModel | None = None
     findings: list[Finding] = field(default_factory=list)
+    failed_criteria: list[str] = field(default_factory=list)
     review: StructuredReview | None = None
     edits: list[Edit] = field(default_factory=list)
     novelty_targets: list[NoveltyTarget] = field(default_factory=list)
@@ -101,7 +102,7 @@ class ReviewCriteria(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "VerifyFindings":
         model = ctx.state.document_model
         assert model is not None
-        ctx.state.findings = await run_criteria(
+        ctx.state.findings, ctx.state.failed_criteria = await run_criteria(
             ctx.deps.criteria,
             model,
             agent_model=ctx.deps.agent_model,
@@ -257,6 +258,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                 ctx.state.edits,
                 llm_calls=counters.llm_calls if counters else 0,
                 gap_rounds_used=counters.gap_rounds if counters else 0,
+                failed_criteria=ctx.state.failed_criteria,
             )
         )
 

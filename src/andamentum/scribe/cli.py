@@ -31,6 +31,13 @@ from .api import Document, Figure, Table
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="andamentum-scribe")
+    from andamentum import __version__ as _ver
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s (andamentum {_ver})",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     init = sub.add_parser("init", help="Create a new document")

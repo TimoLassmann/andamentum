@@ -5,8 +5,8 @@
     "version": 1,
     "title": "",
     "subfield": "cs.LG",
-    "pdf_path": "/Users/timo/code/andamentum/benchmarks/whetstone/corpus/arxiv_1412.6980_v1.pdf",
-    "markdown_path": "/Users/timo/code/andamentum/benchmarks/whetstone/corpus/arxiv_1412.6980_v1.md"
+    "pdf_path": "benchmarks/whetstone/corpus/arxiv_1412.6980_v1.pdf",
+    "markdown_path": "benchmarks/whetstone/corpus/arxiv_1412.6980_v1.md"
   },
   "arm_a": {
     "arm": "A",

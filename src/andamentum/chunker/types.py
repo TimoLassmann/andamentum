@@ -65,24 +65,3 @@ class ChunkingResult(BaseModel):
     @property
     def gap_fraction(self) -> float:
         return self.gap_chars / self.total_chars if self.total_chars else 0.0
-
-
-class ChunkingFailedError(Exception):
-    """Raised when the entire escalation chain has been exhausted."""
-
-    def __init__(
-        self,
-        *,
-        cursor: int,
-        attempted_models: list[str],
-        last_validator_messages: list[str],
-        message: str,
-    ):
-        self.cursor = cursor
-        self.attempted_models = attempted_models
-        self.last_validator_messages = last_validator_messages
-        super().__init__(
-            f"{message} at cursor={cursor}; "
-            f"attempted models: {attempted_models}; "
-            f"last validator complaints: {last_validator_messages}"
-        )

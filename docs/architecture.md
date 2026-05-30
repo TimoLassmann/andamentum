@@ -170,6 +170,6 @@ installed but is not described in this overview — see the
 
 ## Pre-release checkpoint
 
-Behaviour is locked for a pre-release version (`0.3.0rc3`). Test
-baseline: pyright 23 errors (pre-existing typing noise), ruff clean,
-pytest 2302 passing.
+Behaviour is locked for the `0.3.0` release. Test baseline: pyright 30
+errors (pre-existing test-only typing noise), ruff clean, pytest
+2232 passing.

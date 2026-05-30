@@ -371,6 +371,7 @@ async def run_panel_v3(
     model: str,
     n_experts: int = 4,
     panel_disciplines: list[str] | None = None,
+    confirm_own_draft: bool = False,
 ) -> ReviewResult:
     """Run a v3 panel review over already-harvested markdown.
 
@@ -393,7 +394,18 @@ async def run_panel_v3(
         Optional explicit list of disciplines. When supplied, the
         keyword-extraction LLM call is skipped (saving one call) and
         these are used directly.
+    confirm_own_draft:
+        Panel mode simulates peer review, which makes it tempting to point
+        at material shared with you in confidence. Like `review_document`,
+        this entry point refuses to run on text carrying a confidentiality
+        marker unless the caller affirms the draft is their own. The
+        `andamentum-whetstone panel` CLI maps `--i-am-the-author` here.
     """
+    if not confirm_own_draft:
+        from andamentum.whetstone._confidentiality import check_confidentiality
+
+        check_confidentiality(markdown)
+
     deps = PanelDeps(
         agent_model=model,
         n_experts=n_experts,

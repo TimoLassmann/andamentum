@@ -54,7 +54,13 @@ generic AI tooling:
 pip install andamentum
 ```
 
-Everything works out of the box. There are no optional extras to remember.
+The core install works out of the box. Two optional extras add heavier,
+self-contained capabilities:
+
+```bash
+pip install 'andamentum[html-articles]'   # trafilatura — best-in-class HTML article extraction
+pip install 'andamentum[pdf]'             # WeasyPrint — PDF output for andamentum-typeset
+```
 
 ## Quickstart
 
@@ -84,19 +90,21 @@ export ANDAMENTUM_MAIN_LLM_MODEL=anthropic:claude-haiku-4-5
 
 ## Command-line tools
 
-Eight CLIs are installed with the package. Run `--help` on any of them for
+Ten CLIs are installed with the package. Run `--help` on any of them for
 the full flag reference.
 
 | Command | What it does | LLM? |
 |---|---|---|
 | `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
-| `andamentum-whetstone` | Criterion-cascade review of your own draft → markdown / HTML / .docx with track changes. Four subcommands: `review` (default), `panel` (multi-expert), `proofread` (no LLM), `apply-patches` (no LLM) | required for `review` + `panel` |
+| `andamentum-whetstone` | Criterion-cascade review of your own draft → markdown / HTML / .docx with track changes. Five subcommands: `review` (default), `panel` (multi-expert), `proofread` (no LLM), `apply-patches` (no LLM), `verify-provenance` (no LLM) | required for `review` + `panel` |
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
 | `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
+| `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |
 | `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
 | `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearXNG instance | required |
+| `andamentum-epistemic` | Formal-epistemology pipeline: `ask "<question>"` (decompose + research) or `verify "<claim>"` (single-claim verification) | required |
 
 ## Documentation
 

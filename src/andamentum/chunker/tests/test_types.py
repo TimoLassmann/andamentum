@@ -3,7 +3,6 @@
 import pytest
 
 from andamentum.chunker.types import (
-    ChunkingFailedError,
     ChunkingResult,
     Gap,
     Unit,
@@ -54,14 +53,3 @@ def test_chunking_result_coverage_math():
     )
     assert r.coverage == pytest.approx(0.8)
     assert r.gap_fraction == pytest.approx(0.2)
-
-
-def test_chunking_failed_error_carries_diagnostics():
-    err = ChunkingFailedError(
-        cursor=1234,
-        attempted_models=["ollama:gemma:9b", "openai:gpt-4o-mini"],
-        last_validator_messages=["anchor 'foo' not found"],
-        message="extraction stalled",
-    )
-    assert err.cursor == 1234
-    assert "ollama" in str(err)

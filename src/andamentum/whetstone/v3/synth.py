@@ -221,6 +221,7 @@ def to_review_result(
     edits: list[Edit] | None = None,
     llm_calls: int = 0,
     gap_rounds_used: int = 0,
+    failed_criteria: list[str] | None = None,
 ) -> ReviewResult:
     edits = edits or []
     gist_by_section = {g.section_id: g.gist for g in model.gists}
@@ -228,6 +229,7 @@ def to_review_result(
         summary=_flatten(review),
         findings=[_to_wfinding(f, model) for f in findings],
         edits=list(edits),
+        failed_criteria=list(failed_criteria or []),
         document_map=[
             SectionCard(
                 section_id=s.id,
