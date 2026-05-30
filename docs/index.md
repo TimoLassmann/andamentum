@@ -22,7 +22,7 @@ An additional experimental sub-module ships installed but is not yet publicly do
 
 ## Design principles
 
-- **Responsible by construction.** Fetch gate (robots.txt + paywalled-publisher tripwire), whetstone confidentiality tripwire, AI-provenance watermarks, opt-in audit log, cloud-vs-local awareness — implemented as in-code refusals and stamps, not markdown disclaimers. See [`../RESPONSIBLE_USE.md`](../RESPONSIBLE_USE.md).
+- **Responsible by construction.** Fetch gate (robots.txt + paywalled-publisher tripwire), whetstone confidentiality tripwire, AI-provenance watermarks, cloud-vs-local awareness — implemented as in-code refusals and stamps, not markdown disclaimers. (An opt-in cloud-call audit log and tiered cloud-call gates are planned — see [`../RESPONSIBLE_USE.md`](../RESPONSIBLE_USE.md).)
 - **Explicit model argument.** Every public function that calls an LLM takes `model=` as a keyword-only argument. No hidden defaults, no silent fallbacks, no shared config module.
 - **No environment-variable configuration.** Configuration flows top-down from the CLI / caller through explicit keyword arguments. Env vars are ambient state that hides at the call site.
 - **One distribution, no extras.** Dependencies are the flat union of what the sub-modules need. There are no optional installs.

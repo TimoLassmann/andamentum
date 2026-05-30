@@ -150,17 +150,17 @@ def test_closest_scores_local_window_not_whole_document() -> None:
     HIGH locally — even though it's a tiny fraction of the whole document.
     Guards the global-ratio bug (which scored ~0.01 for exactly this case)."""
     body = (
-        "system under an mit licence an archived release is "
-        "deposited at zenodo software doi the evaluation dataset comprising "
-        "pipeline checkpoints for all sixty topics"
+        "the widget catalogue is released under a permissive licence an "
+        "archived release is deposited in a public repository the evaluation "
+        "corpus comprising benchmark snapshots for all forty scenarios"
     )
     # A big document so a global ratio would be tiny.
     idx = DocIndex([[("r1", "lorem ipsum " * 200 + body + " dolor sit " * 200)]])
     target = (
-        "under an MIT licence; an archived release is deposited at "
-        "[Zenodo software DOI]. The evaluation dataset, comprising pipeline "
-        "checkpoints for all sixty topics"
+        "under a permissive licence; an archived release is deposited in "
+        "[a public repository]. The evaluation corpus, comprising benchmark "
+        "snapshots for all forty scenarios"
     )
     score, snippet = idx.closest(target)
     assert score > 0.8, f"local score should be high, got {score}"
-    assert "zenodo software doi" in snippet
+    assert "public repository" in snippet

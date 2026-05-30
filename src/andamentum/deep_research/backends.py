@@ -64,9 +64,13 @@ class HttpxSearchBackend:
     ):
         self.searxng_url = searxng_url
         self._owns_client = http_client is None
+        # follow_redirects is off at the client level: page fetches drive the
+        # redirect chain through fetch_with_safe_redirects so each hop is
+        # SSRF-re-validated. (A redirect chased blindly by httpx could land on
+        # a private/loopback/cloud-metadata address.)
         self._http = http_client or httpx.AsyncClient(
             timeout=30.0,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": _USER_AGENT},
         )
         self._tdm_allowed_hosts = tdm_allowed_hosts
@@ -116,6 +120,11 @@ class HttpxSearchBackend:
 
     async def fetch_page(self, url: str) -> FetchedPage:
         """Fetch page content and extract markdown via content-type routing."""
+        from andamentum.harvest.url_safety import (
+            SsrfBlocked,
+            fetch_with_safe_redirects,
+        )
+
         from .text_utils import is_safe_url
         from .content_extractor import extract_content, ExtractionError
 
@@ -133,7 +142,12 @@ class HttpxSearchBackend:
         except (PaywallBlocked, RobotsBlocked) as exc:
             raise RuntimeError(f"fetch refused by gate: {exc}") from exc
 
-        resp = await self._http.get(url)
+        # Follow redirects manually, re-validating every hop against the SSRF
+        # checks — a 3xx to a private/cloud-metadata host is blocked here.
+        try:
+            resp = await fetch_with_safe_redirects(self._http, url)
+        except SsrfBlocked as exc:
+            raise RuntimeError(f"URL blocked by SSRF protection: {exc}") from exc
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")
@@ -141,9 +155,7 @@ class HttpxSearchBackend:
         # extract_content is async (it delegates to harvest, which already
         # offloads CPU-bound docling work via asyncio.to_thread internally).
         try:
-            markdown = await extract_content(
-                resp.content, content_type, str(resp.url)
-            )
+            markdown = await extract_content(resp.content, content_type, str(resp.url))
         except ExtractionError as e:
             raise RuntimeError(f"Content extraction failed for {url}: {e}") from e
 

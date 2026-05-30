@@ -9,6 +9,7 @@ render_pdf(document, output, *, style, custom_css, title) -> Path
 
 from __future__ import annotations
 
+import html
 import itertools
 import logging
 import os
@@ -44,6 +45,7 @@ _EXTRA_EXTENSIONS.append("footnotes")
 # Markdown helper
 # ---------------------------------------------------------------------------
 
+
 def _md(text: str) -> str:
     """Convert *text* from Markdown to an HTML fragment."""
     import markdown
@@ -57,20 +59,63 @@ def _md(text: str) -> str:
     return markdown.markdown(str(text), extensions=extensions)
 
 
-def _strip_p(html: str) -> str:
+def _strip_p(markup: str) -> str:
     """Remove a single wrapping ``<p>…</p>`` if present."""
-    stripped = html.strip()
+    stripped = markup.strip()
     return re.sub(r"^<p>(.*)</p>$", r"\1", stripped, flags=re.DOTALL)
+
+
+# ---------------------------------------------------------------------------
+# HTML escaping
+# ---------------------------------------------------------------------------
+#
+# Atom fields fall into two classes:
+#   * Markdown-bodied (``content``, ``body``, ``details``) — rendered through
+#     ``_md`` and intentionally allowed to contain inline HTML.
+#   * Plain text / attribute values (subtitle, meta, labels, badges, hrefs,
+#     sidebar keys/values, …) — interpolated directly into the HTML shell.
+#
+# The second class MUST be escaped: a typeset document often carries LLM
+# output or fetched web content (whetstone reviews, the epistemic audit
+# report), so unescaped ``<script>`` or a ``" onmouseover=`` attribute
+# breakout would be an injection vector in the file the user opens.
+
+
+def _esc(value: object) -> str:
+    """Escape a value for use as HTML text content (``&``, ``<``, ``>``)."""
+    return html.escape(str(value))
+
+
+def _esc_attr(value: object) -> str:
+    """Escape a value for use inside a double-quoted HTML attribute."""
+    return html.escape(str(value), quote=True)
+
+
+# Schemes a hyperlink may use. Anything else (``javascript:``, ``data:``,
+# ``vbscript:``, ``file:``) is neutralised to ``#`` so a rendered link can't
+# execute script or exfiltrate when clicked.
+def _safe_href(value: object) -> str:
+    """Return an escaped, scheme-validated ``href`` value.
+
+    Relative URLs, fragments and ``http(s)``/``mailto`` are preserved
+    (escaped); any other scheme collapses to ``#``.
+    """
+    raw = str(value).strip()
+    head = raw.split("/", 1)[0]  # scheme lives before the first slash
+    if ":" in head and not raw.lower().startswith(("http://", "https://", "mailto:")):
+        return "#"
+    return _esc_attr(raw)
 
 
 # ---------------------------------------------------------------------------
 # Atom renderers
 # ---------------------------------------------------------------------------
 
+
 def _id_attr(atom: dict[str, object]) -> str:
     """Return ``id="..."`` (with leading space) when the atom has an ``id`` field."""
     atom_id = atom.get("id")
-    return f' id="{atom_id}"' if atom_id is not None else ""
+    return f' id="{_esc_attr(atom_id)}"' if atom_id is not None else ""
 
 
 def _render_heading(atom: dict[str, object]) -> str:
@@ -83,14 +128,14 @@ def _render_heading(atom: dict[str, object]) -> str:
 
     subtitle = atom.get("subtitle")
     if subtitle is not None:
-        parts.append(f'<p class="typeset-subtitle">{subtitle}</p>')
+        parts.append(f'<p class="typeset-subtitle">{_esc(subtitle)}</p>')
 
     meta = atom.get("meta")
     if meta is not None:
         if isinstance(meta, dict):
-            meta_text = " &middot; ".join(str(v) for v in meta.values())
+            meta_text = " &middot; ".join(_esc(v) for v in meta.values())
         else:
-            meta_text = str(meta)
+            meta_text = _esc(meta)
         parts.append(f'<p class="typeset-meta">{meta_text}</p>')
 
     parts.append("</header>")
@@ -103,7 +148,7 @@ def _render_prose(atom: dict[str, object]) -> str:
 
     heading = atom.get("heading")
     if heading is not None:
-        parts.append(f"<h2{_id_attr(atom)}>{heading}</h2>")
+        parts.append(f"<h2{_id_attr(atom)}>{_esc(heading)}</h2>")
         parts.append('<section class="typeset-prose">')
     else:
         parts.append(f'<section class="typeset-prose"{_id_attr(atom)}>')
@@ -130,18 +175,19 @@ def _render_items(atom: dict[str, object]) -> str:
 
     heading = atom.get("heading")
     if heading is not None:
-        parts.append(f"<h2>{heading}</h2>")
+        parts.append(f"<h2>{_esc(heading)}</h2>")
 
     variant = atom.get("variant", "pairs")
-    parts.append(f'<div class="typeset-items variant-{variant}">')
+    variant_attr = _esc_attr(variant)
+    parts.append(f'<div class="typeset-items variant-{variant_attr}">')
 
     raw_entries = atom.get("entries") or []
     entries = raw_entries if isinstance(raw_entries, list) else []
     for entry in entries:
         assert isinstance(entry, dict)
-        label = entry.get("label", "")
+        label = _esc(entry.get("label", ""))
         body = _strip_p(_md(str(entry.get("body", ""))))
-        item_cls = f"typeset-item item-{variant}"
+        item_cls = f"typeset-item item-{variant_attr}"
         parts.append(f'  <div class="{item_cls}">')
         parts.append(f'    <div class="typeset-item-label">{label}</div>')
         parts.append(f'    <div class="typeset-item-body">{body}</div>')
@@ -159,12 +205,18 @@ def _render_aside(atom: dict[str, object]) -> str:
         parts: list[str] = ['<aside class="typeset-aside typeset-sidebar">']
         for group_name, entries in groups.items():
             parts.append('  <div class="typeset-sidebar-group">')
-            parts.append(f'    <div class="typeset-sidebar-title">{group_name}</div>')
+            parts.append(
+                f'    <div class="typeset-sidebar-title">{_esc(group_name)}</div>'
+            )
             assert isinstance(entries, dict)
             for key, value in entries.items():
                 parts.append('    <div class="typeset-sidebar-row">')
-                parts.append(f'      <span class="typeset-sidebar-label">{key}</span>')
-                parts.append(f'      <span class="typeset-sidebar-value">{value}</span>')
+                parts.append(
+                    f'      <span class="typeset-sidebar-label">{_esc(key)}</span>'
+                )
+                parts.append(
+                    f'      <span class="typeset-sidebar-value">{_esc(value)}</span>'
+                )
                 parts.append("    </div>")
             parts.append("  </div>")
         parts.append("</aside>")
@@ -181,16 +233,18 @@ def _render_card(atom: dict[str, object]) -> str:
     """Render a *card* atom."""
     parts: list[str] = [f'<div class="typeset-card"{_id_attr(atom)}>']
     parts.append('  <div class="typeset-card-body">')
-    parts.append(f'    {_md(str(atom.get("content", "")))}')
+    parts.append(f"    {_md(str(atom.get('content', '')))}")
 
     badge = atom.get("badge")
     if badge is not None:
-        parts.append(f'    <span class="typeset-badge" data-value="{str(badge).lower()}">{badge}</span>')
+        parts.append(
+            f'    <span class="typeset-badge" data-value="{_esc_attr(str(badge).lower())}">{_esc(badge)}</span>'
+        )
 
     refs = atom.get("refs")
     if refs is not None:
         assert isinstance(refs, list)
-        refs_text = ", ".join(str(r) for r in refs)
+        refs_text = ", ".join(_esc(r) for r in refs)
         parts.append(f'    <sup class="typeset-refs">{refs_text}</sup>')
 
     parts.append("  </div>")
@@ -198,7 +252,9 @@ def _render_card(atom: dict[str, object]) -> str:
     source = atom.get("source")
     if source is not None:
         label = atom.get("source_label", source)
-        parts.append(f'  <div class="typeset-card-source"><a href="{source}">{label}</a></div>')
+        parts.append(
+            f'  <div class="typeset-card-source"><a href="{_safe_href(source)}">{_esc(label)}</a></div>'
+        )
 
     details = atom.get("details")
     if details is not None:
@@ -217,19 +273,25 @@ def _render_reference(atom: dict[str, object]) -> str:
 
     number = atom.get("number")
     if number is not None:
-        parts.append(f'  <div class="typeset-ref-number">{number}.</div>')
+        parts.append(f'  <div class="typeset-ref-number">{_esc(number)}.</div>')
 
     parts.append('  <div class="typeset-ref-content">')
-    parts.append(f'    <div class="typeset-ref-body">{_strip_p(_md(str(atom.get("content", ""))))}</div>')
+    parts.append(
+        f'    <div class="typeset-ref-body">{_strip_p(_md(str(atom.get("content", ""))))}</div>'
+    )
 
     badge = atom.get("badge")
     if badge is not None:
-        parts.append(f'    <span class="typeset-badge" data-value="{str(badge).lower()}">{badge}</span>')
+        parts.append(
+            f'    <span class="typeset-badge" data-value="{_esc_attr(str(badge).lower())}">{_esc(badge)}</span>'
+        )
 
     source = atom.get("source")
     if source is not None:
         label = atom.get("source_label", source)
-        parts.append(f'    <div class="typeset-ref-source"><a href="{source}">{label}</a></div>')
+        parts.append(
+            f'    <div class="typeset-ref-source"><a href="{_safe_href(source)}">{_esc(label)}</a></div>'
+        )
 
     parts.append("  </div>")
 
@@ -240,7 +302,7 @@ def _render_reference(atom: dict[str, object]) -> str:
 def _render_reference_group(group_label: str, refs: list[dict[str, object]]) -> str:
     """Wrap a list of reference atoms in a group container."""
     parts: list[str] = ['<div class="typeset-reference-group">']
-    parts.append(f'  <div class="typeset-ref-group-label">{group_label}</div>')
+    parts.append(f'  <div class="typeset-ref-group-label">{_esc(group_label)}</div>')
     for ref in refs:
         parts.append(_render_reference(ref))
     parts.append("</div>")
@@ -298,6 +360,7 @@ _HTML_TEMPLATE = """\
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def render(
     document: list[dict[str, object]] | str,

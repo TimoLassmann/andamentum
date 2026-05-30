@@ -1,10 +1,12 @@
 """Quick start examples for andamentum.deep_research.
 
 All examples run without external services (no LLM, no SearXNG).
-"""
 
-import asyncio
-from types import SimpleNamespace
+Note: novelty checking (``run_novelty_check``) is intentionally not demoed
+here — it drives a live search + LLM pipeline and so cannot run offline.
+See the ``andamentum-research`` CLI / ``run_novelty_check`` docstring for
+that path.
+"""
 
 from andamentum.deep_research import (
     ResearchState,
@@ -12,7 +14,6 @@ from andamentum.deep_research import (
     CircuitOpenError,
     verify_sources,
 )
-from andamentum.deep_research.novelty import check_novelty, NoveltyAssessment
 
 
 def demo_source_verification():
@@ -49,7 +50,9 @@ def demo_circuit_breaker():
     # Simulate failures
     for i in range(3):
         cb.record_failure()
-        print(f"After failure {i + 1}: state={cb.state.value}, allow={cb.allow_request()}")
+        print(
+            f"After failure {i + 1}: state={cb.state.value}, allow={cb.allow_request()}"
+        )
 
     # Circuit is now open
     try:
@@ -78,48 +81,8 @@ def demo_research_state():
     print()
 
 
-async def demo_novelty_checking():
-    """Check novelty with mock research and assessment functions."""
-    print("=== Novelty Checking ===\n")
-
-    async def mock_research(**kwargs):
-        return {
-            "output": SimpleNamespace(
-                evidence_summary="Smith et al. (2023) explored this exact claim in Nature.",
-                key_findings=["Prior work by Smith (2023)", "Replicated by Jones (2024)"],
-                sources=["https://example.com/smith2023", "https://example.com/jones2024"],
-            )
-        }
-
-    async def mock_assess(claim, evidence_summary, key_findings, sources):
-        return NoveltyAssessment(
-            is_novel=False,
-            confidence=0.9,
-            assessment="This claim has been explored in at least two prior publications.",
-            similar_works=[
-                {
-                    "title": "Smith et al. 2023",
-                    "url": "https://example.com/smith2023",
-                    "relevance": "direct",
-                    "summary": "Addresses the same claim directly",
-                },
-            ],
-        )
-
-    report = await check_novelty("My novel research claim", mock_research, mock_assess)
-
-    print(f"Claim:      {report.claim}")
-    print(f"Novel:      {report.is_novel}")
-    print(f"Confidence: {report.confidence:.0%}")
-    print(f"Assessment: {report.assessment}")
-    if report.similar_work:
-        print(f"Similar:    {report.similar_work[0].title} ({report.similar_work[0].relevance.value})")
-    print()
-
-
 if __name__ == "__main__":
     demo_source_verification()
     demo_circuit_breaker()
     demo_research_state()
-    asyncio.run(demo_novelty_checking())
     print("All demos completed successfully.")

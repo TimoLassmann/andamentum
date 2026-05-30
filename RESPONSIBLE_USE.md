@@ -157,25 +157,34 @@ policy restricts.
   for a future release (see
   `docs/.internal/plans/2026-05-16-responsible-release.md`).
 
-## Audit log (opt-in)
+## Audit log (opt-in, partial)
 
-andamentum can record every cloud LLM call to a local file as a
-paper trail for institutional questions. **The audit log is off by
-default.** Enable it by setting:
+andamentum ships a local audit-log facility
+(`andamentum.core.audit_log.log_cloud_call`) intended to record cloud
+LLM calls to a file as a paper trail for institutional questions. **It
+is off by default** and writes nothing unless you set:
 
 ```bash
 export ANDAMENTUM_AUDIT_LOG=/path/you/choose/andamentum-audit.log
 ```
 
-When enabled, every cloud call appends one line:
+When invoked it appends one line per call:
 
 ```
 2026-05-16T14:23:01Z whetstone panel anthropic:claude-haiku-4-5 sha256:abc123 6234B
 ```
 
 The file is created with `0o600` permissions on first write at the
-exact path you specified. No XDG default, no hidden directory in
-your home. Disable by unsetting the variable.
+exact path you specified — no XDG default, no hidden directory in your
+home.
+
+> **Status: not yet wired into the pipelines.** The function above is a
+> building block; the sub-module LLM call sites do not call it yet, so
+> enabling the env var alone does **not** currently produce a complete
+> record of every cloud call. Automatic, pipeline-wide invocation is
+> planned for a future release (tracked alongside the cloud-call gates
+> in `docs/.internal/plans/2026-05-16-responsible-release.md`). Until
+> then, treat it as an API your own code can call, not a guarantee.
 
 ## Reporting misuse
 
