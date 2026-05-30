@@ -7,7 +7,7 @@ Usage::
 
     from andamentum.deep_research.orchestrator import run_research
 
-    result = await run_research("What is quantum computing?", model="bedrock:claude-haiku-4-5")
+    result = await run_research("What is quantum computing?", model="anthropic:claude-haiku-4-5")
     print(result.output.evidence_summary)
 """
 

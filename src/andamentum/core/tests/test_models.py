@@ -50,11 +50,23 @@ class TestResolveModel:
 
 
 class TestBedrockModelMap:
-    def test_known_models_in_map(self):
-        """Bedrock map should have key models."""
-        assert "claude-haiku-4-5" in BEDROCK_MODEL_MAP
-        assert "claude-sonnet-4-5" in BEDROCK_MODEL_MAP
-        assert "claude-opus-4-5" in BEDROCK_MODEL_MAP
+    def test_map_is_empty_stub_by_default(self):
+        """The alias table ships empty — the exact friendly→ID mappings are
+        account/region-specific, so a deployment populates them itself."""
+        assert isinstance(BEDROCK_MODEL_MAP, dict)
+        assert BEDROCK_MODEL_MAP == {}
+
+    def test_unknown_alias_passes_through(self):
+        """An id not in the map resolves to itself — the contract the
+        bedrock branch of resolve_model relies on (``.get(x, x)``)."""
+        model_id = "anthropic.claude-haiku-4-5-20251001-v1:0"
+        assert BEDROCK_MODEL_MAP.get(model_id, model_id) == model_id
+
+    def test_locally_added_alias_is_honoured(self):
+        """A deployment can register its own short aliases at runtime."""
+        local = dict(BEDROCK_MODEL_MAP)
+        local["haiku"] = "anthropic.claude-haiku-4-5-20251001-v1:0"
+        assert local.get("haiku") == "anthropic.claude-haiku-4-5-20251001-v1:0"
 
     def test_region_prefix_map_has_entries(self):
         """Region prefix map should have key regions."""

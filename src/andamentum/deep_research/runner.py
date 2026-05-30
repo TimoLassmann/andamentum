@@ -18,7 +18,7 @@ class DefaultResearchRunner:
 
     Usage::
 
-        runner = DefaultResearchRunner(model="bedrock:claude-haiku-4-5")
+        runner = DefaultResearchRunner(model="anthropic:claude-haiku-4-5")
         result = await runner.run("gap_analyzer", evidence="...", question="...")
     """
 

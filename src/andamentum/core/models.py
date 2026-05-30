@@ -2,7 +2,8 @@
 
 Handles model string prefixes:
 - ollama:model_name -> OllamaModel with OllamaProvider
-- bedrock:friendly_name -> BedrockConverseModel with regional inference profiles
+- bedrock:model_id -> BedrockConverseModel with regional inference profiles
+  (model_id is a Bedrock model ID, optionally aliased via BEDROCK_MODEL_MAP)
 - anything else -> passthrough (pydantic-ai resolves via infer_model)
 
 Environment variables:
@@ -20,18 +21,20 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Bedrock friendly-name -> model ID map
-BEDROCK_MODEL_MAP: dict[str, str] = {
-    "claude-haiku-3-5": "anthropic.claude-3-5-haiku-20241022-v1:0",
-    "claude-sonnet-3-5": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-    "claude-haiku-4-5": "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "claude-sonnet-4-5": "anthropic.claude-sonnet-4-5-20250514-v1:0",
-    "claude-opus-4-5": "anthropic.claude-opus-4-5-20250514-v1:0",
-    "qwen3-32b": "qwen.qwen3-32b-v1:0",
-    "mistral-7b": "mistral.mistral-7b-instruct-v0:2",
-    "ministral-8b": "mistral.ministral-8b-2410-v1:0",
-    "gemma-3-12b": "google.gemma-3-12b-it-v1:0",
-}
+# Optional Bedrock friendly-name → model-ID alias table.
+#
+# Empty by default: ``bedrock:<id>`` passes ``<id>`` straight through to
+# Bedrock (see ``BEDROCK_MODEL_MAP.get(friendly, friendly)`` below), so the
+# canonical usage is ``bedrock:anthropic.claude-haiku-4-5-20251001-v1:0``.
+#
+# The exact friendly→ID mappings are account- and region-specific (model
+# availability, provisioned-throughput ARNs, foundation-vs-inference-profile
+# IDs all vary by deployment), so they are NOT shipped. Populate this dict in
+# your own deployment if you want short aliases, e.g.::
+#
+#     from andamentum.core.models import BEDROCK_MODEL_MAP
+#     BEDROCK_MODEL_MAP["haiku"] = "anthropic.claude-haiku-4-5-20251001-v1:0"
+BEDROCK_MODEL_MAP: dict[str, str] = {}
 
 REGION_PREFIX_MAP: dict[str, str] = {
     "ap-southeast-2": "au",
@@ -46,7 +49,7 @@ def resolve_model(model: str) -> Any:
 
     Handles:
     - "ollama:llama3" -> OllamaModel with OllamaProvider
-    - "bedrock:claude-haiku-4-5" -> BedrockConverseModel
+    - "bedrock:anthropic.claude-haiku-4-5-20251001-v1:0" -> BedrockConverseModel
     - "openai:gpt-4o" -> passthrough string (pydantic-ai resolves)
     - "anthropic:claude-haiku-4-5" -> passthrough string
     """
