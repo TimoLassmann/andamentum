@@ -21,7 +21,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.typeset` — standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules for rendering
 - `andamentum.core` — shared model-resolution, `AgentRunner`, and embedding infrastructure (`core.embeddings`) used by all sub-modules
 
-Everything ships in one distribution. There are no optional extras — dependencies are the flat union of what the sub-modules need.
+Everything ships in one distribution. The default dependencies are the flat union of what the sub-modules need. Two optional extras add heavier, self-contained capabilities with graceful fallback when absent: `html-articles` (trafilatura, Apache-2.0 — falls back to docling) and `pdf` (WeasyPrint, BSD-3 — `typeset` raises a clear ImportError without it).
 
 ## Commands
 
@@ -31,8 +31,8 @@ Use `uv run` for everything Python-related (not plain `python`).
 # Install dev deps
 uv sync --extra dev
 
-# Run the full test suite (814 tests default, asyncio_mode=auto)
-# The `ollama` and `benchmark` markers are deselected by default.
+# Run the full test suite (asyncio_mode=auto; see the canonical green state below)
+# The `ollama`, `benchmark`, `cloud`, and `live_provider` markers are deselected by default.
 uv run pytest
 
 # Run the 200-query semantic routing benchmark (requires live Ollama)
@@ -58,7 +58,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 30 errors (pre-existing test-only typing noise — pydantic-graph generic variance in `test_topology.py`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code), `ruff check` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 2232 passing (2 skipped, 25 deselected)**. Don't claim completion until you've run these three and seen that state. (History: the count moved 2075 → 2152 across the whetstone-v3 consolidation — v2 deletion removed ~380 v2-only tests, v3 added ~460 — then release-prep hardening added the SSRF-redirect / typeset-escaping / size-cap / partial-coverage / panel-confidentiality regression tests to reach 2232.)
+The canonical green state: **pyright 30 errors (pre-existing test-only typing noise — pydantic-graph generic variance in `test_topology.py`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code), `ruff check` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 2234 passing (2 skipped, 25 deselected)**. Don't claim completion until you've run these three and seen that state. (History: the count moved 2075 → 2152 across the whetstone-v3 consolidation — v2 deletion removed ~380 v2-only tests, v3 added ~460 — then release-prep hardening added the SSRF-redirect / typeset-escaping / size-cap / partial-coverage / panel-confidentiality regression tests to reach 2234.)
 
 ## CLIs
 

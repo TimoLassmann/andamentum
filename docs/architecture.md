@@ -41,11 +41,13 @@ trusting the README.
   modified-manuscript output. The user can mark prose spans
   with the conventional `[ai-drafted]` / `[ai-edited]` inline
   markers that scribe surfaces and stamps as docx keywords.
-- **Audit log** (`core.audit_log`) — opt-in cloud-call paper trail.
-  Activates only when the caller passes an explicit log path
-  (no XDG default, no hidden home directory). Records timestamp ·
-  component · model · sha256(prompt) · size, one line per cloud
-  LLM call.
+- **Audit log** (`core.audit_log`) — an opt-in cloud-call paper-trail
+  *facility* (timestamp · component · model · sha256(prompt) · size,
+  one line per call; explicit log path only — no XDG default, no hidden
+  home directory). **Not yet wired into the pipelines**: the sub-module
+  LLM call sites don't invoke it automatically yet, so it is a building
+  block callers can use rather than an automatic guarantee. Full
+  coverage is planned — see `RESPONSIBLE_USE.md`.
 - **Cloud-vs-local awareness** (`core.cloud_gate`) — classifies a
   pydantic-ai model string as cloud / local / unknown. Unknown
   providers conservatively treated as cloud — over-warning is the
@@ -172,4 +174,4 @@ installed but is not described in this overview — see the
 
 Behaviour is locked for the `0.3.0` release. Test baseline: pyright 30
 errors (pre-existing test-only typing noise), ruff clean, pytest
-2232 passing.
+2234 passing.

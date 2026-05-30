@@ -29,7 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     parser.add_argument(
         "--max-iterations",

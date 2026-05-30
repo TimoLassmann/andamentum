@@ -9,7 +9,7 @@ Usage::
 
     from andamentum.epistemic.preflight import preflight
 
-    result = await preflight(model="bedrock:claude-haiku-4-5", providers=providers)
+    result = await preflight(model="anthropic:claude-haiku-4-5", providers=providers)
     if not result.ok:
         for c in result.checks:
             if c.status == "fail":

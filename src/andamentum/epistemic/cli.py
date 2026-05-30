@@ -35,7 +35,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     ask_parser.add_argument(
         "--embedding-model",
@@ -93,7 +93,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     verify_parser.add_argument(
         "--embedding-model",
@@ -147,7 +147,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     run_parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
@@ -163,7 +163,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pf_parser.add_argument(
         "--model",
         default=None,
-        help="LLM model (e.g. bedrock:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
+        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
     )
     pf_parser.add_argument(
         "--providers", default=None, help="Provider set: 'biomedical' or omit for none"
