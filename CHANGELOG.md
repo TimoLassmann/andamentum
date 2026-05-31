@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — 2026-05-26
+## 0.3.0 — 2026-05-31
 
 First stable release. Headline change is the whetstone v3 consolidation:
 v2's lens-based section-by-section pipeline is gone; v3's criterion-
@@ -87,19 +87,18 @@ follow-up polish and release-prep work since `0.3.0rc3`.
     explicit upper bound (e.g. `pydantic>=2,<3`, `docling<3`,
     `matplotlib<4`, `sqlite-vec<0.2`) so a future major bump can't
     silently break the install.
-  - **License hygiene.** `trafilatura` (GPL-3.0) moved from the
-    default `dependencies` to a `[project.optional-dependencies]`
-    extra (`pip install andamentum[html-articles]`); the default
-    install is now MIT-clean. The harvest backend falls back to
-    `docling` automatically when trafilatura isn't installed.
+  - **Dependency surface.** `trafilatura` (Apache-2.0,
+    MIT-compatible) is an optional extra
+    (`pip install andamentum[html-articles]`) to keep the default
+    install lean — the harvest backend falls back to `docling`
+    automatically when it isn't present.
   - **PyPI metadata.** `[project.urls]` block added (Homepage,
     Repository, Documentation, Changelog, Issues) so PyPI's package
     page links back to the source.
-  - **Plans + smoke files relocated.** 16 internal design docs
-    moved from `docs/plans/` to `docs/.internal/plans/`. Smoke-run
-    review outputs at the repo root moved to `docs/results/smoke/`.
-    Both directories carry a README labelling them maintainer-only
-    so first-time users don't mistake them for documentation.
+  - **Internal-only material kept out of the published package.**
+    Internal design docs / PRDs / plans are gitignored and not
+    tracked; smoke-run review outputs are not shipped. The
+    published tree carries only user-facing docs and examples.
   - `andamentum-epistemic` prints an explicit `⚠ EXPERIMENTAL`
     banner to stderr on every invocation. The module ships
     installed and is callable, but output shape / agent names /
@@ -132,9 +131,9 @@ follow-up polish and release-prep work since `0.3.0rc3`.
       Exit 0 if any marker present, 2 if readable but clean, 1
       on read error.
   - **CI workflow.** `.github/workflows/test.yml` runs pytest,
-    ruff check, ruff format check, and pyright (non-blocking on
-    the 23 pre-existing test-only typing errors) across
-    Python 3.10 / 3.11 / 3.12 / 3.13 on Linux and macOS.
+    ruff check, ruff format check, pyright (non-blocking on the
+    pre-existing test-only typing errors), and an examples smoke
+    job across Python 3.11 / 3.12 / 3.13 on Linux and macOS.
     `uv sync --locked` refuses silent lock drift. A weekly
     cron run picks up supply-chain rot in dependencies.
 
@@ -147,6 +146,47 @@ follow-up polish and release-prep work since `0.3.0rc3`.
   - `<your-github-handle>` placeholder in `CITATION.cff` and the
     `harvest` / `deep_research` User-Agent string replaced with
     `TimoLassmann`.
+
+### Release hardening (pre-release audit)
+
+A comprehensive pre-release audit drove a final hardening pass:
+
+  - **SSRF: redirect re-validation + size cap.** `is_safe_url`
+    validated only the initial URL while httpx followed 3xx hops
+    unchecked — a public URL that redirected to a private /
+    cloud-metadata address defeated the whole defence. The new
+    `core.url_safety.fetch_with_safe_redirects` re-validates every
+    hop and streams the body under a size cap (`ResponseTooLarge`).
+    Wired into `harvest`, `deep_research`, and `vision_critique`
+    (which previously did no SSRF check at all). `url_safety` moved
+    `harvest` → `core` so all three can share it without a layering
+    breach.
+  - **HTML/attribute escaping in `typeset`.** Plain-text and
+    attribute fields (subtitle, labels, badges, sidebar values,
+    `href`s) are now HTML-escaped and link schemes validated —
+    previously an injection vector for LLM- or web-derived content
+    rendered into a report.
+  - **Honest failure modes.** whetstone surfaces `failed_criteria`
+    instead of silently dropping a crashed criterion; the novelty
+    checker returns `is_novel=None` (undetermined) on search failure
+    rather than a misleading "novel"; document-store migrations log
+    rather than swallow; the AI-provenance watermark logs on failure.
+  - **`find_by_metadata`** validates caller field names before
+    interpolating them into a SQLite JSON path.
+  - **Packaging.** `requires-python` raised to `>=3.11` (the floor
+    actually imported); the wheel excludes tests; the sdist ships
+    `docs/` + `RESPONSIBLE_USE.md` + `CHANGELOG.md` and excludes
+    internal material; Trove classifiers + keywords added; `py.typed`
+    completed across all sub-packages; an optional `pdf` extra
+    (WeasyPrint) for typeset PDF output; `--version` on every CLI.
+  - **Bedrock model-id map** reduced to an empty stub — the exact
+    friendly→ID mappings are account/region-specific local config,
+    not shipped surface.
+  - **Privacy.** Smoke-run artifacts that embedded an unpublished
+    collaborator manuscript, and internal planning docs, were removed
+    from the working tree *and* purged from git history.
+  - Repo-wide `ruff format`; README reframed to a neutral toolkit
+    positioning.
 
 ## 0.3.0rc3 — 2026-05-13
 
