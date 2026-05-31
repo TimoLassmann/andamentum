@@ -1,22 +1,26 @@
 # andamentum
 
-Composable research tooling for scientific work.
+A toolkit of small, composable, locally-runnable research tools.
 
-Andamentum is a single Python package of tightly-scoped sub-modules. Each module
-does one thing well; together they cover the document-handling pipeline a
-researcher uses end-to-end — from extracting a PDF to drafting a paper to
-critiquing the result.
+Andamentum is a single Python package of tightly-scoped, independent tools for
+working with documents and sources — extracting them, organising and searching
+them, rendering figures from data, and reviewing your own drafts. Each tool does
+one thing and stands on its own; there is no orchestrator and no "main" entry
+point. Some are backed by a language model; several use none at all. Reach for
+one, or compose several.
 
-The package is built with two design commitments that distinguish it from
-generic AI tooling:
+Two commitments shape the whole package:
 
 - **Responsible by construction.** Confidentiality tripwires, robots.txt and
-  paywalled-publisher gating, AI-provenance watermarks, and explicit local-vs-
-  cloud awareness — implemented as in-code refusals and stamps, not markdown
-  disclaimers. See [`RESPONSIBLE_USE.md`](./RESPONSIBLE_USE.md).
-- **No hidden defaults.** Every public function that calls an LLM takes
-  `model=` as a keyword-only argument. There is no shared config module, no
-  ambient defaults, no env-var-driven behaviour selection.
+  paywalled-publisher gating, SSRF-safe fetching, and AI-provenance watermarks —
+  in-code refusals and stamps, not markdown disclaimers. See
+  [`RESPONSIBLE_USE.md`](./RESPONSIBLE_USE.md).
+- **Explicit control, used sparingly.** Every public function that calls a
+  language model takes `model=` as a keyword-only argument — no shared config,
+  no ambient defaults — and models are used surgically: figure rendering,
+  readability scoring, and chunk segmentation are deterministic, not
+  model-driven. Point any of it at local (Ollama) models to run fully offline
+  when data can't leave your machine.
 
 ## What's in the package
 
@@ -47,6 +51,13 @@ generic AI tooling:
 **Shared infrastructure**
 - `andamentum.core` — model resolution, agent runners, fetch gating, and
   embedding clients
+
+## What andamentum is not
+
+It is a set of building blocks you call from your own code or the command line —
+not a chatbot, not an agent framework, and not a hosted service. whetstone, in
+particular, refuses to run on material another author has shared with you in
+confidence.
 
 ## Installation
 
