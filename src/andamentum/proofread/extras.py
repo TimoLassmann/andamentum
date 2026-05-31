@@ -20,9 +20,7 @@ _DUPLICATE_ALLOWLIST = {"had", "that"}
 _DUPLICATE_PATTERN = re.compile(r"\b(\w+)\b\s+\b\1\b", re.IGNORECASE)
 
 
-def scan_duplicates(
-    text: str, sentences: list[Sentence]
-) -> list[DuplicateWordFinding]:
+def scan_duplicates(text: str, sentences: list[Sentence]) -> list[DuplicateWordFinding]:
     """Find adjacent identical word pairs ("the the"). Allowlisted idioms
     like "had had" / "that that" are skipped."""
     findings: list[DuplicateWordFinding] = []
@@ -44,11 +42,37 @@ def scan_duplicates(
 # recall for precision — the goal is to avoid embarrassing false positives,
 # not to be exhaustive.
 _NON_ADVERB_LY = {
-    "only", "family", "ugly", "supply", "reply", "apply", "ally", "rally",
-    "rely", "july", "italy", "holy", "silly", "homely", "lonely", "lovely",
-    "lowly", "manly", "wily", "worldly", "ghastly", "early", "fly",
-    "imply", "comply", "multiply", "butterfly", "monopoly", "ply",
-    "assembly", "anomaly",
+    "only",
+    "family",
+    "ugly",
+    "supply",
+    "reply",
+    "apply",
+    "ally",
+    "rally",
+    "rely",
+    "july",
+    "italy",
+    "holy",
+    "silly",
+    "homely",
+    "lonely",
+    "lovely",
+    "lowly",
+    "manly",
+    "wily",
+    "worldly",
+    "ghastly",
+    "early",
+    "fly",
+    "imply",
+    "comply",
+    "multiply",
+    "butterfly",
+    "monopoly",
+    "ply",
+    "assembly",
+    "anomaly",
 }
 
 _WORD_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z'-]*\b")

@@ -60,12 +60,16 @@ class ValidationResult:
         return cls(ValidationStatus.VALID, message)
 
     @classmethod
-    def invalid(cls, message: str, details: Optional[dict] = None) -> "ValidationResult":
+    def invalid(
+        cls, message: str, details: Optional[dict] = None
+    ) -> "ValidationResult":
         """Create an invalid result."""
         return cls(ValidationStatus.INVALID, message, details)
 
     @classmethod
-    def warning(cls, message: str, details: Optional[dict] = None) -> "ValidationResult":
+    def warning(
+        cls, message: str, details: Optional[dict] = None
+    ) -> "ValidationResult":
         """Create a warning result."""
         return cls(ValidationStatus.WARNING, message, details)
 
@@ -100,7 +104,9 @@ class LocationResult:
         return self.status == LocationStatus.AMBIGUOUS
 
     @classmethod
-    def found_at(cls, index: int, confidence: float = 1.0, message: str = "") -> "LocationResult":
+    def found_at(
+        cls, index: int, confidence: float = 1.0, message: str = ""
+    ) -> "LocationResult":
         """Create a successful location result."""
         return cls(LocationStatus.FOUND, index, confidence, message)
 
@@ -110,7 +116,9 @@ class LocationResult:
         return cls(LocationStatus.NOT_FOUND, None, 0.0, message)
 
     @classmethod
-    def ambiguous(cls, alternatives: List[int], message: str = "Multiple matches found") -> "LocationResult":
+    def ambiguous(
+        cls, alternatives: List[int], message: str = "Multiple matches found"
+    ) -> "LocationResult":
         """Create an ambiguous result."""
         return cls(LocationStatus.AMBIGUOUS, None, 0.0, message, alternatives)
 

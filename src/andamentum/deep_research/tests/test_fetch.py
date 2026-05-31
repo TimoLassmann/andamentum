@@ -84,9 +84,7 @@ async def test_run_fetch_preserves_agent_title_when_present():
 @pytest.mark.asyncio
 async def test_run_fetch_falls_back_to_url_when_no_title_anywhere():
     """No agent title, no markdown heading → url is used as title."""
-    agent_output = FetchSummary(
-        url="", title="", summary="s", key_points=["k"]
-    )
+    agent_output = FetchSummary(url="", title="", summary="s", key_points=["k"])
 
     async def fake_extract(_url: str) -> str:
         return "Just a paragraph, no heading."

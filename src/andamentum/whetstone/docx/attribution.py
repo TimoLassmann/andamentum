@@ -72,7 +72,9 @@ class ChangeAttributionTracker:
         """Initialize attributions from initial text."""
         tokens = TokenProcessor.tokenize(text)
         self.attributions = [
-            TokenAttribution(token=token, author=author, change_type=ChangeType.UNCHANGED, position=i)
+            TokenAttribution(
+                token=token, author=author, change_type=ChangeType.UNCHANGED, position=i
+            )
             for i, token in enumerate(tokens)
         ]
 
@@ -98,7 +100,9 @@ class ChangeAttributionTracker:
         self.change_history.append(change_record)
 
         # Generate new attributions with unified patch attribution
-        new_attributions = self._generate_unified_patch_attributions(original_tokens, new_tokens, author)
+        new_attributions = self._generate_unified_patch_attributions(
+            original_tokens, new_tokens, author
+        )
 
         self.attributions = new_attributions
 
@@ -120,7 +124,9 @@ class ChangeAttributionTracker:
         original_idx = 0
 
         # Use difflib to find the optimal sequence of operations
-        for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, original_tokens, new_tokens).get_opcodes():
+        for op, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, original_tokens, new_tokens
+        ).get_opcodes():
             if op == "equal":
                 # Unchanged tokens - preserve original attributions
                 for k in range(i1, i2):
@@ -138,7 +144,9 @@ class ChangeAttributionTracker:
                     else:
                         # New unchanged token - attribute to current author if this is an agent edit
                         # This handles cases where the document has grown
-                        token_author = author if "Specialist" in author else self.initial_author
+                        token_author = (
+                            author if "Specialist" in author else self.initial_author
+                        )
                         new_attributions.append(
                             TokenAttribution(
                                 token=original_tokens[k],
@@ -205,7 +213,9 @@ class ChangeAttributionTracker:
         original_idx = 0
 
         # Use difflib to find the optimal sequence of operations
-        for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, original_tokens, new_tokens).get_opcodes():
+        for op, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, original_tokens, new_tokens
+        ).get_opcodes():
             if op == "equal":
                 # Unchanged tokens - preserve original attributions
                 for k in range(i1, i2):
@@ -282,7 +292,9 @@ class ChangeAttributionTracker:
             return self.attributions[token_index]
         return None
 
-    def get_attribution_for_diff_operation(self, original_tokens: List[str], new_tokens: List[str]) -> Dict[int, str]:
+    def get_attribution_for_diff_operation(
+        self, original_tokens: List[str], new_tokens: List[str]
+    ) -> Dict[int, str]:
         """
         Get author attribution for each diff operation during track changes creation.
 
@@ -355,7 +367,12 @@ class ChangeAttributionTracker:
 
         for attr in self.attributions:
             if attr.author not in summary:
-                summary[attr.author] = {"tokens": 0, "insertions": 0, "unchanged": 0, "total_chars": 0}
+                summary[attr.author] = {
+                    "tokens": 0,
+                    "insertions": 0,
+                    "unchanged": 0,
+                    "total_chars": 0,
+                }
 
             summary[attr.author]["tokens"] += 1
             summary[attr.author]["total_chars"] += len(attr.token)
@@ -396,7 +413,9 @@ class ChangeAttributionTracker:
         # Group by author
         summary = self.get_attribution_summary()
         for author, stats in summary.items():
-            lines.append(f"  {author}: {stats['tokens']} tokens, {stats['insertions']} insertions")
+            lines.append(
+                f"  {author}: {stats['tokens']} tokens, {stats['insertions']} insertions"
+            )
 
         # Show first few tokens with attribution
         lines.append("\nFirst 10 tokens:")

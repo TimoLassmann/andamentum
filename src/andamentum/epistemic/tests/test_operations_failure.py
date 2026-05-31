@@ -1001,9 +1001,7 @@ class TestInvestigateClaimFailure:
         await repo.save(claim)
 
         runner = FakeAgentRunner()
-        op = InvestigateClaimOperation(
-            repo, runner, providers={"stub": object()}
-        )
+        op = InvestigateClaimOperation(repo, runner, providers={"stub": object()})
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",

@@ -116,8 +116,7 @@ async def test_soft_promote_routes_to_promote_to_supported(
         f"Expected one soft_promote call, got {len(soft_calls)}: {soft_calls}"
     )
     assert soft_calls[0]["success"], (
-        f"Soft promote should have succeeded with directional evidence: "
-        f"{soft_calls[0]}"
+        f"Soft promote should have succeeded with directional evidence: {soft_calls[0]}"
     )
 
     # 2. The routing fix: AbandonOrDemote returned PromoteToSupported,
@@ -214,9 +213,7 @@ async def test_mixed_pass_and_abandon_routes_to_promote_to_supported(
 
     # The abandonable claim was handled.
     abandon_calls = [
-        op
-        for op in state.operations_log
-        if op["operation"] == "abandon_stale_claim"
+        op for op in state.operations_log if op["operation"] == "abandon_stale_claim"
     ]
     assert len(abandon_calls) == 1
 
@@ -298,9 +295,7 @@ async def test_refute_promote_still_skips_verification(
     assert claim.entity_id in state.verification_done
 
     # And no soft-promote got triggered (claim was handled by refute).
-    assert not any(
-        op["operation"] == "soft_promote" for op in state.operations_log
-    )
+    assert not any(op["operation"] == "soft_promote" for op in state.operations_log)
 
     # Routing: AbandonOrDemote always routes to PromoteToSupported by
     # default now (it's idempotent — for a refute-promoted claim with

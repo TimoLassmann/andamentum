@@ -23,7 +23,11 @@ ARTICLE_DOC = [
     {
         "kind": "heading",
         "content": "What does the published literature say about metformin and cardiovascular mortality in type 2 diabetes?",
-        "meta": {"date": "2026-04-15", "model": "gemma4:26b", "project": "metformin_smoke_test"},
+        "meta": {
+            "date": "2026-04-15",
+            "model": "gemma4:26b",
+            "project": "metformin_smoke_test",
+        },
     },
     {
         "kind": "callout",
@@ -32,10 +36,19 @@ ARTICLE_DOC = [
     {
         "kind": "items",
         "entries": [
-            {"label": "What was studied?", "body": "Metformin's effect on cardiovascular mortality in type 2 diabetes."},
-            {"label": "What did we find?", "body": "Mixed evidence — reduced mortality in some populations, no significant effect on MACE in others. 1 challenged by counter-evidence."},
+            {
+                "label": "What was studied?",
+                "body": "Metformin's effect on cardiovascular mortality in type 2 diabetes.",
+            },
+            {
+                "label": "What did we find?",
+                "body": "Mixed evidence — reduced mortality in some populations, no significant effect on MACE in others. 1 challenged by counter-evidence.",
+            },
             {"label": "How confident?", "body": "High (0.88). Posterior P(Y) = 0.0474"},
-            {"label": "How thorough?", "body": "37 evidence sources examined, 4/6 verification checks passed."},
+            {
+                "label": "How thorough?",
+                "body": "37 evidence sources examined, 4/6 verification checks passed.",
+            },
         ],
     },
     {
@@ -46,7 +59,7 @@ ARTICLE_DOC = [
             "cardiovascular mortality in type 2 diabetes?*\n\n"
             "**Evidence Sources:** 15 | **Claims Established:** 0 of 2\n\n"
             "The literature provides conflicting evidence regarding metformin's impact on "
-            "cardiovascular mortality.<aside class=\"typeset-margin-note\">"
+            'cardiovascular mortality.<aside class="typeset-margin-note">'
             "Heterogeneity here is the load-bearing observation, not the average effect."
             "</aside> Some meta-analyses and large-scale observational studies "
             "suggest that metformin reduces both all-cause and cardiovascular mortality, "
@@ -108,7 +121,11 @@ ARTICLE_DOC = [
     {
         "kind": "aside",
         "groups": {
-            "Investigation": {"Evidence items": "37", "Claims": "2", "Uncertainties": "9"},
+            "Investigation": {
+                "Evidence items": "37",
+                "Claims": "2",
+                "Uncertainties": "9",
+            },
             "Confidence": {"Score": "0.88 HIGH", "Posterior P(Y)": "0.047"},
             "Model": {"LLM": "gemma4:26b", "Embeddings": "embeddinggemma"},
         },
@@ -130,9 +147,18 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2006", "body": "*PhD, Computational Biology*\nNorthern University"},
-            {"label": "2001", "body": "*MSc, Applied Mathematics*\nCentral State University"},
-            {"label": "1999", "body": "*BSc (Hons), Biochemistry*\nCentral State University"},
+            {
+                "label": "2006",
+                "body": "*PhD, Computational Biology*\nNorthern University",
+            },
+            {
+                "label": "2001",
+                "body": "*MSc, Applied Mathematics*\nCentral State University",
+            },
+            {
+                "label": "1999",
+                "body": "*BSc (Hons), Biochemistry*\nCentral State University",
+            },
         ],
     },
     {"kind": "prose", "heading": "Positions", "content": ""},
@@ -140,19 +166,62 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2019\u2013present", "body": "**Head, Computational Biology**\nExample Research Institute"},
-            {"label": "2014\u20132019", "body": "**Senior Research Fellow**\nExample Research Institute"},
-            {"label": "2009\u20132014", "body": "**Research Scientist**\nInternational Genomics Centre"},
-            {"label": "2006\u20132009", "body": "**Postdoctoral Fellow**\nNorthern University"},
+            {
+                "label": "2019\u2013present",
+                "body": "**Head, Computational Biology**\nExample Research Institute",
+            },
+            {
+                "label": "2014\u20132019",
+                "body": "**Senior Research Fellow**\nExample Research Institute",
+            },
+            {
+                "label": "2009\u20132014",
+                "body": "**Research Scientist**\nInternational Genomics Centre",
+            },
+            {
+                "label": "2006\u20132009",
+                "body": "**Postdoctoral Fellow**\nNorthern University",
+            },
         ],
     },
     {"kind": "prose", "heading": "Selected Publications", "content": ""},
-    {"kind": "reference", "number": 85, "group": "2025", "content": "**Morgan A**, et al. A composable framework for agentic reasoning. *Example Journal* (in preparation)."},
-    {"kind": "reference", "number": 84, "group": "2025", "content": "Smith J, **Morgan A**. Epistemic verification of biomedical claims. *Example Bioinformatics* **41**(2), 234\u2013241."},
-    {"kind": "reference", "number": 83, "group": "2024", "content": "**Morgan A**, Jones A. Evolutionary search for antibody optimization. *Example Computational Biology* **20**(5), e1012345."},
-    {"kind": "reference", "number": 82, "group": "2024", "content": "Chen L, **Morgan A**, et al. Single-cell multi-omics reveals immune dysregulation. *Example Cell Reports* **43**(3), 113987."},
-    {"kind": "reference", "number": 81, "group": "2023", "content": "**Morgan A**. Multiple sequence alignment of large datasets. *Example Bioinformatics* **36**(6), 1928\u20131929.", "badge": "cited 340"},
-    {"kind": "reference", "number": 80, "group": "2023", "content": "Park S, **Morgan A**, et al. Promoter-level transcription atlas of the developing brain. *Example Science* **370**(6520), eabc5765."},
+    {
+        "kind": "reference",
+        "number": 85,
+        "group": "2025",
+        "content": "**Morgan A**, et al. A composable framework for agentic reasoning. *Example Journal* (in preparation).",
+    },
+    {
+        "kind": "reference",
+        "number": 84,
+        "group": "2025",
+        "content": "Smith J, **Morgan A**. Epistemic verification of biomedical claims. *Example Bioinformatics* **41**(2), 234\u2013241.",
+    },
+    {
+        "kind": "reference",
+        "number": 83,
+        "group": "2024",
+        "content": "**Morgan A**, Jones A. Evolutionary search for antibody optimization. *Example Computational Biology* **20**(5), e1012345.",
+    },
+    {
+        "kind": "reference",
+        "number": 82,
+        "group": "2024",
+        "content": "Chen L, **Morgan A**, et al. Single-cell multi-omics reveals immune dysregulation. *Example Cell Reports* **43**(3), 113987.",
+    },
+    {
+        "kind": "reference",
+        "number": 81,
+        "group": "2023",
+        "content": "**Morgan A**. Multiple sequence alignment of large datasets. *Example Bioinformatics* **36**(6), 1928\u20131929.",
+        "badge": "cited 340",
+    },
+    {
+        "kind": "reference",
+        "number": 80,
+        "group": "2023",
+        "content": "Park S, **Morgan A**, et al. Promoter-level transcription atlas of the developing brain. *Example Science* **370**(6520), eabc5765.",
+    },
     {
         "kind": "prose",
         "heading": "Grants",
@@ -170,9 +239,18 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2022\u2013present", "body": "**Dr. Jane Chen** (Postdoc) Single-cell multi-omics in rare disease"},
-            {"label": "2021\u20132024", "body": "**Alex Kumar** (PhD) Machine learning for variant pathogenicity prediction"},
-            {"label": "2020\u20132023", "body": "**Sarah Park** (PhD) Promoter-level transcription in neurodevelopment"},
+            {
+                "label": "2022\u2013present",
+                "body": "**Dr. Jane Chen** (Postdoc) Single-cell multi-omics in rare disease",
+            },
+            {
+                "label": "2021\u20132024",
+                "body": "**Alex Kumar** (PhD) Machine learning for variant pathogenicity prediction",
+            },
+            {
+                "label": "2020\u20132023",
+                "body": "**Sarah Park** (PhD) Promoter-level transcription in neurodevelopment",
+            },
         ],
     },
     {"kind": "prose", "heading": "Teaching", "content": ""},
@@ -180,10 +258,22 @@ CV_DOC = [
         "kind": "items",
         "variant": "left",
         "entries": [
-            {"label": "2024", "body": "Deep Learning in Genomics. International Bioinformatics Conference."},
-            {"label": "2023", "body": "Introduction to Bioinformatics. Central State University."},
-            {"label": "2022", "body": "Computational Biology Workshop. Example Research Institute."},
-            {"label": "2021", "body": "Advanced Sequence Analysis. Biomedical Summer School."},
+            {
+                "label": "2024",
+                "body": "Deep Learning in Genomics. International Bioinformatics Conference.",
+            },
+            {
+                "label": "2023",
+                "body": "Introduction to Bioinformatics. Central State University.",
+            },
+            {
+                "label": "2022",
+                "body": "Computational Biology Workshop. Example Research Institute.",
+            },
+            {
+                "label": "2021",
+                "body": "Advanced Sequence Analysis. Biomedical Summer School.",
+            },
         ],
     },
     {"kind": "prose", "heading": "Awards", "content": ""},
@@ -191,9 +281,18 @@ CV_DOC = [
         "kind": "items",
         "variant": "right",
         "entries": [
-            {"label": "2023", "body": "Regional Science Award \u2014 Early Career Scientist"},
-            {"label": "2020", "body": "Example Research Institute Director's Prize for Research Excellence"},
-            {"label": "2006", "body": "Best PhD Thesis, Northern University Faculty of Science"},
+            {
+                "label": "2023",
+                "body": "Regional Science Award \u2014 Early Career Scientist",
+            },
+            {
+                "label": "2020",
+                "body": "Example Research Institute Director's Prize for Research Excellence",
+            },
+            {
+                "label": "2006",
+                "body": "Best PhD Thesis, Northern University Faculty of Science",
+            },
         ],
     },
     {
@@ -225,9 +324,18 @@ REPORT_DOC = [
     {
         "kind": "items",
         "entries": [
-            {"label": "Objective", "body": "Replace keyword-based provider selection with semantic similarity routing using embedding cosine distance."},
-            {"label": "Method", "body": "200 labeled research queries across 7 biomedical and general-academic evidence providers, evaluated with top-1/top-3/MRR metrics."},
-            {"label": "Result", "body": "97.5% top-3 recall, 84.5% permissive top-1, MRR 0.820."},
+            {
+                "label": "Objective",
+                "body": "Replace keyword-based provider selection with semantic similarity routing using embedding cosine distance.",
+            },
+            {
+                "label": "Method",
+                "body": "200 labeled research queries across 7 biomedical and general-academic evidence providers, evaluated with top-1/top-3/MRR metrics.",
+            },
+            {
+                "label": "Result",
+                "body": "97.5% top-3 recall, 84.5% permissive top-1, MRR 0.820.",
+            },
         ],
     },
     {
@@ -298,8 +406,16 @@ REPORT_DOC = [
         "kind": "aside",
         "groups": {
             "Benchmark": {"Queries": "200", "Providers": "7", "Runs": "4"},
-            "Metrics": {"Top-3 recall": "97.5%", "Top-1 permissive": "84.5%", "MRR": "0.820"},
-            "Config": {"Embedding model": "embeddinggemma:latest", "min_score": "0.15", "top_k": "3"},
+            "Metrics": {
+                "Top-3 recall": "97.5%",
+                "Top-1 permissive": "84.5%",
+                "MRR": "0.820",
+            },
+            "Config": {
+                "Embedding model": "embeddinggemma:latest",
+                "min_score": "0.15",
+                "top_k": "3",
+            },
         },
     },
 ]

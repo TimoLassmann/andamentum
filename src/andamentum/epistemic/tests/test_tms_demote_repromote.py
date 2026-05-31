@@ -49,9 +49,7 @@ async def _setup_repo(tmp_path: Path, name: str) -> EpistemicRepository:
 
 
 class TestNoOpCascadeFastPath:
-    async def test_orphan_invalidated_evidence_skips_op(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_orphan_invalidated_evidence_skips_op(self, tmp_path: Path) -> None:
         """An invalidated evidence with no claim references and no
         derived dependencies should NOT trigger
         InvalidateEvidenceOperation — just flip
@@ -88,15 +86,15 @@ class TestNoOpCascadeFastPath:
         # No InvalidateEvidenceOperation calls should appear in
         # operations_log — the fast-path bypassed _run_op.
         invalidate_ops = [
-            op for op in state.operations_log if op["operation"] == "invalidate_evidence"
+            op
+            for op in state.operations_log
+            if op["operation"] == "invalidate_evidence"
         ]
         assert invalidate_ops == [], (
             f"Expected 0 invalidate_evidence ops, got {len(invalidate_ops)}"
         )
 
-    async def test_referenced_evidence_still_uses_op(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_referenced_evidence_still_uses_op(self, tmp_path: Path) -> None:
         """Sanity: when an invalidated evidence IS referenced by a claim,
         the op DOES fire (because there's real cascade work to do —
         removing it from the claim's evidence_ids)."""
@@ -133,7 +131,9 @@ class TestNoOpCascadeFastPath:
 
         # The op DID run (real cascade work needed).
         invalidate_ops = [
-            op for op in state.operations_log if op["operation"] == "invalidate_evidence"
+            op
+            for op in state.operations_log
+            if op["operation"] == "invalidate_evidence"
         ]
         assert len(invalidate_ops) == 1
         # And the claim's evidence_ids was properly cleaned.
@@ -184,7 +184,9 @@ class TestNoOpCascadeFastPath:
         await _run_tms_sweep(deps, state)
 
         invalidate_ops = [
-            op for op in state.operations_log if op["operation"] == "invalidate_evidence"
+            op
+            for op in state.operations_log
+            if op["operation"] == "invalidate_evidence"
         ]
         # Only 1 op (for the referenced evidence). Pre-fix: 4 ops.
         assert len(invalidate_ops) == 1
@@ -194,9 +196,7 @@ class TestNoOpCascadeFastPath:
 
 
 class TestDemoteAddsToRescrutiny:
-    async def test_demote_adds_claim_to_rescrutiny_set(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_demote_adds_claim_to_rescrutiny_set(self, tmp_path: Path) -> None:
         """When TMS demotes a claim, it must also be added to
         ``state.claims_needing_rescrutiny`` so ResolveUncertainties
         routes back to Scrutinize before another promotion attempt."""

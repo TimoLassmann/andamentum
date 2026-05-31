@@ -101,17 +101,13 @@ class TestA2GateSemantics:
         """Mixed terminal verdicts (some CONVERGENT, some DIVERGENT,
         some SINGLE_DOMAIN) — all the convergence track did its job, at
         least one is positive: A2 fires."""
-        assert (
-            _gate_fires(["CONVERGENT", "DIVERGENT", "SINGLE_DOMAIN"]) is True
-        )
+        assert _gate_fires(["CONVERGENT", "DIVERGENT", "SINGLE_DOMAIN"]) is True
 
     def test_all_terminal_but_none_convergent_does_not_fire(self) -> None:
         """All claims got a verdict, but none is CONVERGENT. A2 should
         NOT fire — there's no positive convergence signal to terminate
         on."""
-        assert (
-            _gate_fires(["DIVERGENT", "DIVERGENT", "SINGLE_DOMAIN"]) is False
-        )
+        assert _gate_fires(["DIVERGENT", "DIVERGENT", "SINGLE_DOMAIN"]) is False
 
     def test_one_convergent_one_unchecked_does_not_fire(self) -> None:
         """Two-claim case where one converges and one is still mid-

@@ -247,9 +247,7 @@ class ExtractEvidenceOperation(BaseOperation):
                 if evidence.extracted_content
                 else None
             )
-            identifiers = extract_identifiers(
-                evidence.source_ref, content_window
-            )
+            identifiers = extract_identifiers(evidence.source_ref, content_window)
             qs = await self.quality_scorer.score(
                 identifiers, evidence.source_ref, evidence.source_type
             )

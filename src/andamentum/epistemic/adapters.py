@@ -226,7 +226,9 @@ class ClassifyPredictionResult:
     specificity: float = 0.0
     success_criteria: str = ""
     failure_criteria: str = ""
-    time_horizon: str = "indefinite"  # Literal[5 values] — see output_models.TimeHorizon
+    time_horizon: str = (
+        "indefinite"  # Literal[5 values] — see output_models.TimeHorizon
+    )
     justification: str = ""
 
 

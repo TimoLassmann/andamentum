@@ -197,9 +197,7 @@ class TestLiveArxiv:
         results = await provider.gather("attention mechanism neural networks")
         assert results, "arXiv returned nothing"
         for r in results:
-            _assert_real_evidence(
-                r, "attention mechanism neural networks", "arxiv"
-            )
+            _assert_real_evidence(r, "attention mechanism neural networks", "arxiv")
             assert r.source_ref.startswith("arXiv:"), (
                 f"arXiv source_ref unexpected shape: {r.source_ref!r}"
             )
@@ -256,7 +254,9 @@ class TestLiveClinicalTrials:
 
         provider = ClinicalTrialsProvider(max_results=3)
         results = await provider.gather("xyzzy_definitely_no_results_zzzqq_12345")
-        assert results == [], "ClinicalTrials.gov should return [] for a no-result query"
+        assert results == [], (
+            "ClinicalTrials.gov should return [] for a no-result query"
+        )
 
 
 @pytest.mark.live_provider
@@ -321,7 +321,12 @@ class TestLiveMonarch:
 class _MockResponse:
     """Minimal httpx.Response stand-in for our test transport."""
 
-    def __init__(self, status_code: int = 200, json_data: dict | None = None, text_data: str | None = None):
+    def __init__(
+        self,
+        status_code: int = 200,
+        json_data: dict | None = None,
+        text_data: str | None = None,
+    ):
         self.status_code = status_code
         self._json_data = json_data or {}
         self.text = text_data or ""
@@ -453,9 +458,7 @@ class TestProvidersReturnEmptyOnNoResults:
         results = await provider.gather("any query")
         assert results == []
 
-    async def test_clinicaltrials_empty_search_returns_empty(
-        self, monkeypatch
-    ) -> None:
+    async def test_clinicaltrials_empty_search_returns_empty(self, monkeypatch) -> None:
         from ..providers import clinicaltrials
         import httpx as _httpx
 

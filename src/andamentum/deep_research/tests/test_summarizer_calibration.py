@@ -370,12 +370,8 @@ async def test_summarizer_calibration_against_synthetic_corpus():
     # ── Soft assertions ───────────────────────────────────────────────
     failures: list[str] = []
     if overall_acc < 75:
-        failures.append(
-            f"overall accuracy {overall_acc:.0f}% < 75% threshold"
-        )
+        failures.append(f"overall accuracy {overall_acc:.0f}% < 75% threshold")
     for band, s in by_band.items():
         if s.n >= 2 and s.correct / s.n < 0.5:
-            failures.append(
-                f"{band}-band accuracy {s.correct}/{s.n} < 50%"
-            )
+            failures.append(f"{band}-band accuracy {s.correct}/{s.n} < 50%")
     assert not failures, "Calibration regressions:\n  " + "\n  ".join(failures)

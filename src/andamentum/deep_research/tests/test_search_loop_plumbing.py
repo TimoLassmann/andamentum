@@ -56,9 +56,7 @@ class StubAgent:
 
     async def run(self, prompt, **kwargs):
         if not self._outputs:
-            raise AssertionError(
-                f"StubAgent exhausted; received call: {prompt[:80]!r}"
-            )
+            raise AssertionError(f"StubAgent exhausted; received call: {prompt[:80]!r}")
         self.calls.append(prompt)
         return _StubResult(self._outputs.pop(0))
 
@@ -83,9 +81,7 @@ class StubBackend:
         ]
 
     async def fetch_page(self, url: str):
-        raise AssertionError(
-            "fetch_page should not be called in plumbing tests"
-        )
+        raise AssertionError("fetch_page should not be called in plumbing tests")
 
 
 def _make_ctx(
@@ -308,9 +304,7 @@ async def test_feedback_threaded_to_generator_on_retry():
             ),
             "topic_verifier": StubAgent(
                 [
-                    VerifierOutput(
-                        on_topic=False, reason="needs more keywords"
-                    ),
+                    VerifierOutput(on_topic=False, reason="needs more keywords"),
                     VerifierOutput(on_topic=True, reason="ok"),
                 ]
             ),

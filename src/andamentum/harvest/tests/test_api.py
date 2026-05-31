@@ -13,7 +13,9 @@ from andamentum.harvest.fetch import Fetched
 # ---------- helpers --------------------------------------------------------
 
 
-def _make_fetched(*, fmt: str, data: bytes = b"", url: str = "https://example.com") -> Fetched:
+def _make_fetched(
+    *, fmt: str, data: bytes = b"", url: str = "https://example.com"
+) -> Fetched:
     return Fetched(data=data, format=fmt, source_url=url)  # type: ignore[arg-type]
 
 
@@ -141,7 +143,9 @@ async def test_html_ambiguous_picks_trafilatura_when_it_wins(
 ):
     html = b"<html><body><p>no metadata</p></body></html>"
     patched_resolve(_make_fetched(fmt="html", data=html))
-    patched_backends["trafilatura_md"] = "## A\n\nbody\n\n## B\n\nbody\n\n## C\n\nbody\n"
+    patched_backends["trafilatura_md"] = (
+        "## A\n\nbody\n\n## B\n\nbody\n\n## C\n\nbody\n"
+    )
     # Make docling output structureless so it gets disqualified
     patched_backends["docling_md"] = "x" * 5000  # no headings, no \n\n
     md = await extract("https://x.com/?")

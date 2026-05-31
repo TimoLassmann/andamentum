@@ -27,9 +27,7 @@ from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.operations import OPERATION_CLASSES
 
 
-GRAPH_NODES = (
-    Path(__file__).parent.parent / "graph" / "nodes.py"
-)
+GRAPH_NODES = Path(__file__).parent.parent / "graph" / "nodes.py"
 GRAPH_DIR = Path(__file__).parent.parent / "graph"
 
 

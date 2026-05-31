@@ -325,8 +325,7 @@ def test_default_author_is_ai_attributed(tmp_path: Path) -> None:
     doc = Document(str(out))
     body = doc.element.body
     ins_authors = {
-        ins.get(f"{{{NS['w']}}}author")
-        for ins in body.iter(f"{{{NS['w']}}}ins")
+        ins.get(f"{{{NS['w']}}}author") for ins in body.iter(f"{{{NS['w']}}}ins")
     }
     assert any("andamentum-whetstone" in (a or "") for a in ins_authors)
 
@@ -421,7 +420,6 @@ def test_explicit_author_override_works_with_warning(
     doc = Document(str(out))
     body = doc.element.body
     ins_authors = {
-        ins.get(f"{{{NS['w']}}}author")
-        for ins in body.iter(f"{{{NS['w']}}}ins")
+        ins.get(f"{{{NS['w']}}}author") for ins in body.iter(f"{{{NS['w']}}}ins")
     }
     assert any(a == "Dr Smith" for a in ins_authors)

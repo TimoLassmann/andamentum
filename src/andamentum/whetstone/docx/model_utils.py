@@ -41,7 +41,9 @@ def get_field(obj: Any, *field_names: str, default: Any = None) -> Any:
     return default
 
 
-def extract_fields(obj: Any, field_mapping: dict[str, Union[str, list[str]]]) -> dict[str, Any]:
+def extract_fields(
+    obj: Any, field_mapping: dict[str, Union[str, list[str]]]
+) -> dict[str, Any]:
     """Extract multiple fields from object using a mapping."""
     result = {}
     for output_key, field_names in field_mapping.items():
@@ -59,7 +61,12 @@ def categorize_review_fields(
     if skip_fields is None:
         skip_fields = SKIP_FIELDS
 
-    categories: dict[str, dict[str, Any]] = {"scores": {}, "justifications": {}, "structured": {}, "other": {}}
+    categories: dict[str, dict[str, Any]] = {
+        "scores": {},
+        "justifications": {},
+        "structured": {},
+        "other": {},
+    }
 
     for key, value in review_data.items():
         if key in skip_fields:

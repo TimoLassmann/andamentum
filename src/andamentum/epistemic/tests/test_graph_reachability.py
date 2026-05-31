@@ -174,9 +174,7 @@ class TestAbandonOrDemoteRoutingInvariants:
         claim = claims[0]
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.investigation_counts[claim.entity_id] = 3
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await AbandonOrDemote().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -213,9 +211,7 @@ class TestAbandonOrDemoteRoutingInvariants:
         claim = claims[0]
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.investigation_counts[claim.entity_id] = 3
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await AbandonOrDemote().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -260,9 +256,7 @@ class TestAbandonOrDemoteRoutingInvariants:
         )
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.investigation_counts[claims[0].entity_id] = 3
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         await AbandonOrDemote().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -295,9 +289,7 @@ class TestAbandonOrDemoteRoutingInvariants:
         claim_a, claim_b = claims
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.investigation_counts[claim_b.entity_id] = 3
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await AbandonOrDemote().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -340,9 +332,7 @@ class TestAbandonOrDemoteRoutingInvariants:
         # Don't set investigation_counts — demote path applies to
         # SUPPORTED+ regardless of investigation count.
         state = EpistemicGraphState(objective_id=obj.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await AbandonOrDemote().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -382,9 +372,7 @@ class TestEndToEndNoStrandedClaims:
         claim = claims[0]
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.investigation_counts[claim.entity_id] = 3
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         # Step 1: AbandonOrDemote soft-promotes.
         ctx1 = _FakeRunContext(state, deps)
@@ -431,9 +419,7 @@ class TestEndToEndNoStrandedClaims:
             ],
         )
         state = EpistemicGraphState(objective_id=obj.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
         assert isinstance(next_node, ClusterEvidence), (
@@ -464,9 +450,7 @@ class TestEndToEndNoStrandedClaims:
         claim = claims[0]
         state = EpistemicGraphState(objective_id=obj.entity_id)
         state.verification_done.add(claim.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
         assert isinstance(next_node, CheckCompletion)

@@ -49,9 +49,7 @@ class TestAdversarialEvidenceStorage:
     not stamped hard-coded contradicts."""
 
     @pytest.mark.asyncio
-    async def test_judge_says_contradicts_evidence_stored_contradicts(
-        self, repo
-    ):
+    async def test_judge_says_contradicts_evidence_stored_contradicts(self, repo):
         """When the impartial judge labels the adversarial-found item
         as contradicts (the typical case for genuine counter-evidence),
         the stored Evidence has support_judgment='contradicts' and the
@@ -106,8 +104,7 @@ class TestAdversarialEvidenceStorage:
 
         all_evidence = await repo.get_evidence_for_objective("obj-1")
         adv = [
-            e for e in all_evidence
-            if e.source_ref == "https://example.com/cochrane"
+            e for e in all_evidence if e.source_ref == "https://example.com/cochrane"
         ]
         assert len(adv) == 1, (
             f"Expected exactly one stored adversarial evidence; got {len(adv)}"
@@ -185,10 +182,7 @@ class TestAdversarialEvidenceStorage:
         assert result.success
 
         all_evidence = await repo.get_evidence_for_objective("obj-met")
-        adv = [
-            e for e in all_evidence
-            if "cochrane.org" in (e.source_ref or "")
-        ]
+        adv = [e for e in all_evidence if "cochrane.org" in (e.source_ref or "")]
         assert len(adv) == 1
         ae = adv[0]
 

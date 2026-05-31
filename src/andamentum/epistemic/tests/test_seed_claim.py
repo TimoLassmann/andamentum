@@ -33,7 +33,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -42,7 +44,10 @@ class TestSeedClaimOperation:
         # Verify the claim entity
         claims = await repo.get_claims_for_objective("obj-1")
         assert len(claims) == 1
-        assert claims[0].statement == "Podocytes are motile and migrate in the presence of injury."
+        assert (
+            claims[0].statement
+            == "Podocytes are motile and migrate in the presence of injury."
+        )
         assert claims[0].stage == ClaimStage.HYPOTHESIS
 
     async def test_links_all_evidence_to_seed_claim(self, repo):
@@ -68,7 +73,9 @@ class TestSeedClaimOperation:
             await repo.save(ev)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -87,7 +94,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -107,7 +116,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -126,7 +137,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         await op.execute(work)
 
         loaded = await repo.get_objective("obj-1")
@@ -144,7 +157,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         await op.execute(work)
         result2 = await op.execute(work)
 
@@ -186,7 +201,9 @@ class TestSeedClaimOperation:
                 )
 
         op = SeedClaimOperation(repo, agent_runner=FakeRunner())
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -219,7 +236,9 @@ class TestSeedClaimOperation:
         await repo.save(ev)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -240,7 +259,9 @@ class TestSeedClaimOperation:
         await repo.save(obj)
 
         op = SeedClaimOperation(repo, agent_runner=None)
-        work = OperationInput(entity_id="obj-1", entity_type="objective", operation="seed_claim")
+        work = OperationInput(
+            entity_id="obj-1", entity_type="objective", operation="seed_claim"
+        )
         result = await op.execute(work)
 
         assert not result.success

@@ -82,10 +82,7 @@ def test_heading_supports_inline_bold(tmp_path):
     p = paragraphs[0]
     assert _style_name(p) == "Heading2"
     # The bold portion lives in a run with <w:rPr><w:b/></w:rPr>
-    bold_run_text = [
-        t.text
-        for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)
-    ]
+    bold_run_text = [t.text for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)]
     assert "bold" in bold_run_text
 
 
@@ -117,9 +114,7 @@ def test_bullet_with_inline_bold(tmp_path):
     paragraphs = _prepended_body_paragraphs(editor)
     p = paragraphs[0]
     assert _style_name(p) == "ListBullet"
-    bold_run_text = [
-        t.text for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)
-    ]
+    bold_run_text = [t.text for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)]
     assert "emphasis" in bold_run_text
 
 
@@ -172,9 +167,7 @@ def test_blockquote_with_inline_bold(tmp_path):
     paragraphs = _prepended_body_paragraphs(editor)
     p = paragraphs[0]
     assert _style_name(p) == "Quote"
-    bold_run_text = [
-        t.text for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)
-    ]
+    bold_run_text = [t.text for t in p.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)]
     assert "Recommendation:" in bold_run_text
 
 

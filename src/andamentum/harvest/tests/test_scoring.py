@@ -15,7 +15,9 @@ def test_structureless_soup_is_disqualified():
 
 def test_headings_dominate_the_score():
     """A markdown with 5 headings should beat one with 0 headings of similar length."""
-    structured = "## A\n\nbody\n\n## B\n\nbody\n\n## C\n\nbody\n\n## D\n\nbody\n\n## E\n\nbody\n"
+    structured = (
+        "## A\n\nbody\n\n## B\n\nbody\n\n## C\n\nbody\n\n## D\n\nbody\n\n## E\n\nbody\n"
+    )
     flat = "body body body body body body body body " * 10
     assert score_markdown(structured) > score_markdown(flat)
 

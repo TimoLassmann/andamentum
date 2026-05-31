@@ -181,8 +181,6 @@ class TestSetRoutingDefaultsOperation:
         assert "set_routing_defaults" in OPERATION_CLASSES
 
 
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Parameterized gate tests
 # ══════════════════════════════════════════════════════════════════════════════

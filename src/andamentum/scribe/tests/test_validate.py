@@ -60,8 +60,7 @@ def test_validate_warns_on_ai_drafted_marker(monkeypatch, tmp_path):
 
     issues = doc.validate()
     ai_warnings = [
-        i for i in issues
-        if i.severity == "warning" and "ai-drafted" in i.message
+        i for i in issues if i.severity == "warning" and "ai-drafted" in i.message
     ]
     assert len(ai_warnings) == 1
     assert "disclose AI assistance" in ai_warnings[0].message
@@ -73,10 +72,7 @@ def test_validate_warns_on_ai_edited_marker(monkeypatch, tmp_path):
     doc.append(Paragraph("Polished [ai-edited] from earlier draft."))
 
     issues = doc.validate()
-    assert any(
-        i.severity == "warning" and "ai-edited" in i.message
-        for i in issues
-    )
+    assert any(i.severity == "warning" and "ai-edited" in i.message for i in issues)
 
 
 def test_validate_clean_when_no_ai_markers(monkeypatch, tmp_path):
@@ -85,4 +81,6 @@ def test_validate_clean_when_no_ai_markers(monkeypatch, tmp_path):
     doc.append(Paragraph("Plain paragraph with no markers."))
 
     issues = doc.validate()
-    assert not any("ai-drafted" in i.message or "ai-edited" in i.message for i in issues)
+    assert not any(
+        "ai-drafted" in i.message or "ai-edited" in i.message for i in issues
+    )

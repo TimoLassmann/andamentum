@@ -51,9 +51,7 @@ class _FakeRunContext:
         self.deps = deps
 
 
-async def test_tms_demotion_sets_rescrutiny_flag(
-    tmp_path: Path, fake_runner
-) -> None:
+async def test_tms_demotion_sets_rescrutiny_flag(tmp_path: Path, fake_runner) -> None:
     """Construct the post-verification demotion scenario directly and
     assert the TMS sweep correctly flags the claim for rescrutiny.
 
@@ -68,9 +66,7 @@ async def test_tms_demotion_sets_rescrutiny_flag(
     scrutiny_verdict=None and PromoteToSupported's idempotent check
     skips it, leading to the IBE-skip terminal path.
     """
-    store = DocumentStore.for_database(
-        "post_verify_demote", db_dir=tmp_path
-    )
+    store = DocumentStore.for_database("post_verify_demote", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
@@ -118,9 +114,7 @@ async def test_tms_demotion_sets_rescrutiny_flag(
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     state.verification_done.add(claim.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     # Run the TMS sweep directly (the same call RunVerification makes
     # after its track dispatches).
@@ -196,9 +190,7 @@ async def test_resolve_uncertainties_routes_to_scrutiny_on_rescrutiny_flag(
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     state.claims_needing_rescrutiny.add(claim.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     next_node = await ResolveUncertainties(next_on_clear="integrate").run(
         _FakeRunContext(state, deps)  # type: ignore[arg-type]

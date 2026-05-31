@@ -26,9 +26,14 @@ def _ins_del_spans(docx_path: Path) -> tuple[list[str], list[str]]:
         doc = z.read("word/document.xml").decode("utf-8")
     # <w:del>...<w:delText>X</w:delText>...</w:del>
     dels = re.findall(r"<w:del\b.*?</w:del>", doc, re.DOTALL)
-    deleted = ["".join(re.findall(r"<w:delText[^>]*>(.*?)</w:delText>", d, re.DOTALL)) for d in dels]
+    deleted = [
+        "".join(re.findall(r"<w:delText[^>]*>(.*?)</w:delText>", d, re.DOTALL))
+        for d in dels
+    ]
     inss = re.findall(r"<w:ins\b.*?</w:ins>", doc, re.DOTALL)
-    inserted = ["".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", s, re.DOTALL)) for s in inss]
+    inserted = [
+        "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", s, re.DOTALL)) for s in inss
+    ]
     return deleted, inserted
 
 
@@ -60,7 +65,9 @@ def case_single_run() -> None:
     print(f"  applied_patches: {res.applied_patches}/{res.total_patches}")
     print(f"  deleted spans:  {deleted}")
     print(f"  inserted spans: {inserted}")
-    ok = any("gold standard" in d for d in deleted) and any("reference set" in i for i in inserted)
+    ok = any("gold standard" in d for d in deleted) and any(
+        "reference set" in i for i in inserted
+    )
     # precise = ONLY the target was deleted, not the whole paragraph
     precise = deleted == ["gold standard"] and inserted == ["reference set"]
     print(f"  VERDICT: anchored={ok}  precise(only-target)={precise}")
@@ -78,7 +85,14 @@ def case_multi_run() -> None:
     doc = DocxDocument()
     p = doc.add_paragraph()
     # Each add_run is a separate <w:r>; "gold standard" is split across two runs.
-    for chunk in ["The methods were ", "significantly ", "robust and the ", "gold ", "standard ", "was carefully built."]:
+    for chunk in [
+        "The methods were ",
+        "significantly ",
+        "robust and the ",
+        "gold ",
+        "standard ",
+        "was carefully built.",
+    ]:
         p.add_run(chunk)
     doc.save(str(src))
 
@@ -92,7 +106,9 @@ def case_multi_run() -> None:
         original_file_path=src, patches=[patch], output_path=out, author="test"
     )
     deleted, inserted = _ins_del_spans(out)
-    print("── CASE 2: multi-run paragraph (LibreOffice-style, target split across runs) ──")
+    print(
+        "── CASE 2: multi-run paragraph (LibreOffice-style, target split across runs) ──"
+    )
     print(f"  applied_patches: {res.applied_patches}/{res.total_patches}")
     print(f"  deleted spans:  {deleted}")
     print(f"  inserted spans: {inserted}")
@@ -133,6 +149,7 @@ def case_pattern_not_found() -> None:
 
 def main() -> None:
     import shutil
+
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)

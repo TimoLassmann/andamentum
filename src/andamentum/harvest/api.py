@@ -130,7 +130,9 @@ async def _extract_html(fetched: Fetched) -> str:
         try:
             return await extract_with_trafilatura(fetched.data, fetched.source_url)
         except HarvestError as exc:
-            logger.warning("trafilatura failed on article-tagged page; falling back: %s", exc)
+            logger.warning(
+                "trafilatura failed on article-tagged page; falling back: %s", exc
+            )
             return await extract_with_docling(
                 fetched.data, fetched.source_url, fmt="html"
             )
@@ -149,9 +151,7 @@ async def _race_html_backends(fetched: Fetched) -> str:
         _safe_call(extract_with_trafilatura, fetched.data, fetched.source_url)
     )
     docl_task = asyncio.create_task(
-        _safe_call(
-            extract_with_docling, fetched.data, fetched.source_url, fmt="html"
-        )
+        _safe_call(extract_with_docling, fetched.data, fetched.source_url, fmt="html")
     )
     traf_md, traf_err = await traf_task
     docl_md, docl_err = await docl_task

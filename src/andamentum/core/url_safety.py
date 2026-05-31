@@ -193,9 +193,7 @@ async def _read_body_capped(resp: httpx.Response, max_bytes: int | None) -> byte
     async for chunk in resp.aiter_bytes():
         total += len(chunk)
         if total > max_bytes:
-            raise ResponseTooLarge(
-                f"response body exceeds cap of {max_bytes} bytes"
-            )
+            raise ResponseTooLarge(f"response body exceeds cap of {max_bytes} bytes")
         chunks.append(chunk)
     return b"".join(chunks)
 

@@ -103,7 +103,9 @@ async def main() -> None:
 
         # ── 7. Confidence score ──────────────────────────────────────────────
         avg_quality = evidence_sum / max(claim.evidence_count, 1)
-        confidence = compute_confidence_score(stage=claim.stage, avg_quality=avg_quality)
+        confidence = compute_confidence_score(
+            stage=claim.stage, avg_quality=avg_quality
+        )
         print(f"\nConfidence score: {confidence:.2f}")
 
         # ── 8. Uncertainty ───────────────────────────────────────────────────

@@ -56,7 +56,11 @@ class XMLElementBuilder:
 
     @staticmethod
     def create_change_container(
-        change_type: str, cid: int, author: str, text: str, rPr: Optional[etree.Element] = None
+        change_type: str,
+        cid: int,
+        author: str,
+        text: str,
+        rPr: Optional[etree.Element] = None,
     ) -> etree.Element:
         """
         Create a change container (ins/del) with proper attributes.
@@ -170,7 +174,9 @@ class XMLElementBuilder:
             # Ensure cid and author are not None for tracked changes
             if cid is None or author is None:
                 raise ValueError("cid and author are required for tracked changes")
-            return XMLElementBuilder.create_change_container(change_type, cid, author, text, rPr)
+            return XMLElementBuilder.create_change_container(
+                change_type, cid, author, text, rPr
+            )
         else:
             # Create simple run
             run = XMLElementBuilder.create_run_element(rPr)
@@ -179,7 +185,9 @@ class XMLElementBuilder:
             return run
 
     @staticmethod
-    def create_comment_range_elements(cid: int) -> tuple[etree.Element, etree.Element, etree.Element]:
+    def create_comment_range_elements(
+        cid: int,
+    ) -> tuple[etree.Element, etree.Element, etree.Element]:
         """
         Create comment range start, end, and reference elements.
 

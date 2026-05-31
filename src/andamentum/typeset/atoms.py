@@ -120,8 +120,6 @@ def validate_document(atoms: list[Mapping[str, object]]) -> list[dict[str, objec
     result: list[dict[str, object]] = []
     for i, atom in enumerate(atoms):
         if not isinstance(atom, dict):
-            raise ValueError(
-                f"Atom {i} must be a dict; got {type(atom).__name__!r}."
-            )
+            raise ValueError(f"Atom {i} must be a dict; got {type(atom).__name__!r}.")
         result.append(validate_atom(atom, i))
     return result

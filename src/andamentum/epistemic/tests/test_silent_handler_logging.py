@@ -162,5 +162,3 @@ class TestCounterargEvalRaisesOnFailure:
 
         with pytest.raises(RuntimeError, match="Simulated agent failure"):
             await op.execute(work)
-
-

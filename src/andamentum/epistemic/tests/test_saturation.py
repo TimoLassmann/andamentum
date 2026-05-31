@@ -86,9 +86,7 @@ class TestInvestigationCap:
         )
         await repo.save(claim)
 
-        op = InvestigateClaimOperation(
-            repo, fake_runner, providers={"stub": object()}
-        )
+        op = InvestigateClaimOperation(repo, fake_runner, providers={"stub": object()})
         work = OperationInput(
             entity_id=claim.entity_id,
             entity_type="claim",

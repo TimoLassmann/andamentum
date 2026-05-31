@@ -165,7 +165,9 @@ class TestExtractNewEvidenceLinking:
         await node.run(ctx)  # type: ignore[arg-type]
 
         # All extracted evidence entities should have support_judgment set
-        all_evidence = await repo.query("evidence", objective_id="obj-judge", extracted=True)
+        all_evidence = await repo.query(
+            "evidence", objective_id="obj-judge", extracted=True
+        )
         assert len(all_evidence) == 3
         for ev in all_evidence:
             assert ev.support_judgment is not None, (
@@ -205,7 +207,9 @@ class TestExtractNewEvidenceLinking:
         from ..operations import GatheredEvidence
 
         class SingleGatherer:
-            async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
+            async def gather(
+                self, source_type: str, query: str
+            ) -> list[GatheredEvidence]:
                 return [
                     GatheredEvidence(
                         content="Only one result",
@@ -279,5 +283,7 @@ class TestExtractNewEvidenceLinking:
         await node.run(ctx)  # type: ignore[arg-type]
 
         # All 3 entities created, none linked (no claim to link to)
-        all_evidence = await repo.query("evidence", objective_id="obj-orphan", extracted=True)
+        all_evidence = await repo.query(
+            "evidence", objective_id="obj-orphan", extracted=True
+        )
         assert len(all_evidence) == 3

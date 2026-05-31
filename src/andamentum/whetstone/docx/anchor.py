@@ -88,7 +88,9 @@ class DocIndex:
     """
 
     def __init__(self, paragraphs: list[list[tuple[Any, str]]]):
-        self._keys: list[Any] = []  # per normalised char → run key (None = synthetic separator)
+        self._keys: list[
+            Any
+        ] = []  # per normalised char → run key (None = synthetic separator)
         self._chars: list[int] = []  # per normalised char → char index in run
         parts: list[str] = []
         prev_space = True

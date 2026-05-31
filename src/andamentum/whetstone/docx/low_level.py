@@ -115,7 +115,9 @@ class ParagraphData:
         for run in p_elem.findall(".//w:r", namespaces=NS):
             rpr = run.find("w:rPr", namespaces=NS)
             run_rpr = copy.deepcopy(rpr) if rpr is not None else None
-            run_text = "".join(t.text or "" for t in run.findall(".//w:t", namespaces=NS))
+            run_text = "".join(
+                t.text or "" for t in run.findall(".//w:t", namespaces=NS)
+            )
             # each character in run_text gets this run_rpr
             char_rprs += [run_rpr] * len(run_text)
 
@@ -125,11 +127,17 @@ class ParagraphData:
             tok = m.group(0)
             start = m.start()
             # fall back to the first non-None rPr if out of bounds
-            rpr = char_rprs[start] if start < len(char_rprs) else next((x for x in char_rprs if x is not None), None)
+            rpr = (
+                char_rprs[start]
+                if start < len(char_rprs)
+                else next((x for x in char_rprs if x is not None), None)
+            )
             self.tokens.append({"text": tok, "rPr": rpr})
 
         # keep the very first rPr as a default fallback
-        self.default_rpr = next((t["rPr"] for t in self.tokens if t["rPr"] is not None), None)
+        self.default_rpr = next(
+            (t["rPr"] for t in self.tokens if t["rPr"] is not None), None
+        )
 
 
 class DocxEditor:
@@ -246,7 +254,9 @@ class DocxEditor:
                     logger.debug("Detected main document: %s", filename)
                     return filename
         except Exception as e:
-            logger.warning("Could not parse _rels/.rels: %s — falling back to document.xml", e)
+            logger.warning(
+                "Could not parse _rels/.rels: %s — falling back to document.xml", e
+            )
         return "document.xml"
 
     @property
@@ -346,7 +356,9 @@ class DocxEditor:
             if child.tag != f"{{{NS['w']}}}pPr":
                 p_elem.remove(child)
 
-    def _add_run(self, parent, text, rPr, change_type=None, cid=None, change_author=None):
+    def _add_run(
+        self, parent, text, rPr, change_type=None, cid=None, change_author=None
+    ):
         """Append a single ``<w:r>`` run element to a parent paragraph.
 
         Delegates XML construction to :class:`XMLElementBuilder`. When
@@ -366,13 +378,19 @@ class DocxEditor:
         # Use XMLElementBuilder to create run elements
         run_author = change_author or self.author
         # Only warn for actual track changes (not simple runs)
-        if change_type in ("ins", "del") and run_author == self.author and change_author is None:
+        if (
+            change_type in ("ins", "del")
+            and run_author == self.author
+            and change_author is None
+        ):
             logger.warning(
                 f"Track change using fallback author '{self.author}' for text '{text[:20]}...'. change_author: {change_author}"
             )
         # Monitor for Sequential Agent attributions (should be rare now)
         if change_type in ("ins", "del") and run_author == "Sequential Agent":
-            logger.warning(f"Sequential Agent track change: {change_type} '{text[:15]}...' - check attribution logic")
+            logger.warning(
+                f"Sequential Agent track change: {change_type} '{text[:15]}...' - check attribution logic"
+            )
 
         run_element = XMLElementBuilder.create_simple_run(
             text=text, rPr=rPr, change_type=change_type, cid=cid, author=run_author
@@ -403,7 +421,9 @@ class DocxEditor:
                     Target="comments.xml",
                 )
             )
-            tree.write(rels_path, xml_declaration=True, encoding="UTF-8", standalone="yes")
+            tree.write(
+                rels_path, xml_declaration=True, encoding="UTF-8", standalone="yes"
+            )
 
     def _ensure_comments_content_type(self):
         """Ensure ``[Content_Types].xml`` declares a content type for comments.xml.
@@ -416,7 +436,9 @@ class DocxEditor:
         ct_path = os.path.join(self.tmpdir, "[Content_Types].xml")
         tree = etree.parse(ct_path)
         root = tree.getroot()
-        exists = root.xpath("./ct:Override[@PartName='/word/comments.xml']", namespaces=CT_NS)
+        exists = root.xpath(
+            "./ct:Override[@PartName='/word/comments.xml']", namespaces=CT_NS
+        )
         if not exists:
             etree.SubElement(
                 root,
@@ -424,7 +446,9 @@ class DocxEditor:
                 PartName="/word/comments.xml",
                 ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
             )
-            tree.write(ct_path, xml_declaration=True, encoding="UTF-8", standalone="yes")
+            tree.write(
+                ct_path, xml_declaration=True, encoding="UTF-8", standalone="yes"
+            )
 
     def _insert_comment_anchor(self, p_elem, cid):
         """Insert comment range markers around the last run in a paragraph.
@@ -522,10 +546,16 @@ class DocxEditor:
             )
         # Monitor for Sequential Agent attributions (should be rare now)
         if container_author == "Sequential Agent":
-            logger.warning(f"Sequential Agent container: {change_type} '{text[:15]}...' - check attribution logic")
+            logger.warning(
+                f"Sequential Agent container: {change_type} '{text[:15]}...' - check attribution logic"
+            )
 
         return XMLElementBuilder.create_change_container(
-            change_type=change_type, cid=cid, author=container_author, text=text, rPr=rPr
+            change_type=change_type,
+            cid=cid,
+            author=container_author,
+            text=text,
+            rPr=rPr,
         )
 
     def _get_author_from_element(self, element) -> str:
@@ -536,13 +566,19 @@ class DocxEditor:
                 return author
             else:
                 # Log when element has no author attribute
-                tag_name = etree.QName(element.tag).localname if element.tag else "unknown"
-                logger.debug(f"Element {tag_name} has no w:author attribute, falling back to '{self.author}'")
+                tag_name = (
+                    etree.QName(element.tag).localname if element.tag else "unknown"
+                )
+                logger.debug(
+                    f"Element {tag_name} has no w:author attribute, falling back to '{self.author}'"
+                )
         return self.author
 
     def _get_agent_authors_for_paragraph(self, attribution_tracker) -> List[str]:
         """Get list of agent authors that made changes to this paragraph."""
-        if not attribution_tracker or not hasattr(attribution_tracker, "change_history"):
+        if not attribution_tracker or not hasattr(
+            attribution_tracker, "change_history"
+        ):
             return []
 
         agent_authors = []
@@ -587,20 +623,32 @@ class DocxEditor:
                     if merge_type and merge_author:
                         new_children.append(
                             self._build_change_container(
-                                merge_type, merge_cid, merge_rPr, "".join(buffer), merge_author
+                                merge_type,
+                                merge_cid,
+                                merge_rPr,
+                                "".join(buffer),
+                                merge_author,
                             )
                         )
                     # start new merge block - get author from current element
                     merge_type = local
                     merge_cid = child.get(qn("w:id"))
                     merge_rPr = copy.deepcopy(rPr_el) if rPr_el is not None else None
-                    merge_author = self._get_author_from_element(child)  # Author from first element of this merge
+                    merge_author = self._get_author_from_element(
+                        child
+                    )  # Author from first element of this merge
                     buffer = [txt]
             else:
                 # flush any open merge
                 if merge_type and merge_author:
                     new_children.append(
-                        self._build_change_container(merge_type, merge_cid, merge_rPr, "".join(buffer), merge_author)
+                        self._build_change_container(
+                            merge_type,
+                            merge_cid,
+                            merge_rPr,
+                            "".join(buffer),
+                            merge_author,
+                        )
                     )
                     merge_type = None
                     merge_author = None
@@ -611,7 +659,9 @@ class DocxEditor:
         # flush trailing
         if merge_type and merge_author:
             new_children.append(
-                self._build_change_container(merge_type, merge_cid, merge_rPr, "".join(buffer), merge_author)
+                self._build_change_container(
+                    merge_type, merge_cid, merge_rPr, "".join(buffer), merge_author
+                )
             )
 
         # replace old children
@@ -655,7 +705,9 @@ class DocxEditor:
                             keep.append(copy.deepcopy(rPr))
 
                         t0 = etree.Element(f"{{{NS['w']}}}t")
-                        t0.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                        t0.set(
+                            "{http://www.w3.org/XML/1998/namespace}space", "preserve"
+                        )
                         t0.text = shared
                         keep.append(t0)  # ← make sure to append the text!
 
@@ -666,7 +718,9 @@ class DocxEditor:
                         cid = nxt.get(qn("w:id"))
                         # Get author from the insertion element
                         ins_author = self._get_author_from_element(nxt)
-                        ins_cont = self._build_change_container("ins", cid, rPr, ws_only, ins_author)
+                        ins_cont = self._build_change_container(
+                            "ins", cid, rPr, ws_only, ins_author
+                        )
                         out.append(ins_cont)
 
                         i += 2
@@ -750,26 +804,41 @@ class DocxEditor:
                             if rPr is not None:
                                 run0.append(copy.deepcopy(rPr))
                             t0 = etree.Element(f"{{{NS['w']}}}t")
-                            t0.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                            t0.set(
+                                "{http://www.w3.org/XML/1998/namespace}space",
+                                "preserve",
+                            )
                             t0.text = prefix
                             run0.append(t0)
                             out.append(run0)
 
                         # 2) delete the old middle
-                        mid_old = old_txt[len(prefix) : len(old_txt) - len(suffix) if suffix else None]
+                        mid_old = old_txt[
+                            len(prefix) : len(old_txt) - len(suffix) if suffix else None
+                        ]
                         if mid_old:
                             cid = node.get(qn("w:id"))
                             # Get author from deletion element
                             del_author = self._get_author_from_element(node)
-                            out.append(self._build_change_container("del", cid, rPr, mid_old, del_author))
+                            out.append(
+                                self._build_change_container(
+                                    "del", cid, rPr, mid_old, del_author
+                                )
+                            )
 
                         # 3) insert the new middle
-                        mid_new = new_txt[len(prefix) : len(new_txt) - len(suffix) if suffix else None]
+                        mid_new = new_txt[
+                            len(prefix) : len(new_txt) - len(suffix) if suffix else None
+                        ]
                         if mid_new:
                             cid = ins_node.get(qn("w:id"))
                             # Get author from insertion element
                             ins_author = self._get_author_from_element(ins_node)
-                            out.append(self._build_change_container("ins", cid, rPr, mid_new, ins_author))
+                            out.append(
+                                self._build_change_container(
+                                    "ins", cid, rPr, mid_new, ins_author
+                                )
+                            )
 
                         # 4) unchanged suffix run
                         if suffix:
@@ -777,7 +846,10 @@ class DocxEditor:
                             if rPr is not None:
                                 run1.append(copy.deepcopy(rPr))
                             t1 = etree.Element(f"{{{NS['w']}}}t")
-                            t1.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                            t1.set(
+                                "{http://www.w3.org/XML/1998/namespace}space",
+                                "preserve",
+                            )
                             t1.text = suffix
                             run1.append(t1)
                             out.append(run1)
@@ -825,7 +897,12 @@ class DocxEditor:
                 etree.SubElement(rPr, f"{{{NS['w']}}}b")
                 t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
                 t_elem.text = part[2:-2]
-            elif part.startswith("*") and part.endswith("*") and len(part) > 2 and not part.startswith("**"):
+            elif (
+                part.startswith("*")
+                and part.endswith("*")
+                and len(part) > 2
+                and not part.startswith("**")
+            ):
                 # Italic text
                 rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
                 etree.SubElement(rPr, f"{{{NS['w']}}}i")
@@ -837,7 +914,9 @@ class DocxEditor:
                 t_elem.text = part
                 # Preserve space if text has leading/trailing spaces
                 if part and (part[0].isspace() or part[-1].isspace()):
-                    t_elem.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    t_elem.set(
+                        "{http://www.w3.org/XML/1998/namespace}space", "preserve"
+                    )
 
     def prepend_review_section(self, review_markdown: str) -> None:
         """
@@ -874,8 +953,7 @@ class DocxEditor:
             return  # No body to prepend to
 
         elements_to_prepend = [
-            self._build_review_paragraph(line)
-            for line in review_markdown.split("\n")
+            self._build_review_paragraph(line) for line in review_markdown.split("\n")
         ]
         # Trailing page break separates the review report from the
         # manuscript that follows. Always added — review reports want
@@ -917,7 +995,7 @@ class DocxEditor:
             if line.startswith(prefix):
                 return self._make_styled_paragraph(
                     style_name=f"Heading{level}",
-                    body=line[len(prefix):],
+                    body=line[len(prefix) :],
                 )
 
         stripped = line.strip()
@@ -951,7 +1029,7 @@ class DocxEditor:
             ):
                 return self._make_styled_paragraph(
                     style_name="ListNumber",
-                    body=stripped[digits_end + 2:],
+                    body=stripped[digits_end + 2 :],
                 )
 
         # Blockquote
@@ -1086,10 +1164,14 @@ class DocxEditor:
             new_tokens = TokenProcessor.tokenize(pd.modified)
 
             # Get attribution mapping for current paragraph
-            author_map = pd.attribution_tracker.get_attribution_for_diff_operation(orig_tokens, new_tokens)
+            author_map = pd.attribution_tracker.get_attribution_for_diff_operation(
+                orig_tokens, new_tokens
+            )
 
             # For paragraphs edited by agents, get the primary agent(s) involved
-            agent_authors = self._get_agent_authors_for_paragraph(pd.attribution_tracker)
+            agent_authors = self._get_agent_authors_for_paragraph(
+                pd.attribution_tracker
+            )
             primary_agent = agent_authors[0] if agent_authors else None
 
             i = 0
@@ -1106,8 +1188,17 @@ class DocxEditor:
                     rPr = pd.tokens[i]["rPr"]
                     change_id += 1
                     # Use unified attribution: all deletions attributed to primary agent
-                    deletion_author = primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
-                    self._add_run(pd.p_elem, tok, rPr, change_type="del", cid=change_id, change_author=deletion_author)
+                    deletion_author = (
+                        primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
+                    )
+                    self._add_run(
+                        pd.p_elem,
+                        tok,
+                        rPr,
+                        change_type="del",
+                        cid=change_id,
+                        change_author=deletion_author,
+                    )
                     i += 1
                 elif tag == "+":
                     rPr = pd.tokens[i - 1]["rPr"] if i > 0 else pd.default_rpr
@@ -1118,9 +1209,18 @@ class DocxEditor:
                         insertion_author = raw_author
                     else:
                         # Fallback to primary agent for unified attribution
-                        insertion_author = primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
+                        insertion_author = (
+                            primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
+                        )
 
-                    self._add_run(pd.p_elem, tok, rPr, change_type="ins", cid=change_id, change_author=insertion_author)
+                    self._add_run(
+                        pd.p_elem,
+                        tok,
+                        rPr,
+                        change_type="ins",
+                        cid=change_id,
+                        change_author=insertion_author,
+                    )
                     j += 1
 
             # IMPORTANT: For comment-only paragraphs, ensure we have runs for comment anchors
@@ -1169,7 +1269,9 @@ class DocxEditor:
                     logger.warning(
                         f"Comment using fallback author '{self.author}' instead of agent. primary_agent: {primary_agent}, pd.change_author: {pd.change_author}"
                     )
-                comment_el = XMLElementBuilder.create_comment_element(cid=cid, author=comment_author, text=pd.comment)
+                comment_el = XMLElementBuilder.create_comment_element(
+                    cid=cid, author=comment_author, text=pd.comment
+                )
                 comments_root.append(comment_el)
 
         # Place all comment ranges precisely, document-level, in one pass.
@@ -1210,9 +1312,7 @@ class DocxEditor:
                 continue
             runs: list[tuple[Any, str]] = []
             for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
-                text = "".join(
-                    t.text or "" for t in r.findall(f"{{{NS['w']}}}t")
-                )
+                text = "".join(t.text or "" for t in r.findall(f"{{{NS['w']}}}t"))
                 if text:
                     runs.append((r, text))
             paragraphs_runs.append(runs)
@@ -1299,13 +1399,17 @@ class DocumentReview:
         existing_paragraphs = docx_editor.paragraphs.copy()
 
         # Create and insert paragraph elements
-        review_paragraph_objects = self._create_review_paragraphs(review_dicts, document_path, body)
+        review_paragraph_objects = self._create_review_paragraphs(
+            review_dicts, document_path, body
+        )
 
         # Add a dedicated page break paragraph
         page_break_data = self._add_page_break(document_path, body, len(review_dicts))
 
         # Combine the review paragraphs with the page break and existing paragraphs
-        docx_editor.paragraphs = review_paragraph_objects + [page_break_data] + existing_paragraphs
+        docx_editor.paragraphs = (
+            review_paragraph_objects + [page_break_data] + existing_paragraphs
+        )
 
     def _find_document_path(self, docx_editor: DocxEditor) -> Optional[str]:
         """Find the main document XML file path in the docx file."""
@@ -1341,7 +1445,10 @@ class DocumentReview:
         p_elem = etree.Element(f"{{{NS['w']}}}p")
 
         # Apply paragraph properties (like alignment, indentation, borders, and spacing)
-        if any(prop in para_dict["props"] for prop in ["alignment", "left_indent", "bottom_border", "spacing_after"]):
+        if any(
+            prop in para_dict["props"]
+            for prop in ["alignment", "left_indent", "bottom_border", "spacing_after"]
+        ):
             self._apply_paragraph_properties(p_elem, para_dict["props"])
 
         # Add the runs with their styling
@@ -1485,7 +1592,10 @@ class DocumentReview:
             }
 
         # Default return if no match (shouldn't happen with proper validation)
-        return {"runs": [{"text": line, "props": {}}], "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT}}
+        return {
+            "runs": [{"text": line, "props": {}}],
+            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
+        }
 
     def _process_unordered_list(self, line: str) -> dict[str, Any]:
         """Process an unordered list item and return paragraph data"""
@@ -1500,10 +1610,16 @@ class DocumentReview:
             runs = [{"text": "• ", "props": {"bold": True}}]
             runs.extend(formatted_para["runs"])
 
-            return {"runs": runs, "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5}}
+            return {
+                "runs": runs,
+                "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5},
+            }
 
         # Default return if no match (shouldn't happen with proper validation)
-        return {"runs": [{"text": line, "props": {}}], "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT}}
+        return {
+            "runs": [{"text": line, "props": {}}],
+            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
+        }
 
     def _process_ordered_list(self, line: str, list_item_number: int) -> dict[str, Any]:
         """Process an ordered list item and return paragraph data"""
@@ -1518,12 +1634,20 @@ class DocumentReview:
             runs = [{"text": f"{list_item_number}. ", "props": {"bold": True}}]
             runs.extend(formatted_para["runs"])
 
-            return {"runs": runs, "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5}}
+            return {
+                "runs": runs,
+                "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5},
+            }
 
         # Default return if no match (shouldn't happen with proper validation)
-        return {"runs": [{"text": line, "props": {}}], "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT}}
+        return {
+            "runs": [{"text": line, "props": {}}],
+            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
+        }
 
-    def _process_indented_paragraph(self, content: str, indent_level: float) -> dict[str, Any]:
+    def _process_indented_paragraph(
+        self, content: str, indent_level: float
+    ) -> dict[str, Any]:
         """Process an indented paragraph and return paragraph data with proper indentation"""
         # Process the content for inline formatting
         formatted_para = self._process_inline_formatting(content)
@@ -1610,25 +1734,33 @@ class DocumentReview:
             # Bold text (**bold**)
             if j + 3 < len(line) and line[j : j + 2] == "**" and "**" in line[j + 2 :]:
                 end = line.find("**", j + 2)
-                paragraph["runs"].append({"text": line[j + 2 : end], "props": {"bold": True}})
+                paragraph["runs"].append(
+                    {"text": line[j + 2 : end], "props": {"bold": True}}
+                )
                 j = end + 2
 
             # Italic text (*italic*)
             elif j + 2 < len(line) and line[j] == "*" and "*" in line[j + 1 :]:
                 end = line.find("*", j + 1)
-                paragraph["runs"].append({"text": line[j + 1 : end], "props": {"italic": True}})
+                paragraph["runs"].append(
+                    {"text": line[j + 1 : end], "props": {"italic": True}}
+                )
                 j = end + 1
 
             # Code (`code`)
             elif j + 2 < len(line) and line[j] == "`" and "`" in line[j + 1 :]:
                 end = line.find("`", j + 1)
-                paragraph["runs"].append({"text": line[j + 1 : end], "props": {"font_name": "Courier New"}})
+                paragraph["runs"].append(
+                    {"text": line[j + 1 : end], "props": {"font_name": "Courier New"}}
+                )
                 j = end + 1
 
             # Regular text
             else:
                 # Find the next special character
-                next_special = len(line)  # Default to end of line instead of float('inf')
+                next_special = len(
+                    line
+                )  # Default to end of line instead of float('inf')
                 for special in ["**", "*", "`"]:
                     pos = line.find(special, j)
                     if pos != -1 and pos < next_special:
@@ -1638,12 +1770,16 @@ class DocumentReview:
                     paragraph["runs"].append({"text": line[j:], "props": {}})
                     j = len(line)
                 else:
-                    paragraph["runs"].append({"text": line[j:next_special], "props": {}})
+                    paragraph["runs"].append(
+                        {"text": line[j:next_special], "props": {}}
+                    )
                     j = next_special
 
         return paragraph
 
-    def _convert_markdown_to_paragraphs(self, markdown_content: str) -> list[dict[str, Any]]:
+    def _convert_markdown_to_paragraphs(
+        self, markdown_content: str
+    ) -> list[dict[str, Any]]:
         """
         Converts markdown content to a list of paragraph data dictionaries.
 
@@ -1681,7 +1817,9 @@ class DocumentReview:
                         paragraphs.append(self._process_spacing_paragraph())
                     else:
                         # Process as indented grey metadata
-                        paragraphs.append(self._process_indented_grey_metadata(metadata_content))
+                        paragraphs.append(
+                            self._process_indented_grey_metadata(metadata_content)
+                        )
                     i += 1
                     continue
 
@@ -1696,7 +1834,9 @@ class DocumentReview:
                 # Regular indented paragraph
                 # Convert to 0.5cm indentation (approximately 0.2 inches)
                 indent_level = 0.2  # Fixed 0.2 inches regardless of spaces
-                paragraphs.append(self._process_indented_paragraph(content, indent_level))
+                paragraphs.append(
+                    self._process_indented_paragraph(content, indent_level)
+                )
                 i += 1
                 continue
 

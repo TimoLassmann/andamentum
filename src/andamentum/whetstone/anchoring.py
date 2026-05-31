@@ -26,9 +26,7 @@ from andamentum.chunker.validation import find_anchor
 from .schemas import Quote
 
 
-def anchor_quote(
-    quote_text: str, section_text: str, section_id: str
-) -> Quote | None:
+def anchor_quote(quote_text: str, section_text: str, section_id: str) -> Quote | None:
     """Return a verified ``Quote`` if ``quote_text`` is in ``section_text``.
 
     Returns ``None`` when:

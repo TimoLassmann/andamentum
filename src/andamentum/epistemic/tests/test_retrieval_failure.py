@@ -119,9 +119,7 @@ class TestEvaluateRetrievalHealth:
         await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
         assert state.retrieval_failed is False
 
-    async def test_all_empty_evidence_flips_flag_true(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_all_empty_evidence_flips_flag_true(self, tmp_path: Path) -> None:
         repo = await _make_repo(tmp_path)
         obj = await _make_obj(repo)
         state = EpistemicGraphState(objective_id=obj.entity_id)
@@ -140,18 +138,14 @@ class TestEvaluateRetrievalHealth:
         await _evaluate_retrieval_health(state, deps)  # type: ignore[arg-type]
         assert state.retrieval_failed is True
 
-    async def test_non_sticky_recovery_unflips_flag(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_non_sticky_recovery_unflips_flag(self, tmp_path: Path) -> None:
         """The new check is non-sticky: if a late extraction sweep
         produces non-empty evidence, the flag flips back to False.
         Counter to the old "sticky once tripped" behaviour, which kept
         the flag True even after content was eventually found."""
         repo = await _make_repo(tmp_path)
         obj = await _make_obj(repo)
-        state = EpistemicGraphState(
-            objective_id=obj.entity_id, retrieval_failed=True
-        )
+        state = EpistemicGraphState(objective_id=obj.entity_id, retrieval_failed=True)
         deps = SimpleNamespace(repo=repo)
 
         await repo.save(
@@ -434,9 +428,7 @@ class TestAuditReportTerminalState:
         return str(confidence_entry["body"])
 
     def test_completed_terminal_renders_directional_posterior(self) -> None:
-        body = self._confidence_body_text(
-            _make_report_data(terminal_state="completed")
-        )
+        body = self._confidence_body_text(_make_report_data(terminal_state="completed"))
         # Directional probability framing — not "P(YES)".
         assert "Probability the claim is true" in body
         # Verdict label appears.

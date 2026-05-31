@@ -40,7 +40,9 @@ class Section:
     pre-split — the orchestrator decides).
     """
 
-    start: int  # offset of the heading's `#` character (so includes the `## title` line)
+    start: (
+        int  # offset of the heading's `#` character (so includes the `## title` line)
+    )
     end: int  # exclusive end offset (= start of next sibling/parent, or len(source))
     level: int
     title: str

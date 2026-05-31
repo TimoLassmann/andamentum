@@ -159,9 +159,7 @@ class TestInvestigationIntentMemory:
         await repo.save(claim)
         return claim, repo
 
-    async def test_first_round_sees_empty_prior_intents(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_first_round_sees_empty_prior_intents(self, tmp_path: Path) -> None:
         """Round 1: previous_intents is the (none) placeholder."""
         claim, repo = await self._make_claim(tmp_path, "intent_mem_round1")
         runner = _RecordingRunner(intents_per_round=[["round-1 intent"]])
@@ -185,9 +183,7 @@ class TestInvestigationIntentMemory:
         prev = kwargs[0]["previous_intents"]
         assert "first investigation round" in prev.lower()
 
-    async def test_yield_annotation_in_prompt(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_yield_annotation_in_prompt(self, tmp_path: Path) -> None:
         """Round 2 sees round 1's intent with a yielded-N-items annotation
         — and the count matches what the routing layer actually persisted."""
         claim, repo = await self._make_claim(tmp_path, "intent_mem_yield")
@@ -234,9 +230,7 @@ class TestInvestigationIntentMemory:
         # round 1's intent yielded 1 item against the one stub provider.
         assert "(yielded 1 items) mechanistic angle" in round2_prev
 
-    async def test_zero_yield_dead_end_annotated(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_zero_yield_dead_end_annotated(self, tmp_path: Path) -> None:
         """An intent the routing layer abstained on (no committed queries
         anywhere) is recorded with evidence_count=0 so the next round's
         agent can recognise the dead end."""
@@ -265,9 +259,7 @@ class TestInvestigationIntentMemory:
         assert record.text == "dead-end angle"
         assert record.evidence_count == 0
 
-    async def test_claim_records_intents_across_rounds(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_claim_records_intents_across_rounds(self, tmp_path: Path) -> None:
         """Persistence: ``Claim.investigation_intents`` accumulates one
         IntentRecord per intent the agent proposed each round, with
         yield annotation in the prompt for subsequent rounds."""
@@ -353,9 +345,16 @@ class TestClaimGroundedDispatch:
         observed: list[dict[str, Any]] = []
 
         async def fake_helper(
-            op, c, *, objective_id, providers, core_runner,
-            angle=None, sub_investigation_id=None,
-            depends_on_claim_id=None, created_by="dispatch",
+            op,
+            c,
+            *,
+            objective_id,
+            providers,
+            core_runner,
+            angle=None,
+            sub_investigation_id=None,
+            depends_on_claim_id=None,
+            created_by="dispatch",
         ):
             observed.append({"claim": c, "angle": angle})
             return []

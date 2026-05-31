@@ -115,9 +115,7 @@ def test_check_completion_routes_to_insufficient_not_end() -> None:
     # (active claims continue) and SynthesizeInsufficient (every "can't
     # conclude" path). It must NOT terminate at End directly anymore —
     # that bypassed synthesis entirely.
-    assert successors == frozenset(
-        {CheckSynthesisDemand, SynthesizeInsufficient}
-    ), (
+    assert successors == frozenset({CheckSynthesisDemand, SynthesizeInsufficient}), (
         "CheckCompletion's successor set should be exactly "
         f"{{CheckSynthesisDemand, SynthesizeInsufficient}}; got "
         f"{sorted(s.__name__ for s in successors)}. If End[...] is "

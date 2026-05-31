@@ -137,9 +137,7 @@ class PrepareSearchCycle(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 
         if ctx.state.iteration_count > ctx.state.max_iterations:
             sources = [
-                f"{p.title} - {p.url}"
-                for p in ctx.state.fetched_pages
-                if p.is_relevant
+                f"{p.title} - {p.url}" for p in ctx.state.fetched_pages if p.is_relevant
             ]
             if not sources:
                 sources = ["Research incomplete - max iterations reached"]
@@ -184,9 +182,7 @@ class GenerateOne(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 
     feedback: str | None = None
 
-    async def run(
-        self, ctx: GraphRunContext[ResearchState, NodeDeps]
-    ) -> "Verify":
+    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "Verify":
         agent = _build_agent(
             "query_generator", ctx.deps.model, ctx.deps.agent_overrides
         )
@@ -208,17 +204,14 @@ class GenerateOne(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         c = ctx.state.cycle
         parts = [f"research_goal: {ctx.state.query}"]
         if c.validated_queries:
-            parts.append(
-                f"validated_queries: {', '.join(c.validated_queries)}"
-            )
+            parts.append(f"validated_queries: {', '.join(c.validated_queries)}")
         else:
             parts.append("validated_queries: (none yet)")
         if c.gaps:
             parts.append(f"gaps: {', '.join(c.gaps)}")
         if c.slot_rejected_queries:
             parts.append(
-                "already_rejected_in_this_slot: "
-                + ", ".join(c.slot_rejected_queries)
+                "already_rejected_in_this_slot: " + ", ".join(c.slot_rejected_queries)
             )
         if self.feedback:
             parts.append(f"feedback: {self.feedback}")
@@ -247,9 +240,7 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     async def run(
         self, ctx: GraphRunContext[ResearchState, NodeDeps]
     ) -> Union["GenerateOne", "ParallelSearch"]:
-        agent = _build_agent(
-            "topic_verifier", ctx.deps.model, ctx.deps.agent_overrides
-        )
+        agent = _build_agent("topic_verifier", ctx.deps.model, ctx.deps.agent_overrides)
         result = await agent.run(
             f"research_goal: {ctx.state.query}\nquery: {self.query}",
             usage_limits=UsageLimits(request_limit=5),
@@ -293,9 +284,7 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             c.slot_attempts = 0
             c.slot_rejected_queries.clear()
             c.target_count -= 1
-            ctx.deps.reporter.slot_exhausted(
-                slot=slot, new_target_count=c.target_count
-            )
+            ctx.deps.reporter.slot_exhausted(slot=slot, new_target_count=c.target_count)
             if len(c.validated_queries) >= c.target_count:
                 return ParallelSearch()
             ctx.deps.reporter.slot_starting(slot=slot + 1)
@@ -316,9 +305,7 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     query does not abort the others.
     """
 
-    async def run(
-        self, ctx: GraphRunContext[ResearchState, NodeDeps]
-    ) -> "FetchPhase":
+    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "FetchPhase":
         c = ctx.state.cycle
         if not c.validated_queries:
             logger.warning(
@@ -328,9 +315,7 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 ctx.deps.correlation_id,
             )
 
-        ctx.deps.reporter.parallel_search_starting(
-            queries=list(c.validated_queries)
-        )
+        ctx.deps.reporter.parallel_search_starting(queries=list(c.validated_queries))
 
         sem = asyncio.Semaphore(3)
 
@@ -398,7 +383,9 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     """Fetch relevant pages via page_fetcher agent."""
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "SummarizePages":
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> "SummarizePages":
         ctx.state.current_phase = "fetch"
 
         if not ctx.state.all_results:
@@ -445,9 +432,7 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         url_map = {r.link_id: r.url for r in all_search_results}
         ctx.state.url_map = url_map
 
-        agent = _build_agent(
-            "page_fetcher", ctx.deps.model, ctx.deps.agent_overrides
-        )
+        agent = _build_agent("page_fetcher", ctx.deps.model, ctx.deps.agent_overrides)
         already_fetched = sorted(ctx.state.fetched_urls)
 
         prompt = f"""Research Question: {ctx.state.query}
@@ -465,7 +450,9 @@ Select the top {ctx.deps.max_pages_to_fetch} most relevant link IDs."""
         fetch_plan: FetchPlan = result.output
 
         # Parallel fetch
-        async def do_fetch(lid: int, url: str) -> tuple[str, int, str, FetchedPage | None, str | None]:
+        async def do_fetch(
+            lid: int, url: str
+        ) -> tuple[str, int, str, FetchedPage | None, str | None]:
             try:
                 page = await ctx.deps.backend.fetch_page(url)
                 return ("success", lid, url, page, None)
@@ -502,7 +489,9 @@ Select the top {ctx.deps.max_pages_to_fetch} most relevant link IDs."""
                         error=None,
                     )
                 elif err is not None:
-                    ctx.state.fetch_errors.append({"url": url, "error": err, "link_id": str(lid)})
+                    ctx.state.fetch_errors.append(
+                        {"url": url, "error": err, "link_id": str(lid)}
+                    )
                     ctx.deps.reporter.fetch_complete(
                         url=url, success=False, n_words=0, error=err
                     )
@@ -541,7 +530,9 @@ Page Content ({page.word_count} words):
 Follow the process in your instructions: extract usable facts first,
 then derive a relevance score from the scale."""
             try:
-                result = await agent.run(prompt, usage_limits=UsageLimits(request_limit=10))
+                result = await agent.run(
+                    prompt, usage_limits=UsageLimits(request_limit=10)
+                )
                 summary: PageSummary = result.output
                 summary.url = page.url
                 summary.title = page.title
@@ -557,7 +548,9 @@ then derive a relevance score from the scale."""
                 )
 
         ctx.deps.reporter.summarize_starting(n_pages=len(ctx.state.fetched_pages))
-        summaries = await asyncio.gather(*[summarize(p) for p in ctx.state.fetched_pages])
+        summaries = await asyncio.gather(
+            *[summarize(p) for p in ctx.state.fetched_pages]
+        )
 
         # Keep ALL summaries, sorted by relevance descending. Relevance is a
         # *sort key* (higher first), not a *gate* (drop low). Synthesize will
@@ -584,12 +577,12 @@ then derive a relevance score from the scale."""
 class AnalyzeGaps(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     """Evaluate research completeness via gap_analyzer agent."""
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> Union["RefineSearch", "Synthesize"]:
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> Union["RefineSearch", "Synthesize"]:
         ctx.state.current_phase = "analyze"
 
-        agent = _build_agent(
-            "gap_analyzer", ctx.deps.model, ctx.deps.agent_overrides
-        )
+        agent = _build_agent("gap_analyzer", ctx.deps.model, ctx.deps.agent_overrides)
 
         evidence = [
             f"{s.title} (relevance {s.relevance_score:.2f}): {s.summary}"
@@ -649,7 +642,9 @@ class RefineSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 class Synthesize(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
     """Final synthesis: lead agent creates comprehensive evidence report."""
 
-    async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> End[EvidenceReport]:
+    async def run(
+        self, ctx: GraphRunContext[ResearchState, NodeDeps]
+    ) -> End[EvidenceReport]:
         ctx.state.current_phase = "synthesize"
 
         # Empty only when zero pages were fetched at all (search/fetch
@@ -657,8 +652,8 @@ class Synthesize(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
         # filter-removal change, low-relevance summaries are NO LONGER
         # discarded — they're ranked and surfaced via the limited-evidence
         # path below.
-        max_relevance = (
-            max((s.relevance_score for s in ctx.state.page_summaries), default=0.0)
+        max_relevance = max(
+            (s.relevance_score for s in ctx.state.page_summaries), default=0.0
         )
         ctx.deps.reporter.synthesis_starting(
             n_summaries=len(ctx.state.page_summaries),
@@ -682,9 +677,7 @@ class Synthesize(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                 )
             )
 
-        agent = _build_agent(
-            "lead_agent", ctx.deps.model, ctx.deps.agent_overrides
-        )
+        agent = _build_agent("lead_agent", ctx.deps.model, ctx.deps.agent_overrides)
 
         # Summaries are already sorted by relevance descending in
         # SummarizePages; preserve that order in the synthesis prompt.
@@ -751,7 +744,9 @@ several summaries, list it once."""
             report: EvidenceReport = result.output
 
             if not report.sources or report.sources == ["No sources"]:
-                report.sources = list(dict.fromkeys([s.url for s in ctx.state.page_summaries]))
+                report.sources = list(
+                    dict.fromkeys([s.url for s in ctx.state.page_summaries])
+                )
             else:
                 # Defence-in-depth: even if the agent populated sources, dedupe
                 # — the synthesis prompt instructs unique URLs, but small models
@@ -775,7 +770,9 @@ several summaries, list it once."""
                 EvidenceReport(
                     evidence_summary=f'Research on "{ctx.state.query}" completed. Automatic synthesis failed: {e}',
                     key_findings=key_findings if key_findings else ["Synthesis failed"],
-                    sources=list(dict.fromkeys([s.url for s in ctx.state.page_summaries])),
+                    sources=list(
+                        dict.fromkeys([s.url for s in ctx.state.page_summaries])
+                    ),
                     total_searches_performed=ctx.state.total_searches,
                     total_pages_fetched=ctx.state.total_pages_fetched,
                     iterations_required=ctx.state.iteration_count,

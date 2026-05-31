@@ -11,7 +11,14 @@ and that non-blocking / already-resolved uncertainties remain unchanged.
 
 import pytest
 
-from ..entities import Claim, ClaimStage, Evidence, Objective, Uncertainty, UncertaintyType
+from ..entities import (
+    Claim,
+    ClaimStage,
+    Evidence,
+    Objective,
+    Uncertainty,
+    UncertaintyType,
+)
 from ..operations.uncertainty import ResolveUncertaintyOperation
 from ..operations.base import OperationInput
 
@@ -79,7 +86,9 @@ class TestBlockingResolutionNoScrutinyReset:
     """Operation no longer resets scrutiny — graph node handles this (P1/P5)."""
 
     @pytest.mark.asyncio
-    async def test_contradiction_resolution_does_not_reset_scrutiny(self, repo, fake_runner):
+    async def test_contradiction_resolution_does_not_reset_scrutiny(
+        self, repo, fake_runner
+    ):
         """Resolving a CONTRADICTION no longer resets scrutiny_verdict (moved to graph)."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass")
@@ -91,7 +100,11 @@ class TestBlockingResolutionNoScrutinyReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         result = await op.execute(work)
 
         assert result.success
@@ -99,7 +112,9 @@ class TestBlockingResolutionNoScrutinyReset:
         assert updated_claim.scrutiny_verdict == "pass"  # unchanged by operation
 
     @pytest.mark.asyncio
-    async def test_strong_counterevidence_does_not_reset_scrutiny(self, repo, fake_runner):
+    async def test_strong_counterevidence_does_not_reset_scrutiny(
+        self, repo, fake_runner
+    ):
         """Resolving STRONG_COUNTEREVIDENCE no longer resets scrutiny (moved to graph)."""
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass")
@@ -111,7 +126,11 @@ class TestBlockingResolutionNoScrutinyReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
@@ -130,11 +149,17 @@ class TestBlockingResolutionNoScrutinyReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
-        assert updated_claim.scrutiny_verdict == "needs_resolution"  # unchanged by operation
+        assert (
+            updated_claim.scrutiny_verdict == "needs_resolution"
+        )  # unchanged by operation
 
     @pytest.mark.asyncio
     async def test_multiple_affected_claims_unchanged(self, repo, fake_runner):
@@ -151,7 +176,11 @@ class TestBlockingResolutionNoScrutinyReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         cl1 = await repo.get("claim", "cl-1")
@@ -181,7 +210,11 @@ class TestNonBlockingResolutionNoReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
@@ -200,7 +233,11 @@ class TestNonBlockingResolutionNoReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
@@ -228,7 +265,11 @@ class TestSafetyCaps:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
@@ -248,7 +289,11 @@ class TestSafetyCaps:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         updated_claim = await repo.get("claim", "cl-1")
@@ -271,7 +316,11 @@ class TestSafetyCaps:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=fake_runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
 
         with pytest.raises(EntityNotFoundError):
             await op.execute(work)
@@ -291,13 +340,15 @@ class TestUnresolvableNoReset:
         """Unresolvable blocking uncertainty does not reset scrutiny (moved to graph)."""
         from .conftest import FakeAgentRunner
 
-        runner = FakeAgentRunner(overrides={
-            "epistemic_resolve_uncertainty": {
-                "can_resolve": False,
-                "resolution": "",
-                "remaining_concerns": [],
+        runner = FakeAgentRunner(
+            overrides={
+                "epistemic_resolve_uncertainty": {
+                    "can_resolve": False,
+                    "resolution": "",
+                    "remaining_concerns": [],
+                }
             }
-        })
+        )
 
         await repo.save(_make_objective())
         claim = _make_claim(scrutiny_verdict="pass")
@@ -309,12 +360,18 @@ class TestUnresolvableNoReset:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=runner, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         await op.execute(work)
 
         # Uncertainty is marked as "Unresolvable" — still a resolution
         updated_unc = await repo.get("uncertainty", "unc-1")
-        assert updated_unc.resolution is not None  # "Unresolvable: acknowledged limitation"
+        assert (
+            updated_unc.resolution is not None
+        )  # "Unresolvable: acknowledged limitation"
 
         # Operation no longer touches claims — scrutiny unchanged
         updated_claim = await repo.get("claim", "cl-1")
@@ -337,7 +394,11 @@ class TestAlreadyResolvedNoop:
         op = ResolveUncertaintyOperation(
             repo=repo, agent_runner=None, embedding_model="test-model"
         )
-        work = OperationInput(entity_id="unc-1", entity_type="uncertainty", operation="resolve_uncertainty")
+        work = OperationInput(
+            entity_id="unc-1",
+            entity_type="uncertainty",
+            operation="resolve_uncertainty",
+        )
         result = await op.execute(work)
 
         assert result.success

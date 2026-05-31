@@ -111,8 +111,10 @@ async def test_generator_produces_distinct_queries_under_generic_rejection():
         feedback = "not specific enough — try a different angle"
 
     distinct = set(captured)
-    print(f"\n=== captured queries ({len(captured)} attempts, "
-          f"{len(distinct)} distinct) ===")
+    print(
+        f"\n=== captured queries ({len(captured)} attempts, "
+        f"{len(distinct)} distinct) ==="
+    )
     for i, q in enumerate(captured, 1):
         print(f"  {i:2d}. {q}")
 
@@ -124,9 +126,7 @@ async def test_generator_produces_distinct_queries_under_generic_rejection():
 
 async def test_generator_does_not_cluster_into_paraphrases():
     """Even when distinct, queries shouldn't be near-bigram-duplicates."""
-    ctx = _make_ctx(
-        "What causes muscle weakness in patients on statin therapy?"
-    )
+    ctx = _make_ctx("What causes muscle weakness in patients on statin therapy?")
     captured: list[str] = []
     feedback: str | None = None
 
@@ -177,9 +177,7 @@ async def test_generator_responds_to_specific_feedback():
 
     # The corrected query must mention the missing constraint in some form.
     q2_lower = q2.lower()
-    assert any(
-        token in q2_lower for token in ("healthy", "adult", "volunteer")
-    ), (
+    assert any(token in q2_lower for token in ("healthy", "adult", "volunteer")), (
         f"Generator did not address feedback about 'healthy adults' — "
         f"second query was: {q2!r}"
     )

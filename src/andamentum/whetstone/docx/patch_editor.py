@@ -26,7 +26,9 @@ class PatchDocxEditor(DocxEditor):
     all the existing sophisticated formatting preservation and track changes logic.
     """
 
-    def __init__(self, input_path: str, author: str = "Document Editor", context_size: int = 1):
+    def __init__(
+        self, input_path: str, author: str = "Document Editor", context_size: int = 1
+    ):
         """
         Initialize the enhanced DocxEditor.
 
@@ -53,7 +55,9 @@ class PatchDocxEditor(DocxEditor):
             )
         return self._doc_index
 
-    def apply_patches(self, patches, use_patch_authors: bool = False) -> PatchApplicationResult:
+    def apply_patches(
+        self, patches, use_patch_authors: bool = False
+    ) -> PatchApplicationResult:
         """
         Apply a list of patches to the document.
 
@@ -79,7 +83,9 @@ class PatchDocxEditor(DocxEditor):
             if hasattr(item, "patch") and hasattr(item, "attribution"):
                 # AttributedPatch object
                 patch = item.patch
-                author = item.attribution.author_name if use_patch_authors else self.author
+                author = (
+                    item.attribution.author_name if use_patch_authors else self.author
+                )
                 patch_author_pairs.append((patch, author))
             else:
                 # Regular DocumentPatch object
@@ -89,11 +95,15 @@ class PatchDocxEditor(DocxEditor):
                 patch_author_pairs.append((item, author))
 
         # Sort patches by confidence (apply high-confidence patches first)
-        sorted_patch_pairs = sorted(patch_author_pairs, key=lambda x: x[0].confidence, reverse=True)
+        sorted_patch_pairs = sorted(
+            patch_author_pairs, key=lambda x: x[0].confidence, reverse=True
+        )
 
         for patch, patch_author in sorted_patch_pairs:
             try:
-                success, failure_reason = self._apply_single_patch_with_author(patch, patch_author)
+                success, failure_reason = self._apply_single_patch_with_author(
+                    patch, patch_author
+                )
 
                 if success:
                     applied_count += 1
@@ -175,7 +185,9 @@ class PatchDocxEditor(DocxEditor):
         except Exception as e:
             return False, f"Error applying patch: {str(e)}"
 
-    def _apply_single_patch_with_author(self, patch: DocumentPatch, author: str) -> Tuple[bool, str]:
+    def _apply_single_patch_with_author(
+        self, patch: DocumentPatch, author: str
+    ) -> Tuple[bool, str]:
         """
         Apply a single patch to the document with a specific author.
 
@@ -213,7 +225,9 @@ class PatchDocxEditor(DocxEditor):
             Paragraph index if found, None otherwise
         """
         # If paragraph index is specified and valid, use it first
-        if patch.paragraph_index is not None and 0 <= patch.paragraph_index < len(self.paragraphs):
+        if patch.paragraph_index is not None and 0 <= patch.paragraph_index < len(
+            self.paragraphs
+        ):
             return patch.paragraph_index
 
         # Fall back to text pattern matching
@@ -244,7 +258,9 @@ class PatchDocxEditor(DocxEditor):
         best_similarity = 0.6  # Minimum similarity threshold
 
         for i, para in enumerate(self.paragraphs):
-            similarity = self._calculate_text_similarity(pattern_lower, para.modified.lower())
+            similarity = self._calculate_text_similarity(
+                pattern_lower, para.modified.lower()
+            )
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_match_idx = i
@@ -258,7 +274,9 @@ class PatchDocxEditor(DocxEditor):
         only ever used here."""
         return difflib.SequenceMatcher(None, text1, text2, autojunk=False).ratio()
 
-    def _validate_patch_location(self, patch: DocumentPatch, paragraph_index: int) -> bool:
+    def _validate_patch_location(
+        self, patch: DocumentPatch, paragraph_index: int
+    ) -> bool:
         """
         Validate that a patch can still be applied to the specified paragraph.
 
@@ -286,7 +304,9 @@ class PatchDocxEditor(DocxEditor):
 
         return True
 
-    def _apply_text_edit_patch(self, patch: DocumentPatch, paragraph_index: int) -> Tuple[bool, str]:
+    def _apply_text_edit_patch(
+        self, patch: DocumentPatch, paragraph_index: int
+    ) -> Tuple[bool, str]:
         """
         Apply a text edit patch to a specific paragraph.
 
@@ -305,10 +325,14 @@ class PatchDocxEditor(DocxEditor):
 
         # If we have original_text, do precise replacement
         if patch.original_text and patch.original_text.strip() in current_text:
-            new_text = current_text.replace(patch.original_text.strip(), patch.new_text.strip())
+            new_text = current_text.replace(
+                patch.original_text.strip(), patch.new_text.strip()
+            )
         elif patch.text_pattern and patch.text_pattern.strip() in current_text:
             # Use text_pattern for replacement
-            new_text = current_text.replace(patch.text_pattern.strip(), patch.new_text.strip())
+            new_text = current_text.replace(
+                patch.text_pattern.strip(), patch.new_text.strip()
+            )
         else:
             return False, "Could not find target text for replacement"
 
@@ -317,7 +341,9 @@ class PatchDocxEditor(DocxEditor):
         paragraph.modified = new_text
 
         # Track who made this change (for track changes attribution)
-        paragraph.change_author = self.author  # Legacy single author - kept for compatibility
+        paragraph.change_author = (
+            self.author
+        )  # Legacy single author - kept for compatibility
 
         # Track the specific token-level changes made by this agent
         paragraph.attribution_tracker.track_change(original_text, new_text, self.author)
@@ -382,14 +408,24 @@ class PatchDocxEditor(DocxEditor):
         Returns:
             Dictionary with patch application summary
         """
-        applied_edits = sum(1 for p in self.applied_patches if p.patch_type == "text_edit")
-        applied_comments = sum(1 for p in self.applied_patches if p.patch_type == "comment")
-        failed_edits = sum(1 for p in self.failed_patches if p.patch_type == "text_edit")
-        failed_comments = sum(1 for p in self.failed_patches if p.patch_type == "comment")
+        applied_edits = sum(
+            1 for p in self.applied_patches if p.patch_type == "text_edit"
+        )
+        applied_comments = sum(
+            1 for p in self.applied_patches if p.patch_type == "comment"
+        )
+        failed_edits = sum(
+            1 for p in self.failed_patches if p.patch_type == "text_edit"
+        )
+        failed_comments = sum(
+            1 for p in self.failed_patches if p.patch_type == "comment"
+        )
 
         avg_confidence = 0.0
         if self.applied_patches:
-            avg_confidence = sum(p.confidence for p in self.applied_patches) / len(self.applied_patches)
+            avg_confidence = sum(p.confidence for p in self.applied_patches) / len(
+                self.applied_patches
+            )
 
         return {
             "total_applied": len(self.applied_patches),
@@ -399,7 +435,9 @@ class PatchDocxEditor(DocxEditor):
             "failed_edits": failed_edits,
             "failed_comments": failed_comments,
             "average_confidence": avg_confidence,
-            "success_rate": len(self.applied_patches) / (len(self.applied_patches) + len(self.failed_patches)) * 100
+            "success_rate": len(self.applied_patches)
+            / (len(self.applied_patches) + len(self.failed_patches))
+            * 100
             if (self.applied_patches or self.failed_patches)
             else 0,
         }
@@ -440,7 +478,9 @@ class PatchDocxEditor(DocxEditor):
                 ]
             )
             for i, patch in enumerate(self.failed_patches[:5]):  # Show first 5
-                lines.append(f"  {i + 1}. {patch.patch_type}: {patch.explanation[:60]}...")
+                lines.append(
+                    f"  {i + 1}. {patch.patch_type}: {patch.explanation[:60]}..."
+                )
 
             if len(self.failed_patches) > 5:
                 lines.append(f"  ... and {len(self.failed_patches) - 5} more")

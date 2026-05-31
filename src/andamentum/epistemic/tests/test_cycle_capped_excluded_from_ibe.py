@@ -83,9 +83,7 @@ async def test_cycle_capped_supported_skipped_by_promote_to_supported(
     await repo.save(claim)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
@@ -100,9 +98,7 @@ async def test_cycle_capped_supported_skipped_by_promote_to_supported(
     )
 
 
-async def test_ibe_filters_skip_cycle_capped(
-    tmp_path: Path, fake_runner
-) -> None:
+async def test_ibe_filters_skip_cycle_capped(tmp_path: Path, fake_runner) -> None:
     """Defensive: even if a cycle-capped SUPPORTED claim somehow
     reaches one of the IBE chain nodes, the filter should skip it
     (no operation called for that claim).
@@ -134,9 +130,7 @@ async def test_ibe_filters_skip_cycle_capped(
     await repo.save(claim)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     # All four IBE chain nodes should run as no-ops on this claim
     # (and proceed to the next stage).
@@ -184,9 +178,7 @@ async def test_non_cycle_capped_supported_still_enters_ibe(
     await repo.save(claim)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 

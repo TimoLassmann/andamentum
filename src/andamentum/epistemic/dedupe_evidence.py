@@ -36,7 +36,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DOI_PREFIX_RE = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
-_PMID_PREFIX_RE = re.compile(r"^https?://(www\.)?(pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov/pubmed)/", re.IGNORECASE)
+_PMID_PREFIX_RE = re.compile(
+    r"^https?://(www\.)?(pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov/pubmed)/",
+    re.IGNORECASE,
+)
 
 
 def normalize_source_ref(ref: str | None) -> str:
@@ -133,8 +136,7 @@ async def dedupe_evidence_by_source_ref(
         for loser in losers:
             loser.invalidated = True
             loser.invalidation_reason = (
-                f"Cross-provider duplicate of {winner.entity_id[:12]}"
-                f"{provider_blurb}"
+                f"Cross-provider duplicate of {winner.entity_id[:12]}{provider_blurb}"
             )
             await repo.save(loser)
             n_marked += 1

@@ -219,9 +219,7 @@ class TestOpenAlexQualityScorerSmoke:
         identifiers = Identifiers()  # all None
         result = await scorer.score(identifiers, "some random text", "web_search")
 
-        assert result is None, (
-            "Should return None when identifiers are all None"
-        )
+        assert result is None, "Should return None when identifiers are all None"
 
 
 class TestHealthCheckProductionParity:

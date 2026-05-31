@@ -40,9 +40,7 @@ class _AlwaysSucceedsOp(BaseOperation):
     entity_type = "objective"
 
     async def execute(self, work: OperationInput) -> OperationResult:
-        return OperationResult(
-            success=True, entity_id=work.entity_id, message="ok"
-        )
+        return OperationResult(success=True, entity_id=work.entity_id, message="ok")
 
 
 @pytest.fixture
@@ -140,9 +138,7 @@ async def test_step_number_metadata_preserved(shared_repo):
     deps = EpistemicDeps(repo=shared_repo, agent_runner=None)
     state = EpistemicGraphState(objective_id="obj_seq")
     for _ in range(4):
-        await _run_op(
-            _AlwaysSucceedsOp, deps, state, "obj_seq", "objective", "noop"
-        )
+        await _run_op(_AlwaysSucceedsOp, deps, state, "obj_seq", "objective", "noop")
 
     backend = shared_repo.store
     rows = await backend.find_by_metadata(

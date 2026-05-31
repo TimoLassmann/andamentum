@@ -290,10 +290,14 @@ class SynthesizeReportOperation(BaseOperation):
         # decomposed question. Either way it's the natural relevance anchor
         # for the synthesis prompt.
         synthesis_anchor = (
-            getattr(objective, "clarified_question", None)
-            or getattr(objective, "description", None)
-            or ""
-        ) if isinstance(objective, Objective) else ""
+            (
+                getattr(objective, "clarified_question", None)
+                or getattr(objective, "description", None)
+                or ""
+            )
+            if isinstance(objective, Objective)
+            else ""
+        )
         evidence: list[Evidence] = await top_n_representatives(
             snapshot_evidence,
             LLM_PANEL_CAP,

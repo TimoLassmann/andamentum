@@ -60,9 +60,11 @@ async def extract_html(html: str, url: str) -> str:
         ExtractionError: If no extractable content is found.
     """
     try:
-        return (await extract_from_bytes(
-            html.encode("utf-8"), format="html", source_url=url
-        )).strip()
+        return (
+            await extract_from_bytes(
+                html.encode("utf-8"), format="html", source_url=url
+            )
+        ).strip()
     except HarvestError as exc:
         raise ExtractionError(str(exc)) from exc
 
@@ -85,11 +87,13 @@ async def extract_pdf(data: bytes, source_name: str = "document.pdf") -> str:
     if not data:
         raise ExtractionError(f"Empty PDF data for {source_name}")
     try:
-        return (await extract_from_bytes(
-            data, format="pdf", source_url=source_name
-        )).strip()
+        return (
+            await extract_from_bytes(data, format="pdf", source_url=source_name)
+        ).strip()
     except HarvestError as exc:
-        raise ExtractionError(f"PDF extraction failed for {source_name}: {exc}") from exc
+        raise ExtractionError(
+            f"PDF extraction failed for {source_name}: {exc}"
+        ) from exc
 
 
 def _parse_charset(content_type: str) -> str:
