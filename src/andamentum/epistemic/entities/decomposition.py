@@ -32,9 +32,7 @@ class SubInvestigation(BaseModel):
     """
 
     id: str = Field(
-        description=(
-            "Stable identifier for this sub-investigation: 'A', 'B', 'C', ..."
-        )
+        description=("Stable identifier for this sub-investigation: 'A', 'B', 'C', ...")
     )
     seed_claim: str = Field(
         description=(

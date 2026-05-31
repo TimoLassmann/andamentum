@@ -168,9 +168,9 @@ _VERDICT_INSUFFICIENT = "Insufficient evidence"
 #
 # A posterior of 0.70 is "leaning supportive" (above directional) but
 # not yet decisive; the system would keep investigating.
-_DECISIVE_HI = POSTERIOR_DECISIVE_THRESHOLD             # ≥ this → decisive confirm
-_DECISIVE_LO = 1.0 - POSTERIOR_DECISIVE_THRESHOLD       # ≤ this → decisive refute
-_DIRECTIONAL_HI = POSTERIOR_DIRECTIONAL_BREAKPOINT      # ≥ this → Confirmed label
+_DECISIVE_HI = POSTERIOR_DECISIVE_THRESHOLD  # ≥ this → decisive confirm
+_DECISIVE_LO = 1.0 - POSTERIOR_DECISIVE_THRESHOLD  # ≤ this → decisive refute
+_DIRECTIONAL_HI = POSTERIOR_DIRECTIONAL_BREAKPOINT  # ≥ this → Confirmed label
 _DIRECTIONAL_LO = 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT  # ≤ this → Refuted label
 
 
@@ -479,9 +479,7 @@ def _evidence_for_claim(
     adversarial-search output and should never appear in the supporting
     list. This is the renderer-side guard for the v1 mis-bucketing bug.
     """
-    claim_evidence = [
-        ev for ev in all_evidence if ev.evidence_id in claim.evidence_ids
-    ]
+    claim_evidence = [ev for ev in all_evidence if ev.evidence_id in claim.evidence_ids]
     supports: list[EvidenceSummary] = []
     contradicts: list[EvidenceSummary] = []
     no_bearing: list[EvidenceSummary] = []
@@ -550,7 +548,11 @@ def _evidence_line(
             flag_str = f" *({', '.join(flags)})*"
 
     if judgement_text:
-        return f"{head} — {judgement_text}{flag_str}" if head else f"{judgement_text}{flag_str}"
+        return (
+            f"{head} — {judgement_text}{flag_str}"
+            if head
+            else f"{judgement_text}{flag_str}"
+        )
     return head
 
 
@@ -805,9 +807,7 @@ def _render_reasoning_block_md(
         )
         parts.append("")
         if claim.integrated_assessment:
-            parts.append(
-                f"**Integrated assessment:** {claim.integrated_assessment}"
-            )
+            parts.append(f"**Integrated assessment:** {claim.integrated_assessment}")
             parts.append("")
 
     return "\n".join(parts).rstrip()
@@ -824,9 +824,7 @@ def _render_supports_block_md(
     if not supports:
         return ""
     n = len(supports)
-    parts: list[str] = [
-        f"### Supporting evidence ({n} item{'s' if n != 1 else ''})"
-    ]
+    parts: list[str] = [f"### Supporting evidence ({n} item{'s' if n != 1 else ''})"]
     parts.append("")
     top = supports[:_INLINE_TOP_K]
     for ev in top:
@@ -1092,9 +1090,7 @@ def _build_gate_trace_json(data: ReportData) -> str:
                 "statement": claim.statement,
                 "verdict": _normalised_verdict(data, claim=claim),
                 "posterior": (
-                    data.confidence_scores.posterior
-                    if data.confidence_scores
-                    else None
+                    data.confidence_scores.posterior if data.confidence_scores else None
                 ),
                 "integrated_assessment": claim.integrated_assessment,
                 "gate_trace": [
@@ -1141,8 +1137,8 @@ _TERMS_GLOSSARY_MD = (
     "contested.\n"
     "- **Gap-analysis** — when initial evidence retrieval doesn't "
     "resolve a claim, this step proposes new methodological angles "
-    "for follow-up search (e.g. \"find an RCT with a different "
-    "timing of intervention\"). Each angle becomes an *investigation "
+    'for follow-up search (e.g. "find an RCT with a different '
+    'timing of intervention"). Each angle becomes an *investigation '
     "round*.\n"
     "- **Posterior** — the probability the claim is true, in [0, 1], "
     "computed by the system's confidence-scoring step. A posterior of "
@@ -1185,9 +1181,7 @@ def _check_count_invariants(data: ReportData) -> None:
         ("contradicts", s.evidence_contradicts),
         ("no_bearing", s.evidence_no_bearing),
     ):
-        ev_count = sum(
-            1 for ev in data.evidence if ev.support_judgment == direction
-        )
+        ev_count = sum(1 for ev in data.evidence if ev.support_judgment == direction)
         direction_counts[direction] = (stat_count, ev_count)
         if ev_count > stat_count:
             raise ValueError(
@@ -1357,10 +1351,7 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
     ]
     if data.claims:
         sof_lines.append("")
-        sof_lines.append(
-            "Per-claim verdict"
-            f"{'s' if multi_claim else ''}:"
-        )
+        sof_lines.append(f"Per-claim verdict{'s' if multi_claim else ''}:")
         sof_lines.append("")
         claim_rows: list[list[str]] = []
         for i, claim in enumerate(data.claims, start=1):
@@ -1478,12 +1469,8 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
             "date": data.investigation_date.isoformat(),
         },
         "Persistence": {
-            "snapshot": (
-                (data.snapshot_id[:12] + "…") if data.snapshot_id else "—"
-            ),
-            "artefact": (
-                (data.artefact_id[:12] + "…") if data.artefact_id else "—"
-            ),
+            "snapshot": ((data.snapshot_id[:12] + "…") if data.snapshot_id else "—"),
+            "artefact": ((data.artefact_id[:12] + "…") if data.artefact_id else "—"),
             "database": data.database_name or "—",
         },
     }

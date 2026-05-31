@@ -163,11 +163,7 @@ class AdversarialSearchOperation(BaseOperation):
         # the gatherer returned ~one hit per query) pass through
         # unchanged. Runs that yielded many candidates get clipped to a
         # comparable pool size.
-        if (
-            self.embedding_model
-            and len(search_hits) > 0
-            and all_queries
-        ):
+        if self.embedding_model and len(search_hits) > 0 and all_queries:
             import math
 
             from ..embeddings import embed_texts

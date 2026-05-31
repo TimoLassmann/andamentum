@@ -155,9 +155,7 @@ class TestDispatchGatherOperation:
             }
         )
 
-        op = DispatchGatherOperation(
-            repo, runner, providers={"stub_a": provider}
-        )
+        op = DispatchGatherOperation(repo, runner, providers={"stub_a": provider})
         result = await op.execute(
             _make_input(entity_id="obj_test", entity_type="objective")
         )
@@ -187,9 +185,7 @@ class TestDispatchGatherOperation:
             }
         )
 
-        op = DispatchGatherOperation(
-            repo, runner, providers={"stub_a": provider}
-        )
+        op = DispatchGatherOperation(repo, runner, providers={"stub_a": provider})
         result = await op.execute(
             _make_input(entity_id="obj_test", entity_type="objective")
         )
@@ -199,34 +195,24 @@ class TestDispatchGatherOperation:
         ev_list = await repo.query("evidence", objective_id="obj_test")
         assert ev_list == []
 
-    async def test_phase_advances_to_planned(
-        self, repo: EpistemicRepository
-    ) -> None:
+    async def test_phase_advances_to_planned(self, repo: EpistemicRepository) -> None:
         await self._make_objective(repo)
         provider = _StubProvider(name="stub_a", gathered=[])
         runner = _DispatchStubRunner()
 
-        op = DispatchGatherOperation(
-            repo, runner, providers={"stub_a": provider}
-        )
-        await op.execute(
-            _make_input(entity_id="obj_test", entity_type="objective")
-        )
+        op = DispatchGatherOperation(repo, runner, providers={"stub_a": provider})
+        await op.execute(_make_input(entity_id="obj_test", entity_type="objective"))
 
         obj = await repo.get("objective", "obj_test")
         assert obj.phase == "planned"
 
-    async def test_raises_without_providers(
-        self, repo: EpistemicRepository
-    ) -> None:
+    async def test_raises_without_providers(self, repo: EpistemicRepository) -> None:
         await self._make_objective(repo)
         runner = _DispatchStubRunner()
 
         op = DispatchGatherOperation(repo, runner, providers={})
         with pytest.raises(RuntimeError, match="providers"):
-            await op.execute(
-                _make_input(entity_id="obj_test", entity_type="objective")
-            )
+            await op.execute(_make_input(entity_id="obj_test", entity_type="objective"))
 
     async def test_skip_when_phase_not_analyzed(
         self, repo: EpistemicRepository
@@ -241,9 +227,7 @@ class TestDispatchGatherOperation:
         provider = _StubProvider(name="stub_a", gathered=[])
         runner = _DispatchStubRunner()
 
-        op = DispatchGatherOperation(
-            repo, runner, providers={"stub_a": provider}
-        )
+        op = DispatchGatherOperation(repo, runner, providers={"stub_a": provider})
         result = await op.execute(
             _make_input(entity_id="obj_x", entity_type="objective")
         )
@@ -279,6 +263,7 @@ class TestPlanEvidenceWiring:
 
         async def fake_dispatch_execute(self: Any, work: Any) -> Any:
             from andamentum.epistemic.operations.base import OperationResult
+
             dispatch_calls.append(work.entity_id)
             target = await self.repo.get("objective", work.entity_id)
             target.phase = "planned"
@@ -326,9 +311,7 @@ class TestPlanEvidenceWiring:
         async def boom_execute(self: Any, work: Any) -> Any:
             raise RuntimeError("simulated dispatch failure")
 
-        monkeypatch.setattr(
-            dg_mod.DispatchGatherOperation, "execute", boom_execute
-        )
+        monkeypatch.setattr(dg_mod.DispatchGatherOperation, "execute", boom_execute)
 
         state = EpistemicGraphState(
             objective_id="obj_boom",

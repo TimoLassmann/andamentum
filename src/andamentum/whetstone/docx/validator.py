@@ -51,7 +51,9 @@ class PatchValidator:
 
         # Validate confidence range
         if not (0.0 <= patch.confidence <= 1.0):
-            return ValidationResult.invalid(f"Confidence {patch.confidence} not in range [0.0, 1.0]")
+            return ValidationResult.invalid(
+                f"Confidence {patch.confidence} not in range [0.0, 1.0]"
+            )
 
         # Check for suspicious patterns
         warnings = []
@@ -65,10 +67,14 @@ class PatchValidator:
                 return ValidationResult.invalid("Comment patch missing comment_text")
         elif patch.patch_type == "document_analysis":
             if not patch.analysis_text or not patch.analysis_text.strip():
-                return ValidationResult.invalid("Document analysis patch missing analysis_text")
+                return ValidationResult.invalid(
+                    "Document analysis patch missing analysis_text"
+                )
             # Validate that it looks like structured analysis, not just a simple summary
             if len(patch.analysis_text.strip()) < 100:
-                return ValidationResult.invalid("Document analysis text too short - should contain detailed analysis")
+                return ValidationResult.invalid(
+                    "Document analysis text too short - should contain detailed analysis"
+                )
             # Check for markdown structure (## headers indicate structured format)
             if "##" not in patch.analysis_text:
                 warnings.append(
@@ -88,13 +94,16 @@ class PatchValidator:
 
         if warnings:
             return ValidationResult.warning(
-                f"Validation passed with warnings: {'; '.join(warnings)}", {"warnings": warnings}
+                f"Validation passed with warnings: {'; '.join(warnings)}",
+                {"warnings": warnings},
             )
 
         return ValidationResult.valid("Patch content validation passed")
 
     @staticmethod
-    def validate_patch_location(patch: DocumentPatch, paragraph_texts: List[str]) -> LocationResult:
+    def validate_patch_location(
+        patch: DocumentPatch, paragraph_texts: List[str]
+    ) -> LocationResult:
         """
         Validate that a patch can be located in the document.
 
@@ -120,21 +129,29 @@ class PatchValidator:
                 para_text = paragraph_texts[patch.paragraph_index]
                 if patch.text_pattern.lower().strip() in para_text.lower():
                     return LocationResult.found_at(
-                        patch.paragraph_index, confidence=1.0, message="Found by paragraph index"
+                        patch.paragraph_index,
+                        confidence=1.0,
+                        message="Found by paragraph index",
                     )
                 else:
                     # Index is valid but pattern not found
-                    return LocationResult.not_found(f"Pattern not found in paragraph {patch.paragraph_index}")
+                    return LocationResult.not_found(
+                        f"Pattern not found in paragraph {patch.paragraph_index}"
+                    )
             else:
                 return LocationResult.not_found(
                     f"Paragraph index {patch.paragraph_index} out of range [0, {len(paragraph_texts) - 1}]"
                 )
 
         # Fall back to text pattern matching
-        return PatchValidator._find_pattern_in_paragraphs(patch.text_pattern, paragraph_texts)
+        return PatchValidator._find_pattern_in_paragraphs(
+            patch.text_pattern, paragraph_texts
+        )
 
     @staticmethod
-    def _find_pattern_in_paragraphs(pattern: str, paragraph_texts: List[str]) -> LocationResult:
+    def _find_pattern_in_paragraphs(
+        pattern: str, paragraph_texts: List[str]
+    ) -> LocationResult:
         """
         Find a text pattern in paragraph list.
 
@@ -155,13 +172,19 @@ class PatchValidator:
                 exact_matches.append(i)
 
         if len(exact_matches) == 1:
-            return LocationResult.found_at(exact_matches[0], confidence=1.0, message="Exact pattern match found")
+            return LocationResult.found_at(
+                exact_matches[0], confidence=1.0, message="Exact pattern match found"
+            )
         elif len(exact_matches) > 1:
-            return LocationResult.ambiguous(exact_matches, f"Pattern found in {len(exact_matches)} paragraphs")
+            return LocationResult.ambiguous(
+                exact_matches, f"Pattern found in {len(exact_matches)} paragraphs"
+            )
 
         # Second pass: fuzzy matching
         for i, para_text in enumerate(paragraph_texts):
-            similarity = PatchValidator._calculate_similarity(pattern_lower, para_text.lower())
+            similarity = PatchValidator._calculate_similarity(
+                pattern_lower, para_text.lower()
+            )
             if similarity > 0.6:  # Threshold for fuzzy matching
                 fuzzy_matches.append((i, similarity))
 
@@ -180,7 +203,8 @@ class PatchValidator:
                 # Multiple fuzzy matches or low confidence
                 alternatives = [match[0] for match in fuzzy_matches[:5]]  # Top 5
                 return LocationResult.ambiguous(
-                    alternatives, f"Multiple fuzzy matches found (best similarity: {best_match[1]:.2f})"
+                    alternatives,
+                    f"Multiple fuzzy matches found (best similarity: {best_match[1]:.2f})",
                 )
 
         return LocationResult.not_found("Pattern not found in any paragraph")
@@ -201,7 +225,9 @@ class PatchValidator:
         return matcher.ratio()
 
     @staticmethod
-    def validate_patch_application(patch: DocumentPatch, paragraph_index: int, paragraph_text: str) -> ValidationResult:
+    def validate_patch_application(
+        patch: DocumentPatch, paragraph_index: int, paragraph_text: str
+    ) -> ValidationResult:
         """
         Validate that a patch can be safely applied to a specific paragraph.
 
@@ -223,7 +249,9 @@ class PatchValidator:
             return ValidationResult.invalid("No text pattern provided")
 
         if patch.text_pattern.lower().strip() not in paragraph_text.lower():
-            return ValidationResult.invalid("Target text pattern no longer exists in paragraph")
+            return ValidationResult.invalid(
+                "Target text pattern no longer exists in paragraph"
+            )
 
         # For text edits, check for potential conflicts
         if patch.patch_type == "text_edit":
@@ -247,7 +275,9 @@ class PatchValidator:
         return ValidationResult.valid("Patch can be safely applied")
 
     @staticmethod
-    def validate_patch_batch(patches: List[DocumentPatch], paragraph_texts: List[str]) -> Dict[str, Any]:
+    def validate_patch_batch(
+        patches: List[DocumentPatch], paragraph_texts: List[str]
+    ) -> Dict[str, Any]:
         """
         Validate a batch of patches for consistency and applicability.
 
@@ -281,7 +311,9 @@ class PatchValidator:
                 warnings.append(f"Patch {patch.patch_id}: {content_result.message}")
 
             # Location validation
-            location_result = PatchValidator.validate_patch_location(patch, paragraph_texts)
+            location_result = PatchValidator.validate_patch_location(
+                patch, paragraph_texts
+            )
             if not location_result.found:
                 invalid_patches.append((patch, location_result.message))
                 location_failures += 1
@@ -304,7 +336,9 @@ class PatchValidator:
         for para_idx, para_patches in patches_by_paragraph.items():
             if len(para_patches) > 1:
                 # Check if patches target overlapping text
-                text_edit_patches = [p for p in para_patches if p.patch_type == "text_edit"]
+                text_edit_patches = [
+                    p for p in para_patches if p.patch_type == "text_edit"
+                ]
                 if len(text_edit_patches) > 1:
                     conflicts.append(
                         {
@@ -315,7 +349,12 @@ class PatchValidator:
                     )
 
         if conflicts:
-            warnings.extend([f"Potential conflict in paragraph {c['paragraph']}: {c['reason']}" for c in conflicts])
+            warnings.extend(
+                [
+                    f"Potential conflict in paragraph {c['paragraph']}: {c['reason']}"
+                    for c in conflicts
+                ]
+            )
 
         success_rate = len(valid_patches) / len(patches) * 100 if patches else 100
 
@@ -385,7 +424,9 @@ class PatchValidator:
                 ]
             )
             for conflict in results["conflicts"]:
-                lines.append(f"  - Paragraph {conflict['paragraph']}: {conflict['reason']}")
+                lines.append(
+                    f"  - Paragraph {conflict['paragraph']}: {conflict['reason']}"
+                )
             lines.append("")
 
         return "\n".join(lines)

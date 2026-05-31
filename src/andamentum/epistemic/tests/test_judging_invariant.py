@@ -152,9 +152,7 @@ class TestPredicateDrivenJudging:
                 "the predicate-driven loop"
             )
 
-    async def test_skips_invalidated_evidence(
-        self, repo: EpistemicRepository
-    ) -> None:
+    async def test_skips_invalidated_evidence(self, repo: EpistemicRepository) -> None:
         """The judging predicate excludes invalidated Evidence."""
         obj = Objective(
             entity_id="obj_skip",

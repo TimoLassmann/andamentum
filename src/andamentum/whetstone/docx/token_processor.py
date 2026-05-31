@@ -79,7 +79,9 @@ class TokenProcessor:
         return tokens
 
     @classmethod
-    def create_token_data_from_runs(cls, paragraph_element: etree.Element, text: str) -> List[TokenData]:
+    def create_token_data_from_runs(
+        cls, paragraph_element: etree.Element, text: str
+    ) -> List[TokenData]:
         """
         Create TokenData objects from a paragraph element and its text.
 
@@ -114,7 +116,9 @@ class TokenProcessor:
         return tokens
 
     @classmethod
-    def _build_char_rpr_mapping(cls, paragraph_element: etree.Element) -> List[Optional[etree.Element]]:
+    def _build_char_rpr_mapping(
+        cls, paragraph_element: etree.Element
+    ) -> List[Optional[etree.Element]]:
         """
         Build mapping from character position to run properties.
 
@@ -134,7 +138,9 @@ class TokenProcessor:
             run_rpr = copy.deepcopy(rpr) if rpr is not None else None
 
             # Get text from this run
-            run_text = "".join(t.text or "" for t in run.findall(".//w:t", namespaces=NS))
+            run_text = "".join(
+                t.text or "" for t in run.findall(".//w:t", namespaces=NS)
+            )
 
             # Each character in run_text gets this run_rpr
             char_rprs.extend([run_rpr] * len(run_text))
@@ -142,7 +148,9 @@ class TokenProcessor:
         return char_rprs
 
     @classmethod
-    def create_token_data_list(cls, text: str, author: str = "Unknown") -> List[TokenData]:
+    def create_token_data_list(
+        cls, text: str, author: str = "Unknown"
+    ) -> List[TokenData]:
         """
         Create a simple list of TokenData objects from text.
 
@@ -156,7 +164,10 @@ class TokenProcessor:
             List of TokenData objects
         """
         tokens = cls.tokenize(text)
-        return [TokenData(text=token, position=i, author=author) for i, token in enumerate(tokens)]
+        return [
+            TokenData(text=token, position=i, author=author)
+            for i, token in enumerate(tokens)
+        ]
 
     @classmethod
     def extract_text_from_tokens(cls, tokens: List[TokenData]) -> str:
@@ -172,7 +183,9 @@ class TokenProcessor:
         return "".join(token.text for token in tokens)
 
     @classmethod
-    def filter_tokens(cls, tokens: List[TokenData], include_whitespace: bool = True) -> List[TokenData]:
+    def filter_tokens(
+        cls, tokens: List[TokenData], include_whitespace: bool = True
+    ) -> List[TokenData]:
         """
         Filter tokens based on criteria.
 
@@ -189,7 +202,9 @@ class TokenProcessor:
         return [token for token in tokens if not token.text.isspace()]
 
     @classmethod
-    def find_token_by_content(cls, tokens: List[TokenData], search_text: str) -> Optional[int]:
+    def find_token_by_content(
+        cls, tokens: List[TokenData], search_text: str
+    ) -> Optional[int]:
         """
         Find the index of a token by its text content.
 
@@ -225,7 +240,9 @@ class TokenProcessor:
         return matches
 
     @classmethod
-    def merge_adjacent_tokens(cls, tokens: List[TokenData], merge_whitespace: bool = True) -> List[TokenData]:
+    def merge_adjacent_tokens(
+        cls, tokens: List[TokenData], merge_whitespace: bool = True
+    ) -> List[TokenData]:
         """
         Merge adjacent tokens with same properties.
 
@@ -248,7 +265,10 @@ class TokenProcessor:
             can_merge = (
                 last.author == token.author
                 and last.change_type == token.change_type
-                and (merge_whitespace or not (last.text.isspace() and token.text.isspace()))
+                and (
+                    merge_whitespace
+                    or not (last.text.isspace() and token.text.isspace())
+                )
             )
 
             if can_merge:
@@ -262,7 +282,9 @@ class TokenProcessor:
         return merged
 
     @classmethod
-    def split_token_at_position(cls, token: TokenData, position: int) -> Tuple[TokenData, TokenData]:
+    def split_token_at_position(
+        cls, token: TokenData, position: int
+    ) -> Tuple[TokenData, TokenData]:
         """
         Split a token at a specific character position.
 
@@ -313,7 +335,13 @@ class TokenProcessor:
             Dictionary with token statistics
         """
         if not tokens:
-            return {"total_tokens": 0, "whitespace_tokens": 0, "word_tokens": 0, "total_chars": 0, "unique_authors": 0}
+            return {
+                "total_tokens": 0,
+                "whitespace_tokens": 0,
+                "word_tokens": 0,
+                "total_chars": 0,
+                "unique_authors": 0,
+            }
 
         total_tokens = len(tokens)
         whitespace_tokens = sum(1 for t in tokens if t.text.isspace())

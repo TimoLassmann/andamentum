@@ -26,10 +26,7 @@ class TestNormalizeSourceRef:
         assert normalize_source_ref("http://dx.doi.org/10.1234/X") == "10.1234/x"
 
     def test_strips_pubmed_prefix(self):
-        assert (
-            normalize_source_ref("https://pubmed.ncbi.nlm.nih.gov/12345/")
-            == "12345"
-        )
+        assert normalize_source_ref("https://pubmed.ncbi.nlm.nih.gov/12345/") == "12345"
 
     def test_lowercases(self):
         assert normalize_source_ref("10.1234/ABC") == "10.1234/abc"
@@ -149,11 +146,17 @@ class TestDedupeEvidenceBySourceRef:
         await dedupe_evidence_by_source_ref(repo, obj_id)
 
         # e3 has the longest content → kept; e1 and e2 → marked
-        marked = [e for e in [await repo.get("evidence", e.entity_id) for e in [e1, e2]] if e.invalidated]
+        marked = [
+            e
+            for e in [await repo.get("evidence", e.entity_id) for e in [e1, e2]]
+            if e.invalidated
+        ]
         assert len(marked) == 2
         # The losers' invalidation_reason should mention at least one other provider
         for m in marked:
-            assert "pubmed" in m.invalidation_reason or "openalex" in m.invalidation_reason
+            assert (
+                "pubmed" in m.invalidation_reason or "openalex" in m.invalidation_reason
+            )
 
     async def test_empty_source_refs_dont_dedupe_each_other(self, repo):
         obj_id = await _make_objective(repo)
@@ -225,9 +228,7 @@ class TestVouchingPropagatesAsCorroborationCount:
     async def test_three_providers_same_doi_yields_count_three(self, repo):
         obj_id = await _make_objective(repo)
         e_pubmed = _make_evidence(obj_id, "pubmed", "10.1234/abc")
-        e_openalex = _make_evidence(
-            obj_id, "openalex", "https://doi.org/10.1234/abc"
-        )
+        e_openalex = _make_evidence(obj_id, "openalex", "https://doi.org/10.1234/abc")
         e_europepmc = _make_evidence(obj_id, "europepmc", "10.1234/ABC")
         await repo.save(e_pubmed)
         await repo.save(e_openalex)

@@ -151,8 +151,8 @@ def _build_gate_trace(
             )
         )
     else:
-        status = "satisfied" if sv == "pass" else (
-            "failed" if sv == "fail" else "skipped"
+        status = (
+            "satisfied" if sv == "pass" else ("failed" if sv == "fail" else "skipped")
         )
         entries.append(
             GateTraceEntry(
@@ -252,12 +252,8 @@ def _build_gate_trace(
                     observed=f"{ab:.2f}" if ab is not None else "—",
                     status=status,
                     note=(
-                        "survived (≥ "
-                        f"{ADVERSARIAL_SURVIVED_THRESHOLD:.2f})"
-                        if (
-                            ab is not None
-                            and ab >= ADVERSARIAL_SURVIVED_THRESHOLD
-                        )
+                        f"survived (≥ {ADVERSARIAL_SURVIVED_THRESHOLD:.2f})"
+                        if (ab is not None and ab >= ADVERSARIAL_SURVIVED_THRESHOLD)
                         else None
                     ),
                 )
@@ -416,9 +412,9 @@ def _build_reproduction_command(
     else:
         mode_args = f'ask "{description}"'
     return (
-        f'andamentum-epistemic {mode_args} '
-        f'--model {model_name} '
-        f'--database {database_name}'
+        f"andamentum-epistemic {mode_args} "
+        f"--model {model_name} "
+        f"--database {database_name}"
     )
 
 
@@ -845,9 +841,7 @@ class ReportGenerator:
         evidence_no_bearing = sum(
             1 for ev in all_evidence if ev.support_judgment == "no_bearing"
         )
-        evidence_invalidated = sum(
-            1 for ev in all_evidence if ev.invalidated
-        )
+        evidence_invalidated = sum(1 for ev in all_evidence if ev.invalidated)
         investigation_rounds_total = sum(
             len(c.investigation_intents or []) for c in all_claims
         )
@@ -920,11 +914,7 @@ class ReportGenerator:
             # ``claim_summaries[0]`` is a presentation dataclass, not
             # the entity. Match by ``claim_id`` against ``all_claims``.
             source_claim = next(
-                (
-                    c
-                    for c in all_claims
-                    if c.claim_id == claim_summaries[0].claim_id
-                ),
+                (c for c in all_claims if c.claim_id == claim_summaries[0].claim_id),
                 None,
             )
             if source_claim is not None:

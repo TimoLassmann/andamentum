@@ -169,9 +169,7 @@ class TestInvestigationFiltersResolvedUncertainties:
         """When every uncertainty is resolved, scrutiny_issues should be
         the empty-list placeholder, not a string accidentally built from
         the resolved descriptions."""
-        store = DocumentStore.for_database(
-            "inv_all_resolved", db_dir=tmp_path
-        )
+        store = DocumentStore.for_database("inv_all_resolved", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
 

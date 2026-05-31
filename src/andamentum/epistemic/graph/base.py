@@ -50,9 +50,7 @@ if TYPE_CHECKING:
 # when no claim is at SUPPORTED with integrated_assessment=None and
 # not in verification_done; returns a message like "stranded: <id>"
 # when the invariant is violated.
-Invariant = Callable[
-    [EpistemicGraphState, "list[Claim]"], Optional[str]
-]
+Invariant = Callable[[EpistemicGraphState, "list[Claim]"], Optional[str]]
 
 
 # ── Node base class ──────────────────────────────────────────────────

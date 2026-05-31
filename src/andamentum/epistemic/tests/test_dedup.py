@@ -229,7 +229,9 @@ class TestDedupIntegration:
                         statement="Test claim", scope="General", direction="supports"
                     )
                 elif agent_name == "epistemic_judge_evidence":
-                    return SimpleNamespace(verdict="supports", reasoning="Test judgment")
+                    return SimpleNamespace(
+                        verdict="supports", reasoning="Test judgment"
+                    )
                 return SimpleNamespace()
 
         return Runner()
@@ -352,9 +354,7 @@ class TestDedupIntegration:
             1 for s in statuses.values() if s == "representative"
         )
         deferred_count = sum(1 for s in statuses.values() if s == "deferred")
-        corroborative_count = sum(
-            1 for s in statuses.values() if s == "corroborative"
-        )
+        corroborative_count = sum(1 for s in statuses.values() if s == "corroborative")
 
         # 6 clusters → at least 6 representatives (one per cluster).
         assert representative_count >= 6
@@ -508,16 +508,28 @@ class TestDedupIntegration:
             # We use side_effect to find the best-quality index dynamically
             # because the repo may return evidence in a different order than
             # insertion order.
-            async def _dedup_side_effect(texts, *, min_cluster_size=2, embedding_model=""):
+            async def _dedup_side_effect(
+                texts, *, min_cluster_size=2, embedding_model=""
+            ):
                 # texts correspond 1:1 with the extracted list passed to deduplicate_evidence.
                 # Find the best-quality index dynamically so the test is order-independent.
                 from andamentum.epistemic.entities.evidence import Evidence as _Ev
-                ev_list = await repo.query("evidence", objective_id="obj-1", extracted=True)
+
+                ev_list = await repo.query(
+                    "evidence", objective_id="obj-1", extracted=True
+                )
                 extracted_ordered = [
-                    e for e in ev_list
-                    if isinstance(e, _Ev) and e.extracted and e.extracted_content and not e.invalidated
+                    e
+                    for e in ev_list
+                    if isinstance(e, _Ev)
+                    and e.extracted
+                    and e.extracted_content
+                    and not e.invalidated
                 ]
-                best_idx = max(range(len(extracted_ordered)), key=lambda i: extracted_ordered[i].quality_score or 0.0)
+                best_idx = max(
+                    range(len(extracted_ordered)),
+                    key=lambda i: extracted_ordered[i].quality_score or 0.0,
+                )
                 n = len(extracted_ordered)
                 # Build 3 initial reps that do NOT include best_idx so augmentation adds it.
                 # Pick the first 3 indices from [0..n-1] that are not best_idx.
@@ -531,6 +543,7 @@ class TestDedupIntegration:
                         count=n,
                     ),
                 ]
+
             mock_dedup.side_effect = _dedup_side_effect
             # Representatives after augmentation = initial_reps(3) + best_idx(1) = 4 items,
             # so assertion clustering receives 4 assertions.

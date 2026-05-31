@@ -40,9 +40,7 @@ class IntentRecord(BaseModel):
     variants of a 0-yield intent.
     """
 
-    text: str = Field(
-        description="The intent string as the agent generated it."
-    )
+    text: str = Field(description="The intent string as the agent generated it.")
     evidence_count: int = Field(
         default=0,
         description=(

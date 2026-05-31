@@ -288,7 +288,9 @@ async def run_epistemic_graph(
     # Build graph state and deps
     from ..thresholds import IBE_AGREEMENT_K_DEFAULT
 
-    resolved_k = ibe_agreement_k if ibe_agreement_k is not None else IBE_AGREEMENT_K_DEFAULT
+    resolved_k = (
+        ibe_agreement_k if ibe_agreement_k is not None else IBE_AGREEMENT_K_DEFAULT
+    )
     if resolved_k < 1:
         raise ValueError(
             f"ibe_agreement_k must be >= 1 (got {resolved_k}). "

@@ -56,9 +56,7 @@ class TestLegacyQualityScoreFallback:
             _ev("a", "x", quality=0.1),
             _ev("b", "y", quality=0.7),
         ]
-        result = await top_n_representatives(
-            evidence, n=2, claim_text="some claim"
-        )
+        result = await top_n_representatives(evidence, n=2, claim_text="some claim")
         # No embedding_model → quality fallback.
         assert [e.entity_id for e in result] == ["b", "a"]
 
@@ -92,15 +90,19 @@ class TestClaimRelevanceRanking:
 
         # Synthetic embeddings: claim is [1, 0, 0]; pieces' similarity
         # to claim depends on their first dimension.
-        def fake_embed_texts(texts, *, model, base_url=None, max_chars=None, timeout=None):
+        def fake_embed_texts(
+            texts, *, model, base_url=None, max_chars=None, timeout=None
+        ):
             mapping = {
                 "the claim": [1.0, 0.0, 0.0],
                 "very relevant content": [0.95, 0.3, 0.0],
                 "moderately relevant content": [0.5, 0.5, 0.5],
                 "barely relevant content": [0.1, 0.7, 0.7],
             }
+
             async def _async():
                 return [mapping[t] for t in texts]
+
             return _async()
 
         monkeypatch.setattr(ep_embeddings, "embed_texts", fake_embed_texts)
@@ -124,7 +126,9 @@ class TestClaimRelevanceRanking:
     async def test_caps_at_n(self, monkeypatch) -> None:
         from andamentum.epistemic import embeddings as ep_embeddings
 
-        def fake_embed_texts(texts, *, model, base_url=None, max_chars=None, timeout=None):
+        def fake_embed_texts(
+            texts, *, model, base_url=None, max_chars=None, timeout=None
+        ):
             mapping = {
                 "claim": [1.0, 0.0],
                 "ev1": [0.9, 0.4],
@@ -133,8 +137,10 @@ class TestClaimRelevanceRanking:
                 "ev4": [0.3, 0.9],
                 "ev5": [0.1, 1.0],
             }
+
             async def _async():
                 return [mapping[t] for t in texts]
+
             return _async()
 
         monkeypatch.setattr(ep_embeddings, "embed_texts", fake_embed_texts)
@@ -156,11 +162,15 @@ class TestClaimRelevanceRanking:
         across re-runs on the same evidence base."""
         from andamentum.epistemic import embeddings as ep_embeddings
 
-        def fake_embed_texts(texts, *, model, base_url=None, max_chars=None, timeout=None):
+        def fake_embed_texts(
+            texts, *, model, base_url=None, max_chars=None, timeout=None
+        ):
             # All evidence has IDENTICAL embedding to the claim.
             mapping = {t: [1.0, 0.0] for t in texts}
+
             async def _async():
                 return [mapping[t] for t in texts]
+
             return _async()
 
         monkeypatch.setattr(ep_embeddings, "embed_texts", fake_embed_texts)
@@ -188,9 +198,12 @@ class TestEmbeddingFailureFallback:
     async def test_runtime_error_falls_back_to_quality(self, monkeypatch) -> None:
         from andamentum.epistemic import embeddings as ep_embeddings
 
-        def fake_embed_texts(texts, *, model, base_url=None, max_chars=None, timeout=None):
+        def fake_embed_texts(
+            texts, *, model, base_url=None, max_chars=None, timeout=None
+        ):
             async def _async():
                 raise RuntimeError("ollama unreachable")
+
             return _async()
 
         monkeypatch.setattr(ep_embeddings, "embed_texts", fake_embed_texts)

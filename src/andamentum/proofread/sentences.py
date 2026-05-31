@@ -12,9 +12,31 @@ import re
 from dataclasses import dataclass
 
 _ABBREVIATIONS = {
-    "mr", "mrs", "ms", "dr", "prof", "st", "vs", "etc", "e.g", "i.e",
-    "fig", "no", "vol", "pp", "p", "ca", "approx", "cf", "al",
-    "u.s", "u.k", "ph.d", "m.d", "b.sc", "m.sc",
+    "mr",
+    "mrs",
+    "ms",
+    "dr",
+    "prof",
+    "st",
+    "vs",
+    "etc",
+    "e.g",
+    "i.e",
+    "fig",
+    "no",
+    "vol",
+    "pp",
+    "p",
+    "ca",
+    "approx",
+    "cf",
+    "al",
+    "u.s",
+    "u.k",
+    "ph.d",
+    "m.d",
+    "b.sc",
+    "m.sc",
 }
 
 # Sentence terminator immediately followed by whitespace, then anything.
@@ -27,7 +49,7 @@ _SPLIT = re.compile(r"([.!?])(\s+)")
 class Sentence:
     text: str
     start: int  # inclusive
-    end: int    # exclusive
+    end: int  # exclusive
 
 
 def segment(text: str) -> list[Sentence]:
@@ -49,7 +71,9 @@ def segment(text: str) -> list[Sentence]:
         snippet = text[cursor:end].strip()
         if snippet:
             # Re-locate the snippet inside [cursor:end] to preserve offsets
-            stripped_start = cursor + (len(text[cursor:end]) - len(text[cursor:end].lstrip()))
+            stripped_start = cursor + (
+                len(text[cursor:end]) - len(text[cursor:end].lstrip())
+            )
             sentences.append(Sentence(text=snippet, start=stripped_start, end=end))
         cursor = m.end()
 
@@ -58,9 +82,7 @@ def segment(text: str) -> list[Sentence]:
         tail = text[cursor:].strip()
         if tail:
             stripped_start = cursor + (len(text[cursor:]) - len(text[cursor:].lstrip()))
-            sentences.append(
-                Sentence(text=tail, start=stripped_start, end=len(text))
-            )
+            sentences.append(Sentence(text=tail, start=stripped_start, end=len(text)))
 
     return sentences
 

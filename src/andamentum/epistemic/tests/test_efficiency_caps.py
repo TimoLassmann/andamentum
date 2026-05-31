@@ -77,9 +77,7 @@ def test_adversarial_framings_list_truncated_to_max() -> None:
     """
     from pathlib import Path
 
-    src = (
-        Path(__file__).parent.parent / "operations" / "verification.py"
-    ).read_text()
+    src = (Path(__file__).parent.parent / "operations" / "verification.py").read_text()
     assert "][:MAX_ADVERSARIAL_FRAMINGS]" in src, (
         "AdversarialSearchOperation no longer slices its framings list "
         "by MAX_ADVERSARIAL_FRAMINGS. The constant exists but isn't "

@@ -141,5 +141,3 @@ def generate_adversarial_queries(
         add_query(query)
 
     return queries[:max_queries]
-
-

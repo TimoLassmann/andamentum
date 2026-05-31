@@ -122,11 +122,19 @@ async def test_no_combined_verdict_gates_to_needs_more(
     # graph refuses to invent a directional verdict from no-data
     # state — Peirce's fallibilism encoded in the topology.
     assert isinstance(next_node, SynthesizeInsufficient)
-    msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
+    msgs = [
+        r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
+    ]
     # Find the gate's demand log (the first one), separate from any
     # loop-back safety log.
-    gate_msgs = [m for m in msgs if "no combined verdict" in m.lower() or "abandoned" in m.lower()]
-    assert gate_msgs, f"Expected gate to log a 'no combined verdict' demand. Got: {msgs}"
+    gate_msgs = [
+        m
+        for m in msgs
+        if "no combined verdict" in m.lower() or "abandoned" in m.lower()
+    ]
+    assert gate_msgs, (
+        f"Expected gate to log a 'no combined verdict' demand. Got: {msgs}"
+    )
     assert "needs_more=True" in gate_msgs[0]
 
 
@@ -173,7 +181,9 @@ async def test_stranded_claims_gates_to_needs_more(
     # and with no claims to investigate further the graph suspends
     # judgment rather than fabricating a verdict.
     assert isinstance(next_node, SynthesizeInsufficient)
-    msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
+    msgs = [
+        r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
+    ]
     gate_msgs = [m for m in msgs if "without an integration verdict" in m]
     assert gate_msgs, f"Expected stranded-claims gate log. Got: {msgs}"
     assert "needs_more=True" in gate_msgs[0]
@@ -220,7 +230,9 @@ async def test_decisive_supports_posterior_gates_to_satisfied(
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
     assert isinstance(next_node, Synthesize)
-    msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
+    msgs = [
+        r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
+    ]
     assert len(msgs) == 1
     assert "needs_more=False" in msgs[0]
     assert "supports" in msgs[0].lower() and "decisive" in msgs[0].lower()
@@ -260,7 +272,9 @@ async def test_decisive_contradicts_posterior_gates_to_satisfied(
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
     assert isinstance(next_node, Synthesize)
-    msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
+    msgs = [
+        r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
+    ]
     assert "needs_more=False" in msgs[0]
     assert "contradicts" in msgs[0].lower()
 
@@ -304,7 +318,9 @@ async def test_no_agent_runner_falls_through_to_satisfied(
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
     assert isinstance(next_node, Synthesize)
-    msgs = [r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()]
+    msgs = [
+        r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
+    ]
     assert "needs_more=False" in msgs[0]
     assert "no agent runner" in msgs[0].lower()
 
@@ -343,9 +359,7 @@ async def test_default_satisfied_path_returns_synthesize(
     await repo.save(obj)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=fake_runner, embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
     assert isinstance(next_node, Synthesize)

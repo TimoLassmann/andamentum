@@ -106,9 +106,7 @@ async def test_new_chunker_section_path_recovered(name: str):
         return
 
     chunks_with_path = [c for c in chunks if c.section_path]
-    assert chunks_with_path, (
-        f"{name}: expected some chunks with section_path, got none"
-    )
+    assert chunks_with_path, f"{name}: expected some chunks with section_path, got none"
 
 
 @pytest.mark.parametrize("name", FIXTURE_NAMES)

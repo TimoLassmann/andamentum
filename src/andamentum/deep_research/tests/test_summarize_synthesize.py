@@ -46,9 +46,7 @@ class StubAgent:
 
     async def run(self, prompt, **_kwargs):
         if not self._outputs:
-            raise AssertionError(
-                f"StubAgent exhausted; received call: {prompt[:80]!r}"
-            )
+            raise AssertionError(f"StubAgent exhausted; received call: {prompt[:80]!r}")
         self.calls.append(prompt)
         return _StubResult(self._outputs.pop(0))
 
@@ -99,24 +97,28 @@ async def test_summarize_keeps_all_summaries_sorted_by_relevance():
     actually contained competitor data.
     """
     summary_low = PageSummary(
-        url="https://a.test/", title="Page A",
+        url="https://a.test/",
+        title="Page A",
         summary="Mostly off-topic page that mentions Kalign once.",
-        key_points=["off-topic"], relevance_score=0.1,
+        key_points=["off-topic"],
+        relevance_score=0.1,
     )
     summary_mid = PageSummary(
-        url="https://b.test/", title="Page B",
+        url="https://b.test/",
+        title="Page B",
         summary="Tangential — describes Kalign internals.",
-        key_points=["internals"], relevance_score=0.25,
+        key_points=["internals"],
+        relevance_score=0.25,
     )
     summary_high = PageSummary(
-        url="https://c.test/", title="Page C",
+        url="https://c.test/",
+        title="Page C",
         summary="Direct competitor list.",
-        key_points=["MUSCLE", "MAFFT"], relevance_score=0.85,
+        key_points=["MUSCLE", "MAFFT"],
+        relevance_score=0.85,
     )
 
-    ctx = _make_ctx(
-        page_summarizer_outputs=[summary_low, summary_mid, summary_high]
-    )
+    ctx = _make_ctx(page_summarizer_outputs=[summary_low, summary_mid, summary_high])
     ctx.state.fetched_pages = [
         _fetched_page("https://a.test/", "Page A"),
         _fetched_page("https://b.test/", "Page B"),
@@ -154,14 +156,18 @@ async def test_synthesize_calls_lead_agent_when_only_low_relevance_pages():
     ctx = _make_ctx(lead_agent_outputs=[canned_report])
     ctx.state.page_summaries = [
         PageSummary(
-            url="https://a.test/", title="Page A",
+            url="https://a.test/",
+            title="Page A",
             summary="Tangential page about Kalign internals.",
-            key_points=["internals"], relevance_score=0.20,
+            key_points=["internals"],
+            relevance_score=0.20,
         ),
         PageSummary(
-            url="https://b.test/", title="Page B",
+            url="https://b.test/",
+            title="Page B",
             summary="Off-topic page mentioning Kalign once.",
-            key_points=["passing"], relevance_score=0.05,
+            key_points=["passing"],
+            relevance_score=0.05,
         ),
     ]
 

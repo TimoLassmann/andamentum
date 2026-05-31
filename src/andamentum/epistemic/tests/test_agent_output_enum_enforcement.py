@@ -403,7 +403,13 @@ class TestComplexVocabConstraints:
         # These were in the previous prompt/description but NOT in the
         # CriticismCategory enum — the exact drift that used to cause
         # ValueErrors at primitives.py::AdversarialFinding construction.
-        for bad in ("empirical", "logical", "scope", "alternative_explanation", "ethical"):
+        for bad in (
+            "empirical",
+            "logical",
+            "scope",
+            "alternative_explanation",
+            "ethical",
+        ):
             with pytest.raises(ValidationError):
                 EvaluateCounterargumentOutput(
                     relevance=0.5,
@@ -454,9 +460,7 @@ class TestAgentOutputEnumManifest:
     """
 
     @pytest.mark.parametrize("model_name,field_name", EXPECTED_ENUM_FIELDS)
-    def test_field_has_enum_constraint(
-        self, model_name: str, field_name: str
-    ) -> None:
+    def test_field_has_enum_constraint(self, model_name: str, field_name: str) -> None:
         from andamentum.epistemic.agents import output_models
 
         model_cls = getattr(output_models, model_name)

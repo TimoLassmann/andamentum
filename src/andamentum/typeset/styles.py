@@ -33,7 +33,6 @@ _ASSETS_DIR = Path(__file__).parent / "assets"
 ARTICLE: str = (_ASSETS_DIR / "components.css").read_text(encoding="utf-8")
 
 
-
 # ---------------------------------------------------------------------------
 # CV — monochrome, compact, Inter throughout
 # ---------------------------------------------------------------------------
@@ -1114,7 +1113,5 @@ def get_style(name: str) -> str:
     """
     if name not in STYLES:
         available = ", ".join(sorted(STYLES))
-        raise KeyError(
-            f"Unknown style {name!r}. Available styles: {available}."
-        )
+        raise KeyError(f"Unknown style {name!r}. Available styles: {available}.")
     return STYLES[name]

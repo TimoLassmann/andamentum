@@ -176,19 +176,21 @@ def test_add_reference_and_list_references(tmp_path):
     add = _run(
         [
             "add-reference",
-            "--database", "t",
-            "--id", doc_id,
-            "--cite-key", "Smith2023",
-            "--bibtex", "@article{Smith2023, title={A paper}, year={2023}}",
+            "--database",
+            "t",
+            "--id",
+            doc_id,
+            "--cite-key",
+            "Smith2023",
+            "--bibtex",
+            "@article{Smith2023, title={A paper}, year={2023}}",
         ],
         env=env,
     )
     assert add.returncode == 0, add.stderr
     assert add.stdout.strip()  # ref id is non-empty
 
-    listed = _run(
-        ["list-references", "--database", "t", "--id", doc_id], env=env
-    )
+    listed = _run(["list-references", "--database", "t", "--id", doc_id], env=env)
     assert listed.returncode == 0
     assert "Smith2023" in listed.stdout
 
@@ -203,18 +205,20 @@ def test_add_reference_reads_bibtex_from_file(tmp_path):
     add = _run(
         [
             "add-reference",
-            "--database", "t",
-            "--id", doc_id,
-            "--cite-key", "Doe2024",
-            "--bibtex-file", str(bib),
+            "--database",
+            "t",
+            "--id",
+            doc_id,
+            "--cite-key",
+            "Doe2024",
+            "--bibtex-file",
+            str(bib),
         ],
         env=env,
     )
     assert add.returncode == 0, add.stderr
 
-    listed = _run(
-        ["list-references", "--database", "t", "--id", doc_id], env=env
-    )
+    listed = _run(["list-references", "--database", "t", "--id", doc_id], env=env)
     assert "Doe2024" in listed.stdout
     assert "Another paper" in listed.stdout
 
@@ -228,17 +232,19 @@ def test_list_citations_returns_dedup_keys_from_paragraph(tmp_path):
     _run(
         [
             "write-section",
-            "--database", "t",
-            "--id", doc_id,
-            "--section", "Introduction",
-            "--content-file", str(intro),
+            "--database",
+            "t",
+            "--id",
+            doc_id,
+            "--section",
+            "Introduction",
+            "--content-file",
+            str(intro),
         ],
         env=env,
     )
 
-    listed = _run(
-        ["list-citations", "--database", "t", "--id", doc_id], env=env
-    )
+    listed = _run(["list-citations", "--database", "t", "--id", doc_id], env=env)
     assert listed.returncode == 0
     keys = listed.stdout.strip().splitlines()
     assert "Smith2023" in keys
@@ -256,10 +262,14 @@ def test_validate_flags_missing_reference_as_error(tmp_path):
     _run(
         [
             "write-section",
-            "--database", "t",
-            "--id", doc_id,
-            "--section", "Introduction",
-            "--content-file", str(intro),
+            "--database",
+            "t",
+            "--id",
+            doc_id,
+            "--section",
+            "Introduction",
+            "--content-file",
+            str(intro),
         ],
         env=env,
     )

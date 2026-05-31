@@ -40,7 +40,9 @@ async def _run_full_ibe(repo, fake_runner, claim_id: str = "cl-1") -> Claim:
         (SelectBestExplanationOperation, "select_best_explanation"),
     ]:
         op = op_cls(repo=repo, agent_runner=fake_runner, embedding_model="test")
-        work = OperationInput(entity_id=claim_id, entity_type="claim", operation=op_name)
+        work = OperationInput(
+            entity_id=claim_id, entity_type="claim", operation=op_name
+        )
         await op.execute(work)
     return await repo.get("claim", claim_id)
 
@@ -73,7 +75,11 @@ class TestIBEIntegrationPipeline:
         updated = await _run_full_ibe(repo, fake_runner)
 
         # Integrated fields are populated by Stage 4
-        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert updated.integrated_assessment in (
+            "supports",
+            "contradicts",
+            "insufficient",
+        )
         assert updated.integrated_confidence is not None
         assert 0.0 <= updated.integrated_confidence <= 1.0
         assert updated.integrated_reasoning is not None
@@ -278,14 +284,10 @@ class TestSelectBestExplanationAppliesCap:
         # Adv cap doesn't fire. Framing-tie cap fires (tied loveliness
         # in fake runner) → cap=0.5. min(1.0, 0.5) clips 0.75 → 0.5.
         assert updated.integrated_confidence == 0.5
-        assert "Adversarial cap applied" not in (
-            updated.integrated_reasoning or ""
-        )
+        assert "Adversarial cap applied" not in (updated.integrated_reasoning or "")
         assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
-    async def test_contested_balance_both_caps_fire(
-        self, repo, fake_runner
-    ) -> None:
+    async def test_contested_balance_both_caps_fire(self, repo, fake_runner) -> None:
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -305,9 +307,7 @@ class TestSelectBestExplanationAppliesCap:
         assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
         assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
-    async def test_refuted_balance_hard_caps(
-        self, repo, fake_runner
-    ) -> None:
+    async def test_refuted_balance_hard_caps(self, repo, fake_runner) -> None:
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -467,9 +467,7 @@ class TestFramingTieCap:
             loveliness=0.7,  # gap = 0.15 → cap = 0.5 + 0.15/0.4 * 0.5 ≈ 0.6875
             likeliness=0.9,
         )
-        cap, opp, gap = _framing_tie_cap(
-            chosen, [chosen, runner_up_same, opposing]
-        )
+        cap, opp, gap = _framing_tie_cap(chosen, [chosen, runner_up_same, opposing])
         # Cap is from the OPPOSING candidate, not the same-direction
         # runner-up.
         assert opp is opposing
@@ -690,9 +688,7 @@ class TestKAgreement:
         )
         await repo.save(claim)
 
-    async def _run_chain_with_k(
-        self, repo, runner, k: int
-    ) -> Claim:
+    async def _run_chain_with_k(self, repo, runner, k: int) -> Claim:
         """Run the four IBE stages and pass ibe_agreement_k as metadata
         to the final SelectBestExplanationOperation."""
         for op_cls, op_name in [
@@ -701,7 +697,9 @@ class TestKAgreement:
             (ScoreLikelinessOperation, "score_likeliness"),
         ]:
             op = op_cls(repo=repo, agent_runner=runner, embedding_model="test")
-            work = OperationInput(entity_id="cl-1", entity_type="claim", operation=op_name)
+            work = OperationInput(
+                entity_id="cl-1", entity_type="claim", operation=op_name
+            )
             await op.execute(work)
 
         select_op = SelectBestExplanationOperation(
@@ -721,26 +719,37 @@ class TestKAgreement:
         await self._setup_claim(repo)
         baseline_calls = len(fake_runner.calls)
         updated = await self._run_chain_with_k(repo, fake_runner, k=1)
-        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert updated.integrated_assessment in (
+            "supports",
+            "contradicts",
+            "insufficient",
+        )
         # K=1 must not append the K-agreement note to the reasoning.
         assert "K-agreement" not in (updated.integrated_reasoning or "")
         # And no additional propose-one-candidate calls beyond run 1.
         propose_calls = [
-            c for c in fake_runner.calls[baseline_calls:]
+            c
+            for c in fake_runner.calls[baseline_calls:]
             if c[0] == "epistemic_propose_one_candidate"
         ]
         # Run 1 enumeration is the only set; the count is bounded by
         # _CANDIDATE_IDS (= 5) but doesn't double or triple under K=1.
         assert len(propose_calls) <= 5
 
-    async def test_k_equals_2_all_agree_commits_verdict(self, repo, fake_runner) -> None:
+    async def test_k_equals_2_all_agree_commits_verdict(
+        self, repo, fake_runner
+    ) -> None:
         """K=2 with agreeing runs preserves the verdict and confidence
         falls to min across runs."""
         await self._setup_claim(repo)
         updated = await self._run_chain_with_k(repo, fake_runner, k=2)
         # Default fake_runner returns the same select-best response on
         # every call → both runs agree.
-        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert updated.integrated_assessment in (
+            "supports",
+            "contradicts",
+            "insufficient",
+        )
         assert "K-agreement (K=2)" in (updated.integrated_reasoning or "")
         assert "all" in (updated.integrated_reasoning or "").lower()
 
@@ -762,9 +771,7 @@ class TestKAgreement:
             async def run(self, agent_name, **kwargs):
                 self.calls.append((agent_name, kwargs))
                 if agent_name == "epistemic_select_best_explanation":
-                    chosen = chosen_sequence[
-                        select_call_idx[0] % len(chosen_sequence)
-                    ]
+                    chosen = chosen_sequence[select_call_idx[0] % len(chosen_sequence)]
                     select_call_idx[0] += 1
                     runner_up = "C" if chosen != "C" else "A"
                     from types import SimpleNamespace
@@ -789,7 +796,11 @@ class TestKAgreement:
         """K=3 with three agreeing runs preserves the verdict."""
         await self._setup_claim(repo)
         updated = await self._run_chain_with_k(repo, fake_runner, k=3)
-        assert updated.integrated_assessment in ("supports", "contradicts", "insufficient")
+        assert updated.integrated_assessment in (
+            "supports",
+            "contradicts",
+            "insufficient",
+        )
         assert "K-agreement (K=3)" in (updated.integrated_reasoning or "")
 
     async def test_default_k_from_state_is_2(self) -> None:

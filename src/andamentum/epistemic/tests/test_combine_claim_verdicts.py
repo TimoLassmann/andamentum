@@ -85,9 +85,7 @@ class TestCombineClaimVerdicts:
         ]
         # supports@0.8 → 0.9; contradicts@0.4 → 0.3
         # weighted: 0.9*3 + 0.3*1 = 3.0; / 4 = 0.75
-        c = combine_claim_verdicts(
-            claims, "WEIGHTED_AND", weights=[3.0, 1.0]
-        )
+        c = combine_claim_verdicts(claims, "WEIGHTED_AND", weights=[3.0, 1.0])
         assert c.posterior == pytest.approx(0.75)
 
     def test_union_returns_none_posterior(self) -> None:
@@ -155,9 +153,7 @@ class TestCombineClaimVerdicts:
             _make_claim(sub_id="B", verdict="supports", confidence=0.6),
         ]
         with pytest.raises(ValueError, match="non-negative"):
-            combine_claim_verdicts(
-                claims, "WEIGHTED_AND", weights=[1.0, -1.0]
-            )
+            combine_claim_verdicts(claims, "WEIGHTED_AND", weights=[1.0, -1.0])
 
     def test_mismatched_weights_length_raises(self) -> None:
         claims = [
@@ -290,9 +286,7 @@ class TestSnapshotCombinedVerdict:
         obj = Objective(description="parent")
         obj.objective_id = obj.entity_id
         await repo.save(obj)
-        snapshot = Snapshot(
-            objective_id=obj.entity_id, claim_ids=["c1", "c2"]
-        )
+        snapshot = Snapshot(objective_id=obj.entity_id, claim_ids=["c1", "c2"])
         await repo.save(snapshot)
         loaded = await repo.get("snapshot", snapshot.entity_id)
         assert loaded.combined_verdict is None
@@ -327,9 +321,7 @@ class TestCombineClaimVerdictsNode:
         # decomposition is None, so no combined_verdict written.
         assert reloaded.decomposition is None
 
-    async def test_combines_and_stashes_on_objective(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_combines_and_stashes_on_objective(self, tmp_path: Path) -> None:
         """With decomposition + matching claims, the node writes the
         CombinedVerdict to objective.decomposition["combined_verdict"]."""
         store = DocumentStore.for_database("combine_stash", db_dir=tmp_path)
@@ -339,10 +331,13 @@ class TestCombineClaimVerdictsNode:
             description="parent",
             decomposition={
                 "sub_investigations": [
-                    {"id": "A", "seed_claim": "alpha", "rationale": "ra",
-                     "weight": 1.0},
-                    {"id": "B", "seed_claim": "beta", "rationale": "rb",
-                     "weight": 1.0},
+                    {
+                        "id": "A",
+                        "seed_claim": "alpha",
+                        "rationale": "ra",
+                        "weight": 1.0,
+                    },
+                    {"id": "B", "seed_claim": "beta", "rationale": "rb", "weight": 1.0},
                 ],
                 "combination_rule": "AND",
                 "rationale": "both must hold",
@@ -352,9 +347,7 @@ class TestCombineClaimVerdictsNode:
         await repo.save(obj)
         # Two claims with verdicts, in decomposition order (A, B).
         for sub_id, conf in (("A", 0.8), ("B", 0.6)):
-            c = _make_claim(
-                sub_id=sub_id, verdict="supports", confidence=conf
-            )
+            c = _make_claim(sub_id=sub_id, verdict="supports", confidence=conf)
             c.objective_id = obj.entity_id
             await repo.save(c)
 
@@ -373,9 +366,7 @@ class TestCombineClaimVerdictsNode:
         assert cv.posterior == pytest.approx(0.8)
         assert cv.verdict == "supports"
 
-    async def test_orders_claims_by_decomposition(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_orders_claims_by_decomposition(self, tmp_path: Path) -> None:
         """The node aligns claims with the decomposition order, not
         repo-query order. This ensures weighted_and's weight alignment
         is deterministic regardless of save order."""
@@ -386,10 +377,8 @@ class TestCombineClaimVerdictsNode:
             description="parent",
             decomposition={
                 "sub_investigations": [
-                    {"id": "A", "seed_claim": "α", "rationale": "ra",
-                     "weight": 3.0},
-                    {"id": "B", "seed_claim": "β", "rationale": "rb",
-                     "weight": 1.0},
+                    {"id": "A", "seed_claim": "α", "rationale": "ra", "weight": 3.0},
+                    {"id": "B", "seed_claim": "β", "rationale": "rb", "weight": 1.0},
                 ],
                 "combination_rule": "WEIGHTED_AND",
                 "rationale": "weighted",
@@ -399,9 +388,7 @@ class TestCombineClaimVerdictsNode:
         await repo.save(obj)
         # Save in REVERSE order of decomposition to confirm ordering.
         for sub_id, conf in (("B", 0.4), ("A", 0.8)):
-            c = _make_claim(
-                sub_id=sub_id, verdict="supports", confidence=conf
-            )
+            c = _make_claim(sub_id=sub_id, verdict="supports", confidence=conf)
             c.objective_id = obj.entity_id
             await repo.save(c)
 

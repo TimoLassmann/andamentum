@@ -124,9 +124,7 @@ def test_arxiv_4_digit_suffix() -> None:
 
 
 def test_all_three_in_one_text() -> None:
-    text = (
-        "Combined: doi:10.1234/x and PMID:9876543 and arXiv:2401.12345"
-    )
+    text = "Combined: doi:10.1234/x and PMID:9876543 and arXiv:2401.12345"
     ids = extract_identifiers(text)
     assert ids.doi == "10.1234/x"
     assert ids.pmid == "9876543"

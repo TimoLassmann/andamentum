@@ -118,6 +118,7 @@ class Objective(EpistemicEntity):
             "Snapshot.combined_verdict."
         ),
     )
+
     @model_validator(mode="after")
     def _check_seed_modes_exclusive(self) -> "Objective":
         """Refuse Objectives that try to be both single-seed and multi-seed.

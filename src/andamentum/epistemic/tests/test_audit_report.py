@@ -65,15 +65,11 @@ def _atoms_with_heading(
     return [a for a in atoms if a.get("heading") == heading]
 
 
-def _atoms_of_kind(
-    atoms: list[dict[str, Any]], kind: str
-) -> list[dict[str, Any]]:
+def _atoms_of_kind(atoms: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
     return [a for a in atoms if a.get("kind") == kind]
 
 
-def _atom_content_contains(
-    atoms: list[dict[str, Any]], needle: str
-) -> bool:
+def _atom_content_contains(atoms: list[dict[str, Any]], needle: str) -> bool:
     """True if any prose/card/items atom's content (or details) contains
     the given substring."""
     for a in atoms:
@@ -170,19 +166,15 @@ class TestSourceUrl:
 
     def test_pmid_with_prefix(self):
         assert (
-            _source_url("PMID:12345678")
-            == "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+            _source_url("PMID:12345678") == "https://pubmed.ncbi.nlm.nih.gov/12345678/"
         )
 
     def test_pmid_without_prefix(self):
-        assert (
-            _source_url("12345678") == "https://pubmed.ncbi.nlm.nih.gov/12345678/"
-        )
+        assert _source_url("12345678") == "https://pubmed.ncbi.nlm.nih.gov/12345678/"
 
     def test_nct(self):
         assert (
-            _source_url("NCT04501978")
-            == "https://clinicaltrials.gov/study/NCT04501978"
+            _source_url("NCT04501978") == "https://clinicaltrials.gov/study/NCT04501978"
         )
 
     def test_https_url_unchanged(self):
@@ -301,8 +293,7 @@ class TestQAPanel:
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         find = next(
-            e for e in items_atoms[0]["entries"]
-            if e["label"] == "What did we find?"
+            e for e in items_atoms[0]["entries"] if e["label"] == "What did we find?"
         )
         assert "Refuted" in find["body"]
 
@@ -318,7 +309,8 @@ class TestQAPanel:
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         conf = next(
-            e for e in items_atoms[0]["entries"]
+            e
+            for e in items_atoms[0]["entries"]
             if e["label"] == "How confident are we?"
         )
         body = conf["body"]
@@ -357,7 +349,8 @@ class TestQAPanel:
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         conf = next(
-            e for e in items_atoms[0]["entries"]
+            e
+            for e in items_atoms[0]["entries"]
             if e["label"] == "How confident are we?"
         )
         assert "IBE-certified verdict" in conf["body"]
@@ -375,14 +368,13 @@ class TestQAPanel:
             )
 
     def test_thoroughness_includes_round_count(self):
-        stats = InvestigationStats(
-            total_evidence=100, investigation_rounds_total=6
-        )
+        stats = InvestigationStats(total_evidence=100, investigation_rounds_total=6)
         data = _make_report_data(stats=stats)
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         thorough = next(
-            e for e in items_atoms[0]["entries"]
+            e
+            for e in items_atoms[0]["entries"]
             if e["label"] == "How thorough was the investigation?"
         )
         assert "100 evidence sources" in thorough["body"]
@@ -747,7 +739,8 @@ class TestReasoningTrace:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         card = next(
-            c for c in _atoms_of_kind(atoms, "card")
+            c
+            for c in _atoms_of_kind(atoms, "card")
             if "Hydroxychloroquine" in str(c.get("content", ""))
         )
         content = str(card["content"])
@@ -768,7 +761,11 @@ class TestReasoningTrace:
         # Low posterior → Refuted, regardless of stage.
         data = _make_report_data(claims=[claim], posterior=0.12)
         atoms = build_audit_report(data)
-        card = next(c for c in _atoms_of_kind(atoms, "card") if "Test claim" in str(c.get("content", "")))
+        card = next(
+            c
+            for c in _atoms_of_kind(atoms, "card")
+            if "Test claim" in str(c.get("content", ""))
+        )
         assert card.get("badge") == "Refuted"
         # Never carries the raw stage word.
         assert card.get("badge") not in ("supported", "robust", "provisional")
@@ -825,9 +822,7 @@ class TestReasoningTrace:
 
 
 class TestGateTrace:
-    def _claim_with_gates(
-        self, entries: list[GateTraceEntry]
-    ) -> ClaimSummary:
+    def _claim_with_gates(self, entries: list[GateTraceEntry]) -> ClaimSummary:
         return ClaimSummary(
             claim_id="c1",
             statement="Test claim",
@@ -975,7 +970,8 @@ class TestIBECandidateCards:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         ibe_cards = [
-            c for c in _atoms_of_kind(atoms, "card")
+            c
+            for c in _atoms_of_kind(atoms, "card")
             if str(c.get("id", "")).startswith("ibe-")
         ]
         assert len(ibe_cards) == 3
@@ -1032,9 +1028,7 @@ class TestIBECandidateCards:
             scope="g",
             assumptions=[],
             stage="supported",
-            evidence_ids=[
-                ev.evidence_id for ev in supports + contradicts + no_bearing
-            ],
+            evidence_ids=[ev.evidence_id for ev in supports + contradicts + no_bearing],
             ibe_candidates=[
                 IBECandidate(
                     candidate_id="A",
@@ -1056,7 +1050,8 @@ class TestIBECandidateCards:
             )
         )
         reasoning_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and str(a.get("id", "")).startswith("reasoning-")
         )
@@ -1097,7 +1092,8 @@ class TestIBECandidateCards:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         ibe_card = next(
-            c for c in _atoms_of_kind(atoms, "card")
+            c
+            for c in _atoms_of_kind(atoms, "card")
             if str(c.get("id", "")).startswith("ibe-")
         )
         assert "…" not in ibe_card["content"]
@@ -1127,7 +1123,8 @@ class TestAdaptiveAuditTrailIntro:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         reasoning_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and str(a.get("id", "")).startswith("reasoning-")
         )
@@ -1157,7 +1154,8 @@ class TestAdaptiveAuditTrailIntro:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         reasoning_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and str(a.get("id", "")).startswith("reasoning-")
         )
@@ -1193,7 +1191,8 @@ class TestEvidenceLine:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim], evidence=ev))
         supports_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and "Supporting evidence" in str(a.get("content", ""))
         )
@@ -1229,7 +1228,8 @@ class TestEvidenceLine:
         assert _atom_content_contains(atoms, "`Europe PMC`")
         # Slug must not appear as the pill (only the human label).
         supports_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and "Supporting evidence" in str(a.get("content", ""))
         )
@@ -1274,12 +1274,16 @@ class TestEvidenceLine:
         )
         atoms = build_audit_report(_make_report_data(claims=[claim], evidence=ev))
         supports_prose = next(
-            a for a in atoms
+            a
+            for a in atoms
             if a.get("kind") == "prose"
             and "Supporting evidence" in str(a.get("content", ""))
         )
         # Italic parenthetical at the end of the line.
-        assert "*(RCT" in supports_prose["content"] or "*(RCT," in supports_prose["content"]
+        assert (
+            "*(RCT" in supports_prose["content"]
+            or "*(RCT," in supports_prose["content"]
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1380,8 +1384,7 @@ class TestReproducibilityFooter:
         atoms = build_audit_report(data)
         # Identify the sidebar aside — it has 'groups' set.
         sidebar_asides = [
-            a for a in atoms
-            if a.get("kind") == "aside" and a.get("groups")
+            a for a in atoms if a.get("kind") == "aside" and a.get("groups")
         ]
         assert sidebar_asides, "Reproducibility sidebar aside is missing"
         groups = sidebar_asides[0]["groups"]
@@ -1404,10 +1407,7 @@ class TestReproducibilityFooter:
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         repro_entry = next(
-            (
-                e for e in items_atoms[0]["entries"]
-                if e["label"] == "Reproduction"
-            ),
+            (e for e in items_atoms[0]["entries"] if e["label"] == "Reproduction"),
             None,
         )
         assert repro_entry is not None
@@ -1447,7 +1447,8 @@ class TestResearchMode:
         section = _atoms_with_heading(atoms, "Reasoning trace")
         assert section
         sub_cards = [
-            c for c in _atoms_of_kind(atoms, "card")
+            c
+            for c in _atoms_of_kind(atoms, "card")
             if "Sub-claim" in str(c.get("content", ""))
         ]
         assert len(sub_cards) == 3
@@ -1503,7 +1504,8 @@ class TestAppendix:
         atoms = build_audit_report(_make_report_data(claims=[claim]))
         json_appendix = next(
             (
-                c for c in _atoms_of_kind(atoms, "card")
+                c
+                for c in _atoms_of_kind(atoms, "card")
                 if c.get("id") == "appendix-gate-json"
             ),
             None,
@@ -1515,10 +1517,7 @@ class TestAppendix:
 
     def test_no_appendix_when_no_evidence(self):
         atoms = build_audit_report(_make_report_data(evidence=[]))
-        assert not any(
-            c.get("id") == "appendix"
-            for c in _atoms_of_kind(atoms, "card")
-        )
+        assert not any(c.get("id") == "appendix" for c in _atoms_of_kind(atoms, "card"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1586,9 +1585,7 @@ class TestRenderedHtmlIsColorNeutral:
         # stylesheet so the assertion only sees real attributes.
         import re as _re
 
-        body_html = _re.sub(
-            r"<style[\s\S]*?</style>", "", html, flags=_re.IGNORECASE
-        )
+        body_html = _re.sub(r"<style[\s\S]*?</style>", "", html, flags=_re.IGNORECASE)
         forbidden_data_values = {
             'data-value="supports"',
             'data-value="supported"',

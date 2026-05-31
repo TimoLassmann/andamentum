@@ -222,9 +222,7 @@ async def test_embedder_halves_on_context_length_overflow(
             return _FakeResponse(200, json_data={"embedding": [float(len(text))] * 3})
 
     monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
-    embedder = make_ollama_embedder(
-        model="fakemodel:latest", input_budget_chars=200
-    )
+    embedder = make_ollama_embedder(model="fakemodel:latest", input_budget_chars=200)
     # 400 chars → first call 500s, then halves → 200, both 500 again, halve to
     # 100, both succeed. Final: averaged embedding of 4 quarter-pieces.
     out = await embedder(["x" * 400])

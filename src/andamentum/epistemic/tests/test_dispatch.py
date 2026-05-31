@@ -47,7 +47,9 @@ class _StubProvider:
     independence_group = "test_stub"
     provider_contract_version = 1
 
-    def __init__(self, name: str = "stub", returns: list[GatheredEvidence] | None = None):
+    def __init__(
+        self, name: str = "stub", returns: list[GatheredEvidence] | None = None
+    ):
         self.name = name
         self._returns = returns if returns is not None else []
         self.gather_calls: list[str] = []
@@ -78,8 +80,12 @@ class _DispatchAgentRunner:
     other agent name falls back to a default.
     """
 
-    def __init__(self, *, by_provider: dict[str, dict[str, Any]] | None = None,
-                 raise_on: set[str] | None = None):
+    def __init__(
+        self,
+        *,
+        by_provider: dict[str, dict[str, Any]] | None = None,
+        raise_on: set[str] | None = None,
+    ):
         self._by_provider = by_provider or {}
         self._raise_on = raise_on or set()
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -146,10 +152,12 @@ class TestRenderExamples:
         assert "Query:" not in out
 
     def test_mixed_examples_both_styles_visible(self) -> None:
-        out = _render_examples([
-            ("a in-domain", "qa"),
-            ("a out-of-domain", None),
-        ])
+        out = _render_examples(
+            [
+                ("a in-domain", "qa"),
+                ("a out-of-domain", None),
+            ]
+        )
         assert "qa" in out
         assert "ABSTAIN" in out
 
@@ -161,9 +169,15 @@ class TestRenderExamples:
 
 class TestFormulateProviderQuery:
     async def test_returns_committed_query_when_agent_commits(self) -> None:
-        runner = _DispatchAgentRunner(by_provider={
-            "stub": {"queries": ["test query"], "reasoning": "fits", "confidence": 0.8},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "stub": {
+                    "queries": ["test query"],
+                    "reasoning": "fits",
+                    "confidence": 0.8,
+                },
+            }
+        )
         provider = _StubProvider("stub")
         result = await formulate_provider_query(
             claim="some claim",
@@ -176,9 +190,15 @@ class TestFormulateProviderQuery:
         assert result.abstained is False
 
     async def test_returns_empty_queries_when_agent_abstains(self) -> None:
-        runner = _DispatchAgentRunner(by_provider={
-            "stub": {"queries": [], "reasoning": "out of scope", "confidence": 0.95},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "stub": {
+                    "queries": [],
+                    "reasoning": "out of scope",
+                    "confidence": 0.95,
+                },
+            }
+        )
         provider = _StubProvider("stub")
         result = await formulate_provider_query(
             claim="some claim",
@@ -206,13 +226,15 @@ class TestFormulateProviderQuery:
         assert "Dispatch failed" in result.reasoning
 
     async def test_more_than_two_queries_truncated_to_two(self) -> None:
-        runner = _DispatchAgentRunner(by_provider={
-            "stub": {
-                "queries": ["q1", "q2", "q3", "q4"],
-                "reasoning": "small model misbehaved",
-                "confidence": 0.6,
-            },
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "stub": {
+                    "queries": ["q1", "q2", "q3", "q4"],
+                    "reasoning": "small model misbehaved",
+                    "confidence": 0.6,
+                },
+            }
+        )
         provider = _StubProvider("stub")
         result = await formulate_provider_query(
             claim="x",
@@ -224,13 +246,15 @@ class TestFormulateProviderQuery:
         assert result.queries == ["q1", "q2"]
 
     async def test_empty_string_queries_filtered_out(self) -> None:
-        runner = _DispatchAgentRunner(by_provider={
-            "stub": {
-                "queries": ["", "valid query", "   "],
-                "reasoning": "ok",
-                "confidence": 0.7,
-            },
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "stub": {
+                    "queries": ["", "valid query", "   "],
+                    "reasoning": "ok",
+                    "confidence": 0.7,
+                },
+            }
+        )
         provider = _StubProvider("stub")
         result = await formulate_provider_query(
             claim="x",
@@ -241,9 +265,11 @@ class TestFormulateProviderQuery:
         assert result.queries == ["valid query"]
 
     async def test_confidence_clamped_to_unit_interval(self) -> None:
-        runner = _DispatchAgentRunner(by_provider={
-            "stub": {"queries": ["q"], "reasoning": "ok", "confidence": 1.7},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "stub": {"queries": ["q"], "reasoning": "ok", "confidence": 1.7},
+            }
+        )
         provider = _StubProvider("stub")
         result = await formulate_provider_query(
             claim="x",
@@ -307,10 +333,20 @@ class TestGatherEvidenceNew:
         provider_a = _StubProvider("provider_a", returns=[ev_a])
         provider_b = _StubProvider("provider_b", returns=[ev_b])
 
-        runner = _DispatchAgentRunner(by_provider={
-            "provider_a": {"queries": ["q-for-a"], "reasoning": "fits a", "confidence": 0.8},
-            "provider_b": {"queries": ["q-for-b"], "reasoning": "fits b", "confidence": 0.7},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "provider_a": {
+                    "queries": ["q-for-a"],
+                    "reasoning": "fits a",
+                    "confidence": 0.8,
+                },
+                "provider_b": {
+                    "queries": ["q-for-b"],
+                    "reasoning": "fits b",
+                    "confidence": 0.7,
+                },
+            }
+        )
 
         evidence = await gather_evidence_new(
             claim="some claim",
@@ -331,10 +367,20 @@ class TestGatherEvidenceNew:
         provider_a = _StubProvider("provider_a", returns=[_make_evidence("from a")])
         provider_b = _StubProvider("provider_b", returns=[_make_evidence("from b")])
 
-        runner = _DispatchAgentRunner(by_provider={
-            "provider_a": {"queries": ["q"], "reasoning": "fits", "confidence": 0.8},
-            "provider_b": {"queries": [], "reasoning": "out of scope", "confidence": 0.95},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "provider_a": {
+                    "queries": ["q"],
+                    "reasoning": "fits",
+                    "confidence": 0.8,
+                },
+                "provider_b": {
+                    "queries": [],
+                    "reasoning": "out of scope",
+                    "confidence": 0.95,
+                },
+            }
+        )
 
         evidence = await gather_evidence_new(
             claim="some claim",
@@ -351,9 +397,11 @@ class TestGatherEvidenceNew:
         empty list without calling any gather."""
         provider = _StubProvider("p", returns=[_make_evidence("never returned")])
 
-        runner = _DispatchAgentRunner(by_provider={
-            "p": {"queries": [], "reasoning": "out of scope", "confidence": 0.9},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "p": {"queries": [], "reasoning": "out of scope", "confidence": 0.9},
+            }
+        )
 
         evidence = await gather_evidence_new(
             claim="x",
@@ -380,13 +428,15 @@ class TestGatherEvidenceNew:
                 return next(self._iter, [])
 
         provider = _MultiReturnProvider()
-        runner = _DispatchAgentRunner(by_provider={
-            "p": {
-                "queries": ["q1", "q2"],
-                "reasoning": "complementary",
-                "confidence": 0.6,
-            },
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "p": {
+                    "queries": ["q1", "q2"],
+                    "reasoning": "complementary",
+                    "confidence": 0.6,
+                },
+            }
+        )
 
         evidence = await gather_evidence_new(
             claim="x",
@@ -411,10 +461,12 @@ class TestGatherEvidenceNew:
         bad = _FailingProvider("bad")
         bad.description = "bad provider description, long enough to pass checks"
 
-        runner = _DispatchAgentRunner(by_provider={
-            "good": {"queries": ["q"], "reasoning": "x", "confidence": 0.7},
-            "bad": {"queries": ["q"], "reasoning": "x", "confidence": 0.7},
-        })
+        runner = _DispatchAgentRunner(
+            by_provider={
+                "good": {"queries": ["q"], "reasoning": "x", "confidence": 0.7},
+                "bad": {"queries": ["q"], "reasoning": "x", "confidence": 0.7},
+            }
+        )
 
         evidence = await gather_evidence_new(
             claim="x",

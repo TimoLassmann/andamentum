@@ -106,9 +106,7 @@ def topology(
         # node's own module globals. ``include_extras=False`` strips
         # any Annotated[] wrappers we don't care about here.
         try:
-            hints = typing.get_type_hints(
-                node_cls.run, include_extras=False
-            )
+            hints = typing.get_type_hints(node_cls.run, include_extras=False)
         except Exception:
             # If the run method has unresolvable forward refs, fall
             # back to raw annotation lookup. This shouldn't happen for

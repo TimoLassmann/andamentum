@@ -93,7 +93,15 @@ class TestReport:
         r.reference("Ref")
         assert len(r) == 7
         kinds = [a["kind"] for a in r.atoms]
-        assert kinds == ["heading", "prose", "callout", "items", "aside", "card", "reference"]
+        assert kinds == [
+            "heading",
+            "prose",
+            "callout",
+            "items",
+            "aside",
+            "card",
+            "reference",
+        ]
 
     def test_render_returns_html(self) -> None:
         r = Report()

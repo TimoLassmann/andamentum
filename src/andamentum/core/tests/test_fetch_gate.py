@@ -95,7 +95,9 @@ async def test_paywall_tdm_emits_info_log(caplog: pytest.LogCaptureFixture) -> N
                 client=client,
             )
     info_records = [
-        r for r in caplog.records if r.levelno == logging.INFO and "tdm_allowed" in r.message
+        r
+        for r in caplog.records
+        if r.levelno == logging.INFO and "tdm_allowed" in r.message
     ]
     assert info_records, "expected an INFO log line on TDM-allowed fetch"
     assert "cell.com" in info_records[0].message

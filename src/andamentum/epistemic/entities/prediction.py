@@ -27,9 +27,7 @@ class Prediction(BaseModel):
     (what would falsify it), and a time horizon for evaluation.
     """
 
-    statement: str = Field(
-        description="The prediction itself, in declarative form."
-    )
+    statement: str = Field(description="The prediction itself, in declarative form.")
     type: str = Field(
         description=(
             "Prediction type from epistemic_classify_prediction "

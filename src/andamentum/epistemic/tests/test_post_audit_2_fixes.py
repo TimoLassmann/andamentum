@@ -54,17 +54,25 @@ class TestInvestigationPropagatesSubInvestigationId:
         calls: list[dict] = []
 
         async def fake_helper(
-            op, claim, *, objective_id, providers, core_runner,
+            op,
+            claim,
+            *,
+            objective_id,
+            providers,
+            core_runner,
             angle=None,
-            sub_investigation_id=None, depends_on_claim_id=None,
+            sub_investigation_id=None,
+            depends_on_claim_id=None,
             created_by="dispatch",
         ):
-            calls.append({
-                "claim": claim,
-                "angle": angle,
-                "sub_id": sub_investigation_id,
-                "depends_on": depends_on_claim_id,
-            })
+            calls.append(
+                {
+                    "claim": claim,
+                    "angle": angle,
+                    "sub_id": sub_investigation_id,
+                    "depends_on": depends_on_claim_id,
+                }
+            )
             ev = Evidence(
                 objective_id=objective_id,
                 source_type="stub",
@@ -248,9 +256,7 @@ class TestDegenerateDecompositionFallback:
                 self.deps = deps
 
         state = EpistemicGraphState(objective_id=obj.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
         ctx = _FakeRunContext(state, deps)
         await CreateClaims().run(ctx)  # type: ignore[arg-type]
 
@@ -318,9 +324,7 @@ class TestDegenerateDecompositionFallback:
                 self.deps = deps
 
         state = EpistemicGraphState(objective_id=obj.entity_id)
-        deps = EpistemicDeps(
-            repo=repo, agent_runner=fake_runner, embedding_model="t"
-        )
+        deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
         ctx = _FakeRunContext(state, deps)
         await CreateClaims().run(ctx)  # type: ignore[arg-type]
 

@@ -93,8 +93,16 @@ def _sample_result() -> ReviewResult:
             )
         ],
         document_map=[
-            SectionCard(section_id="sec_001", title="Introduction", one_line_gist="Frames the problem"),
-            SectionCard(section_id="sec_002", title="Methods", one_line_gist="Describes the algorithm"),
+            SectionCard(
+                section_id="sec_001",
+                title="Introduction",
+                one_line_gist="Frames the problem",
+            ),
+            SectionCard(
+                section_id="sec_002",
+                title="Methods",
+                one_line_gist="Describes the algorithm",
+            ),
         ],
         metrics=ReviewMetrics(
             llm_calls=12, deterministic_findings_count=1, edits_count=1
@@ -189,7 +197,10 @@ def test_docx_adapter_converts_edits_to_text_edit_patches():
     patches = _to_document_patches(_sample_result(), DocumentPatch)
     text_edits = [p for p in patches if p.patch_type == "text_edit"]
     assert len(text_edits) == 1
-    assert text_edits[0].text_pattern == "It is generally the case that approaches to this problem have been varied"
+    assert (
+        text_edits[0].text_pattern
+        == "It is generally the case that approaches to this problem have been varied"
+    )
     assert text_edits[0].new_text == "Approaches to this problem vary widely"
     assert "wordier" in text_edits[0].explanation.lower()
 
@@ -243,7 +254,9 @@ def test_docx_strips_duplicate_executive_summary_heading():
     summary's leading one is dropped so it isn't shown twice."""
     from andamentum.whetstone.renderers.docx import _strip_leading_exec_heading
 
-    out = _strip_leading_exec_heading("## Executive Summary\n\nProse here.\n\n## MUST FIX\n\nx")
+    out = _strip_leading_exec_heading(
+        "## Executive Summary\n\nProse here.\n\n## MUST FIX\n\nx"
+    )
     assert not out.lstrip().startswith("## Executive Summary")
     assert out.startswith("Prose here.")
     assert "## MUST FIX" in out  # other headings preserved

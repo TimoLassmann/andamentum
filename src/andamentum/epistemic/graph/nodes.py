@@ -126,9 +126,7 @@ async def _evaluate_retrieval_health(
     evidence, the flag flips back to False, because by then the
     objective has data and retrieval has not failed.
     """
-    all_evidence = await deps.repo.query(
-        "evidence", objective_id=state.objective_id
-    )
+    all_evidence = await deps.repo.query("evidence", objective_id=state.objective_id)
     has_any_content = any(
         bool(getattr(ev, "extracted_content", "")) for ev in all_evidence
     )
@@ -580,9 +578,7 @@ class PlanEvidence(Node):
                 type(e).__name__,
                 e,
             )
-            state.quarantine(
-                state.objective_id, "objective", "dispatch_gather", e
-            )
+            state.quarantine(state.objective_id, "objective", "dispatch_gather", e)
             result = OperationResult(
                 success=False,
                 entity_id=state.objective_id,
@@ -1039,9 +1035,7 @@ class ExtractNewEvidence(Node):
                     continue
                 if not ev.extracted_content:
                     continue
-                unjudged_by_claim.setdefault(
-                    ev.depends_on_claim_id, []
-                ).append(ev)
+                unjudged_by_claim.setdefault(ev.depends_on_claim_id, []).append(ev)
 
             runner = deps.agent_runner
 

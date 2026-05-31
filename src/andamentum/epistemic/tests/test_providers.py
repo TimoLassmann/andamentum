@@ -1287,7 +1287,9 @@ class TestProviderSelfDescriptionContract:
     def test_every_provider_has_description(self) -> None:
         for cls in self._all_provider_classes():
             assert hasattr(cls, "description"), f"{cls.__name__} missing description"
-            assert isinstance(cls.description, str), f"{cls.__name__}.description not str"
+            assert isinstance(cls.description, str), (
+                f"{cls.__name__}.description not str"
+            )
             assert len(cls.description) >= 100, (
                 f"{cls.__name__}.description too short ({len(cls.description)} chars); "
                 "should be a multi-paragraph natural-language scope description"
@@ -1344,9 +1346,7 @@ class TestProviderSelfDescriptionContract:
             assert isinstance(cls.independence_group, str), (
                 f"{cls.__name__}.independence_group not str"
             )
-            assert cls.independence_group, (
-                f"{cls.__name__}.independence_group is empty"
-            )
+            assert cls.independence_group, f"{cls.__name__}.independence_group is empty"
             # Convention: lowercase + underscores, no spaces.
             assert " " not in cls.independence_group, (
                 f"{cls.__name__}.independence_group={cls.independence_group!r} "

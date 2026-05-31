@@ -106,9 +106,7 @@ async def _all_active_claim_evidence_judged(state: Any, repo: Any) -> bool:
     exits.
     """
     claims = await _claims(repo)
-    active_ids = {
-        c.entity_id for c in claims if not c.abandoned and not c.cycle_capped
-    }
+    active_ids = {c.entity_id for c in claims if not c.abandoned and not c.cycle_capped}
     all_evidence = await repo.query("evidence", objective_id=state.objective_id)
     for ev in all_evidence:
         if (

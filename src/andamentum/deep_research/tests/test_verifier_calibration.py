@@ -174,9 +174,7 @@ class CategoryStats:
     correct: int = 0
     false_reject: int = 0  # ground=True, predicted=False
     false_accept: int = 0  # ground=False, predicted=True
-    examples_wrong: list[tuple[str, str, bool, bool, str]] = field(
-        default_factory=list
-    )
+    examples_wrong: list[tuple[str, str, bool, bool, str]] = field(default_factory=list)
 
     @property
     def accuracy(self) -> float:
@@ -199,12 +197,8 @@ async def _verify(
     # internal call) rather than running Verify.run().
     from andamentum.deep_research.nodes import _build_agent
 
-    agent = _build_agent(
-        "topic_verifier", ctx.deps.model, ctx.deps.agent_overrides
-    )
-    result = await agent.run(
-        f"research_goal: {ctx.state.query}\nquery: {query}"
-    )
+    agent = _build_agent("topic_verifier", ctx.deps.model, ctx.deps.agent_overrides)
+    result = await agent.run(f"research_goal: {ctx.state.query}\nquery: {query}")
     return bool(result.output.on_topic), str(result.output.reason)
 
 
@@ -222,7 +216,9 @@ async def test_verifier_calibration_against_curated_corpus():
 
     # Per-corpus-row: build a context anchored to that goal.
     by_category: dict[str, CategoryStats] = {}
-    rows: list[tuple[str, str, bool, str, bool, str]] = []  # (goal, q, gt, cat, pred, reason)
+    rows: list[
+        tuple[str, str, bool, str, bool, str]
+    ] = []  # (goal, q, gt, cat, pred, reason)
 
     for goal, query, ground_truth, category in CALIBRATION_CORPUS:
         state = ResearchState(query=goal)
@@ -259,13 +255,11 @@ async def test_verifier_calibration_against_curated_corpus():
         acc = s.accuracy * 100
         fr_rate = (s.false_reject / s.n) * 100
         fa_rate = (s.false_accept / s.n) * 100
-        print(
-            f"{cat:<25} {s.n:>3} {acc:>4.0f}% {fr_rate:>3.0f}% {fa_rate:>3.0f}%"
-        )
+        print(f"{cat:<25} {s.n:>3} {acc:>4.0f}% {fr_rate:>3.0f}% {fa_rate:>3.0f}%")
         overall_n += s.n
         overall_correct += s.correct
     print("-" * 50)
-    print(f"{'OVERALL':<25} {overall_n:>3} {overall_correct/overall_n*100:>4.0f}%")
+    print(f"{'OVERALL':<25} {overall_n:>3} {overall_correct / overall_n * 100:>4.0f}%")
 
     # ── Print mistakes for diagnosis ──────────────────────────────────
     mistakes = [r for r in rows if r[2] != r[4]]
@@ -288,13 +282,9 @@ async def test_verifier_calibration_against_curated_corpus():
         fr_rate = s.false_reject / s.n
         fa_rate = s.false_accept / s.n
         if fr_rate > 0.60:
-            failures.append(
-                f"{cat}: false-reject rate {fr_rate:.0%} (>{60}%)"
-            )
+            failures.append(f"{cat}: false-reject rate {fr_rate:.0%} (>{60}%)")
         if fa_rate > 0.60:
-            failures.append(
-                f"{cat}: false-accept rate {fa_rate:.0%} (>{60}%)"
-            )
+            failures.append(f"{cat}: false-accept rate {fa_rate:.0%} (>{60}%)")
 
     assert not failures, "Calibration regressions:\n  " + "\n  ".join(failures)
 

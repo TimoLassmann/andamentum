@@ -79,7 +79,9 @@ class TestWritingEntries:
     ) -> None:
         log_path = self._enable(tmp_path, monkeypatch)
         log_cloud_call(
-            cli_name="research", operation="ask", model="openai:gpt-5.4-nano",
+            cli_name="research",
+            operation="ask",
+            model="openai:gpt-5.4-nano",
             content="abc",
         )
         line = log_path.read_text().strip()
@@ -92,7 +94,9 @@ class TestWritingEntries:
     ) -> None:
         log_path = self._enable(tmp_path, monkeypatch)
         log_cloud_call(
-            cli_name="chunker", operation="embed", model="ollama:embeddinggemma",
+            cli_name="chunker",
+            operation="embed",
+            model="ollama:embeddinggemma",
         )
         line = log_path.read_text().strip()
         assert " n/a " in line
@@ -103,8 +107,11 @@ class TestWritingEntries:
     ) -> None:
         log_path = self._enable(tmp_path, monkeypatch)
         log_cloud_call(
-            cli_name="research", operation="ask", model="openai:gpt-5.4-nano",
-            content="abc", byte_count=999,
+            cli_name="research",
+            operation="ask",
+            model="openai:gpt-5.4-nano",
+            content="abc",
+            byte_count=999,
         )
         line = log_path.read_text().strip()
         assert "999B" in line
@@ -115,7 +122,8 @@ class TestWritingEntries:
         log_path = self._enable(tmp_path, monkeypatch)
         for i in range(3):
             log_cloud_call(
-                cli_name="whetstone", operation=f"call-{i}",
+                cli_name="whetstone",
+                operation=f"call-{i}",
                 model="anthropic:claude-haiku-4-5",
             )
         lines = log_path.read_text().strip().splitlines()
@@ -129,7 +137,9 @@ class TestWritingEntries:
     ) -> None:
         log_path = self._enable(tmp_path, monkeypatch)
         log_cloud_call(
-            cli_name="whetstone", operation="x", model="openai:gpt-5.4-nano",
+            cli_name="whetstone",
+            operation="x",
+            model="openai:gpt-5.4-nano",
         )
         mode = stat.S_IMODE(log_path.stat().st_mode)
         assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
@@ -140,7 +150,9 @@ class TestWritingEntries:
         log_path = tmp_path / "nested" / "dir" / "audit.log"
         monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", str(log_path))
         log_cloud_call(
-            cli_name="x", operation="y", model="openai:gpt-5.4-nano",
+            cli_name="x",
+            operation="y",
+            model="openai:gpt-5.4-nano",
         )
         assert log_path.exists()
 
@@ -151,7 +163,9 @@ class TestWritingEntries:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", "~/audit.log")
         log_cloud_call(
-            cli_name="x", operation="y", model="openai:gpt-5.4-nano",
+            cli_name="x",
+            operation="y",
+            model="openai:gpt-5.4-nano",
         )
         assert (tmp_path / "audit.log").exists()
 
@@ -171,7 +185,9 @@ class TestFailureHandling:
 
         # Should NOT raise. Should print to stderr.
         log_cloud_call(
-            cli_name="whetstone", operation="x", model="openai:gpt-5.4-nano",
+            cli_name="whetstone",
+            operation="x",
+            model="openai:gpt-5.4-nano",
         )
         captured = capsys.readouterr()
         assert "failed to write audit log" in captured.err

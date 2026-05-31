@@ -52,9 +52,7 @@ class SearchReporter(Protocol):
         rationale: str,
     ) -> None: ...
 
-    def query_accepted(
-        self, *, slot: int, query: str, reason: str
-    ) -> None: ...
+    def query_accepted(self, *, slot: int, query: str, reason: str) -> None: ...
 
     def query_rejected(
         self,
@@ -65,9 +63,7 @@ class SearchReporter(Protocol):
         reason: str,
     ) -> None: ...
 
-    def slot_exhausted(
-        self, *, slot: int, new_target_count: int
-    ) -> None: ...
+    def slot_exhausted(self, *, slot: int, new_target_count: int) -> None: ...
 
     def parallel_search_starting(self, *, queries: list[str]) -> None: ...
 
@@ -88,13 +84,9 @@ class SearchReporter(Protocol):
 
     def summarize_starting(self, *, n_pages: int) -> None: ...
 
-    def page_summarized(
-        self, *, url: str, relevance: float, summary: str
-    ) -> None: ...
+    def page_summarized(self, *, url: str, relevance: float, summary: str) -> None: ...
 
-    def synthesis_starting(
-        self, *, n_summaries: int, max_relevance: float
-    ) -> None: ...
+    def synthesis_starting(self, *, n_summaries: int, max_relevance: float) -> None: ...
 
     def cycle_complete(self) -> None: ...
 
@@ -106,20 +98,47 @@ class NoopReporter:
     about progress UI. Fields all return None; no I/O.
     """
 
-    def cycle_starting(self, **_kwargs) -> None: pass
-    def slot_starting(self, **_kwargs) -> None: pass
-    def query_generated(self, **_kwargs) -> None: pass
-    def query_accepted(self, **_kwargs) -> None: pass
-    def query_rejected(self, **_kwargs) -> None: pass
-    def slot_exhausted(self, **_kwargs) -> None: pass
-    def parallel_search_starting(self, **_kwargs) -> None: pass
-    def query_search_complete(self, **_kwargs) -> None: pass
-    def fetch_starting(self, **_kwargs) -> None: pass
-    def fetch_complete(self, **_kwargs) -> None: pass
-    def summarize_starting(self, **_kwargs) -> None: pass
-    def page_summarized(self, **_kwargs) -> None: pass
-    def synthesis_starting(self, **_kwargs) -> None: pass
-    def cycle_complete(self) -> None: pass
+    def cycle_starting(self, **_kwargs) -> None:
+        pass
+
+    def slot_starting(self, **_kwargs) -> None:
+        pass
+
+    def query_generated(self, **_kwargs) -> None:
+        pass
+
+    def query_accepted(self, **_kwargs) -> None:
+        pass
+
+    def query_rejected(self, **_kwargs) -> None:
+        pass
+
+    def slot_exhausted(self, **_kwargs) -> None:
+        pass
+
+    def parallel_search_starting(self, **_kwargs) -> None:
+        pass
+
+    def query_search_complete(self, **_kwargs) -> None:
+        pass
+
+    def fetch_starting(self, **_kwargs) -> None:
+        pass
+
+    def fetch_complete(self, **_kwargs) -> None:
+        pass
+
+    def summarize_starting(self, **_kwargs) -> None:
+        pass
+
+    def page_summarized(self, **_kwargs) -> None:
+        pass
+
+    def synthesis_starting(self, **_kwargs) -> None:
+        pass
+
+    def cycle_complete(self) -> None:
+        pass
 
 
 class RichReporter:
@@ -149,9 +168,7 @@ class RichReporter:
         )
         self.console.print(header)
         if gaps:
-            self.console.print(
-                f"  [dim]gaps:[/dim] {', '.join(gaps)}"
-            )
+            self.console.print(f"  [dim]gaps:[/dim] {', '.join(gaps)}")
 
     def slot_starting(self, *, slot: int) -> None:
         self.console.print(f"  [dim]Slot {slot}[/dim]")
@@ -166,15 +183,12 @@ class RichReporter:
     ) -> None:
         marker = "•" if attempt == 1 else "↻"
         self.console.print(
-            f"    [white]{marker}[/white] generated  "
-            f"[bold]{query}[/bold]"
+            f"    [white]{marker}[/white] generated  [bold]{query}[/bold]"
         )
         if rationale:
             self.console.print(f"      [dim]{rationale}[/dim]")
 
-    def query_accepted(
-        self, *, slot: int, query: str, reason: str
-    ) -> None:
+    def query_accepted(self, *, slot: int, query: str, reason: str) -> None:
         self.console.print(
             f"    [green]✓ accepted[/green]  [dim italic]{reason}[/dim italic]"
         )
@@ -188,13 +202,10 @@ class RichReporter:
         reason: str,
     ) -> None:
         self.console.print(
-            f"    [yellow]✗ rejected[/yellow]  "
-            f"[dim italic]{reason}[/dim italic]"
+            f"    [yellow]✗ rejected[/yellow]  [dim italic]{reason}[/dim italic]"
         )
 
-    def slot_exhausted(
-        self, *, slot: int, new_target_count: int
-    ) -> None:
+    def slot_exhausted(self, *, slot: int, new_target_count: int) -> None:
         self.console.print(
             f"    [yellow]⚠ slot exhausted[/yellow] "
             f"[dim]→ tightening target to {new_target_count}[/dim]"
@@ -212,8 +223,7 @@ class RichReporter:
     ) -> None:
         if error:
             self.console.print(
-                f"    [red]✗[/red] {query!r}  "
-                f"[red]→ ERROR:[/red] [dim]{error}[/dim]"
+                f"    [red]✗[/red] {query!r}  [red]→ ERROR:[/red] [dim]{error}[/dim]"
             )
         else:
             self.console.print(
@@ -239,8 +249,7 @@ class RichReporter:
         short = self._short_url(url)
         if success:
             self.console.print(
-                f"    [green]✓[/green] {short}  "
-                f"[dim]({n_words:,} words)[/dim]"
+                f"    [green]✓[/green] {short}  [dim]({n_words:,} words)[/dim]"
             )
         else:
             self.console.print(
@@ -255,9 +264,7 @@ class RichReporter:
             f"{'page' if n_pages == 1 else 'pages'}…[/bold cyan]"
         )
 
-    def page_summarized(
-        self, *, url: str, relevance: float, summary: str
-    ) -> None:
+    def page_summarized(self, *, url: str, relevance: float, summary: str) -> None:
         short = self._short_url(url)
         # Color-code relevance: green ≥ 0.6, yellow 0.3–0.6, red < 0.3.
         if relevance >= 0.6:
@@ -278,9 +285,7 @@ class RichReporter:
             preview = summary.strip().replace("\n", " ")[:120]
             self.console.print(f"      [dim italic]{preview}…[/dim italic]")
 
-    def synthesis_starting(
-        self, *, n_summaries: int, max_relevance: float
-    ) -> None:
+    def synthesis_starting(self, *, n_summaries: int, max_relevance: float) -> None:
         self.console.print()
         if n_summaries == 0:
             self.console.print(

@@ -41,9 +41,7 @@ def compute(text: str) -> ReadabilityScores:
 
     word_count = _ts.lexicon_count(text)
     sentence_count = _ts.sentence_count(text)
-    avg_sentence_length = (
-        float(word_count) / sentence_count if sentence_count else 0.0
-    )
+    avg_sentence_length = float(word_count) / sentence_count if sentence_count else 0.0
 
     return ReadabilityScores(
         smog_index=float(_ts.smog_index(text)),

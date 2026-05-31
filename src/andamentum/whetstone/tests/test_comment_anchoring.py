@@ -35,7 +35,9 @@ def _range_text(doc_xml: str, cid: int) -> tuple[str, bool]:
 
 
 def _comment_ids(doc_xml: str) -> list[int]:
-    return sorted({int(x) for x in re.findall(r'<w:commentRangeStart w:id="(\d+)"', doc_xml)})
+    return sorted(
+        {int(x) for x in re.findall(r'<w:commentRangeStart w:id="(\d+)"', doc_xml)}
+    )
 
 
 def test_multiple_comments_one_paragraph_no_cascade(tmp_path: Path) -> None:
@@ -51,12 +53,24 @@ def test_multiple_comments_one_paragraph_no_cascade(tmp_path: Path) -> None:
     doc.save(str(src))
 
     patches = [
-        DocumentPatch(patch_type="comment", text_pattern="significantly robust",
-                      comment_text="a", explanation="a"),
-        DocumentPatch(patch_type="comment", text_pattern="gold standard",
-                      comment_text="b", explanation="b"),
-        DocumentPatch(patch_type="comment", text_pattern="clearly described",
-                      comment_text="c", explanation="c"),
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="significantly robust",
+            comment_text="a",
+            explanation="a",
+        ),
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="gold standard",
+            comment_text="b",
+            explanation="b",
+        ),
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="clearly described",
+            comment_text="c",
+            explanation="c",
+        ),
     ]
     _, res = finalize_reviewed_document(
         original_file_path=src, patches=patches, output_path=out, author="t"
@@ -72,7 +86,9 @@ def test_multiple_comments_one_paragraph_no_cascade(tmp_path: Path) -> None:
     for cid in ids:
         text, overlaps = _range_text(doc_xml, cid)
         assert text.strip(), f"comment {cid} wraps no text (degenerate)"
-        assert not overlaps, f"comment {cid} overlaps another comment's marker (cascade)"
+        assert not overlaps, (
+            f"comment {cid} overlaps another comment's marker (cascade)"
+        )
         wrapped[cid] = text
     # Each comment wraps the right target (allowing token-granular edges).
     joined = " ".join(wrapped.values())
@@ -91,10 +107,18 @@ def test_unmatched_target_fails_loud_not_placed(tmp_path: Path) -> None:
     doc.save(str(src))
 
     patches = [
-        DocumentPatch(patch_type="comment", text_pattern="robust",
-                      comment_text="ok", explanation="ok"),
-        DocumentPatch(patch_type="comment", text_pattern="text that is absent",
-                      comment_text="ghost", explanation="ghost"),
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="robust",
+            comment_text="ok",
+            explanation="ok",
+        ),
+        DocumentPatch(
+            patch_type="comment",
+            text_pattern="text that is absent",
+            comment_text="ghost",
+            explanation="ghost",
+        ),
     ]
     _, res = finalize_reviewed_document(
         original_file_path=src, patches=patches, output_path=out, author="t"
@@ -135,10 +159,12 @@ def test_target_spanning_heading_and_body(tmp_path: Path) -> None:
     with zipfile.ZipFile(out) as z:
         doc_xml = z.read("word/document.xml").decode("utf-8")
     # The range start and end live in DIFFERENT paragraphs.
-    start_para = doc_xml.split('<w:commentRangeStart w:id="1"/>')[0].count("<w:p ") + \
-        doc_xml.split('<w:commentRangeStart w:id="1"/>')[0].count("<w:p>")
-    end_para = doc_xml.split('<w:commentRangeEnd w:id="1"/>')[0].count("<w:p ") + \
-        doc_xml.split('<w:commentRangeEnd w:id="1"/>')[0].count("<w:p>")
+    start_para = doc_xml.split('<w:commentRangeStart w:id="1"/>')[0].count(
+        "<w:p "
+    ) + doc_xml.split('<w:commentRangeStart w:id="1"/>')[0].count("<w:p>")
+    end_para = doc_xml.split('<w:commentRangeEnd w:id="1"/>')[0].count(
+        "<w:p "
+    ) + doc_xml.split('<w:commentRangeEnd w:id="1"/>')[0].count("<w:p>")
     assert end_para > start_para, "expected the range to span two paragraphs"
 
 

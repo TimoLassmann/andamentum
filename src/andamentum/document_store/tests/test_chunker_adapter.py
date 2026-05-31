@@ -50,11 +50,7 @@ def test_section_path_nested_h2_h3():
 
 
 def test_section_path_h1_then_h2():
-    src = (
-        "# Paper Title\n\n"
-        "## Introduction\n\n"
-        "Intro body here.\n"
-    )
+    src = "# Paper Title\n\n## Introduction\n\nIntro body here.\n"
     intro_offset = src.index("## Introduction")
     units = [_unit(src[intro_offset:], intro_offset, title="Introduction")]
     paths = _compute_section_paths(src, units)

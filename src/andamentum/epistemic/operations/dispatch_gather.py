@@ -189,9 +189,7 @@ class DispatchGatherOperation(BaseOperation):
                 "dict (passed through EpistemicDeps.providers)."
             )
 
-        core_runner: Any = getattr(
-            self.agent_runner, "core_runner", self.agent_runner
-        )
+        core_runner: Any = getattr(self.agent_runner, "core_runner", self.agent_runner)
 
         clarified = objective.clarified_question or objective.description
         sub_investigations = (
@@ -201,8 +199,7 @@ class DispatchGatherOperation(BaseOperation):
         )
         if sub_investigations:
             work_list: list[tuple[str | None, str]] = [
-                (sub.id, sub.seed_claim or clarified)
-                for sub in sub_investigations
+                (sub.id, sub.seed_claim or clarified) for sub in sub_investigations
             ]
         else:
             work_list = [(None, clarified)]

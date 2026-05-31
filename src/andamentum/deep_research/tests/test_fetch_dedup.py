@@ -154,9 +154,9 @@ async def test_already_fetched_urls_excluded_in_next_cycle():
     # The old URL must not appear in the "Search Results to Evaluate"
     # block. (It MAY still appear in the "Already Fetched: …" hint line —
     # that's a separate text channel for the agent's awareness.)
-    eval_block = prompt.split("Search Results to Evaluate")[1].split(
-        "Already Fetched"
-    )[0]
+    eval_block = prompt.split("Search Results to Evaluate")[1].split("Already Fetched")[
+        0
+    ]
     assert "oldcycle.test" not in eval_block, (
         f"Already-fetched URL leaked into the fetcher's evaluate list:\n{eval_block}"
     )
@@ -213,9 +213,9 @@ async def test_previously_failed_urls_excluded_in_next_cycle():
     fetcher_stub = overrides["page_fetcher"]
     prompt = fetcher_stub.last_prompt
     assert prompt is not None
-    eval_block = prompt.split("Search Results to Evaluate")[1].split(
-        "Already Fetched"
-    )[0]
+    eval_block = prompt.split("Search Results to Evaluate")[1].split("Already Fetched")[
+        0
+    ]
     assert "failed.test/blocked" not in eval_block, (
         f"Previously-failed URL leaked back into the fetcher's evaluate "
         f"list:\n{eval_block}"

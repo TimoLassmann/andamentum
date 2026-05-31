@@ -437,7 +437,9 @@ class Claim(EpistemicEntity):
             "superseded_by_id": self.superseded_by_id,
             "modification_count": self.modification_count,
             "investigation_count": self.investigation_count,
-            "investigation_intents": [r.model_dump() for r in self.investigation_intents],
+            "investigation_intents": [
+                r.model_dump() for r in self.investigation_intents
+            ],
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
             "persistent_concerns": self.persistent_concerns,

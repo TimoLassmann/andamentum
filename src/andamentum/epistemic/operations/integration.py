@@ -338,9 +338,7 @@ class EnumerateCandidatesOperation(BaseOperation):
             # support that framing, the scorer will rate it low and
             # the framing-tie cap won't fire — but the chain has
             # _considered_ the rival, which is Lipton's requirement.
-            canonical_present = {
-                _verdict_to_canonical(c.verdict) for c in proposed
-            }
+            canonical_present = {_verdict_to_canonical(c.verdict) for c in proposed}
             required_canonicals = {"supports", "contradicts", "insufficient"}
             missing = required_canonicals - canonical_present
             n_added = 0
@@ -354,9 +352,7 @@ class EnumerateCandidatesOperation(BaseOperation):
                 available_ids = [
                     cid for cid in _CANDIDATE_ID_POOL if cid not in used_ids
                 ]
-                defaults_by_verdict = {
-                    c.verdict: c for c in _default_candidates()
-                }
+                defaults_by_verdict = {c.verdict: c for c in _default_candidates()}
                 # Sort missing for deterministic ordering across runs.
                 for verdict in sorted(missing):
                     if not available_ids:
@@ -372,8 +368,7 @@ class EnumerateCandidatesOperation(BaseOperation):
                                 f"seeded with the default framing to ensure "
                                 f"the IBE chain considers all canonical "
                                 f"verdicts (Lipton: comparative selection "
-                                f"requires rivals).] "
-                                + default_c.description
+                                f"requires rivals).] " + default_c.description
                             ),
                         )
                     )
@@ -613,9 +608,7 @@ def _framing_tie_cap(
         # contradicts sense — no framing-tie signal to compute.
         return 1.0, None, None
 
-    opposing_canonical = (
-        "contradicts" if chosen_canonical == "supports" else "supports"
-    )
+    opposing_canonical = "contradicts" if chosen_canonical == "supports" else "supports"
 
     best_opposing: "CandidateRecord | None" = None
     best_love = -1.0
@@ -671,8 +664,7 @@ async def _run_enumerate_inline(
     for slot in _CANDIDATE_IDS:
         already_text = (
             "\n".join(
-                f"- {c.candidate_id} ({c.verdict}): {c.description}"
-                for c in proposed
+                f"- {c.candidate_id} ({c.verdict}): {c.description}" for c in proposed
             )
             if proposed
             else "(none yet — propose the first candidate)"
@@ -722,8 +714,7 @@ async def _run_enumerate_inline(
                     description=(
                         f"[Balanced enumeration: enumerator did not "
                         f"produce a {verdict}-framed candidate; "
-                        f"seeded with the default framing.] "
-                        + default_c.description
+                        f"seeded with the default framing.] " + default_c.description
                     ),
                 )
             )
@@ -1068,7 +1059,11 @@ class SelectBestExplanationOperation(BaseOperation):
             )
         if ft_capped and ft_gap is not None:
             cap_notes.append(f"framing_tie_gap={ft_gap:.2f}, ft_cap={ft_cap:.2f}")
-        cap_note = f" [capped from {confidence:.2f}: {', '.join(cap_notes)}]" if cap_notes else ""
+        cap_note = (
+            f" [capped from {confidence:.2f}: {', '.join(cap_notes)}]"
+            if cap_notes
+            else ""
+        )
 
         # ── K-agreement check (Reichenbach over LLM-stochastic IBE) ──
         # Run the IBE chain (Enumerate → Loveliness → Likeliness →
@@ -1123,9 +1118,7 @@ class SelectBestExplanationOperation(BaseOperation):
                 # ran, even when the confidences happen to match.
                 new_conf = max(0.0, min(1.0, min(confidences)))
                 claim.integrated_confidence = new_conf
-                claim.integrated_reasoning = (
-                    claim.integrated_reasoning or ""
-                ) + (
+                claim.integrated_reasoning = (claim.integrated_reasoning or "") + (
                     f"\n\n[K-agreement (K={ibe_k}): all {len(all_verdicts)} "
                     f"runs agreed on '{run1_canonical}'; confidence is "
                     f"min across runs ({new_conf:.2f}).]"
