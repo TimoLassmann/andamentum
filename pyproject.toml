@@ -50,6 +50,11 @@ dependencies = [
     "rank-bm25>=0.2.2,<1",           # document-store, epistemic[search]
     "httpx>=0.28.1,<1",              # deep-research, document-store
     "docling>=2.54.0,<3",            # harvest (PDF / DOCX / PPTX / HTML fallback)
+    # torch/torchvision are docling's (transitive) ML backend. Declared here
+    # only so the CPU-index pin in [tool.uv.sources] binds — uv applies sources
+    # to declared deps, not transitive ones. Ranges stay open; docling narrows.
+    "torch>=2.2,<3",
+    "torchvision>=0.17,<1",
     "scikit-learn>=1.3,<2",          # epistemic
     "pydantic-ai>=1.84.0,<2",        # whetstone / epistemic / deep-research
     "pydantic-graph>=0.1.0,<2",      # graph state machines (whetstone, deep-research)
@@ -125,6 +130,27 @@ dev = [
 # CI / containers / agents should run `uv sync --locked` (or set
 # `UV_LOCKED=1`) so the lockfile cannot drift silently.
 exclude-newer = "28 days"
+
+# CPU-only PyTorch. docling (a core dep) pulls torch/torchvision for its
+# layout + table models, and the default PyPI torch *Linux* wheel hard-declares
+# the full NVIDIA CUDA runtime (nvidia-cublas, cudnn, nccl, cusparse, …) —
+# multiple GB downloaded even on GPU-less machines (CI, containers), and the
+# download stalls on the ~400 MB CUDA wheels. docling only needs CPU inference,
+# so resolve torch from PyTorch's CPU index instead.
+#
+# This drops the entire nvidia-* stack on Linux/Windows; macOS is unaffected in
+# substance (its wheels are CPU/MPS-only either way — MPS/Metal still works).
+# A consumer who genuinely wants CUDA torch overrides the source downstream.
+# torch/torchvision must be listed in [project.dependencies] above for this to
+# bind: uv applies sources to declared deps, not purely transitive ones.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/andamentum"]
