@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Packaging
+
+  - **`requires-python` raised to `>=3.12`** (was `>=3.11`). Python 3.11
+    is dropped: the modern pydantic / pydantic-ai stack assumes the 3.12
+    `typing.TypedDict` semantics (3.11 needs `typing_extensions.TypedDict`),
+    and the maintenance cost of tracking that drift outweighs 3.11 reach.
+    The CI matrix now tests 3.12 + 3.13 on Linux and macOS.
+
+### CI
+
+  - Resolve `torch`/`torchvision` from the PyTorch CPU index, dropping the
+    multi-GB NVIDIA CUDA runtime from Linux installs.
+  - Pin CI `uv` to the `0.11.x` series so `uv sync --locked` matches the
+    lockfile format; force the test matrix to use its declared Python
+    interpreter (a committed `.python-version` was pinning every leg to 3.12).
+  - Add `scripts/ci-local.sh` to reproduce the workflow locally via `act`.
+
 ## 0.3.0 — 2026-05-31
 
 First stable release. Headline change is the whetstone v3 consolidation:
