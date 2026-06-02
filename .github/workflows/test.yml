@@ -41,8 +41,12 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           # Pin uv to avoid uv-version drift causing different lock
-          # resolutions across runs. Bump deliberately.
-          version: "0.5.x"
+          # resolutions across runs. Bump deliberately. Must track the
+          # local uv series that produces uv.lock: the lockfile is written
+          # at revision 3 with a relative exclude-newer span (P28D), which
+          # only uv >= 0.11 understands. An older pin ignores the lockfile
+          # and fails `uv sync --locked`.
+          version: "0.11.x"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -75,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
-          version: "0.5.x"
+          version: "0.11.x"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Set up Python 3.13
@@ -110,7 +114,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
-          version: "0.5.x"
+          version: "0.11.x"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
       - name: Set up Python 3.13
