@@ -22,6 +22,14 @@ jobs:
   test:
     name: pytest (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    # Force every uv command (sync + all `uv run`) to use the matrix Python.
+    # Without this the committed `.python-version` (3.12) wins and uv builds a
+    # 3.12 venv on EVERY leg — so the 3.11/3.13 legs silently re-test 3.12.
+    # Setting it once at the job level is the robust fix: a bare `uv run`
+    # otherwise recreates the venv from `.python-version`, undoing a per-command
+    # `--python` flag mid-job.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
