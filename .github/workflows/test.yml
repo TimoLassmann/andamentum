@@ -33,15 +33,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Project floor is 3.11 (per pyproject's requires-python; epistemic
-        # uses typing.Self, 3.11+); pyright config targets 3.13. We test the
-        # floor + the pyright target on both Linux and macOS, with the
-        # in-between minor on Linux only to keep the matrix manageable.
+        # Project floor is 3.12 (per pyproject's requires-python); pyright
+        # config targets 3.13. Floor and ceiling are adjacent minors, so we
+        # test both on both Linux and macOS — no in-between version to add.
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.11", "3.13"]
-        include:
-          - os: ubuntu-latest
-            python-version: "3.12"
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
