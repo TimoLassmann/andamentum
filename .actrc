@@ -1,0 +1,12 @@
+# Default config for `act` (https://github.com/nektos/act), used by
+# scripts/ci-local.sh to run .github/workflows/test.yml locally.
+#
+# Pin the ubuntu-latest runner image so `act` does not prompt for an image
+# size on first run and every contributor reproduces the same environment.
+# catthehacker/ubuntu:act-latest is the "medium" image with most common
+# tooling preinstalled; it is close to the github-hosted ubuntu runner.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+# The github-hosted ubuntu runners are amd64. On Apple Silicon, force the
+# same architecture (via emulation) so results match GitHub and tooling that
+# ships no arm64 build still runs. Slower, but faithful.
+--container-architecture linux/amd64
