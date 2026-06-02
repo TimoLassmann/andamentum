@@ -1,5 +1,12 @@
 # andamentum
 
+[![Tests](https://github.com/timolassmann/andamentum/actions/workflows/test.yml/badge.svg)](https://github.com/timolassmann/andamentum/actions/workflows/test.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Checked with pyright](https://img.shields.io/badge/type_checked-pyright-blue.svg)](https://github.com/microsoft/pyright)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+
 A toolkit of small, composable, locally-runnable research tools.
 
 Andamentum is a single Python package of tightly-scoped, independent tools for
