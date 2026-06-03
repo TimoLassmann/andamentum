@@ -529,8 +529,11 @@ class DocumentStore:
 
         Uses SQLite JSON functions to query the metadata column.
 
+        A filter value matches by equality (scalar), SQL NULL (``None``), or
+        set-membership (list/tuple/set → ``field IN (...)``).
+
         Args:
-            filters: Dict of {field_name: expected_value} to match
+            filters: Dict of {field_name: predicate} to match
             limit: Maximum results to return
 
         Returns:
@@ -539,6 +542,28 @@ class DocumentStore:
         from .database import find_by_metadata
 
         return await find_by_metadata(str(self.db_path), filters, limit)
+
+    async def describe_metadata(
+        self,
+        filters: Optional[Mapping[str, Any]] = None,
+    ) -> dict[str, dict[str, int]]:
+        """Profile the metadata schema present in this database.
+
+        For each top-level metadata field, returns ``{value: count}`` over the
+        (optionally filtered) document set — the raw vocabulary used to discover
+        which fields and values exist. See the module-level ``describe_metadata``
+        for a bounded, presentation-friendly wrapper (``FieldProfile``).
+
+        Args:
+            filters: Optional subset to profile (same matching semantics as
+                find_by_metadata). None profiles the whole database.
+
+        Returns:
+            Mapping of ``field -> {value: count}``.
+        """
+        from .database import describe_metadata
+
+        return await describe_metadata(str(self.db_path), filters)
 
     async def get_stats(self) -> dict:
         """Get statistics about this database."""

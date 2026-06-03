@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### document_store
+
+  - **Set-membership filters in `find_by_metadata`.** A filter value may now be
+    a list/tuple/set, matched as `field IN (...)` — e.g. `{"status": ["todo",
+    "in_progress", "blocked"]}` in a single query. A scalar still matches by
+    equality and `None` by SQL NULL; a string stays a scalar (not iterated). An
+    empty collection matches nothing (fail-closed) rather than every document.
+  - **`include_content=False` on `find_by_metadata`** skips the per-document
+    content read, leaving `snippet` empty — a cheap path for overviews/counts
+    over large result sets.
+  - **New `describe_metadata(database, *, filters=None, max_values=25)`** —
+    discovers the schema-less metadata vocabulary: returns each top-level field
+    as a `FieldProfile` (`present_in`, `distinct`, and a bounded value→count
+    breakdown). Optional `filters` scopes the profile to a subset for drill-in.
+    Lets a caller (human or agent) fill `find_by_metadata` filters without prior
+    knowledge of which fields/values exist. Also exposed as
+    `DocumentStore.describe_metadata`.
+
 ### Packaging
 
   - **`requires-python` raised to `>=3.12`** (was `>=3.11`). Python 3.11
