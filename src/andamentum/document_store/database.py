@@ -452,6 +452,60 @@ async def list_documents_by_type(
             ]
 
 
+def _build_metadata_conditions(
+    filters: Mapping[str, Any],
+) -> tuple[list[str], list[Any]]:
+    """Build SQL conditions + bound params from a metadata filter dict.
+
+    Shared by :func:`find_by_metadata` and :func:`describe_metadata` so both
+    honour identical matching semantics:
+
+      * scalar (str / int / bool) → exact equality (``field = value``)
+      * ``None`` → SQL NULL (``field IS NULL``)
+      * list / tuple / set → set-membership (``field IN (...)``); an empty
+        collection emits a never-true condition so it matches nothing rather
+        than silently dropping the predicate.
+
+    Internal fields (keys starting with ``_``, e.g. ``_history``) are skipped.
+    Field names are validated against :data:`_SAFE_METADATA_FIELD` because they
+    are interpolated into a JSON path that cannot be parameterised; values are
+    always bound as parameters.
+
+    Returns:
+        A ``(conditions, params)`` tuple. ``conditions`` is a list of SQL
+        fragments to be ANDed by the caller; ``params`` are the bound values.
+    """
+    conditions: list[str] = []
+    params: list[Any] = []
+    for field, value in filters.items():
+        if field.startswith("_"):
+            continue  # Skip internal fields like _history
+        if not _SAFE_METADATA_FIELD.match(field):
+            raise ValueError(
+                f"Unsafe metadata field name {field!r}: only letters, "
+                "digits, underscore and dot are allowed."
+            )
+        col = f"json_extract(metadata, '$.{field}')"
+        if value is None:
+            conditions.append(f"{col} IS NULL")
+        elif isinstance(value, (list, tuple, set)):
+            # Set-membership: ``field IN (...)``. A string is deliberately
+            # NOT treated as a collection — it stays an exact-match scalar.
+            members = list(value)
+            if not members:
+                # Empty set matches nothing; fail closed rather than silently
+                # dropping the predicate (which would match every document).
+                conditions.append("0")
+                continue
+            placeholders = ", ".join("?" for _ in members)
+            conditions.append(f"{col} IN ({placeholders})")
+            params.extend(members)
+        else:
+            conditions.append(f"{col} = ?")
+            params.append(value)
+    return conditions, params
+
+
 async def find_by_metadata(
     db_path: str,
     filters: Mapping[str, Any],
@@ -459,11 +513,18 @@ async def find_by_metadata(
 ) -> list[DocumentMetadata]:
     """Find documents by metadata field values.
 
-    Uses SQLite JSON functions to query the metadata column.
+    Uses SQLite JSON functions to query the metadata column. All conditions are
+    ANDed together.
+
+    A filter value matches in one of three ways:
+      * scalar (str / int / bool) → exact equality (``field = value``)
+      * ``None`` → SQL NULL (``field IS NULL``)
+      * list / tuple / set → set-membership (``field IN (...)``); an empty
+        collection matches nothing.
 
     Args:
         db_path: Path to SQLite database
-        filters: Dict of {field_name: expected_value} to match (values can be str, bool, int, etc.)
+        filters: Dict of {field_name: predicate} to match (see above)
         limit: Maximum results to return
 
     Returns:
@@ -478,27 +539,19 @@ async def find_by_metadata(
             "epistemic_type": "objective",
             "objective_id": "abc-123"
         })
+
+        # Set-membership: any of several statuses in a single query
+        results = await find_by_metadata(db_path, {
+            "record_type": "task",
+            "status": ["todo", "in_progress", "blocked"],
+        })
     """
     async with get_async_connection(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Build WHERE clause with JSON extraction
-        conditions = ["deleted_at IS NULL"]
-        params: list[Any] = []
-        for field, value in filters.items():
-            if field.startswith("_"):
-                continue  # Skip internal fields like _history
-            if not _SAFE_METADATA_FIELD.match(field):
-                raise ValueError(
-                    f"Unsafe metadata field name {field!r}: only letters, "
-                    "digits, underscore and dot are allowed."
-                )
-            if value is None:
-                conditions.append(f"json_extract(metadata, '$.{field}') IS NULL")
-            else:
-                conditions.append(f"json_extract(metadata, '$.{field}') = ?")
-                params.append(value)
-
+        filter_conditions, params = _build_metadata_conditions(filters)
+        conditions = ["deleted_at IS NULL", *filter_conditions]
         where_clause = " AND ".join(conditions)
         query = f"""
             SELECT * FROM documents
@@ -529,6 +582,60 @@ async def find_by_metadata(
                 )
                 for row in rows
             ]
+
+
+async def describe_metadata(
+    db_path: str,
+    filters: Optional[Mapping[str, Any]] = None,
+) -> dict[str, dict[str, int]]:
+    """Profile the metadata schema actually present in the database.
+
+    Walks every non-deleted document's top-level metadata object and tallies,
+    for each field, how many times each distinct value occurs. This is how a
+    caller discovers the (schema-less) metadata vocabulary without prior
+    knowledge of which fields or values exist.
+
+    Optionally scoped to the subset matching ``filters`` (identical matching
+    semantics to :func:`find_by_metadata`), so a caller can drill in — e.g.
+    profile the whole database, then re-profile just ``record_type = "task"``
+    to see which fields tasks carry.
+
+    Internal fields (keys starting with ``_``, e.g. ``_history``) are excluded.
+
+    Returns:
+        Mapping of ``field -> {value: count}``. Values are stringified for a
+        stable, JSON-friendly key type. Presentation concerns — such as hiding
+        the per-value breakdown for high-cardinality fields — are left to the
+        caller (see the public ``describe_metadata`` wrapper).
+    """
+    where = ["d.deleted_at IS NULL", "d.metadata IS NOT NULL"]
+    params: list[Any] = []
+    if filters:
+        filter_conditions, params = _build_metadata_conditions(filters)
+        where.extend(filter_conditions)
+    where_clause = " AND ".join(where)
+
+    # json_each expands each document's top-level metadata object into one row
+    # per (key, value); GROUP BY collapses that to a per-value occurrence count.
+    query = f"""
+        SELECT je.key AS field, je.value AS value, COUNT(*) AS n
+        FROM documents d, json_each(d.metadata) je
+        WHERE {where_clause}
+        GROUP BY je.key, je.value
+    """
+
+    async with get_async_connection(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+
+    profiles: dict[str, dict[str, int]] = {}
+    for row in rows:
+        field = row["field"]
+        if field.startswith("_"):
+            continue  # internal fields like _history
+        profiles.setdefault(field, {})[str(row["value"])] = row["n"]
+    return profiles
 
 
 async def find_doc_uuids_by_filters(

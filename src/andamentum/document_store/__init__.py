@@ -5,12 +5,13 @@ with automatic chunking, embedding, and LLM metadata extraction. Searches
 using 4-signal Reciprocal Rank Fusion (FTS5 keyword, chunk embeddings,
 doc embeddings, DHP temporal clustering).
 
-Public API (10 functions — all you need):
+Public API (11 functions — all you need):
 
     from andamentum.document_store import (
         ingest,            # Store content with auto-chunking and metadata extraction
         search,            # Natural language search with LLM query planning
-        find_by_metadata,  # Structured query by exact metadata fields
+        find_by_metadata,  # Structured query by metadata fields (exact or set-membership)
+        describe_metadata, # Discover the metadata schema (fields + value distributions)
         update_metadata,   # Update metadata on a document (with change history)
         delete,            # Soft-delete a document (can be restored)
         restore,           # Restore a soft-deleted document
@@ -57,6 +58,7 @@ from .lifecycle import (
 )
 from .public import (
     delete,
+    describe_metadata,
     find_by_metadata,
     find_duplicates,
     ingest,
@@ -85,7 +87,9 @@ from .models import (
 )
 from .public import (
     DuplicateGroup,
+    FieldProfile,
     MetadataFilterValue,
+    MetadataScalar,
     RepairReport,
     SearchResult,
 )
@@ -101,6 +105,7 @@ __all__ = [
     "database_exists",
     "delete",
     "delete_database",
+    "describe_metadata",
     "extract_chunk_metadata",
     "extract_document_metadata",
     "find_by_metadata",
@@ -126,7 +131,9 @@ __all__ = [
     "DocumentMetadataFields",
     "DocumentType",
     "DuplicateGroup",
+    "FieldProfile",
     "MetadataFilterValue",
+    "MetadataScalar",
     "MultiDatabaseSearchResult",
     "ReembedResult",
     "RepairReport",

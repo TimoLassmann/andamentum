@@ -1,20 +1,37 @@
 """Public API for the document store.
 
-Seven functions:
+Core functions:
     ingest(database, content) → doc_id
     search(database, query) → list[SearchResult]
     find_by_metadata(database, filters) → list[SearchResult]
+    describe_metadata(database) → dict[str, FieldProfile]
     update_metadata(database, doc_id, metadata) → bool
     delete(database, doc_id) → bool
     repair(database) → RepairReport
     find_duplicates(database) → list[DuplicateGroup]
 
+Read side — three uniform functions for humans and agents alike:
+    search()             unstructured recall over content (NL + RRF ranking)
+    find_by_metadata()   structured query — exact match or set-membership
+    describe_metadata()  discover the schema-less metadata vocabulary
+
+The store stays domain-agnostic: consumers define their own metadata
+vocabulary and build their own tools on top of these primitives (e.g. a task
+layer wrapping find_by_metadata), rather than the store growing a function per
+consumer.
+
 Usage:
-    from andamentum.document_store import ingest, search, find_by_metadata, update_metadata, delete
+    from andamentum.document_store import ingest, search, find_by_metadata, describe_metadata
 
     doc_id = await ingest("brain", "I think MAP-Elites could work for antibody optimization")
     results = await search("brain", "What decisions did I make about GROVE last month?")
-    tasks = await find_by_metadata("brain", {"record_type": "task", "status": "todo"})
+
+    # Discover what's queryable, then filter — no prior knowledge of the schema:
+    schema = await describe_metadata("brain", filters={"record_type": "task"})
+    open_tasks = await find_by_metadata("brain", {
+        "record_type": "task",
+        "status": ["todo", "in_progress", "blocked"],  # set-membership
+    })
     await update_metadata("brain", doc_id, {"status": "done"})
     await delete("brain", doc_id)
 """
@@ -39,9 +56,13 @@ logger = logging.getLogger(__name__)
 # Type aliases
 # ---------------------------------------------------------------------------
 
+#: A single scalar metadata value (exact match; None matches SQL NULL).
+MetadataScalar = str | int | bool | None
+
 #: Allowed value types for :func:`find_by_metadata` filter predicates.
-#: All conditions are exact-match AND-ed; None matches SQL NULL.
-MetadataFilterValue = str | int | bool | None
+#: All conditions are AND-ed. A scalar matches by equality; a list/tuple/set
+#: matches by set-membership (``field IN (...)``).
+MetadataFilterValue = MetadataScalar | list[MetadataScalar]
 
 # Module-level caches
 _stores: dict[str, DocumentStore] = {}
@@ -133,6 +154,26 @@ class DuplicateGroup:
     doc_ids: list[str] = field(default_factory=list)
     titles: list[str] = field(default_factory=list)
     similarity: float = 0.0
+
+
+@dataclass
+class FieldProfile:
+    """Profile of one metadata field across a database (or a filtered subset).
+
+    Returned by :func:`describe_metadata`. ``values`` is populated only for
+    low-cardinality fields (``distinct <= max_values``); for high-cardinality
+    fields (ids, titles, free text) it is None so the output stays bounded —
+    ``present_in`` and ``distinct`` are always available.
+    """
+
+    present_in: int
+    """Number of documents that carry this field."""
+
+    distinct: int
+    """Number of distinct values the field takes."""
+
+    values: dict[str, int] | None = None
+    """value -> occurrence count, or None when distinct > max_values."""
 
 
 @dataclass
@@ -588,37 +629,53 @@ async def find_by_metadata(
     database: str,
     filters: Mapping[str, MetadataFilterValue],
     limit: int = 100,
+    *,
+    include_content: bool = True,
 ) -> list[SearchResult]:
-    """Find documents by exact metadata field values.
+    """Find documents by metadata field values.
 
     Structured query for when the upstream agent knows exactly what to look for.
     Uses SQLite JSON functions on the metadata column.
 
     This is the complement to search(): search() uses natural language + embeddings,
-    find_by_metadata() uses exact field matching. Agents use this for structured
+    find_by_metadata() uses field matching. Agents use this for structured
     workflows (find all tasks for a goal, find all open delegations, etc.).
+
+    Each filter value matches in one of three ways (all conditions AND-ed):
+      * scalar (str / int / bool) → exact equality
+      * ``None`` → SQL NULL
+      * list / tuple / set → set-membership (``field IN (...)``); an empty
+        collection matches nothing
 
     Args:
         database: Database name (e.g., "brain")
-        filters: Mapping of {field_name: expected_value} to match.
-            All conditions are ANDed. Values can be str, int, bool, or None.
+        filters: Mapping of {field_name: predicate} to match (see above).
         limit: Maximum results to return
+        include_content: If True (default), each result's ``snippet`` holds the
+            document's full content (one read per match). Set False for cheap
+            overviews / counts — ``snippet`` is left empty and no content is
+            read, so large result sets stay fast.
 
     Returns:
         List of SearchResult objects (score=1.0, match_type="metadata").
 
     Examples:
-        # All open tasks
+        # All to-do tasks (exact match)
         await find_by_metadata("brain", {"record_type": "task", "status": "todo"})
+
+        # All "open" tasks in one query (set-membership)
+        await find_by_metadata("brain", {
+            "record_type": "task",
+            "status": ["todo", "in_progress", "blocked"],
+        })
 
         # All tasks for a specific goal
         await find_by_metadata("brain", {"goal_id": "abc-123", "record_type": "task"})
 
-        # All decision frameworks
-        await find_by_metadata("brain", {"record_type": "framework"})
-
-        # Everything from Slack
-        await find_by_metadata("brain", {"source": "slack"})
+        # Cheap overview — metadata only, no content reads
+        rows = await find_by_metadata(
+            "brain", {"record_type": "task"}, limit=10_000, include_content=False,
+        )
     """
     from .database import find_by_metadata as _find_by_metadata
 
@@ -627,8 +684,10 @@ async def find_by_metadata(
 
     results: list[SearchResult] = []
     for meta in docs:
-        doc = await store.read(meta.doc_id)
-        content = doc.content if doc else ""
+        content = ""
+        if include_content:
+            doc = await store.read(meta.doc_id)
+            content = doc.content if doc else ""
 
         results.append(
             SearchResult(
@@ -642,6 +701,70 @@ async def find_by_metadata(
         )
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# describe_metadata()
+# ---------------------------------------------------------------------------
+
+
+async def describe_metadata(
+    database: str,
+    *,
+    filters: Mapping[str, MetadataFilterValue] | None = None,
+    max_values: int = 25,
+) -> dict[str, FieldProfile]:
+    """Discover the metadata schema actually present in a database.
+
+    The store is schema-less — metadata is arbitrary JSON, and consumers define
+    their own vocabulary (``record_type``, ``status``, …). This function reports
+    that vocabulary so a caller (human or agent) can fill ``find_by_metadata``
+    filters without prior knowledge of which fields or values exist.
+
+    For each top-level metadata field it returns a :class:`FieldProfile`:
+    how many documents carry it, how many distinct values it takes, and — when
+    the field is low-cardinality (a closed set like ``status``) — the
+    value→count breakdown. High-cardinality fields (ids, titles, free text)
+    report counts only, so the output stays bounded.
+
+    Pass ``filters`` to scope the profile to a subset and drill in:
+
+        await describe_metadata("brain")
+        #   -> {"record_type": FieldProfile(present_in=62, distinct=3,
+        #                                    values={"task": 42, "idea": 13, ...}),
+        #       "title":       FieldProfile(present_in=62, distinct=62, values=None)}
+
+        await describe_metadata("brain", filters={"record_type": "task"})
+        #   -> {"status":   FieldProfile(present_in=42, distinct=4,
+        #                                values={"todo": 20, "in_progress": 5, ...}),
+        #       "due_date": FieldProfile(present_in=38, distinct=38, values=None)}
+
+    Internal fields (keys starting with ``_``, e.g. ``_history``) are excluded.
+
+    Args:
+        database: Database name (e.g., "brain")
+        filters: Optional subset to profile (same matching semantics as
+            :func:`find_by_metadata`). None profiles the whole database.
+        max_values: A field's per-value breakdown is included only when it has
+            at most this many distinct values; above it, ``values`` is None.
+
+    Returns:
+        Mapping of ``field_name -> FieldProfile``.
+    """
+    from .database import describe_metadata as _describe_metadata
+
+    store = await _get_store(database)
+    raw = await _describe_metadata(str(store.db_path), filters)
+
+    profiles: dict[str, FieldProfile] = {}
+    for field_name, value_counts in raw.items():
+        distinct = len(value_counts)
+        profiles[field_name] = FieldProfile(
+            present_in=sum(value_counts.values()),
+            distinct=distinct,
+            values=dict(value_counts) if distinct <= max_values else None,
+        )
+    return profiles
 
 
 # ---------------------------------------------------------------------------
