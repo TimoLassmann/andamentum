@@ -271,11 +271,17 @@ async def run_epistemic_graph(
         embedding_model = resolve_embedding_model_from_args()
     agent_runner = DefaultAgentRunner(model=model)
 
-    # Auto-load providers
-    if providers is None and provider == "all":
-        from ..providers import get_biomedical_providers
+    # Auto-load providers. "all" includes web_search (general-domain) alongside
+    # the specialist biomedical providers; "web_search" loads only the web
+    # provider (previously a dead flag — there was no web_search provider to
+    # load). An explicit ``providers`` dict overrides both.
+    if providers is None:
+        from ..providers import get_all_providers, get_provider
 
-        providers = get_biomedical_providers()
+        if provider == "all":
+            providers = get_all_providers()
+        elif provider == "web_search":
+            providers = {"web_search": get_provider("web_search")}
 
     evidence_gatherer = (
         get_default_gatherer(

@@ -29,6 +29,7 @@ from .open_targets import OpenTargetsProvider
 from .europepmc import EuropePMCProvider
 from .cochrane import CochraneProvider
 from .arxiv import ArXivProvider
+from .web_search import WebSearchProvider
 
 # ── Provider Registry ────────────────────────────────────────────────────────
 
@@ -62,11 +63,19 @@ def get_all_providers(**kwargs: Any) -> dict[str, Any]:
 
 
 def get_biomedical_providers() -> dict[str, Any]:
-    """Get all providers suitable for biomedical research.
+    """Get the specialist biomedical/scholarly providers (excludes web_search).
 
-    Backward-compatible convenience function.
+    This is the validated dev30 evidence set — the 10 domain APIs only. Web
+    search is deliberately excluded here so biomedical runs keep the precision
+    that retiring the legacy web fallback gave them. Use ``get_all_providers()``
+    when you want general-domain web evidence available to the dispatch agent
+    too.
     """
-    return get_all_providers()
+    return {
+        name: provider
+        for name, provider in get_all_providers().items()
+        if name != "web_search"
+    }
 
 
 # ── Register built-in providers ──────────────────────────────────────────────
@@ -93,6 +102,10 @@ register_provider("europepmc", EuropePMCProvider)
 register_provider("cochrane", CochraneProvider)
 # arXiv — data lives on ArXivProvider class.
 register_provider("arxiv", ArXivProvider)
+# Web search — general-domain fallback; data lives on WebSearchProvider class.
+# Included in get_all_providers() (and the "all" dispatch set) but NOT in
+# get_biomedical_providers().
+register_provider("web_search", WebSearchProvider)
 
 
 __all__ = [
@@ -108,6 +121,7 @@ __all__ = [
     "EuropePMCProvider",
     "CochraneProvider",
     "ArXivProvider",
+    "WebSearchProvider",
     # Registry
     "PROVIDER_REGISTRY",
     "register_provider",
