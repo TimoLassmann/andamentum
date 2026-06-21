@@ -54,6 +54,44 @@ from .thresholds import (
 logger = logging.getLogger(__name__)
 
 
+def _evidence_counting_vote(e) -> tuple[float, float]:
+    """The (supporting, contradicting) contribution of one evidence item to the
+    counting posterior.
+
+    Weighted by cluster corroboration (``1 + log(cluster_size)``, Reichenbach
+    common-cause amplification) and — when a verbalized judgment distribution is
+    present (Tier 0/1) — by *how the judge actually spread its belief* rather
+    than a hard one-vote-per-item count. This is the experiment's load-bearing
+    lesson made concrete: keep the soft probabilities; vote-counting throws away
+    the part of the signal that distinguishes a confident judgment from a
+    barely-leaning one.
+
+    With the distribution ``[p_supports, p_contradicts, p_no_bearing]`` the item
+    contributes ``weight * p_supports`` to supporting and ``weight *
+    p_contradicts`` to contradicting (no_bearing mass contributes to neither).
+    A near-tie therefore nets ~0 (it barely moves the posterior); a confident
+    judgment nets ~±weight.
+
+    Backward-compatibility is exact in the limiting case: a one-hot distribution
+    (the degeneracy mode that dominates small-model output) and evidence with no
+    captured distribution (adversarial / pre-Tier-0) both reduce to the original
+    hard support_judgment vote. So this never regresses runs that lack the
+    verbalized signal — it only refines runs that have it.
+    """
+    cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
+    weight = 1.0 + math.log(cluster_size)
+    dist = getattr(e, "judgment_distribution", None)
+    if dist is not None and len(dist) == 3:
+        return weight * dist[0], weight * dist[1]
+    # No distribution captured — fall back to the hard vote (identical to the
+    # pre-Tier-1 counting).
+    if e.support_judgment == "supports":
+        return weight, 0.0
+    if e.support_judgment == "contradicts":
+        return 0.0, weight
+    return 0.0, 0.0
+
+
 # Question types where posterior P(Y) is meaningful.
 # Comparative is excluded: "Is A better than B?" has three outcomes
 # (A better, B better, equivalent), not two. The posterior's binary
@@ -280,12 +318,9 @@ async def compute_posterior(
                 and e.cluster_status not in ("corroborative", "deferred")
             ]
             for e in claim_evidence:
-                cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
-                weight = 1.0 + math.log(cluster_size)
-                if e.support_judgment == "supports":
-                    diag_supporting += weight
-                elif e.support_judgment == "contradicts":
-                    diag_contradicting += weight
+                s, c = _evidence_counting_vote(e)
+                diag_supporting += s
+                diag_contradicting += c
         diag_log_odds = diag_supporting - diag_contradicting
         if abs(diag_log_odds) < 700:
             diag_counting = 1.0 / (1.0 + math.exp(-diag_log_odds))
@@ -351,12 +386,9 @@ async def compute_posterior(
             and e.cluster_status not in ("corroborative", "deferred")
         ]
         for e in claim_evidence:
-            cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
-            weight = 1.0 + math.log(cluster_size)
-            if e.support_judgment == "supports":
-                supporting += weight
-            elif e.support_judgment == "contradicts":
-                contradicting += weight
+            s, c = _evidence_counting_vote(e)
+            supporting += s
+            contradicting += c
 
     counting_log_odds = supporting - contradicting
     if abs(counting_log_odds) < 700:

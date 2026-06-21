@@ -967,7 +967,7 @@ class ExtractNewEvidence(Node):
     ) -> "Scrutinize":
         from ..operations.evidence import ExtractEvidenceOperation
         from ..entities import Claim, Evidence
-        from ..judge import judge_evidence
+        from ..judge import apply_judgment, judge_evidence
 
         state = ctx.state
         deps = ctx.deps
@@ -1051,11 +1051,7 @@ class ExtractNewEvidence(Node):
                     ),
                     runner=runner,
                 )
-                verdict = judgment.verdict.lower().strip()
-                if verdict not in ("supports", "contradicts", "no_bearing"):
-                    verdict = "no_bearing"
-                ev_to_judge.support_judgment = verdict
-                ev_to_judge.judgment_reasoning = judgment.reasoning
+                apply_judgment(ev_to_judge, judgment)
                 await deps.repo.save(ev_to_judge)
 
             for claim_id, evs in unjudged_by_claim.items():

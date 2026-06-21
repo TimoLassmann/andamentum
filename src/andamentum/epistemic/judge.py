@@ -13,7 +13,26 @@ Architecture: Layer 1 (framework-agnostic, async)
 from __future__ import annotations
 
 from .agents.output_models import EvidenceJudgmentOutput, IndependenceJudgmentOutput
+from .entities.evidence import Evidence
 from .operations.base import AgentRunner
+
+
+def apply_judgment(evidence: Evidence, judgment: EvidenceJudgmentOutput) -> None:
+    """Map an evidence-claim judgment onto an Evidence entity (Tier 0).
+
+    The single place that writes a judgment's results to an Evidence: the
+    load-bearing categorical ``support_judgment`` (the verdict — argmax of the
+    belief distribution, unchanged in meaning) plus the *additive* verbalized
+    distribution that the confidence/entropy/one-hot properties derive from.
+
+    Keeping this in one function means the four LLM-judge call sites
+    (``claims``, ``seed_claim``, ``multi_seed_claim``, graph ``nodes``) stay in
+    lock-step — adding a future derived signal touches here only. The caller
+    is responsible for persisting the evidence afterwards.
+    """
+    evidence.support_judgment = judgment.verdict
+    evidence.judgment_reasoning = judgment.reasoning
+    evidence.judgment_distribution = judgment.distribution
 
 
 async def judge_evidence(
