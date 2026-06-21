@@ -1380,3 +1380,125 @@ class TestProviderSelfDescriptionContract:
             assert isinstance(cls.description, str) and cls.description, (
                 f"Provider {name} class missing non-empty .description"
             )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# WebSearchProvider — general-domain dispatch provider (re-added 2026)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class _FakeResult:
+    def __init__(self, url, title, snippet, domain):
+        self.url = url
+        self.title = title
+        self.snippet = snippet
+        self.domain = domain
+
+
+class _FakePage:
+    def __init__(self, content):
+        self.content = content
+
+
+def _install_fake_backend(monkeypatch, *, results, pages):
+    """Patch deep_research's HttpxSearchBackend with a canned async backend.
+
+    ``pages`` maps url -> _FakePage or an Exception to raise on fetch.
+    """
+    import andamentum.deep_research.backends as dr_backends
+
+    class _FakeBackend:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def search(self, query, max_results=10):
+            return list(results)
+
+        async def fetch_page(self, url):
+            p = pages.get(url)
+            if isinstance(p, Exception):
+                raise p
+            return p
+
+    monkeypatch.setattr(dr_backends, "HttpxSearchBackend", _FakeBackend)
+
+
+class TestWebSearchProvider:
+    async def test_gather_returns_evidence_quality_none(self, monkeypatch):
+        from ..providers.web_search import WebSearchProvider
+
+        results = [
+            _FakeResult("https://a.test/x", "Title A", "snippet a", "a.test"),
+            _FakeResult("https://b.test/y", "Title B", "snippet b", "b.test"),
+        ]
+        pages = {
+            "https://a.test/x": _FakePage("Full body A about the claim."),
+            "https://b.test/y": _FakePage("Full body B about the claim."),
+        }
+        _install_fake_backend(monkeypatch, results=results, pages=pages)
+
+        out = await WebSearchProvider(max_pages=2).gather("some general claim")
+        assert len(out) == 2
+        assert all(isinstance(e, GatheredEvidence) for e in out)
+        assert all(e.quality_score is None for e in out)
+        assert all(e.source_type == "web_search" for e in out)
+        assert "Title A" in out[0].content and "Full body A" in out[0].content
+        assert out[0].source_ref == "https://a.test/x"
+        assert out[0].identifiers == {"url": "https://a.test/x"}
+
+    async def test_fetch_failure_falls_back_to_snippet(self, monkeypatch):
+        from ..providers.web_search import WebSearchProvider
+
+        results = [_FakeResult("https://a.test/x", "Title A", "snippet only", "a.test")]
+        pages = {"https://a.test/x": RuntimeError("blocked")}
+        _install_fake_backend(monkeypatch, results=results, pages=pages)
+
+        out = await WebSearchProvider(max_pages=1).gather("claim")
+        assert len(out) == 1
+        assert "snippet only" in out[0].content
+        assert out[0].structured_data["fetched_full_content"] is False
+
+    async def test_empty_results_returns_empty(self, monkeypatch):
+        from ..providers.web_search import WebSearchProvider
+
+        _install_fake_backend(monkeypatch, results=[], pages={})
+        assert await WebSearchProvider().gather("claim") == []
+
+    async def test_search_error_returns_empty_not_raises(self, monkeypatch):
+        from ..providers.web_search import WebSearchProvider
+        import andamentum.deep_research.backends as dr_backends
+
+        class _BoomBackend:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def search(self, query, max_results=10):
+                raise RuntimeError("searxng down")
+
+        monkeypatch.setattr(dr_backends, "HttpxSearchBackend", _BoomBackend)
+        assert await WebSearchProvider().gather("claim") == []
+
+    def test_registered_in_all_but_not_biomedical(self):
+        from ..providers import (
+            PROVIDER_REGISTRY,
+            get_all_providers,
+            get_biomedical_providers,
+        )
+
+        assert "web_search" in PROVIDER_REGISTRY
+        assert "web_search" in get_all_providers()
+        assert "web_search" not in get_biomedical_providers()
+        # biomedical set is otherwise intact
+        assert "pubmed" in get_biomedical_providers()
