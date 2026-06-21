@@ -97,7 +97,7 @@ class MultiSeedClaimOperation(BaseOperation):
             ev for ev in all_evidence_raw if isinstance(ev, Evidence)
         ]
 
-        from ..judge import judge_evidence as _judge
+        from ..judge import apply_judgment, judge_evidence as _judge
 
         created: list[str] = []
         judged_total = 0
@@ -167,8 +167,7 @@ class MultiSeedClaimOperation(BaseOperation):
                         evidence_source=f"{ev.source_type}: {ev.source_ref}",
                         runner=runner,
                     )
-                    ev.support_judgment = judgment.verdict
-                    ev.judgment_reasoning = judgment.reasoning
+                    apply_judgment(ev, judgment)
                     await self.repo.save(ev)
 
                 if evs_to_judge:

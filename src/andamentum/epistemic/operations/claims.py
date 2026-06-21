@@ -434,7 +434,7 @@ class ProposeClaimsOperation(BaseOperation):
             created_claims.append(claim.entity_id)
 
             # ── Judge each evidence item against the claim ─────────
-            from ..judge import judge_evidence as _judge
+            from ..judge import apply_judgment, judge_evidence as _judge
 
             for eid in cluster_evidence_ids:
                 ev = await self.repo.get("evidence", eid)
@@ -447,8 +447,7 @@ class ProposeClaimsOperation(BaseOperation):
                     evidence_source=f"{ev.source_type}: {ev.source_ref}",
                     runner=self.agent_runner,
                 )
-                ev.support_judgment = judgment.verdict
-                ev.judgment_reasoning = judgment.reasoning
+                apply_judgment(ev, judgment)
                 await self.repo.save(ev)
 
         objective.claims_proposed = True

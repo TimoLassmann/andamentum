@@ -720,10 +720,14 @@ async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
                 )
             if agent_name == "epistemic_judge_evidence":
                 return SimpleNamespace(
-                    verdict="supports", reasoning="evidence supports"
+                    verdict="supports",
+                    reasoning="evidence supports",
+                    distribution=[0.8, 0.15, 0.05],
                 )
             # judge_evidence
-            return SimpleNamespace(verdict="supports", reasoning="ok")
+            return SimpleNamespace(
+                verdict="supports", reasoning="ok", distribution=[0.8, 0.15, 0.05]
+            )
 
     store = DocumentStore.for_database("test_deferred_claims", db_dir=tmp_path)
     await store.initialize()

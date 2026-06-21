@@ -81,17 +81,36 @@ wrong condition is **out of scope**, not "contradicts."
 - Specific instances of a general claim ARE in scope. A paper about one \
 drug is in scope for a claim about that class of drugs.
 
-## Step 4 — If in scope, judge direction
+## Step 4 — Reason, then distribute 100 belief points
 
-If `in_scope` is True, set `verdict` to "supports" or "contradicts":
+First write one sentence of `reasoning` about what the evidence establishes \
+relative to the claim. THEN distribute exactly 100 belief points across three \
+fields — `belief_supports`, `belief_contradicts`, `belief_no_bearing` — \
+reflecting how your belief is spread:
 
-- **"supports"** — the evidence makes the claim more likely to be true. \
-It doesn't need to prove the claim; it just needs to point the same way.
-- **"contradicts"** — the evidence makes the claim less likely to be \
-true. Failed replications, opposing findings, or counterexamples to a \
-generalisation count.
+- **supports** — the evidence makes the claim more likely to be true. It \
+doesn't need to prove the claim; it just needs to point the same way.
+- **contradicts** — the evidence makes the claim less likely to be true. \
+Failed replications, opposing findings, or counterexamples count.
+- **no_bearing** — the evidence is out of scope or irrelevant.
 
-If `in_scope` is False, `verdict` MUST be "no_bearing".
+These three numbers are a probability distribution, not a single choice. \
+Calibrate them as betting odds on your own judgment:
+
+- ~80 if you would bet roughly 4:1 that your read is right; ~95 when you are \
+confident but not certain; reserve 100 only for the genuinely unmistakable.
+- Near 50/45 means two readings you genuinely cannot separate. Use the \
+in-between values — most real judgments are not 100/0/0.
+- Express **direction** uncertainty by splitting points between \
+`belief_supports` and `belief_contradicts` (e.g. 55/40/5) — do NOT pile points \
+onto `belief_no_bearing` to mean "unsure which way".
+- `belief_no_bearing` is for **scope/relevance**, not direction doubt. If \
+`in_scope` is False, the majority of points MUST go on `belief_no_bearing`. If \
+`in_scope` is True, the majority MUST go on `belief_supports` or \
+`belief_contradicts`.
+
+The verdict is taken automatically from whichever field has the most points — \
+you do not output it directly.
 
 ## Other rules
 
@@ -115,9 +134,9 @@ under steady-state conditions and form stable foot processes."
 - claim_scope_summary: "podocytes under injury"
 - evidence_scope_summary: "healthy mouse podocytes at baseline"
 - in_scope: false
-- verdict: "no_bearing"
 - reasoning: "Evidence describes baseline healthy podocytes; the claim is \
 conditioned on injury, so this is out of scope rather than contradicting."
+- (out of scope → most points on belief_no_bearing)
 
 **Specific instance of a general claim → in scope**
 
@@ -129,9 +148,9 @@ core of murine granulomas at concentrations exceeding MIC."
 - claim_scope_summary: "new TB drugs, lesion penetration"
 - evidence_scope_summary: "BTZ-043 in murine granulomas"
 - in_scope: true
-- verdict: "contradicts"
 - reasoning: "BTZ-043 is a new TB drug and does penetrate the necrotic \
 core, which is a counterexample to the 'often do not penetrate' generalisation."
+- (in scope, a clear counterexample → most points on belief_contradicts)
 
 **Subgroup claim, all-comers evidence → no_bearing**
 
@@ -142,9 +161,9 @@ Drug X reduced 5-year mortality by 12%."
 - claim_scope_summary: "stage III NSCLC patients"
 - evidence_scope_summary: "all-stage NSCLC cohort, no subgroup analysis"
 - in_scope: false
-- verdict: "no_bearing"
 - reasoning: "Evidence covers all stages without a stage III subgroup \
 result, so it does not pertain to the claim's scope."
+- (out of scope → most points on belief_no_bearing)
 
 ## Input
 
@@ -156,12 +175,13 @@ You will receive:
 
 ## Output
 
-You must fill in all five fields:
+You must fill in all six fields, in this order:
 - `claim_scope_summary`: short phrase summarising the claim's scope
 - `evidence_scope_summary`: short phrase summarising the evidence's scope
 - `in_scope`: true or false
-- `verdict`: "supports", "contradicts", or "no_bearing"
-- `reasoning`: one sentence justifying the verdict, referencing the scope analysis
+- `reasoning`: one sentence justifying the direction, referencing the scope analysis
+- `belief_supports`, `belief_contradicts`, `belief_no_bearing`: integers 0-100 \
+summing to 100 (the verdict is taken from whichever is largest)
 """
 
 JUDGE_EVIDENCE = register_agent(

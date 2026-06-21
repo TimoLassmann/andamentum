@@ -267,6 +267,25 @@ similar to count as truly independent domains and the
 ``convergence_detector.assess_quality``."""
 
 
+# ── Verbalized-confidence degeneracy (calibration) ─────────────────
+#
+# The evidence-claim judge returns a 3-way belief distribution over
+# {supports, contradicts, no_bearing} (Tier 0). The entropy of that
+# distribution is a usable "is this judgment wrong?" signal — but only
+# when the model actually produces a *graded* distribution. A local
+# validation (gemma4:12b, gpt-oss:20b; 60 SciFact claims) found small
+# models emit a one-hot histogram (one class ≥ 0.95) 53–82% of the
+# time; for those calls the entropy carries no information. This cutoff
+# is the meta-signal "the verbalized confidence is uninformative here",
+# matching the degeneracy metric used in that validation.
+
+JUDGMENT_ONE_HOT_THRESHOLD: float = 0.95
+"""At or above this top-class probability, a verbalized judgment
+distribution is effectively one-hot — its entropy is uninformative.
+Read by: ``judgment_signal.distribution_is_one_hot`` and
+``Evidence.judgment_one_hot``."""
+
+
 __all__ = [
     "ADVERSARIAL_REFUTED_THRESHOLD",
     "ADVERSARIAL_SURVIVED_THRESHOLD",
@@ -281,4 +300,5 @@ __all__ = [
     "CONVERGENCE_STRONG_THRESHOLD",
     "CONVERGENCE_INTRA_DIVERSITY_THRESHOLD",
     "CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW",
+    "JUDGMENT_ONE_HOT_THRESHOLD",
 ]

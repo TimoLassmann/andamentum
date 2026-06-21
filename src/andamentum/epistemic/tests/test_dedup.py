@@ -230,7 +230,9 @@ class TestDedupIntegration:
                     )
                 elif agent_name == "epistemic_judge_evidence":
                     return SimpleNamespace(
-                        verdict="supports", reasoning="Test judgment"
+                        verdict="supports",
+                        reasoning="Test judgment",
+                        distribution=[0.8, 0.15, 0.05],
                     )
                 return SimpleNamespace()
 

@@ -62,9 +62,15 @@ class _JudgingRunner:
 
     async def run(self, agent_name: str, **kwargs: Any) -> Any:
         self.calls.append((agent_name, kwargs))
+        # Distribution dominant on the configured verdict (Tier 0).
+        from ..judgment_signal import JUDGMENT_CLASSES
+
+        dist = [0.1, 0.1, 0.1]
+        dist[JUDGMENT_CLASSES.index(self.verdict)] = 0.8
         return SimpleNamespace(
             verdict=self.verdict,
             reasoning=f"stub {self.verdict} reasoning",
+            distribution=dist,
         )
 
 

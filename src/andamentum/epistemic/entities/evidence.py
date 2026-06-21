@@ -10,6 +10,11 @@ from datetime import datetime
 from typing import Any, Optional
 from pydantic import Field, model_validator
 
+from ..judgment_signal import (
+    distribution_confidence,
+    distribution_entropy,
+    distribution_is_one_hot,
+)
 from .base import EpistemicEntity
 
 
@@ -110,6 +115,18 @@ class Evidence(EpistemicEntity):
         default=None,
         description="One-sentence explanation of the support judgment",
     )
+    judgment_distribution: Optional[list[float]] = Field(
+        default=None,
+        description=(
+            "Verbalized belief distribution from the evidence-claim judge "
+            "(Tier 0), normalised and ordered by judgment_signal."
+            "JUDGMENT_CLASSES = [supports, contradicts, no_bearing]. "
+            "support_judgment is its argmax; confidence/entropy/one-hot are "
+            "derived via the properties below. None for evidence judged "
+            "outside the verbalized-distribution path (e.g. adversarial "
+            "counter-evidence) or not yet judged."
+        ),
+    )
 
     # Clustering / deduplication state
     cluster_status: str = Field(
@@ -144,6 +161,8 @@ class Evidence(EpistemicEntity):
             "support_judgment": self.support_judgment,
             "judgment_reasoning": self.judgment_reasoning,
         }
+        if self.judgment_distribution is not None:
+            meta["judgment_distribution"] = self.judgment_distribution
         if self.invalidation_reason is not None:
             meta["invalidation_reason"] = self.invalidation_reason
         if self.quality_score is not None:
@@ -162,6 +181,32 @@ class Evidence(EpistemicEntity):
     def evidence_id(self) -> str:
         """Backward-compatible alias for entity_id."""
         return self.entity_id
+
+    @property
+    def judgment_confidence(self) -> Optional[float]:
+        """Belief mass the judge placed on its verdict, in [0, 1] (Tier 0).
+        None when no verbalized distribution was captured."""
+        if self.judgment_distribution is None:
+            return None
+        return distribution_confidence(self.judgment_distribution)
+
+    @property
+    def judgment_entropy(self) -> Optional[float]:
+        """Normalised entropy of the judge's belief distribution, in [0, 1]
+        (higher = less sure — the validated wrong-answer signal). None when
+        no verbalized distribution was captured."""
+        if self.judgment_distribution is None:
+            return None
+        return distribution_entropy(self.judgment_distribution)
+
+    @property
+    def judgment_one_hot(self) -> Optional[bool]:
+        """True if the judge's distribution is degenerate (top class ≥
+        threshold), meaning its entropy is uninformative. None when no
+        verbalized distribution was captured."""
+        if self.judgment_distribution is None:
+            return None
+        return distribution_is_one_hot(self.judgment_distribution)
 
     @classmethod
     def from_metadata(
@@ -199,6 +244,7 @@ class Evidence(EpistemicEntity):
             created_by=metadata.get("created_by", "system"),
             support_judgment=metadata.get("support_judgment"),
             judgment_reasoning=metadata.get("judgment_reasoning"),
+            judgment_distribution=metadata.get("judgment_distribution"),
             cluster_status=metadata.get("cluster_status", "unclustered"),
             cluster_id=metadata.get("cluster_id"),
             corroboration_count=metadata.get("corroboration_count", 1),

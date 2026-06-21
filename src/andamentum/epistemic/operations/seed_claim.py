@@ -80,7 +80,7 @@ class SeedClaimOperation(BaseOperation):
         # evidence item, which compute_posterior reads for the directional score.
         judged = 0
         if self.agent_runner:
-            from ..judge import judge_evidence as _judge
+            from ..judge import apply_judgment, judge_evidence as _judge
 
             for eid in evidence_ids:
                 ev = await self.repo.get("evidence", eid)
@@ -99,8 +99,7 @@ class SeedClaimOperation(BaseOperation):
                     evidence_source=f"{ev.source_type}: {ev.source_ref}",
                     runner=self.agent_runner,
                 )
-                ev.support_judgment = judgment.verdict
-                ev.judgment_reasoning = judgment.reasoning
+                apply_judgment(ev, judgment)
                 await self.repo.save(ev)
                 judged += 1
 

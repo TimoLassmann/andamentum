@@ -10,6 +10,13 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from ..judgment_signal import (
+    argmax_verdict,
+    distribution_confidence,
+    distribution_entropy,
+    distribution_is_one_hot,
+    normalize_distribution,
+)
 from ..primitives import (
     CausalRole,
     CriticismCategory,
@@ -607,50 +614,103 @@ class EvidenceJudgmentOutput(BaseModel):
             "When False, the verdict MUST be 'no_bearing'."
         )
     )
-    verdict: Literal["supports", "contradicts", "no_bearing"] = Field(
-        description=(
-            "If in_scope is False, MUST be 'no_bearing'. If in_scope is "
-            "True, judge direction: 'supports' (evidence makes the claim "
-            "more likely true) or 'contradicts' (evidence makes the claim "
-            "less likely true)."
-        )
-    )
     reasoning: str = Field(
         description=(
-            "One sentence justifying the verdict, referencing the scope "
-            "analysis. For out-of-scope cases, name the scope mismatch."
+            "One sentence justifying the direction, referencing the scope "
+            "analysis. For out-of-scope cases, name the scope mismatch. "
+            "Reason here BEFORE assigning the belief points below."
         )
     )
+    belief_supports: int = Field(
+        ge=0,
+        le=100,
+        description=(
+            "Belief points (0-100) that the evidence SUPPORTS the claim. "
+            "belief_supports + belief_contradicts + belief_no_bearing must "
+            "equal 100."
+        ),
+    )
+    belief_contradicts: int = Field(
+        ge=0,
+        le=100,
+        description=(
+            "Belief points (0-100) that the evidence CONTRADICTS the claim. "
+            "The three belief fields must sum to 100."
+        ),
+    )
+    belief_no_bearing: int = Field(
+        ge=0,
+        le=100,
+        description=(
+            "Belief points (0-100) that the evidence has NO BEARING on the "
+            "claim (out of scope or irrelevant). The three belief fields "
+            "must sum to 100. Use this for out-of-scope/irrelevant evidence "
+            "— NOT to express uncertainty about direction (for that, split "
+            "points between supports and contradicts)."
+        ),
+    )
+
+    @property
+    def distribution(self) -> list[float]:
+        """Normalised [supports, contradicts, no_bearing] probability vector."""
+        return normalize_distribution(
+            self.belief_supports, self.belief_contradicts, self.belief_no_bearing
+        )
+
+    @property
+    def verdict(self) -> str:
+        """The load-bearing categorical, derived from the belief distribution
+        (argmax). Single source of truth — never set directly."""
+        return argmax_verdict(self.distribution)
+
+    @property
+    def confidence(self) -> float:
+        """Probability mass on the chosen verdict, in [0, 1]."""
+        return distribution_confidence(self.distribution)
+
+    @property
+    def entropy(self) -> float:
+        """Normalised Shannon entropy in [0, 1] — the wrong-answer signal."""
+        return distribution_entropy(self.distribution)
+
+    @property
+    def is_one_hot(self) -> bool:
+        """True if the distribution is degenerate (entropy uninformative)."""
+        return distribution_is_one_hot(self.distribution)
 
     @model_validator(mode="after")
     def _verdict_consistent_with_scope(self) -> "EvidenceJudgmentOutput":
-        """Cross-field invariant: ``in_scope`` and ``verdict`` must agree.
+        """Cross-field invariant: ``in_scope`` and the derived verdict agree.
 
         The judge prompt states this rule (Step 4: "If in_scope is False,
-        verdict MUST be 'no_bearing'"). The schema previously did not
-        enforce it, so the LLM could return logically inconsistent
-        outputs like ``in_scope=True, verdict='no_bearing'`` ("this is
-        on-topic but I can't tell which way it leans") which the prompt
-        explicitly forbids.
+        the belief mass MUST be on no_bearing"). Enforcing it over the
+        derived verdict catches logically inconsistent outputs like
+        ``in_scope=True`` with the mass piled on no_bearing ("on-topic but
+        I can't tell which way it leans" — which should instead split
+        supports/contradicts).
 
         Raising ValueError here triggers pydantic-ai's output-retry
         mechanism (the agent is registered with output_retries=3 in
-        ``judge.py``) — the model gets the validation error message
-        as feedback and retries.
+        ``judge.py``) — the model gets the validation error message as
+        feedback and retries. ``normalize_distribution`` (called via the
+        ``distribution`` property) also raises here for all-zero output.
         """
-        if self.in_scope and self.verdict == "no_bearing":
+        verdict = self.verdict
+        if self.in_scope and verdict == "no_bearing":
             raise ValueError(
-                "in_scope=True is incompatible with verdict='no_bearing'. "
-                "If the evidence is in scope, set verdict to 'supports' "
-                "or 'contradicts'. If the evidence really has no bearing, "
-                "set in_scope=False."
+                "in_scope=True is incompatible with the belief mass on "
+                "no_bearing. If the evidence is in scope, put the most "
+                "points on 'supports' or 'contradicts' (split them to show "
+                "direction uncertainty). If it really has no bearing, set "
+                "in_scope=False."
             )
-        if not self.in_scope and self.verdict != "no_bearing":
+        if not self.in_scope and verdict != "no_bearing":
             raise ValueError(
-                f"in_scope=False requires verdict='no_bearing' (got "
-                f"{self.verdict!r}). Out-of-scope evidence cannot support "
-                "or contradict a claim — set verdict='no_bearing' or "
-                "reconsider whether the evidence is actually in scope."
+                f"in_scope=False requires the belief mass on no_bearing "
+                f"(argmax was {verdict!r}). Out-of-scope evidence cannot "
+                "support or contradict a claim — put the most points on "
+                "'no_bearing', or reconsider whether the evidence is "
+                "actually in scope."
             )
         return self
 

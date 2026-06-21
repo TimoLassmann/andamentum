@@ -309,6 +309,7 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
     "epistemic_judge_evidence": {
         "verdict": "supports",
         "reasoning": "Test judgment",
+        "distribution": [0.8, 0.15, 0.05],
     },
     # Phase 1 of top-down decomposition: returns a verificatory-style
     # decomposition with 3 sub-investigations combined via AND. Tests

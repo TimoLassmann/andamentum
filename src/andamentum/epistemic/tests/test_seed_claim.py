@@ -198,6 +198,7 @@ class TestSeedClaimOperation:
                 return SimpleNamespace(
                     verdict="supports",
                     reasoning="Evidence directly supports the claim.",
+                    distribution=[0.8, 0.15, 0.05],
                 )
 
         op = SeedClaimOperation(repo, agent_runner=FakeRunner())
