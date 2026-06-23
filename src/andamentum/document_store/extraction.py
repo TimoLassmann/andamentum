@@ -61,8 +61,7 @@ def _build_doc_agent(model: str):  # type: ignore[no-untyped-def]
         model,
         system_prompt=_DOC_SYSTEM_PROMPT,
         output_type=DocumentLLMFields,
-        retries=_RETRIES,
-        output_retries=_OUTPUT_RETRIES,
+        retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
     )
 
     @agent.output_validator
@@ -97,8 +96,7 @@ def _build_chunk_agent(model: str):  # type: ignore[no-untyped-def]
         model,
         system_prompt=_CHUNK_SYSTEM_PROMPT,
         output_type=ChunkLLMFields,
-        retries=_RETRIES,
-        output_retries=_OUTPUT_RETRIES,
+        retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
     )
 
     @agent.output_validator
@@ -176,8 +174,7 @@ async def extract_document_metadata(
                 model,
                 system_prompt=_DOC_SYSTEM_PROMPT,
                 output_type=PromptedOutput(DocumentLLMFields),
-                retries=_RETRIES,
-                output_retries=_OUTPUT_RETRIES,
+                retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
             )
             result = await prompted_agent.run(content[:max_content_chars])
             llm_fields = result.output
@@ -249,8 +246,7 @@ async def extract_chunk_metadata(
                 model,
                 system_prompt=_CHUNK_SYSTEM_PROMPT,
                 output_type=PromptedOutput(ChunkLLMFields),
-                retries=_RETRIES,
-                output_retries=_OUTPUT_RETRIES,
+                retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
             )
             result = await prompted_agent.run(chunk_text)
             llm_fields = result.output

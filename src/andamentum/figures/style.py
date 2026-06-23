@@ -8,7 +8,7 @@ shared legends, and figure saving.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -71,7 +71,9 @@ def setup_style(journal: str = "default") -> JournalPreset:
         "patch.linewidth": 0,
     }
 
-    plt.rcParams.update(params)
+    # matplotlib-stubs type RcParams keys as the RcKeyType Literal; our keys
+    # are valid rc keys typed as plain str, so cast to satisfy update().
+    plt.rcParams.update(cast("dict[Any, Any]", params))
     return preset
 
 
