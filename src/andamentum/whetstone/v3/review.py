@@ -314,8 +314,7 @@ def _build_agent(
         output_type=_CriterionFindings,
         deps_type=DocDeps,
         tools=[read_section, search_paper],
-        retries=2,
-        output_retries=3,
+        retries={"tools": 2, "output": 3},
     )
 
 

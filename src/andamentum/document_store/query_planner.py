@@ -141,8 +141,7 @@ def _build_planner_agent(model: str):  # type: ignore[no-untyped-def]
         model,
         system_prompt=_PLANNER_SYSTEM_PROMPT.format(today=today, last_month=last_month),
         output_type=SearchPlan,
-        retries=_RETRIES,
-        output_retries=_OUTPUT_RETRIES,
+        retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
     )
 
     @agent.output_validator

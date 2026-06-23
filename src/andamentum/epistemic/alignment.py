@@ -152,8 +152,7 @@ def _build_agent(model: Any) -> Any:
         system_prompt=_BASE_PROMPT,
         deps_type=AlignmentCheck,
         output_type=AlignmentResult,
-        retries=2,
-        output_retries=3,
+        retries={"tools": 2, "output": 3},
     )
 
     @agent.system_prompt

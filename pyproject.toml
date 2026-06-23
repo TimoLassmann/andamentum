@@ -58,7 +58,7 @@ dependencies = [
     "pydantic-ai>=1.84.0,<2",        # whetstone / epistemic / deep-research
     "pydantic-graph>=0.1.0,<2",      # graph state machines (whetstone, deep-research)
     "python-dotenv>=1.0.0,<2",       # epistemic / deep-research demos
-    "rich>=13.0.0,<15",              # epistemic / whetstone CLI rendering
+    "rich>=13.0.0,<16",              # epistemic / whetstone CLI rendering
     "markdown>=3.5.0,<4",            # typeset
     "python-docx>=1.2.0,<2",         # whetstone docx track-changes
     "lxml>=5.0.0,<7",                # whetstone docx XML manipulation
@@ -115,7 +115,7 @@ dev = [
 
 [tool.uv]
 # Supply-chain cooldown: at resolve time (uv lock / add / upgrade) ignore
-# any package version uploaded in the last 28 days. Rolling window —
+# any package version uploaded in the last 7 days. Rolling window —
 # re-evaluated on every resolve. Does NOT affect `uv sync` from the
 # existing lockfile.
 #
@@ -128,7 +128,7 @@ dev = [
 # pin (with hashes); the >= ranges above are resolver inputs only.
 # CI / containers / agents should run `uv sync --locked` (or set
 # `UV_LOCKED=1`) so the lockfile cannot drift silently.
-exclude-newer = "28 days"
+exclude-newer = "7 days"
 
 # CPU-only PyTorch. docling (a core dep) pulls torch/torchvision for its
 # layout + table models, and the default PyPI torch *Linux* wheel hard-declares

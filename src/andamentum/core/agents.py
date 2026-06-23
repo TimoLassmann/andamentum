@@ -176,8 +176,7 @@ class AgentRunner:
                 self.model,
                 instructions=defn.prompt,
                 output_type=defn.output_model,
-                retries=defn.retries,
-                output_retries=defn.output_retries,
+                retries={"tools": defn.retries, "output": defn.output_retries},
             )
             if validators:
                 for v in validators:
@@ -220,8 +219,7 @@ class AgentRunner:
                 self.model,
                 instructions=defn.prompt,
                 output_type=PromptedOutput(defn.output_model),
-                retries=defn.retries,
-                output_retries=defn.output_retries,
+                retries={"tools": defn.retries, "output": defn.output_retries},
             )
             if validators:
                 for v in validators:
@@ -263,8 +261,7 @@ def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
         model,
         instructions=defn.prompt,
         output_type=defn.output_model,
-        retries=defn.retries,
-        output_retries=defn.output_retries,
+        retries={"tools": defn.retries, "output": defn.output_retries},
     )
 
 
@@ -307,8 +304,7 @@ async def run_agent_with_fallback(
         resolved,
         instructions=instructions,
         output_type=output_type,
-        retries=retries,
-        output_retries=output_retries,
+        retries={"tools": retries, "output": output_retries},
     )
     if validators:
         for v in validators:
@@ -323,8 +319,7 @@ async def run_agent_with_fallback(
             resolved,
             instructions=instructions,
             output_type=PromptedOutput(output_type),
-            retries=retries,
-            output_retries=output_retries,
+            retries={"tools": retries, "output": output_retries},
         )
         if validators:
             for v in validators:
