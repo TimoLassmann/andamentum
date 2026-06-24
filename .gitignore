@@ -53,3 +53,6 @@ experiments/
 benchmarks/*/output/
 
 benchmarks/*/results/
+
+# Scratch directory — local exploratory code dumps, never published.
+/scratch/
