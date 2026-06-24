@@ -6,7 +6,13 @@
 # forge's audit (stage 4) runs each built system's test suite + end-to-end smoke inside
 # an ephemeral container from this image, with `--network none` (pure systems) and
 # memory/pids caps. The generated package is mounted read-only at runtime; this image
-# only provides andamentum + its deps, so a generated body can touch nothing on the host.
+# only provides the lean andamentum runtime, so a generated body can touch nothing on the
+# host.
+#
+# Lean by design: a generated package's import + stub-smoke path pulls only pydantic /
+# pydantic-graph / numpy / httpx / rich (traced) — never torch / docling / matplotlib. So
+# we install those explicitly + pytest, then `andamentum --no-deps` (source only). This
+# keeps the image small and the build fast, while staying a faithful host-isolated sandbox.
 #
 # This is the default backend (PodmanSandbox). If podman is not installed, a *pure* run
 # degrades to an out-of-process subprocess with a warning; a *network* run refuses. To opt
@@ -18,11 +24,10 @@ FROM python:3.13-slim
 RUN useradd --create-home --uid 10001 sandbox
 WORKDIR /opt/andamentum
 
-# Install andamentum + the runtime + pytest (the audit runs the generated test suite).
-# Copying only metadata + source keeps the layer cache stable across edits.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir "." pytest
+RUN pip install --no-cache-dir pydantic "pydantic-graph>=0.1,<2" numpy httpx rich pytest \
+    && pip install --no-cache-dir --no-deps .
 
 USER sandbox
 # No ENTRYPOINT: forge invokes `python -m pytest <pkg>/tests` inside this image.

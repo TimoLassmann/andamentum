@@ -120,6 +120,14 @@ def _entity_names(nodes: list[NodeDraft]) -> set[str]:
     return {p for n in nodes if n.produces_kind is DataKind.ENTITY for p in n.produces}
 
 
+def _canon_datum(name: str) -> str:
+    """Canonical form of a data name: the graph-input tokens kept verbatim, everything
+    else snake_cased so casing/spacing variants of one datum unify (not collide)."""
+    if name.lower() in INPUT_TOKENS:
+        return name.lower()
+    return _snake(name, name, max_words=0)
+
+
 def compile_spec(plan: DesignPlan) -> SystemSpec:
     """Assemble (and thereby validate) a ``SystemSpec`` from a design plan."""
     if not plan.nodes:
@@ -132,6 +140,26 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
             c.network or c.control is NodeControl.CONSEQUENTIAL
         ):
             c.kind = NodeKind.SPINE
+
+    # Canonicalise data names so casing/spacing variants of one datum unify. A real
+    # model routinely emits 'Main ideas' (produces) and 'main_ideas' (consumes) for the
+    # SAME thing; both resolve to the State field 'main_ideas'. Without this they look
+    # like two distinct names colliding on one field (a hard error); canonicalising first
+    # makes the producer and consumer agree, so the wiring connects instead of crashing.
+    for c in plan.nodes:
+        c.consumes = [_canon_datum(d) for d in c.consumes]
+        c.produces = [_canon_datum(d) for d in c.produces]
+
+    # Deterministic wiring safety net: drop any consume that no node produces and that is
+    # not the graph input — a hallucinated dependency a small model sometimes invents. This
+    # guarantees every State read resolves to a field written by an upstream node (topo
+    # order sequences producer before consumer), so a built body never reads a never-set
+    # None. Sound wiring by construction; the residual after reconciliation can't crash.
+    produced = {p for c in plan.nodes for p in c.produces}
+    for c in plan.nodes:
+        c.consumes = [
+            d for d in c.consumes if d in produced or d.lower() in INPUT_TOKENS
+        ]
 
     sys_name = _snake(plan.why.purpose, "system")
     sys_pascal = "".join(p[:1].upper() + p[1:] for p in sys_name.split("_"))
