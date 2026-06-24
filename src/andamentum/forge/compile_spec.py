@@ -15,6 +15,7 @@ Engine-free leaf worker (dialect Law 2).
 
 from __future__ import annotations
 
+from .naming import canonical_datum
 from .naming import to_pascal as _pascal
 from .naming import to_snake as _snake
 from .schemas import INPUT_TOKENS, DataKind, DesignPlan, NodeDraft
@@ -121,11 +122,8 @@ def _entity_names(nodes: list[NodeDraft]) -> set[str]:
 
 
 def _canon_datum(name: str) -> str:
-    """Canonical form of a data name: the graph-input tokens kept verbatim, everything
-    else snake_cased so casing/spacing variants of one datum unify (not collide)."""
-    if name.lower() in INPUT_TOKENS:
-        return name.lower()
-    return _snake(name, name, max_words=0)
+    """Canonical form of a data name (shared with the design stage so they agree)."""
+    return canonical_datum(name, INPUT_TOKENS)
 
 
 def compile_spec(plan: DesignPlan) -> SystemSpec:
@@ -141,25 +139,29 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
         ):
             c.kind = NodeKind.SPINE
 
-    # Canonicalise data names so casing/spacing variants of one datum unify. A real
-    # model routinely emits 'Main ideas' (produces) and 'main_ideas' (consumes) for the
-    # SAME thing; both resolve to the State field 'main_ideas'. Without this they look
-    # like two distinct names colliding on one field (a hard error); canonicalising first
-    # makes the producer and consumer agree, so the wiring connects instead of crashing.
+    # Canonicalise data names so casing/spacing variants of one datum unify (a lossless
+    # normalisation, not a fallback): 'Main ideas' and 'main_ideas' both become the field
+    # 'main_ideas'. The design stage already selects reads from a closed registry, so this
+    # is idempotent for a forge-designed plan — it only matters for a hand-authored one.
     for c in plan.nodes:
         c.consumes = [_canon_datum(d) for d in c.consumes]
         c.produces = [_canon_datum(d) for d in c.produces]
 
-    # Deterministic wiring safety net: drop any consume that no node produces and that is
-    # not the graph input — a hallucinated dependency a small model sometimes invents. This
-    # guarantees every State read resolves to a field written by an upstream node (topo
-    # order sequences producer before consumer), so a built body never reads a never-set
-    # None. Sound wiring by construction; the residual after reconciliation can't crash.
+    # Fail loud on a dangling read. Every consumed signal must be produced by some node or
+    # be the graph input — otherwise it would resolve to a State field nothing ever writes,
+    # i.e. a silent None at runtime. We do NOT drop it (that hides an incomplete design and
+    # the system would run but not do its job); we reject the spec so the gap is visible.
     produced = {p for c in plan.nodes for p in c.produces}
     for c in plan.nodes:
-        c.consumes = [
-            d for d in c.consumes if d in produced or d.lower() in INPUT_TOKENS
+        dangling = [
+            d for d in c.consumes if d not in produced and d.lower() not in INPUT_TOKENS
         ]
+        if dangling:
+            raise ValueError(
+                f"node {c.job or c.id!r} reads {dangling}, which no node produces and is not the graph input. "
+                "A read with no writer would be silently None at runtime — the design is incomplete. "
+                "Fix the wiring (the gap is reported, never dropped)."
+            )
 
     sys_name = _snake(plan.why.purpose, "system")
     sys_pascal = "".join(p[:1].upper() + p[1:] for p in sys_name.split("_"))

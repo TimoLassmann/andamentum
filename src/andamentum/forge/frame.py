@@ -22,11 +22,14 @@ async def frame(
     )
     assert isinstance(out, ForgeAreas)
     areas = [a.strip() for a in out.areas if a.strip()]
+    if not areas:
+        # Fail loud: no fabricated default. An empty framing means the brief did not
+        # yield distinct concerns — surface it, never invent a placeholder area.
+        raise ValueError(
+            "frame produced no areas; the brief did not yield distinct concerns — design incomplete"
+        )
     notes: list[str] = []
     if len(areas) > max_areas:
         notes.append(f"frame: {len(areas)} areas proposed; capped to {max_areas}")
         areas = areas[:max_areas]
-    if not areas:
-        areas = ["core"]
-        notes.append("frame: no areas proposed; using a single 'core' area")
     return areas, notes

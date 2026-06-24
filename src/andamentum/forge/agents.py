@@ -78,14 +78,18 @@ LIST_JOBS_PROMPT = (
 )
 
 TYPE_NODE_PROMPT = (
-    "You are specifying the fields of ONE step in a larger plan (shown to you). Type only "
-    "the step marked >>>; return just its fields. "
+    "You are specifying the fields of ONE step in a larger plan (shown to you, the step marked "
+    ">>>). Return just its fields. "
+    "\n\nThe message gives you `available` — the EXACT list of variables produced by earlier steps "
+    "(plus `input`, the graph input). These are the ONLY things this step can read. "
     "\n\n(1) kind — spine if the answer is code-computable (math, API call, regex, structured "
     "lookup, routing); head if it needs reading text and making a judgment (extraction, "
     "synthesis, scoring, classification). "
-    "(2) consumes — the EXACT data names this step reads, copied from the plan above; the graph "
-    "input is always named `input`. "
-    "(3) produces — EXACTLY ONE new datum name, a short noun phrase a later step can consume. "
+    "(2) consumes — SELECT the variables this step reads, copied VERBATIM from the `available` "
+    "list. Never invent a name; if you need a value that isn't available, an earlier step is "
+    "missing. A step may read `input` and/or any earlier produced variable, or several of them. "
+    "(3) produces — EXACTLY ONE new datum name (not already in `available`), a short noun phrase "
+    "a later step can read. "
     "(4) produces_kind — signal (run-scoped value handed onward) or entity (a database record "
     "stored and retrieved by id, like a User or Ticket — only for records that persist BEYOND "
     "the run and are queried later; never right for intermediate processing results). "
