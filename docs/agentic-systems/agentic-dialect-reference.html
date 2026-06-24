@@ -1,0 +1,218 @@
+<!-- Andamentum · the agentic dialect, one-page visual reference.
+     Hand-authored against the andamentum design system. The prose canon
+     (src/andamentum/agentic_dialect/DIALECT.md) is authoritative; this is a map. -->
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../design/components.css">
+    <title>The Agentic Dialect — reference</title>
+    <style>
+        .dl-section { margin-top: var(--am-sp-9); }
+        .dl-section > .am-eyebrow { margin-bottom: var(--am-sp-4); }
+
+        /* The tape machine */
+        .dl-machine {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: var(--am-sp-5);
+            align-items: center;
+            border: 1px solid var(--am-rule);
+            border-radius: var(--am-rad-3);
+            padding: var(--am-sp-6);
+            background: var(--am-paper);
+        }
+        .dl-surfaces { display: flex; flex-direction: column; gap: var(--am-sp-3); }
+        .dl-surface {
+            border: 1px solid var(--am-rule);
+            border-radius: var(--am-rad-2);
+            padding: var(--am-sp-3) var(--am-sp-4);
+            background: var(--am-paper-2);
+        }
+        .dl-surface__name { font-family: var(--am-font-serif); font-size: var(--am-fs-body); color: var(--am-ink); }
+        .dl-surface__role { font-family: var(--am-font-sans); font-size: var(--am-fs-meta); color: var(--am-ink-5); }
+        .dl-head {
+            border: 1px solid var(--am-ink-5);
+            border-radius: var(--am-rad-3);
+            padding: var(--am-sp-5);
+            text-align: center;
+            background: var(--am-paper);
+            min-width: 150px;
+        }
+        .dl-head__title { font-family: var(--am-font-sans); font-size: var(--am-fs-ui); color: var(--am-ink-2); font-weight: 600; }
+        .dl-head__steps { font-family: var(--am-font-mono); font-size: var(--am-fs-micro); color: var(--am-ink-5); margin-top: var(--am-sp-2); letter-spacing: .02em; }
+        .dl-arrow { color: var(--am-ink-5); }
+
+        /* Generic card grid */
+        .dl-grid { display: grid; gap: var(--am-sp-4); }
+        .dl-grid--pieces { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+        .dl-grid--laws { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+        .dl-grid--shapes { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+        .dl-card {
+            border: 1px solid var(--am-rule);
+            border-radius: var(--am-rad-3);
+            padding: var(--am-sp-4) var(--am-sp-5);
+            background: var(--am-paper);
+        }
+        .dl-card__head { display: flex; align-items: baseline; gap: var(--am-sp-3); justify-content: space-between; }
+        .dl-card__name { font-family: var(--am-font-serif); font-size: var(--am-fs-body); color: var(--am-ink); }
+        .dl-card__kind { font-family: var(--am-font-sans); font-size: var(--am-fs-micro); color: var(--am-ink-5); text-transform: uppercase; letter-spacing: .06em; }
+        .dl-card__body { font-family: var(--am-font-serif); font-size: var(--am-fs-small); color: var(--am-ink-3); margin-top: var(--am-sp-2); line-height: var(--am-lh-ui); }
+
+        /* Law id + tier chip */
+        .dl-id { font-family: var(--am-font-mono); font-size: var(--am-fs-tag); color: var(--am-ink-2); }
+        .dl-tier {
+            font-family: var(--am-font-sans); font-size: var(--am-fs-eyebrow);
+            text-transform: uppercase; letter-spacing: .05em;
+            padding: 2px var(--am-sp-2);
+            border-radius: var(--am-rad-1);
+            background: var(--am-paper-2);
+        }
+        .dl-tier.is-enforced { color: var(--am-info-ink); }
+        .dl-tier.is-review { color: var(--am-ink-5); }
+
+        /* Grammar glyphs */
+        .dl-shape { text-align: center; }
+        .dl-shape svg { display: block; margin: 0 auto var(--am-sp-3); color: var(--am-ink-3); }
+        .dl-shape__name { font-family: var(--am-font-sans); font-size: var(--am-fs-ui); color: var(--am-ink-2); }
+        .dl-shape__hint { font-family: var(--am-font-serif); font-size: var(--am-fs-small); color: var(--am-ink-5); margin-top: var(--am-sp-1); }
+
+        .dl-legend { font-family: var(--am-font-sans); font-size: var(--am-fs-meta); color: var(--am-ink-5); margin-top: var(--am-sp-4); display: flex; gap: var(--am-sp-5); flex-wrap: wrap; }
+        .dl-legend b { font-weight: 600; }
+        .dl-legend .is-enforced { color: var(--am-info-ink); }
+    </style>
+</head>
+<body>
+
+<article class="typeset-document">
+
+    <header class="typeset-heading">
+        <h1>The Agentic Dialect</h1>
+        <p class="typeset-subtitle">A minimal way to build agentic systems on a graph engine and an LLM client.</p>
+        <p class="typeset-meta">3 surfaces · 2 roles · 1 agent · 2 disciplines · 8 laws · 5 shapes</p>
+    </header>
+
+    <aside class="typeset-callout">
+        <p>Few primitives, orthogonal, no hidden control flow, data and code kept apart. If a thing you are about to write is not obviously one of the pieces below, it is in the wrong place.</p>
+    </aside>
+
+    <!-- ── The tape machine ─────────────────────────────────────────── -->
+    <section class="dl-section">
+        <div class="am-eyebrow">The mental model — a tape machine</div>
+        <div class="dl-machine">
+            <div class="dl-surfaces">
+                <div class="dl-surface"><div class="dl-surface__name">Deps</div><div class="dl-surface__role">the environment · frozen · given</div></div>
+                <div class="dl-surface"><div class="dl-surface__name">State</div><div class="dl-surface__role">the tape · mutable · produced</div></div>
+                <div class="dl-surface"><div class="dl-surface__name">Inputs</div><div class="dl-surface__role">carried between cells · edge-local</div></div>
+            </div>
+            <svg class="dl-arrow" width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M2 12 H34" /><path d="M27 5 L34 12 L27 19" />
+            </svg>
+            <div class="dl-head">
+                <div class="dl-head__title">the head</div>
+                <div class="dl-head__steps">read · work · write · move</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── The pieces ───────────────────────────────────────────────── -->
+    <section class="dl-section">
+        <div class="am-eyebrow">The pieces — the whole vocabulary</div>
+        <div class="dl-grid dl-grid--pieces">
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Deps</span><span class="dl-card__kind">surface</span></div><div class="dl-card__body">Frozen handle; read everywhere, rebound nowhere.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">State</span><span class="dl-card__kind">surface</span></div><div class="dl-card__body">Mutable plain data; written only by orchestrators.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Inputs</span><span class="dl-card__kind">surface</span></div><div class="dl-card__body">Edge-local; hands one value to the next step.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Orchestrator</span><span class="dl-card__kind">code</span></div><div class="dl-card__body">Routes and dispatches; computes nothing but the routing decision.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Worker</span><span class="dl-card__kind">code</span></div><div class="dl-card__body">One unit of real work; never imports the graph engine.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Agent</span><span class="dl-card__kind">code</span></div><div class="dl-card__body">The one "ask the model" instruction, as data.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Port</span><span class="dl-card__kind">discipline</span></div><div class="dl-card__body">A capability in Deps, behind a Protocol.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span class="dl-card__name">Schema</span><span class="dl-card__kind">discipline</span></div><div class="dl-card__body">A typed model on a boundary; ≤1 level of nesting.</div></div>
+        </div>
+    </section>
+
+    <!-- ── The laws ─────────────────────────────────────────────────── -->
+    <section class="dl-section">
+        <div class="am-eyebrow">The laws</div>
+        <div class="dl-grid dl-grid--laws">
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L1</span> · Surface placement</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Given → Deps. Produced and read widely → State. Produced for the next step → Inputs.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L2</span> · Thin orchestrator, fat worker</span><span class="dl-tier is-enforced">lint</span></div><div class="dl-card__body">Orchestrators route and dispatch; workers compute. A worker never imports the graph engine.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L3</span> · State written only by orchestrators</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Workers return values; the orchestrator assigns them. The join is the sole writer during parallelism.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L4</span> · Routing static, declarative, deterministic</span><span class="dl-tier is-enforced">test</span></div><div class="dl-card__body">Every successor is known from the code; branch among declared edges, never synthesize one. No clock, randomness, or untrusted text.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L5</span> · Loops, recursion, fan-out are bounded</span><span class="dl-tier is-enforced">lint</span></div><div class="dl-card__body">The bound — count or fan-out width — traces to a Deps value or a named constant.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L6</span> · The model is a component, not the controller</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Flow lives in the graph. An agent answers a question; it does not drive the pipeline.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L7</span> · Typed boundaries; fail loud</span><span class="dl-tier is-enforced">type-check</span></div><div class="dl-card__body">A structured schema on every edge — no untyped dict[str, Any]. A missing service raises.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L8</span> · Effects are idempotent</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">A world-changing worker must be safe to run more than once — loops, retries, and resume all re-enter it.</div></div>
+        </div>
+        <div class="dl-legend">
+            <span><b class="is-enforced">slate</b> — a machine guard exists (<code>andamentum-agentic-dialect check</code>)</span>
+            <span><b>grey</b> — review-only, named on purpose</span>
+        </div>
+    </section>
+
+    <!-- ── The grammar ──────────────────────────────────────────────── -->
+    <section class="dl-section">
+        <div class="am-eyebrow">The grammar — every shape from one primitive (the declared successor)</div>
+        <div class="dl-grid dl-grid--shapes">
+            <div class="dl-shape">
+                <svg width="150" height="44" viewBox="0 0 150 44" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="6" y="14" width="40" height="20" rx="3"/><rect x="104" y="14" width="40" height="20" rx="3"/>
+                    <path d="M50 24 H100"/><path d="M93 18 L100 24 L93 30"/>
+                </svg>
+                <div class="dl-shape__name">Sequence</div><div class="dl-shape__hint">return the next step</div>
+            </div>
+            <div class="dl-shape">
+                <svg width="150" height="56" viewBox="0 0 150 56" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="6" y="18" width="40" height="20" rx="3"/>
+                    <rect x="104" y="4" width="40" height="18" rx="3"/><rect x="104" y="34" width="40" height="18" rx="3"/>
+                    <path d="M50 28 H78"/><path d="M78 28 V13 H100"/><path d="M78 28 V43 H100"/>
+                    <path d="M93 8 L100 13 L93 18"/><path d="M93 38 L100 43 L93 48"/>
+                </svg>
+                <div class="dl-shape__name">Branch</div><div class="dl-shape__hint">select a declared successor</div>
+            </div>
+            <div class="dl-shape">
+                <svg width="150" height="56" viewBox="0 0 150 56" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="55" y="10" width="40" height="20" rx="3"/>
+                    <path d="M95 20 H118 V46 H32 V20 H55"/><path d="M62 13 L55 20 L62 27"/>
+                </svg>
+                <div class="dl-shape__name">Bounded loop</div><div class="dl-shape__hint">re-enter an earlier step, capped</div>
+            </div>
+            <div class="dl-shape">
+                <svg width="150" height="56" viewBox="0 0 150 56" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="18" width="30" height="20" rx="3"/>
+                    <rect x="60" y="2" width="30" height="14" rx="3"/><rect x="60" y="21" width="30" height="14" rx="3"/><rect x="60" y="40" width="30" height="14" rx="3"/>
+                    <rect x="118" y="18" width="30" height="20" rx="3"/>
+                    <path d="M34 28 H58"/><path d="M92 28 H116"/>
+                    <path d="M44 28 V9 H58"/><path d="M44 28 V47 H58"/><path d="M92 9 H106 V28"/><path d="M92 47 H106 V28"/>
+                </svg>
+                <div class="dl-shape__name">Fan-out → join</div><div class="dl-shape__hint">scatter, then reduce to one</div>
+            </div>
+            <div class="dl-shape">
+                <svg width="150" height="56" viewBox="0 0 150 56" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="40" y="8" width="70" height="40" rx="4"/>
+                    <rect x="54" y="20" width="42" height="16" rx="3" stroke-dasharray="3 3"/>
+                </svg>
+                <div class="dl-shape__name">Sub-pipeline</div><div class="dl-shape__hint">another system's entry, as one unit</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Footer ───────────────────────────────────────────────────── -->
+    <aside class="typeset-aside typeset-sidebar">
+        <div class="typeset-sidebar-group">
+            <div class="typeset-sidebar-title">Canon</div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Spec</span><span class="typeset-sidebar-value">src/andamentum/agentic_dialect/DIALECT.md</span></div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Module</span><span class="typeset-sidebar-value">andamentum.agentic_dialect</span></div>
+        </div>
+        <div class="typeset-sidebar-group">
+            <div class="typeset-sidebar-title">CLI</div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Brief a role</span><span class="typeset-sidebar-value">andamentum-agentic-dialect role &lt;role&gt;</span></div>
+            <div class="typeset-sidebar-row"><span class="typeset-sidebar-label">Check code</span><span class="typeset-sidebar-value">andamentum-agentic-dialect check &lt;path&gt;</span></div>
+        </div>
+    </aside>
+
+</article>
+
+</body>
+</html>

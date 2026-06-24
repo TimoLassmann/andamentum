@@ -1,0 +1,3257 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Agentic Dialect</title>
+<style>
+/* =====================================================================
+   andamentum — components.css
+   A scholarly, letterpress-honest design system.
+   ─────────────────────────────────────────────────────────────────────
+   ── What this file is ──
+   The whole system in one stylesheet. Drop it on any page with
+       <link rel="stylesheet" href="andamentum/components.css">
+   and everything in the .typeset-* and .am-* class families is styled.
+
+   ── How to read it ──
+   The file is organised in numbered sections. Jump to the section you
+   need; don't search for one-off selectors. Tokens live in §2 — every
+   colour, type size, and gap in the file references one of them.
+
+       1.  Imports & resets
+       2.  Design tokens (light + dark)
+       3.  Typography primitives
+       4.  Typeset document system (.typeset-*)
+       5.  App chrome (header, tabs, sidebar)
+       6.  Buttons, inputs, badges, chips
+       7.  Lists, rows, cards
+       8.  Chat, tool log, artefacts, thinking
+       9.  Modal, toast, empty state, progress
+      10.  Specialised rows (task / action / source / settings)
+      11.  Print + responsive
+
+   ── Naming ──
+       .typeset-*  — document content. Reading view, assistant prose,
+                     report exports. Anything a person reads to learn.
+       .am-*       — app chrome, controls, lists, instrumentation.
+                     Anything the system says about itself.
+       .is-*       — state classes (.is-active, .is-done, .is-overdue).
+                     Used on whichever element they describe.
+       --am-*      — design tokens. Read from anywhere; defined in §2.
+
+   The two namespaces share tokens and look like they belong together.
+   They never compete for the same selector.
+
+   ── Reskinning ──
+   Edit a token in §2 to change the palette / scale. NEVER edit a
+   component rule to change colour — that breaks dark mode and breaks
+   everything else that uses the same token. The tokens cascade.
+
+   ── If you are an agent ──
+   Before adding anything to this file, read:
+       • andamentum/DESIGN.md     — philosophy, do's, don'ts
+       • andamentum/CLAUDE.md     — surface→class mapping cheat sheet
+       • andamentum/showcase.html — what every component looks like
+   Then check whether the thing you're building already exists. It
+   usually does.
+
+   ── Hard rules ──
+   No gradients. No drop shadows on cards or rows (only modal / toast).
+   No pure #000 or #fff. No emoji as iconography. No pill buttons.
+   No saturated semantic colour. No coloured left bar on toasts (was
+   removed deliberately). No --info / --warn / --success progress
+   variants (also removed deliberately — andamentum's default progress
+   is ink-grey; only --danger takes colour).
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. Imports & resets
+   --------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+
+/* ---------------------------------------------------------------------
+   2. Design tokens
+   Light is the home key. Dark is its sibling, not a negative photo.
+   Treat dark as "library at night": warm vellum on dim oak, brass
+   lamp glow. Never pure black, never neon.
+   --------------------------------------------------------------------- */
+
+:root {
+    /* Fonts */
+    --am-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --am-font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --am-font-mono:  'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
+
+    /* Type scale (rem-free on purpose — andamentum trusts pixels) */
+    --am-fs-display: 32px;
+    --am-fs-h2:      22px;
+    --am-fs-lead:    20px;
+    --am-fs-prose:   19px;   /* reading-view body */
+    --am-fs-h3:      18px;
+    --am-fs-ref:     17px;
+    --am-fs-body:    16px;   /* UI body */
+    --am-fs-ui:      15px;   /* dense UI rows */
+    --am-fs-meta:    14px;
+    --am-fs-small:   13px;
+    --am-fs-micro:   12px;
+    --am-fs-tag:     11px;
+    --am-fs-eyebrow: 9px;
+
+    /* Line heights */
+    --am-lh-prose: 1.85;
+    --am-lh-tight: 1.25;
+    --am-lh-ui:    1.5;
+
+    /* Spacing (4-step) */
+    --am-sp-1:  4px;
+    --am-sp-2:  8px;
+    --am-sp-3:  12px;
+    --am-sp-4:  16px;
+    --am-sp-5:  20px;
+    --am-sp-6:  24px;
+    --am-sp-7:  32px;
+    --am-sp-8:  40px;
+    --am-sp-9:  48px;
+    --am-sp-10: 64px;
+
+    /* Radii — andamentum prefers small radii; never pill, never huge */
+    --am-rad-1: 3px;   /* badges, tiny chips */
+    --am-rad-2: 4px;   /* callouts, items */
+    --am-rad-3: 6px;   /* cards, modals, inputs */
+    --am-rad-4: 8px;   /* the largest we go */
+
+    /* Hairline widths */
+    --am-hair: 1px;
+
+    /* Motion */
+    --am-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --am-dur:  140ms;
+
+    /* ── LIGHT palette ─────────────────────────────────────────────── */
+
+    /* Paper / surface — warm cream, four steps deeper */
+    --am-paper:    #f9f7f4;
+    --am-paper-2:  #f4f1ec;
+    --am-paper-3:  #f0ede8;
+    --am-paper-4:  #e8e4de;
+
+    /* Ink / text — seven steps, near-black to near-white */
+    --am-ink:      #1a1a1a;
+    --am-ink-2:    #2b2b2b;
+    --am-ink-3:    #555555;
+    --am-ink-4:    #777777;
+    --am-ink-5:    #999999;
+    --am-ink-6:    #bbbbbb;
+    --am-ink-7:    #cccccc;
+
+    /* Rules / borders */
+    --am-rule:     #e8e4de;
+    --am-rule-2:   #ebe7e0;
+    --am-rule-3:   #d4d0c8;
+
+    /* Link — the brown of an underlined word in an old book */
+    --am-link:     #7c6a4f;
+    --am-link-hover: #1a1a1a;
+    --am-link-rule: #d4d0c8;
+
+    /* Semantic tones — quiet, in-family with the cream paper.
+       Backgrounds are barely-tinted cream; accent carries hue;
+       danger is the one tone with a slightly stronger pull.
+       The whole set is named, but only ACCENT carries real signal —
+       most components use only the accent (left bar, title colour,
+       badge text). Backgrounds are reserved for callouts and badges. */
+    --am-info-bg:        #e8eaee;
+    --am-info-accent:    #6e7a8c;
+    --am-info-ink:       #3e4a5c;
+
+    --am-warn-bg:        #ece5d2;
+    --am-warn-accent:    #9a8559;
+    --am-warn-ink:       #5a4818;
+
+    --am-success-bg:     #e3e6d9;
+    --am-success-accent: #5e7a6a;
+    --am-success-ink:    #2e4636;
+
+    --am-danger-bg:      #f1ddd4;
+    --am-danger-accent:  #9c4a36;
+    --am-danger-ink:     #6e2818;
+
+    --am-note-bg:        #f4f1ec;
+    --am-note-accent:    #c4b99a;
+    --am-note-ink:       #555555;
+
+    /* Selection */
+    --am-select-bg:      #ece3cf;
+    --am-select-ink:     #1a1a1a;
+
+    /* Focus ring — andamentum's only "interactive" colour */
+    --am-focus:    #7c6a4f;
+    --am-focus-aura: rgba(124, 106, 79, 0.18);
+
+    /* Shadows — used sparingly. Andamentum is flat; shadows whisper. */
+    --am-shadow-1: 0 1px 0 rgba(40, 30, 12, 0.04);
+    --am-shadow-2: 0 2px 8px rgba(40, 30, 12, 0.06), 0 1px 0 rgba(40, 30, 12, 0.04);
+    --am-shadow-3: 0 8px 28px rgba(40, 30, 12, 0.10), 0 2px 6px rgba(40, 30, 12, 0.06);
+
+    color-scheme: light;
+}
+
+/* ── DARK palette ─────────────────────────────────────────────────────
+   Same structure, inverted with warmth. Backgrounds carry hue from
+   the paper family so the system still feels like andamentum at night,
+   not like a generic IDE theme.                                       */
+
+:root[data-theme="dark"] {
+    --am-paper:    #18160f;   /* deep warm — never #000 */
+    --am-paper-2:  #201d16;
+    --am-paper-3:  #28241c;
+    --am-paper-4:  #312c23;
+
+    --am-ink:      #ede8df;   /* warm bone-white */
+    --am-ink-2:    #d8d2c5;
+    --am-ink-3:    #b5ad9d;
+    --am-ink-4:    #948c7c;
+    --am-ink-5:    #756e60;
+    --am-ink-6:    #5c564a;
+    --am-ink-7:    #46413a;
+
+    --am-rule:     #36312a;
+    --am-rule-2:   #2e2922;
+    --am-rule-3:   #4a4438;
+
+    --am-link:     #c4b08a;
+    --am-link-hover: #ede8df;
+    --am-link-rule: #4a4438;
+
+    --am-info-bg:        #1c2026;
+    --am-info-accent:    #8a99ac;
+    --am-info-ink:       #c2cedb;
+
+    --am-warn-bg:        #26211a;
+    --am-warn-accent:    #b8a37a;
+    --am-warn-ink:       #d4c89e;
+
+    --am-success-bg:     #1f231d;
+    --am-success-accent: #8a9e8e;
+    --am-success-ink:    #b8c8bd;
+
+    --am-danger-bg:      #2a1d18;
+    --am-danger-accent:  #c47a64;
+    --am-danger-ink:     #d8a796;
+
+    --am-note-bg:        #28241c;
+    --am-note-accent:    #6a6149;
+    --am-note-ink:       #b5ad9d;
+
+    --am-select-bg:      #3a3322;
+    --am-select-ink:     #ede8df;
+
+    --am-focus:    #c4b08a;
+    --am-focus-aura: rgba(196, 176, 138, 0.22);
+
+    --am-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.35);
+    --am-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.40), 0 1px 0 rgba(0, 0, 0, 0.30);
+    --am-shadow-3: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+    color-scheme: dark;
+}
+
+/* Honour OS preference when no explicit theme is set */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --am-paper:    #18160f;
+        --am-paper-2:  #201d16;
+        --am-paper-3:  #28241c;
+        --am-paper-4:  #312c23;
+
+        --am-ink:      #ede8df;
+        --am-ink-2:    #d8d2c5;
+        --am-ink-3:    #b5ad9d;
+        --am-ink-4:    #948c7c;
+        --am-ink-5:    #756e60;
+        --am-ink-6:    #5c564a;
+        --am-ink-7:    #46413a;
+
+        --am-rule:     #36312a;
+        --am-rule-2:   #2e2922;
+        --am-rule-3:   #4a4438;
+
+        --am-link:     #c4b08a;
+        --am-link-hover: #ede8df;
+        --am-link-rule: #4a4438;
+
+        --am-info-bg:        #1c2026;
+        --am-info-accent:    #8a99ac;
+        --am-info-ink:       #c2cedb;
+
+        --am-warn-bg:        #26211a;
+        --am-warn-accent:    #b8a37a;
+        --am-warn-ink:       #d4c89e;
+
+        --am-success-bg:     #1f231d;
+        --am-success-accent: #8a9e8e;
+        --am-success-ink:    #b8c8bd;
+
+        --am-danger-bg:      #2a1d18;
+        --am-danger-accent:  #c47a64;
+        --am-danger-ink:     #d8a796;
+
+        --am-note-bg:        #28241c;
+        --am-note-accent:    #6a6149;
+        --am-note-ink:       #b5ad9d;
+
+        --am-select-bg:      #3a3322;
+        --am-select-ink:     #ede8df;
+
+        --am-focus:    #c4b08a;
+        --am-focus-aura: rgba(196, 176, 138, 0.22);
+
+        --am-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.35);
+        --am-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.40), 0 1px 0 rgba(0, 0, 0, 0.30);
+        --am-shadow-3: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+
+        color-scheme: dark;
+    }
+}
+
+::selection {
+    background: var(--am-select-bg);
+    color: var(--am-select-ink);
+}
+
+
+/* ---------------------------------------------------------------------
+   3. Typography primitives
+   --------------------------------------------------------------------- */
+
+.am-serif { font-family: var(--am-font-serif); }
+.am-sans  { font-family: var(--am-font-sans); }
+.am-mono  { font-family: var(--am-font-mono); }
+
+/* Eyebrow — tiny, uppercase, tracked. Used for section labels,
+   sidebar group titles, table headers. */
+.am-eyebrow {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+}
+
+.am-meta {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+}
+
+.am-hairline {
+    border: 0;
+    border-top: var(--am-hair) solid var(--am-rule);
+    margin: var(--am-sp-6) 0;
+}
+
+
+/* =====================================================================
+   4. Typeset document system
+   These rules are intentionally token-mapped versions of your existing
+   typeset-* CSS. Same selectors, same visual output in light mode,
+   plus dark-mode support for free. Reading view, assistant prose, and
+   action-history reports all keep working.
+   ===================================================================== */
+
+.typeset-document {
+    font-family: var(--am-font-serif);
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    line-height: var(--am-lh-prose);
+    font-size: var(--am-fs-prose);
+    -webkit-font-smoothing: antialiased;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 40px;
+}
+
+.typeset-heading {
+    margin-bottom: var(--am-sp-8);
+    padding-bottom: var(--am-sp-6);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+
+.typeset-heading h1 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-display);
+    font-weight: 700;
+    color: var(--am-ink);
+    line-height: var(--am-lh-tight);
+    margin: 0 0 var(--am-sp-3);
+    letter-spacing: -0.3px;
+}
+
+.typeset-subtitle {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-lead);
+    color: var(--am-ink-3);
+    margin: 0 0 var(--am-sp-2);
+    line-height: 1.5;
+    font-weight: 400;
+}
+
+.typeset-meta {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+    margin: var(--am-sp-2) 0 0;
+}
+
+/* Prose */
+.typeset-prose { margin: 0 0 var(--am-sp-7); }
+
+.typeset-prose h2 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h2);
+    font-weight: 700;
+    color: var(--am-ink);
+    margin: var(--am-sp-9) 0 var(--am-sp-4);
+}
+
+.typeset-prose h3 {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin: var(--am-sp-7) 0 var(--am-sp-3);
+}
+
+.typeset-prose p { margin: 0 0 var(--am-sp-4); }
+
+.typeset-prose ul,
+.typeset-prose ol { margin: 0.5em 0; padding-left: 1.6em; }
+
+.typeset-prose li { margin-bottom: 0.25em; }
+
+.typeset-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: var(--am-fs-ui);
+}
+
+.typeset-prose thead { display: table-header-group; }
+
+.typeset-prose th {
+    text-align: left;
+    padding: var(--am-sp-2) 10px;
+    border-bottom: 2px solid var(--am-rule-3);
+    font-weight: 600;
+    color: var(--am-ink);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.typeset-prose td {
+    padding: 6px 10px;
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    vertical-align: top;
+}
+
+.typeset-prose tr:nth-child(even) { background: var(--am-paper-2); }
+
+.typeset-prose code {
+    font-family: var(--am-font-mono);
+    font-size: 0.875em;
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    padding: 1px 5px;
+    border-radius: var(--am-rad-1);
+}
+
+.typeset-prose pre {
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    padding: 14px 18px;
+    border-radius: var(--am-rad-3);
+    overflow-x: auto;
+    font-size: var(--am-fs-meta);
+    line-height: 1.5;
+}
+
+.typeset-prose pre code { background: none; padding: 0; }
+
+.typeset-prose blockquote {
+    margin: 20px 0;
+    padding: 0 0 0 20px;
+    border-left: 2px solid var(--am-rule-3);
+    color: var(--am-ink-3);
+    font-style: italic;
+}
+
+.typeset-prose a {
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: var(--am-hair) solid var(--am-link-rule);
+}
+.typeset-prose a:hover {
+    color: var(--am-link-hover);
+    border-bottom-color: var(--am-link-hover);
+}
+
+.typeset-prose strong { font-weight: 700; }
+.typeset-prose em     { font-style: italic; }
+
+.typeset-prose hr {
+    border: none;
+    border-top: var(--am-hair) solid var(--am-rule);
+    margin: 2em 0;
+}
+
+.typeset-prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1.5em auto;
+    border-radius: var(--am-rad-2);
+}
+
+/* Callout */
+.typeset-callout {
+    font-size: var(--am-fs-lead);
+    font-weight: 400;
+    line-height: 1.65;
+    margin: 0 0 var(--am-sp-7);
+    color: var(--am-ink);
+}
+.typeset-callout p { margin: 0; }
+
+.typeset-callout.tone-info,
+.typeset-callout.tone-warning,
+.typeset-callout.tone-success,
+.typeset-callout.tone-note {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-radius: var(--am-rad-2);
+    line-height: 1.6;
+    border-left: 3px solid var(--am-note-accent);
+    background: var(--am-paper-2);
+    color: var(--am-ink-2);
+}
+
+.typeset-callout.tone-info    { border-left-color: var(--am-info-accent); }
+.typeset-callout.tone-warning { border-left-color: var(--am-warn-accent); }
+.typeset-callout.tone-success { border-left-color: var(--am-success-accent); }
+.typeset-callout.tone-note    { border-left-color: var(--am-note-accent); }
+
+/* Danger is the one exception — it earns a tinted background because it
+   genuinely needs to draw the reader's eye. Use sparingly. */
+.typeset-callout.tone-danger {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-radius: var(--am-rad-2);
+    line-height: 1.6;
+    border-left: 3px solid var(--am-danger-accent);
+    background: var(--am-danger-bg);
+    color: var(--am-danger-ink);
+}
+
+.typeset-callout.tone-quote {
+    padding: 0 0 0 20px;
+    border-left: 2px solid var(--am-rule-3);
+    font-family: var(--am-font-serif);
+    font-style: italic;
+    color: var(--am-ink-3);
+    background: none;
+}
+
+/* Items (label/value pairs) */
+.typeset-items {
+    font-family: var(--am-font-sans);
+    margin: 0 0 var(--am-sp-8);
+    padding: var(--am-sp-5) var(--am-sp-6);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    font-size: var(--am-fs-meta);
+    line-height: 1.6;
+}
+
+.typeset-item { margin-bottom: var(--am-sp-3); }
+.typeset-item:last-child { margin-bottom: 0; }
+
+.typeset-items.variant-pairs .typeset-item-label {
+    font-weight: 600;
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: var(--am-sp-1);
+}
+.typeset-items.variant-pairs .typeset-item-body {
+    font-size: var(--am-fs-body);
+    color: var(--am-ink-3);
+}
+.typeset-items .typeset-item-body p {
+    font-family: var(--am-font-sans);
+    margin: var(--am-sp-1) 0 0 0;
+}
+
+.item-right { display: flex; align-items: baseline; }
+.item-right .typeset-item-body  { flex: 1; font-size: var(--am-fs-body); color: var(--am-ink-2); }
+.item-right .typeset-item-label { width: 100px; text-align: right; flex-shrink: 0; color: var(--am-ink-5); font-size: var(--am-fs-small); }
+
+.item-left { display: flex; align-items: baseline; }
+.item-left .typeset-item-label { width: 100px; flex-shrink: 0; font-size: var(--am-fs-small); color: var(--am-ink-5); }
+.item-left .typeset-item-body  { flex: 1; font-size: var(--am-fs-body); color: var(--am-ink-2); }
+
+/* Aside */
+.typeset-aside {
+    margin: var(--am-sp-6) 0;
+    padding: var(--am-sp-4) var(--am-sp-5);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    line-height: 1.6;
+    color: var(--am-ink-3);
+}
+
+/* Footnote-style sidebar (document mode) */
+.typeset-sidebar {
+    font-family: var(--am-font-sans);
+    margin-top: var(--am-sp-10);
+    padding-top: var(--am-sp-6);
+    border-top: var(--am-hair) solid var(--am-rule);
+    font-size: var(--am-fs-tag);
+    line-height: 1.5;
+    color: var(--am-ink-6);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--am-sp-5);
+    background: transparent;
+}
+
+.typeset-sidebar-group { margin-bottom: 0; }
+
+.typeset-sidebar-title {
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--am-ink-7);
+    margin: 0 0 var(--am-sp-1);
+}
+
+.typeset-sidebar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: var(--am-fs-tag);
+}
+
+.typeset-sidebar-label { color: var(--am-ink-6); }
+.typeset-sidebar-value { font-weight: 500; color: var(--am-ink-5); }
+
+/* Card (document-mode) */
+.typeset-card {
+    margin: var(--am-sp-4) 0;
+    padding: 0 0 var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.typeset-card:last-child { border-bottom: none; }
+.typeset-card-body { line-height: 1.75; color: var(--am-ink-2); }
+
+.typeset-badge {
+    display: inline-block;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+}
+.typeset-badge[data-value="supports"],
+.typeset-badge[data-value="supported"],
+.typeset-badge[data-value="pass"],
+.typeset-badge[data-value="approved"]   { color: var(--am-success-ink); background: var(--am-success-bg); }
+
+.typeset-badge[data-value="contradicts"],
+.typeset-badge[data-value="contradicted"],
+.typeset-badge[data-value="challenged"],
+.typeset-badge[data-value="fail"],
+.typeset-badge[data-value="rejected"]   { color: var(--am-danger-ink); background: var(--am-danger-bg); }
+
+.typeset-refs { font-family: var(--am-font-sans); font-size: var(--am-fs-micro); color: var(--am-ink-5); }
+.typeset-refs a { color: var(--am-ink-5); text-decoration: none; }
+.typeset-refs a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-card-source {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-4);
+    word-break: break-all;
+    margin-top: var(--am-sp-1);
+}
+.typeset-card-source a { color: var(--am-ink-4); text-decoration: none; }
+.typeset-card-source a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-card-details { margin-top: var(--am-sp-2); }
+.typeset-card-details summary {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-5);
+    cursor: pointer;
+}
+.typeset-card-details summary:hover { color: var(--am-ink-3); }
+.typeset-card-details[open] summary { margin-bottom: var(--am-sp-2); }
+
+/* Reference */
+.typeset-reference {
+    display: flex;
+    font-size: var(--am-fs-ref);
+    margin: var(--am-sp-3) 0;
+    padding: var(--am-sp-3) 0;
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.typeset-reference:last-child { border-bottom: none; }
+
+.typeset-ref-number {
+    width: 36px;
+    flex-shrink: 0;
+    font-size: var(--am-fs-ui);
+    font-weight: 600;
+    color: var(--am-ink-5);
+    font-family: var(--am-font-sans);
+    text-align: right;
+    padding-right: 10px;
+}
+
+.typeset-ref-content { flex: 1; }
+.typeset-ref-body { line-height: 1.75; color: var(--am-ink-2); font-size: var(--am-fs-ref); }
+
+.typeset-ref-source {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-4);
+    margin-top: var(--am-sp-1);
+    word-break: break-all;
+}
+.typeset-ref-source a { color: var(--am-ink-3); text-decoration: none; }
+.typeset-ref-source a:hover { color: var(--am-ink-2); text-decoration: underline; }
+
+.typeset-reference-group { margin: var(--am-sp-4) 0; }
+.typeset-ref-group-label {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 600;
+    color: var(--am-ink-5);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: var(--am-sp-2);
+}
+
+
+/* =====================================================================
+   5. App chrome
+   Header, tabs, sidebars. The frame that holds the document.
+   ===================================================================== */
+
+.am-app {
+    min-height: 100vh;
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+}
+
+.am-app-header {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-7);
+    padding: var(--am-sp-4) var(--am-sp-7);
+    background: var(--am-paper);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+    min-height: 56px;
+}
+
+.am-app-title {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-lead);
+    font-weight: 700;
+    color: var(--am-ink);
+    letter-spacing: -0.2px;
+}
+
+.am-app-title__mark {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--am-ink);
+}
+
+/* Top-level tab strip */
+.am-tabs {
+    display: flex;
+    gap: var(--am-sp-1);
+    align-items: center;
+    flex: 1;
+}
+
+.am-tab {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    font-weight: 500;
+    color: var(--am-ink-4);
+    background: transparent;
+    border: 0;
+    padding: var(--am-sp-2) var(--am-sp-3);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-tab:hover { color: var(--am-ink-2); background: var(--am-paper-2); }
+.am-tab[aria-current="page"],
+.am-tab.is-active {
+    color: var(--am-ink);
+    background: var(--am-paper-2);
+}
+
+.am-app-header__right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    color: var(--am-ink-5);
+    font-size: var(--am-fs-small);
+}
+
+/* Sidebar (app-mode left rail) */
+.am-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--am-paper);
+    border-right: var(--am-hair) solid var(--am-rule);
+    padding: var(--am-sp-6) var(--am-sp-5);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    overflow-y: auto;
+}
+
+.am-sidebar__section { margin-bottom: var(--am-sp-7); }
+.am-sidebar__section:last-child { margin-bottom: 0; }
+
+.am-sidebar__title {
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+    margin: 0 0 var(--am-sp-3);
+}
+
+.am-sidebar__item {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    padding: var(--am-sp-1) var(--am-sp-2);
+    margin: 0 calc(var(--am-sp-2) * -1);
+    border-radius: var(--am-rad-2);
+    color: var(--am-ink-3);
+    font-size: var(--am-fs-meta);
+    cursor: pointer;
+    line-height: 1.5;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-sidebar__item:hover { background: var(--am-paper-2); color: var(--am-ink-2); }
+.am-sidebar__item.is-active {
+    background: var(--am-paper-2);
+    color: var(--am-ink);
+    font-weight: 600;
+}
+
+.am-sidebar__item__icon {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+}
+
+.am-sidebar__item__count {
+    margin-left: auto;
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Stats cluster (the 10 Active / 4 Overdue tiles) */
+.am-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--am-sp-2);
+    margin-bottom: var(--am-sp-7);
+}
+
+.am-stat {
+    padding: var(--am-sp-3) var(--am-sp-3);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+}
+
+.am-stat__value {
+    font-family: var(--am-font-serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--am-ink);
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
+.am-stat__value.is-danger { color: var(--am-danger-ink); }
+.am-stat__value.is-success { color: var(--am-success-ink); }
+
+.am-stat__label {
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: var(--am-sp-1);
+    font-weight: 500;
+}
+
+/* Project / area row inside sidebar — supports a progress sliver */
+.am-nav-row {
+    display: block;
+    padding: var(--am-sp-2);
+    margin: 0 calc(var(--am-sp-2) * -1) var(--am-sp-1);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-nav-row:hover { background: var(--am-paper-2); }
+.am-nav-row.is-active { background: var(--am-paper-2); }
+
+.am-nav-row__title {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-2);
+    font-weight: 500;
+    line-height: 1.35;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.am-nav-row__meta {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+}
+.am-nav-row__progress {
+    height: 2px;
+    background: var(--am-rule);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+.am-nav-row__progress > span {
+    display: block;
+    height: 100%;
+    background: var(--am-success-accent);
+    border-radius: inherit;
+}
+
+
+/* =====================================================================
+   6. Buttons, inputs, badges, chips
+   ===================================================================== */
+
+/* Buttons — flat, hairline-bordered, no gradients, no rounded-pills */
+.am-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    font-weight: 500;
+    line-height: 1;
+    padding: 8px 14px;
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-2);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-btn:hover    { background: var(--am-paper-2); color: var(--am-ink); border-color: var(--am-ink-6); }
+.am-btn:active   { background: var(--am-paper-3); }
+.am-btn:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-btn[disabled],
+.am-btn.is-disabled { opacity: 0.45; cursor: not-allowed; }
+
+.am-btn--primary {
+    background: var(--am-ink);
+    color: var(--am-paper);
+    border-color: var(--am-ink);
+}
+.am-btn--primary:hover  { background: var(--am-ink-2); color: var(--am-paper); border-color: var(--am-ink-2); }
+.am-btn--primary:active { background: var(--am-ink-3); }
+
+.am-btn--ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--am-ink-3);
+    padding-left: 8px;
+    padding-right: 8px;
+}
+.am-btn--ghost:hover { background: var(--am-paper-2); border-color: transparent; color: var(--am-ink-2); }
+
+.am-btn--danger {
+    background: var(--am-paper);
+    color: var(--am-danger-ink);
+    border-color: var(--am-danger-accent);
+}
+.am-btn--danger:hover { background: var(--am-danger-bg); color: var(--am-danger-ink); border-color: var(--am-danger-accent); }
+
+.am-btn--sm  { font-size: var(--am-fs-small); padding: 5px 10px; }
+.am-btn--lg  { font-size: var(--am-fs-body); padding: 11px 18px; }
+
+.am-btn--icon {
+    width: 32px; height: 32px;
+    padding: 0;
+    color: var(--am-ink-4);
+}
+.am-btn--icon:hover { color: var(--am-ink-2); }
+
+/* Quick-action chip — rounded enough to read as a "tag of behaviour" */
+.am-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    background: var(--am-paper-2);
+    border: var(--am-hair) solid transparent;
+    border-radius: var(--am-rad-4);
+    padding: 4px 10px;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-chip:hover { background: var(--am-paper-3); color: var(--am-ink); }
+.am-chip.is-active { background: var(--am-ink); color: var(--am-paper); }
+
+/* Tag pill — a small, removable classifier attached to a row of content
+   (e.g. document tags in Browse). Looks like a chip but is structurally
+   distinct: tags are content metadata, chips are filter affordances.
+   Pair with an optional .am-tag__close × button for removability. */
+.am-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    background: var(--am-paper-3);
+    border-radius: var(--am-rad-2);
+    padding: 3px 8px;
+    line-height: 1.4;
+    text-decoration: none;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-tag:hover { background: var(--am-paper-4); color: var(--am-ink-2); }
+
+/* Tinted variants — match the semantic palette for tags that classify
+   by tone (e.g. a "research" tag styled like info). */
+.am-tag--info    { background: var(--am-info-bg);    color: var(--am-info-ink); }
+.am-tag--warn    { background: var(--am-warn-bg);    color: var(--am-warn-ink); }
+.am-tag--success { background: var(--am-success-bg); color: var(--am-success-ink); }
+.am-tag--danger  { background: var(--am-danger-bg);  color: var(--am-danger-ink); }
+
+.am-tag__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-right: -3px;
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-5);
+    cursor: pointer;
+    border-radius: var(--am-rad-1);
+    padding: 0;
+    font-family: var(--am-font-sans);
+    font-size: 14px;
+    line-height: 1;
+    transition: color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-tag__close:hover {
+    color: var(--am-ink);
+    background: color-mix(in srgb, var(--am-ink) 8%, transparent);
+}
+
+/* + add button — invites the user to add another tag to the row.
+   A dashed-outline circle the same size as a task-status check (18px).
+   The + glyph is drawn by pseudo-elements rather than typeset, so it
+   stays crisp and visually weighted, matching the .am-task__check
+   family rather than reading as fallback text. */
+.am-tag-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px dashed var(--am-ink-6);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0;            /* hide any text content inside the button */
+    line-height: 1;
+    padding: 0;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease), border-style var(--am-dur) var(--am-ease);
+}
+.am-tag-add::before,
+.am-tag-add::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    background: var(--am-ink-4);
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-tag-add::before { width: 9px; height: 1.5px; transform: translate(-50%, -50%); }
+.am-tag-add::after  { width: 1.5px; height: 9px; transform: translate(-50%, -50%); }
+
+.am-tag-add:hover {
+    border-color: var(--am-ink-3);
+    border-style: solid;
+}
+.am-tag-add:hover::before,
+.am-tag-add:hover::after {
+    background: var(--am-ink-2);
+}
+
+/* Tag row — a wrapper that lays out tags with consistent spacing and
+   wraps cleanly. Use this around any sequence of .am-tag / .am-tag-add. */
+.am-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Checkbox — a flat 14px square. Pairs with a label sibling. The
+   .am-checkbox class targets a real <input type="checkbox"> using
+   appearance: none, so it remains a real form control under the hood. */
+.am-checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-checkbox-row:hover { color: var(--am-ink-2); }
+
+.am-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1.5px solid var(--am-ink-6);
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-checkbox:hover { border-color: var(--am-ink-3); }
+.am-checkbox:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-checkbox:checked {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+}
+.am-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 0px;
+    width: 4px; height: 7px;
+    border: solid var(--am-paper);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+}
+.am-checkbox:disabled,
+.am-checkbox-row.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.am-checkbox-row.is-disabled .am-checkbox { cursor: not-allowed; }
+
+/* Radio — same idea as checkbox but rounded. */
+.am-radio {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1.5px solid var(--am-ink-6);
+    border-radius: 50%;
+    background: var(--am-paper);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color var(--am-dur) var(--am-ease);
+}
+.am-radio:hover { border-color: var(--am-ink-3); }
+.am-radio:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+    border-color: var(--am-focus);
+}
+.am-radio:checked { border-color: var(--am-ink); }
+.am-radio:checked::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--am-ink);
+}
+
+/* Inputs */
+.am-input,
+.am-textarea,
+.am-select {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    line-height: 1.4;
+    color: var(--am-ink-2);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    padding: 9px 12px;
+    width: 100%;
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-input::placeholder,
+.am-textarea::placeholder { color: var(--am-ink-5); }
+
+.am-input:hover,
+.am-textarea:hover,
+.am-select:hover { border-color: var(--am-ink-6); }
+
+.am-input:focus,
+.am-textarea:focus,
+.am-select:focus {
+    outline: none;
+    border-color: var(--am-focus);
+    box-shadow: 0 0 0 3px var(--am-focus-aura);
+}
+
+.am-textarea { min-height: 80px; resize: vertical; }
+
+.am-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--am-ink-4) 50%),
+                      linear-gradient(135deg, var(--am-ink-4) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 28px;
+}
+
+/* Label + help */
+.am-label {
+    display: block;
+    font-size: var(--am-fs-small);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin-bottom: 6px;
+    font-family: var(--am-font-sans);
+}
+.am-help {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+/* Search input with leading icon */
+.am-search {
+    position: relative;
+}
+.am-search > .am-input {
+    padding-left: 36px;
+}
+.am-search__icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--am-ink-5);
+    pointer-events: none;
+    width: 14px; height: 14px;
+}
+
+/* Badge (UI-mode, complements .typeset-badge in document mode) */
+.am-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 7px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+    line-height: 1.4;
+    border: var(--am-hair) solid transparent;
+}
+.am-badge--info     { background: var(--am-info-bg);    color: var(--am-info-ink); }
+.am-badge--warn     { background: var(--am-warn-bg);    color: var(--am-warn-ink); }
+.am-badge--success  { background: var(--am-success-bg); color: var(--am-success-ink); }
+.am-badge--danger   { background: var(--am-danger-bg);  color: var(--am-danger-ink); }
+.am-badge--note     { background: var(--am-note-bg);    color: var(--am-note-ink); }
+.am-badge--outline  { background: transparent; border-color: var(--am-rule-3); color: var(--am-ink-3); }
+
+.am-badge__dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+}
+
+/* Just a dot, no label */
+.am-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+    background: var(--am-ink-6);
+    flex-shrink: 0;
+}
+.am-dot--info    { background: var(--am-info-accent); }
+.am-dot--warn    { background: var(--am-warn-accent); }
+.am-dot--success { background: var(--am-success-accent); }
+.am-dot--danger  { background: var(--am-danger-accent); }
+
+
+/* =====================================================================
+   7. Lists, rows, cards (app-mode)
+   ===================================================================== */
+
+/* Generic row — a hairline-separated list item.
+   No background, no rounded corners by default. Hover lifts onto paper-2. */
+.am-row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    background: transparent;
+    transition: background var(--am-dur) var(--am-ease);
+    cursor: pointer;
+}
+.am-row:last-child { border-bottom: none; }
+.am-row:hover { background: var(--am-paper-2); }
+
+.am-row__main  { flex: 1; min-width: 0; }
+.am-row__title { font-size: var(--am-fs-body); color: var(--am-ink-2); font-weight: 500; line-height: 1.4; }
+.am-row__meta  { font-size: var(--am-fs-small); color: var(--am-ink-5); margin-top: 3px; line-height: 1.5; }
+.am-row__aside { font-size: var(--am-fs-small); color: var(--am-ink-5); flex-shrink: 0; }
+
+/* List container — implies hairline grouping */
+.am-list {
+    background: var(--am-paper);
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.am-list--bordered {
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-3);
+    overflow: hidden;
+}
+
+/* Card (app-mode) — separate from .typeset-card */
+.am-card {
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-5);
+    box-shadow: var(--am-shadow-1);
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease);
+}
+.am-card:hover { border-color: var(--am-rule-3); box-shadow: var(--am-shadow-2); }
+
+.am-card--quiet {
+    background: var(--am-paper-2);
+    border-color: transparent;
+    box-shadow: none;
+}
+.am-card--quiet:hover { background: var(--am-paper-3); }
+
+.am-card__eyebrow {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+    margin-bottom: var(--am-sp-2);
+}
+.am-card__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.3;
+    margin: 0 0 var(--am-sp-2);
+    letter-spacing: -0.1px;
+}
+.am-card__body {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+.am-card__footer {
+    margin-top: var(--am-sp-3);
+    padding-top: var(--am-sp-3);
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+}
+
+
+/* =====================================================================
+   8. Chat, tool log, artefacts, thinking indicator
+   ===================================================================== */
+
+.am-chat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--am-sp-7);
+    padding: var(--am-sp-7);
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.am-chat__turn { display: flex; flex-direction: column; gap: var(--am-sp-3); }
+
+/* USER message — a small, dark, right-floating bubble.
+   This is "speech": short, sans-serif, opinionated. */
+.am-chat__msg--user {
+    align-self: flex-end;
+    background: var(--am-ink);
+    color: var(--am-paper);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-radius: var(--am-rad-4);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+    line-height: 1.55;
+    max-width: 70%;
+}
+:root[data-theme="dark"] .am-chat__msg--user,
+:root:not([data-theme="light"]) .am-chat__msg--user {
+    /* In dark, the user bubble inverts to keep the contrast direction */
+}
+
+/* ASSISTANT message — flat, full-width, typeset prose.
+   No bubble. The agent speaks like a document. */
+.am-chat__msg--assistant {
+    color: var(--am-ink-2);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-prose);
+    line-height: var(--am-lh-prose);
+    max-width: 100%;
+}
+.am-chat__msg--assistant > * + * { margin-top: var(--am-sp-4); }
+.am-chat__msg--assistant h1,
+.am-chat__msg--assistant h2,
+.am-chat__msg--assistant h3,
+.am-chat__msg--assistant h4 {
+    font-family: var(--am-font-serif);
+    color: var(--am-ink);
+    line-height: 1.3;
+}
+.am-chat__msg--assistant h2 { font-size: var(--am-fs-h2); margin-top: var(--am-sp-7); font-weight: 700; }
+.am-chat__msg--assistant h3 { font-size: var(--am-fs-h3); margin-top: var(--am-sp-5); font-weight: 600; }
+.am-chat__msg--assistant p  { margin: 0 0 var(--am-sp-4); }
+.am-chat__msg--assistant ul,
+.am-chat__msg--assistant ol { padding-left: 1.6em; margin: 0 0 var(--am-sp-4); }
+.am-chat__msg--assistant li { margin-bottom: 0.35em; }
+.am-chat__msg--assistant code {
+    font-family: var(--am-font-mono);
+    font-size: 0.875em;
+    background: var(--am-paper-3);
+    padding: 1px 5px;
+    border-radius: var(--am-rad-1);
+}
+.am-chat__msg--assistant pre {
+    background: var(--am-paper-3);
+    padding: 14px 18px;
+    border-radius: var(--am-rad-3);
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-meta);
+    line-height: 1.55;
+    overflow-x: auto;
+}
+.am-chat__msg--assistant a {
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: var(--am-hair) solid var(--am-link-rule);
+}
+.am-chat__msg--assistant a:hover { color: var(--am-link-hover); border-bottom-color: var(--am-link-hover); }
+.am-chat__msg--assistant blockquote {
+    margin: var(--am-sp-4) 0;
+    padding: 0 0 0 var(--am-sp-5);
+    border-left: 2px solid var(--am-rule-3);
+    color: var(--am-ink-3);
+    font-style: italic;
+}
+
+/* Composer (chat input) */
+.am-composer {
+    background: var(--am-paper);
+    border-top: var(--am-hair) solid var(--am-rule);
+    padding: var(--am-sp-4) var(--am-sp-7);
+}
+.am-composer__row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--am-sp-2);
+    background: var(--am-paper-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-2);
+    transition: border-color var(--am-dur) var(--am-ease), box-shadow var(--am-dur) var(--am-ease);
+}
+.am-composer__row:focus-within {
+    border-color: var(--am-focus);
+    box-shadow: 0 0 0 3px var(--am-focus-aura);
+}
+.am-composer__input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    resize: none;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-body);
+    line-height: 1.5;
+    color: var(--am-ink-2);
+    padding: 8px 10px;
+    min-height: 24px;
+    max-height: 200px;
+}
+.am-composer__input::placeholder { color: var(--am-ink-5); }
+
+/* Tool log — collapsible "Tools used" block under each turn */
+.am-toollog {
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    overflow: hidden;
+}
+.am-toollog__summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: var(--am-sp-2) var(--am-sp-3);
+    cursor: pointer;
+    color: var(--am-ink-4);
+    font-weight: 500;
+    list-style: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.am-toollog__summary::-webkit-details-marker { display: none; }
+.am-toollog__summary::before {
+    content: '›';
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform var(--am-dur) var(--am-ease);
+    color: var(--am-ink-5);
+    font-weight: 400;
+    width: 10px;
+}
+.am-toollog[open] > .am-toollog__summary::before { transform: rotate(90deg); }
+.am-toollog__body {
+    padding: 0 var(--am-sp-3) var(--am-sp-3) calc(var(--am-sp-3) + 18px);
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-micro);
+    line-height: 1.7;
+    color: var(--am-ink-3);
+}
+
+.am-toollog__entry { padding: 2px 0; }
+.am-toollog__entry__name { color: var(--am-ink-2); font-weight: 600; }
+.am-toollog__entry__args { color: var(--am-ink-4); }
+.am-toollog__entry__result { color: var(--am-ink-3); }
+.am-toollog__entry .am-toollog__ok    { color: var(--am-success-ink); }
+.am-toollog__entry .am-toollog__fail  { color: var(--am-danger-ink); }
+
+/* Router decision banner — appears above tool log */
+.am-router {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-3);
+    padding: var(--am-sp-3);
+    background: var(--am-paper-2);
+    border-radius: var(--am-rad-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    line-height: 1.55;
+}
+.am-router__label {
+    font-weight: 600;
+    color: var(--am-ink-2);
+    flex-shrink: 0;
+}
+.am-router__reason { color: var(--am-ink-4); font-style: italic; }
+
+/* Artefact card — "documents this turn created" */
+.am-artefact {
+    display: flex;
+    align-items: stretch;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-left: 3px solid var(--am-link);
+    border-radius: var(--am-rad-3);
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-artefact:hover { background: var(--am-paper-2); border-left-color: var(--am-ink); }
+
+.am-artefact__icon {
+    width: 28px; height: 28px;
+    color: var(--am-link);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.am-artefact__main { flex: 1; min-width: 0; }
+.am-artefact__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.35;
+}
+.am-artefact__meta {
+    font-size: var(--am-fs-micro);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+}
+
+/* Artefacts container — the prominent "N documents created" surface.
+   Use this instead of a standalone .am-artefact when the agent has
+   produced one or more documents in a turn. Houses one or more
+   .am-artefacts__row children. Mirrors the .artefact-card / .artefact-row
+   pattern from the host app. */
+.am-artefacts {
+    background: var(--am-info-bg);
+    border-left: 3px solid var(--am-info-accent);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    font-family: var(--am-font-sans);
+}
+
+.am-artefacts__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--am-fs-meta);
+    font-weight: 600;
+    color: var(--am-info-ink);
+    line-height: 1.4;
+}
+.am-artefacts__header__icon {
+    width: 14px; height: 14px;
+    color: var(--am-info-accent);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+
+.am-artefacts__list {
+    margin-top: var(--am-sp-3);
+    padding-top: var(--am-sp-3);
+    border-top: var(--am-hair) solid var(--am-info-accent);
+    /* Soften the hairline — full accent is too loud as an internal rule */
+    border-top-color: color-mix(in srgb, var(--am-info-accent) 35%, transparent);
+    display: flex;
+    flex-direction: column;
+}
+
+/* A single document row inside an .am-artefacts container.
+   Clickable; truncates the title with ellipsis; carries an optional
+   tag chip on the right. */
+.am-artefacts__row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-2) 0;
+    text-decoration: none;
+    color: var(--am-ink-2);
+    border-bottom: var(--am-hair) solid transparent;
+    transition: color var(--am-dur) var(--am-ease);
+}
+.am-artefacts__row:hover { color: var(--am-ink); }
+.am-artefacts__row + .am-artefacts__row {
+    border-top: var(--am-hair) solid color-mix(in srgb, var(--am-info-accent) 25%, transparent);
+}
+
+.am-artefacts__row__icon {
+    width: 16px; height: 16px;
+    color: var(--am-info-accent);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.am-artefacts__row__title {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    color: var(--am-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+.am-artefacts__row__tag {
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+    letter-spacing: 0.2px;
+}
+
+/* Thinking indicator — three letterpress dots */
+.am-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--am-ink-4);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-style: italic;
+}
+.am-thinking__dots { display: inline-flex; gap: 3px; }
+.am-thinking__dot {
+    width: 5px; height: 5px;
+    background: var(--am-ink-5);
+    border-radius: 50%;
+    animation: am-thinking-pulse 1.2s ease-in-out infinite;
+}
+.am-thinking__dot:nth-child(2) { animation-delay: 0.15s; }
+.am-thinking__dot:nth-child(3) { animation-delay: 0.30s; }
+
+@keyframes am-thinking-pulse {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30%           { opacity: 1;   transform: translateY(-2px); }
+}
+
+
+/* =====================================================================
+   9. Modal, toast, empty state, progress
+   ===================================================================== */
+
+.am-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(40, 30, 12, 0.32);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: var(--am-sp-6);
+}
+:root[data-theme="dark"] .am-modal-backdrop,
+:root:not([data-theme="light"]) .am-modal-backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.am-modal {
+    background: var(--am-paper);
+    border-radius: var(--am-rad-3);
+    box-shadow: var(--am-shadow-3);
+    border: var(--am-hair) solid var(--am-rule);
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.am-modal__header {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-4) var(--am-sp-5);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+.am-modal__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 700;
+    color: var(--am-ink);
+    flex: 1;
+    line-height: 1.3;
+}
+.am-modal__close {
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-5);
+    cursor: pointer;
+    width: 28px; height: 28px;
+    border-radius: var(--am-rad-2);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+}
+.am-modal__close:hover { background: var(--am-paper-2); color: var(--am-ink-2); }
+
+.am-modal__body {
+    padding: var(--am-sp-5);
+    overflow-y: auto;
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+
+.am-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--am-sp-2);
+    padding: var(--am-sp-3) var(--am-sp-5);
+    border-top: var(--am-hair) solid var(--am-rule);
+    background: var(--am-paper);
+}
+
+/* Toast — quiet pop-in, top-right.
+   No left accent bar (andamentum reads the bar as alarm-tape).
+   Tone is carried by the title colour alone — a typographic
+   distinction, not a graphic one. */
+.am-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--am-sp-3);
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    box-shadow: var(--am-shadow-2);
+    border-radius: var(--am-rad-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    min-width: 280px;
+    max-width: 380px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-2);
+    line-height: 1.55;
+}
+
+.am-toast__title { font-weight: 600; color: var(--am-ink); margin-bottom: 2px; }
+.am-toast__body  { color: var(--am-ink-3); }
+
+/* Variants colour the TITLE only. The body, border, and background
+   stay neutral so the toast sits quietly until you actually read it. */
+.am-toast--info    > * > .am-toast__title { color: var(--am-info-accent); }
+.am-toast--success > * > .am-toast__title { color: var(--am-success-accent); }
+.am-toast--warn    > * > .am-toast__title { color: var(--am-warn-accent); }
+.am-toast--danger  > * > .am-toast__title { color: var(--am-danger-accent); }
+/* Same selectors but for the simpler markup where __title is a direct child */
+.am-toast--info    > .am-toast__title { color: var(--am-info-accent); }
+.am-toast--success > .am-toast__title { color: var(--am-success-accent); }
+.am-toast--warn    > .am-toast__title { color: var(--am-warn-accent); }
+.am-toast--danger  > .am-toast__title { color: var(--am-danger-accent); }
+
+/* Empty state */
+.am-empty {
+    text-align: center;
+    padding: var(--am-sp-10) var(--am-sp-6);
+    color: var(--am-ink-4);
+    font-family: var(--am-font-sans);
+}
+.am-empty__mark {
+    width: 48px; height: 48px;
+    margin: 0 auto var(--am-sp-4);
+    color: var(--am-ink-6);
+    display: flex; align-items: center; justify-content: center;
+}
+.am-empty__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink-2);
+    margin: 0 0 var(--am-sp-2);
+}
+.am-empty__hint {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-5);
+    max-width: 420px;
+    margin: 0 auto var(--am-sp-4);
+    line-height: 1.6;
+}
+
+/* Progress */
+.am-progress {
+    width: 100%;
+    height: 6px;
+    background: var(--am-paper-3);
+    border-radius: 3px;
+    overflow: hidden;
+}
+/* Progress.
+   Andamentum keeps progress quiet — a measured ink-grey line, no
+   saturated semantic fills. The only variant that earns colour is
+   --danger, used sparingly when the progress represents something
+   that is genuinely going wrong (failed sync, error retries, etc.). */
+.am-progress__bar {
+    height: 100%;
+    background: var(--am-ink-4);
+    transition: width 240ms var(--am-ease);
+}
+.am-progress--thin   { height: 2px; border-radius: 1px; }
+.am-progress--danger .am-progress__bar { background: var(--am-danger-accent); }
+
+
+/* =====================================================================
+   10. Specialised rows
+   Task rows, scheduled-action rows, source/feed rows, and settings
+   sections. These aren't generic chrome — they're patterns common to
+   productivity, automation, and knowledge-management apps. Sit on the
+   same hairline-separated rhythm as .am-row but carry domain-specific
+   structure (a status check, a schedule, a favicon, etc.).
+   ===================================================================== */
+
+/* Task row */
+.am-task {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    background: transparent;
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+    min-height: 52px;
+}
+.am-task:hover { background: var(--am-paper-2); }
+.am-task:last-child { border-bottom: none; }
+
+.am-task__check {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--am-ink-6);
+    background: transparent;
+    flex-shrink: 0;
+    margin-top: 2px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease);
+}
+.am-task__check:hover { border-color: var(--am-ink-3); }
+
+/* Six task statuses. The default circle is `.is-todo` (or no modifier).
+   Colours map onto the andamentum palette — slate, ochre, olive, rust —
+   so the task family lives in the same colour world as everything else. */
+
+/* Inbox — dashed outline. "Newly captured, not yet committed." */
+.am-task__check.is-inbox {
+    border-style: dashed;
+    border-color: var(--am-ink-5);
+    background: transparent;
+}
+
+/* To Do — solid outline circle (also the default state). */
+.am-task__check.is-todo {
+    border-color: var(--am-ink-5);
+    background: transparent;
+}
+
+/* In Progress — half-filled, slate (info). */
+.am-task__check.is-progress {
+    background: conic-gradient(var(--am-info-accent) 0 50%, transparent 50% 100%);
+    border-color: var(--am-info-accent);
+}
+
+/* Waiting — colored outline, ochre (warn). Awaiting input or response. */
+.am-task__check.is-waiting {
+    border-color: var(--am-warn-accent);
+    background: transparent;
+}
+
+/* Done — filled, olive (success). No checkmark — the parent
+   .am-task.is-done strike-through carries the "this is done" signal. */
+.am-task__check.is-done {
+    background: var(--am-success-accent);
+    border-color: var(--am-success-accent);
+}
+
+/* Cancelled — outlined in warm rust (danger). Title gets strike-through
+   via the parent .am-task.is-cancelled class. */
+.am-task__check.is-cancelled {
+    border-color: var(--am-danger-accent);
+    background: transparent;
+}
+.am-task__check.is-cancelled::after {
+    /* Tiny × glyph inside the circle */
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 1.4px;
+    background: var(--am-danger-accent);
+    transform: translate(-50%, -50%) rotate(45deg);
+    box-shadow: 0 0 0 0 transparent;
+}
+.am-task__check.is-cancelled::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 1.4px;
+    background: var(--am-danger-accent);
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.am-task.is-cancelled .am-task__title {
+    color: var(--am-ink-5);
+    text-decoration: line-through;
+    text-decoration-color: var(--am-ink-6);
+}
+
+.am-task__handle {
+    color: var(--am-ink-6);
+    margin-top: 2px;
+    flex-shrink: 0;
+    cursor: grab;
+    display: inline-flex;
+}
+.am-task__handle:hover { color: var(--am-ink-3); }
+
+.am-task__main { flex: 1; min-width: 0; }
+.am-task__title {
+    font-size: var(--am-fs-body);
+    color: var(--am-ink-2);
+    font-weight: 500;
+    line-height: 1.4;
+}
+.am-task.is-done .am-task__title {
+    color: var(--am-ink-5);
+    text-decoration: line-through;
+    text-decoration-color: var(--am-ink-6);
+}
+.am-task__sub {
+    font-size: var(--am-fs-small);
+    color: var(--am-ink-5);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.am-task__due {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--am-rad-1);
+    background: var(--am-paper-3);
+    color: var(--am-ink-3);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.2px;
+}
+.am-task__due.is-overdue { background: var(--am-danger-bg); color: var(--am-danger-ink); }
+.am-task__due.is-soon    { background: var(--am-warn-bg);   color: var(--am-warn-ink); }
+
+/* Action row (Actions tab) */
+.am-action-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: var(--am-sp-3);
+    align-items: center;
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+    cursor: pointer;
+    transition: background var(--am-dur) var(--am-ease);
+}
+.am-action-row:hover { background: var(--am-paper-2); }
+.am-action-row__icon { color: var(--am-ink-5); }
+.am-action-row__title { font-size: var(--am-fs-body); color: var(--am-ink-2); font-weight: 500; }
+.am-action-row__sched { font-size: var(--am-fs-small); color: var(--am-ink-5); font-variant-numeric: tabular-nums; }
+
+/* Source row */
+.am-source-row {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-3);
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: var(--am-hair) solid var(--am-rule-2);
+}
+.am-source-row__favicon {
+    width: 16px; height: 16px;
+    border-radius: 2px;
+    background: var(--am-paper-3);
+    color: var(--am-ink-4);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    flex-shrink: 0;
+}
+.am-source-row__main { flex: 1; min-width: 0; }
+.am-source-row__title { font-size: var(--am-fs-meta); color: var(--am-ink-2); font-weight: 500; }
+.am-source-row__url   { font-size: var(--am-fs-micro); color: var(--am-ink-5); word-break: break-all; }
+
+/* Settings */
+.am-settings-section {
+    padding: var(--am-sp-6);
+    border-bottom: var(--am-hair) solid var(--am-rule);
+}
+.am-settings-section:last-child { border-bottom: none; }
+.am-settings-section__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-h3);
+    font-weight: 600;
+    color: var(--am-ink);
+    margin: 0 0 var(--am-sp-2);
+}
+.am-settings-section__intro {
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    margin-bottom: var(--am-sp-5);
+    max-width: 60ch;
+    line-height: 1.6;
+}
+.am-settings-row {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--am-sp-6);
+    padding: var(--am-sp-4) 0;
+    border-top: var(--am-hair) solid var(--am-rule-2);
+}
+.am-settings-row:first-of-type { border-top: none; padding-top: 0; }
+.am-settings-row__label { font-size: var(--am-fs-meta); color: var(--am-ink-2); font-weight: 500; }
+.am-settings-row__help  { font-size: var(--am-fs-micro); color: var(--am-ink-5); margin-top: 4px; line-height: 1.55; }
+
+
+/* =====================================================================
+   11. Print + responsive
+   ===================================================================== */
+
+/* =====================================================================
+   11. Additional components
+   Patterns added later: tooltip, dropdown menu, avatar, kbd, toggle,
+   form validation states, in-page sub-tabs, pagination, timeline,
+   stepper, footnote / margin-note. Each fits the andamentum aesthetic
+   (hairlines, earth-tones, type-led) without expanding the palette.
+   ===================================================================== */
+
+/* ── Tooltip ─────────────────────────────────────────────────────────
+   A small floating label. Default is inverted (dark on light); the
+   `--paper` variant is paper-on-paper with a hairline. Position via JS;
+   this rule only handles visual treatment. */
+.am-tooltip {
+    position: absolute;
+    z-index: 60;
+    background: var(--am-ink);
+    color: var(--am-paper);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-micro);
+    line-height: 1.5;
+    padding: 6px 10px;
+    border-radius: var(--am-rad-2);
+    max-width: 240px;
+    box-shadow: var(--am-shadow-2);
+    pointer-events: none;
+}
+.am-tooltip--paper {
+    background: var(--am-paper);
+    color: var(--am-ink-2);
+    border: var(--am-hair) solid var(--am-rule-3);
+}
+
+/* ── Dropdown menu ──────────────────────────────────────────────────
+   Generic popover list for context / more-actions menus. Position via
+   JS; styling only here. */
+.am-menu {
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    border-radius: var(--am-rad-3);
+    box-shadow: var(--am-shadow-3);
+    padding: var(--am-sp-1);
+    min-width: 180px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    z-index: 50;
+}
+.am-menu__group { padding: 2px 0; }
+.am-menu__group + .am-menu__group {
+    border-top: var(--am-hair) solid var(--am-rule-2);
+    margin-top: 2px;
+    padding-top: 6px;
+}
+.am-menu__label {
+    padding: 6px 10px 4px;
+    font-size: var(--am-fs-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--am-ink-5);
+}
+.am-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--am-sp-2);
+    padding: 6px 10px;
+    background: transparent;
+    border: 0;
+    color: var(--am-ink-2);
+    cursor: pointer;
+    border-radius: var(--am-rad-2);
+    width: 100%;
+    text-align: left;
+    text-decoration: none;
+    font: inherit;
+    line-height: 1.4;
+}
+.am-menu__item:hover { background: var(--am-paper-2); color: var(--am-ink); }
+.am-menu__item.is-danger { color: var(--am-danger-ink); }
+.am-menu__item.is-danger:hover { background: var(--am-danger-bg); color: var(--am-danger-ink); }
+.am-menu__item__shortcut {
+    margin-left: auto;
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-5);
+}
+.am-menu__item__icon {
+    width: 14px; height: 14px;
+    color: var(--am-ink-5);
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.am-menu__item:hover .am-menu__item__icon { color: var(--am-ink-3); }
+
+/* ── Avatar ─────────────────────────────────────────────────────────
+   Small identity circle. Initials in serif, or background image. */
+.am-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--am-paper-3);
+    color: var(--am-ink-2);
+    font-family: var(--am-font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: var(--am-hair) solid var(--am-rule-2);
+    letter-spacing: -0.2px;
+}
+.am-avatar--sm { width: 20px; height: 20px; font-size: 10px; }
+.am-avatar--lg { width: 44px; height: 44px; font-size: 18px; }
+.am-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Keyboard shortcut ──────────────────────────────────────────────
+   Small mono-font pill. Use inside menu items, tooltips, or inline
+   help text. */
+.am-kbd {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--am-font-mono);
+    font-size: var(--am-fs-tag);
+    color: var(--am-ink-3);
+    background: var(--am-paper-3);
+    border: var(--am-hair) solid var(--am-rule-2);
+    border-radius: var(--am-rad-1);
+    padding: 1px 6px;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 0 var(--am-rule-2);
+}
+
+/* ── Toggle switch ──────────────────────────────────────────────────
+   For binary settings where on/off should read at a glance. Styles a
+   real <input type="checkbox"> via appearance: none. */
+.am-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 32px;
+    height: 18px;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--am-paper-3);
+    border: var(--am-hair) solid var(--am-rule-3);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-toggle::after {
+    content: '';
+    position: absolute;
+    left: 1px; top: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--am-paper);
+    border: var(--am-hair) solid var(--am-rule-3);
+    box-sizing: border-box;
+    transition: transform var(--am-dur) var(--am-ease), background var(--am-dur) var(--am-ease), border-color var(--am-dur) var(--am-ease);
+}
+.am-toggle:hover { border-color: var(--am-ink-6); }
+.am-toggle:checked {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+}
+.am-toggle:checked::after {
+    transform: translateX(14px);
+    border-color: var(--am-ink);
+}
+.am-toggle:focus-visible {
+    outline: 2px solid var(--am-focus-aura);
+    outline-offset: 2px;
+}
+.am-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Form validation states ─────────────────────────────────────────
+   Apply .is-error / .is-warn to an input; pair with .am-help--error
+   etc. for the message text. Uses existing semantic tokens. */
+.am-input.is-error,
+.am-textarea.is-error,
+.am-select.is-error {
+    border-color: var(--am-danger-accent);
+}
+.am-input.is-error:focus,
+.am-textarea.is-error:focus,
+.am-select.is-error:focus {
+    border-color: var(--am-danger-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-danger-accent) 22%, transparent);
+}
+.am-input.is-warn,
+.am-textarea.is-warn,
+.am-select.is-warn { border-color: var(--am-warn-accent); }
+
+.am-help--error   { color: var(--am-danger-ink); }
+.am-help--warn    { color: var(--am-warn-ink); }
+.am-help--success { color: var(--am-success-ink); }
+
+/* ── In-page sub-tabs ───────────────────────────────────────────────
+   A quieter variant of .am-tabs for navigation *inside* a section.
+   Underline-only active state, no pill background. */
+.am-tabs--sub {
+    border-bottom: var(--am-hair) solid var(--am-rule);
+    gap: 0;
+}
+.am-tabs--sub .am-tab {
+    border-radius: 0;
+    padding: var(--am-sp-3) var(--am-sp-4);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.am-tabs--sub .am-tab:hover {
+    background: transparent;
+    color: var(--am-ink-2);
+}
+.am-tabs--sub .am-tab.is-active,
+.am-tabs--sub .am-tab[aria-current="page"] {
+    background: transparent;
+    color: var(--am-ink);
+    border-bottom-color: var(--am-ink);
+}
+
+/* ── Pagination ─────────────────────────────────────────────────────
+   Number row with prev/next. Tabular-nums; quiet ink. */
+.am-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-small);
+    font-variant-numeric: tabular-nums;
+}
+.am-pagination button,
+.am-pagination a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--am-rad-2);
+    color: var(--am-ink-3);
+    cursor: pointer;
+    text-decoration: none;
+    font: inherit;
+    transition: background var(--am-dur) var(--am-ease), color var(--am-dur) var(--am-ease);
+}
+.am-pagination button:hover,
+.am-pagination a:hover { background: var(--am-paper-2); color: var(--am-ink); }
+.am-pagination .is-current,
+.am-pagination [aria-current="page"] {
+    background: var(--am-paper-3);
+    color: var(--am-ink);
+    font-weight: 600;
+}
+.am-pagination button:disabled,
+.am-pagination .is-disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.am-pagination__gap {
+    color: var(--am-ink-5);
+    padding: 0 6px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ── Timeline / activity feed ───────────────────────────────────────
+   Vertical hairline with dated entries. */
+.am-timeline {
+    position: relative;
+    padding-left: 24px;
+}
+.am-timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 6px; bottom: 6px;
+    width: 1px;
+    background: var(--am-rule-3);
+}
+.am-timeline__entry {
+    position: relative;
+    padding: 0 0 var(--am-sp-5);
+}
+.am-timeline__entry:last-child { padding-bottom: 0; }
+.am-timeline__entry::before {
+    content: '';
+    position: absolute;
+    left: -22px; top: 6px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--am-ink-6);
+    border: 2px solid var(--am-paper);
+    box-sizing: content-box;
+}
+.am-timeline__entry.is-current::before { background: var(--am-info-accent); }
+.am-timeline__entry.is-success::before { background: var(--am-success-accent); }
+.am-timeline__entry.is-warn::before    { background: var(--am-warn-accent); }
+.am-timeline__entry.is-danger::before  { background: var(--am-danger-accent); }
+
+.am-timeline__date {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-tag);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--am-ink-5);
+    margin-bottom: 2px;
+    font-variant-numeric: tabular-nums;
+}
+.am-timeline__title {
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-body);
+    font-weight: 600;
+    color: var(--am-ink);
+    line-height: 1.4;
+    margin: 0;
+}
+.am-timeline__body {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.55;
+    margin-top: 4px;
+}
+
+/* ── Stepper / wizard progress ──────────────────────────────────────
+   A numbered horizontal sequence for multi-step flows. */
+.am-stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-meta);
+}
+.am-stepper__step {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    flex: 1;
+    position: relative;
+    padding-right: var(--am-sp-3);
+}
+.am-stepper__step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 30px;
+    right: 6px;
+    top: 11px;
+    height: 1px;
+    background: var(--am-rule-3);
+}
+.am-stepper__step.is-done:not(:last-child)::after { background: var(--am-success-accent); }
+
+.am-stepper__num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--am-ink-6);
+    background: var(--am-paper);
+    color: var(--am-ink-5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+}
+.am-stepper__step.is-current .am-stepper__num {
+    background: var(--am-ink);
+    border-color: var(--am-ink);
+    color: var(--am-paper);
+}
+.am-stepper__step.is-done .am-stepper__num {
+    background: var(--am-success-accent);
+    border-color: var(--am-success-accent);
+    color: var(--am-paper);
+}
+.am-stepper__label {
+    font-size: var(--am-fs-small);
+    font-weight: 500;
+    color: var(--am-ink-3);
+    line-height: 1.4;
+}
+.am-stepper__step.is-current .am-stepper__label,
+.am-stepper__step.is-done .am-stepper__label { color: var(--am-ink); }
+
+/* ── Margin note / footnote (document-mode) ─────────────────────────
+   Tufte-style sidenote that sits beside the reading column, or a
+   classic superscript footnote with a bottom-of-document list. */
+.typeset-margin-note {
+    float: right;
+    clear: right;
+    width: 200px;
+    margin-right: -240px;
+    margin-top: 0;
+    padding-left: var(--am-sp-4);
+    border-left: var(--am-hair) solid var(--am-rule-3);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-meta);
+    font-style: italic;
+    color: var(--am-ink-3);
+    line-height: 1.55;
+}
+@media (max-width: 1100px) {
+    .typeset-margin-note {
+        float: none;
+        width: auto;
+        margin: var(--am-sp-3) 0 var(--am-sp-3) var(--am-sp-5);
+    }
+}
+
+.typeset-fn,
+.footnote-ref {
+    font-family: var(--am-font-sans);
+    font-size: 0.75em;
+    color: var(--am-link);
+    text-decoration: none;
+    border-bottom: 0;
+    padding-left: 1px;
+    vertical-align: super;
+    line-height: 1;
+}
+.typeset-fn:hover,
+.footnote-ref:hover { color: var(--am-link-hover); }
+
+/* `.footnote` is the bottom-of-document block emitted by python-markdown's
+   footnotes extension; `.typeset-footnotes` is the snippet's hand-rolled
+   equivalent. Both are styled the same.                                 */
+.typeset-footnotes,
+.typeset-prose .footnote,
+.typeset-document > .footnote {
+    margin-top: var(--am-sp-9);
+    padding-top: var(--am-sp-4);
+    border-top: var(--am-hair) solid var(--am-rule);
+    font-family: var(--am-font-serif);
+    font-size: var(--am-fs-meta);
+    color: var(--am-ink-3);
+    line-height: 1.65;
+}
+.typeset-footnotes ol,
+.typeset-prose .footnote ol,
+.typeset-document > .footnote ol { padding-left: 1.4em; margin: 0; }
+.typeset-footnotes li,
+.typeset-prose .footnote li,
+.typeset-document > .footnote li { margin-bottom: 6px; }
+.typeset-footnotes a,
+.typeset-prose .footnote a,
+.typeset-document > .footnote a { color: var(--am-link); }
+.footnote-backref { text-decoration: none; }
+.typeset-prose .footnote hr,
+.typeset-document > .footnote hr { display: none; }
+
+
+/* =====================================================================
+   12. Print + responsive
+   ===================================================================== */
+
+@media print {
+    body { background: #fff; color: #000; }
+    .am-app-header, .am-sidebar, .am-composer, .am-modal-backdrop, .am-toast { display: none !important; }
+
+    .typeset-document { padding: 0; background: #fff; font-size: 11pt; }
+    .typeset-sidebar { display: none; }
+    h1, h2, h3 { page-break-after: avoid; }
+    .typeset-reference, .typeset-card { page-break-inside: avoid; }
+    p { orphans: 3; widows: 3; }
+}
+
+@media (max-width: 720px) {
+    .am-sidebar { width: 200px; padding: var(--am-sp-4) var(--am-sp-3); }
+    .am-app-header { padding: var(--am-sp-3) var(--am-sp-4); gap: var(--am-sp-3); }
+    .am-chat { padding: var(--am-sp-4); }
+}
+
+@media (max-width: 600px) {
+    .typeset-document { padding: 32px 16px; }
+    .typeset-heading h1 { font-size: 26px; }
+    .typeset-sidebar { grid-template-columns: 1fr; }
+    .am-settings-row { grid-template-columns: 1fr; gap: var(--am-sp-3); }
+}
+
+</style>
+</head>
+<body>
+<article class="typeset-document">
+<section class="typeset-prose">
+<h1 id="the-agentic-dialect">The Agentic Dialect</h1>
+<p>A minimal way to build agentic systems on a graph engine and an LLM client. Not a framework — a
+dialect: a few pieces, a fixed grammar, a handful of laws. Few primitives, orthogonal, no hidden
+control flow, data and code kept apart. If a thing you are about to write is not obviously one of
+the pieces below, it is in the wrong place.</p>
+<p>Library-specific guidance is confined to the <strong>Substrate</strong> and <strong>2026 model notes</strong> sections; the
+laws are engine- and library-neutral. Targets <code>pydantic-graph &lt;2</code> and <code>pydantic-ai &lt;2</code>.</p>
+<hr />
+<h2 id="the-mental-model-a-tape-machine">The mental model: a tape machine</h2>
+<p>Strip the engine to its core and you have a tape machine with three data surfaces and one
+moving head:</p>
+<ul>
+<li><strong>Deps</strong> — the environment. Frozen; what the machine was handed before it started.</li>
+<li><strong>State</strong> — the tape. Mutable; the run-global record of what has been produced.</li>
+<li><strong>Inputs</strong> — what the head carries between cells. Edge-local; one step hands it to the next.</li>
+<li>The <strong>head</strong> does one step of work, writes the tape, and moves.</li>
+</ul>
+<p>Everything below makes the roles sharp enough that there is one right way to write each.</p>
+<hr />
+<h2 id="the-pieces">The pieces</h2>
+<p>Three data surfaces, two code roles, one special worker, two disciplines. That is the whole
+vocabulary.</p>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Kind</th>
+<th>One job</th>
+<th>The rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Deps</strong></td>
+<td>surface</td>
+<td>hold what the run was <em>given</em></td>
+<td>frozen handle; read everywhere, rebound nowhere</td>
+</tr>
+<tr>
+<td><strong>State</strong></td>
+<td>surface</td>
+<td>hold what the run has <em>produced</em></td>
+<td>mutable plain data; written only by orchestrators</td>
+</tr>
+<tr>
+<td><strong>Inputs</strong></td>
+<td>surface</td>
+<td>hand a value to the next step</td>
+<td>edge-local; never holds pipeline progress</td>
+</tr>
+<tr>
+<td><strong>Orchestrator</strong></td>
+<td>code</td>
+<td>advance the pipeline one step</td>
+<td>route + dispatch only; computes nothing but the routing decision</td>
+</tr>
+<tr>
+<td><strong>Worker</strong></td>
+<td>code</td>
+<td>do one unit of real work</td>
+<td>explicit in → explicit out; never imports the graph engine</td>
+</tr>
+<tr>
+<td><strong>Agent</strong></td>
+<td>code</td>
+<td>the one "ask the model" instruction</td>
+<td>data (prompt + output schema), explicit <code>model=</code>, called through a shared builder</td>
+</tr>
+<tr>
+<td><strong>Port</strong></td>
+<td>discipline</td>
+<td>a capability in Deps</td>
+<td>a <code>Protocol</code> when &gt;1 impl or test-substitution is needed</td>
+</tr>
+<tr>
+<td><strong>Schema</strong></td>
+<td>discipline</td>
+<td>data on a boundary</td>
+<td>a typed model (agent output, result, step IO); ≤1 level of nesting</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="the-laws">The laws</h2>
+<p><strong>L1 — Surface placement.</strong> Given → Deps. Produced and read widely → State. Produced for the next
+step → Inputs. Every value also carries a <em>provenance</em>: <strong>operator-trusted</strong>, or <strong>untrusted</strong>
+(derived, even transitively, from any fetch, tool, external document, or model generation).</p>
+<p><strong>L2 — Thin orchestrator, fat worker.</strong> Orchestrators route and dispatch; workers compute. A worker
+never imports the graph engine. <em>Litmus: delete the engine and the workers + agents still compile
+and pass their unit tests.</em></p>
+<p><strong>L3 — State is written only by orchestrators.</strong> Workers return values; the orchestrator assigns
+them. (A worker may write to a mutable store reached through a Deps <strong>Port</strong> — that store is not
+State.) During parallelism, the <strong>join is the sole State-write site</strong>.</p>
+<p><strong>L4 — Routing is static, declarative, and deterministic.</strong> Every successor is known from the code;
+you branch <em>among</em> declared edges, never synthesize one. The branch is a pure function of State,
+Deps, Inputs — never the wall clock, randomness, unordered iteration, or a fresh external read. And
+the selector is a trust boundary: route only on operator-trusted predicates or on closed-enum model
+output gated by a deterministic check — never on raw untrusted text.</p>
+<p><strong>L5 — Every loop, recursion, and fan-out is bounded.</strong> The bound — iteration count <em>or</em> fan-out
+width — traces to a Deps value or a named constant. Termination is structural, not hoped-for.</p>
+<p><strong>L6 — The model is a component, not the controller.</strong> Flow lives in the graph. An agent answers a
+question; it does not drive the pipeline.</p>
+<p><strong>L7 — Typed boundaries; fail loud.</strong> A structured schema on every edge — no untyped <code>dict[str,
+Any]</code>. A missing service raises. The one soft failure: a single item's bad data after the client's
+retries — record it, continue. If the soft-failure rate crosses a Deps threshold, the run fails
+loud with a typed partial result.</p>
+<p><strong>L8 — Effects are idempotent.</strong> A worker that changes the world must be safe to run more than once
+— loops, retries, and resume all re-enter it. Guard every external effect with a stable key or a
+done-set in State, checked before acting.</p>
+<h3 id="why-these-laws">Why these laws</h3>
+<p>Not arbitrary — each falls out of one goal: <em>understand and trust a run without running it.</em>
+Data/code separation (1–3) lets you read the flow and test the work in isolation. Static,
+deterministic routing (4) makes the topology inspectable and every run replayable — the
+precondition for both resume and audit. Bounded everything (5) makes termination and cost
+provable. Model-as-component (6) keeps control in code you can test, not a prompt you can't.
+Typed, loud boundaries (7) turn failures into signals instead of silent corruption. Idempotent
+effects (8) make the re-entry the other laws rely on safe in a world the system changes.</p>
+<hr />
+<h2 id="building-a-system-the-procedure">Building a system: the procedure</h2>
+<ol>
+<li>Define the boundary schemas and the <code>Result</code> (Pydantic) in <code>schemas.py</code>.</li>
+<li>Write each unit of work as <strong>one engine-free worker function per verb-named file</strong>.</li>
+<li>Define <code>State</code> (three banners) and frozen <code>Deps</code> in <code>graph.py</code>.</li>
+<li>Write thin steps: read surfaces → call one worker → assign → return a typed successor.</li>
+<li>Add the entry function <code>run_&lt;name&gt;(&lt;inputs&gt;, *, model: str, ...) -&gt; &lt;Module&gt;Result</code>.</li>
+<li>For any branching graph, add the topology test.</li>
+<li>For any world-changing worker, add its idempotency guard (Law 8).</li>
+</ol>
+<p><strong>Pre-commit checklist</strong> (each line is greppable):</p>
+<ul>
+<li>Delete every <code>pydantic_graph</code> import from worker/verb/schema files — they still compile. (L2)</li>
+<li><code>grep</code> workers for <code>ctx</code> / <code>state</code> / <code>deps</code> parameters → zero hits. (L2)</li>
+<li>No <code>datetime</code> / <code>random</code> / unordered iteration in any <code>run()</code>. (L4)</li>
+<li>Every loop and fan-out bound is a Deps field or <code>SCREAMING_SNAKE</code> constant — no literals. (L5)</li>
+<li><code>Result</code> is a Pydantic model returned via <code>End</code>. (L7)</li>
+<li>Every step's successors appear in its return type. (L4)</li>
+</ul>
+<hr />
+<h2 id="where-a-value-lives-law-1-in-detail">Where a value lives (Law 1, in detail)</h2>
+<p>The test, when unsure: <em>could two independent runs share this value unchanged?</em> Yes → Deps.
+Produced over the run, read by many steps → State. Produced by one step, consumed by its
+successor → Inputs.</p>
+<ul>
+<li><strong>Config</strong> (caps, flags, model id) was given → Deps. Config in State is mutable for no reason.</li>
+<li><strong>Open-ended produced entities</strong> — a set that grows without bound — do not go in State. They
+  live behind a <strong>repository Port in Deps</strong>; State then holds only progress: ids, counts,
+  done-sets.</li>
+<li><strong>Handle vs contents.</strong> A frozen Deps freezes the <em>binding</em>, not the bytes behind it: a Port may
+  be a mutable write surface. Forbidden is rebinding a Deps field mid-run or stashing per-run
+  scalars on the Deps object.</li>
+<li><strong>Provenance is orthogonal to placement.</strong> A surface tells you where a value lives; its
+  provenance tells you whether you may <em>trust</em> it. Untrusted values (fetched pages, tool results,
+  free-text model output) may be read and stored, but must not reach a routing selector (Law 4) or
+  an egress effect except through a closed-enum schema or a constrained capability Port. Treat
+  closed-enum agent outputs as a security control, not only a small-model convenience.</li>
+<li><strong>Resumption is reconstruction, not a save file.</strong> State must be rebuildable from the durable
+  Ports plus a start node (whether you rebuild it or the engine persists it). State answers "where
+  are we" <em>given</em> the durable Ports in Deps.</li>
+</ul>
+<hr />
+<h2 id="orchestrator-discipline">Orchestrator discipline</h2>
+<p>An orchestrator step is <strong>thin</strong>: read the surfaces, call a worker, assign the result, return a
+typed successor. One shape, no grades.</p>
+<p><strong>It computes nothing but the routing decision itself.</strong> Any computation whose output is <em>data</em>
+is a worker. If choosing a successor needs work, that work is a worker whose return value the step
+branches on. A loop over items or a multi-step sequence is a worker — never logic in <code>run()</code>. If
+those per-item steps must be graph-visible (resumable independently, their own audit line, or
+routed to a shared step), make them <strong>real steps</strong> joined by a fan-out/join — not a fat node.</p>
+<p>Routing must be deterministic (Law 4): the branch reads only the data surfaces. Push every source
+of nondeterminism — time, randomness, network reads — into a worker, and route on the value it
+returns.</p>
+<p>Artifact surfaces are <code>T | None</code> until produced; a downstream step opens with <code>x = state.x; assert
+x is not None</code>. Better still, when a value has exactly one consumer, hand it forward via <strong>Inputs</strong>
+(non-optional) instead of parking it in State and re-asserting.</p>
+<hr />
+<h2 id="worker-discipline">Worker discipline</h2>
+<p><strong>One unit of work = one public function = one file, named for the verb</strong> — but this packaging
+serves a deeper rule: a worker is a <strong>deep module</strong> (Ousterhout), one narrow interface hiding the
+real complexity. When several operations share a private invariant, they are <em>one</em> module;
+splitting them would leak that invariant across a file boundary. Default to one verb per file;
+keep them together when a shared invariant says so.</p>
+<ul>
+<li>A worker takes <strong>explicit, narrow inputs</strong> and returns <strong>explicit outputs</strong>. Never the
+  orchestration context, State, or Deps. Needs the model → <code>*, model: str</code>. Needs a capability →
+  take the <strong>Port</strong>. Needs to report progress → take a <code>Protocol</code>-typed sink defaulted to no-op.</li>
+<li><strong>Pure vs effectful.</strong> A <em>pure</em> worker only computes and returns. An <em>effectful</em> worker changes
+  the world (sends, writes, charges, files). Effectful workers obey Law 8: idempotent by a stable
+  natural key, or guarded by a done-set in State checked before the effect. At-least-once is the
+  default, because every re-entry mechanism (loops, retries, resume) can run a worker again.</li>
+<li><strong>Time and waiting are effects, not routing.</strong> A worker may read the clock or sleep; an
+  orchestrator may not (Law 4). Any worker doing network IO carries a timeout traceable to a Deps
+  value; a hung call is an expected exception (Law 7).</li>
+</ul>
+<p>The litmus (Law 2) keeps this honest: the worker layer must stand without the graph <em>engine</em>. (The
+LLM <em>client</em> is allowed in the worker layer — the line is the graph engine, not the model client.)</p>
+<hr />
+<h2 id="state-shape">State shape</h2>
+<div class="codehilite"><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">State</span><span class="p">:</span>
+    <span class="c1"># ── inputs (set once, at entry)</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="c1"># ── artifacts (accumulated; T | None until produced)</span>
+    <span class="n">sections</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Section</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="c1"># ── flow control (small scalars/sets/maps the graph branches on)</span>
+    <span class="n">rounds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">done</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">set</span><span class="p">)</span>
+</code></pre></div>
+
+<ul>
+<li><strong>Plain data, grouped: inputs, artifacts, flow-control.</strong></li>
+<li><strong>Typed containers are fine</strong> — <code>dict[K, V]</code> / <code>set[T]</code> keyed by a runtime id. The ban is the
+  untyped grab-bag. Keep derived bookkeeping reconstructible from the primary fields.</li>
+<li><strong>Recorder and predicate methods are allowed, nothing more</strong>: append-only <code>log</code> / <code>record_error</code>
+  / <code>quarantine</code>, pure read predicates over State's own fields, a derived index kept consistent by
+  a thin mutator. No LLM / IO / domain work ever touches State.</li>
+<li><strong>Stays flat.</strong> When flow-control fields develop a combinatorial legal-set you can't read off
+  the dataclass, <strong>split the pipeline</strong> — do not add nested/hierarchical state types.</li>
+</ul>
+<hr />
+<h2 id="the-grammar-compositions-from-the-control-primitive">The grammar: compositions from the control primitive</h2>
+<p>One control primitive — the declared successor. Everything composes from it.</p>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sequence</strong></td>
+<td>a step returns the next step</td>
+</tr>
+<tr>
+<td><strong>Branch</strong></td>
+<td>a step selects among declared successors on a State/Inputs predicate</td>
+</tr>
+<tr>
+<td><strong>Bounded loop</strong></td>
+<td>re-enter an earlier step (counter on State, the step instance, or worker-local), capped per Law 5</td>
+</tr>
+<tr>
+<td><strong>Fan-out → join</strong></td>
+<td>scatter work across parallel paths, then reduce the results back to one</td>
+</tr>
+<tr>
+<td><strong>Sub-pipeline</strong></td>
+<td>call another system's public entry function as one unit of work — never reach into its steps</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>The join is the only safe write during parallelism.</strong> Parallel paths produce values and write
+  nothing to State; the join/reduce is the sole writer. Assign ids and counters in the
+  deterministic reduce from a stable ordering of inputs — never inside a parallel path. (This is
+  what keeps "only orchestrators write State" a guarantee rather than a lucky style.)</li>
+<li><strong>The join is also the supervision boundary.</strong> A failed branch degrades to a typed partial and
+  the join proceeds — it does not take down the run, and you do not wrap the whole fan-out in the
+  bare <code>try/except</code> Law 7 forbids.</li>
+<li><strong>A sub-pipeline is opaque to the parent.</strong> Its <code>Result</code> type <em>is</em> the boundary; the parent's
+  topology test does not see inside it.</li>
+</ul>
+<hr />
+<h2 id="agents">Agents</h2>
+<p>The durable kernel — true regardless of model generation:</p>
+<ul>
+<li><strong>A model call is data</strong>: a name, a prompt, an output schema. Explicit <code>model=</code>, threaded from
+  the entry point. No hidden default, no ambient lookup.</li>
+<li><strong>The model is a component, not the controller</strong> (Law 6).</li>
+<li><strong>Structured output is the default.</strong> A schema is easier to validate, diff, and reason about
+  than prose, and a closed-enum schema is a control-flow safety boundary (Law 4). Free-form text
+  output is the exception and must be justified.</li>
+<li><strong>Call through a shared builder/runner</strong>, never a hand-rolled client per call site, never a
+  client built in an orchestrator body. Define an agent inline beside the worker that uses it;
+  promote it to a module registry only when a second call site needs the same one.</li>
+<li><strong>Tool deps are the one mutable, per-call deps object</strong> — separate from the graph's Deps,
+  rebuilt per call, may hold per-conversation scratch. Not subject to Law 1.</li>
+</ul>
+<blockquote>
+<p><strong>2026 model notes</strong> (expected to churn — not laws). Today's local/small models fill <em>flat</em> (≤1
+nesting, few fields, enums over free strings) schemas far more reliably, so prefer them and lean
+on a runner that retries by injecting the schema into the prompt when a model ignores the
+structured-output channel. Multi-turn/agentic loops still need a Law-5 bound; you <em>may</em> realize
+it via the client's usage-limit feature <strong>only while</strong> that feature raises on overflow — verify
+it does for your client, or the loop is unbounded. As native constrained decoding and default
+agentic loops mature, expect the fallback and the single-vs-multi-turn split to fade; the kernel
+above does not.</p>
+</blockquote>
+<hr />
+<h2 id="errors-retries-termination">Errors, retries, termination</h2>
+<ul>
+<li><strong>Fail loud.</strong> A missing required service raises. Catch the <em>expected</em> exception types around a
+  unit of work, never a bare catch that swallows a missing-dependency or config error.</li>
+<li><strong>One soft failure:</strong> one item's bad data after the client's retries — log, record in State,
+  continue. Quarantine is per-item only, never around a step's control flow; a quarantined
+  <em>untrusted</em> value must never be re-promoted into a routed prompt or an egress tool.</li>
+<li><strong>Aggregate is loud.</strong> When the soft-failure rate crosses a Deps threshold, flip the result to
+  the typed partial/failed kind — a run that skipped most of its work is not green.</li>
+<li><strong>Never silently drop produced data.</strong> Return results whole; if a real constraint forces a slice,
+  surface the total count beside it. A capped run still returns every signal it acquired — the cap
+  filters further inquiry, not the output.</li>
+<li><strong>Three retry layers, and they compound</strong> — the client's in-agent retries (Law 7's "after
+  retries" means these; do not add a retry loop in a step), a per-item loop with skip-and-degrade,
+  and the bounded re-entry cycle (Law 5). Each effectful re-entry is governed by Law 8.</li>
+</ul>
+<hr />
+<h2 id="driving-observability-audit-reproducibility">Driving, observability, audit, reproducibility</h2>
+<ul>
+<li><strong>Two drivers.</strong> One-shot (<code>run</code>) is the default. Iterating (<code>iter</code> + step) is for
+  per-transition instrumentation, timing, a stop/start node, or a checkpoint hook — it may
+  <em>observe</em> and break but <strong>must not alter routing</strong> (Law 4).</li>
+<li><strong>Log on entry and exit</strong> of every step (run id + node name): an entry without an exit localizes
+  a wedged run to one worker.</li>
+<li><strong>The transition log stream is the durable audit trail; State is the live in-process record</strong>
+  (it dies on a fail-loud abort, exactly when you need the trail most). Record each agent call's
+  resolved input, raw output, and the model id actually used to an append-only sink, keyed by call
+  id — emitted by the shared runner, so it is structural, not optional.</li>
+<li><strong>Cost is a run-scoped counter, not a State field.</strong> Increment it at the call site (in the worker
+  layer) from the call's usage object — a State counter cannot reach concurrently-gathered calls.
+  The honest signal is input/output tokens per model, not request count.</li>
+<li><strong>Reproducibility has three levels.</strong> Structural re-runnability is <em>guaranteed</em> by Laws 4–5.
+  Replayable audit is <em>enabled</em> if agent IO is recorded (above). Bit-identical output is <em>out of
+  scope</em> — it lives in the model. Note that a model id in Deps freezes the <em>binding</em>, not the
+  <em>behavior</em> (a stable name over moving weights); a resumed run re-executes its tail live, so treat
+  it as a new run for reproducibility, not a continuation.</li>
+</ul>
+<hr />
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Workers</strong> unit-test with no graph — call, assert the return (Law 2 makes this possible).</li>
+<li><strong>Agents</strong> are stubbed by swapping a fake into Deps, so graph tests run without a live model.</li>
+<li><strong>Every branching graph ships a topology test</strong> (reflection over declared successors): every step
+  reachable from the entry, every terminal returns <code>End</code>, no dead-ends. A linear pipeline is
+  exempt — and says so in a one-line comment.</li>
+<li><strong>The whole graph</strong> integration-tests with stub Ports + stub agents via Deps.</li>
+</ul>
+<hr />
+<h2 id="enforcement">Enforcement</h2>
+<p>A rule with no guard rots. Each law and convention sits in a tier; the review-only ones are named
+on purpose so they are not mistaken for guaranteed.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L2 worker ∌ engine; no client in a node body</td>
+<td><strong>lint/test</strong> — import-linter contract or a small AST test</td>
+</tr>
+<tr>
+<td>L4 static routing (reachability, terminals)</td>
+<td><strong>test</strong> — the topology test</td>
+</tr>
+<tr>
+<td>L4 deterministic routing (no clock/random in <code>run()</code>)</td>
+<td><strong>lint</strong> ban + review</td>
+</tr>
+<tr>
+<td>L5 no <code>while True</code>, no bare-literal bounds</td>
+<td><strong>lint</strong>; "bound traces to Deps" is review-only</td>
+</tr>
+<tr>
+<td>L7 no untyped <code>dict[str, Any]</code></td>
+<td><strong>type-check</strong> — ruff <code>ANN401</code> + pyright</td>
+</tr>
+<tr>
+<td><code>from __future__ import annotations</code></td>
+<td><strong>lint</strong> — ruff <code>I002</code> required-import</td>
+</tr>
+<tr>
+<td>dataclass / Pydantic forms</td>
+<td><strong>type-check</strong> — pyright (partial)</td>
+</tr>
+<tr>
+<td>L1 placement, L3 concurrent-write, L6, L8, naming, banners</td>
+<td><strong>review-only</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The machine-checkable guards: a ruff config with <code>I002</code> and <code>ANN401</code>, an import-linter contract
+for L2, two small AST tests (no engine import in worker files; no model client built in a node
+body), pyright blocking on <code>src/</code>, and the topology test generalized into a meta-test that
+discovers every graph and asserts one exists. The review-only tiers are review-only on purpose.
+<code>andamentum-agentic-dialect check &lt;path&gt;</code> runs the portable subset of these gates.</p>
+</blockquote>
+<hr />
+<h2 id="substrate-which-engine-and-the-migration">Substrate: which engine, and the migration</h2>
+<table>
+<thead>
+<tr>
+<th>Dialect piece</th>
+<th>Node-class runner (older)</th>
+<th>Builder API (newer)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Orchestrator</td>
+<td>a <code>BaseNode</code> subclass with <code>run()</code></td>
+<td>a step function <code>(ctx) -&gt; out</code></td>
+</tr>
+<tr>
+<td>Successor</td>
+<td><code>run()</code> return-type annotation</td>
+<td>return-type inference <em>or</em> a declared edge</td>
+</tr>
+<tr>
+<td>Inputs (edge-local)</td>
+<td>typed fields on the node instance</td>
+<td><code>ctx.inputs</code> (first-class)</td>
+</tr>
+<tr>
+<td>Deps / State</td>
+<td><code>GraphRunContext.state</code> / <code>.deps</code></td>
+<td><code>ctx.state</code> / <code>ctx.deps</code></td>
+</tr>
+<tr>
+<td>Branch</td>
+<td>a <code>Union</code> return type</td>
+<td>a first-class decision primitive</td>
+</tr>
+<tr>
+<td>Fan-out / join</td>
+<td>hand-rolled gather in a step</td>
+<td>first-class fork / join with reducers</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What survives:</strong> State, Deps, return-type routing, the run/iter drivers, the core node/context
+types. <strong>What gets better:</strong> edge-local Inputs, branching, and fan-out/join become first-class.
+<strong>What is in flux:</strong> built-in persistence/resume — keep resumption reconstructible (Law 1).</p>
+<p>Because workers and agents are engine-free (Law 2), moving between engine generations touches only
+the thin orchestration layer.</p>
+<hr />
+<h2 id="canonical-layout">Canonical layout</h2>
+<p>One module = one pipeline. Files, fixed:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">&lt;</span><span class="nx">module</span><span class="p">&gt;</span><span class="o">/</span>
+<span class="w">  </span><span class="nx">__init__</span><span class="p">.</span><span class="nx">py</span><span class="w">    </span><span class="nx">public</span><span class="w"> </span><span class="nx">surface</span><span class="w"> </span><span class="err">—</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="nx">function</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">Result</span><span class="w"> </span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="nx">nothing</span><span class="w"> </span><span class="k">else</span>
+<span class="w">  </span><span class="nx">graph</span><span class="p">.</span><span class="nx">py</span><span class="w">       </span><span class="nx">orchestration</span><span class="p">:</span><span class="w"> </span><span class="nx">State</span><span class="p">,</span><span class="w"> </span><span class="nx">Deps</span><span class="p">,</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">step</span><span class="w"> </span><span class="nx">classes</span><span class="p">,</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">Graph</span><span class="p">,</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="nx">function</span>
+<span class="w">  </span><span class="p">&lt;</span><span class="nx">verb</span><span class="p">&gt;.</span><span class="nx">py</span><span class="w">      </span><span class="nx">one</span><span class="w"> </span><span class="nx">worker</span><span class="w"> </span><span class="nx">per</span><span class="w"> </span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="nx">named</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">its</span><span class="w"> </span><span class="nx">verb</span>
+<span class="w">  </span><span class="nx">schemas</span><span class="p">.</span><span class="nx">py</span><span class="w">     </span><span class="nx">boundary</span><span class="w"> </span><span class="nx">types</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">Result</span>
+<span class="w">  </span><span class="nx">cli</span><span class="p">.</span><span class="nx">py</span><span class="w">         </span><span class="nx">the</span><span class="w"> </span><span class="nx">command</span><span class="o">-</span><span class="nx">line</span><span class="w"> </span><span class="nx">adapter</span><span class="p">,</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">any</span>
+<span class="w">  </span><span class="nx">tests</span><span class="o">/</span><span class="w">         </span><span class="nx">beside</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">code</span>
+</code></pre></div>
+
+<p>A large entity-graph scheduler may add <code>operations/</code>, <code>entities/</code>, and <code>repository.py</code>.</p>
+<h2 id="locked-conventions-decided-for-you">Locked conventions (decided for you)</h2>
+<p>Each is one fixed form chosen to remove a recurring micro-decision. Don't re-decide them.</p>
+<ul>
+<li><strong>Boilerplate.</strong> Every <code>graph.py</code> and worker file opens with <code>from __future__ import
+  annotations</code> — successor return-types then need no quoting.</li>
+<li><strong>Dataclass forms.</strong> <code>State</code> → <code>@dataclass</code>. <code>Deps</code> → <code>@dataclass(frozen=True)</code>. Step classes →
+  <code>@dataclass</code>. Boundary + result types → Pydantic <code>BaseModel</code>.</li>
+<li><strong>Names.</strong> Steps <code>PascalCase</code> verb/verb-noun. Workers and files <code>snake_case</code>, matching the verb.
+  <code>State</code> / <code>Deps</code> / <code>Result</code> prefixed with the module name. Surface fields <code>snake_case</code>. Caps are
+  <code>SCREAMING_SNAKE</code> constants. Agent names <code>snake_case</code>.</li>
+<li><strong>State layout.</strong> Three banner groups, fixed order: inputs, artifacts, flow-control. Standard
+  names for universal slots: <code>errors</code>, and a quarantine list + <code>is_quarantined</code> predicate.</li>
+<li><strong>Result.</strong> Always a Pydantic model — the <code>End[T]</code> payload. Never <code>str</code>, <code>dict</code>, or a bare
+  dataclass.</li>
+<li><strong>Entry point.</strong> <code>async def run_&lt;name&gt;(&lt;inputs&gt;, *, model: str, ...) -&gt; &lt;Module&gt;Result</code>. Builds
+  State and Deps, runs the graph, returns <code>.output</code>. <code>model</code> and all config keyword-only.</li>
+<li><strong>Caps.</strong> Every loop and fan-out bound is a named Deps field or module constant — never a literal.</li>
+</ul>
+<h2 id="refuse-list">Refuse list</h2>
+<p>Prohibitions not already obvious from a law:</p>
+<ul>
+<li>A <strong>runtime-synthesized edge</strong> — successors are statically declared (L4).</li>
+<li><strong>State as a validated model</strong>, or any LLM / IO / domain work on State.</li>
+<li><strong>The graph engine imported into the worker layer</strong>, or the orchestration context handed to a
+  worker.</li>
+<li>A <strong>model client constructed in an orchestrator body</strong>, or hand-rolled per call site.</li>
+<li><strong>Routing on the clock, randomness, or raw untrusted text</strong> (L4).</li>
+<li>An <strong>untyped <code>dict[str, Any]</code></strong> standing in for named surface fields.</li>
+<li><strong>Re-promoting quarantined untrusted data</strong> into a routed prompt or egress tool.</li>
+<li><strong>Reaching into another system's internal steps</strong> to compose pipelines (call its entry point).</li>
+</ul>
+<h2 id="out-of-scope-on-purpose">Out of scope, on purpose</h2>
+<p>Deliberate exclusions, with where the concern lives instead:</p>
+<ul>
+<li><strong>State as a serializable checkpoint</strong> (the LangGraph bet). We bet the opposite: State is
+  rebuilt from durable Ports. Don't serialize State to resume.</li>
+<li><strong>Hierarchical / orthogonal statecharts.</strong> State stays flat; split the pipeline instead.</li>
+<li><strong>Durable timers and cross-restart waiting.</strong> Time is a worker/Port effect; durable waiting is an
+  app concern, not a State field or a primitive.</li>
+<li><strong>A fourth surface for inbound events</strong> (mailbox/signals). Model an external event as a durable
+  Port the orchestrator polls at a declared step. Human-in-the-loop is the likely future revision,
+  not today's grammar.</li>
+<li><strong>Cross-graph topology reachability</strong>, <strong>result caching of agent calls</strong>, a <strong>pricing table</strong>,
+  and a <strong>full security framework</strong> (sandboxing, secrets, authz, rate-limiting — deployment +
+  capability-Port concerns). In scope for security: provenance, the routed-selector rule, egress
+  via Port, and treating logs/State as a trust sink.</li>
+</ul>
+<hr />
+<h2 id="copy-paste-skeleton-runs-as-is">Copy-paste skeleton (runs as-is)</h2>
+<p>A one-step <code>brief</code> module obeying every locked convention. The worker (<code>summarize</code>) is engine-free,
+so it survives an engine migration untouched. (It is <em>pure</em>; an effectful worker would add an
+idempotency guard per Law 8.)</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># brief/schemas.py</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Brief</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>          <span class="c1"># the Result — a Pydantic model, the End[T] payload</span>
+    <span class="n">summary</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="c1"># brief/summarize.py  (worker — no graph engine, no State/Deps)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic_ai</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">Brief</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">summarize</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Brief</span><span class="p">:</span>
+    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">instructions</span><span class="o">=</span><span class="s2">&quot;Summarize the input in one sentence.&quot;</span><span class="p">,</span> <span class="n">output_type</span><span class="o">=</span><span class="n">Brief</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">output</span>
+
+<span class="c1"># brief/graph.py  (orchestration — the only engine-aware layer)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic_graph</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseNode</span><span class="p">,</span> <span class="n">Graph</span><span class="p">,</span> <span class="n">GraphRunContext</span><span class="p">,</span> <span class="n">End</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">Brief</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.summarize</span><span class="w"> </span><span class="kn">import</span> <span class="n">summarize</span>
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BriefDeps</span><span class="p">:</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BriefState</span><span class="p">:</span>
+    <span class="c1"># ── inputs</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="c1"># ── artifacts</span>
+    <span class="n">brief</span><span class="p">:</span> <span class="n">Brief</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">Ctx</span> <span class="o">=</span> <span class="n">GraphRunContext</span><span class="p">[</span><span class="n">BriefState</span><span class="p">,</span> <span class="n">BriefDeps</span><span class="p">]</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Summarize</span><span class="p">(</span><span class="n">BaseNode</span><span class="p">[</span><span class="n">BriefState</span><span class="p">,</span> <span class="n">BriefDeps</span><span class="p">,</span> <span class="n">Brief</span><span class="p">]):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Done</span><span class="p">:</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">brief</span> <span class="o">=</span> <span class="k">await</span> <span class="n">summarize</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">deps</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Done</span><span class="p">()</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Done</span><span class="p">(</span><span class="n">BaseNode</span><span class="p">[</span><span class="n">BriefState</span><span class="p">,</span> <span class="n">BriefDeps</span><span class="p">,</span> <span class="n">Brief</span><span class="p">]):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">End</span><span class="p">[</span><span class="n">Brief</span><span class="p">]:</span>
+        <span class="n">brief</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">brief</span>
+        <span class="k">assert</span> <span class="n">brief</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>  <span class="c1"># topology guarantees Summarize ran first</span>
+        <span class="k">return</span> <span class="n">End</span><span class="p">(</span><span class="n">brief</span><span class="p">)</span>
+
+<span class="n">graph</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="p">[</span><span class="n">Summarize</span><span class="p">,</span> <span class="n">Done</span><span class="p">])</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run_brief</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Brief</span><span class="p">:</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="k">await</span> <span class="n">graph</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">Summarize</span><span class="p">(),</span> <span class="n">state</span><span class="o">=</span><span class="n">BriefState</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">),</span> <span class="n">deps</span><span class="o">=</span><span class="n">BriefDeps</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">output</span>
+</code></pre></div>
+</section>
+</article>
+</body>
+</html>
