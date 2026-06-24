@@ -13,6 +13,8 @@ import typing
 from pydantic_graph import BaseNode, End
 
 from andamentum.forge.graph import (
+    Audit,
+    Build,
     Compile,
     Decompose,
     Finish,
@@ -22,7 +24,7 @@ from andamentum.forge.graph import (
     Verify,
 )
 
-_NODES = [Understand, Frame, Decompose, Compile, Render, Verify, Finish]
+_NODES = [Understand, Frame, Decompose, Compile, Render, Verify, Build, Audit, Finish]
 _ENTRY = Understand
 
 
@@ -67,7 +69,14 @@ def test_all_reachable_and_end_reachable() -> None:
     assert end_reachable, "no End reachable from the entry"
 
 
-def test_compile_is_the_only_branch() -> None:
-    # The single branch (Render vs Finish) is what makes the topology test load-bearing.
+def test_branch_points_are_the_stage_gates() -> None:
+    # Compile / Verify / Build each early-exit to Finish on `stop_after` (or continue) —
+    # the branches that make the topology test load-bearing. Every branch includes Finish.
     branchy = {cls.__name__ for cls in _NODES if len(_successors(cls)) > 1}
-    assert branchy == {"Compile"}, branchy
+    assert branchy == {"Compile", "Verify", "Build"}, branchy
+    for cls in _NODES:
+        succ = _successors(cls)
+        if len(succ) > 1:
+            assert "Finish" in succ, (
+                f"{cls.__name__} branch must include the Finish early-exit"
+            )

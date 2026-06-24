@@ -21,10 +21,15 @@ Public surface:
 
 from __future__ import annotations
 
+from .audit import audit_system
+from .build import build_system
 from .compile_spec import compile_spec
 from .graph import ForgeDeps, ForgeState, graph, run_forge
 from .render import render
+from .sandbox import SandboxPort, SandboxUnavailableError, make_sandbox
 from .schemas import (
+    AuditReport,
+    BuildReport,
     CheckResult,
     DesignPlan,
     ForgeResult,
@@ -38,9 +43,16 @@ __all__ = [
     "run_forge",
     "render",
     "compile_spec",
+    "build_system",
+    "audit_system",
     "verify_package",
+    "make_sandbox",
+    "SandboxPort",
+    "SandboxUnavailableError",
     "SystemSpec",
     "ForgeResult",
+    "BuildReport",
+    "AuditReport",
     "VerificationReport",
     "CheckResult",
     "DesignPlan",

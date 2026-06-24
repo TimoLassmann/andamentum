@@ -1,0 +1,28 @@
+# The forge sandbox image — the strong (host-isolation) execution tier (the default).
+#
+# Build (from the repo root):
+#   podman build -t andamentum-forge-sandbox -f src/andamentum/forge/Containerfile .
+#
+# forge's audit (stage 4) runs each built system's test suite + end-to-end smoke inside
+# an ephemeral container from this image, with `--network none` (pure systems) and
+# memory/pids caps. The generated package is mounted read-only at runtime; this image
+# only provides andamentum + its deps, so a generated body can touch nothing on the host.
+#
+# This is the default backend (PodmanSandbox). If podman is not installed, a *pure* run
+# degrades to an out-of-process subprocess with a warning; a *network* run refuses. To opt
+# out of containers entirely, pass `--sandbox subprocess` (no host isolation).
+
+FROM python:3.13-slim
+
+# Run as a non-root user inside the container (defence in depth).
+RUN useradd --create-home --uid 10001 sandbox
+WORKDIR /opt/andamentum
+
+# Install andamentum + the runtime + pytest (the audit runs the generated test suite).
+# Copying only metadata + source keeps the layer cache stable across edits.
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install --no-cache-dir "." pytest
+
+USER sandbox
+# No ENTRYPOINT: forge invokes `python -m pytest <pkg>/tests` inside this image.

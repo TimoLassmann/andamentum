@@ -148,20 +148,132 @@ class VerificationReport(BaseModel):
     checks: list[CheckResult] = Field(default_factory=list)
 
 
+# --- sandbox + build + audit ----------------------------------------------------
+
+
+class SandboxResult(BaseModel):
+    """The typed verdict of one out-of-process sandbox run."""
+
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+    timed_out: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.exit_code == 0 and not self.timed_out
+
+
+class PieceOut(BaseModel):
+    """A draft/repair head's output: the complete function body (the only thing the
+    model writes; everything else is deterministic)."""
+
+    body: str = Field(
+        description="The function body only — the lines inside the method, no def line, no fences"
+    )
+
+
+class FilledNode(BaseModel):
+    """A node whose hole was drafted and passed every static gate."""
+
+    node: str
+    attempts: int
+
+
+class UnfillableNode(BaseModel):
+    """A node that exhausted its attempts; its NotImplementedError is restored."""
+
+    node: str
+    last_error: str
+    attempts: int
+
+
+class BuildReport(BaseModel):
+    """Summary of the per-node build stage."""
+
+    filled: list[FilledNode] = Field(default_factory=list)
+    unfillable: list[UnfillableNode] = Field(default_factory=list)
+
+    @property
+    def all_filled(self) -> bool:
+        return len(self.unfillable) == 0
+
+    @property
+    def remaining_holes(self) -> list[str]:
+        return [u.node for u in self.unfillable]
+
+
+class RequirementsVerdict(BaseModel):
+    """The requirements head: does the built system serve the brief?"""
+
+    meets_brief: bool = Field(
+        description="True if the system, as built, addresses the brief"
+    )
+    gaps: list[str] = Field(
+        default_factory=list,
+        description="Concrete unmet requirements (empty if it meets)",
+    )
+
+
+class CriticVerdict(BaseModel):
+    """The adversarial critic head: what is missing, wrong, or faked?"""
+
+    issues: list[str] = Field(
+        default_factory=list, description="Concrete problems found (empty if none)"
+    )
+
+
+class AuditIssue(BaseModel):
+    """One whole-system problem found during the audit."""
+
+    source: str = Field(
+        description="assemble | smoke | dialect | requirements | critic"
+    )
+    detail: str
+
+
+class AuditReport(BaseModel):
+    """The verdict on the assembled system (sandboxed execution + agent review)."""
+
+    works: bool = Field(
+        description="True when the system assembles, smoke-runs, and stays dialect-clean"
+    )
+    rounds: int = 0
+    checks: list[CheckResult] = Field(default_factory=list)
+    requirements: RequirementsVerdict | None = None
+    critic: CriticVerdict | None = None
+    remaining_holes: list[str] = Field(default_factory=list)
+    issues: list[AuditIssue] = Field(default_factory=list)
+
+
+# --- the result -----------------------------------------------------------------
+
+
 class ForgeResult(BaseModel):
-    """The End[T] payload: the designed spec, what was rendered, and the verdict."""
+    """The End[T] payload: the designed spec, what was rendered/built, and the verdicts."""
 
     spec: SystemSpec
-    design_only: bool = Field(
-        default=False, description="True when no package was rendered (no dest given)"
+    stage_reached: str = Field(
+        default="design",
+        description="design | render | build | audit — how far the run went",
     )
     rendered_files: list[str] = Field(default_factory=list)
-    report: VerificationReport | None = None
+    report: VerificationReport | None = Field(
+        default=None, description="Cheap deterministic render-stage verdict"
+    )
+    build: BuildReport | None = None
+    audit: AuditReport | None = None
     notes: list[str] = Field(
         default_factory=list,
         description="Advisory notes: caps hit, truncations, fallbacks",
     )
 
     @property
+    def design_only(self) -> bool:
+        return self.stage_reached == "design"
+
+    @property
     def works(self) -> bool:
+        if self.audit is not None:
+            return self.audit.works
         return self.report.works if self.report is not None else False

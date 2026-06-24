@@ -15,11 +15,15 @@ from pydantic import BaseModel
 
 from andamentum.core import AgentDefinition
 from andamentum.forge.schemas import (
+    CriticVerdict,
     DataKind,
     ForgeAreas,
     ForgeWhy,
     JobList,
     NodeTyping,
+    PieceOut,
+    RequirementsVerdict,
+    SandboxResult,
 )
 from andamentum.forge.spec import NodeKind
 
@@ -31,6 +35,64 @@ def _focus_id(board: str) -> str:
             if m:
                 return m.group()
     return ""
+
+
+def _parse_writes(context: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    capture = False
+    for line in context.splitlines():
+        if line.startswith("YOU MUST SET"):
+            capture = True
+            continue
+        if capture:
+            m = re.match(r"\s+ctx\.state\.(\w+):\s*(.*)", line)
+            if m:
+                out.append((m.group(1), m.group(2).strip()))
+            elif line.strip():
+                capture = False
+    return out
+
+
+def _parse_successors(context: str) -> list[str]:
+    for line in context.splitlines():
+        if line.startswith("RETURN exactly one"):
+            seg = line.split(":", 1)[1].split("—")[0]
+            return [s.strip() for s in seg.split(",") if s.strip()]
+    return []
+
+
+def _draft_body(context: str) -> str:
+    """Synthesise a contract-valid spine body from the draft context: set every
+    declared write, return the first declared successor. Enough to pass the static
+    gates and make the smoke graph run — the stub stands in for a real model."""
+    lines = [
+        f"ctx.state.{name} = {'0' if ann.startswith('int') else chr(39) + 'x' + chr(39)}"
+        for name, ann in _parse_writes(context)
+    ]
+    target = next((s for s in _parse_successors(context) if s != "End"), None)
+    lines.append(f"return {target}()" if target else "return End('done')")
+    return "\n".join(lines)
+
+
+class FakeSandbox:
+    """A stub ``SandboxPort`` — returns a scripted verdict, runs nothing."""
+
+    def __init__(
+        self, *, exit_code: int = 0, stdout: str = "", stderr: str = ""
+    ) -> None:
+        self._result = SandboxResult(exit_code=exit_code, stdout=stdout, stderr=stderr)
+
+    def run(
+        self,
+        argv,
+        *,
+        cwd=None,
+        extra_path=None,
+        timeout=30,
+        mem_mb=512,
+        allow_network=False,
+    ) -> SandboxResult:
+        return self._result
 
 
 class ScriptedSink:
@@ -65,6 +127,13 @@ class ScriptedSink:
                 produces=[f"out_{fid}"],
                 produces_kind=DataKind.SIGNAL,
             )
+        # --- stage 3/4 authoring + audit heads ---
+        if defn.name in ("build_draft", "build_repair"):
+            return PieceOut(body=_draft_body(str(kwargs.get("context", ""))))
+        if defn.name == "requirements":
+            return RequirementsVerdict(meets_brief=True, gaps=[])
+        if defn.name == "critic":
+            return CriticVerdict(issues=[])
         raise AssertionError(f"unexpected agent {defn.name!r}")
 
 
