@@ -122,7 +122,7 @@ async def _wire_node(
     selecting variables that do not exist. Never drops a bad read or rewrites it.
     """
     feedback = ""
-    bad: list[str] = []
+    problem = ""
     for _ in range(MAX_WIRE_RETRIES):
         typing = await sink.run(
             TYPE_NODE,
@@ -134,23 +134,35 @@ async def _wire_node(
         assert isinstance(typing, NodeTyping)
         consumes = [_canon(c) for c in typing.consumes if c.strip()]
         bad = [c for c in consumes if c not in available_set]
-        if not bad:
-            draft.kind = typing.kind
-            draft.consumes = consumes
-            draft.produces = [_canon(p) for p in typing.produces if p.strip()][
-                :1
-            ]  # exactly one new datum
-            draft.produces_kind = typing.produces_kind
-            draft.control = typing.control
-            draft.network = typing.network
-            return
-        feedback = (
-            f"You selected reads {bad}, which are NOT produced by any earlier step. "
-            f"Choose `consumes` ONLY from this exact list (copy verbatim): {', '.join(available)}."
-        )
+        if bad:
+            problem = f"selected reads {bad}, which no earlier step produces"
+            feedback = (
+                f"You {problem}. Choose `consumes` ONLY from this exact list (copy verbatim): "
+                f"{', '.join(available)}."
+            )
+            continue
+        if not consumes:
+            # Every step must have an input, or its body has nothing to work from and is
+            # unfillable. At minimum it reads `input`. Fail loud rather than emit a dead node.
+            problem = "selected no inputs at all"
+            feedback = (
+                "Every step MUST read at least one variable — it cannot work from nothing. "
+                f"Select at least one of (copy verbatim): {', '.join(available)} (use `input` if "
+                "this step is the first to touch the raw input)."
+            )
+            continue
+        draft.kind = typing.kind
+        draft.consumes = consumes
+        draft.produces = [_canon(p) for p in typing.produces if p.strip()][
+            :1
+        ]  # exactly one new datum
+        draft.produces_kind = typing.produces_kind
+        draft.control = typing.control
+        draft.network = typing.network
+        return
     raise ValueError(
-        f"node {draft.job!r}: the agent kept selecting unavailable input variables {bad} after "
-        f"{MAX_WIRE_RETRIES} attempts. The design is incomplete — surfaced loudly, never dropped."
+        f"node {draft.job!r}: the agent {problem} after {MAX_WIRE_RETRIES} attempts. "
+        "The design is incomplete — surfaced loudly, never dropped."
     )
 
 
