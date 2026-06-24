@@ -4,9 +4,39 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from andamentum.forge import compile_spec, render, verify_package
 from andamentum.forge.schemas import DataKind, DesignPlan, ForgeWhy, NodeDraft
 from andamentum.forge.spec import NodeKind
+
+
+def test_dangling_read_fails_loud() -> None:
+    # A read that no node produces must RAISE — never be silently dropped or rewired to
+    # the input. A system that runs but doesn't pass its data is worse than one that stops.
+    plan = DesignPlan(
+        why=ForgeWhy(purpose="Do a thing.", boundary_in="x", boundary_out="y"),
+        nodes=[
+            NodeDraft(
+                id="n1",
+                area="core",
+                job="Step one.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["alpha"],
+            ),
+            NodeDraft(
+                id="n2",
+                area="core",
+                job="Step two.",
+                kind=NodeKind.SPINE,
+                consumes=["beta"],
+                produces=["gamma"],
+            ),  # 'beta' is produced by no one
+        ],
+    )
+    with pytest.raises(ValueError, match="no node produces"):
+        compile_spec(plan)
 
 
 def _plan() -> DesignPlan:

@@ -1,27 +1,37 @@
 """Worker: decompose the framed problem into a fully-typed node board.
 
-This is the dialect rewrite of forge's imperative negotiation loop. Two bounded
-stages, both engine-free:
+This is the dialect rewrite of forge's imperative negotiation loop. Two bounded stages,
+both engine-free:
 
-  Stage 1 — ``list_jobs`` per area (fan-out): name each area's steps as plain
-            sentences. A list of strings is the one shape small models fill reliably.
-  Stage 2 — ``type_node`` per job (fan-out): fill ONE node's fields, shown the whole
-            board as context — rich input, tiny output.
+  Stage 1 — ``list_jobs`` per area (fan-out): name each area's steps as plain sentences.
+            A list of strings is the one shape small models fill reliably.
+  Stage 2 — ``type_node`` per job, **sequentially**, against a growing **variable
+            registry**: each node is shown the closed list of variables produced by
+            upstream nodes (plus the graph input) and SELECTS which it reads from that
+            list. It never invents read-names, so producer/consumer wiring cannot drift.
 
-Both fan-outs are bounded (dialect Law 5): ``max_jobs_per_area`` and ``max_nodes``
-trace to Deps values; an over-cap area truncates *loudly* via the returned notes. The
-agent runner's own semaphore serialises calls for local models, so the ``gather`` here
-is safe and order-preserving.
+The registry is the fix for the failure mode a real model otherwise hits: one node
+*produces* ``summary`` while the next *consumes* ``brief_summary`` (same idea, different
+word), leaving the link unconnected. By selecting from the real list, the consumer can
+only name a variable that actually exists. A selection outside the list is retried with
+the list as feedback, and **fails loud** after the cap — it is never silently dropped or
+rewritten to read the raw input (a system that quietly stops chaining is worse than one
+that stops the build).
+
+Stage 1 fan-out is bounded (Law 5: ``max_jobs_per_area`` / ``max_nodes``). Stage 2 is
+sequential by necessity — node *k* must see what nodes *< k* produced.
 """
 
 from __future__ import annotations
 
 import asyncio
 
-from pydantic import BaseModel
-
 from .agents import LIST_JOBS, TYPE_NODE, AgentSink
-from .schemas import DesignPlan, ForgeWhy, JobList, NodeDraft, NodeTyping
+from .naming import canonical_datum
+from .schemas import INPUT_TOKENS, DesignPlan, ForgeWhy, JobList, NodeDraft, NodeTyping
+
+# How many times a node may re-select its inputs before the design fails loud (Law 5).
+MAX_WIRE_RETRIES = 3
 
 
 def _board(drafts: list[NodeDraft], focus_id: str) -> str:
@@ -35,6 +45,10 @@ def _board(drafts: list[NodeDraft], focus_id: str) -> str:
             f"{mark} {d.id} [{d.kind.value}] {d.job}  (consumes: {cons}; produces: {prod})"
         )
     return "\n".join(lines)
+
+
+def _canon(name: str) -> str:
+    return canonical_datum(name, INPUT_TOKENS)
 
 
 async def decompose(
@@ -77,32 +91,68 @@ async def decompose(
             "decompose produced no steps; the brief did not yield an actionable design"
         )
 
-    # Stage 2: type every job, each seeing the WHOLE board as context (fan-out over nodes).
-    typings = await asyncio.gather(
-        *(sink.run(TYPE_NODE, board=_board(drafts, d.id)) for d in drafts)
-    )
-    for d, t in zip(drafts, typings):
-        _apply_typing(d, t)
-
-    # Reconciliation: re-type each node against the now-complete board so cross-node data
-    # names line up — a consumer typed before its producer can now reuse the EXACT produced
-    # name. One bounded extra pass (Law 5); the fix for small-model producer/consumer drift.
-    recon = await asyncio.gather(
-        *(sink.run(TYPE_NODE, board=_board(drafts, d.id)) for d in drafts)
-    )
-    for d, t in zip(drafts, recon):
-        _apply_typing(d, t)
+    # Stage 2: SEQUENTIAL typing against a growing variable registry. Every read is
+    # selected from `available` (the closed list of upstream-produced variables + input),
+    # so the wiring connects by construction.
+    available: list[str] = ["input"]
+    available_set: set[str] = {"input"}
+    for d in drafts:
+        await _wire_node(
+            d, drafts, sink=sink, available=available, available_set=available_set
+        )
+        for p in d.produces:
+            if p not in available_set:
+                available_set.add(p)
+                available.append(p)
 
     return DesignPlan(why=why, nodes=drafts), notes
 
 
-def _apply_typing(draft: NodeDraft, typing: BaseModel) -> None:
-    assert isinstance(typing, NodeTyping)
-    draft.kind = typing.kind
-    draft.consumes = [c.strip() for c in typing.consumes if c.strip()]
-    draft.produces = [p.strip() for p in typing.produces if p.strip()][
-        :1
-    ]  # exactly one datum
-    draft.produces_kind = typing.produces_kind
-    draft.control = typing.control
-    draft.network = typing.network
+async def _wire_node(
+    draft: NodeDraft,
+    drafts: list[NodeDraft],
+    *,
+    sink: AgentSink,
+    available: list[str],
+    available_set: set[str],
+) -> None:
+    """Type one node, validating that every read it selects is actually available.
+
+    Retries with the available list as feedback; raises (fail loud) if the agent keeps
+    selecting variables that do not exist. Never drops a bad read or rewrites it.
+    """
+    feedback = ""
+    bad: list[str] = []
+    for _ in range(MAX_WIRE_RETRIES):
+        typing = await sink.run(
+            TYPE_NODE,
+            job=draft.job,
+            board=_board(drafts, draft.id),
+            available=", ".join(available),
+            feedback=feedback,
+        )
+        assert isinstance(typing, NodeTyping)
+        consumes = [_canon(c) for c in typing.consumes if c.strip()]
+        bad = [c for c in consumes if c not in available_set]
+        if not bad:
+            draft.kind = typing.kind
+            draft.consumes = consumes
+            draft.produces = [_canon(p) for p in typing.produces if p.strip()][
+                :1
+            ]  # exactly one new datum
+            draft.produces_kind = typing.produces_kind
+            draft.control = typing.control
+            draft.network = typing.network
+            return
+        feedback = (
+            f"You selected reads {bad}, which are NOT produced by any earlier step. "
+            f"Choose `consumes` ONLY from this exact list (copy verbatim): {', '.join(available)}."
+        )
+    raise ValueError(
+        f"node {draft.job!r}: the agent kept selecting unavailable input variables {bad} after "
+        f"{MAX_WIRE_RETRIES} attempts. The design is incomplete — surfaced loudly, never dropped."
+    )
+
+
+# Re-exported for callers that build a board directly (e.g. tests).
+__all__ = ["decompose", "MAX_WIRE_RETRIES"]

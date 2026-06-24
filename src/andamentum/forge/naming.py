@@ -51,3 +51,14 @@ def to_pascal(text: str, fallback: str) -> str:
 def pascal_to_snake(name: str) -> str:
     """PascalCase → snake_case (e.g. 'FooBar' → 'foo_bar')."""
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+
+
+def canonical_datum(name: str, input_tokens: frozenset[str]) -> str:
+    """Canonical form of a data name: a graph-input token kept (lowercased), everything
+    else snake_cased so the SAME concept named with different casing/spacing maps to one
+    identifier. This is a normalisation (deterministic, lossless intent), not a fallback —
+    it lets the variable registry match a selection to a produced name exactly.
+    """
+    if name.lower() in input_tokens:
+        return name.lower()
+    return to_snake(name, name, max_words=0)
