@@ -15,9 +15,18 @@ from typing import Any, Protocol, cast
 
 from pydantic import BaseModel
 
+from andamentum.agentic_dialect import law
 from andamentum.core import AgentDefinition
 
-from .schemas import ForgeAreas, ForgeWhy, JobList, NodeTyping
+from .schemas import (
+    CriticVerdict,
+    ForgeAreas,
+    ForgeWhy,
+    JobList,
+    NodeTyping,
+    PieceOut,
+    RequirementsVerdict,
+)
 
 
 class AgentSink(Protocol):
@@ -100,4 +109,69 @@ LIST_JOBS = AgentDefinition(
 )
 TYPE_NODE = AgentDefinition(
     name="type_node", prompt=TYPE_NODE_PROMPT, output_model=NodeTyping
+)
+
+
+# --- the code-authoring heads (stage 3 build) -----------------------------------
+#
+# These are the agents that WRITE code. They are grounded in the agentic dialect: the
+# laws a node body must honour are pulled from the canon (`law(...)`) and pushed into
+# the prompt, so the authors can't drift from the spec the rest of the system enforces.
+
+
+def _dialect_body_grounding() -> str:
+    """The dialect laws a node body must honour, drawn from the canonical module so
+    forge's authoring agents and the dialect cannot diverge."""
+    ids = ("L4", "L5", "L6", "L7", "L8")
+    lines = [
+        "This node body belongs to an andamentum-dialect agentic system. Honour these laws (the canon):"
+    ]
+    for i in ids:
+        lw = law(i)
+        lines.append(f"- {lw.id} {lw.name}: {lw.statement}")
+    return "\n".join(lines)
+
+
+_BODY_GROUNDING = _dialect_body_grounding()
+
+DRAFT_PROMPT = (
+    _BODY_GROUNDING + "\n\n"
+    "You implement ONE function body in a pydantic-graph node. `ctx.state` is the working "
+    "memory; `ctx.deps` holds injected resources. Return ONLY the lines inside the function — "
+    "no def line, no class, no markdown fences, 4-space base indentation. Read and write ONLY "
+    "the ctx.state fields listed in the context; referencing any other field is an error. Return "
+    "one of the listed successors (`return NodeName()`) or `return End(<str>)`. Keep any PREAMBLE "
+    "lines first, unchanged. Write a REAL implementation — never a hardcoded value, a bare pass, "
+    "or `raise NotImplementedError`. No clock, randomness, process control, raw files, or sockets."
+)
+
+REPAIR_PROMPT = (
+    _BODY_GROUNDING + "\n\n"
+    "You fix a function body a gate rejected. Same rules as drafting. Read the rejection reason "
+    "and fix EXACTLY what it names — most often a state field or successor not in the allowed list, "
+    "or a forbidden import. Return only the corrected body."
+)
+
+REQUIREMENTS_PROMPT = (
+    "You audit whether a built agentic system serves the user's brief. You are shown the brief and "
+    "a summary of the system (purpose, nodes, what each does). Decide meets_brief (true/false) and "
+    "list concrete gaps — requirements from the brief the system does not address. Be specific; an "
+    "empty gaps list means it fully meets the brief."
+)
+
+CRITIC_PROMPT = (
+    "You are an adversarial reviewer of a built agentic system. Shown its node bodies, find what is "
+    "missing, wrong, or faked — a hardcoded value standing in for real logic, a node that drops its "
+    "input, a TODO left behind. List concrete issues; an empty list means you found none."
+)
+
+DRAFT = AgentDefinition(name="build_draft", prompt=DRAFT_PROMPT, output_model=PieceOut)
+REPAIR = AgentDefinition(
+    name="build_repair", prompt=REPAIR_PROMPT, output_model=PieceOut
+)
+REQUIREMENTS = AgentDefinition(
+    name="requirements", prompt=REQUIREMENTS_PROMPT, output_model=RequirementsVerdict
+)
+CRITIC = AgentDefinition(
+    name="critic", prompt=CRITIC_PROMPT, output_model=CriticVerdict
 )

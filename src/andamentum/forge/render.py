@@ -506,6 +506,71 @@ def _test_py(spec: SystemSpec) -> str:
     )
 
 
+def _sample_literal(f: FieldSpec) -> str:
+    """A Python-literal sample for a head-output field, for the smoke-test stub."""
+    if f.enum_values:
+        return repr(f.enum_values[0])
+    ann = f.annotation.replace(" ", "")
+    return {
+        "str": "'sample'",
+        "int": "1",
+        "float": "1.0",
+        "bool": "True",
+        "list[str]": "['sample']",
+        "list[int]": "[1]",
+        "set[str]": "{'sample'}",
+    }.get(ann, "'sample'")
+
+
+def _smoke_test_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
+    """A generated end-to-end smoke test: stub every head, drive the graph to End.
+
+    This is what the audit (stage 4) executes in the sandbox — the assembled graph runs
+    with no live model, so a node body that crashes or drops its input is caught.
+    """
+    primary = spec.input.primary_text_field
+    out_models = [a.output.name for a in spec.agents]
+    model_imports = ", ".join([state_name, *out_models])
+
+    override_lines: list[str] = []
+    for a in spec.agents:
+        required = [f for f in a.output.fields if not f.optional and f.default is None]
+        args = ", ".join(f"{f.name}={_sample_literal(f)}" for f in required)
+        override_lines.append(f"        {a.name!r}: _Stub({a.output.name}({args})),")
+    overrides_block = (
+        "\n".join(override_lines)
+        if override_lines
+        else "        # (no heads — all-spine system)"
+    )
+
+    stub_class = (
+        "class _Stub:\n"
+        '    """An agent_overrides stub: exposes a fixed `.output` (run_head reads it)."""\n'
+        "    def __init__(self, output: object) -> None:\n"
+        "        self.output = output\n\n\n"
+        if spec.agents
+        else ""
+    )
+    return (
+        '"""Generated smoke test — the graph runs end-to-end with stub agents."""\n'
+        "from __future__ import annotations\n\n"
+        "import asyncio\n\n"
+        f"from {spec.name} import nodes as _n\n"
+        f"from {spec.name}.deps import {deps_name}\n"
+        f"from {spec.name}.graph import graph\n"
+        f"from {spec.name}.models import {model_imports}\n\n\n"
+        f"{stub_class}"
+        "def test_smoke_runs_end_to_end() -> None:\n"
+        "    overrides = {\n"
+        f"{overrides_block}\n"
+        "    }\n"
+        f'    deps = {deps_name}(model="smoke", agent_overrides=overrides)\n'
+        f'    state = {state_name}({primary}="smoke test request")\n'
+        f"    out = asyncio.run(graph.run(_n.{spec.entry_node}(), state=state, deps=deps))\n"
+        "    assert out is not None\n"
+    )
+
+
 def render(spec: SystemSpec, dest: Path) -> list[Path]:
     """Render ``spec`` into an importable package under ``dest/<spec.name>/``.
 
@@ -541,6 +606,7 @@ def render(spec: SystemSpec, dest: Path) -> list[Path]:
         tests / "__init__.py": "",
         tests / "test_graph.py": _test_py(spec),
         tests / "test_recipe.py": _recipe_test_py(),
+        tests / "test_smoke.py": _smoke_test_py(spec, state_name, deps_name),
     }
     written: list[Path] = []
     for path, content in files.items():

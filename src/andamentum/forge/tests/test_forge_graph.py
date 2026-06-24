@@ -20,13 +20,17 @@ async def test_design_only(reading_list_sink: ScriptedSink) -> None:
     assert any(n.kind.value == "head" for n in spec.nodes)
 
 
-async def test_build_renders_and_verifies(
+async def test_render_stage_verifies(
     tmp_path: Path, reading_list_sink: ScriptedSink
 ) -> None:
     result = await run_forge(
-        "Manage my reading list.", model="test", dest=tmp_path, sink=reading_list_sink
+        "Manage my reading list.",
+        model="test",
+        dest=tmp_path,
+        stop_after="render",
+        sink=reading_list_sink,
     )
-    assert not result.design_only
+    assert result.stage_reached == "render"
     assert result.report is not None
     failed = [f"{c.name}: {c.detail}" for c in result.report.checks if not c.passed]
     assert result.works, failed
