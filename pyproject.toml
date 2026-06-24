@@ -86,6 +86,7 @@ andamentum-typeset      = "andamentum.typeset.cli:main"
 andamentum-vision-critique = "andamentum.vision_critique.cli:main"
 andamentum-proofread    = "andamentum.proofread.cli:main"
 andamentum-agentic-dialect      = "andamentum.agentic_dialect.cli:main"
+andamentum-forge        = "andamentum.forge.cli:main"
 
 [project.optional-dependencies]
 # trafilatura (Apache-2.0, MIT-compatible) is kept out of the default
