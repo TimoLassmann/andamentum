@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import asyncio
 
+from pydantic import BaseModel
+
 from .agents import LIST_JOBS, TYPE_NODE, AgentSink
 from .schemas import DesignPlan, ForgeWhy, JobList, NodeDraft, NodeTyping
 
@@ -80,14 +82,27 @@ async def decompose(
         *(sink.run(TYPE_NODE, board=_board(drafts, d.id)) for d in drafts)
     )
     for d, t in zip(drafts, typings):
-        assert isinstance(t, NodeTyping)
-        d.kind = t.kind
-        d.consumes = [c.strip() for c in t.consumes if c.strip()]
-        d.produces = [p.strip() for p in t.produces if p.strip()][
-            :1
-        ]  # exactly one datum
-        d.produces_kind = t.produces_kind
-        d.control = t.control
-        d.network = t.network
+        _apply_typing(d, t)
+
+    # Reconciliation: re-type each node against the now-complete board so cross-node data
+    # names line up — a consumer typed before its producer can now reuse the EXACT produced
+    # name. One bounded extra pass (Law 5); the fix for small-model producer/consumer drift.
+    recon = await asyncio.gather(
+        *(sink.run(TYPE_NODE, board=_board(drafts, d.id)) for d in drafts)
+    )
+    for d, t in zip(drafts, recon):
+        _apply_typing(d, t)
 
     return DesignPlan(why=why, nodes=drafts), notes
+
+
+def _apply_typing(draft: NodeDraft, typing: BaseModel) -> None:
+    assert isinstance(typing, NodeTyping)
+    draft.kind = typing.kind
+    draft.consumes = [c.strip() for c in typing.consumes if c.strip()]
+    draft.produces = [p.strip() for p in typing.produces if p.strip()][
+        :1
+    ]  # exactly one datum
+    draft.produces_kind = typing.produces_kind
+    draft.control = typing.control
+    draft.network = typing.network

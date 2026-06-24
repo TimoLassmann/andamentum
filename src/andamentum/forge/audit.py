@@ -53,11 +53,43 @@ def _node_bodies(pkg: Path) -> str:
     return f.read_text(encoding="utf-8") if f.exists() else ""
 
 
+def _pytest_summary(output: str) -> str:
+    """The meaningful lines of a pytest run — the FAILED/ERROR lines and the final
+    count — not the trailing warnings block (which buries the real verdict)."""
+    lines = output.splitlines()
+    failed = [ln.strip() for ln in lines if ln.startswith(("FAILED", "ERROR"))]
+    summary = next(
+        (
+            ln.strip()
+            for ln in reversed(lines)
+            if (" passed" in ln or " failed" in ln or " error" in ln) and "===" in ln
+        ),
+        "",
+    )
+    picked = "; ".join([*failed, summary]).strip("; ")
+    return picked or output.strip()[-400:] or "no output"
+
+
 def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResult:
+    # The container mounts the RESOLVED dest (e.g. /tmp → /private/tmp on macOS), so any
+    # path handed to pytest in argv must be resolved too — an unresolved path is not
+    # mounted inside the container and pytest would collect nothing.
+    dest = dest.resolve()
     pkg = dest / spec.name
     try:
         res = sandbox.run(
-            [sys.executable, "-m", "pytest", "-q", str(pkg / "tests")],
+            # `-p no:cacheprovider`: the package is mounted read-only in the container,
+            # so pytest's on-disk cache can't be written — disable it (else a noisy,
+            # harmless warning, never a failure).
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                str(pkg / "tests"),
+            ],
             cwd=dest,
             extra_path=dest,
             timeout=_TEST_TIMEOUT,
@@ -74,7 +106,7 @@ def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResul
     detail = (
         "passed"
         if res.ok
-        else (res.stdout or res.stderr or f"exit {res.exit_code}").strip()[-600:]
+        else _pytest_summary(res.stdout or res.stderr or f"exit {res.exit_code}")
     )
     return CheckResult(name="tests", passed=res.ok, detail=detail)
 
