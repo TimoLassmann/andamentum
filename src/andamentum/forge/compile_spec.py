@@ -126,6 +126,25 @@ def _canon_datum(name: str) -> str:
     return canonical_datum(name, INPUT_TOKENS)
 
 
+# Verbs that signal judgment OVER NATURAL-LANGUAGE TEXT (recipe §5: "open" reasoning).
+# A job whose answer must be DERIVED from prose — not computed over an existing field —
+# is a HEAD, not deterministic code. The prose-input guard below stops this from
+# promoting a hard-key sort/filter (those read a computed field, not text).
+_JUDGMENT_VERBS = frozenset(
+    {
+        "summar", "condens", "synthes", "rank", "score", "select", "classif", "categor",
+        "extract", "identif", "interpret", "analyz", "assess", "evaluat", "judg", "draft",
+        "compose", "rephrase", "rewrit", "translat", "paraphras", "verif", "valid", "critique",
+        "describe", "explain", "generat", "distil", "highlight", "prioriti",
+    }
+)  # fmt: skip
+
+
+def _is_judgment_over_text(job: str) -> bool:
+    j = job.lower()
+    return any(v in j for v in _JUDGMENT_VERBS)
+
+
 def compile_spec(plan: DesignPlan) -> SystemSpec:
     """Assemble (and thereby validate) a ``SystemSpec`` from a design plan."""
     if not plan.nodes:
@@ -147,6 +166,32 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
         c.consumes = [_canon_datum(d) for d in c.consumes]
         c.produces = [_canon_datum(d) for d in c.produces]
 
+    # Deterministic SPINE→HEAD promotion (recipe §5), symmetric to the HEAD→SPINE demotion
+    # above. A job that reads natural-language text and judges its meaning (rank/select/
+    # summarize/classify/extract over prose) is a HEAD — otherwise the code-writer is forced
+    # to FAKE the judgment with string slicing. Guarded so it fires only when the node reads
+    # PROSE (the raw input or a head's output), so a hard-key sort/filter over a computed
+    # field stays spine. Fixpoint: a promoted head's output is prose, which can promote a
+    # downstream consumer (the chain promotes from `input` outward).
+    prose_vars: set[str] = set(INPUT_TOKENS) | {
+        p for c in plan.nodes if c.kind is NodeKind.HEAD for p in c.produces
+    }
+    promoted = True
+    while promoted:
+        promoted = False
+        for c in plan.nodes:
+            if (
+                c.kind is NodeKind.SPINE
+                and c.control is NodeControl.NONE
+                and not c.network
+                and c.produces_kind is not DataKind.ENTITY
+                and _is_judgment_over_text(c.job)
+                and (set(c.consumes) & prose_vars)
+            ):
+                c.kind = NodeKind.HEAD
+                prose_vars |= set(c.produces)
+                promoted = True
+
     # Fail loud on a dangling read. Every consumed signal must be produced by some node or
     # be the graph input — otherwise it would resolve to a State field nothing ever writes,
     # i.e. a silent None at runtime. We do NOT drop it (that hides an incomplete design and
@@ -162,6 +207,45 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 "A read with no writer would be silently None at runtime — the design is incomplete. "
                 "Fix the wiring (the gap is reported, never dropped)."
             )
+
+    # Coherence gate (fail loud). Build the signal dependency graph and assert it is clean:
+    # (1) single writer per signal — two nodes producing one variable means the last write
+    #     silently wins; reject it. (2) no orphan — a signal produced but read by nobody and
+    #     not the system output is discarded work. Both surface loudly, never resolved by
+    #     execution order or silently pruned. Fan-in (a node reading several upstream signals)
+    #     is untouched — it is the desired join, and the cure for an orphan.
+    order = _topo_order(plan.nodes)
+    writers: dict[str, list[NodeDraft]] = {}
+    for c in plan.nodes:
+        if c.produces_kind is DataKind.SIGNAL:
+            for p in c.produces:
+                writers.setdefault(p, []).append(c)
+    dup = {v: ws for v, ws in writers.items() if len(ws) > 1}
+    if dup:
+        detail = "; ".join(
+            f"{v!r} written by {[w.job or w.id for w in ws]}" for v, ws in dup.items()
+        )
+        raise ValueError(
+            f"single-writer violation: {detail}. A signal has exactly one writer or the last write silently "
+            "wins. If several steps refine one value, chain them (read X → produce a distinct refined name). "
+            "Surfaced, never resolved by execution order."
+        )
+    # The system output is the signal the final (topologically last) node produces.
+    out_var = next(
+        (p for p in order[-1].produces if order[-1].produces_kind is DataKind.SIGNAL),
+        None,
+    )
+    consumed = {d for c in plan.nodes for d in c.consumes}
+    orphans = sorted(v for v in writers if v not in consumed and v != out_var)
+    if orphans:
+        detail = "; ".join(
+            f"{v!r} (by {next(w.job or w.id for w in writers[v])!r})" for v in orphans
+        )
+        raise ValueError(
+            f"orphan output(s): {detail} — produced but read by no step and not the system output. This is "
+            "work the system discards: chain it forward (have a later step read it), make it the output, or "
+            "remove the step. Surfaced, never silently pruned."
+        )
 
     sys_name = _snake(plan.why.purpose, "system")
     sys_pascal = "".join(p[:1].upper() + p[1:] for p in sys_name.split("_"))

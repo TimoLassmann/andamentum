@@ -151,11 +151,21 @@ async def _wire_node(
                 "this step is the first to touch the raw input)."
             )
             continue
-        draft.kind = typing.kind
-        draft.consumes = consumes
-        draft.produces = [_canon(p) for p in typing.produces if p.strip()][
+        produces = [_canon(p) for p in typing.produces if p.strip()][
             :1
         ]  # exactly one new datum
+        if produces and produces[0] in available_set:
+            # One variable, one writer. A produce that already exists would make two nodes
+            # write one field (last-writer-wins). Demand a NEW name, or a refine-and-rename.
+            problem = f"named a produced variable {produces[0]!r} that already exists"
+            feedback = (
+                f"`{produces[0]}` is already produced by an earlier step. Name a NEW datum for what THIS "
+                f"step adds. If it only refines {produces[0]!r}, READ it and produce a distinct refined name."
+            )
+            continue
+        draft.kind = typing.kind
+        draft.consumes = consumes
+        draft.produces = produces
         draft.produces_kind = typing.produces_kind
         draft.control = typing.control
         draft.network = typing.network

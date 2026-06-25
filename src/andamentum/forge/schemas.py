@@ -55,7 +55,7 @@ class ForgeAreas(BaseModel):
     """The frame head: the 2–4 big concerns the system must get right."""
 
     areas: list[str] = Field(
-        description="The 2–4 fundamentally different things this system must get right, each a short phrase"
+        description="The distinct big concerns — one or more (usually exactly one for a simple task), each a short phrase"
     )
 
 
