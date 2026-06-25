@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.forge.astcheck import check_fail_loud
+from andamentum.forge.astcheck import check_fail_loud, check_node_body
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -17,6 +17,46 @@ def _write(tmp_path: Path, body: str) -> Path:
     f = tmp_path / "n.py"
     f.write_text(src)
     return f
+
+
+def _contract(
+    f: Path, *, reads: set[str], writes: set[str], successors: set[str]
+) -> list[str]:
+    return check_node_body(
+        f, "N", "run", reads=reads, writes=writes, successors=successors
+    )
+
+
+def test_unread_declared_input_is_flagged(tmp_path: Path) -> None:
+    # Declares it reads `a` but the body ignores it — a dropped input (faking).
+    f = _write(tmp_path, "        ctx.state.b = 'x'\n        return End('done')\n")
+    issues = _contract(f, reads={"a"}, writes={"b"}, successors={"End"})
+    assert any("never reads" in v for v in issues), issues
+
+
+def test_unset_declared_output_is_flagged(tmp_path: Path) -> None:
+    # Declares it writes `b` but never sets it — the node produces no output.
+    f = _write(tmp_path, "        _ = ctx.state.a\n        return End('done')\n")
+    issues = _contract(f, reads={"a"}, writes={"b"}, successors={"End"})
+    assert any("never sets" in v for v in issues), issues
+
+
+def test_bulk_state_access_is_flagged(tmp_path: Path) -> None:
+    # model_dump reads undeclared fields and defeats the per-field contract.
+    f = _write(
+        tmp_path,
+        "        data = ctx.state.model_dump()\n        return End(str(data))\n",
+    )
+    issues = _contract(f, reads=set(), writes=set(), successors={"End"})
+    assert any("bulk" in v for v in issues), issues
+
+
+def test_body_using_all_declared_fields_is_clean(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "        x = ctx.state.a\n        ctx.state.b = x\n        return Next()\n",
+    )
+    assert _contract(f, reads={"a"}, writes={"b"}, successors={"Next", "End"}) == []
 
 
 def test_broad_except_that_swallows_is_rejected(tmp_path: Path) -> None:
