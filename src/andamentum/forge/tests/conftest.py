@@ -37,11 +37,12 @@ def _focus_id(board: str) -> str:
     return ""
 
 
-def _parse_writes(context: str) -> list[tuple[str, str]]:
+def _parse_fields(context: str, header: str) -> list[tuple[str, str]]:
+    """The `ctx.state.<name>: <ann>` lines under a header (e.g. 'YOU MUST SET')."""
     out: list[tuple[str, str]] = []
     capture = False
     for line in context.splitlines():
-        if line.startswith("YOU MUST SET"):
+        if line.startswith(header):
             capture = True
             continue
         if capture:
@@ -62,13 +63,17 @@ def _parse_successors(context: str) -> list[str]:
 
 
 def _draft_body(context: str) -> str:
-    """Synthesise a contract-valid spine body from the draft context: set every
-    declared write, return the first declared successor. Enough to pass the static
-    gates and make the smoke graph run — the stub stands in for a real model."""
+    """Synthesise a contract-valid spine body from the draft context: read every declared
+    input, set every declared output, return the first declared successor. Enough to pass
+    all static gates (contract, purity, fail-loud, read/write coverage) and make the smoke
+    graph run — the stub stands in for a real model."""
     lines = [
-        f"ctx.state.{name} = {'0' if ann.startswith('int') else chr(39) + 'x' + chr(39)}"
-        for name, ann in _parse_writes(context)
+        f"_ = ctx.state.{name}" for name, _ in _parse_fields(context, "YOU MAY READ")
     ]
+    for name, ann in _parse_fields(context, "YOU MUST SET"):
+        lines.append(
+            f"ctx.state.{name} = {'0' if ann.startswith('int') else chr(39) + 'x' + chr(39)}"
+        )
     target = next((s for s in _parse_successors(context) if s != "End"), None)
     lines.append(f"return {target}()" if target else "return End('done')")
     return "\n".join(lines)

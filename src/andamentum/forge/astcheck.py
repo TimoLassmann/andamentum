@@ -192,24 +192,46 @@ def check_node_body(
     writes: set[str],
     successors: set[str],
 ) -> list[str]:
-    """Return contract violations in ``class_name.method_name``. Empty list = clean."""
+    """Return contract violations in ``class_name.method_name``. Empty list = clean.
+
+    Enforces the node's data contract as a build-time guarantee (not a prompt hope):
+    a body reads/writes only declared fields, returns only declared successors, accesses
+    state per-field (no bulk dump, no dynamic get/set), AND — coverage — actually reads
+    every input it declared and sets every output it declared. The latter two catch a body
+    that quietly drops its inputs or never produces its output (a faked node).
+    """
     method = _find_method(ast.parse(file.read_text()), class_name, method_name)
     if method is None:
         return [f"method {class_name}.{method_name} not found"]
 
+    # Bulk state access defeats the per-field contract (it would read undeclared fields),
+    # so it is banned alongside getattr/setattr — which is also what makes the read/write
+    # coverage below exact: every legitimate access is a direct `ctx.state.<field>`.
+    _BULK_ACCESSORS = {"model_dump", "model_dump_json", "dict", "json", "copy"}
+
     violations: list[str] = []
+    reads_seen: set[str] = set()
+    writes_seen: set[str] = set()
     for n in ast.walk(method):
         if isinstance(n, ast.Attribute) and _is_ctx_state(n.value):
             field = n.attr
-            if isinstance(n.ctx, ast.Store):
+            if field in _BULK_ACCESSORS:
+                violations.append(
+                    f"accesses ctx.state in bulk via .{field}(); read declared fields directly "
+                    "(ctx.state.<field>) — bulk access reads undeclared fields and defeats the contract"
+                )
+            elif isinstance(n.ctx, ast.Store):
+                writes_seen.add(field)
                 if writes and field not in writes:
                     violations.append(
                         f"writes ctx.state.{field}, which is not a declared output; declared writes: {sorted(writes)}"
                     )
-            elif field not in reads | writes:
-                violations.append(
-                    f"reads ctx.state.{field}, which is not a declared input; declared reads: {sorted(reads | writes)}"
-                )
+            else:
+                reads_seen.add(field)
+                if field not in reads | writes:
+                    violations.append(
+                        f"reads ctx.state.{field}, which is not a declared input; declared reads: {sorted(reads | writes)}"
+                    )
         if isinstance(n, ast.Return) and n.value is not None:
             target = _return_target(n.value)
             if target is not None and successors and target not in successors:
@@ -225,5 +247,20 @@ def check_node_body(
                 violations.append(
                     f"uses {n.func.id}() on ctx.state; access declared fields directly, not dynamically"
                 )
+
+    # Coverage: a declared input must actually be read, a declared output actually set.
+    # A node that ignores an input it declared, or never produces an output it declared,
+    # is faking — surface it. (Setting/reading in only one branch is a runtime concern the
+    # sandbox contract-run catches; here we guarantee the field is touched at all.)
+    for field in sorted(reads - reads_seen):
+        violations.append(
+            f"declares it reads ctx.state.{field} but the body never reads it — use the input, "
+            "or it should not be a declared read"
+        )
+    for field in sorted(writes - writes_seen):
+        violations.append(
+            f"declares it writes ctx.state.{field} but the body never sets it — the node must "
+            "produce its declared output"
+        )
 
     return violations
