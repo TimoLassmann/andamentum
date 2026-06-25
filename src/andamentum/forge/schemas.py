@@ -104,6 +104,80 @@ class NodeTyping(BaseModel):
     )
 
 
+# --- design diagnostics (assemble → diagnose → repair) --------------------------
+
+
+class FindingKind(str, Enum):
+    """The catalogue of structural problems the deterministic diagnoser detects.
+
+    Every kind is blocking — this is a fail-loud pipeline; there are no advisory-only
+    findings. Each describes one way a declared node board fails to form a coherent
+    data DAG.
+    """
+
+    DANGLING_READ = (
+        "dangling_read"  # consumes a name nobody produces (and not an input)
+    )
+    ORPHAN_OUTPUT = "orphan_output"  # produces a name nobody reads (and not the output)
+    NEAR_MISS = (
+        "near_miss"  # a produce/consume pair almost matches — likely one variable
+    )
+    DUPLICATE_PRODUCER = "duplicate_producer"  # >1 node produces the same name
+    MULTIPLE_SINKS = "multiple_sinks"  # more than one terminal output node
+    NO_OUTPUT = "no_output"  # no terminal output node at all
+    UNREACHABLE = "unreachable"  # node not reachable from the input
+    DEAD_END = "dead_end"  # node whose work reaches no output
+    DISCONNECTED = "disconnected"  # a component with no path to the input→output flow
+    UNINTENDED_CYCLE = (
+        "unintended_cycle"  # a cycle not gated by a bounded-loop checkpoint
+    )
+
+
+class DesignFinding(BaseModel):
+    """One structural problem with a concrete, agent-readable suggested fix."""
+
+    kind: FindingKind
+    node: str = Field(default="", description="The node id involved, if any")
+    variable: str = Field(default="", description="The data name involved, if any")
+    detail: str = Field(description="What is wrong, in plain language")
+    suggestion: str = Field(
+        default="", description="The concrete fix to apply (e.g. a near-miss rename)"
+    )
+
+
+class DesignReport(BaseModel):
+    """The deterministic diagnosis of a declared node board.
+
+    All findings are blocking. ``clean`` is the success predicate the refine loop
+    checks; ``summary()`` renders the compact text the repair agent reads back.
+    """
+
+    findings: list[DesignFinding] = Field(default_factory=list)
+
+    @property
+    def clean(self) -> bool:
+        """True when the board has no structural problems."""
+        return len(self.findings) == 0
+
+    def summary(self) -> str:
+        """A compact, line-per-finding text for the repair agent and for fail-loud messages."""
+        if not self.findings:
+            return "no findings — the design is clean"
+        lines: list[str] = []
+        for f in self.findings:
+            parts = [f"[{f.kind.value}]"]
+            if f.node:
+                parts.append(f"node {f.node}")
+            if f.variable:
+                parts.append(f"variable {f.variable!r}")
+            head = " ".join(parts)
+            line = f"{head}: {f.detail}"
+            if f.suggestion:
+                line += f"  — suggestion: {f.suggestion}"
+            lines.append(line)
+        return "\n".join(lines)
+
+
 # --- the board (internal boundary value) ----------------------------------------
 
 
@@ -258,6 +332,10 @@ class ForgeResult(BaseModel):
         description="design | render | build | audit — how far the run went",
     )
     rendered_files: list[str] = Field(default_factory=list)
+    design_report: DesignReport | None = Field(
+        default=None,
+        description="The deterministic structural diagnosis of the node board (clean after repair)",
+    )
     report: VerificationReport | None = Field(
         default=None, description="Cheap deterministic render-stage verdict"
     )
