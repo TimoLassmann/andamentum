@@ -29,7 +29,9 @@ def test_for_role_worker_carries_only_its_slice() -> None:
 
 
 def test_roles_are_listed() -> None:
-    assert {"worker", "orchestrator", "state", "agent", "entry", "reviewer"} <= set(roles())
+    assert {"worker", "orchestrator", "state", "agent", "entry", "reviewer"} <= set(
+        roles()
+    )
 
 
 def test_unknown_role_raises() -> None:

@@ -32,6 +32,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("skeleton", help="the runnable copy-paste skeleton")
     p_check = sub.add_parser("check", help="run the portable gates over a path")
     p_check.add_argument("path")
+    p_check.add_argument(
+        "--strict",
+        action="store_true",
+        help="also run the opt-in gates (the L7 swallowed-exception check)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -70,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         print(skeleton())
         return 0
     if args.cmd == "check":
-        violations = check_code(args.path)
+        violations = check_code(args.path, strict=args.strict)
         for v in violations:
             print(f"{v.file}:{v.line}: [{v.law or v.code}] {v.message}")
         if violations:
