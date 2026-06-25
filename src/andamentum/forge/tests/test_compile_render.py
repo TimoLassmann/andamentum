@@ -39,6 +39,85 @@ def test_dangling_read_fails_loud() -> None:
         compile_spec(plan)
 
 
+def test_duplicate_producer_fails_loud() -> None:
+    # Two nodes writing one signal would make the last write silently win — reject it.
+    plan = DesignPlan(
+        why=ForgeWhy(purpose="Do a thing.", boundary_in="x", boundary_out="y"),
+        nodes=[
+            NodeDraft(
+                id="n1",
+                area="core",
+                job="Step one.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["x"],
+            ),
+            NodeDraft(
+                id="n2",
+                area="core",
+                job="Step two.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["x"],
+            ),  # second writer of x
+        ],
+    )
+    with pytest.raises(ValueError, match="single-writer"):
+        compile_spec(plan)
+
+
+def test_orphan_output_fails_loud() -> None:
+    # A signal produced but read by nobody and not the system output is discarded work.
+    plan = DesignPlan(
+        why=ForgeWhy(purpose="Do a thing.", boundary_in="x", boundary_out="y"),
+        nodes=[
+            NodeDraft(
+                id="n1",
+                area="core",
+                job="Step one.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["alpha"],
+            ),  # alpha is never read and isn't the output
+            NodeDraft(
+                id="n2",
+                area="core",
+                job="Step two.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["beta"],
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match="orphan"):
+        compile_spec(plan)
+
+
+def test_judgment_over_text_is_promoted_to_head() -> None:
+    # "Summarize the text" reads prose and judges meaning → it must be a HEAD (LLM), not a
+    # deterministic spine body that would fake the summary with string slicing.
+    plan = DesignPlan(
+        why=ForgeWhy(
+            purpose="Summarize text.", boundary_in="text", boundary_out="summary"
+        ),
+        nodes=[
+            NodeDraft(
+                id="n1",
+                area="core",
+                job="Summarize the text.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["summary"],
+            ),
+        ],
+    )
+    spec = compile_spec(plan)
+    assert spec.nodes[0].kind.value == "head", (
+        "a summarize-over-text node must be promoted to head"
+    )
+    assert len(spec.agents) == 1
+
+
 def _plan() -> DesignPlan:
     return DesignPlan(
         why=ForgeWhy(
