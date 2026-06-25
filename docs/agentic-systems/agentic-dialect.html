@@ -3063,6 +3063,10 @@ on purpose so they are not mistaken for guaranteed.</p>
 <td><strong>type-check</strong> — ruff <code>ANN401</code> + pyright</td>
 </tr>
 <tr>
+<td>L7 no swallowed exception (broad <code>except</code> that doesn't re-raise)</td>
+<td><strong>lint (opt-in)</strong> — AST gate via <code>check --strict</code></td>
+</tr>
+<tr>
 <td><code>from __future__ import annotations</code></td>
 <td><strong>lint</strong> — ruff <code>I002</code> required-import</td>
 </tr>
@@ -3081,7 +3085,9 @@ on purpose so they are not mistaken for guaranteed.</p>
 for L2, two small AST tests (no engine import in worker files; no model client built in a node
 body), pyright blocking on <code>src/</code>, and the topology test generalized into a meta-test that
 discovers every graph and asserts one exists. The review-only tiers are review-only on purpose.
-<code>andamentum-agentic-dialect check &lt;path&gt;</code> runs the portable subset of these gates.</p>
+<code>andamentum-agentic-dialect check &lt;path&gt;</code> runs the portable subset of these gates; <code>--strict</code>
+adds the opt-in swallowed-exception gate (off by default, so adopting it is a deliberate step
+rather than a surprise for codebases already calling the checker).</p>
 </blockquote>
 <hr />
 <h2 id="substrate-which-engine-and-the-migration">Substrate: which engine, and the migration</h2>
