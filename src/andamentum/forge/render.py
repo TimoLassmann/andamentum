@@ -141,6 +141,11 @@ def _ctx(state_name: str, deps_name: str) -> str:
     return f"GraphRunContext[{state_name}, {deps_name}]"
 
 
+def _humanize(field: str) -> str:
+    """A snake_case state-field name as a readable label, e.g. 'main_ideas' → 'Main ideas'."""
+    return field.replace("_", " ").strip().capitalize()
+
+
 def _agent_by_name(spec: SystemSpec, name: str) -> AgentSpec:
     return next(a for a in spec.agents if a.name == name)
 
@@ -360,15 +365,19 @@ def _nodes_py(
             _agent_reads[_n.agent] = list(_n.reads)
 
     def _user_prompt_body(agent_name: str) -> str:
+        # Assemble a readable, labelled user message from the head's declared inputs — one
+        # "Label:\n<value>" block per read, blank-line separated. NOT a JSON dump: the model
+        # reasons better over framed prose, and the node's job lives in its system prompt.
         reads = _agent_reads.get(agent_name, [])
-        if reads:
-            include_set = "{" + ", ".join(repr(r) for r in reads) + "}"
-            return f"    return ctx.state.model_dump_json(include={include_set})"
-        return "    return ctx.state.model_dump_json()"
+        if not reads:
+            # A head with no declared inputs: its system prompt (the node's job) drives it.
+            return '    return ""'
+        pieces = ", ".join(f'f"{_humanize(r)}:\\n{{ctx.state.{r}}}"' for r in reads)
+        return f'    return "\\n\\n".join([{pieces}])'
 
     user_prompts = "\n\n".join(
         f"def _user_prompt_{a.name}(ctx: {_ctx(state_name, deps_name)}) -> str:\n"
-        f"    # forge: build the {a.name} user prompt from ctx.state.\n"
+        f"    # The {a.name} head's inputs, labelled, as its user message (refine the wording freely).\n"
         f"{_user_prompt_body(a.name)}"
         for a in spec.agents
     )
