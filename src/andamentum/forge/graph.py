@@ -34,6 +34,7 @@ from .schemas import (
     AuditReport,
     BuildReport,
     DesignPlan,
+    DesignReport,
     ForgeResult,
     ForgeWhy,
     VerificationReport,
@@ -79,6 +80,7 @@ class ForgeState:
     why: ForgeWhy | None = None
     areas: list[str] = field(default_factory=list)
     plan: DesignPlan | None = None
+    design_report: DesignReport | None = None
     spec: SystemSpec | None = None
     rendered_files: list[str] = field(default_factory=list)
     report: VerificationReport | None = None
@@ -129,7 +131,7 @@ class Decompose(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
     async def run(self, ctx: Ctx) -> Compile:
         why = ctx.state.why
         assert why is not None
-        plan, notes = await decompose(
+        plan, design_report, notes = await decompose(
             why,
             ctx.state.areas,
             sink=ctx.deps.sink,
@@ -137,6 +139,7 @@ class Decompose(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
             max_nodes=ctx.deps.max_nodes,
         )
         ctx.state.plan = plan
+        ctx.state.design_report = design_report
         ctx.state.notes.extend(notes)
         return Compile()
 
@@ -234,6 +237,7 @@ class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
                 spec=spec,
                 stage_reached=stage,
                 rendered_files=ctx.state.rendered_files,
+                design_report=ctx.state.design_report,
                 report=ctx.state.report,
                 build=ctx.state.build,
                 audit=ctx.state.audit,

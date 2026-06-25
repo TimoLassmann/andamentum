@@ -160,8 +160,9 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
 
     # Canonicalise data names so casing/spacing variants of one datum unify (a lossless
     # normalisation, not a fallback): 'Main ideas' and 'main_ideas' both become the field
-    # 'main_ideas'. The design stage already selects reads from a closed registry, so this
-    # is idempotent for a forge-designed plan — it only matters for a hand-authored one.
+    # 'main_ideas'. The design stage already canonicalises and diagnose→repair makes the
+    # board coherent, so this is idempotent for a forge-designed plan — it only matters for
+    # a hand-authored one.
     for c in plan.nodes:
         c.consumes = [_canon_datum(d) for d in c.consumes]
         c.produces = [_canon_datum(d) for d in c.produces]
