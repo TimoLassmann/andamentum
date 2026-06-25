@@ -2,8 +2,9 @@
 
 Walks a filled node body and rejects: a ``ctx.state.<field>`` the node never
 declared, a ``return <Node>()`` that is not a declared successor, dynamic state
-access, forbidden imports (process control, raw files/sockets, clock/random), and
-code-eval builtins. A network client is allowed only when the node declared
+access, forbidden imports (process control, raw files/sockets, clock/random),
+code-eval builtins, and a broad ``except`` that swallows errors (a silent fallback —
+``check_fail_loud``). A network client is allowed only when the node declared
 ``network=True`` (and therefore runs behind the container sandbox).
 
 Runs after ``py_compile`` and before any execution, so most hallucinations and all
@@ -132,6 +133,54 @@ def check_purity(
                 f"calls {n.func.id}(), which is forbidden in a node body (unsafe or non-deterministic)."
             )
     return out
+
+
+def _is_broad_except(handler: ast.ExceptHandler) -> bool:
+    """A bare ``except:`` or one catching ``Exception`` / ``BaseException`` (incl. tuples)."""
+    t = handler.type
+    if t is None:
+        return True  # bare except:
+    names = t.elts if isinstance(t, ast.Tuple) else [t]
+    for name in names:
+        ident = name.id if isinstance(name, ast.Name) else getattr(name, "attr", "")
+        if ident in ("Exception", "BaseException"):
+            return True
+    return False
+
+
+def _reraises(handler: ast.ExceptHandler) -> bool:
+    """True if the handler re-raises anywhere (re-raise or translate) — i.e. does not swallow."""
+    return any(
+        isinstance(n, ast.Raise) for stmt in handler.body for n in ast.walk(stmt)
+    )
+
+
+def check_fail_loud(file: Path, class_name: str, method_name: str) -> list[str]:
+    """Reject a node body that SWALLOWS errors — a silent fallback.
+
+    A broad ``except`` (bare, or catching ``Exception`` / ``BaseException``) that does not
+    re-raise hides failures and lets the run continue on wrong/missing data. A narrow
+    ``except <SpecificError>`` handling a genuinely expected exception is allowed; so is a
+    broad ``except`` that re-raises (translating the error). This turns the dialect's "no
+    bare catch that swallows" rule (L7) from a prompt suggestion into a build-time
+    guarantee — the model proposes the body, this gate disposes of a swallowing one.
+    """
+    method = _find_method(ast.parse(file.read_text()), class_name, method_name)
+    if method is None:
+        return []
+    violations: list[str] = []
+    for handler in ast.walk(method):
+        if (
+            isinstance(handler, ast.ExceptHandler)
+            and _is_broad_except(handler)
+            and not _reraises(handler)
+        ):
+            violations.append(
+                "swallows errors: a broad `except` that does not re-raise hides failures (a silent "
+                "fallback). Catch a specific expected exception, or let it propagate — fail loud, "
+                "never default or continue silently on error."
+            )
+    return violations
 
 
 def check_node_body(

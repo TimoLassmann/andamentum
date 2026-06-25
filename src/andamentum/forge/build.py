@@ -22,7 +22,7 @@ import py_compile
 from pathlib import Path
 
 from .agents import DRAFT, REPAIR, AgentSink
-from .astcheck import check_node_body, check_purity
+from .astcheck import check_fail_loud, check_node_body, check_purity
 from .contract import Hole, NodeContract, node_contract
 from .extract import discover_holes
 from .patch import apply_body
@@ -184,6 +184,7 @@ async def _build_one(
         violations += check_purity(
             file, hole.node, hole.method, allow_network=node.network
         )
+        violations += check_fail_loud(file, hole.node, hole.method)
         if violations:
             last_error = "; ".join(violations)
             continue
