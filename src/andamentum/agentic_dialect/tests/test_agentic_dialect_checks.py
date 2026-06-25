@@ -29,7 +29,9 @@ def test_engine_import_in_graph_is_fine(tmp_path: Path) -> None:
 
 
 def test_untyped_dict_any_flagged(tmp_path: Path) -> None:
-    f = _write(tmp_path, "schemas.py", "from typing import Any\nx: dict[str, Any] = {}\n")
+    f = _write(
+        tmp_path, "schemas.py", "from typing import Any\nx: dict[str, Any] = {}\n"
+    )
     assert "untyped-dict-any" in _codes(check_code(f))
 
 
@@ -86,6 +88,41 @@ def test_literal_loop_bound_flagged(tmp_path: Path) -> None:
 def test_missing_future_annotations_flagged(tmp_path: Path) -> None:
     f = _write(tmp_path, "graph.py", "class N:\n    pass\n")
     assert "missing-future-annotations" in _codes(check_code(f))
+
+
+_SWALLOW_SRC = (
+    "from __future__ import annotations\n"
+    "def f(x):\n"
+    "    try:\n"
+    "        return work(x)\n"
+    "    except Exception:\n"
+    "        return None\n"
+)
+
+
+def test_swallowed_exception_flagged_only_under_strict(tmp_path: Path) -> None:
+    f = _write(tmp_path, "worker.py", _SWALLOW_SRC)
+    # Opt-in: off by default (must not surprise codebases already calling check_code)…
+    assert "swallowed-exception" not in _codes(check_code(f))
+    # …on under strict.
+    assert "swallowed-exception" in _codes(check_code(f, strict=True))
+
+
+def test_reraising_and_narrow_except_are_clean_under_strict(tmp_path: Path) -> None:
+    reraise = _write(
+        tmp_path,
+        "reraise.py",
+        "from __future__ import annotations\ndef f(x):\n    try:\n        return work(x)\n"
+        "    except Exception as e:\n        raise RuntimeError('failed') from e\n",
+    )
+    narrow = _write(
+        tmp_path,
+        "narrow.py",
+        "from __future__ import annotations\ndef f(x):\n    try:\n        return int(x)\n"
+        "    except ValueError:\n        return 0\n",
+    )
+    assert "swallowed-exception" not in _codes(check_code(reraise, strict=True))
+    assert "swallowed-exception" not in _codes(check_code(narrow, strict=True))
 
 
 def test_clean_worker_passes(tmp_path: Path) -> None:

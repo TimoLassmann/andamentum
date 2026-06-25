@@ -32,12 +32,17 @@ class Violation(BaseModel):
     message: str
 
 
-def check_code(path: str | Path) -> list[Violation]:
+def check_code(path: str | Path, *, strict: bool = False) -> list[Violation]:
     """Run the portable gates over a file or directory tree.
 
     Returns violations sorted by ``(file, line)``. An empty list means the gates
     pass — it does not prove conformance, since the review-only laws are
     unchecked.
+
+    ``strict`` adds the opt-in gates — currently the L7 swallowed-exception check (a
+    broad ``except`` that does not re-raise). It is off by default so adopting a new
+    gate is a deliberate step, not a surprise across every codebase already calling
+    ``check_code``; turn it on per-invocation (``--strict``) when ready to enforce it.
     """
     root = Path(path)
     files = [root] if root.is_file() else sorted(root.rglob("*.py"))
@@ -45,7 +50,7 @@ def check_code(path: str | Path) -> list[Violation]:
     for f in files:
         if _skip(f):
             continue
-        out.extend(_check_file(f))
+        out.extend(_check_file(f, strict=strict))
     out.sort(key=lambda v: (v.file, v.line))
     return out
 
@@ -60,7 +65,7 @@ def _is_orchestration(f: Path) -> bool:
     return f.name in _ORCHESTRATION_FILES
 
 
-def _check_file(f: Path) -> list[Violation]:
+def _check_file(f: Path, *, strict: bool = False) -> list[Violation]:
     src = f.read_text(encoding="utf-8")
     try:
         tree = ast.parse(src)
@@ -81,6 +86,8 @@ def _check_file(f: Path) -> list[Violation]:
         out.extend(_check_run_bodies(f, tree))
     else:
         out.extend(_check_no_engine_import(f, tree))
+    if strict:
+        out.extend(_check_no_swallowed_exception(f, tree))
     return out
 
 
@@ -176,9 +183,60 @@ def _check_future_annotations(f: Path, tree: ast.Module | ast.AST) -> list[Viola
     ]
 
 
+def _is_broad_except(handler: ast.ExceptHandler) -> bool:
+    """A bare ``except:`` or one catching ``Exception`` / ``BaseException`` (incl. tuples)."""
+    t = handler.type
+    if t is None:
+        return True  # bare except:
+    names = t.elts if isinstance(t, ast.Tuple) else [t]
+    for name in names:
+        ident = name.id if isinstance(name, ast.Name) else getattr(name, "attr", "")
+        if ident in {"Exception", "BaseException"}:
+            return True
+    return False
+
+
+def _handler_reraises(handler: ast.ExceptHandler) -> bool:
+    """True if the handler re-raises anywhere (re-raise or translate) — i.e. does not swallow."""
+    return any(
+        isinstance(n, ast.Raise) for stmt in handler.body for n in ast.walk(stmt)
+    )
+
+
+def _check_no_swallowed_exception(f: Path, tree: ast.AST) -> list[Violation]:
+    """L7 (fail loud): a broad ``except`` that does not re-raise swallows the error.
+
+    Opt-in (``strict``) because it gates more than the default set and is being adopted
+    deliberately. A narrow ``except <SpecificError>`` handling a genuinely expected error
+    is allowed, as is a broad ``except`` that re-raises (translating the failure).
+    Conservative by construction: it fires only on the precise swallow pattern.
+    """
+    out: list[Violation] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ExceptHandler)
+            and _is_broad_except(node)
+            and not _handler_reraises(node)
+        ):
+            out.append(
+                Violation(
+                    file=str(f),
+                    line=node.lineno,
+                    law="L7",
+                    code="swallowed-exception",
+                    message="broad `except` that does not re-raise swallows the error — catch a "
+                    "specific expected exception, or let it propagate (fail loud, L7)",
+                )
+            )
+    return out
+
+
 def _run_methods(tree: ast.AST):
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "run":
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "run"
+        ):
             yield node
 
 
@@ -231,7 +289,8 @@ def _check_run_bodies(f: Path, tree: ast.AST) -> list[Violation]:
                 if _dotted(node.iter.func) == "range":
                     args = node.iter.args
                     if args and all(
-                        isinstance(a, ast.Constant) and isinstance(a.value, int) for a in args
+                        isinstance(a, ast.Constant) and isinstance(a.value, int)
+                        for a in args
                     ):
                         out.append(
                             Violation(

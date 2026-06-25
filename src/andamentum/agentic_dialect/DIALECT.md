@@ -318,6 +318,7 @@ on purpose so they are not mistaken for guaranteed.
 | L4 deterministic routing (no clock/random in `run()`) | **lint** ban + review |
 | L5 no `while True`, no bare-literal bounds | **lint**; "bound traces to Deps" is review-only |
 | L7 no untyped `dict[str, Any]` | **type-check** — ruff `ANN401` + pyright |
+| L7 no swallowed exception (broad `except` that doesn't re-raise) | **lint (opt-in)** — AST gate via `check --strict` |
 | `from __future__ import annotations` | **lint** — ruff `I002` required-import |
 | dataclass / Pydantic forms | **type-check** — pyright (partial) |
 | L1 placement, L3 concurrent-write, L6, L8, naming, banners | **review-only** |
@@ -326,7 +327,9 @@ on purpose so they are not mistaken for guaranteed.
 > for L2, two small AST tests (no engine import in worker files; no model client built in a node
 > body), pyright blocking on `src/`, and the topology test generalized into a meta-test that
 > discovers every graph and asserts one exists. The review-only tiers are review-only on purpose.
-> `andamentum-agentic-dialect check <path>` runs the portable subset of these gates.
+> `andamentum-agentic-dialect check <path>` runs the portable subset of these gates; `--strict`
+> adds the opt-in swallowed-exception gate (off by default, so adopting it is a deliberate step
+> rather than a surprise for codebases already calling the checker).
 
 ---
 
