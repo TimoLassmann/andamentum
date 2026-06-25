@@ -165,7 +165,11 @@ DRAFT_PROMPT = (
     "the ctx.state fields listed in the context; referencing any other field is an error. Return "
     "one of the listed successors (`return NodeName()`) or `return End(<str>)`. Keep any PREAMBLE "
     "lines first, unchanged. Write a REAL implementation — never a hardcoded value, a bare pass, "
-    "or `raise NotImplementedError`. No clock, randomness, process control, raw files, or sockets."
+    "or `raise NotImplementedError`. No clock, randomness, process control, raw files, or sockets. "
+    "FAIL LOUD — never a silent fallback: do NOT wrap logic in a broad `except` that swallows the "
+    "error, do NOT default or `continue` when state is missing or wrong, do NOT paper over a value "
+    "with `or <default>`. If something required is absent or unexpected, let it raise. A node that "
+    "runs but produces the wrong thing is worse than one that stops."
 )
 
 REPAIR_PROMPT = (
@@ -185,7 +189,10 @@ REQUIREMENTS_PROMPT = (
 CRITIC_PROMPT = (
     "You are an adversarial reviewer of a built agentic system. Shown its node bodies, find what is "
     "missing, wrong, or faked — a hardcoded value standing in for real logic, a node that drops its "
-    "input, a TODO left behind. List concrete issues; an empty list means you found none."
+    "input, a TODO left behind. Also flag SILENT FALLBACKS that hide failures: a default value "
+    "substituted when state is missing, an `or <default>` / `.get(key, default)` papering over an "
+    "absent value, or any error quietly absorbed so the run continues on wrong data. List concrete "
+    "issues; an empty list means you found none."
 )
 
 DRAFT = AgentDefinition(name="build_draft", prompt=DRAFT_PROMPT, output_model=PieceOut)
