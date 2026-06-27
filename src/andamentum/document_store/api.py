@@ -35,6 +35,7 @@ from .database import (
     store_doc_embedding,
     update_document_content,
     update_document_metadata,
+    update_document_title,
 )
 from .lifecycle import get_db_path, init_database_metadata, is_ephemeral_name
 from .models import (
@@ -347,23 +348,31 @@ class DocumentStore:
         new_content: Optional[str] = None,
         metadata: Optional[dict] = None,
         merge_metadata: bool = True,
+        new_title: Optional[str] = None,
     ) -> UpdateResult:
-        """Update document content and/or metadata.
+        """Update document content, title, and/or metadata.
 
         When content is updated, FTS5 trigger fires automatically.
-        Caller should delete_chunks() + re-store if content changed and
-        chunk-level search is needed.
+        Caller should delete_chunks() + re-store (or call the public
+        ``reembed_document``) if content changed and chunk-level / semantic
+        search needs to reflect the new text — content updates here are cheap
+        (FTS only) and deliberately leave embeddings untouched.
+
+        Title is a first-class column, so retitling has its own cheap path
+        (no reindex). This makes documents editable in place — the store's
+        write side was previously append-then-metadata-only.
 
         Args:
             doc_id: Document identifier
             new_content: New document content (optional)
             metadata: Metadata dict to update (optional)
             merge_metadata: If True, merge with existing. If False, replace.
+            new_title: New title (optional)
 
         Returns:
             UpdateResult with operation details
         """
-        if new_content is None and metadata is None:
+        if new_content is None and metadata is None and new_title is None:
             return UpdateResult(
                 success=False,
                 doc_id=doc_id,
@@ -371,7 +380,7 @@ class DocumentStore:
                 new_hash="",
                 reindexed=False,
                 metadata_updated=False,
-                message="Nothing to update: provide new_content or metadata",
+                message="Nothing to update: provide new_content, new_title, or metadata",
             )
 
         doc_metadata = await get_document_metadata(str(self.db_path), doc_id)
@@ -394,6 +403,9 @@ class DocumentStore:
             previous_hash, new_hash = await update_document_content(
                 str(self.db_path), doc_id, new_content
             )
+
+        if new_title is not None:
+            await update_document_title(str(self.db_path), doc_id, new_title)
 
         if metadata is not None:
             await update_document_metadata(
