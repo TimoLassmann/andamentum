@@ -413,6 +413,47 @@ async def repair(
     return await _repair_incomplete(store, model, embedding_model)
 
 
+async def reembed_document(
+    database: str,
+    doc_id: str,
+    *,
+    model: str,
+    embedding_model: str,
+) -> bool:
+    """Re-run phase 2 (chunk + embed + chunk-metadata) for a single document.
+
+    Use this after a document's content has been edited in place (e.g. via
+    ``DocumentStore.update(new_content=...)``, which is cheap and only refreshes
+    FTS). It rebuilds that one document's chunks and embeddings so semantic
+    search reflects the current text. This is the targeted, single-document
+    complement to ``repair()`` (which scans the whole database for incomplete
+    ingestions). Idempotent — deletes existing chunks before re-storing.
+
+    Args:
+        database: Database name
+        doc_id: Document UUID to re-index
+        model: LLM model for chunk metadata extraction
+        embedding_model: Embedding model
+
+    Returns:
+        True if the document was found and re-indexed, False if not found.
+
+    Raises:
+        RuntimeError: If embedding service or LLM is unavailable.
+    """
+    store = await _get_store(database)
+    await _preflight(database, model, embedding_model)
+
+    doc = await store.read(doc_id)
+    if doc is None:
+        return False
+
+    await _run_phase2(
+        store, doc_id, doc.content, doc.metadata.title, model, embedding_model
+    )
+    return True
+
+
 async def _repair_incomplete(
     store: DocumentStore,
     model: str,

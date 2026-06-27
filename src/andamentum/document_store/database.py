@@ -290,6 +290,31 @@ async def update_document_content(
     return previous_hash, new_hash
 
 
+async def update_document_title(db_path: str, doc_id: str, title: str) -> bool:
+    """Update a document's title (the ``dc_title`` column).
+
+    Title is a first-class column, not a metadata field, so changing it needs
+    its own update path. Cheap — touches only the title and ``updated_date``;
+    content, chunks, and embeddings are untouched.
+
+    Args:
+        db_path: Path to SQLite database
+        doc_id: UUID identifier
+        title: New title
+
+    Returns:
+        True if a row was updated, False if the document was not found.
+    """
+    updated_at = datetime.now().isoformat()
+    async with get_async_connection(db_path) as db:
+        cursor = await db.execute(
+            "UPDATE documents SET dc_title = ?, updated_date = ? WHERE doc_uuid = ?",
+            (title, updated_at, doc_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def mark_document_indexed(db_path: str, doc_id: str) -> None:
     """Mark document as indexed with current timestamp.
 
