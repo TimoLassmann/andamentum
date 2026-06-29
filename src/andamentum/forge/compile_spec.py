@@ -193,6 +193,22 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 prose_vars |= set(c.produces)
                 promoted = True
 
+    # §7 round-trip detector (entity classification, deterministic — never keywords). A datum
+    # a single node both READS and WRITES (read-modify-write) is durable state: it carries a
+    # value in and a changed value out, which only makes sense if that value persisted from an
+    # earlier run. It MUST be declared an entity; a read-modify-write *signal* would be silently
+    # forgotten when the run ends (faked persistence). Derive entity-ness from the data-flow
+    # shape and fail loud on a mismatch — entity-ness is structural, not the model's say-so.
+    for c in plan.nodes:
+        rmw = sorted(set(c.consumes) & set(c.produces))
+        if rmw and c.produces_kind is not DataKind.ENTITY:
+            raise ValueError(
+                f"node {c.job or c.id!r} reads and rewrites {rmw} in one step — that is durable "
+                "state (a value loaded, changed, saved). Declare it an entity (produces_kind="
+                "entity) so it persists across runs, or reshape the brief; a read-modify-write "
+                "signal would be silently forgotten when the run ends."
+            )
+
     # Fail loud on a dangling read. Every consumed signal must be produced by some node or
     # be the graph input — otherwise it would resolve to a State field nothing ever writes,
     # i.e. a silent None at runtime. We do NOT drop it (that hides an incomplete design and
@@ -298,11 +314,14 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
     def backbone_next(card: NodeDraft) -> list[str]:
         return [node_names[next_of[card.id].id]] if card.id in next_of else [END]
 
-    # Resolve conceptual data names to concrete State field names ONCE.
+    # Resolve conceptual data names to concrete State field names ONCE. An entity datum
+    # gets a State field too — its working copy during the run (dialect L1: the run entry
+    # seeds it from the store at the start and saves it back at the end). Only the graph
+    # input is not a State field.
     field_of: dict[str, str] = {}
     origin: dict[str, str] = {}
     for d in sorted({d for c in plan.nodes for d in (c.consumes + c.produces)}):
-        if d in INPUT_TOKENS or d in entity_set:
+        if d in INPUT_TOKENS:
             continue
         fname = _snake(d, "value", max_words=0)
         if fname in origin and origin[fname] != d:
@@ -389,6 +408,7 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
         entities.append(
             EntitySpec(
                 record_type=_snake(ename, "record"),
+                state_field=field_of[ename],
                 model=ModelSpec(
                     name=_unique(_pascal(ename, "Entity"), used_models),
                     fields=[

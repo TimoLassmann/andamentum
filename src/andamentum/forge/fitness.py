@@ -20,10 +20,11 @@ from __future__ import annotations
 from .agents import FITNESS, AgentSink
 from .schemas import Fitness, ForgeWhy
 
-# The rungs forge can build TODAY. Phase 1 ships rung 1 only. The ONE place rung-2 flips
-# from refuse to proceed is here: when the durable store lands (see
-# docs/plans/forge-functions/C-STORE-PRD.md §10 step 5), add "stateful_function".
-BUILDABLE_RUNGS: frozenset[str] = frozenset({"function"})
+# The rungs forge can build: a stateless function (rung 1), and — now that the durable
+# store is provisioned and wired (C-STORE-PRD.md §10) — a stateful function (rung 2: the
+# run entry loads its record at the start and saves it at the end). Apps / agents /
+# services (an external driver owns the loop) stay out of dialect (L9) and are refused.
+BUILDABLE_RUNGS: frozenset[str] = frozenset({"function", "stateful_function"})
 
 
 async def assess_fitness(why: ForgeWhy, *, sink: AgentSink) -> Fitness:
@@ -47,19 +48,12 @@ def is_buildable(fitness: Fitness) -> bool:
 
 def refusal_message(fitness: Fitness) -> str:
     """The fail-loud message for a non-buildable brief — names the reason and hands back
-    the concrete reshape so the user can resubmit (fail loud, never fake)."""
-    if fitness.rung == "stateful_function":
-        return (
-            "forge cannot yet build a stateful function: cross-run memory (a durable store) "
-            "is not implemented (see docs/plans/forge-functions/C-STORE-PRD.md). This brief "
-            "needs its output to depend on earlier runs.\n"
-            f"Why: {fitness.reason}\n"
-            f"Reshape to a stateless function and resubmit: {fitness.suggested_reshape}"
-        )
+    the concrete reshape so the user can resubmit (fail loud, never fake). Reached only for
+    an app / agent / service (a stateful function is buildable; see BUILDABLE_RUNGS)."""
     return (
-        f"forge builds functions (one input, one output, one run); this brief is "
-        f"a(n) {fitness.rung}, which hands the control loop to something outside the system "
-        "and is out of forge's scope.\n"
+        f"forge builds functions (one input, one output, one run — stateless, or stateful "
+        f"with a durable store); this brief is a(n) {fitness.rung}, which hands the control "
+        "loop to something outside the system and is out of forge's scope.\n"
         f"Why: {fitness.reason}\n"
         f"Reshape and resubmit: {fitness.suggested_reshape}"
     )

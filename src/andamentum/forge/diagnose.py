@@ -299,12 +299,24 @@ def _cycles(nodes: list[NodeDraft], graph: DataGraph) -> list[DesignFinding]:
     for producer, consumer in graph.edges:
         succ[producer].append(consumer)
     is_checkpoint = {node.id: node.control is NodeControl.CHECKPOINT for node in nodes}
+    # A node that read-modify-writes an ENTITY is a legitimate round-trip, not a loop: the
+    # durable value is loaded at the start of the run and saved at the end (dialect L1), so
+    # the same step reading and rewriting it is read-modify-write, not data flowing forever.
+    # Its producer→consumer self-edge would otherwise read as a cycle — exempt it.
+    rmw_entity = {
+        node.id
+        for node in nodes
+        if node.produces_kind is DataKind.ENTITY
+        and set(node.consumes) & set(node.produces)
+    }
 
     findings: list[DesignFinding] = []
     reported: set[frozenset[str]] = set()
     for cycle in _find_cycles(nodes, succ):
         if any(is_checkpoint.get(member, False) for member in cycle):
             continue  # a checkpoint back-edge is a legitimate bounded loop
+        if set(cycle) <= rmw_entity:
+            continue  # an entity read-modify-write round-trip, not an unintended loop
         key = frozenset(cycle)
         if key in reported:
             continue

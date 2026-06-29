@@ -193,10 +193,22 @@ heads' user-prompt builders are reasonable defaults meant to be refined. The
 `out_text`-style fallbacks have been removed; if you add generated-code templates, hold them
 to the same fail-loud bar as hand-written code.
 
-**Rung-2 status:** the cross-run-memory `Store` is now *provisioned* — render wires it onto
-every generated `Deps` (default in-memory), threads a `--store` path through the run entry +
-CLI, and the deps gate admits `ctx.deps.store`. What is **not** yet done: the design
-front-end reliably classifying which data is a durable entity (read-at-entry / written-at-exit
-under one identity) and authoring entity nodes to load/save through the store, and the front
-fitness gate flipping `stateful_function` into `BUILDABLE_RUNGS`. Until then the gate refuses
-rung-2 briefs with a reshape (see `docs/plans/forge-functions/C-STORE-PRD.md` §7, §10).
+**Rung-2 status (single-record).** A stateful function — a brief whose output depends on
+earlier runs — now builds and actually remembers:
+- **Classification (deterministic, §7):** a datum a single node read-modify-writes (consumes
+  ∩ produces) is durable — a value loaded, changed, saved. `compile_spec` requires it be
+  declared an entity (`produces_kind=entity`) or fails loud (a read-modify-write *signal*
+  would be forgotten); `diagnose` exempts the entity round-trip's self-edge from the cycle
+  check (a round-trip is read-modify-write, not an unintended loop).
+- **Wiring (dialect L1 / C §4 formula `save(store, f(text, load(store)))`):** the entity
+  becomes a State field; the run entry loads the durable record into it at the start and saves
+  it back at the end (single-record, constant key `"_"`), keeping every graph node pure. The
+  generated smoke seeds entity fields to `""` (the first-run default).
+- **Gate (Phase 5):** `BUILDABLE_RUNGS` now includes `stateful_function`; the fitness gate
+  admits rung-2 and still refuses apps/agents/services. Proven by `tests/test_stateful.py` —
+  a generated package called twice against one db file accumulates; an in-memory run forgets.
+
+Not yet done: **multi-record by id** (uuid key — "update record #id", "append a note and
+count many notes"); the design front-end producing rung-2 boards reliably from a live model
+(needs calibration — single-node read-modify-write is the supported shape). See
+`docs/plans/forge-functions/C-STORE-PRD.md` §6 (the key), §8 (the wall).

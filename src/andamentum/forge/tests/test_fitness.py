@@ -103,21 +103,20 @@ def _fit(rung: str) -> Fitness:
     )
 
 
-def test_only_function_is_buildable_in_phase_1() -> None:
+def test_functions_build_apps_agents_services_refused() -> None:
     assert is_buildable(_fit("function")) is True
-    assert is_buildable(_fit("stateful_function")) is False  # flips in Phase 2
+    assert is_buildable(_fit("stateful_function")) is True  # rung-2 store now wired
     assert is_buildable(_fit("app")) is False
     assert is_buildable(_fit("agent")) is False
     assert is_buildable(_fit("service")) is False
 
 
 def test_refusal_message_carries_reason_and_reshape() -> None:
-    for rung in ("stateful_function", "app", "agent", "service"):
+    # Only an app / agent / service is refused now (a stateful function is buildable).
+    for rung in ("app", "agent", "service"):
         msg = refusal_message(_fit(rung))
-        assert "do the single function instead" in msg
-        assert "r" in msg
-    # stateful_function points at the store as the not-yet-buildable cause
-    assert "store" in refusal_message(_fit("stateful_function")).lower()
+        assert "do the single function instead" in msg  # the concrete reshape
+        assert rung in msg
 
 
 # --- the worker, directly --------------------------------------------------------
@@ -144,9 +143,16 @@ async def test_assess_fitness_returns_the_verdict() -> None:
 # --- the gate fails loud on a non-function, via run_forge -----------------------
 
 
-async def test_stateful_function_is_refused_in_phase_1() -> None:
-    sink = _FitnessScenarioSink(rung="stateful_function", reshape="reshape::X")
+async def test_stateful_function_now_passes_the_gate() -> None:
+    # rung-2 is buildable now: the gate lets it through to design (the store is wired).
+    sink = _FitnessScenarioSink(rung="stateful_function", reshape="n/a")
+    result = await run_forge("remember and update a value", model="test", sink=sink)
+    assert result.fitness is not None and result.fitness.rung == "stateful_function"
+    assert result.design_only
+
+
+async def test_app_is_still_refused_with_reshape() -> None:
+    sink = _FitnessScenarioSink(rung="app", reshape="reshape::APP")
     with pytest.raises(ValueError) as exc:
-        await run_forge("append a note and return the count", model="test", sink=sink)
-    assert "reshape::X" in str(exc.value)
-    assert "stateful function" in str(exc.value).lower()
+        await run_forge("manage my whole reading list", model="test", sink=sink)
+    assert "reshape::APP" in str(exc.value)
