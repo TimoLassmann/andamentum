@@ -159,8 +159,9 @@ spec · `render.py` deterministic spec → package · `build.py` per-node author
 (+ the component-manager grounding) ·
 `astcheck.py` / `patch.py` / `extract.py` the build gates + body editing · `verify.py`
 render-stage checks · `audit.py` whole-system audit · `sandbox.py` + `Containerfile` the
-execution seam · `runtime.py` the engine-free helpers (`run_head` / `loop_allowed`) a
-**generated** package imports · `agents.py` the design + authoring heads (as data) ·
+execution seam · `runtime.py` the engine-free spine a **generated** package imports
+(`run_head` / `loop_allowed` / `Store` — the rung-2 cross-run-memory Port: stdlib-sqlite
+keyed CRUD, `Store(None)` in-memory, `Store(path)` durable) · `agents.py` the design + authoring heads (as data) ·
 `reporter.py` the progress Port (`ForgeReporter` / `NoopReporter` default / `RichReporter`
 live dashboard) · `cli.py` the `andamentum-forge` adapter.
 
@@ -191,3 +192,11 @@ matched by name (string-similarity for near-misses), not by declared types; the 
 heads' user-prompt builders are reasonable defaults meant to be refined. The
 `out_text`-style fallbacks have been removed; if you add generated-code templates, hold them
 to the same fail-loud bar as hand-written code.
+
+**Rung-2 status:** the cross-run-memory `Store` is now *provisioned* — render wires it onto
+every generated `Deps` (default in-memory), threads a `--store` path through the run entry +
+CLI, and the deps gate admits `ctx.deps.store`. What is **not** yet done: the design
+front-end reliably classifying which data is a durable entity (read-at-entry / written-at-exit
+under one identity) and authoring entity nodes to load/save through the store, and the front
+fitness gate flipping `stateful_function` into `BUILDABLE_RUNGS`. Until then the gate refuses
+rung-2 briefs with a reshape (see `docs/plans/forge-functions/C-STORE-PRD.md` §7, §10).
