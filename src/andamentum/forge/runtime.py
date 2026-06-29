@@ -1,6 +1,6 @@
 """The fixed spine that generated systems import — written once, engine-free.
 
-Two helpers, deliberately tiny:
+Three pieces, deliberately tiny:
 
 - ``run_head`` — the single LLM seam. A generated head node calls this; it routes
   through ``andamentum.core.run_agent_with_fallback`` (tool-calling output with a
@@ -9,15 +9,24 @@ Two helpers, deliberately tiny:
 - ``loop_allowed`` — the termination guard. A checkpoint node calls this before it
   loops back; the bound is a counter in State checked against a Deps cap (recipe I6 /
   dialect L5). The model never decides when to stop.
+- ``Store`` — the durable memory Port for a **stateful function** (dialect L1: cross-run
+  memory lives in a Port-backed store, loaded at start, saved at end). A keyed
+  ``(collection, key, value-as-JSON)`` CRUD store over stdlib ``sqlite3``; ``path=None``
+  is an in-memory store (rung-1 behaviour / the offline test mode), ``path="..."`` a
+  durable file (rung-2). Five operations, closed surface — no query/where (a sixth
+  operation is a signal the brief left rung 2; see ``docs/plans/forge-functions/``).
 
 Dialect note: this module imports **no graph engine** (``pydantic_graph``). It is a
 leaf worker library — it may be imported by a generated package's ``nodes.py`` (which
-*is* engine-aware) without dragging the engine into a worker file. That is what lets a
-generated package stay dialect-conforming while reusing the fixed spine.
+*is* engine-aware) and its ``deps.py`` without dragging the engine into a worker file.
+That is what lets a generated package stay dialect-conforming while reusing the fixed
+spine.
 """
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -77,3 +86,66 @@ def loop_allowed(count: int, cap: int) -> bool:
     so termination is structural, never the model's judgment.
     """
     return count < cap
+
+
+class Store:
+    """A durable keyed store for a stateful function's cross-run memory (dialect L1).
+
+    One table — ``(collection, key, value-as-JSON)`` — and exactly five operations. It is
+    schema-agnostic: ``value`` is the entity serialised to a JSON object; the per-system
+    schema lives in the generated entity model, never here.
+
+    - ``path=None`` → an in-memory database (``:memory:``) that forgets at process exit.
+      This is rung-1 behaviour and the offline test mode: the smoke test injects
+      ``Store(None)`` and exercises the real load/save paths against RAM.
+    - ``path="..."`` → a durable file at exactly that path (rung-2: memory survives runs).
+
+    A node never sees the path: the run entry resolves ``Store(path-or-None)`` once and the
+    body uses ``ctx.deps.store`` — so the same body runs stateless or stateful with no
+    branch. ``add`` is create-or-update (``INSERT OR REPLACE``), idempotent by key (L8), so
+    there is no separate ``update``. There is deliberately no ``query``/``where``: a sixth
+    operation signals the brief has left rung 2.
+    """
+
+    def __init__(self, path: str | None = None) -> None:
+        self._db = sqlite3.connect(path or ":memory:")
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS records ("
+            "  collection TEXT NOT NULL,"
+            "  key        TEXT NOT NULL,"
+            "  value      TEXT NOT NULL,"  # JSON object
+            "  PRIMARY KEY (collection, key))"
+        )
+        self._db.commit()
+
+    def add(self, collection: str, key: str, value: dict[str, object]) -> None:
+        """Create or overwrite the record at ``(collection, key)``. Idempotent (L8)."""
+        self._db.execute(
+            "INSERT OR REPLACE INTO records (collection, key, value) VALUES (?, ?, ?)",
+            (collection, key, json.dumps(value)),
+        )
+        self._db.commit()
+
+    def get(self, collection: str, key: str) -> dict[str, object] | None:
+        """The record at ``(collection, key)``, or ``None`` if absent."""
+        row = self._db.execute(
+            "SELECT value FROM records WHERE collection = ? AND key = ?",
+            (collection, key),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def list(self, collection: str) -> list[dict[str, object]]:
+        """Every record in ``collection``, ordered by key (a stable, deterministic order)."""
+        rows = self._db.execute(
+            "SELECT value FROM records WHERE collection = ? ORDER BY key",
+            (collection,),
+        ).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def remove(self, collection: str, key: str) -> None:
+        """Delete the record at ``(collection, key)``. A no-op if it is absent."""
+        self._db.execute(
+            "DELETE FROM records WHERE collection = ? AND key = ?",
+            (collection, key),
+        )
+        self._db.commit()
