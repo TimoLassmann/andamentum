@@ -98,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         default="podman",
         help="code-execution backend for the audit (default: podman — host-isolated)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show a live progress dashboard while the pipeline runs",
+    )
     args = parser.parse_args(argv)
 
     model = resolve_model_from_args(args.model)
@@ -106,6 +111,23 @@ def main(argv: list[str] | None = None) -> int:
     else:
         dest, stop_after = Path(args.out), args.stop_after
 
+    reporter = None
+    if args.verbose:
+        from rich.console import Console
+
+        from .reporter import RichReporter
+
+        reporter = RichReporter(
+            Console(),
+            brief=args.brief,
+            model=model,
+            dest=str(dest) if dest is not None else None,
+        )
+
+    err: Exception | None = None
+    result = None
+    if reporter is not None:
+        reporter.start()
     try:
         result = asyncio.run(
             run_forge(
@@ -114,10 +136,17 @@ def main(argv: list[str] | None = None) -> int:
                 dest=dest,
                 stop_after=stop_after,
                 sandbox_backend=args.sandbox,
+                reporter=reporter,
             )
         )
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        err = e
+    finally:
+        if reporter is not None:
+            reporter.stop()
+
+    if err is not None or result is None:
+        print(f"Error: {err}", file=sys.stderr)
         return 1
 
     _print_summary(result)

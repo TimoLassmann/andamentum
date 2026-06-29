@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from andamentum.core import AgentDefinition
 from andamentum.forge.schemas import (
+    BodyVerdict,
     CriticVerdict,
     DataKind,
     ForgeAreas,
@@ -22,6 +23,7 @@ from andamentum.forge.schemas import (
     JobList,
     NodeTyping,
     PieceOut,
+    PlanVerdict,
     RequirementsVerdict,
     SandboxResult,
 )
@@ -132,9 +134,13 @@ class ScriptedSink:
                 produces=[f"out_{fid}"],
                 produces_kind=DataKind.SIGNAL,
             )
+        if defn.name == "plan_manager":
+            return PlanVerdict(serves_goal=True, uncovered_concerns=[])
         # --- stage 3/4 authoring + audit heads ---
         if defn.name in ("build_draft", "build_repair"):
             return PieceOut(body=_draft_body(str(kwargs.get("context", ""))))
+        if defn.name == "component_manager":
+            return BodyVerdict(implements_job=True, issue="")
         if defn.name == "requirements":
             return RequirementsVerdict(meets_brief=True, gaps=[])
         if defn.name == "critic":

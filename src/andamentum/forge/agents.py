@@ -19,12 +19,14 @@ from andamentum.agentic_dialect import law
 from andamentum.core import AgentDefinition
 
 from .schemas import (
+    BodyVerdict,
     CriticVerdict,
     ForgeAreas,
     ForgeWhy,
     JobList,
     NodeTyping,
     PieceOut,
+    PlanVerdict,
     RequirementsVerdict,
 )
 
@@ -134,6 +136,20 @@ TYPE_NODE = AgentDefinition(
     name="type_node", prompt=TYPE_NODE_PROMPT, output_model=NodeTyping
 )
 
+PLAN_MANAGER_PROMPT = (
+    "You are a project manager checking a PLAN against its GOAL before any code is written. "
+    "You are shown the system's purpose, what it takes in, what it must produce, and the "
+    "planned steps (each a name and a one-sentence job — no code). Decide serves_goal "
+    "(true/false): taken together, do these steps fulfil the purpose and produce the stated "
+    "output? List uncovered_concerns — concrete things the goal needs that NO step does. Be "
+    "specific and few; an empty list means the plan fully serves the goal. Do not invent "
+    "requirements the brief never asked for; do not restate steps that already exist."
+)
+
+PLAN_MANAGER = AgentDefinition(
+    name="plan_manager", prompt=PLAN_MANAGER_PROMPT, output_model=PlanVerdict
+)
+
 
 # --- the code-authoring heads (stage 3 build) -----------------------------------
 #
@@ -198,9 +214,22 @@ CRITIC_PROMPT = (
     "issues; an empty list means you found none."
 )
 
+COMPONENT_MANAGER_PROMPT = (
+    "You are reviewing ONE component against the job it was given. You are shown the node's "
+    "job, its contract (the state fields it may read, must set, and the successors it may "
+    "return), and the authored function body. Decide implements_job (true/false): does the "
+    "body genuinely DO that job using its declared inputs — not a hardcoded stand-in, not a "
+    "body that ignores its inputs, not a plausible fake? If false, give ONE concrete issue "
+    "naming what is wrong, so the author can fix exactly that. The contract itself is already "
+    "verified — judge only whether the LOGIC implements the job."
+)
+
 DRAFT = AgentDefinition(name="build_draft", prompt=DRAFT_PROMPT, output_model=PieceOut)
 REPAIR = AgentDefinition(
     name="build_repair", prompt=REPAIR_PROMPT, output_model=PieceOut
+)
+COMPONENT_MANAGER = AgentDefinition(
+    name="component_manager", prompt=COMPONENT_MANAGER_PROMPT, output_model=BodyVerdict
 )
 REQUIREMENTS = AgentDefinition(
     name="requirements", prompt=REQUIREMENTS_PROMPT, output_model=RequirementsVerdict
