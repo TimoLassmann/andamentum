@@ -1,0 +1,4 @@
+# Generated benchmark reports — keep the harness, not its output.
+*.md
+!README.md
+results/
