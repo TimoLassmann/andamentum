@@ -67,6 +67,7 @@ async def test_reporter_sees_design_stages_in_order(
 
     assert rep.planned_stages == [
         "Understand",
+        "Assess",
         "Frame",
         "Decompose",
         "Compile",

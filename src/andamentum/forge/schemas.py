@@ -16,6 +16,7 @@ Leaf worker file: ``pydantic`` + the sibling ``spec`` enums only; no graph engin
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +50,42 @@ class ForgeWhy(BaseModel):
         description="What the system takes in — the single natural-language input at the door"
     )
     boundary_out: str = Field(description="What the system produces — its final output")
+
+
+class Fitness(BaseModel):
+    """The fitness-gate head (dialect L9): is the brief realisable as a function?
+
+    Judges SHAPE — who owns the control loop — never vocabulary. A function is one input
+    at the door, one output at the end, one run, control owned inside. If an external
+    driver decides what happens next (an operation-chooser, a session, an event source)
+    the brief is an app / agent / service and is out of forge's scope.
+    """
+
+    realizable_as_function: bool = Field(
+        description="True if the brief is a function or stateful_function; false if it is an app, agent, or service"
+    )
+    rung: Literal["function", "stateful_function", "app", "agent", "service"] = Field(
+        description=(
+            "The system class by who owns the control loop: function = one input → one "
+            "output → one run; stateful_function = same, plus durable memory across runs; "
+            "app = caller chooses among operations; agent = caller drives a session; "
+            "service = the world emits triggering events"
+        )
+    )
+    reason: str = Field(
+        description=(
+            "One or two plain sentences naming who owns the control loop — for an app/agent/"
+            "service, which external driver decides what happens next; for a function, the "
+            "interpretation adopted if anything was ambiguous"
+        )
+    )
+    suggested_reshape: str = Field(
+        default="",
+        description=(
+            "When not realizable, the rung-1/2 function hiding inside the request, phrased as "
+            "a brief the user could resubmit; empty when realizable"
+        ),
+    )
 
 
 class ForgeAreas(BaseModel):
@@ -367,6 +404,10 @@ class ForgeResult(BaseModel):
     stage_reached: str = Field(
         default="design",
         description="design | render | build | audit — how far the run went",
+    )
+    fitness: Fitness | None = Field(
+        default=None,
+        description="The accepted front-gate verdict (rung, reason); None only if the gate did not run",
     )
     rendered_files: list[str] = Field(default_factory=list)
     design_report: DesignReport | None = Field(

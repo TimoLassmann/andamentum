@@ -13,6 +13,7 @@ import typing
 from pydantic_graph import BaseNode, End
 
 from andamentum.forge.graph import (
+    Assess,
     Audit,
     Build,
     Compile,
@@ -27,6 +28,7 @@ from andamentum.forge.graph import (
 
 _NODES = [
     Understand,
+    Assess,
     Frame,
     Decompose,
     Compile,

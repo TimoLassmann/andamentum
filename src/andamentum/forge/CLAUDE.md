@@ -20,10 +20,23 @@ thing is one graph; `graph.py` is the **only** engine-aware file.
 ## The pipeline (one graph, four authoring stages)
 
 ```
-Understand → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
-   └──── design heads ────┘        det    plan-mgr   det      det     agents   sandbox + agents
-                                          (⇄ Frame)
+Understand → Assess → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
+   └ design ┘ fitness    └ design ┘          det    plan-mgr   det      det    agents   sandbox + agents
+              gate (L9)                             (⇄ Frame)
 ```
+
+The **front fitness gate** enforces forge's scope (a *sharp function generator*; see
+`docs/plans/forge-functions/`): forge builds **functions** — rung 1 (stateless) and,
+once the store lands, rung 2 (stateful) — and refuses apps / agents / services at the door.
+
+- **Assess** (`fitness.py`, the `fitness` head — dialect law **L9**): right after Understand,
+  judges the brief's *shape* (does an external driver own the control loop?) — never its
+  vocabulary. `assess_fitness` → a flat `Fitness{realizable_as_function, rung, reason,
+  suggested_reshape}`; `is_buildable` keys on the single `rung` axis against
+  `BUILDABLE_RUNGS` (today `{"function"}`; add `"stateful_function"` when the rung-2 store
+  lands — the one flip point). A non-buildable rung **fails loud** with the concrete reshape
+  (`refusal_message`), never a silent pass. The scenario corpus
+  (`tests/scenario_corpus.py`) is the acceptance test.
 
 Two **manager-grounding** heads sit on top of the deterministic substrate — a goal-vs-plan
 check before any code is written, and a job-vs-body check after each body passes the static
@@ -138,7 +151,8 @@ The backend is an explicit keyword arg (`--sandbox`), never an env var.
 
 `graph.py` the pipeline (State / Deps / steps / `run_forge`) · `schemas.py` boundary types +
 `ForgeResult` · `spec.py` the `SystemSpec` + recipe validators · `naming.py` identifier
-helpers · `understand.py` / `frame.py` / `decompose.py` design workers · `review.py` the plan-manager
+helpers · `understand.py` / `frame.py` / `decompose.py` design workers · `fitness.py` the front
+fitness gate (L9 — `assess_fitness` / `is_buildable` / `refusal_message`) · `review.py` the plan-manager
 worker (deterministic `plan_coverage` + semantic `review_plan` + `plan_board`) · `assemble.py`
 puzzle-fit DAG · `diagnose.py` the structural diagnostic engine · `compile_spec.py` board →
 spec · `render.py` deterministic spec → package · `build.py` per-node authoring loop
