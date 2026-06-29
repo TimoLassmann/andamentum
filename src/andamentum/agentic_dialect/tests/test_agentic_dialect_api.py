@@ -7,8 +7,8 @@ import pytest
 from andamentum.agentic_dialect import for_role, law, laws, roles
 
 
-def test_laws_are_l1_through_l8_in_order() -> None:
-    assert [lw.id for lw in laws()] == [f"L{i}" for i in range(1, 9)]
+def test_laws_are_l1_through_l9_in_order() -> None:
+    assert [lw.id for lw in laws()] == [f"L{i}" for i in range(1, 10)]
 
 
 def test_law_lookup_is_case_insensitive() -> None:

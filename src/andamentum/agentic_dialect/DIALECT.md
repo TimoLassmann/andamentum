@@ -45,8 +45,10 @@ vocabulary.
 ## The laws
 
 **L1 — Surface placement.** Given → Deps. Produced and read widely → State. Produced for the next
-step → Inputs. Every value also carries a *provenance*: **operator-trusted**, or **untrusted**
-(derived, even transitively, from any fetch, tool, external document, or model generation).
+step → Inputs. Needed by a later run → a durable store behind a Deps Port, loaded at start and
+saved at end, never faked in State. Every value also carries a *provenance*: **operator-trusted**,
+or **untrusted** (derived, even transitively, from any fetch, tool, external document, or model
+generation).
 
 **L2 — Thin orchestrator, fat worker.** Orchestrators route and dispatch; workers compute. A worker
 never imports the graph engine. *Litmus: delete the engine and the workers + agents still compile
@@ -77,6 +79,15 @@ loud with a typed partial result.
 — loops, retries, and resume all re-enter it. Guard every external effect with a stable key or a
 done-set in State, checked before acting.
 
+**L9 — The system is a function.** A conforming system is a function: one input at the door, one
+output at the end, one run. Control is owned inside the run; if something outside would decide what
+runs next, it is an app, an agent, or a service — out of dialect. The three ways control leaves the
+box: a user choosing among **operations** (app), a **session** continuing across turns (agent), an
+**event** firing on its own (service). Build those by hand *on top of* conforming functions (compose
+via a sub-pipeline's entry point), never inside one. *Review: one entry, one exit, one run? Yes. Does
+anything external drive what runs next? No. A bounded internal loop — generate, check, retry within
+the run — is control flow, not an external driver, and is allowed.*
+
 ### Why these laws
 
 Not arbitrary — each falls out of one goal: *understand and trust a run without running it.*
@@ -85,7 +96,29 @@ deterministic routing (4) makes the topology inspectable and every run replayabl
 precondition for both resume and audit. Bounded everything (5) makes termination and cost
 provable. Model-as-component (6) keeps control in code you can test, not a prompt you can't.
 Typed, loud boundaries (7) turn failures into signals instead of silent corruption. Idempotent
-effects (8) make the re-entry the other laws rely on safe in a world the system changes.
+effects (8) make the re-entry the other laws rely on safe in a world the system changes. The
+function boundary (9) is what makes all of that hold *at the edge*: a system that owns its own
+control loop has one entrance and one exit to reason about, test in isolation, and compose — the
+moment an external driver owns the loop, none of 1–8 can be guaranteed of the whole.
+
+---
+
+## The system's shape (the two flavours)
+
+L9 fixes what a system *is* at its outer edge. There are exactly two conforming flavours, and
+nothing above them:
+
+- **Stateless function** — one input, one output, one run, nothing remembered between calls. The
+  default. Same input, same output, every time.
+- **Stateful function** — one input, one output, one run, *plus* a Port-backed store loaded at the
+  start and saved at the end, so the output can depend on earlier runs. Still one in, one out: part
+  of the input is loaded, part of the output is saved. The store path is an explicit argument;
+  absent means an ephemeral in-memory store, so the function behaves statelessly. Cross-run memory
+  lives only here — never simulated in run-scoped State (L1), which forgets when the run ends.
+
+Above these two there is no conforming shape. A system with several caller-chosen operations, a
+multi-turn session, or an event trigger is out of dialect (L9): build it by hand on top of
+conforming functions.
 
 ---
 
@@ -120,6 +153,12 @@ successor → Inputs.
 - **Open-ended produced entities** — a set that grows without bound — do not go in State. They
   live behind a **repository Port in Deps**; State then holds only progress: ids, counts,
   done-sets.
+- **Cross-run memory** — a value needed by a *later run*, not merely a later step — lives in neither
+  State nor Inputs, because both are reborn every call. It lives in a durable store reached through a
+  **Port** on Deps: loaded into State at the start of the run, saved back to the store at the end.
+  State holds the working copy *during* the run; the store holds the truth *between* runs. Never
+  simulate cross-run memory in run-scoped State — State forgets when the run ends, so memory kept
+  there is a fiction (L1, the stateful-function shape).
 - **Handle vs contents.** A frozen Deps freezes the *binding*, not the bytes behind it: a Port may
   be a mutable write surface. Forbidden is rebinding a Deps field mid-run or stashing per-run
   scalars on the Deps object.
@@ -322,6 +361,7 @@ on purpose so they are not mistaken for guaranteed.
 | `from __future__ import annotations` | **lint** — ruff `I002` required-import |
 | dataclass / Pydantic forms | **type-check** — pyright (partial) |
 | L1 placement, L3 concurrent-write, L6, L8, naming, banners | **review-only** |
+| L9 the system is a function (no external driver owns the loop) | **review-only** — judged at design time (on the brief, by the generator's fitness gate), not in the output: a built graph is structurally one-entry/one-exit, so a rung violation cannot be caught by a static code check |
 
 > The machine-checkable guards: a ruff config with `I002` and `ANN401`, an import-linter contract
 > for L2, two small AST tests (no engine import in worker files; no model client built in a node
@@ -406,6 +446,9 @@ Prohibitions not already obvious from a law:
 
 Deliberate exclusions, with where the concern lives instead:
 
+- **Apps, agents, and services** — anything where an external driver owns the control loop (a
+  command surface choosing operations, a multi-turn session, an event source). Out of dialect by
+  L9; built by hand *on top of* conforming functions, composed through sub-pipeline entry points.
 - **State as a serializable checkpoint** (the LangGraph bet). We bet the opposite: State is
   rebuilt from durable Ports. Don't serialize State to resume.
 - **Hierarchical / orthogonal statecharts.** State stays flat; split the pipeline instead.

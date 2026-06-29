@@ -2779,7 +2779,8 @@ vocabulary.</p>
 <hr />
 <h2 id="the-laws">The laws</h2>
 <p><strong>L1 — Surface placement.</strong> Given → Deps. Produced and read widely → State. Produced for the next
-step → Inputs. Every value also carries a <em>provenance</em>: <strong>operator-trusted</strong>, or <strong>untrusted</strong>
+step → Inputs. Needed by a later run → a durable store behind a Deps Port, loaded at start and
+saved at end, never faked in State. Every value also carries a <em>provenance</em>: <strong>operator-trusted</strong>, or <strong>untrusted</strong>
 (derived, even transitively, from any fetch, tool, external document, or model generation).</p>
 <p><strong>L2 — Thin orchestrator, fat worker.</strong> Orchestrators route and dispatch; workers compute. A worker
 never imports the graph engine. <em>Litmus: delete the engine and the workers + agents still compile
@@ -2803,6 +2804,14 @@ loud with a typed partial result.</p>
 <p><strong>L8 — Effects are idempotent.</strong> A worker that changes the world must be safe to run more than once
 — loops, retries, and resume all re-enter it. Guard every external effect with a stable key or a
 done-set in State, checked before acting.</p>
+<p><strong>L9 — The system is a function.</strong> A conforming system is a function: one input at the door, one
+output at the end, one run. Control is owned inside the run; if something outside would decide what
+runs next, it is an app, an agent, or a service — out of dialect. The three ways control leaves the
+box: a user choosing among <strong>operations</strong> (app), a <strong>session</strong> continuing across turns (agent), an
+<strong>event</strong> firing on its own (service). Build those by hand <em>on top of</em> conforming functions (compose
+via a sub-pipeline's entry point), never inside one. <em>Review: one entry, one exit, one run? Yes. Does
+anything external drive what runs next? No. A bounded internal loop — generate, check, retry within
+the run — is control flow, not an external driver, and is allowed.</em></p>
 <h3 id="why-these-laws">Why these laws</h3>
 <p>Not arbitrary — each falls out of one goal: <em>understand and trust a run without running it.</em>
 Data/code separation (1–3) lets you read the flow and test the work in isolation. Static,
@@ -2810,7 +2819,26 @@ deterministic routing (4) makes the topology inspectable and every run replayabl
 precondition for both resume and audit. Bounded everything (5) makes termination and cost
 provable. Model-as-component (6) keeps control in code you can test, not a prompt you can't.
 Typed, loud boundaries (7) turn failures into signals instead of silent corruption. Idempotent
-effects (8) make the re-entry the other laws rely on safe in a world the system changes.</p>
+effects (8) make the re-entry the other laws rely on safe in a world the system changes. The
+function boundary (9) is what makes all of that hold <em>at the edge</em>: a system that owns its own
+control loop has one entrance and one exit to reason about, test in isolation, and compose — the
+moment an external driver owns the loop, none of 1–8 can be guaranteed of the whole.</p>
+<hr />
+<h2 id="the-systems-shape-the-two-flavours">The system's shape (the two flavours)</h2>
+<p>L9 fixes what a system <em>is</em> at its outer edge. There are exactly two conforming flavours, and
+nothing above them:</p>
+<ul>
+<li><strong>Stateless function</strong> — one input, one output, one run, nothing remembered between calls. The
+default. Same input, same output, every time.</li>
+<li><strong>Stateful function</strong> — one input, one output, one run, <em>plus</em> a Port-backed store loaded at the
+start and saved at the end, so the output can depend on earlier runs. Still one in, one out: part
+of the input is loaded, part of the output is saved. The store path is an explicit argument;
+absent means an ephemeral in-memory store, so the function behaves statelessly. Cross-run memory
+lives only here — never simulated in run-scoped State (L1), which forgets when the run ends.</li>
+</ul>
+<p>Above these two there is no conforming shape. A system with several caller-chosen operations, a
+multi-turn session, or an event trigger is out of dialect (L9): build it by hand on top of
+conforming functions.</p>
 <hr />
 <h2 id="building-a-system-the-procedure">Building a system: the procedure</h2>
 <ol>
@@ -2841,6 +2869,12 @@ successor → Inputs.</p>
 <li><strong>Open-ended produced entities</strong> — a set that grows without bound — do not go in State. They
   live behind a <strong>repository Port in Deps</strong>; State then holds only progress: ids, counts,
   done-sets.</li>
+<li><strong>Cross-run memory</strong> — a value needed by a <em>later run</em>, not merely a later step — lives in neither
+  State nor Inputs, because both are reborn every call. It lives in a durable store reached through a
+  <strong>Port</strong> on Deps: loaded into State at the start of the run, saved back to the store at the end.
+  State holds the working copy <em>during</em> the run; the store holds the truth <em>between</em> runs. Never
+  simulate cross-run memory in run-scoped State — State forgets when the run ends, so memory kept
+  there is a fiction (L1, the stateful-function shape).</li>
 <li><strong>Handle vs contents.</strong> A frozen Deps freezes the <em>binding</em>, not the bytes behind it: a Port may
   be a mutable write surface. Forbidden is rebinding a Deps field mid-run or stashing per-run
   scalars on the Deps object.</li>
@@ -3078,6 +3112,10 @@ on purpose so they are not mistaken for guaranteed.</p>
 <td>L1 placement, L3 concurrent-write, L6, L8, naming, banners</td>
 <td><strong>review-only</strong></td>
 </tr>
+<tr>
+<td>L9 the system is a function (no external driver owns the loop)</td>
+<td><strong>review-only</strong> — judged at design time (on the brief, by the generator's fitness gate), not in the output: a built graph is structurally one-entry/one-exit, so a rung violation cannot be caught by a static code check</td>
+</tr>
 </tbody>
 </table>
 <blockquote>
@@ -3184,6 +3222,9 @@ the thin orchestration layer.</p>
 <h2 id="out-of-scope-on-purpose">Out of scope, on purpose</h2>
 <p>Deliberate exclusions, with where the concern lives instead:</p>
 <ul>
+<li><strong>Apps, agents, and services</strong> — anything where an external driver owns the control loop (a
+  command surface choosing operations, a multi-turn session, an event source). Out of dialect by
+  L9; built by hand <em>on top of</em> conforming functions, composed through sub-pipeline entry points.</li>
 <li><strong>State as a serializable checkpoint</strong> (the LangGraph bet). We bet the opposite: State is
   rebuilt from durable Ports. Don't serialize State to resume.</li>
 <li><strong>Hierarchical / orthogonal statecharts.</strong> State stays flat; split the pipeline instead.</li>

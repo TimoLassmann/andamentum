@@ -14,8 +14,8 @@ ROLES: dict[str, tuple[str, ...]] = {
     "orchestrator": ("L2", "L3", "L4", "L6"),
     "state": ("L1", "L3"),
     "agent": ("L6", "L7"),
-    "entry": ("L1",),
-    "reviewer": ("L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"),
+    "entry": ("L1", "L9"),
+    "reviewer": ("L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9"),
 }
 
 _JOB: dict[str, str] = {
@@ -23,7 +23,7 @@ _JOB: dict[str, str] = {
     "orchestrator": "You are writing an orchestrator step — thin: route and dispatch only.",
     "state": "You are defining State and Deps — the data surfaces.",
     "agent": "You are wiring an agent — a model call as data.",
-    "entry": "You are writing the entry point that builds State + Deps and runs the graph.",
+    "entry": "You are writing the entry point that builds State + Deps and runs the graph — the whole assembly is a function (one input, one output, one run).",
     "reviewer": "You are reviewing an agentic system against the whole dialect.",
 }
 
