@@ -224,11 +224,22 @@ class InputSpec(BaseModel):
 
 
 class EntitySpec(BaseModel):
-    """A durable record type that lives in the store, not in state (Rule R1)."""
+    """A durable record type. Its truth lives in the store *between* runs; a working copy
+    lives in one State field *during* the run (dialect L1: loaded at start, saved at end)."""
 
     model: ModelSpec
-    store: str = Field(default="document_store", description="Where the entity lives")
-    record_type: str = Field(description="The metadata discriminator used in the store")
+    store: str = Field(default="store", description="Where the entity lives")
+    record_type: str = Field(
+        description="The store collection (and metadata discriminator)"
+    )
+    state_field: str = Field(
+        default="",
+        description=(
+            "The State field that holds this entity's working copy during the run. The run "
+            "entry loads the durable record into it at the start and saves it back at the end "
+            "(single-record, constant key). Empty on a hand-authored spec with no binding."
+        ),
+    )
 
     @field_validator("record_type")
     @classmethod

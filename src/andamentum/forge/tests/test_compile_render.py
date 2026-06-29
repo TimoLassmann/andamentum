@@ -229,7 +229,8 @@ def test_render_provisions_the_store(tmp_path: Path) -> None:
 
     graph_src = (pkg / "graph.py").read_text()
     assert "store: str | None = None" in graph_src  # run entry takes a path
-    assert "store=Store(store)" in graph_src  # resolved once, above the nodes
+    assert "store_obj = Store(store)" in graph_src  # resolved once, above the nodes
+    assert "store=store_obj" in graph_src  # the resolved Store goes into Deps
 
     # The deps gate reads the allowed set off deps.py, so it now permits ctx.deps.store
     # (and still forbids any undeclared handle).
