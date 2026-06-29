@@ -55,6 +55,13 @@ Two commitments shape the whole package:
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract
   → verify → synthesise) over a local SearXNG instance
 
+**Building agentic systems**
+- `andamentum.agentic_dialect` — the house style for pydantic-graph + pydantic-ai
+  systems as data: 9 laws, role briefs, a conformance checklist, and portable
+  static gates (`check_code`) you can run against any system built in the dialect
+- `andamentum.forge` — natural-language brief → validated, agent-authored,
+  sandbox-audited runnable package; itself built in the dialect and held to it
+
 **Shared infrastructure**
 - `andamentum.core` — model resolution, agent runners, fetch gating, and
   embedding clients
@@ -108,7 +115,7 @@ export ANDAMENTUM_MAIN_LLM_MODEL=anthropic:claude-haiku-4-5
 
 ## Command-line tools
 
-Ten CLIs are installed with the package. Run `--help` on any of them for
+Twelve CLIs are installed with the package. Run `--help` on any of them for
 the full flag reference.
 
 | Command | What it does | LLM? |
@@ -123,6 +130,8 @@ the full flag reference.
 | `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearXNG instance | required |
 | `andamentum-epistemic` | Formal-epistemology pipeline: `ask "<question>"` (decompose + research) or `verify "<claim>"` (single-claim verification) | required |
+| `andamentum-agentic-dialect` | The agentic-systems house style: `laws`, `law <id>`, `roles`, `role <role>`, `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, nonzero exit on fail) | none |
+| `andamentum-forge` | Natural-language brief → validated, agent-authored, sandbox-audited runnable package. `build` (full pipeline) or `design` (spec only). `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}` | required |
 
 ## Documentation
 

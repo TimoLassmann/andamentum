@@ -31,7 +31,8 @@ LAWS: tuple[Law, ...] = (
         name="Surface placement",
         statement=(
             "Given → Deps. Produced and read widely → State. Produced for the next "
-            "step → Inputs."
+            "step → Inputs. Needed by a later run → a durable store behind a Deps Port, "
+            "loaded at start and saved at end, never faked in State."
         ),
         tier="review-only",
     ),
@@ -104,6 +105,17 @@ LAWS: tuple[Law, ...] = (
         statement=(
             "A worker that changes the world must be safe to run more than once — "
             "loops, retries, and resume all re-enter it."
+        ),
+        tier="review-only",
+    ),
+    Law(
+        id="L9",
+        name="The system is a function",
+        statement=(
+            "A conforming system is a function: one input at the door, one output at "
+            "the end, one run. Control is owned inside the run; if something outside "
+            "would decide what runs next, it is an app, an agent, or a service — out "
+            "of dialect."
         ),
         tier="review-only",
     ),

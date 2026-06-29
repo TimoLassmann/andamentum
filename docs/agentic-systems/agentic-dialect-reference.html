@@ -91,7 +91,7 @@
     <header class="typeset-heading">
         <h1>The Agentic Dialect</h1>
         <p class="typeset-subtitle">A minimal way to build agentic systems on a graph engine and an LLM client.</p>
-        <p class="typeset-meta">3 surfaces · 2 roles · 1 agent · 2 disciplines · 8 laws · 5 shapes</p>
+        <p class="typeset-meta">3 surfaces · 2 roles · 1 agent · 2 disciplines · 9 laws · 5 shapes</p>
     </header>
 
     <aside class="typeset-callout">
@@ -136,7 +136,7 @@
     <section class="dl-section">
         <div class="am-eyebrow">The laws</div>
         <div class="dl-grid dl-grid--laws">
-            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L1</span> · Surface placement</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Given → Deps. Produced and read widely → State. Produced for the next step → Inputs.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L1</span> · Surface placement</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Given → Deps. Produced and read widely → State. Produced for the next step → Inputs. Needed by a later run → a durable store behind a Deps Port.</div></div>
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L2</span> · Thin orchestrator, fat worker</span><span class="dl-tier is-enforced">lint</span></div><div class="dl-card__body">Orchestrators route and dispatch; workers compute. A worker never imports the graph engine.</div></div>
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L3</span> · State written only by orchestrators</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Workers return values; the orchestrator assigns them. The join is the sole writer during parallelism.</div></div>
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L4</span> · Routing static, declarative, deterministic</span><span class="dl-tier is-enforced">test</span></div><div class="dl-card__body">Every successor is known from the code; branch among declared edges, never synthesize one. No clock, randomness, or untrusted text.</div></div>
@@ -144,11 +144,13 @@
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L6</span> · The model is a component, not the controller</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">Flow lives in the graph. An agent answers a question; it does not drive the pipeline.</div></div>
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L7</span> · Typed boundaries; fail loud</span><span class="dl-tier is-enforced">type-check</span></div><div class="dl-card__body">A structured schema on every edge — no untyped dict[str, Any]. A missing service raises.</div></div>
             <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L8</span> · Effects are idempotent</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">A world-changing worker must be safe to run more than once — loops, retries, and resume all re-enter it.</div></div>
+            <div class="dl-card"><div class="dl-card__head"><span><span class="dl-id">L9</span> · The system is a function</span><span class="dl-tier is-review">review</span></div><div class="dl-card__body">One input, one output, one run; control owned inside. An external driver — operations → app, session → agent, event → service — is out of dialect.</div></div>
         </div>
         <div class="dl-legend">
             <span><b class="is-enforced">slate</b> — a machine guard exists (<code>andamentum-agentic-dialect check</code>)</span>
             <span><b>grey</b> — review-only, named on purpose</span>
         </div>
+        <p class="dl-shape__hint" style="margin-top: var(--am-sp-5)"><b>Outer shape (L9):</b> a system is a <b>function</b> — <b>stateless</b>, or <b>stateful</b> (a Port-backed store loaded at start, saved at end, so its output can depend on earlier runs). Nothing above these two is a shape.</p>
     </section>
 
     <!-- ── The grammar ──────────────────────────────────────────────── -->

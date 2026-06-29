@@ -6,7 +6,7 @@ travels with the code and its conformance checks, and stays drift-tested against
 laws in `andamentum.agentic_dialect`.
 
 ```bash
-andamentum-agentic-dialect laws            # the 8 laws
+andamentum-agentic-dialect laws            # the 9 laws
 andamentum-agentic-dialect role worker     # the prompt-slice for a job
 andamentum-agentic-dialect check src/      # run the portable conformance gates
 ```
