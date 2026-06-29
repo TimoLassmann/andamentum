@@ -25,6 +25,7 @@ from andamentum.agentic_dialect import check_code
 
 from .agents import CRITIC, REQUIREMENTS, AgentSink
 from .extract import discover_holes
+from .reporter import ForgeReporter, NoopReporter
 from .sandbox import SandboxPort, SandboxUnavailableError
 from .schemas import (
     AuditIssue,
@@ -131,8 +132,10 @@ async def audit_system(
     sink: AgentSink,
     sandbox: SandboxPort,
     build: BuildReport | None,
+    reporter: ForgeReporter | None = None,
 ) -> AuditReport:
     """Audit the assembled system at ``dest/<spec.name>``."""
+    rep: ForgeReporter = reporter if reporter is not None else NoopReporter()
     pkg = dest / spec.name
     checks: list[CheckResult] = []
     issues: list[AuditIssue] = []
@@ -141,25 +144,49 @@ async def audit_system(
     if build is not None:
         remaining = sorted(set(remaining) | set(build.remaining_holes))
 
+    rep.audit_check(name="tests", status="running", detail="shipped tests in sandbox")
     tests = _run_tests(sandbox, spec, dest)
+    rep.audit_check(
+        name="tests", status="passed" if tests.passed else "failed", detail=tests.detail
+    )
     checks.append(tests)
     if not tests.passed:
         issues.append(AuditIssue(source="tests", detail=tests.detail))
 
+    rep.audit_check(name="dialect", status="running", detail="check_code over package")
     dialect = _run_dialect(spec, dest)
+    rep.audit_check(
+        name="dialect",
+        status="passed" if dialect.passed else "failed",
+        detail=dialect.detail,
+    )
     checks.append(dialect)
     if not dialect.passed:
         issues.append(AuditIssue(source="dialect", detail=dialect.detail))
 
+    rep.audit_check(
+        name="requirements", status="running", detail="does it serve the brief?"
+    )
     requirements = await sink.run(
         REQUIREMENTS, brief=brief, system=_system_summary(spec)
     )
     assert isinstance(requirements, RequirementsVerdict)
+    rep.audit_check(
+        name="requirements",
+        status="passed" if requirements.meets_brief else "failed",
+        detail="",
+    )
     for gap in requirements.gaps:
         issues.append(AuditIssue(source="requirements", detail=gap))
 
+    rep.audit_check(name="critic", status="running", detail="adversarial review")
     critic = await sink.run(CRITIC, bodies=_node_bodies(pkg))
     assert isinstance(critic, CriticVerdict)
+    rep.audit_check(
+        name="critic",
+        status="passed" if not critic.issues else "failed",
+        detail="",
+    )
     for problem in critic.issues:
         issues.append(AuditIssue(source="critic", detail=problem))
 

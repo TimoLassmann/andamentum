@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.forge.astcheck import check_fail_loud, check_node_body
+from andamentum.forge.astcheck import (
+    check_deps_access,
+    check_fail_loud,
+    check_node_body,
+)
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -57,6 +61,40 @@ def test_body_using_all_declared_fields_is_clean(tmp_path: Path) -> None:
         "        x = ctx.state.a\n        ctx.state.b = x\n        return Next()\n",
     )
     assert _contract(f, reads={"a"}, writes={"b"}, successors={"Next", "End"}) == []
+
+
+def test_undeclared_dep_access_is_rejected(tmp_path: Path) -> None:
+    # The classic small-model wiring bug: a body reaches for a dependency the system never
+    # declared (here `repo_url`). Must be caught at build, not at runtime (AttributeError).
+    f = _write(
+        tmp_path,
+        "        url = ctx.deps.repo_url\n        return End(url)\n",
+    )
+    issues = check_deps_access(
+        f, "N", "run", allowed={"model", "agent_overrides", "loop_cap"}
+    )
+    assert any("repo_url" in v and "not a declared dependency" in v for v in issues), (
+        issues
+    )
+
+
+def test_declared_dep_access_is_clean(tmp_path: Path) -> None:
+    f = _write(tmp_path, "        m = ctx.deps.model\n        return End(m)\n")
+    assert (
+        check_deps_access(
+            f, "N", "run", allowed={"model", "agent_overrides", "loop_cap"}
+        )
+        == []
+    )
+
+
+def test_dynamic_dep_access_is_rejected(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "        url = getattr(ctx.deps, 'repo_url')\n        return End(url)\n",
+    )
+    issues = check_deps_access(f, "N", "run", allowed={"model"})
+    assert any("getattr" in v for v in issues), issues
 
 
 def test_broad_except_that_swallows_is_rejected(tmp_path: Path) -> None:

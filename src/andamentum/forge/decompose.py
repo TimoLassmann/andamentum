@@ -36,6 +36,7 @@ from .agents import LIST_JOBS, TYPE_NODE, AgentSink
 from .assemble import assemble
 from .diagnose import diagnose
 from .naming import canonical_datum
+from .review import plan_coverage
 from .schemas import (
     INPUT_TOKENS,
     DesignFinding,
@@ -75,6 +76,7 @@ async def decompose(
     sink: AgentSink,
     max_jobs_per_area: int,
     max_nodes: int,
+    plan_feedback: list[str] | None = None,
 ) -> tuple[DesignPlan, DesignReport, list[str]]:
     """Return ``(plan, report, notes)`` — the typed node board, the (clean) structural
     diagnosis, and any advisory notes. Raises if the board cannot be made coherent within
@@ -112,8 +114,11 @@ async def decompose(
 
     # Stage 2: type every node, declaring consumes/produces FREELY (no forced selection).
     # The board is shown so names get reused; canonicalisation unifies casing/spacing.
+    # On a plan-review loopback, the surviving concerns become typing feedback so the
+    # redesign wires a step in for each (empty on the first pass — no behaviour change).
+    plan_fb = _plan_feedback_text(plan_feedback)
     for d in drafts:
-        await _type_node(d, drafts, sink=sink, feedback="")
+        await _type_node(d, drafts, sink=sink, feedback=plan_fb)
 
     # Stage 3: assemble → diagnose → repair, bounded. Converge to clean, or fail loud with
     # the full report. Each round re-types only the flagged nodes, with the finding's
@@ -132,7 +137,30 @@ async def decompose(
             )
         await _repair_round(drafts, report, sink=sink)
 
+    # Deterministic plan-coverage (Tier 1a): every framed concern must own >=1 step.
+    # Blocking and fail-loud, consistent with the structural cap path above.
+    coverage = plan_coverage(why, areas, drafts)
+    if coverage:
+        report = DesignReport(findings=report.findings + coverage)
+        raise ValueError(
+            "decompose: framed concerns produced no steps (uncovered areas). The plan does "
+            f"not address part of the brief (surfaced, never dropped):\n{report.summary()}"
+        )
+
     return DesignPlan(why=why, nodes=drafts), report, notes
+
+
+def _plan_feedback_text(concerns: list[str] | None) -> str:
+    """Turn surviving plan-manager concerns into typing feedback for the redesign pass."""
+    if not concerns:
+        return ""
+    lines = [
+        "A plan review found the previous design did not fully serve the goal. The goal "
+        "still needs these — make sure a step covers each (add/retype steps so its "
+        "consumes/produces wire it in):"
+    ]
+    lines += [f"- {c}" for c in concerns]
+    return "\n".join(lines)
 
 
 async def _repair_round(

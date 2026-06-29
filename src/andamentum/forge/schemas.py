@@ -104,6 +104,18 @@ class NodeTyping(BaseModel):
     )
 
 
+class PlanVerdict(BaseModel):
+    """The plan-manager head: does the node board, as planned, serve the goal?"""
+
+    serves_goal: bool = Field(
+        description="True if the planned steps, taken together, fulfil the system's purpose"
+    )
+    uncovered_concerns: list[str] = Field(
+        default_factory=list,
+        description="Concrete things the goal needs that no planned step does (empty if it serves the goal)",
+    )
+
+
 # --- design diagnostics (assemble → diagnose → repair) --------------------------
 
 
@@ -130,6 +142,9 @@ class FindingKind(str, Enum):
     DISCONNECTED = "disconnected"  # a component with no path to the input→output flow
     UNINTENDED_CYCLE = (
         "unintended_cycle"  # a cycle not gated by a bounded-loop checkpoint
+    )
+    UNCOVERED_AREA = (
+        "uncovered_area"  # a framed concern that decomposed to zero node jobs
     )
 
 
@@ -262,11 +277,21 @@ class UnfillableNode(BaseModel):
     attempts: int
 
 
+class BuildConcern(BaseModel):
+    """A component-manager objection that survived the repair budget — the body passed
+    every static gate but the manager still doubts it implements the job. Advisory: the
+    deterministically-valid body was KEPT (gates decide fillability, not the manager)."""
+
+    node: str
+    issue: str
+
+
 class BuildReport(BaseModel):
     """Summary of the per-node build stage."""
 
     filled: list[FilledNode] = Field(default_factory=list)
     unfillable: list[UnfillableNode] = Field(default_factory=list)
+    concerns: list[BuildConcern] = Field(default_factory=list)
 
     @property
     def all_filled(self) -> bool:
@@ -275,6 +300,18 @@ class BuildReport(BaseModel):
     @property
     def remaining_holes(self) -> list[str]:
         return [u.node for u in self.unfillable]
+
+
+class BodyVerdict(BaseModel):
+    """The component-manager head: does this authored body do the node's job?"""
+
+    implements_job: bool = Field(
+        description="True if the body genuinely implements the node's stated job"
+    )
+    issue: str = Field(
+        default="",
+        description="The single concrete reason it does not (empty if it does)",
+    )
 
 
 class RequirementsVerdict(BaseModel):
@@ -335,6 +372,10 @@ class ForgeResult(BaseModel):
     design_report: DesignReport | None = Field(
         default=None,
         description="The deterministic structural diagnosis of the node board (clean after repair)",
+    )
+    plan_review: PlanVerdict | None = Field(
+        default=None,
+        description="The accepted plan-manager verdict (serves_goal, residual concerns)",
     )
     report: VerificationReport | None = Field(
         default=None, description="Cheap deterministic render-stage verdict"

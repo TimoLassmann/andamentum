@@ -27,6 +27,15 @@ def _is_ctx_state(node: ast.expr) -> bool:
     )
 
 
+def _is_ctx_deps(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "deps"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "ctx"
+    )
+
+
 def _find_method(
     tree: ast.Module, class_name: str, method_name: str
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
@@ -181,6 +190,47 @@ def check_fail_loud(file: Path, class_name: str, method_name: str) -> list[str]:
                 "never default or continue silently on error."
             )
     return violations
+
+
+def check_deps_access(
+    file: Path, class_name: str, method_name: str, *, allowed: set[str]
+) -> list[str]:
+    """Reject a node body that touches an UNDECLARED ``ctx.deps`` attribute.
+
+    The body may read only the deps the rendered ``Deps`` actually provides (``allowed`` —
+    derived from the generated ``deps.py`` so the gate and renderer cannot drift). A body
+    that reaches for ``ctx.deps.repo_url`` when no such dependency exists is the classic
+    "small model invents a handle / two nodes name it differently" wiring bug — caught here
+    at build (model proposes, gate disposes), never at runtime. Dynamic access via
+    ``getattr(ctx.deps, ...)`` is banned for the same reason it is on ``ctx.state``.
+    """
+    method = _find_method(ast.parse(file.read_text()), class_name, method_name)
+    if method is None:
+        return []
+    out: list[str] = []
+    flagged: set[str] = set()
+    for n in ast.walk(method):
+        if isinstance(n, ast.Attribute) and _is_ctx_deps(n.value):
+            attr = n.attr
+            if allowed and attr not in allowed and attr not in flagged:
+                flagged.add(attr)
+                out.append(
+                    f"accesses ctx.deps.{attr}, which is not a declared dependency; available "
+                    f"deps: {sorted(allowed)}. A node may not invent a dependency (endpoint, store, "
+                    "config) the system does not provide — use only a declared dep, or the work does "
+                    "not belong in this node."
+                )
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id in ("getattr", "setattr")
+            and n.args
+            and _is_ctx_deps(n.args[0])
+        ):
+            out.append(
+                f"uses {n.func.id}() on ctx.deps; access declared dependencies directly, not dynamically"
+            )
+    return out
 
 
 def check_node_body(

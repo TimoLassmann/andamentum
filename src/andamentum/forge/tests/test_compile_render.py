@@ -166,3 +166,48 @@ def test_render_then_verify_works(tmp_path: Path) -> None:
     failed = [f"{c.name}: {c.detail}" for c in report.checks if not c.passed]
     assert report.works, failed
     assert report.score == 1.0
+
+
+def test_render_emits_a_dialect_clean_cli_launcher(tmp_path: Path) -> None:
+    # render emits __main__.py so the system runs as `python -m <name>` — and the launcher
+    # is an adapter (imports the run entry, not the engine), so it stays dialect-clean.
+    from andamentum.agentic_dialect import check_code
+
+    spec = compile_spec(_plan())
+    render(spec, tmp_path)
+    pkg = tmp_path / spec.name
+    main = pkg / "__main__.py"
+    assert main.exists()
+    src = main.read_text()
+    assert f"run_{spec.name}" in src  # delegates to the package's run entry
+    assert "required=True" in src  # --model has no hidden default
+    assert not check_code(
+        pkg
+    )  # the whole package, launcher included, stays dialect-clean
+
+
+def test_rendered_cli_is_runnable_as_a_module(tmp_path: Path) -> None:
+    # `python -m <name> --help` must import the package and wire argparse without a model
+    # call — proof the launcher is actually runnable, not just present.
+    import subprocess
+    import sys
+
+    spec = compile_spec(_plan())
+    render(spec, tmp_path)
+    proc = subprocess.run(
+        [sys.executable, "-m", spec.name, "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "--model" in proc.stdout
+
+    # Missing the required --model fails loud (argparse exit 2), never a silent default.
+    missing = subprocess.run(
+        [sys.executable, "-m", spec.name, "some text"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert missing.returncode != 0
