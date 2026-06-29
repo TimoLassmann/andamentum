@@ -18,6 +18,7 @@ from andamentum.forge.schemas import (
     BodyVerdict,
     CriticVerdict,
     DataKind,
+    Fitness,
     ForgeAreas,
     ForgeWhy,
     JobList,
@@ -121,6 +122,15 @@ class ScriptedSink:
     async def run(self, defn: AgentDefinition, **kwargs: object) -> BaseModel:
         if defn.name == "understand":
             return self.why
+        if defn.name == "fitness":
+            # Default to a buildable rung-1 verdict so the gate passes; tests that
+            # exercise refusal subclass this and override the fitness answer.
+            return Fitness(
+                realizable_as_function=True,
+                rung="function",
+                reason="stub: treated as a function",
+                suggested_reshape="",
+            )
         if defn.name == "frame":
             return ForgeAreas(areas=self.areas)
         if defn.name == "list_jobs":

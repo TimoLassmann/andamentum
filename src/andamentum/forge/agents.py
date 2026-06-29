@@ -21,6 +21,7 @@ from andamentum.core import AgentDefinition
 from .schemas import (
     BodyVerdict,
     CriticVerdict,
+    Fitness,
     ForgeAreas,
     ForgeWhy,
     JobList,
@@ -62,6 +63,39 @@ UNDERSTAND_PROMPT = (
     "Restate the user's brief as a problem, not a solution. Give the purpose in one "
     "honest paragraph, what the system takes in (one natural-language input) and what "
     "it produces. Do not mention graphs or nodes."
+)
+
+FITNESS_PROMPT = (
+    "You are a fitness gate. Before any design work, judge ONE thing about this brief: can "
+    "the system it asks for be built as a FUNCTION — one input at the door, one output at "
+    "the end, computed in a single run, with the system itself deciding what happens next "
+    "from start to finish?\n\n"
+    "Ask exactly this question and nothing else: to do what this brief asks, does anything "
+    "OUTSIDE the system have to decide what happens next — a user choosing which operation "
+    "to run, a session continuing a conversation across turns, or an event firing on its "
+    "own?\n\n"
+    "- If NO external driver decides what happens next, it is a function. Set rung to "
+    "'function' if the output is computed purely from this run's input, or 'stateful_function' "
+    "if the output must depend on what EARLIER RUNS produced (a durable memory loaded at the "
+    "start of the run and saved at the end).\n"
+    "- If something external DOES decide what happens next, name which of the three structural "
+    "drivers it is: a caller choosing among several operations is an 'app'; a caller driving a "
+    "multi-turn session is an 'agent'; the world emitting triggering events is a 'service'.\n\n"
+    "Judge SHAPE, never words. Do not key off any particular verb in the brief. A brief is a "
+    "function or not because of who owns the control loop, not because it used a word like "
+    "save, track, manage, or watch. A loop INSIDE one run (generate, check, retry until a "
+    "bounded condition, all within the single call) is internal control flow, NOT an external "
+    "driver — it stays a function.\n\n"
+    "When the brief is genuinely ambiguous, PREFER a function: set realizable_as_function true, "
+    "choose the function rung, and STATE the interpretation you adopted in reason rather than "
+    "refusing. A terse but valid request (e.g. 'summarise this') is a function — never block it "
+    "for lack of detail.\n\n"
+    "Fill the fields. realizable_as_function: true for a function or stateful_function, false "
+    "for an app/agent/service. rung: the single best-fit class. reason: who owns the loop, and "
+    "which external driver (if any) decides what happens next. suggested_reshape: if not "
+    "realizable, the function hiding inside the request, phrased as a brief the user could "
+    "resubmit (e.g. for 'manage my reading list' → 'given my current reading list and a new "
+    "message, return the updated list'); empty when realizable."
 )
 
 FRAME_PROMPT = (
@@ -128,6 +162,7 @@ TYPE_NODE_PROMPT = (
 UNDERSTAND = AgentDefinition(
     name="understand", prompt=UNDERSTAND_PROMPT, output_model=ForgeWhy
 )
+FITNESS = AgentDefinition(name="fitness", prompt=FITNESS_PROMPT, output_model=Fitness)
 FRAME = AgentDefinition(name="frame", prompt=FRAME_PROMPT, output_model=ForgeAreas)
 LIST_JOBS = AgentDefinition(
     name="list_jobs", prompt=LIST_JOBS_PROMPT, output_model=JobList

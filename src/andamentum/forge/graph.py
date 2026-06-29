@@ -4,10 +4,10 @@ This is the orchestration file — the *only* engine-aware layer (dialect Law 2)
 step is thin: read the surfaces, call one engine-free worker, assign, return a typed
 successor. The whole authoring pipeline, in one graph:
 
-    Understand → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
-        └──── design heads ────┘      det     plan-mgr   det      det     agents  sandbox+
-                                               (⇄ Frame)                  (static  agents
-                                                                           gates)
+    Understand → Assess → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
+        └ design heads ┘ fitness-gate    det     plan-mgr   det      det     agents  sandbox+
+                         (L9: refuse      (⇄ Frame)                  (static  agents
+                          non-functions)                             gates)
 
 The branches all route on ``deps.stop_after`` / ``deps.dest`` — operator-trusted
 predicates, never model output (Law 4). Caps are Deps fields / module constants (Law 5).
@@ -27,6 +27,7 @@ from .audit import audit_system
 from .build import build_system
 from .compile_spec import compile_spec
 from .decompose import decompose
+from .fitness import assess_fitness, is_buildable, refusal_message
 from .frame import frame
 from .render import render
 from .reporter import ForgeReporter, NoopReporter
@@ -37,6 +38,7 @@ from .schemas import (
     BuildReport,
     DesignPlan,
     DesignReport,
+    Fitness,
     ForgeResult,
     ForgeWhy,
     PlanVerdict,
@@ -85,6 +87,7 @@ class ForgeState:
     brief: str
     # ── artifacts (T | None until produced)
     why: ForgeWhy | None = None
+    fitness: Fitness | None = None
     areas: list[str] = field(default_factory=list)
     plan: DesignPlan | None = None
     design_report: DesignReport | None = None
@@ -114,8 +117,28 @@ def _wants(deps: ForgeDeps, stage: str) -> bool:
 class Understand(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
     """Restate the brief as a problem — purpose and boundaries."""
 
-    async def run(self, ctx: Ctx) -> Frame:
+    async def run(self, ctx: Ctx) -> Assess:
         ctx.state.why = await understand(ctx.state.brief, sink=ctx.deps.sink)
+        return Assess()
+
+
+@dataclass
+class Assess(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
+    """Front fitness gate (dialect L9): is the brief realisable as a function?
+
+    Reads the restated problem (``ctx.state.why``). On a buildable rung → proceed to
+    Frame. On any non-function rung (app / agent / service) — and, until the rung-2 store
+    lands, on stateful_function — FAIL LOUD with the concrete reshape. Never a silent
+    pass: a system that builds the wrong shape is worse than one that refuses.
+    """
+
+    async def run(self, ctx: Ctx) -> Frame:
+        why = ctx.state.why
+        assert why is not None  # topology guarantees Understand ran first
+        fitness = await assess_fitness(why, sink=ctx.deps.sink)
+        ctx.state.fitness = fitness
+        if not is_buildable(fitness):
+            raise ValueError(refusal_message(fitness))
         return Frame()
 
 
@@ -287,6 +310,7 @@ class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
             ForgeResult(
                 spec=spec,
                 stage_reached=stage,
+                fitness=ctx.state.fitness,
                 rendered_files=ctx.state.rendered_files,
                 design_report=ctx.state.design_report,
                 plan_review=ctx.state.plan_review,
@@ -301,6 +325,7 @@ class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
 graph = Graph(
     nodes=[
         Understand,
+        Assess,
         Frame,
         Decompose,
         Compile,
@@ -402,7 +427,7 @@ async def run_forge(
 def _planned_stages(deps: ForgeDeps) -> list[str]:
     """The stages this run will visit, in order — for the reporter's checklist. Mirrors the
     node routing (Review→Render→Verify→Build→Audit, each gated by ``_wants``)."""
-    stages = ["Understand", "Frame", "Decompose", "Compile", "Review"]
+    stages = ["Understand", "Assess", "Frame", "Decompose", "Compile", "Review"]
     if _wants(deps, "render"):
         stages += ["Render", "Verify"]
     if _wants(deps, "build"):
@@ -416,6 +441,8 @@ def _stage_detail(name: str, state: ForgeState) -> str:
     """The one-line summary shown next to a finished stage, read off the run state."""
     if name == "Understand":
         return "purpose + boundaries" if state.why is not None else ""
+    if name == "Assess":
+        return f"fitness: {state.fitness.rung} ✓" if state.fitness is not None else ""
     if name == "Frame":
         return f"{len(state.areas)} concern(s): " + " · ".join(state.areas)
     if name == "Decompose" and state.plan is not None:
