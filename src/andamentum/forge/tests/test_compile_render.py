@@ -211,3 +211,32 @@ def test_rendered_cli_is_runnable_as_a_module(tmp_path: Path) -> None:
         text=True,
     )
     assert missing.returncode != 0
+
+
+def test_render_provisions_the_store(tmp_path: Path) -> None:
+    # render wires the cross-run-memory Store onto Deps (default in-memory), threads a
+    # --store path through the run entry, and the deps gate admits ctx.deps.store.
+    from andamentum.forge.astcheck import check_deps_access
+    from andamentum.forge.build import _declared_deps
+
+    spec = compile_spec(_plan())
+    render(spec, tmp_path)
+    pkg = tmp_path / spec.name
+
+    deps_src = (pkg / "deps.py").read_text()
+    assert "from andamentum.forge.runtime import Store" in deps_src
+    assert "store: Store = field(default_factory=Store)" in deps_src
+
+    graph_src = (pkg / "graph.py").read_text()
+    assert "store: str | None = None" in graph_src  # run entry takes a path
+    assert "store=Store(store)" in graph_src  # resolved once, above the nodes
+
+    # The deps gate reads the allowed set off deps.py, so it now permits ctx.deps.store
+    # (and still forbids any undeclared handle).
+    assert "store" in _declared_deps(pkg)
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "class N:\n    async def run(self, ctx):\n"
+        "        _ = ctx.deps.store\n        return None\n"
+    )
+    assert check_deps_access(probe, "N", "run", allowed=_declared_deps(pkg)) == []
