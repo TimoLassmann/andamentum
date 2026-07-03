@@ -28,12 +28,21 @@ from .graph import ForgeDeps, ForgeState, graph, run_forge
 from .render import render
 from .sandbox import SandboxPort, SandboxUnavailableError, make_sandbox
 from .schemas import (
+    AuditIssue,
     AuditReport,
+    AuditRound,
+    BuildConcern,
     BuildReport,
     CheckResult,
+    CriticVerdict,
     DesignPlan,
+    DesignReport,
+    Fitness,
     ForgeResult,
     NodeDraft,
+    NodeFinding,
+    PlanVerdict,
+    RequirementsVerdict,
     VerificationReport,
 )
 from .spec import SystemSpec
@@ -60,4 +69,15 @@ __all__ = [
     "ForgeDeps",
     "ForgeState",
     "graph",
+    # Types reachable from a returned ForgeResult — exported so a caller can annotate /
+    # isinstance-check the result tree without reaching into andamentum.forge.schemas.
+    "AuditRound",
+    "AuditIssue",
+    "BuildConcern",
+    "CriticVerdict",
+    "NodeFinding",
+    "Fitness",
+    "DesignReport",
+    "PlanVerdict",
+    "RequirementsVerdict",
 ]

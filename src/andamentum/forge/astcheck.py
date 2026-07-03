@@ -7,9 +7,17 @@ code-eval builtins, and a broad ``except`` that swallows errors (a silent fallba
 ``check_fail_loud``). A network client is allowed only when the node declared
 ``network=True`` (and therefore runs behind the container sandbox).
 
-Runs after ``py_compile`` and before any execution, so most hallucinations and all
-unsafe code are caught for free, in-process, with a precise message. Ported from the
-``forge`` dump. Leaf worker: ``stdlib`` only, no graph engine.
+Runs after ``py_compile`` and before any execution, so most hallucinations are caught
+for free, in-process, with a precise message. Ported from the ``forge`` dump. Leaf
+worker: ``stdlib`` only, no graph engine.
+
+**Trust boundary.** This purity gate is a *quality* gate and defense-in-depth — it keeps
+generated bodies deterministic and free of obvious process/network/eval capability. It is
+NOT the containment boundary and must not be relied on as one: static AST analysis cannot
+soundly prove the absence of capability in Python (aliasing, dynamic dispatch, and
+interpreter reflection make it undecidable in general — the gate closes the known vectors,
+not all conceivable ones). The actual containment of LLM-authored code is the **sandbox**
+(``sandbox.py`` — Podman, host-isolated), which is where that code executes.
 """
 
 from __future__ import annotations
@@ -65,8 +73,26 @@ _ALWAYS_BANNED_MODULES = frozenset(
         "os", "subprocess", "sys", "shutil", "socket", "pathlib", "io",
         "pickle", "marshal", "shelve", "ctypes", "multiprocessing", "threading", "signal",
         "time", "random", "uuid", "datetime", "secrets",
+        # dynamic-import / interpreter-internals vectors (a body that reaches these can
+        # re-obtain any banned module by name, defeating the static import check):
+        "importlib", "builtins", "gc", "posix", "pty", "code", "codeop",
     }
 )  # fmt: skip
+
+# Attribute names that walk the object graph to re-derive banned capabilities without an
+# import — the classic no-import escape ``().__class__.__bases__[0].__subclasses__()`` and
+# ``__globals__``/``__builtins__`` reach-arounds. No legitimate node body needs these.
+_BANNED_ATTRS = frozenset(
+    {
+        "__subclasses__",
+        "__bases__",
+        "__mro__",
+        "__globals__",
+        "__builtins__",
+        "__subclasshook__",
+        "__base__",
+    }
+)
 
 # Network clients: allowed ONLY in a node that declares network access.
 _NETWORK_MODULES = frozenset(
@@ -122,6 +148,14 @@ def check_purity(
     method = _find_method(ast.parse(file.read_text()), class_name, method_name)
     if method is None:
         return []
+    # Names the body binds locally (assignment / for / with-as / comprehension / walrus
+    # targets, and any parameters). A LOAD of such a name refers to the local, NOT the
+    # builtin — so a body may legitimately use `input`/`open`/`vars` as a variable name.
+    bound = {node.arg for node in ast.walk(method) if isinstance(node, ast.arg)} | {
+        node.id
+        for node in ast.walk(method)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
     out: list[str] = []
     for n in ast.walk(method):
         if isinstance(n, ast.Import):
@@ -134,12 +168,24 @@ def check_purity(
             if top in banned:
                 out.append(_module_violation(n.module or "", top, allow_network))
         elif (
-            isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Name)
-            and n.func.id in _BANNED_CALLS
+            isinstance(n, ast.Name)
+            and isinstance(n.ctx, ast.Load)
+            and n.id in _BANNED_CALLS
+            and n.id not in bound
         ):
+            # Flag any LOAD of a banned builtin, not just a direct call — this catches
+            # aliasing (`bad = eval; bad(...)`) as well as `eval(...)`. A name the body binds
+            # locally is excluded (it shadows the builtin), so a legit variable named
+            # `input`/`open`/`vars` is fine while aliasing (`bad = eval` — `eval` is not
+            # bound) is still caught.
             out.append(
-                f"calls {n.func.id}(), which is forbidden in a node body (unsafe or non-deterministic)."
+                f"references {n.id}, which is forbidden in a node body (code-eval / dynamic "
+                "world access — unsafe or non-deterministic, even when aliased)."
+            )
+        elif isinstance(n, ast.Attribute) and n.attr in _BANNED_ATTRS:
+            out.append(
+                f"accesses {n.attr!r}, an interpreter-internals attribute used to escape the "
+                "sandbox by re-deriving banned capabilities without an import — forbidden."
             )
     return out
 

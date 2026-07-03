@@ -19,7 +19,29 @@ from pathlib import Path
 from andamentum.core import resolve_model_from_args
 
 from .graph import run_forge
-from .schemas import ForgeResult
+from .schemas import AuditRound, ForgeResult
+
+
+def _self_correction_lines(history: list[AuditRound]) -> list[str]:
+    """Human trace of the audit self-correction loop, from the round history.
+
+    Emitted only when the loop actually fired (more than one audit pass) — a clean
+    first build produces a single-entry history and no extra output. Pure so it is
+    unit-testable without constructing a whole ForgeResult."""
+    if len(history) <= 1:
+        return []
+    rebuilds = len(history) - 1
+    plural = "s" if rebuilds != 1 else ""
+    lines = [
+        f"\nself-correction: {len(history)} audit passes ({rebuilds} rebuild{plural})"
+    ]
+    for r in history:
+        state = "clean" if not r.failing_checks else f"failed — {r.failing_checks}"
+        line = f"  pass {r.index}: {state}"
+        if r.rebuild_targets:
+            line += f"   → re-authored: {', '.join(r.rebuild_targets)}"
+        lines.append(line)
+    return lines
 
 
 def _print_summary(result: ForgeResult) -> None:
@@ -50,7 +72,14 @@ def _print_summary(result: ForgeResult) -> None:
 
     if result.audit is not None:
         a = result.audit
-        print(f"\naudit: {'WORKS' if a.works else 'INCOMPLETE'}")
+        rebuilds = max(len(result.audit_history) - 1, 0)
+        suffix = ""
+        if rebuilds:
+            outcome = "converged" if a.works else "settled"
+            suffix = (
+                f"  ({outcome} after {rebuilds} rebuild{'s' if rebuilds != 1 else ''})"
+            )
+        print(f"\naudit: {'WORKS' if a.works else 'INCOMPLETE'}{suffix}")
         for c in a.checks:
             print(f"  [{'pass' if c.passed else 'FAIL'}] {c.name}: {c.detail}")
         if a.requirements is not None and a.requirements.gaps:
@@ -60,7 +89,9 @@ def _print_summary(result: ForgeResult) -> None:
         if a.critic is not None and a.critic.issues:
             print("  critic issues:")
             for i in a.critic.issues:
-                print(f"    - {i}")
+                print(f"    - {i.node}: {i.issue}" if i.node else f"    - {i.issue}")
+        for line in _self_correction_lines(result.audit_history):
+            print(line)
 
     if result.rendered_files:
         print(
@@ -103,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="show a live progress dashboard while the pipeline runs",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the full ForgeResult (incl. self-correction audit_history) as JSON to stdout; disables the live dashboard",
+    )
     args = parser.parse_args(argv)
 
     model = resolve_model_from_args(args.model)
@@ -112,7 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         dest, stop_after = Path(args.out), args.stop_after
 
     reporter = None
-    if args.verbose:
+    if args.verbose and not args.json:
+        # --json owns stdout; a live dashboard would corrupt the JSON stream.
         from rich.console import Console
 
         from .reporter import RichReporter
@@ -149,7 +186,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {err}", file=sys.stderr)
         return 1
 
-    _print_summary(result)
+    if args.json:
+        print(result.model_dump_json(indent=2))
+    else:
+        _print_summary(result)
     if result.audit is not None:
         return 0 if result.audit.works else 1
     if result.report is not None:

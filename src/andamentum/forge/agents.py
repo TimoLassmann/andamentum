@@ -15,6 +15,8 @@ from typing import Any, Protocol, cast
 
 from pydantic import BaseModel
 
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
+
 from andamentum.agentic_dialect import law
 from andamentum.core import AgentDefinition
 
@@ -30,6 +32,14 @@ from .schemas import (
     PlanVerdict,
     RequirementsVerdict,
 )
+
+# A hard LLM-output failure: the model could not produce schema-valid output after the
+# runner's own retries (``UnexpectedModelBehavior`` — e.g. a small model returning the JSON
+# schema envelope instead of an instance), or a transient provider/HTTP error
+# (``ModelHTTPError``). forge catches this at each ``sink.run`` call site and degrades —
+# one node becomes unfillable, an advisory head is skipped, a design stage fails loud and
+# legible — never an uncaught pydantic-ai traceback that discards the whole run.
+MODEL_OUTPUT_ERRORS = (UnexpectedModelBehavior, ModelHTTPError)
 
 
 class AgentSink(Protocol):
@@ -241,12 +251,14 @@ REQUIREMENTS_PROMPT = (
 )
 
 CRITIC_PROMPT = (
-    "You are an adversarial reviewer of a built agentic system. Shown its node bodies, find what is "
+    "You are an adversarial reviewer of a built agentic system. You are shown its node bodies and "
+    "the list of node names. Find what is "
     "missing, wrong, or faked — a hardcoded value standing in for real logic, a node that drops its "
     "input, a TODO left behind. Also flag SILENT FALLBACKS that hide failures: a default value "
     "substituted when state is missing, an `or <default>` / `.get(key, default)` papering over an "
-    "absent value, or any error quietly absorbed so the run continues on wrong data. List concrete "
-    "issues; an empty list means you found none."
+    "absent value, or any error quietly absorbed so the run continues on wrong data. For EACH issue, "
+    "name the offending node — copy its name EXACTLY from the node-names list — in `node`, and the "
+    "concrete problem in `issue`. List concrete issues; an empty list means you found none."
 )
 
 COMPONENT_MANAGER_PROMPT = (

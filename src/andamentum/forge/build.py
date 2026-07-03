@@ -22,7 +22,7 @@ import ast
 import py_compile
 from pathlib import Path
 
-from .agents import COMPONENT_MANAGER, DRAFT, REPAIR, AgentSink
+from .agents import COMPONENT_MANAGER, DRAFT, MODEL_OUTPUT_ERRORS, REPAIR, AgentSink
 from .astcheck import (
     check_deps_access,
     check_fail_loud,
@@ -88,20 +88,40 @@ def _draft_context(node: NodeSpec, contract: NodeContract, hole: Hole) -> str:
     return "\n".join(lines)
 
 
-def _repair_context(
-    node: NodeSpec, contract: NodeContract, hole: Hole, body: str, error: str
-) -> str:
+def _audit_feedback_note(text: str) -> str:
+    """Rebuild-only addendum: this node is being re-authored after the assembled system
+    failed its audit even though the previous body passed every static gate."""
     return "\n".join(
         [
-            _draft_context(node, contract, hole),
             "",
-            "YOUR PREVIOUS BODY (rejected):",
-            body.strip(),
-            "",
-            f"WHY IT WAS REJECTED: {error.strip()}",
-            "Fix exactly that and return the corrected body.",
+            "THIS NODE IS BEING RE-AUTHORED. The previous body passed every static gate, but the "
+            "assembled system then FAILED its audit:",
+            text.strip(),
+            "Address that failure in your implementation.",
         ]
     )
+
+
+def _repair_context(
+    node: NodeSpec,
+    contract: NodeContract,
+    hole: Hole,
+    body: str,
+    error: str,
+    audit_feedback: str | None = None,
+) -> str:
+    lines = [
+        _draft_context(node, contract, hole),
+        "",
+        "YOUR PREVIOUS BODY (rejected):",
+        body.strip(),
+        "",
+        f"WHY IT WAS REJECTED: {error.strip()}",
+        "Fix exactly that and return the corrected body.",
+    ]
+    if audit_feedback and audit_feedback.strip():
+        lines.append(_audit_feedback_note(audit_feedback))
+    return "\n".join(lines)
 
 
 def _manager_context(
@@ -163,9 +183,26 @@ async def build_system(
     sink: AgentSink,
     attempt_cap: int,
     reporter: ForgeReporter | None = None,
+    prior_bodies: dict[str, str] | None = None,
+    targets: set[str] | None = None,
+    rebuild_feedback: dict[str, str] | None = None,
 ) -> BuildReport:
-    """Fill every node hole in the rendered package under ``pkg_dir`` against the spec."""
+    """Fill every node hole in the rendered package under ``pkg_dir`` against the spec.
+
+    Tri-state on ``targets`` (the rebuild contract, §4.3):
+      - ``None``       — author EVERY hole (the first build; byte-identical to before).
+      - a set          — author ONLY those holes; re-apply every OTHER hole verbatim from
+                         ``prior_bodies`` via ``apply_body`` (no sink / LLM call).
+      - empty set      — author NOTHING; re-apply ALL holes from ``prior_bodies``.
+
+    ``prior_bodies`` maps a node name to its known-good source (``FilledNode.body`` from an
+    earlier build). ``rebuild_feedback`` maps a re-authored target's name to the audit-failure
+    text, threaded into that target's repair context so it sees why it failed. Defaults keep the
+    first-build path unchanged.
+    """
     rep: ForgeReporter = reporter if reporter is not None else NoopReporter()
+    bodies: dict[str, str] = prior_bodies or {}
+    feedback: dict[str, str] = rebuild_feedback or {}
     by_name: dict[str, NodeSpec] = {n.name: n for n in spec.nodes}
     allowed_deps = _declared_deps(pkg_dir)
     holes = list(discover_holes(pkg_dir))
@@ -187,6 +224,32 @@ async def build_system(
                 node=hole.node, status="unfillable", attempts=0, detail="no NodeSpec"
             )
             continue
+        # Rebuild: a non-target hole re-applies its known-good body verbatim, no LLM call.
+        if targets is not None and hole.node not in targets:
+            prior = bodies.get(hole.node)
+            if prior is None:
+                unfillable.append(
+                    UnfillableNode(
+                        node=hole.node,
+                        last_error="no prior body to re-apply (non-target with no known-good source)",
+                        attempts=0,
+                    )
+                )
+                rep.node_built(
+                    node=hole.node,
+                    status="unfillable",
+                    attempts=0,
+                    detail="no prior body",
+                )
+                continue
+            file = hole.file
+            assert file is not None  # discovered holes always carry their file
+            apply_body(file, hole.node, hole.method, prior)
+            filled.append(FilledNode(node=hole.node, attempts=0, body=prior))
+            rep.node_built(
+                node=hole.node, status="filled", attempts=0, detail="reapplied"
+            )
+            continue
         result, concern = await _build_one(
             spec,
             node,
@@ -197,6 +260,7 @@ async def build_system(
             index=index,
             total=len(holes),
             allowed_deps=allowed_deps,
+            audit_feedback=feedback.get(node.name),
         )
         if isinstance(result, FilledNode):
             filled.append(result)
@@ -226,6 +290,7 @@ async def _build_one(
     index: int,
     total: int,
     allowed_deps: set[str],
+    audit_feedback: str | None = None,
 ) -> tuple[FilledNode | UnfillableNode, BuildConcern | None]:
     file = hole.file
     assert file is not None  # discovered holes always carry their file
@@ -249,12 +314,27 @@ async def _build_one(
             attempt=attempt,
             phase="draft" if attempt == 1 else "repair",
         )
-        if attempt == 1:
-            body = await _body_from(sink, DRAFT, _draft_context(node, contract, hole))
-        else:
-            body = await _body_from(
-                sink, REPAIR, _repair_context(node, contract, hole, body, last_error)
-            )
+        try:
+            if attempt == 1:
+                draft_context = _draft_context(node, contract, hole)
+                if audit_feedback and audit_feedback.strip():
+                    draft_context += _audit_feedback_note(audit_feedback)
+                body = await _body_from(sink, DRAFT, draft_context)
+            else:
+                body = await _body_from(
+                    sink,
+                    REPAIR,
+                    _repair_context(
+                        node, contract, hole, body, last_error, audit_feedback
+                    ),
+                )
+        except MODEL_OUTPUT_ERRORS as e:
+            # The model could not produce a valid body (e.g. a small model returning the
+            # schema envelope). Treat it as a failed attempt — the loop retries, and at
+            # budget exhaustion the node settles to UnfillableNode. A single node's
+            # authoring failure never crashes the whole build (fail loud, not fatal).
+            last_error = f"the model failed to produce a valid body: {e}"
+            continue
 
         # Always patch from the pristine original so the source always parses.
         file.write_text(original)
@@ -293,16 +373,21 @@ async def _build_one(
         last_valid_attempt = attempt
 
         # The component manager judges whether the body does the JOB. On objection, feed
-        # the issue into THIS draft/repair loop (bounded by attempt_cap).
-        verdict = await _manager_verdict(
-            sink, _manager_context(node, contract, hole, body)
-        )
-        if not verdict.implements_job and verdict.issue.strip():
+        # the issue into THIS draft/repair loop (bounded by attempt_cap). It is ADVISORY —
+        # if the model call itself fails, skip it (the gate-valid body stands); an advisory
+        # head must never block a body the deterministic gates already accepted.
+        try:
+            verdict = await _manager_verdict(
+                sink, _manager_context(node, contract, hole, body)
+            )
+        except MODEL_OUTPUT_ERRORS:
+            verdict = None
+        if verdict is not None and not verdict.implements_job and verdict.issue.strip():
             last_error = verdict.issue.strip()
             last_concern = verdict.issue.strip()
             continue
 
-        return FilledNode(node=node.name, attempts=attempt), None
+        return FilledNode(node=node.name, attempts=attempt, body=body), None
 
     # Budget spent. If we ever produced a gate-valid body, KEEP it (deterministic gates
     # decide fillability; the manager only tries to improve). Record the residual concern.
@@ -312,7 +397,12 @@ async def _build_one(
         concern = (
             BuildConcern(node=node.name, issue=last_concern) if last_concern else None
         )
-        return FilledNode(node=node.name, attempts=last_valid_attempt), concern
+        return (
+            FilledNode(
+                node=node.name, attempts=last_valid_attempt, body=last_valid_body
+            ),
+            concern,
+        )
 
     # Never produced a gate-valid body → honest unfillable; restore the hole.
     file.write_text(original)
