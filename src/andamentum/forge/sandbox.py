@@ -20,7 +20,6 @@ sibling ``schemas`` only; no graph engine.
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 import subprocess
@@ -30,8 +29,6 @@ from pathlib import Path
 from typing import Protocol
 
 from .schemas import SandboxResult
-
-_log = logging.getLogger("andamentum.forge.sandbox")
 
 #: Env vars a child needs to run Python; nothing else (no API keys, tokens, configs).
 _KEEP_ENV = (
@@ -164,7 +161,6 @@ class PodmanSandbox:
 
     def __init__(self, image: str = _DEFAULT_IMAGE) -> None:
         self.image = image
-        self._fallback = SubprocessSandbox()
 
     def run(
         self,
@@ -177,26 +173,22 @@ class PodmanSandbox:
         allow_network: bool = False,
     ) -> SandboxResult:
         if shutil.which("podman") is None:
-            if allow_network:
-                raise SandboxUnavailableError(
-                    "this node reaches the network and podman is not on PATH; a bare subprocess cannot run "
-                    "network code safely. Install podman (and build the andamentum-forge-sandbox image)."
-                )
-            _log.warning(
-                "podman not on PATH — falling back to subprocess isolation for this pure run."
-            )
-            return self._fallback.run(
-                argv, cwd=cwd, extra_path=extra_path, timeout=timeout, mem_mb=mem_mb
+            # Fail loud, never a silent downgrade. Silently running LLM-authored code in an
+            # unisolated subprocess when the caller asked for the host-isolated default is a
+            # security downgrade with no signal — exactly the pattern the project forbids.
+            # If the caller genuinely accepts no host isolation, they pass --sandbox subprocess.
+            raise SandboxUnavailableError(
+                "podman is not on PATH, so LLM-authored code cannot run host-isolated. forge "
+                "refuses to silently downgrade to an unisolated subprocess. Install podman and build "
+                "the image (`podman build -t andamentum-forge-sandbox -f "
+                "src/andamentum/forge/Containerfile .`), or pass `--sandbox subprocess` to explicitly "
+                "accept running without host isolation."
             )
 
         raw_mount = extra_path or cwd
         if raw_mount is None:
-            if allow_network:
-                raise SandboxUnavailableError(
-                    "network execution needs a mount point for the container; none given."
-                )
-            return self._fallback.run(
-                argv, cwd=cwd, extra_path=extra_path, timeout=timeout, mem_mb=mem_mb
+            raise SandboxUnavailableError(
+                "podman execution needs a mount point (cwd or extra_path); none was given."
             )
 
         # Podman bind mounts require ABSOLUTE paths; resolve so a caller may pass a
@@ -213,8 +205,11 @@ class PodmanSandbox:
         cmd = [
             "podman", "run", "--rm",
             *network,
+            "--cap-drop=all",  # drop all Linux capabilities — untrusted code needs none
+            "--security-opt=no-new-privileges",  # no setuid/setgid escalation
             f"--memory={mem_mb}m",
             "--pids-limit=256",
+            "--cpus=2",  # bound CPU so a runaway body can't peg the host
             "-v", f"{mount}:{mount}:ro",
             "-w", str(workdir),
             "-e", f"PYTHONPATH={pypath}",

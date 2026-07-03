@@ -85,11 +85,12 @@ def test_all_reachable_and_end_reachable() -> None:
 
 def test_branch_points_are_the_stage_gates() -> None:
     # Review is the plan-gate branch (Frame | Render | Finish — loop back, proceed, or
-    # design-only); Verify / Build each early-exit to Finish on `stop_after` (or continue).
-    # These are the branches that make the topology test load-bearing. Every branch
-    # includes Finish.
+    # design-only); Verify / Build each early-exit to Finish on `stop_after` (or continue);
+    # Audit is the self-correction branch (Render | Finish — rebuild the attributed targets
+    # or settle on the best build). These are the branches that make the topology test
+    # load-bearing. Every branch includes Finish.
     branchy = {cls.__name__ for cls in _NODES if len(_successors(cls)) > 1}
-    assert branchy == {"Review", "Verify", "Build"}, branchy
+    assert branchy == {"Review", "Verify", "Build", "Audit"}, branchy
     for cls in _NODES:
         succ = _successors(cls)
         if len(succ) > 1:

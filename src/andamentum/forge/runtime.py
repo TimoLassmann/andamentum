@@ -1,11 +1,19 @@
 """The fixed spine that generated systems import — written once, engine-free.
 
-Three pieces, deliberately tiny:
+Four pieces, deliberately tiny:
 
 - ``run_head`` — the single LLM seam. A generated head node calls this; it routes
   through ``andamentum.core.run_agent_with_fallback`` (tool-calling output with a
   PromptedOutput fallback for small models) and honours the ``agent_overrides`` test
   seam so a generated graph runs with no live model.
+- ``EnvelopeTolerantModel`` — the base for every agent-*output* model (forge's own
+  heads and the rendered heads of generated systems). A deterministic ``mode="before"``
+  validator unwraps the one structured-output failure small models actually produce:
+  answering with the JSON *schema envelope* (``{"properties": {...}, "required": ...,
+  "type": "object", ...}``) instead of the instance, with the real answer intact inside
+  ``properties``. Model proposes, code disposes — lossless normalisation at the
+  transport seam, never a silent fallback (a payload that is still invalid after
+  unwrapping fails validation exactly as loudly as before).
 - ``loop_allowed`` — the termination guard. A checkpoint node calls this before it
   loops back; the bound is a counter in State checked against a Deps cap (recipe I6 /
   dialect L5). The model never decides when to stop.
@@ -29,9 +37,59 @@ import json
 import sqlite3
 from typing import Protocol, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 _OutT = TypeVar("_OutT", bound=BaseModel)
+
+# The JSON-Schema vocabulary. A payload whose top-level keys ALL come from this set —
+# with a dict under "properties" — is a schema envelope, not an instance: no forge or
+# generated agent-output model uses these words as its complete field set.
+_SCHEMA_ENVELOPE_KEYS = frozenset(
+    {
+        "$defs",
+        "$schema",
+        "additionalProperties",
+        "definitions",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type",
+    }
+)
+
+
+class EnvelopeTolerantModel(BaseModel):
+    """Base for agent-output models: unwraps the schema-envelope confusion.
+
+    Small models on the PromptedOutput path sometimes echo the JSON schema back with
+    the actual field values placed under ``properties`` — e.g.
+    ``{"properties": {"body": "<code>"}, "required": ["body"], "type": "object",
+    "title": "PieceOut"}``. The instance is fully recoverable, so recovering it is a
+    deterministic normalisation, not a guess. Two guards keep it precise: every
+    top-level key must be JSON-Schema vocabulary, and at least one corroborating
+    envelope marker must be present beyond ``properties`` itself. If the unwrapped
+    payload is not a valid instance either (e.g. ``properties`` holds field *schemas*,
+    not values), validation still fails loud and the runner's retry behaviour is
+    unchanged.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap_schema_envelope(cls, data: object) -> object:
+        if (
+            isinstance(data, dict)
+            and isinstance(data.get("properties"), dict)
+            and set(data) <= _SCHEMA_ENVELOPE_KEYS
+            and (
+                data.get("type") == "object"
+                or "required" in data
+                or "title" in data
+                or "$schema" in data
+            )
+        ):
+            return data["properties"]
+        return data
 
 
 class _HasOverrides(Protocol):

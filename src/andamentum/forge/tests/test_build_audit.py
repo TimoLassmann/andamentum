@@ -173,6 +173,119 @@ async def test_undeclared_dep_access_is_caught_at_build(tmp_path: Path) -> None:
     assert discover_holes(pkg), "the rejected node's hole is restored"
 
 
+def _two_spine_plan() -> DesignPlan:
+    """A design with TWO spine holes (parse + normalise) feeding one head — the minimum
+    shape for a targeted rebuild (one hole re-authored, one re-applied verbatim)."""
+    return DesignPlan(
+        why=ForgeWhy(
+            purpose="Help manage a reading list.",
+            boundary_in="a request",
+            boundary_out="an answer",
+        ),
+        nodes=[
+            NodeDraft(
+                id="n1",
+                area="core",
+                job="Parse the request.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["parsed_request"],
+            ),
+            NodeDraft(
+                id="n2",
+                area="core",
+                job="Normalise the request.",
+                kind=NodeKind.SPINE,
+                consumes=["parsed_request"],
+                produces=["normalised"],
+            ),
+            NodeDraft(
+                id="n3",
+                area="core",
+                job="Answer the request.",
+                kind=NodeKind.HEAD,
+                consumes=["normalised"],
+                produces=["answer"],
+            ),
+        ],
+    )
+
+
+class _RecordingSink(ScriptedSink):
+    """Records which node each ``build_draft``/``build_repair`` call authored, and marks the
+    ONE rebuild target's body so its re-authoring is distinguishable on disk."""
+
+    def __init__(self, *, target: str, **kw: object) -> None:
+        super().__init__(**kw)  # type: ignore[arg-type]
+        self._target = target
+        self.authored: list[str] = []
+
+    async def run(self, defn: AgentDefinition, **kwargs: object) -> BaseModel:
+        if defn.name in ("build_draft", "build_repair"):
+            from .conftest import _draft_body
+
+            context = str(kwargs.get("context", ""))
+            first = context.splitlines()[0] if context else ""
+            node = first.split("NODE:", 1)[1].split("(")[0].strip() if "NODE:" in first else ""
+            self.authored.append(node)
+            body = _draft_body(context)
+            if node == self._target:
+                # A distinctive local statement (a comment would be dropped by ast.unparse).
+                body = "reauthored_target_marker = 1\n" + body
+            return PieceOut(body=body)
+        return await super().run(defn, **kwargs)
+
+
+async def test_rebuild_reapplies_known_good_and_reauthors_only_target(
+    tmp_path: Path,
+) -> None:
+    spec = compile_spec(_two_spine_plan())
+    render(spec, tmp_path)
+    pkg = tmp_path / spec.name
+
+    # First build: author every hole, capture the known-good bodies.
+    sink1 = ScriptedSink(**_sink_kwargs())  # type: ignore[arg-type]
+    report1 = await build_system(spec, pkg, sink=sink1, attempt_cap=3)
+    assert report1.all_filled, report1.unfillable
+    prior_bodies = {f.node: f.body for f in report1.filled}
+    assert len(prior_bodies) == 2, prior_bodies
+
+    target = "NormaliseTheRequest"
+    non_target = "ParseTheRequest"
+    assert {target, non_target} == set(prior_bodies)
+
+    # Rebuild: re-render pristine holes, then re-apply all known-good bodies but re-author
+    # only the single target — no LLM call for the non-target.
+    render(spec, tmp_path)
+    sink2 = _RecordingSink(target=target, **_sink_kwargs())  # type: ignore[arg-type]
+    report2 = await build_system(
+        spec,
+        pkg,
+        sink=sink2,
+        attempt_cap=3,
+        prior_bodies=prior_bodies,
+        targets={target},
+    )
+
+    assert report2.all_filled, report2.unfillable
+    assert not discover_holes(pkg), "rebuild should leave no holes"
+
+    # The sink authored EXACTLY the target — the non-target was re-applied, never re-authored.
+    assert sink2.authored == [target], sink2.authored
+
+    by_node = {f.node: f for f in report2.filled}
+    # Non-target: re-applied verbatim (attempts=0, body byte-identical to the prior body).
+    assert by_node[non_target].attempts == 0
+    assert by_node[non_target].body == prior_bodies[non_target]
+    # Target: re-authored (attempts>=1, carries the distinguishing marker).
+    assert by_node[target].attempts >= 1
+    assert "reauthored_target_marker" in by_node[target].body
+
+    # And on disk: the target's re-authored marker landed in nodes.py.
+    nodes_src = (pkg / "nodes.py").read_text()
+    assert "reauthored_target_marker" in nodes_src
+
+
 async def test_full_pipeline_with_fake_sandbox(
     tmp_path: Path, reading_list_sink: ScriptedSink
 ) -> None:

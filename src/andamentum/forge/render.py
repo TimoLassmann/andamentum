@@ -113,10 +113,10 @@ def _field_line(f: FieldSpec) -> str:
     return f"{line} = {rhs}" if rhs is not None else line
 
 
-def _render_model(m: ModelSpec) -> str:
+def _render_model(m: ModelSpec, base: str = "BaseModel") -> str:
     doc = f'    """{m.description}"""\n' if m.description else ""
     body = "\n".join(_field_line(f) for f in m.fields)
-    return f"class {m.name}(BaseModel):\n{doc}{body}\n"
+    return f"class {m.name}({base}):\n{doc}{body}\n"
 
 
 def _render_state(name: str, state: StateSpec, extra: list[FieldSpec]) -> str:
@@ -303,6 +303,10 @@ def _models_py(spec: SystemSpec, state_name: str, input_extra: list[FieldSpec]) 
         "from typing import Literal  # noqa: F401  (used when a field has a closed vocabulary)",
         "",
         "from pydantic import BaseModel, Field",
+    ]
+    if spec.agents:
+        parts += ["", "from andamentum.forge.runtime import EnvelopeTolerantModel"]
+    parts += [
         "",
         "",
         _render_model(spec.input.model),
@@ -312,7 +316,10 @@ def _models_py(spec: SystemSpec, state_name: str, input_extra: list[FieldSpec]) 
         parts.append(_render_model(e.model))
     for a in spec.agents:
         parts.append("")
-        parts.append(_render_model(a.output))
+        # Agent outputs are the models a (possibly small) LLM fills at runtime; the
+        # envelope-tolerant base deterministically unwraps the schema-envelope failure
+        # so the generated system inherits forge's own reliability guarantee.
+        parts.append(_render_model(a.output, base="EnvelopeTolerantModel"))
     parts.append("")
     parts.append(_render_state(state_name, spec.state, input_extra))
     return "\n".join(parts) + "\n"

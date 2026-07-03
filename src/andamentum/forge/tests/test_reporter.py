@@ -162,6 +162,54 @@ def test_rich_reporter_handles_build_and_audit_substeps() -> None:
     assert rep.__rich__() is not None
 
 
+def test_rich_reporter_bumps_round_on_audit_rebuild() -> None:
+    # A second pass through the Render→Verify→Build→Audit rebuild loop is a new round:
+    # Render (the loop's lead stage) re-entering bumps the *rebuild* indicator once —
+    # and never the redesign indicator (that belongs to the Review→Frame loop).
+    rep, _buf = _rich_reporter()
+    rep.planned(stages=["Render", "Verify", "Build", "Audit"])
+    for name in ("Render", "Verify", "Build", "Audit"):
+        rep.stage_started(name=name)
+        rep.stage_finished(name=name, detail="")
+    assert rep._rebuild_round == 0  # first pass is not a new round
+    # Rebuild round: the whole tail re-enters; only Render (the lead) bumps.
+    for name in ("Render", "Verify", "Build", "Audit"):
+        rep.stage_started(name=name)
+        rep.stage_finished(name=name, detail="")
+    assert rep._rebuild_round == 1  # exactly one bump per rebuild round
+    assert rep._redesign_round == 0  # a rebuild is not a redesign
+
+
+def test_rich_reporter_bumps_redesign_round_on_review_loop() -> None:
+    # The Review→Frame plan-review loop (led by Frame) bumps the *redesign* indicator,
+    # kept distinct from the audit rebuild indicator so the dashboard label is honest.
+    rep, _buf = _rich_reporter()
+    rep.planned(stages=["Frame", "Decompose", "Compile", "Review"])
+    for name in ("Frame", "Decompose", "Compile", "Review"):
+        rep.stage_started(name=name)
+        rep.stage_finished(name=name, detail="")
+    assert rep._redesign_round == 0  # first pass is not a redesign
+    rep.stage_started(name="Frame")  # Review→Frame re-entry
+    assert rep._redesign_round == 1
+    assert rep._rebuild_round == 0  # a redesign is not a rebuild
+
+
+def test_rich_reporter_replaces_audit_rows_per_pass() -> None:
+    # audit_check must reset per audit pass so a rebuild does not stack duplicate rows.
+    rep, _buf = _rich_reporter()
+    rep.planned(stages=["Audit"])
+    rep.stage_started(name="Audit")
+    rep.audit_check(name="tests", status="running", detail="…")
+    rep.audit_check(name="tests", status="failed", detail="1 failed")
+    rep.stage_finished(name="Audit", detail="")
+    assert rep._audit.results == [("tests", "failed")]
+    # Second audit pass (rebuild) — the prior pass's row must not persist.
+    rep.stage_started(name="Audit")
+    rep.audit_check(name="tests", status="running", detail="…")
+    rep.audit_check(name="tests", status="passed", detail="passed")
+    assert rep._audit.results == [("tests", "passed")]  # replaced, not appended
+
+
 def test_noop_reporter_is_silent() -> None:
     rep = NoopReporter()
     rep.planned(stages=["A"])

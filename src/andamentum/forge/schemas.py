@@ -10,7 +10,11 @@ Two families live here:
   ``VerificationReport``, ``ForgeResult``) — the typed values that ride between steps
   and the final ``End[ForgeResult]`` payload.
 
-Leaf worker file: ``pydantic`` + the sibling ``spec`` enums only; no graph engine.
+Leaf worker file: ``pydantic``, the sibling ``spec`` enums, the dialect's leaf
+``Violation`` model (retained structured on ``CheckResult``), and the sibling
+``runtime.EnvelopeTolerantModel`` base (agent-output models inherit it so a small model's
+schema-envelope reply is unwrapped deterministically); ``runtime`` is itself engine-free,
+so no graph engine enters here.
 """
 
 from __future__ import annotations
@@ -19,6 +23,10 @@ from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from andamentum.agentic_dialect import Violation
+
+from .runtime import EnvelopeTolerantModel
 
 from .spec import NodeControl, NodeKind, SystemSpec
 
@@ -40,7 +48,7 @@ class DataKind(str, Enum):
 # --- design agent outputs (small, flat, enum-guarded) ---------------------------
 
 
-class ForgeWhy(BaseModel):
+class ForgeWhy(EnvelopeTolerantModel):
     """The understand head: purpose + boundary, in plain language."""
 
     purpose: str = Field(
@@ -52,7 +60,7 @@ class ForgeWhy(BaseModel):
     boundary_out: str = Field(description="What the system produces — its final output")
 
 
-class Fitness(BaseModel):
+class Fitness(EnvelopeTolerantModel):
     """The fitness-gate head (dialect L9): is the brief realisable as a function?
 
     Judges SHAPE — who owns the control loop — never vocabulary. A function is one input
@@ -88,7 +96,7 @@ class Fitness(BaseModel):
     )
 
 
-class ForgeAreas(BaseModel):
+class ForgeAreas(EnvelopeTolerantModel):
     """The frame head: the 2–4 big concerns the system must get right."""
 
     areas: list[str] = Field(
@@ -96,7 +104,7 @@ class ForgeAreas(BaseModel):
     )
 
 
-class JobList(BaseModel):
+class JobList(EnvelopeTolerantModel):
     """Decompose stage 1: an area's atomic steps as plain sentences (no types yet).
 
     A list of strings is the one list shape small models handle reliably — the typed
@@ -108,7 +116,7 @@ class JobList(BaseModel):
     )
 
 
-class NodeTyping(BaseModel):
+class NodeTyping(EnvelopeTolerantModel):
     """Decompose stage 2: the typed fields for ONE already-named node.
 
     One object, never an array — the model fills this for a single job it is handed,
@@ -141,7 +149,7 @@ class NodeTyping(BaseModel):
     )
 
 
-class PlanVerdict(BaseModel):
+class PlanVerdict(EnvelopeTolerantModel):
     """The plan-manager head: does the node board, as planned, serve the goal?"""
 
     serves_goal: bool = Field(
@@ -259,11 +267,24 @@ class DesignPlan(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """One deterministic verification check over a rendered package."""
+    """One deterministic verification check over a rendered package.
+
+    ``detail`` is the human-readable one-liner. The remaining fields retain the
+    structured evidence attribution consumes (§4.4/§4.5): for the ``tests`` check,
+    ``raw_output`` is the untruncated pytest stdout (whose ``nodes.py:line`` frames
+    map failures to nodes) and ``tests_passed``/``tests_failed`` are the parsed
+    summary counts (the regression guard's total order); for the ``dialect`` check,
+    ``violations`` is the untruncated ``list[Violation]`` (each carries
+    ``.file``/``.line``/``.law``), never re-parsed from ``detail``."""
 
     name: str
     passed: bool
     detail: str = ""
+    raw_output: str = ""
+    tests_passed: int = 0
+    tests_failed: int = 0
+    tests_errored: int = 0  # pytest collection/import ERRORS (≠ assertion failures)
+    violations: list[Violation] = Field(default_factory=list)
 
 
 class VerificationReport(BaseModel):
@@ -290,7 +311,7 @@ class SandboxResult(BaseModel):
         return self.exit_code == 0 and not self.timed_out
 
 
-class PieceOut(BaseModel):
+class PieceOut(EnvelopeTolerantModel):
     """A draft/repair head's output: the complete function body (the only thing the
     model writes; everything else is deterministic)."""
 
@@ -304,6 +325,7 @@ class FilledNode(BaseModel):
 
     node: str
     attempts: int
+    body: str
 
 
 class UnfillableNode(BaseModel):
@@ -339,7 +361,7 @@ class BuildReport(BaseModel):
         return [u.node for u in self.unfillable]
 
 
-class BodyVerdict(BaseModel):
+class BodyVerdict(EnvelopeTolerantModel):
     """The component-manager head: does this authored body do the node's job?"""
 
     implements_job: bool = Field(
@@ -351,7 +373,7 @@ class BodyVerdict(BaseModel):
     )
 
 
-class RequirementsVerdict(BaseModel):
+class RequirementsVerdict(EnvelopeTolerantModel):
     """The requirements head: does the built system serve the brief?"""
 
     meets_brief: bool = Field(
@@ -363,11 +385,26 @@ class RequirementsVerdict(BaseModel):
     )
 
 
-class CriticVerdict(BaseModel):
+class NodeFinding(BaseModel):
+    """One adversarial-critic problem, attributed to the node that carries it.
+
+    ``node`` is the model's best guess at the offending node's name; it is a free
+    string (node names are per-spec, so it cannot be a ``Literal``) reconciled to a
+    real spec node name via rapidfuzz where the critic result is consumed (§4.4
+    signal 4). Kept flat — two string fields — so small models fill it reliably."""
+
+    node: str = Field(
+        description="The name of the node whose body carries this problem"
+    )
+    issue: str = Field(description="The concrete problem found in that node's body")
+
+
+class CriticVerdict(EnvelopeTolerantModel):
     """The adversarial critic head: what is missing, wrong, or faked?"""
 
-    issues: list[str] = Field(
-        default_factory=list, description="Concrete problems found (empty if none)"
+    issues: list[NodeFinding] = Field(
+        default_factory=list,
+        description="Concrete problems found, each attributed to a node (empty if none)",
     )
 
 
@@ -392,6 +429,27 @@ class AuditReport(BaseModel):
     critic: CriticVerdict | None = None
     remaining_holes: list[str] = Field(default_factory=list)
     issues: list[AuditIssue] = Field(default_factory=list)
+
+
+class AuditRound(BaseModel):
+    """One entry in the self-correction history — the record of a single audit pass.
+
+    Written once per audit pass so the final ``ForgeResult`` carries a round-by-round
+    account of what failed and what was re-authored to try to fix it (§4.2/§4.6)."""
+
+    index: int = Field(description="1-based audit-pass index (audit_rounds + 1)")
+    rebuild_targets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Node names attributed from THIS pass's failure and re-authored heading into "
+            "the next pass. Empty when this pass converged (works) or the loop settled "
+            "(cap hit / regression / nothing attributable)."
+        ),
+    )
+    failing_checks: str = Field(
+        default="",
+        description="Short summary of the checks that failed this pass (empty if clean)",
+    )
 
 
 # --- the result -----------------------------------------------------------------
@@ -423,6 +481,10 @@ class ForgeResult(BaseModel):
     )
     build: BuildReport | None = None
     audit: AuditReport | None = None
+    audit_history: list[AuditRound] = Field(
+        default_factory=list,
+        description="One entry per audit pass — the self-correction round-by-round account",
+    )
     notes: list[str] = Field(
         default_factory=list,
         description="Advisory notes: caps hit, truncations, fallbacks",
