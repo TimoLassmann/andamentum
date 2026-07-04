@@ -4,7 +4,6 @@ Parses natural language queries into a search plan: one semantic query
 plus one optional metadata filter on a closed-set field.
 
 Filterable fields (closed-set only — LLM knows all valid values):
-  doc_type: reference, plan, log, correspondence, note
   source: manual, slack, claude_code, zotero, voice
   created_at: date filtering (after/before)
   has_decision: boolean (chunks containing decisions)
@@ -28,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Only closed-set fields and booleans. The LLM knows all valid values.
 FilterField = Literal[
-    "doc_type",  # 5 values: reference, plan, log, correspondence, note
     "source",  # 5 values: manual, slack, claude_code, zotero, voice
     "created_at",  # date filtering (after/before)
     "has_decision",  # boolean: chunks containing decisions
@@ -51,7 +49,6 @@ class MetadataFilter(BaseModel):
     field: FilterField = Field(
         description=(
             "Metadata field to filter on. "
-            "doc_type: reference (papers), plan (grants/proposals), log (meetings/progress), correspondence (emails), note (thoughts). "
             "source: manual, slack, claude_code, zotero, voice. "
             "created_at: document creation date. "
             "has_decision: chunks containing a decision. "
@@ -62,7 +59,7 @@ class MetadataFilter(BaseModel):
     operator: FilterOperator = Field(
         description=(
             "How to compare. "
-            "equals: exact match (for doc_type, source). "
+            "equals: exact match (for source). "
             "is_true: boolean flag is set (for has_decision, has_action_item). "
             "after: date >= value (for created_at). "
             "before: date <= value (for created_at)."
@@ -111,7 +108,7 @@ Given a natural language query, produce a search plan with:
 - A semantic query (what to search for in content)
 - Optionally ONE metadata filter on a closed-set field
 
-Filterable fields: doc_type, source, created_at, has_decision, has_action_item.
+Filterable fields: source, created_at, has_decision, has_action_item.
 Do NOT filter on people, projects, methods, or topics — semantic search handles those.
 
 Today's date is {today}.
@@ -121,9 +118,7 @@ Examples:
 - "What decisions did I make about GROVE?" → semantic_query="decisions about GROVE", filter={{field: "has_decision", operator: "is_true", value: ""}}
 - "Show me all my action items" → semantic_query="", filter={{field: "has_action_item", operator: "is_true", value: ""}}, needs_semantic_search=False
 - "What has Sarah said about the grant?" → semantic_query="Sarah grant", filter=None
-- "Papers about drug resistance" → semantic_query="drug resistance", filter={{field: "doc_type", operator: "equals", value: "reference"}}
 - "Meeting notes from last month" → semantic_query="meeting notes", filter={{field: "created_at", operator: "after", value: "{last_month}"}}
-- "What ideas have I had recently?" → semantic_query="ideas", filter={{field: "doc_type", operator: "equals", value: "note"}}
 - "What did I capture from Slack this week?" → semantic_query="", filter={{field: "source", operator: "equals", value: "slack"}}, needs_semantic_search=False
 """
 
@@ -167,7 +162,7 @@ def _build_planner_agent(model: str):  # type: ignore[no-untyped-def]
                     f"created_at only supports 'after' or 'before', got: '{f.operator}'"
                 )
 
-            if f.field in ("doc_type", "source") and f.operator != "equals":
+            if f.field == "source" and f.operator != "equals":
                 issues.append(
                     f"'{f.field}' only supports 'equals' operator, got: '{f.operator}'"
                 )

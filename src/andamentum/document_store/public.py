@@ -38,6 +38,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
@@ -67,6 +68,12 @@ MetadataFilterValue = MetadataScalar | list[MetadataScalar]
 # Module-level caches
 _stores: dict[str, DocumentStore] = {}
 _preflight_done: set[str] = set()
+
+#: Max chunks processed concurrently during phase-2 ingest. Each unit of work
+#: is one embedding call + one LLM metadata-extraction call; bounding it keeps
+#: the embedding/LLM backend from being flooded while still collapsing the
+#: previously-serial per-chunk round-trips into a handful of waves.
+_INGEST_CONCURRENCY = 5
 
 
 async def _get_store(database: str) -> DocumentStore:
@@ -308,17 +315,45 @@ async def _run_phase2(
             )
         ]
 
-    # Embed and store chunks
+    # Phase-2 work runs concurrently instead of one chunk at a time:
+    #   * all chunk embeddings in a single batched /api/embed call,
+    #   * per-chunk LLM metadata extraction, bounded by _INGEST_CONCURRENCY,
+    #   * the doc-level embedding,
+    # then ordered writes. Previously each chunk was embedded, extracted, and
+    # written serially — the per-chunk LLM extraction dominated ingest latency.
     embed_svc = EmbeddingService(model=embedding_model)
     try:
-        for chunk in chunks:
-            chunk_emb = await embed_svc.embed_text(chunk.text, text_type="document")
+        sem = asyncio.Semaphore(_INGEST_CONCURRENCY)
 
-            chunk_meta = await extract_chunk_metadata(chunk.text, model=model)
+        async def _extract(chunk):  # type: ignore[no-untyped-def]
+            """Extract chunk metadata (no DB writes), bounded by the semaphore."""
+            async with sem:
+                chunk_meta = await extract_chunk_metadata(chunk.text, model=model)
             chunk_meta.parent_doc_id = doc_id
             chunk_meta.section_path = chunk.section_path
             chunk_meta.chunk_index = chunk.chunk_index
+            return chunk_meta
 
+        async def _embed_doc_level() -> None:
+            """Doc-level embedding — skip gracefully if too large for the model."""
+            try:
+                doc_emb = await embed_svc.embed_text(
+                    content, text_type="document", title=title
+                )
+                await store.store_doc_embedding(doc_id, doc_emb)
+            except Exception:
+                logger.info(
+                    f"Doc-level embedding skipped for '{title}' (content too large for embedding model)"
+                )
+
+        chunk_embeddings, chunk_metas, _ = await asyncio.gather(
+            embed_svc.embed_batch([c.text for c in chunks], text_type="document"),
+            asyncio.gather(*(_extract(c) for c in chunks)),
+            _embed_doc_level(),
+        )
+
+        # Ordered, sequential writes (sync sqlite — single writer).
+        for chunk, chunk_emb, chunk_meta in zip(chunks, chunk_embeddings, chunk_metas):
             await store.store_chunk(
                 doc_id,
                 chunk.text,
@@ -327,17 +362,6 @@ async def _run_phase2(
                 chunk_index=chunk.chunk_index,
                 start_char=chunk.start_char,
                 end_char=chunk.end_char,
-            )
-
-        # Doc-level embedding — attempt on full content, skip gracefully if too large for the model
-        try:
-            doc_emb = await embed_svc.embed_text(
-                content, text_type="document", title=title
-            )
-            await store.store_doc_embedding(doc_id, doc_emb)
-        except Exception:
-            logger.info(
-                f"Doc-level embedding skipped for '{title}' (content too large for embedding model)"
             )
     finally:
         await embed_svc.close()
@@ -359,7 +383,9 @@ async def repair(
     A document is incomplete if ANY of these are true:
     - Has no chunks
     - Has chunks but some are missing embeddings (chunk_embeddings)
-    - Has no document-level embedding (doc_embedding column)
+
+    (The document-level embedding is optional — skipped for over-large content —
+    so its absence does not mark a document incomplete.)
 
     For each incomplete document, the entire phase 2 is re-run:
     delete all existing chunks/embeddings → re-chunk → re-embed → re-store.
@@ -571,11 +597,13 @@ async def search(
 
     # 4. Pure metadata query with no search results — return filtered docs directly
     if not plan.needs_semantic_search and doc_uuids is not None and not raw_results:
-        from .database import get_document_metadata
+        from .database import get_documents_metadata
 
+        ids = list(doc_uuids)[:limit]
+        metas = await get_documents_metadata(str(store.db_path), ids)
         results: list[SearchResult] = []
-        for uuid in list(doc_uuids)[:limit]:
-            meta = await get_document_metadata(str(store.db_path), uuid)
+        for uuid in ids:
+            meta = metas.get(uuid)
             if meta:
                 results.append(
                     SearchResult(
@@ -590,20 +618,27 @@ async def search(
                 )
         return results
 
-    # 5. Enrich results with document metadata
-    from .database import get_document_metadata
+    # 5. Enrich results with document metadata (batched — one query for titles/
+    #    metadata, one more for the content fallback, instead of N per result).
+    from .database import get_documents_content, get_documents_metadata
+
+    top = raw_results[:limit]
+    metas = await get_documents_metadata(str(store.db_path), [r.doc_id for r in top])
+
+    # Only results with no chunk snippet need the full-content fallback read.
+    need_content = [r.doc_id for r in top if not r.snippet and r.doc_id in metas]
+    contents = await get_documents_content(str(store.db_path), need_content)
 
     results = []
-    for r in raw_results[:limit]:
-        meta = await get_document_metadata(str(store.db_path), r.doc_id)
+    for r in top:
+        meta = metas.get(r.doc_id)
         title = meta.title if meta else ""
         doc_metadata = meta.metadata if meta else {}
 
         snippet = r.snippet
         if not snippet and meta:
             # No chunk snippet — return full document content
-            doc = await store.read(r.doc_id)
-            snippet = doc.content if doc else ""
+            snippet = contents.get(r.doc_id, "")
 
         results.append(
             SearchResult(
@@ -682,12 +717,18 @@ async def find_by_metadata(
     store = await _get_store(database)
     docs = await _find_by_metadata(str(store.db_path), filters, limit)
 
+    # Batch the content reads — one query for all matches instead of one per row.
+    contents: dict[str, str] = {}
+    if include_content:
+        from .database import get_documents_content
+
+        contents = await get_documents_content(
+            str(store.db_path), [m.doc_id for m in docs]
+        )
+
     results: list[SearchResult] = []
     for meta in docs:
-        content = ""
-        if include_content:
-            doc = await store.read(meta.doc_id)
-            content = doc.content if doc else ""
+        content = contents.get(meta.doc_id, "") if include_content else ""
 
         results.append(
             SearchResult(
@@ -909,20 +950,14 @@ async def find_duplicates(
         List of DuplicateGroup, each containing 2+ documents that are
         near-duplicates. Empty list if no duplicates found.
     """
-    import json
-
     import numpy as np
 
-    from .database import get_async_connection
+    from .database import load_doc_embeddings
 
     store = await _get_store(database)
 
-    # Load all documents with embeddings
-    async with get_async_connection(str(store.db_path)) as db:
-        async with db.execute(
-            "SELECT doc_uuid, dc_title, doc_embedding, metadata FROM documents WHERE doc_embedding IS NOT NULL AND deleted_at IS NULL"
-        ) as cursor:
-            rows = list(await cursor.fetchall())
+    # Load all non-deleted documents with a doc-level embedding (from vec0).
+    rows = await load_doc_embeddings(str(store.db_path), include_deleted=False)
 
     if len(rows) < 2:
         return []
@@ -930,19 +965,16 @@ async def find_duplicates(
     # Build a set of derived_from relationships to skip
     derived_pairs: set[tuple[str, str]] = set()
     doc_metadata: dict[str, dict] = {}
-    for row in rows:
-        doc_uuid = row[0]
-        meta = json.loads(row[3]) if row[3] else {}
+    for doc_uuid, _title, _embedding, meta, _created in rows:
         doc_metadata[doc_uuid] = meta
         if derived_from := meta.get("derived_from"):
             derived_pairs.add((doc_uuid, derived_from))
             derived_pairs.add((derived_from, doc_uuid))
 
-    # Parse embeddings and L2-normalize for cosine similarity
+    # L2-normalize for cosine similarity
     docs: list[tuple[str, str, np.ndarray]] = []
-    for row in rows:
-        doc_uuid, title, embedding_json = row[0], row[1] or "", row[2]
-        embedding = np.array(json.loads(embedding_json), dtype=np.float64)
+    for doc_uuid, title, embedding_list, _meta, _created in rows:
+        embedding = np.array(embedding_list, dtype=np.float64)
         norm = np.linalg.norm(embedding)
         if norm > 1e-10:
             embedding = embedding / norm

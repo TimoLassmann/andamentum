@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 from .database import (
     delete_document_record,
     get_document_metadata,
-    list_documents_by_type,
+    list_documents,
     register_document,
     store_doc_embedding,
     update_document_content,
@@ -40,7 +40,6 @@ from .lifecycle import get_db_path, init_database_metadata, is_ephemeral_name
 from .models import (
     Document,
     DocumentMetadata,
-    DocumentType,
     ReembedResult,
     UpdateResult,
 )
@@ -200,18 +199,18 @@ class DocumentStore:
         file_path: str,
         content: Optional[str] = None,
         title: Optional[str] = None,
-        document_type: Optional[DocumentType] = None,
         metadata: Optional[dict] = None,
     ) -> str:
-        """Add a document (backward-compatible wrapper around register_document).
+        """Add a document by an explicit file_path/identifier.
 
-        For new code, prefer register_document() which has a cleaner API.
+        Unlike :meth:`register_document`, this does NOT deduplicate by content
+        hash — callers that need each write to land as a distinct document
+        (e.g. the decomposed epistemic orchestrator) use this.
 
         Args:
             file_path: Path to document file or identifier
             content: Document content (required — conversion removed from this layer)
             title: Document title (defaults to filename stem)
-            document_type: Ignored (kept for backward compatibility)
             metadata: Additional metadata
 
         Returns:
@@ -234,7 +233,6 @@ class DocumentStore:
             title=title,
             content=content,
             metadata=metadata or {},
-            document_type=document_type,
             file_path=file_path,
         )
 
@@ -514,11 +512,9 @@ class DocumentStore:
     # List / Find / Stats
     # -------------------------------------------------------------------------
 
-    async def list_documents(
-        self, document_type: Optional[DocumentType] = None
-    ) -> list[DocumentMetadata]:
-        """List all documents, optionally filtered by type."""
-        return await list_documents_by_type(str(self.db_path), document_type)
+    async def list_documents(self) -> list[DocumentMetadata]:
+        """List all non-deleted documents, most-recently-updated first."""
+        return await list_documents(str(self.db_path))
 
     async def find_by_metadata(
         self,
@@ -604,7 +600,7 @@ class DocumentStore:
         Returns:
             ReembedResult with counts and duration
         """
-        from .database import get_async_connection
+        from .database import count_doc_embeddings, docs_missing_doc_embedding
         from .embeddings import EmbeddingService
 
         model = embedding_model or self.embedding_model
@@ -613,23 +609,10 @@ class DocumentStore:
         n_skipped = 0
         n_failed = 0
 
-        async with get_async_connection(str(self.db_path)) as db:
-            async with db.execute(
-                """
-                SELECT doc_uuid, dc_title, markdown_content
-                FROM documents
-                WHERE doc_embedding IS NULL AND markdown_content IS NOT NULL
-                ORDER BY created_date ASC
-                """
-            ) as cursor:
-                docs_to_embed: list[Any] = list(await cursor.fetchall())
-
-        async with get_async_connection(str(self.db_path)) as db:
-            async with db.execute(
-                "SELECT COUNT(*) FROM documents WHERE doc_embedding IS NOT NULL"
-            ) as cursor:
-                row = await cursor.fetchone()
-                n_skipped = row[0] if row else 0
+        # Missing = documents with content but no row in the doc_embeddings vec0
+        # table; skipped = documents that already have one.
+        docs_to_embed: list[Any] = await docs_missing_doc_embedding(str(self.db_path))
+        n_skipped = await count_doc_embeddings(str(self.db_path))
 
         if not docs_to_embed:
             duration = time.monotonic() - start_time
@@ -715,18 +698,11 @@ class DocumentStore:
         start_time = time.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
 
-        from .database import get_async_connection
+        from .database import load_doc_embeddings
 
-        async with get_async_connection(str(self.db_path)) as db:
-            async with db.execute(
-                """
-                SELECT doc_uuid, doc_embedding, created_date
-                FROM documents
-                WHERE doc_embedding IS NOT NULL
-                ORDER BY created_date ASC
-                """
-            ) as cursor:
-                rows = await cursor.fetchall()
+        # Cluster over every embedded document (including soft-deleted, matching
+        # prior behaviour); embeddings come from the doc_embeddings vec0 table.
+        rows = await load_doc_embeddings(str(self.db_path), include_deleted=True)
 
         if not rows:
             duration = time.monotonic() - start_time
@@ -738,10 +714,9 @@ class DocumentStore:
             )
 
         embeddings_and_times: list[tuple[str, np.ndarray, float]] = []
-        for row in rows:
-            doc_uuid = row[0]
-            embedding = np.array(json.loads(row[1]), dtype=np.float64)
-            created = datetime.fromisoformat(row[2])
+        for doc_uuid, _title, embedding_list, _meta, created_date in rows:
+            embedding = np.array(embedding_list, dtype=np.float64)
+            created = datetime.fromisoformat(created_date)
             t_hours = timestamp_to_hours(created.timestamp())
             embeddings_and_times.append((doc_uuid, embedding, t_hours))
 
@@ -940,7 +915,7 @@ class DocumentStore:
 
     async def _get_cluster_docs(self, cluster_id: int) -> list[DocumentMetadata]:
         """Get documents assigned to a cluster."""
-        from .database import get_async_connection
+        from .database import get_async_connection, get_documents_metadata
 
         async with get_async_connection(str(self.db_path)) as db:
             async with db.execute(
@@ -949,12 +924,10 @@ class DocumentStore:
             ) as cursor:
                 rows = await cursor.fetchall()
 
-        docs = []
-        for row in rows:
-            meta = await get_document_metadata(str(self.db_path), row[0])
-            if meta:
-                docs.append(meta)
-        return docs
+        # Batch-fetch metadata, then restore the created_date DESC order.
+        ordered_ids = [row[0] for row in rows]
+        metas = await get_documents_metadata(str(self.db_path), ordered_ids)
+        return [metas[doc_id] for doc_id in ordered_ids if doc_id in metas]
 
     async def _get_cluster_params(self, cluster_id: int) -> tuple[list[float], dict]:
         """Get cluster centroid and kernel parameters."""

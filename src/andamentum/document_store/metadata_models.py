@@ -2,7 +2,7 @@
 
 Two levels of metadata, designed around real query patterns:
 
-Document-level: what kind of document, where it came from, who/what it mentions.
+Document-level: where it came from, who/what it mentions.
 Chunk-level: topic tags, who's mentioned, and two boolean flags (decision, action item)
   that map to the two structured queries users actually run.
 
@@ -10,9 +10,11 @@ Every field has a default. Models are valid with zero LLM extraction.
 Deterministic fields are filled by the ingestion pipeline; LLM-extracted
 fields are filled optionally via extraction.py.
 
+The store imposes no document-type taxonomy — consumers classify documents
+with their own fields in the schema-less metadata dict.
+
 Filterable fields (closed-set, used by query planner):
-  doc_type (5 values), source (5 values), created_at (date),
-  has_decision (bool), has_action_item (bool)
+  source, created_at (date), has_decision (bool), has_action_item (bool)
 
 Non-filterable fields (handled by semantic search):
   projects, people, topics, methods — open-ended, LLM can't know valid values
@@ -21,20 +23,9 @@ Non-filterable fields (handled by semantic search):
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
-# --- Closed-set types ---
-
-DocType = Literal[
-    "reference",  # papers, articles, external documents
-    "plan",  # grants, proposals, strategy documents
-    "log",  # meeting notes, research logs, progress records
-    "correspondence",  # emails, messages, discussions
-    "note",  # fleeting thoughts, ideas, quick captures
-]
 
 # --- Document-level metadata ---
 
@@ -46,7 +37,7 @@ class DocumentMetadataFields(BaseModel):
         source, source_file, created_at
 
     LLM-extracted:
-        title, doc_type, projects, people
+        title, projects, people
     """
 
     # Deterministic
@@ -68,10 +59,6 @@ class DocumentMetadataFields(BaseModel):
         default="",
         description="One-line summary of the document, max 10 words",
     )
-    doc_type: DocType = Field(
-        default="note",
-        description="Document type: reference (papers/articles), plan (grants/proposals), log (meetings/progress), correspondence (emails/messages), note (thoughts/ideas)",
-    )
     projects: list[str] = Field(
         default_factory=list,
         description='Project names this document relates to, e.g. ["GROVE", "RCCC"]. Empty if none.',
@@ -92,10 +79,6 @@ class DocumentLLMFields(BaseModel):
     title: str = Field(
         default="",
         description="One-line summary of the document, max 10 words",
-    )
-    doc_type: DocType = Field(
-        default="note",
-        description="Document type: reference (papers/articles), plan (grants/proposals), log (meetings/progress), correspondence (emails/messages), note (thoughts/ideas)",
     )
     projects: list[str] = Field(
         default_factory=list,

@@ -53,15 +53,11 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
             updated_date TEXT NOT NULL,
             indexed_at TEXT,
 
-            -- Tier classification
-            document_tier TEXT DEFAULT 'working',
-
             -- Extensible metadata
             metadata TEXT DEFAULT '{}',
 
-            -- Document-level embedding (JSON-encoded 768-dim float vector)
-            -- Stored as TEXT for portability and debuggability (~6KB per doc)
-            doc_embedding TEXT,
+            -- Document-level embeddings live in the doc_embeddings vec0 table
+            -- (the single home), not a column here.
 
             -- Cluster assignment (Phase 2: DHP temporal clustering)
             cluster_id INTEGER,
@@ -83,9 +79,6 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)"
-    )
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)"
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"

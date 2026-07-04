@@ -57,7 +57,7 @@ def fts_search(
                 fts.rank
             FROM documents_fts fts
             JOIN documents d ON fts.rowid = d.id
-            WHERE documents_fts MATCH ?
+            WHERE documents_fts MATCH ? AND d.deleted_at IS NULL
             ORDER BY fts.rank
             LIMIT ?
         """,
