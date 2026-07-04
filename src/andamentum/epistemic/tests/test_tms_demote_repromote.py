@@ -88,7 +88,7 @@ class TestNoOpCascadeFastPath:
         invalidate_ops = [
             op
             for op in state.operations_log
-            if op["operation"] == "invalidate_evidence"
+            if op.operation == "invalidate_evidence"
         ]
         assert invalidate_ops == [], (
             f"Expected 0 invalidate_evidence ops, got {len(invalidate_ops)}"
@@ -133,7 +133,7 @@ class TestNoOpCascadeFastPath:
         invalidate_ops = [
             op
             for op in state.operations_log
-            if op["operation"] == "invalidate_evidence"
+            if op.operation == "invalidate_evidence"
         ]
         assert len(invalidate_ops) == 1
         # And the claim's evidence_ids was properly cleaned.
@@ -186,7 +186,7 @@ class TestNoOpCascadeFastPath:
         invalidate_ops = [
             op
             for op in state.operations_log
-            if op["operation"] == "invalidate_evidence"
+            if op.operation == "invalidate_evidence"
         ]
         # Only 1 op (for the referenced evidence). Pre-fix: 4 ops.
         assert len(invalidate_ops) == 1

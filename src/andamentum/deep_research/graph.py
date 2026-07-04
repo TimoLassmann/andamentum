@@ -1,5 +1,7 @@
 """Assemble research workflow graph."""
 
+from __future__ import annotations
+
 from pydantic_graph import Graph
 
 from .nodes import (

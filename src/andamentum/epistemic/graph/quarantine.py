@@ -1,23 +1,39 @@
-"""Quarantine record for entities whose operations failed.
+"""Layer-1 record types for the epistemic graph run.
 
-When an operation raises, the central runner records a QuarantineRecord
-so downstream nodes can skip the entity and the final report can surface
-the failure to the user. Fail-loud: no silent degradation.
+``QuarantineRecord`` — when an operation raises, the central runner
+records one so downstream nodes can skip the entity and the final report
+can surface the failure. Fail-loud: no silent degradation.
 
-Architecture: Layer 1 (framework-agnostic, pure dataclass)
+``OperationLogEntry`` — the per-operation trace line the runner appends
+for the progress callback and final stats.
+
+Both are typed boundary schemas (Law 7): they ride on ``EpistemicResult``,
+the graph's ``End`` payload, so they must not be untyped dicts.
+
+Architecture: Layer 1 (framework-agnostic, pure records)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True)
-class QuarantineRecord:
+class QuarantineRecord(BaseModel):
     """Records that an entity was quarantined because an operation raised."""
+
+    model_config = ConfigDict(frozen=True)
 
     entity_id: str
     entity_type: str
     operation: str
     exception_type: str
+    message: str
+
+
+class OperationLogEntry(BaseModel):
+    """One operation execution, recorded for tracing and final stats."""
+
+    operation: str
+    entity_id: str
+    success: bool
     message: str

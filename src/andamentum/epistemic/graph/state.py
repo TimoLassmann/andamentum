@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 
 from ..thresholds import IBE_AGREEMENT_K_DEFAULT
-from .quarantine import QuarantineRecord
+from .quarantine import OperationLogEntry, QuarantineRecord
 
 
 def _new_run_id() -> str:
@@ -126,7 +125,7 @@ class EpistemicGraphState:
 
     # ── Operation trace ─────────────────────────────────────────
     # Lightweight log for the progress callback and final stats
-    operations_log: list[dict[str, Any]] = field(default_factory=list)
+    operations_log: list[OperationLogEntry] = field(default_factory=list)
     successful: int = 0
     failed: int = 0
     errors: list[str] = field(default_factory=list)
@@ -140,12 +139,12 @@ class EpistemicGraphState:
     ) -> None:
         """Record an operation execution for tracing."""
         self.operations_log.append(
-            {
-                "operation": operation,
-                "entity_id": entity_id,
-                "success": success,
-                "message": message,
-            }
+            OperationLogEntry(
+                operation=operation,
+                entity_id=entity_id,
+                success=success,
+                message=message,
+            )
         )
         if success:
             self.successful += 1

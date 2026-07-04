@@ -17,6 +17,7 @@ from pydantic_graph import GraphRunContext
 
 from andamentum.deep_research.models import (
     FetchedPage,
+    FetchError,
     FetchPlan,
     SearchResult,
 )
@@ -75,15 +76,18 @@ def _result(link_id: int, url: str) -> SearchResult:
 
 
 def _make_ctx(*, fetcher_output: FetchPlan):
+    """Returns (ctx, fetcher_stub) — the stub is handed back directly so
+    tests can inspect ``last_prompt`` without digging through Deps."""
     state = ResearchState(query="test query")
+    fetcher_stub = StubAgent(fetcher_output)
     deps = NodeDeps(
         backend=FakeBackend(),  # type: ignore[arg-type]
         model="stub",
         correlation_id="test",
         max_pages_to_fetch=5,
-        agent_overrides={"page_fetcher": StubAgent(fetcher_output)},
+        agent_overrides={"page_fetcher": fetcher_stub},
     )
-    return GraphRunContext(state=state, deps=deps)
+    return GraphRunContext(state=state, deps=deps), fetcher_stub
 
 
 # ── Tests ──────────────────────────────────────────────────────────────
@@ -96,7 +100,9 @@ async def test_within_cycle_duplicate_urls_collapse_to_one_pick():
     link_ids — that's how the original Kalign run picked PMC1538774
     three times.
     """
-    ctx = _make_ctx(fetcher_output=FetchPlan(link_ids=[0, 1], reasoning="r"))
+    ctx, fetcher_stub = _make_ctx(
+        fetcher_output=FetchPlan(link_ids=[0, 1], reasoning="r")
+    )
     # Three queries each returned the same URL plus one unique URL.
     ctx.state.all_results = {
         "q1": [
@@ -116,10 +122,8 @@ async def test_within_cycle_duplicate_urls_collapse_to_one_pick():
 
     # The fetcher agent's prompt should list only the 3 unique URLs,
     # each under one link_id.
-    overrides = ctx.deps.agent_overrides
-    assert overrides is not None
-    fetcher_stub = overrides["page_fetcher"]
     prompt = fetcher_stub.last_prompt
+    assert prompt is not None
     assert prompt.count("shared.test/page") == 1, (
         "Duplicate URL surfaced under multiple link_ids in the fetcher "
         f"prompt:\n{prompt}"
@@ -135,7 +139,9 @@ async def test_already_fetched_urls_excluded_in_next_cycle():
     from the new cycle's fetcher prompt — not just hinted at via text."""
     # Stub plan; if FetchPhase reaches the agent at all, it'll pick lid 99
     # (which won't be in url_map) and fetch nothing.
-    ctx = _make_ctx(fetcher_output=FetchPlan(link_ids=[99], reasoning="r"))
+    ctx, fetcher_stub = _make_ctx(
+        fetcher_output=FetchPlan(link_ids=[99], reasoning="r")
+    )
     ctx.state.fetched_urls = {"https://oldcycle.test/done"}
     ctx.state.all_results = {
         "q1": [
@@ -146,9 +152,6 @@ async def test_already_fetched_urls_excluded_in_next_cycle():
 
     await FetchPhase().run(ctx)
 
-    overrides = ctx.deps.agent_overrides
-    assert overrides is not None
-    fetcher_stub = overrides["page_fetcher"]
     prompt = fetcher_stub.last_prompt
     assert prompt is not None
     # The old URL must not appear in the "Search Results to Evaluate"
@@ -166,7 +169,7 @@ async def test_already_fetched_urls_excluded_in_next_cycle():
 async def test_agent_picking_same_link_id_twice_only_fetches_once():
     """Defence-in-depth: even if the fetcher agent picks the same link_id
     twice, do_fetch must only run once for that URL."""
-    ctx = _make_ctx(
+    ctx, _fetcher_stub = _make_ctx(
         # Agent picks link_id 0 four times — should fetch once.
         fetcher_output=FetchPlan(link_ids=[0, 0, 0, 0], reasoning="r"),
     )
@@ -190,14 +193,15 @@ async def test_previously_failed_urls_excluded_in_next_cycle():
     because we tracked successful fetches in ``state.fetched_urls`` but
     never excluded URLs we had already failed on.
     """
-    ctx = _make_ctx(fetcher_output=FetchPlan(link_ids=[99], reasoning="r"))
+    ctx, fetcher_stub = _make_ctx(
+        fetcher_output=FetchPlan(link_ids=[99], reasoning="r")
+    )
     ctx.state.fetch_errors = [
-        {
-            "url": "https://failed.test/blocked",
-            "error": "Client error '403 Forbidden'",
-            "is_retryable": "True",
-            "link_id": "0",
-        },
+        FetchError(
+            url="https://failed.test/blocked",
+            error="Client error '403 Forbidden'",
+            link_id=0,
+        ),
     ]
     ctx.state.all_results = {
         "q1": [
@@ -208,9 +212,6 @@ async def test_previously_failed_urls_excluded_in_next_cycle():
 
     await FetchPhase().run(ctx)
 
-    overrides = ctx.deps.agent_overrides
-    assert overrides is not None
-    fetcher_stub = overrides["page_fetcher"]
     prompt = fetcher_stub.last_prompt
     assert prompt is not None
     eval_block = prompt.split("Search Results to Evaluate")[1].split("Already Fetched")[
@@ -231,7 +232,9 @@ async def test_summarize_pages_returns_when_all_urls_already_fetched():
     to SummarizePages."""
     # Stub plan; if FetchPhase reaches the agent at all, it'll pick lid 99
     # (which won't be in url_map) and fetch nothing.
-    ctx = _make_ctx(fetcher_output=FetchPlan(link_ids=[99], reasoning="r"))
+    ctx, fetcher_stub = _make_ctx(
+        fetcher_output=FetchPlan(link_ids=[99], reasoning="r")
+    )
     ctx.state.fetched_urls = {
         "https://a.test/",
         "https://b.test/",
@@ -245,9 +248,6 @@ async def test_summarize_pages_returns_when_all_urls_already_fetched():
 
     nxt = await FetchPhase().run(ctx)
     assert isinstance(nxt, SummarizePages)
-    overrides = ctx.deps.agent_overrides
-    assert overrides is not None
-    fetcher_stub = overrides["page_fetcher"]
     # The fetcher agent must NOT have been called — there was nothing
     # left to evaluate after the already-fetched filter.
     assert fetcher_stub.last_prompt is None

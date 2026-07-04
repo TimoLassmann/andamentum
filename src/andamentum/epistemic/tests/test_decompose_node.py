@@ -75,7 +75,7 @@ class TestDecomposeNode:
         assert reloaded.decomposition is None
         # No execution_step for decompose_question.
         decompose_ops = [
-            op for op in state.operations_log if op["operation"] == "decompose_question"
+            op for op in state.operations_log if op.operation == "decompose_question"
         ]
         assert decompose_ops == []
 
@@ -96,7 +96,7 @@ class TestDecomposeNode:
         assert len(reloaded.decomposition.sub_investigations) == 3
         assert reloaded.decomposition.combination_rule == "AND"
         decompose_ops = [
-            op for op in state.operations_log if op["operation"] == "decompose_question"
+            op for op in state.operations_log if op.operation == "decompose_question"
         ]
         assert len(decompose_ops) == 1
 

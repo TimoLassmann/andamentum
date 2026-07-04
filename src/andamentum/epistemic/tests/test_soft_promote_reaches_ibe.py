@@ -110,12 +110,12 @@ async def test_soft_promote_routes_to_promote_to_supported(
 
     # 1. Soft-promote ran (the precondition for the routing fix to matter).
     soft_calls = [
-        op for op in state.operations_log if op["operation"] == "soft_promote"
+        op for op in state.operations_log if op.operation == "soft_promote"
     ]
     assert len(soft_calls) == 1, (
         f"Expected one soft_promote call, got {len(soft_calls)}: {soft_calls}"
     )
-    assert soft_calls[0]["success"], (
+    assert soft_calls[0].success, (
         f"Soft promote should have succeeded with directional evidence: {soft_calls[0]}"
     )
 
@@ -213,7 +213,7 @@ async def test_mixed_pass_and_abandon_routes_to_promote_to_supported(
 
     # The abandonable claim was handled.
     abandon_calls = [
-        op for op in state.operations_log if op["operation"] == "abandon_stale_claim"
+        op for op in state.operations_log if op.operation == "abandon_stale_claim"
     ]
     assert len(abandon_calls) == 1
 
@@ -286,16 +286,16 @@ async def test_refute_promote_still_skips_verification(
     next_node = await AbandonOrDemote().run(ctx)  # type: ignore[arg-type]
 
     refute_calls = [
-        op for op in state.operations_log if op["operation"] == "promote_as_refuted"
+        op for op in state.operations_log if op.operation == "promote_as_refuted"
     ]
-    assert len(refute_calls) == 1 and refute_calls[0]["success"]
+    assert len(refute_calls) == 1 and refute_calls[0].success
 
     # Refute-promote correctly adds to verification_done — the verdict
     # is already "contradicts", IBE shouldn't overwrite it.
     assert claim.entity_id in state.verification_done
 
     # And no soft-promote got triggered (claim was handled by refute).
-    assert not any(op["operation"] == "soft_promote" for op in state.operations_log)
+    assert not any(op.operation == "soft_promote" for op in state.operations_log)
 
     # Routing: AbandonOrDemote always routes to PromoteToSupported by
     # default now (it's idempotent — for a refute-promoted claim with

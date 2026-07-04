@@ -263,10 +263,10 @@ class TestDegenerateDecompositionFallback:
         # CreateClaims should have run MultiSeedClaim (0 claims), then
         # detected the empty result and run ProposeClaims as fallback.
         ms_calls = [
-            op for op in state.operations_log if op["operation"] == "multi_seed_claim"
+            op for op in state.operations_log if op.operation == "multi_seed_claim"
         ]
         pc_calls = [
-            op for op in state.operations_log if op["operation"] == "propose_claims"
+            op for op in state.operations_log if op.operation == "propose_claims"
         ]
         assert len(ms_calls) == 1
         assert len(pc_calls) == 1, (
@@ -329,10 +329,10 @@ class TestDegenerateDecompositionFallback:
         await CreateClaims().run(ctx)  # type: ignore[arg-type]
 
         ms_calls = [
-            op for op in state.operations_log if op["operation"] == "multi_seed_claim"
+            op for op in state.operations_log if op.operation == "multi_seed_claim"
         ]
         pc_calls = [
-            op for op in state.operations_log if op["operation"] == "propose_claims"
+            op for op in state.operations_log if op.operation == "propose_claims"
         ]
         assert len(ms_calls) == 1
         assert len(pc_calls) == 0, (

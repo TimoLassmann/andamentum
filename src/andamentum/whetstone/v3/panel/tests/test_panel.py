@@ -7,10 +7,12 @@ Coverage:
   - Per-expert review isolates failures (None filtered)
   - panel_synthesise crash is loud-fail-safe (reviews still returned)
   - n_experts caps the discipline → profile fan-out
+  - aggregate failure (all profiles / all reviews crashed) flags degraded
 """
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -120,6 +122,30 @@ def _patch_build_agent_chain(*outputs):
     return _build, agents
 
 
+# Every engine-free panel worker builds its own agent, so one shared
+# stub sequence spans the whole pipeline by patching each worker module.
+# Build order is deterministic: extract → profiles → reviews → synthesis.
+_WORKER_MODULES = (
+    "extract_keywords",
+    "generate_panel",
+    "review_experts",
+    "synthesise_panel",
+)
+
+
+def _patch_panel_workers(build) -> ExitStack:
+    """Patch build_pydantic_ai_agent + resolve_model in all four panel
+    worker modules with the same side_effect callable."""
+    stack = ExitStack()
+    for mod in _WORKER_MODULES:
+        base = f"andamentum.whetstone.v3.panel.{mod}"
+        stack.enter_context(
+            patch(f"{base}.build_pydantic_ai_agent", side_effect=build)
+        )
+        stack.enter_context(patch(f"{base}.resolve_model", return_value="stub"))
+    return stack
+
+
 # ── Tests ──────────────────────────────────────────────────────────────────
 
 
@@ -134,16 +160,7 @@ async def test_run_panel_v3_populates_review_result_panel_fields() -> None:
         _review("Bob", "Linguistics"),
         _synthesis(n=2),
     )
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(build):
         result = await run_panel_v3(SRC, model="stub", n_experts=2)
     assert len(result.expert_profiles) == 2
     assert {p.discipline for p in result.expert_profiles} == {"AI", "Linguistics"}
@@ -153,6 +170,12 @@ async def test_run_panel_v3_populates_review_result_panel_fields() -> None:
     # Criterion-cascade fields are empty in panel mode.
     assert result.findings == []
     assert result.edits == []
+    # Green run: the aggregate-failure gate must not trip.
+    assert not result.degraded
+    assert result.degraded_reason == ""
+    # Cost flows through the shared v3 contextvar counters, not State:
+    # 1 extract + 2 profiles + 2 reviews + 1 synthesis = 6.
+    assert result.metrics.llm_calls == 6
 
 
 async def test_panel_disciplines_skip_extract_keywords_call() -> None:
@@ -163,16 +186,7 @@ async def test_panel_disciplines_skip_extract_keywords_call() -> None:
         _review("Alice", "Statistics"),
         _synthesis(n=1),
     )
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(build):
         result = await run_panel_v3(
             SRC,
             model="stub",
@@ -218,16 +232,7 @@ async def test_profile_generation_isolates_per_discipline_failures() -> None:
     def _build(*_args, **_kwargs):
         return next(iter_seq)
 
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=_build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(_build):
         result = await run_panel_v3(SRC, model="stub", n_experts=2)
     # First discipline (AI) crashed; second (Linguistics) succeeded.
     assert len(result.expert_profiles) == 1
@@ -253,20 +258,14 @@ async def test_panel_synthesise_crash_is_loud_fail_safe() -> None:
     def _build(*_args, **_kwargs):
         return next(iter_seq)
 
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=_build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(_build):
         result = await run_panel_v3(SRC, model="stub", n_experts=1)
     assert result.panel_synthesis is None
     assert len(result.expert_reviews) == 1
     assert "synthesis" in result.summary.lower()
+    # A failed synthesis is a soft failure of one call, not an
+    # aggregate failure — the reviews all succeeded.
+    assert not result.degraded
 
 
 async def test_n_experts_caps_the_discipline_fan_out() -> None:
@@ -288,16 +287,7 @@ async def test_n_experts_caps_the_discipline_fan_out() -> None:
     def _build(*_args, **_kwargs):
         return next(iter_seq)
 
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=_build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(_build):
         result = await run_panel_v3(SRC, model="stub", n_experts=2)
     assert len(result.expert_profiles) == 2
     assert len(result.expert_reviews) == 2
@@ -314,21 +304,71 @@ async def test_no_disciplines_skips_review_and_synthesis() -> None:
     def _build(*_args, **_kwargs):
         return next(iter_seq)
 
-    with (
-        patch(
-            "andamentum.whetstone.v3.panel.graph.build_pydantic_ai_agent",
-            side_effect=_build,
-        ),
-        patch(
-            "andamentum.whetstone.v3.panel.graph.resolve_model",
-            return_value="stub",
-        ),
-    ):
+    with _patch_panel_workers(_build):
         result = await run_panel_v3(SRC, model="stub", n_experts=4)
     assert result.expert_profiles == []
     assert result.expert_reviews == []
     assert result.panel_synthesis is None
     assert "skipped" in result.summary.lower()
+    # A run that attempted no reviews at all is not green.
+    assert result.degraded
+    assert "no disciplines" in result.degraded_reason
+
+
+async def test_all_profile_failures_flag_the_result_degraded() -> None:
+    """When EVERY expert_generator call crashes, the run must not come
+    back green — the aggregate-failure gate flags it with a reason."""
+
+    class _CrashingGen:
+        async def run(self, _prompt: str):  # noqa: ARG002
+            raise RuntimeError("simulated profile crash")
+
+    build_sequence = [
+        _StubAgent(KeywordExtractionOutput(disciplines=["AI", "Linguistics"])),
+        _CrashingGen(),
+        _CrashingGen(),
+    ]
+    iter_seq = iter(build_sequence)
+
+    def _build(*_args, **_kwargs):
+        return next(iter_seq)
+
+    with _patch_panel_workers(_build):
+        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+    assert result.expert_profiles == []
+    assert result.expert_reviews == []
+    assert result.degraded
+    assert "profile" in result.degraded_reason
+    assert "2/2" in result.degraded_reason
+
+
+async def test_all_review_failures_flag_the_result_degraded() -> None:
+    """Profiles succeed but EVERY expert_reviewer call crashes — the run
+    still returns the profiles, flagged degraded."""
+
+    class _CrashingReview:
+        async def run(self, _prompt: str):  # noqa: ARG002
+            raise RuntimeError("simulated review crash")
+
+    build_sequence = [
+        _StubAgent(KeywordExtractionOutput(disciplines=["AI", "Linguistics"])),
+        _StubAgent(_profile("Alice", "AI")),
+        _StubAgent(_profile("Bob", "Linguistics")),
+        _CrashingReview(),
+        _CrashingReview(),
+    ]
+    iter_seq = iter(build_sequence)
+
+    def _build(*_args, **_kwargs):
+        return next(iter_seq)
+
+    with _patch_panel_workers(_build):
+        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+    assert len(result.expert_profiles) == 2
+    assert result.expert_reviews == []
+    assert result.degraded
+    assert "review" in result.degraded_reason
+    assert "2/2" in result.degraded_reason
 
 
 def test_panel_graph_is_importable_and_has_entry_node() -> None:

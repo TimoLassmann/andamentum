@@ -38,10 +38,14 @@ from .sectionize import sectionize
 from .synth import StructuredReview, critique_and_revise, synthesise, to_review_result
 
 
-@dataclass
+@dataclass(frozen=True)
 class V3Deps:
     agent_model: str
     cap: int = 2  # gap-loop round cap
+    # Aggregate-failure gate: when this fraction (or more) of the active
+    # criteria crash and contribute nothing, the result is flagged
+    # degraded — a run that skipped most of its cascade is not green.
+    soft_failure_threshold: float = 0.5
     criteria: list[Criterion] = field(
         default_factory=lambda: criterion_set_for("academic")
     )
@@ -259,10 +263,13 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                 llm_calls=counters.llm_calls if counters else 0,
                 gap_rounds_used=counters.gap_rounds if counters else 0,
                 failed_criteria=ctx.state.failed_criteria,
+                total_criteria=len(ctx.deps.criteria),
+                soft_failure_threshold=ctx.deps.soft_failure_threshold,
             )
         )
 
 
+# linear pipeline — topology test exempt
 review_graph_v3 = Graph(
     nodes=[
         Sectionize,

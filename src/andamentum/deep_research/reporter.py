@@ -141,6 +141,12 @@ class NoopReporter:
         pass
 
 
+# Shared default sink for worker ``reporter=`` parameters — one stateless
+# instance, so workers can call reporter methods unconditionally (the
+# dialect's "Protocol-typed sink defaulted to no-op").
+NOOP_REPORTER: SearchReporter = NoopReporter()
+
+
 class RichReporter:
     """Pretty-prints search-cycle progress via a ``rich.console.Console``.
 

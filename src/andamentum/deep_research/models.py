@@ -9,9 +9,13 @@ from .verification import VerificationResult
 __all__ = [
     "SearchQuery",
     "SearchResult",
+    "SearchError",
+    "SearchOutcome",
     "GeneratorOutput",
     "VerifierOutput",
     "FetchedPage",
+    "FetchError",
+    "FetchOutcome",
     "FetchResults",
     "FetchPlan",
     "PageSummary",
@@ -42,6 +46,30 @@ class SearchResult(BaseModel):
     snippet: str = Field(..., description="Result snippet/summary")
     domain: str = Field(..., description="Domain name")
     relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class SearchError(BaseModel):
+    """One failed search query, recorded at the ParallelSearch join."""
+
+    query: str = Field(..., description="The query that failed")
+    error: str = Field(..., description="Backend error message")
+    is_retryable: bool = Field(
+        default=True, description="Whether a retry could plausibly succeed"
+    )
+
+
+class SearchOutcome(BaseModel):
+    """Result of one query in the parallel-search fan-out.
+
+    Either ``results`` is populated (success) or ``error`` carries the
+    failure message (soft failure — one bad query does not abort the
+    others). Produced by the ``run_searches`` worker; reduced into
+    ``ResearchState`` at the ParallelSearch join.
+    """
+
+    query: str
+    results: list[SearchResult] = Field(default_factory=list)
+    error: str | None = None
 
 
 class GeneratorOutput(BaseModel):
@@ -107,6 +135,35 @@ class FetchPlan(BaseModel):
         description="Link IDs to fetch (1-5 most relevant pages)",
     )
     reasoning: str = Field(..., description="Why these pages were selected")
+
+
+class FetchError(BaseModel):
+    """One failed page fetch, recorded at the FetchPhase join.
+
+    URLs recorded here are treated as session-permanent failures — later
+    cycles exclude them from the fetch-candidate list (within a 1-3
+    minute research run, retrying the same URL almost never changes the
+    outcome).
+    """
+
+    url: str = Field(..., description="The URL that failed to fetch")
+    error: str = Field(..., description="Fetch/extraction error message")
+    link_id: int | None = Field(
+        default=None, description="link_id the fetcher agent picked, if known"
+    )
+
+
+class FetchOutcome(BaseModel):
+    """Result of the select-and-fetch worker for one cycle.
+
+    Produced by the ``fetch_pages`` worker; reduced into
+    ``ResearchState`` at the FetchPhase join. Empty (all defaults) when
+    the cycle had no fetch candidates left after dedup.
+    """
+
+    url_map: dict[int, str] = Field(default_factory=dict)
+    pages: list[FetchedPage] = Field(default_factory=list)
+    errors: list[FetchError] = Field(default_factory=list)
 
 
 class FetchResults(BaseModel):
@@ -216,6 +273,21 @@ class EvidenceReport(BaseModel):
     total_searches_performed: int
     total_pages_fetched: int
     iterations_required: int
+    # L7 aggregate loudness: a run that skipped most of its work is not
+    # green. Stamped deterministically at synthesis when the soft-failure
+    # rate (failed searches or fetches over attempts) crosses
+    # ``NodeDeps.soft_failure_threshold``.
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "True when the run's search/fetch soft-failure rate crossed the "
+            "configured threshold — treat findings as partial, not green"
+        ),
+    )
+    degraded_reason: str = Field(
+        default="",
+        description="Why the run was marked degraded; empty when healthy",
+    )
 
 
 class ResearchErrors(BaseModel):

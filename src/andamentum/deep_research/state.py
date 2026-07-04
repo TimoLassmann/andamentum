@@ -2,7 +2,15 @@
 
 from dataclasses import dataclass, field
 from typing import Literal
-from .models import SearchQuery, SearchResult, FetchedPage, EvidenceItem, PageSummary
+from .models import (
+    EvidenceItem,
+    FetchedPage,
+    FetchError,
+    PageSummary,
+    SearchError,
+    SearchQuery,
+    SearchResult,
+)
 
 
 @dataclass
@@ -41,10 +49,6 @@ class ResearchState:
     # Input (required at start)
     query: str
 
-    # Configuration
-    max_iterations: int = 3
-    max_searches_per_iteration: int = 3
-
     # Search tracking
     search_history: list[SearchQuery] = field(default_factory=list)
     all_results: dict[str, list[SearchResult]] = field(
@@ -81,7 +85,5 @@ class ResearchState:
     fetched_urls: set[str] = field(default_factory=set)
 
     # Error tracking (Phase 2 fix: surface search failures)
-    search_errors: list[dict[str, str]] = field(
-        default_factory=list
-    )  # {query, error, is_retryable}
-    fetch_errors: list[dict[str, str]] = field(default_factory=list)  # {url, error}
+    search_errors: list[SearchError] = field(default_factory=list)
+    fetch_errors: list[FetchError] = field(default_factory=list)
