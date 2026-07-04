@@ -147,7 +147,7 @@ def _tag_based_search(
             FROM documents d
             JOIN document_tags dt ON d.id = dt.document_id
             JOIN tags t ON dt.tag_id = t.id
-            WHERE t.name IN ({placeholders})
+            WHERE t.name IN ({placeholders}) AND d.deleted_at IS NULL
         """,
             tags,
         )

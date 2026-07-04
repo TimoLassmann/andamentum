@@ -15,6 +15,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from ._defaults import EMBEDDING_DIM
 from .connection import get_connection, DEFAULT_DB_PATH
 
 logger = logging.getLogger(__name__)
@@ -66,10 +67,10 @@ def init_all_tables(db_path: Optional[Path] = None) -> None:
         """)
 
         # 5. Document-level embeddings vec0 table (for semantic search across ALL tiers)
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings USING vec0(
                 doc_id INTEGER PRIMARY KEY,
-                embedding FLOAT[768]
+                embedding FLOAT[{EMBEDDING_DIM}]
             )
         """)
 
@@ -88,10 +89,12 @@ def init_all_tables(db_path: Optional[Path] = None) -> None:
 def _migrate_to_unified_schema(db_path: Path) -> None:
     """Idempotent extension of legacy ``documents`` rows to the unified schema.
 
-    Adds doc_uuid / document_tier / indexed_at / metadata / doc_embedding /
-    cluster_id columns and the doc_embeddings vec0 table when missing. New
-    databases get these from ``init_all_tables`` directly; this only does
-    work on databases created before that DDL existed.
+    Adds doc_uuid / indexed_at / metadata / cluster_id columns and the
+    doc_embeddings vec0 table when missing. New databases get these from
+    ``init_all_tables`` directly; this only does work on databases created
+    before that DDL existed. (Document-level embeddings live in the
+    doc_embeddings vec0 table, never a column; the store imposes no
+    document-type taxonomy — that lives in consumer-defined metadata.)
     """
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -107,20 +110,6 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 )
                 cursor.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_uuid ON documents(doc_uuid)"
-                )
-            except sqlite3.OperationalError as exc:
-                # Idempotent re-run / concurrent migration (e.g. column already
-                # added by another opener). Surfaced, not silently swallowed;
-                # anything that isn't a recoverable schema race propagates.
-                logger.warning("document-store schema migration step skipped: %s", exc)
-
-        if "document_tier" not in existing_columns:
-            try:
-                cursor.execute(
-                    "ALTER TABLE documents ADD COLUMN document_tier TEXT DEFAULT 'working'"
-                )
-                cursor.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_documents_tier ON documents(document_tier)"
                 )
             except sqlite3.OperationalError as exc:
                 # Idempotent re-run / concurrent migration (e.g. column already
@@ -148,15 +137,6 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 # anything that isn't a recoverable schema race propagates.
                 logger.warning("document-store schema migration step skipped: %s", exc)
 
-        if "doc_embedding" not in existing_columns:
-            try:
-                cursor.execute("ALTER TABLE documents ADD COLUMN doc_embedding TEXT")
-            except sqlite3.OperationalError as exc:
-                # Idempotent re-run / concurrent migration (e.g. column already
-                # added by another opener). Surfaced, not silently swallowed;
-                # anything that isn't a recoverable schema race propagates.
-                logger.warning("document-store schema migration step skipped: %s", exc)
-
         if "cluster_id" not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE documents ADD COLUMN cluster_id INTEGER")
@@ -170,10 +150,10 @@ def _migrate_to_unified_schema(db_path: Path) -> None:
                 logger.warning("document-store schema migration step skipped: %s", exc)
 
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings USING vec0(
                     doc_id INTEGER PRIMARY KEY,
-                    embedding FLOAT[768]
+                    embedding FLOAT[{EMBEDDING_DIM}]
                 )
             """)
         except sqlite3.OperationalError as exc:

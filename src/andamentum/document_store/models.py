@@ -4,36 +4,23 @@ Pydantic models for type safety and validation.
 """
 
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
-class DocumentType(str, Enum):
-    """Document type classification.
-
-    Retained for backward compatibility with existing databases and consumers.
-    No longer affects indexing behavior — all documents go through the same
-    storage pipeline. The value is stored in the document_tier column.
-
-    WORKING: Default type for all documents.
-    REFERENCE: Legacy type (no different treatment).
-    GENERATED: Legacy type (no different treatment).
-    """
-
-    REFERENCE = "reference"
-    WORKING = "working"
-    GENERATED = "generated"
-
-
 class DocumentMetadata(BaseModel):
-    """Metadata for a document in the store."""
+    """Metadata for a document in the store.
+
+    The store is domain-agnostic: it does not impose a document-type taxonomy.
+    Consumers that want to classify documents put their own fields in the
+    schema-less ``metadata`` dict and query them via ``find_by_metadata`` /
+    ``describe_metadata``.
+    """
 
     doc_id: str = Field(..., description="Unique document identifier")
     title: str = Field(..., description="Document title")
-    document_type: DocumentType = Field(..., description="Document classification")
     file_path: str = Field(..., description="Path to raw file")
     content_hash: str = Field(..., description="SHA-256 hash of content")
     file_format: str = Field(

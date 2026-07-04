@@ -1,12 +1,14 @@
 """Chunks table schema and initialization.
 
 The chunks table stores document chunks for semantic search. The
-chunk_embeddings vec0 virtual table stores the corresponding 768-dim
-embeddings (sized for ``embeddinggemma:latest``).
+chunk_embeddings vec0 virtual table stores the corresponding
+``EMBEDDING_DIM``-wide embeddings (sized for ``embeddinggemma:latest``).
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
+from ._defaults import EMBEDDING_DIM
 
 if TYPE_CHECKING:
     import sqlite3
@@ -29,10 +31,10 @@ def init_chunk_tables(cursor: sqlite3.Cursor) -> None:
         )
     """)
 
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
             chunk_id INTEGER PRIMARY KEY,
-            embedding FLOAT[768]
+            embedding FLOAT[{EMBEDDING_DIM}]
         )
     """)
 

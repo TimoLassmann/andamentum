@@ -3,17 +3,21 @@
 Handles SQLite operations for document metadata using unified documents table.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import re
+import struct
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 import aiosqlite
 
-from .models import DocumentMetadata, DocumentType
+from .connection import get_connection
+from .models import DocumentMetadata
 
 # A metadata field name is interpolated into a SQLite JSON path
 # (``json_extract(metadata, '$.<field>')``) which cannot be parameterised.
@@ -22,6 +26,29 @@ from .models import DocumentMetadata, DocumentType
 _SAFE_METADATA_FIELD = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.]*$")
 
 logger = logging.getLogger(__name__)
+
+
+def _row_to_document_metadata(row: aiosqlite.Row) -> DocumentMetadata:
+    """Map a ``documents`` table row to :class:`DocumentMetadata`.
+
+    Shared by every read path (get / list / list_deleted / find_by_metadata)
+    so the column→field mapping lives in exactly one place. Requires the
+    cursor's ``row_factory`` to be :class:`aiosqlite.Row`.
+    """
+    return DocumentMetadata(
+        doc_id=row["doc_uuid"],
+        title=row["dc_title"],
+        file_path=row["file_path"],
+        content_hash=row["file_hash"],
+        file_format=row["dc_format"],
+        file_size_bytes=row["file_size"],
+        created_at=datetime.fromisoformat(row["created_date"]),
+        updated_at=datetime.fromisoformat(row["updated_date"]),
+        indexed_at=datetime.fromisoformat(row["indexed_at"])
+        if row["indexed_at"]
+        else None,
+        metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+    )
 
 
 @asynccontextmanager
@@ -51,7 +78,6 @@ async def register_document(
     title: str,
     content: str,
     metadata: dict,
-    document_type: Optional[DocumentType] = None,
     file_path: Optional[str] = None,
     file_format: str = "md",
 ) -> DocumentMetadata:
@@ -63,15 +89,12 @@ async def register_document(
         title: Document title
         content: Document content (stored as markdown_content for FTS5)
         metadata: Additional metadata (JSON)
-        document_type: Optional tier classification (defaults to WORKING for backward compat)
         file_path: Optional file path. If None, a synthetic path is generated.
         file_format: File format (default "md")
 
     Returns:
         DocumentMetadata with registration details
     """
-    if document_type is None:
-        document_type = DocumentType.WORKING
     if file_path is None:
         file_path = f"memory://{doc_id}.md"
 
@@ -84,14 +107,13 @@ async def register_document(
         await db.execute(
             """
             INSERT INTO documents (
-                doc_uuid, dc_title, document_tier, file_path, markdown_content,
+                doc_uuid, dc_title, file_path, markdown_content,
                 file_hash, file_size, dc_format, created_date, updated_date, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 doc_id,
                 title,
-                document_type.value,
                 file_path,
                 content,
                 content_hash,
@@ -107,7 +129,6 @@ async def register_document(
     return DocumentMetadata(
         doc_id=doc_id,
         title=title,
-        document_type=document_type,
         file_path=file_path,
         content_hash=content_hash,
         file_format=file_format,
@@ -143,21 +164,54 @@ async def get_document_metadata(
             if not row:
                 return None
 
-            return DocumentMetadata(
-                doc_id=row["doc_uuid"],  # UUID
-                title=row["dc_title"],
-                document_type=DocumentType(row["document_tier"]),
-                file_path=row["file_path"],
-                content_hash=row["file_hash"],
-                file_format=row["dc_format"],
-                file_size_bytes=row["file_size"],
-                created_at=datetime.fromisoformat(row["created_date"]),
-                updated_at=datetime.fromisoformat(row["updated_date"]),
-                indexed_at=datetime.fromisoformat(row["indexed_at"])
-                if row["indexed_at"]
-                else None,
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-            )
+            return _row_to_document_metadata(row)
+
+
+async def get_documents_metadata(
+    db_path: str, doc_ids: list[str]
+) -> dict[str, DocumentMetadata]:
+    """Batch-fetch metadata for many documents in a single query.
+
+    Returns a ``{doc_uuid: DocumentMetadata}`` mapping for the non-deleted
+    documents among ``doc_ids`` (missing / soft-deleted ids are simply absent).
+    Callers that need a specific order re-order by their own id list. This is
+    the batched replacement for calling :func:`get_document_metadata` in a loop.
+    """
+    if not doc_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in doc_ids)
+    async with get_async_connection(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM documents WHERE doc_uuid IN ({placeholders}) AND deleted_at IS NULL",
+            list(doc_ids),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return {row["doc_uuid"]: _row_to_document_metadata(row) for row in rows}
+
+
+async def get_documents_content(db_path: str, doc_ids: list[str]) -> dict[str, str]:
+    """Batch-fetch ``markdown_content`` for many documents in a single query.
+
+    Returns a ``{doc_uuid: content}`` mapping for the non-deleted documents
+    among ``doc_ids`` that have content. The batched replacement for calling
+    :meth:`DocumentStore.read` in a loop when only the content is needed.
+    """
+    if not doc_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in doc_ids)
+    async with get_async_connection(db_path) as db:
+        async with db.execute(
+            f"SELECT doc_uuid, markdown_content FROM documents "
+            f"WHERE doc_uuid IN ({placeholders}) AND deleted_at IS NULL",
+            list(doc_ids),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return {row[0]: row[1] for row in rows if row[1] is not None}
 
 
 async def update_document_metadata(
@@ -362,24 +416,7 @@ async def list_deleted_documents(
             (limit,),
         ) as cursor:
             rows = await cursor.fetchall()
-            return [
-                DocumentMetadata(
-                    doc_id=row["doc_uuid"],
-                    title=row["dc_title"],
-                    document_type=DocumentType(row["document_tier"]),
-                    file_path=row["file_path"],
-                    content_hash=row["file_hash"],
-                    file_format=row["dc_format"],
-                    file_size_bytes=row["file_size"],
-                    created_at=datetime.fromisoformat(row["created_date"]),
-                    updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"])
-                    if row["indexed_at"]
-                    else None,
-                    metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                )
-                for row in rows
-            ]
+            return [_row_to_document_metadata(row) for row in rows]
 
 
 async def delete_document_record(db_path: str, doc_id: str) -> bool:
@@ -407,49 +444,22 @@ async def delete_document_record(db_path: str, doc_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-async def list_documents_by_type(
-    db_path: str, document_type: Optional[DocumentType] = None
-) -> list[DocumentMetadata]:
-    """List all documents, optionally filtered by tier.
+async def list_documents(db_path: str) -> list[DocumentMetadata]:
+    """List all non-deleted documents, most-recently-updated first.
 
     Args:
         db_path: Path to SQLite database
-        document_type: Optional tier filter (WORKING/REFERENCE/GENERATED)
 
     Returns:
         List of DocumentMetadata objects
     """
     async with get_async_connection(db_path) as db:
         db.row_factory = aiosqlite.Row
-
-        if document_type:
-            query = "SELECT * FROM documents WHERE document_tier = ? AND deleted_at IS NULL ORDER BY updated_date DESC"
-            params = (document_type.value,)
-        else:
-            query = "SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY updated_date DESC"
-            params = ()
-
-        async with db.execute(query, params) as cursor:
+        async with db.execute(
+            "SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY updated_date DESC"
+        ) as cursor:
             rows = await cursor.fetchall()
-
-            return [
-                DocumentMetadata(
-                    doc_id=row["doc_uuid"],
-                    title=row["dc_title"],
-                    document_type=DocumentType(row["document_tier"]),
-                    file_path=row["file_path"],
-                    content_hash=row["file_hash"],
-                    file_format=row["dc_format"],
-                    file_size_bytes=row["file_size"],
-                    created_at=datetime.fromisoformat(row["created_date"]),
-                    updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"])
-                    if row["indexed_at"]
-                    else None,
-                    metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                )
-                for row in rows
-            ]
+            return [_row_to_document_metadata(row) for row in rows]
 
 
 def _build_metadata_conditions(
@@ -564,24 +574,7 @@ async def find_by_metadata(
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
 
-            return [
-                DocumentMetadata(
-                    doc_id=row["doc_uuid"],
-                    title=row["dc_title"],
-                    document_type=DocumentType(row["document_tier"]),
-                    file_path=row["file_path"],
-                    content_hash=row["file_hash"],
-                    file_format=row["dc_format"],
-                    file_size_bytes=row["file_size"],
-                    created_at=datetime.fromisoformat(row["created_date"]),
-                    updated_at=datetime.fromisoformat(row["updated_date"]),
-                    indexed_at=datetime.fromisoformat(row["indexed_at"])
-                    if row["indexed_at"]
-                    else None,
-                    metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                )
-                for row in rows
-            ]
+            return [_row_to_document_metadata(row) for row in rows]
 
 
 async def describe_metadata(
@@ -645,7 +638,7 @@ async def find_doc_uuids_by_filters(
     """Find document UUIDs matching metadata filters.
 
     Supports closed-set fields only:
-      doc_type, source (equals) → documents.metadata JSON
+      source (equals) → documents.metadata JSON
       created_at (after/before) → documents.created_date column
       has_decision, has_action_item (is_true) → chunks.metadata JSON booleans
 
@@ -676,7 +669,7 @@ async def find_doc_uuids_by_filters(
             elif operator == "before":
                 doc_conditions.append("created_date <= ?")
                 doc_params.append(value)
-        elif field in ("doc_type", "source"):
+        elif field == "source":
             doc_conditions.append(f"json_extract(metadata, '$.{field}') = ?")
             doc_params.append(value)
         elif field in ("has_decision", "has_action_item"):
@@ -716,36 +709,27 @@ async def find_doc_uuids_by_filters(
     return result_uuids
 
 
-async def store_doc_embedding(
+# ---------------------------------------------------------------------------
+# Document-level embeddings — the doc_embeddings vec0 table is the SINGLE home.
+#
+# vec0 virtual tables are only visible on a connection that has loaded the
+# sqlite-vec extension (aiosqlite does not), so every access goes through the
+# sync `get_connection()` and is offloaded with `asyncio.to_thread` in the
+# async wrappers. Embeddings are stored as float32 — the width Ollama already
+# produces — and read back from the raw vector BLOB, which is bit-exact
+# (unlike `vec_to_json`, whose text form truncates to ~6 significant figures).
+# ---------------------------------------------------------------------------
+
+
+def _unpack_embedding(blob: bytes) -> list[float]:
+    """Decode a vec0 ``FLOAT[N]`` blob back to a Python float list (exact float32)."""
+    return list(struct.unpack(f"{len(blob) // 4}f", blob))
+
+
+def _store_doc_embedding_sync(
     db_path: str, doc_id: str, embedding: list[float]
 ) -> None:
-    """Store document-level embedding in both doc_embedding column and vec0 table.
-
-    The doc_embedding TEXT column is the persistent store (survives re-clustering, portable).
-    The doc_embeddings vec0 table is the search index (fast cosine distance queries).
-
-    Args:
-        db_path: Path to SQLite database
-        doc_id: Document UUID
-        embedding: 768-dimensional embedding vector
-    """
-    embedding_json = json.dumps(embedding)
-
-    # 1. Store in doc_embedding TEXT column (async — persistent store)
-    async with get_async_connection(db_path) as db:
-        await db.execute(
-            "UPDATE documents SET doc_embedding = ? WHERE doc_uuid = ?",
-            (embedding_json, doc_id),
-        )
-        await db.commit()
-
-    # 2. Store in doc_embeddings vec0 table (sync — requires sqlite-vec extension)
-    from .connection import get_connection
-    from pathlib import Path
-    import struct
-
     with get_connection(Path(db_path)) as conn:
-        # Get the integer id for this doc_uuid
         cursor = conn.execute("SELECT id FROM documents WHERE doc_uuid = ?", (doc_id,))
         row = cursor.fetchone()
         if row is None:
@@ -753,11 +737,9 @@ async def store_doc_embedding(
             return
 
         int_id = row[0] if isinstance(row, tuple) else row["id"]
-
-        # Pack embedding as binary float32 for vec0
         embedding_bytes = struct.pack(f"{len(embedding)}f", *embedding)
 
-        # Delete existing entry if present (upsert for vec0)
+        # Upsert (vec0 has no ON CONFLICT): delete any existing row first.
         conn.execute("DELETE FROM doc_embeddings WHERE doc_id = ?", (int_id,))
         conn.execute(
             "INSERT INTO doc_embeddings (doc_id, embedding) VALUES (?, ?)",
@@ -766,24 +748,91 @@ async def store_doc_embedding(
         conn.commit()
 
 
-async def get_doc_embedding(db_path: str, doc_id: str) -> Optional[list[float]]:
-    """Retrieve document-level embedding.
+async def store_doc_embedding(
+    db_path: str, doc_id: str, embedding: list[float]
+) -> None:
+    """Store a document-level embedding in the ``doc_embeddings`` vec0 table.
 
-    Reads from the doc_embedding TEXT column (the persistent store).
+    The vec0 table is the single home for doc-level embeddings — both the
+    search index and the source of truth for re-clustering and duplicate
+    detection. Values are stored as float32 (the width Ollama produces).
 
     Args:
         db_path: Path to SQLite database
         doc_id: Document UUID
-
-    Returns:
-        768-dimensional embedding vector, or None if not set
+        embedding: embedding vector (``EMBEDDING_DIM`` floats)
     """
-    async with get_async_connection(db_path) as db:
-        async with db.execute(
-            "SELECT doc_embedding FROM documents WHERE doc_uuid = ?",
-            (doc_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-            if row and row[0]:
-                return json.loads(row[0])
-            return None
+    await asyncio.to_thread(_store_doc_embedding_sync, db_path, doc_id, embedding)
+
+
+def _load_doc_embeddings_sync(
+    db_path: str, *, include_deleted: bool
+) -> list[tuple[str, str, list[float], dict, str]]:
+    where = "" if include_deleted else "WHERE d.deleted_at IS NULL"
+    with get_connection(Path(db_path)) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT d.doc_uuid, d.dc_title, de.embedding, d.metadata, d.created_date
+            FROM doc_embeddings de
+            JOIN documents d ON de.doc_id = d.id
+            {where}
+            ORDER BY d.created_date ASC
+            """
+        ).fetchall()
+
+    return [
+        (
+            row["doc_uuid"],
+            row["dc_title"] or "",
+            _unpack_embedding(row["embedding"]),
+            json.loads(row["metadata"]) if row["metadata"] else {},
+            row["created_date"],
+        )
+        for row in rows
+    ]
+
+
+async def load_doc_embeddings(
+    db_path: str, *, include_deleted: bool = False
+) -> list[tuple[str, str, list[float], dict, str]]:
+    """Load every document that has a doc-level embedding, read from vec0.
+
+    Returns ``(doc_uuid, title, embedding, metadata, created_date)`` tuples in
+    ascending ``created_date`` order. ``include_deleted=False`` (default) skips
+    soft-deleted documents; re-clustering passes ``True`` to keep its historical
+    behaviour of clustering over all embedded documents.
+    """
+    return await asyncio.to_thread(
+        _load_doc_embeddings_sync, db_path, include_deleted=include_deleted
+    )
+
+
+def _docs_missing_doc_embedding_sync(db_path: str) -> list[tuple[str, str, str]]:
+    with get_connection(Path(db_path)) as conn:
+        rows = conn.execute(
+            """
+            SELECT d.doc_uuid, d.dc_title, d.markdown_content
+            FROM documents d
+            WHERE d.markdown_content IS NOT NULL
+              AND d.id NOT IN (SELECT doc_id FROM doc_embeddings)
+            ORDER BY d.created_date ASC
+            """
+        ).fetchall()
+    return [(row["doc_uuid"], row["dc_title"], row["markdown_content"]) for row in rows]
+
+
+async def docs_missing_doc_embedding(db_path: str) -> list[tuple[str, str, str]]:
+    """Return ``(doc_uuid, title, content)`` for documents with no doc-level
+    embedding in vec0 — the backfill work-list for :meth:`reembed_all`."""
+    return await asyncio.to_thread(_docs_missing_doc_embedding_sync, db_path)
+
+
+async def count_doc_embeddings(db_path: str) -> int:
+    """Count documents that have a doc-level embedding stored in vec0."""
+
+    def _count() -> int:
+        with get_connection(Path(db_path)) as conn:
+            row = conn.execute("SELECT COUNT(*) FROM doc_embeddings").fetchone()
+            return row[0] if row else 0
+
+    return await asyncio.to_thread(_count)

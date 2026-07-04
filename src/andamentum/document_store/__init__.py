@@ -81,7 +81,6 @@ from .metadata_models import (
 from .models import (
     Document,
     DocumentMetadata,
-    DocumentType,
     ReembedResult,
     UpdateResult,
 )
@@ -129,7 +128,6 @@ __all__ = [
     "DocumentLLMFields",
     "DocumentMetadata",
     "DocumentMetadataFields",
-    "DocumentType",
     "DuplicateGroup",
     "FieldProfile",
     "MetadataFilterValue",
