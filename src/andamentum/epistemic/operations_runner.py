@@ -8,11 +8,11 @@ Architecture: Layer 2 (pydantic-graph)
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
-if TYPE_CHECKING:
-    from .confidence import PosteriorReport
+from pydantic import BaseModel, ConfigDict, Field
 
+from .confidence import PosteriorReport
 from .graph.quarantine import QuarantineRecord
 
 # Type for progress callback: (operation_type, workitem_id, success, message, outputs) -> None
@@ -26,34 +26,27 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class PipelineResult:
+class PipelineResult(BaseModel):
     """Result from an epistemic pipeline run.
 
-    Provides both graph-scheduler native fields and compatibility
-    properties used by CLI handlers.
+    The single typed exit of ``run_epistemic_graph`` / ``run_research_question``
+    (dialect Law 9). Provides graph-scheduler native fields plus the
+    ``success`` predicate used by CLI handlers.
     """
 
-    def __init__(
-        self,
-        objective_id: str,
-        iterations: int,
-        successful: int,
-        failed: int,
-        status: str,
-        errors: Optional[list[str]] = None,
-        posterior: Optional["PosteriorReport"] = None,
-        quarantined: Optional[list[QuarantineRecord]] = None,
-        retrieval_failed: bool = False,
-    ):
-        self.objective_id = objective_id
-        self.iterations = iterations
-        self.successful = successful
-        self.failed = failed
-        self.status = status
-        self.errors = errors or []
-        self.posterior = posterior
-        self.quarantined: list[QuarantineRecord] = quarantined or []
-        self.retrieval_failed = retrieval_failed
+    # PosteriorReport is a Pydantic model; QuarantineRecord too. No arbitrary
+    # types needed — but the field defaults use factories, so keep validation on.
+    model_config = ConfigDict(arbitrary_types_allowed=False)
+
+    objective_id: str
+    iterations: int
+    successful: int
+    failed: int
+    status: str
+    errors: list[str] = Field(default_factory=list)
+    posterior: Optional[PosteriorReport] = None
+    quarantined: list[QuarantineRecord] = Field(default_factory=list)
+    retrieval_failed: bool = False
 
     @property
     def success(self) -> bool:

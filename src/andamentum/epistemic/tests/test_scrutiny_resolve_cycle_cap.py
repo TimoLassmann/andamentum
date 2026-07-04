@@ -119,7 +119,7 @@ class TestScrutinizeRespectsCap:
         # preserved (proof scrutiny did NOT run).
         assert claim.entity_id not in state.claims_needing_rescrutiny
         scrutiny_ops = [
-            op for op in state.operations_log if op["operation"] == "scrutinise_claim"
+            op for op in state.operations_log if op.operation == "scrutinise_claim"
         ]
         assert scrutiny_ops == []
         reloaded = await repo.get("claim", claim.entity_id)
@@ -149,7 +149,7 @@ class TestScrutinizeRespectsCap:
         # Scrutiny ran (no agent_runner → ScrutiniseClaimOperation falls
         # through to verdict='pass' with no LLM call).
         scrutiny_ops = [
-            op for op in state.operations_log if op["operation"] == "scrutinise_claim"
+            op for op in state.operations_log if op.operation == "scrutinise_claim"
         ]
         assert len(scrutiny_ops) == 1
         # Counter incremented from CAP-1 to CAP.
@@ -206,7 +206,7 @@ class TestScrutinizeRespectsCap:
         await Scrutinize().run(ctx)  # type: ignore[arg-type]
 
         scrutiny_ops = [
-            op for op in state.operations_log if op["operation"] == "scrutinise_claim"
+            op for op in state.operations_log if op.operation == "scrutinise_claim"
         ]
         assert len(scrutiny_ops) == 1
         # Initial scrutiny is unrelated to the oscillation cap.

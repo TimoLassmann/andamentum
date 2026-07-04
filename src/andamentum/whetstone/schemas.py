@@ -379,6 +379,13 @@ class ReviewResult(BaseModel):
     # so renderers can flag partial coverage instead of presenting an
     # incomplete cascade as a complete review.
     failed_criteria: list[str] = Field(default_factory=list)
+    # Aggregate-failure flag: set (with a reason) when the soft-failure
+    # rate crossed the pipeline's threshold — e.g. most review criteria
+    # crashed, or the panel lost most of its experts. A degraded result
+    # still carries every signal acquired; the flag says the coverage is
+    # not what a green run would have produced.
+    degraded: bool = False
+    degraded_reason: str = ""
     edits: list[Edit] = Field(default_factory=list)  # concrete rewrites (Edit phase)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)

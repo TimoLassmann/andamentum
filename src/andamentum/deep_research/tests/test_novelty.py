@@ -1,8 +1,8 @@
 """Tests for novelty checking submodule."""
 
 import pytest
-from types import SimpleNamespace
 
+from ..models import EvidenceReport
 from ..novelty import (
     NoveltyReport,
     NoveltyAssessment,
@@ -10,6 +10,24 @@ from ..novelty import (
     Relevance,
 )
 from ..novelty.checker import _check_novelty_with_deps
+
+
+def _report(
+    *, evidence_summary: str, key_findings: list[str], sources: list[str]
+) -> EvidenceReport:
+    """Minimal EvidenceReport stub for research_fn.
+
+    Uses ``model_construct`` to bypass the min-length validators so the
+    'nothing found' scenarios (empty findings/sources) stay representable.
+    """
+    return EvidenceReport.model_construct(
+        evidence_summary=evidence_summary,
+        key_findings=key_findings,
+        sources=sources,
+        total_searches_performed=0,
+        total_pages_fetched=0,
+        iterations_required=0,
+    )
 
 
 class TestNoveltyModels:
@@ -65,14 +83,14 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_happy_path_prior_work_found(self):
         """Research finds prior work, assessment says not novel."""
-        output = SimpleNamespace(
+        output = _report(
             evidence_summary="Prior work found",
             key_findings=["finding 1"],
             sources=["https://example.com/paper"],
         )
 
         async def research_fn(**kwargs):
-            return {"output": output}
+            return output
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             return NoveltyAssessment(
@@ -103,7 +121,7 @@ class TestCheckNovelty:
         falsely reassure the author); is_novel is None."""
 
         async def research_fn(**kwargs):
-            return {"output": None}
+            return None
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise AssertionError("Should not be called")
@@ -131,14 +149,14 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_assessment_failure_with_sources(self):
         """Assessment fails but research found sources — heuristic fallback."""
-        output = SimpleNamespace(
+        output = _report(
             evidence_summary="Found some evidence",
             key_findings=["finding 1", "finding 2"],
             sources=["https://example.com"],
         )
 
         async def research_fn(**kwargs):
-            return {"output": output}
+            return output
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise RuntimeError("LLM error")
@@ -151,14 +169,14 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_assessment_failure_without_sources(self):
         """Assessment fails and no sources found — novel with low confidence."""
-        output = SimpleNamespace(
+        output = _report(
             evidence_summary="Nothing found",
             key_findings=[],
             sources=[],
         )
 
         async def research_fn(**kwargs):
-            return {"output": output}
+            return output
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             raise RuntimeError("LLM error")
@@ -170,12 +188,12 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_confidence_clamped(self):
         """Confidence values outside [0, 1] get clamped."""
-        output = SimpleNamespace(
+        output = _report(
             evidence_summary="s", key_findings=["f"], sources=["u"]
         )
 
         async def research_fn(**kwargs):
-            return {"output": output}
+            return output
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             return NoveltyAssessment(
@@ -188,12 +206,12 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_invalid_relevance_defaults_to_tangential(self):
         """Invalid relevance value in similar_works defaults to TANGENTIAL."""
-        output = SimpleNamespace(
+        output = _report(
             evidence_summary="s", key_findings=["f"], sources=["u"]
         )
 
         async def research_fn(**kwargs):
-            return {"output": output}
+            return output
 
         async def assess_fn(claim, evidence_summary, key_findings, sources):
             return NoveltyAssessment(

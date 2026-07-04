@@ -62,6 +62,7 @@ async def run_research(
     from .backends import HttpxSearchBackend
     from .graph import research_graph
     from .nodes import PlanResearch, NodeDeps
+    from .reporter import NoopReporter
     from .runner import _resolve_model
     from .state import ResearchState
     from .verification import verify_sources
@@ -101,21 +102,18 @@ async def run_research(
 
     correlation_id = uuid.uuid4().hex[:8]
 
-    state = ResearchState(
-        query=query,
-        max_iterations=max_iterations,
-    )
+    state = ResearchState(query=query)
 
-    deps_kwargs = dict(
+    # Config lives on Deps (L1: given → Deps), not State.
+    deps = NodeDeps(
         backend=backend,
         model=model_instance,
         correlation_id=correlation_id,
+        max_iterations=max_iterations,
         max_pages_to_fetch=max_pages,
         max_results_per_search=max_results,
+        reporter=reporter if reporter is not None else NoopReporter(),
     )
-    if reporter is not None:
-        deps_kwargs["reporter"] = reporter
-    deps = NodeDeps(**deps_kwargs)
 
     try:
         # Run the graph

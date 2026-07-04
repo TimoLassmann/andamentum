@@ -22,7 +22,10 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+if TYPE_CHECKING:
+    from ..operations_runner import PipelineResult
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +176,7 @@ async def run_epistemic_graph(
     start_at: Optional[type] = None,
     output_dir: Optional[Path] = None,
     ibe_agreement_k: Optional[int] = None,
-) -> Any:
+) -> "PipelineResult":
     """Run a research question through the epistemic graph pipeline.
 
     Two modes, picked by ``mode``:

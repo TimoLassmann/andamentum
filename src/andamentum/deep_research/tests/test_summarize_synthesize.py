@@ -18,7 +18,9 @@ from pydantic_graph import GraphRunContext
 from andamentum.deep_research.models import (
     EvidenceReport,
     FetchedPage,
+    FetchError,
     PageSummary,
+    SearchError,
 )
 from andamentum.deep_research.nodes import (
     AnalyzeGaps,
@@ -177,6 +179,9 @@ async def test_synthesize_calls_lead_agent_when_only_low_relevance_pages():
         "Synthesize bailed instead of calling the lead agent on low-relevance "
         "summaries — graceful-degrade regression"
     )
+    # Green path: nothing failed, so the report must not be degraded.
+    assert nxt.data.degraded is False
+    assert nxt.data.degraded_reason == ""
 
     # Confirm the lead-agent prompt actually flagged limited evidence.
     overrides = ctx.deps.agent_overrides
@@ -196,7 +201,7 @@ async def test_synthesize_short_circuits_only_when_no_pages_at_all():
     ctx = _make_ctx()  # no agent overrides — bail-out path requires no LLM
     # page_summaries empty, fetched_pages empty, fetch_errors populated.
     ctx.state.fetch_errors = [
-        {"url": "https://x.test/", "error": "HTTP 403", "link_id": "0"},
+        FetchError(url="https://x.test/", error="HTTP 403", link_id=0),
     ]
     ctx.state.total_searches = 3
 
@@ -207,3 +212,55 @@ async def test_synthesize_short_circuits_only_when_no_pages_at_all():
     # can see why it bailed.
     assert "Searches performed: 3" in report.evidence_summary
     assert "fetch failures: 1" in report.evidence_summary
+
+
+async def test_synthesize_flags_degraded_when_all_searches_fail():
+    """L7 aggregate loudness: a run where every search failed must NOT
+    come back green — the report is stamped degraded with a reason."""
+    ctx = _make_ctx()  # bail-out path (no summaries) requires no LLM
+    ctx.state.total_searches = 3
+    ctx.state.search_errors = [
+        SearchError(query=f"q{i}", error="connection refused") for i in range(3)
+    ]
+
+    nxt = await Synthesize().run(ctx)
+    report = nxt.data
+    assert report.degraded is True, (
+        "All searches failed but the report came back green — L7 aggregate "
+        "loudness regression"
+    )
+    assert "3/3 searches failed" in report.degraded_reason
+
+
+async def test_synthesize_flags_degraded_when_most_fetches_fail():
+    """The fetch-failure fraction also trips the degradation stamp, even
+    when synthesis itself succeeds on the pages that did come back."""
+    canned_report = EvidenceReport(
+        evidence_summary="Partial findings from the one page that fetched.",
+        key_findings=["Partial finding"],
+        sources=["https://ok.test/"],
+        total_searches_performed=0,
+        total_pages_fetched=0,
+        iterations_required=0,
+    )
+    ctx = _make_ctx(lead_agent_outputs=[canned_report])
+    ctx.state.page_summaries = [
+        PageSummary(
+            url="https://ok.test/",
+            title="OK",
+            summary="The one page that fetched.",
+            key_points=["ok"],
+            relevance_score=0.7,
+        ),
+    ]
+    ctx.state.total_searches = 2
+    ctx.state.total_pages_fetched = 1
+    ctx.state.fetch_errors = [
+        FetchError(url=f"https://blocked{i}.test/", error="HTTP 403", link_id=i)
+        for i in range(3)
+    ]
+
+    nxt = await Synthesize().run(ctx)
+    report = nxt.data
+    assert report.degraded is True
+    assert "3/4 page fetches failed" in report.degraded_reason

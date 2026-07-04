@@ -161,22 +161,39 @@ def _op_input(
     )
 
 
-async def _run_op(
+@dataclass
+class _OpOutcome:
+    """The result of executing one operation, before any State write.
+
+    Produced by ``_execute_op`` (which touches no State — safe to run
+    inside a parallel path) and consumed by ``_commit_op`` (which does
+    the State writes — the sole write site, run in the deterministic
+    join). ``exception`` is set when the op raised, so ``_commit_op``
+    can record the quarantine.
+    """
+
+    entity_id: str
+    entity_type: str
+    operation: str
+    result: Any  # OperationResult
+    exception: BaseException | None = None
+
+
+async def _execute_op(
     op_class: type,
     deps: EpistemicDeps,
-    state: EpistemicGraphState,
     entity_id: str,
     entity_type: str,
     operation: str,
     metadata: dict[str, Any] | None = None,
-) -> Any:
-    """Instantiate an operation, execute it, log the result, and return it.
+) -> _OpOutcome:
+    """Execute one operation and return its outcome — no State writes.
 
-    If the operation raises, record a quarantine on the graph state and
-    return a failed OperationResult — never swallow silently. Downstream
-    nodes should call state.is_quarantined(entity_id) before scheduling
-    further work on the entity; this guard is added per-operation in
-    subsequent tasks.
+    Pure w.r.t. graph State: it runs the op (an LLM/DB effect via Deps
+    Ports) and captures the result or the exception into an ``_OpOutcome``.
+    Because it never touches State, it is safe to fan out under
+    ``asyncio.gather``; the caller commits the outcomes in a deterministic
+    join (Law 3 — the join is the sole State-write site during parallelism).
     """
     from ..operations.base import OperationResult
 
@@ -192,12 +209,33 @@ async def _run_op(
             type(e).__name__,
             e,
         )
-        state.quarantine(entity_id, entity_type, operation, e)
         result = OperationResult(
             success=False,
             entity_id=entity_id,
             message=f"{operation} quarantined: {type(e).__name__}: {e}",
         )
+        return _OpOutcome(entity_id, entity_type, operation, result, exception=e)
+    return _OpOutcome(entity_id, entity_type, operation, result)
+
+
+async def _commit_op(
+    deps: EpistemicDeps,
+    state: EpistemicGraphState,
+    outcome: _OpOutcome,
+) -> Any:
+    """Write one operation outcome into State + the trace — the sole writer.
+
+    Records the quarantine (if the op raised), logs the operation, persists
+    the execution-step trace, and fires the progress callback. Sequential by
+    construction: called from a node body or from a deterministic reduce over
+    a fan-out, never from inside a parallel path.
+    """
+    entity_id = outcome.entity_id
+    entity_type = outcome.entity_type
+    operation = outcome.operation
+    result = outcome.result
+    if outcome.exception is not None:
+        state.quarantine(entity_id, entity_type, operation, outcome.exception)
     state.log_operation(operation, entity_id, result.success, result.message)
     # Persist execution trace to the database.
     # Uses DocumentStore.add() (not register_document, which deduplicates
@@ -236,6 +274,32 @@ async def _run_op(
             operation, entity_id, result.success, result.message, extras
         )
     return result
+
+
+async def _run_op(
+    op_class: type,
+    deps: EpistemicDeps,
+    state: EpistemicGraphState,
+    entity_id: str,
+    entity_type: str,
+    operation: str,
+    metadata: dict[str, Any] | None = None,
+) -> Any:
+    """Execute one operation and commit its outcome to State — sequential.
+
+    The default single-entity path: ``_execute_op`` then ``_commit_op`` back
+    to back. For a parallel fan-out, call ``_execute_op`` inside the gather
+    and ``_commit_op`` in the deterministic reduce so the join stays the
+    sole State-write site (Law 3).
+
+    If the operation raises, the quarantine is recorded and a failed
+    OperationResult returned — never swallowed silently. Downstream nodes
+    call state.is_quarantined(entity_id) before scheduling further work.
+    """
+    outcome = await _execute_op(
+        op_class, deps, entity_id, entity_type, operation, metadata
+    )
+    return await _commit_op(deps, state, outcome)
 
 
 async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> None:
@@ -1842,12 +1906,13 @@ class EnumerateCandidates(Node):
             and not c.integration_candidates
         ]
         if eligible_ids:
-            await asyncio.gather(
+            # Fan out the LLM work; commit outcomes to State in the
+            # deterministic join (Law 3 — join is the sole write site).
+            outcomes = await asyncio.gather(
                 *(
-                    _run_op(
+                    _execute_op(
                         EnumerateCandidatesOperation,
                         deps,
-                        state,
                         cid,
                         "claim",
                         "enumerate_candidates",
@@ -1855,6 +1920,8 @@ class EnumerateCandidates(Node):
                     for cid in eligible_ids
                 )
             )
+            for outcome in outcomes:
+                await _commit_op(deps, state, outcome)
 
         return ScoreLoveliness()
 
@@ -1902,12 +1969,13 @@ class ScoreLoveliness(Node):
             and any(cand.loveliness is None for cand in c.integration_candidates)
         ]
         if eligible_ids:
-            await asyncio.gather(
+            # Fan out the LLM work; commit outcomes to State in the
+            # deterministic join (Law 3 — join is the sole write site).
+            outcomes = await asyncio.gather(
                 *(
-                    _run_op(
+                    _execute_op(
                         ScoreLovelinessOperation,
                         deps,
-                        state,
                         cid,
                         "claim",
                         "score_loveliness",
@@ -1915,6 +1983,8 @@ class ScoreLoveliness(Node):
                     for cid in eligible_ids
                 )
             )
+            for outcome in outcomes:
+                await _commit_op(deps, state, outcome)
 
         return ScoreLikeliness()
 
@@ -1959,12 +2029,13 @@ class ScoreLikeliness(Node):
             and any(cand.likeliness is None for cand in c.integration_candidates)
         ]
         if eligible_ids:
-            await asyncio.gather(
+            # Fan out the LLM work; commit outcomes to State in the
+            # deterministic join (Law 3 — join is the sole write site).
+            outcomes = await asyncio.gather(
                 *(
-                    _run_op(
+                    _execute_op(
                         ScoreLikelinessOperation,
                         deps,
-                        state,
                         cid,
                         "claim",
                         "score_likeliness",
@@ -1972,6 +2043,8 @@ class ScoreLikeliness(Node):
                     for cid in eligible_ids
                 )
             )
+            for outcome in outcomes:
+                await _commit_op(deps, state, outcome)
 
         return SelectBestExplanation()
 
@@ -2023,13 +2096,13 @@ class SelectBestExplanation(Node):
         if eligible_ids:
             # Pass ibe_agreement_k via metadata so the operation can
             # run the IBE chain K times and require agreement on
-            # direction before committing a verdict.
-            await asyncio.gather(
+            # direction before committing a verdict. Fan out the LLM work;
+            # commit to State in the deterministic join (Law 3).
+            outcomes = await asyncio.gather(
                 *(
-                    _run_op(
+                    _execute_op(
                         SelectBestExplanationOperation,
                         deps,
-                        state,
                         cid,
                         "claim",
                         "select_best_explanation",
@@ -2038,6 +2111,8 @@ class SelectBestExplanation(Node):
                     for cid in eligible_ids
                 )
             )
+            for outcome in outcomes:
+                await _commit_op(deps, state, outcome)
 
         return PromoteSupported()
 
@@ -2076,9 +2151,12 @@ class PromoteSupported(Node):
             if claim.abandoned:
                 continue
 
-            # Try each promotion step once (S->P, P->R, R->A)
+            # Try each promotion step once (S->P, P->R, R->A). The bound
+            # is structural (L5): a claim can climb at most the height of
+            # the finite ClaimStage ladder, so even a promote op that
+            # reports success without advancing the stage cannot spin.
             current = claim.stage
-            while True:
+            for _ in range(len(ClaimStage)):
                 next_stage = get_next_stage(current)
                 if next_stage is None:
                     break

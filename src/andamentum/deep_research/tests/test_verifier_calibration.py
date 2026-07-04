@@ -193,13 +193,17 @@ async def _verify(
 
     # Verify will route to either GenerateOne or ParallelSearch — we don't
     # care which; we just need the on_topic verdict, captured before that
-    # routing. To capture, we call the agent directly (mirroring Verify's
-    # internal call) rather than running Verify.run().
-    from andamentum.deep_research.nodes import _build_agent
+    # routing. To capture, we call the worker directly (the same call
+    # Verify dispatches) rather than running Verify.run().
+    from andamentum.deep_research.verify_query import verify_query
 
-    agent = _build_agent("topic_verifier", ctx.deps.model, ctx.deps.agent_overrides)
-    result = await agent.run(f"research_goal: {ctx.state.query}\nquery: {query}")
-    return bool(result.output.on_topic), str(result.output.reason)
+    verdict = await verify_query(
+        query,
+        goal=ctx.state.query,
+        model=ctx.deps.model,
+        overrides=ctx.deps.agent_overrides,
+    )
+    return bool(verdict.on_topic), str(verdict.reason)
 
 
 @pytest.mark.asyncio

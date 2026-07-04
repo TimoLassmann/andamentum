@@ -9,11 +9,11 @@ tests can exercise the orchestration logic with stubs (no live model,
 no SearXNG). Production code calls ``run_novelty_check``.
 """
 
-from typing import Any
 from collections.abc import Callable, Awaitable
 
 from pydantic import BaseModel
 
+from ..models import EvidenceReport
 from .models import NoveltyReport, SimilarWork, Relevance
 
 
@@ -27,7 +27,9 @@ class NoveltyAssessment(BaseModel):
 
 
 # Type aliases for injectable dependencies (used by _check_novelty_with_deps).
-ResearchFn = Callable[..., Awaitable[dict[str, Any]]]
+# ``research_fn`` returns the research pipeline's typed EvidenceReport, or
+# ``None`` when the research completed without gathering any evidence.
+ResearchFn = Callable[..., Awaitable[EvidenceReport | None]]
 AssessFn = Callable[[str, str, list[str], list[str]], Awaitable[NoveltyAssessment]]
 
 
@@ -64,14 +66,14 @@ async def run_novelty_check(
 
     async def research_fn(
         *, query: str, max_iterations: int, verbose: bool
-    ) -> dict[str, Any]:
+    ) -> EvidenceReport:
         result = await run_research(
             query=query,
             max_iterations=max_iterations,
             model=model,
             verbose=verbose,
         )
-        return {"output": result.output}
+        return result.output
 
     async def assess_fn(
         claim_text: str,
@@ -114,7 +116,8 @@ async def _check_novelty_with_deps(
     Args:
         claim: The claim or statement to check for novelty
         research_fn: Async callable that performs web research.
-            Called as: research_fn(query=str, max_iterations=int, verbose=bool) -> dict
+            Called as: research_fn(query=str, max_iterations=int, verbose=bool)
+            -> EvidenceReport | None
         assess_fn: Async callable that assesses novelty from evidence.
             Called as: assess_fn(claim, evidence_summary, key_findings, sources) -> NoveltyAssessment
         search_depth: 1=quick (1 iteration), 2=balanced (2), 3=thorough (3)
@@ -141,7 +144,7 @@ async def _check_novelty_with_deps(
 
     # Run deep research to find prior work
     try:
-        research_result = await research_fn(
+        output = await research_fn(
             query=primary_query,
             max_iterations=search_depth,
             verbose=verbose,
@@ -159,7 +162,6 @@ async def _check_novelty_with_deps(
         )
 
     # Extract evidence from research
-    output = research_result.get("output")
     if output is None:
         return NoveltyReport(
             claim=claim,
@@ -172,9 +174,9 @@ async def _check_novelty_with_deps(
             search_queries_used=search_queries,
         )
 
-    evidence_summary = getattr(output, "evidence_summary", "No evidence found.")
-    key_findings = getattr(output, "key_findings", [])
-    sources = getattr(output, "sources", [])
+    evidence_summary = output.evidence_summary
+    key_findings = list(output.key_findings)
+    sources = list(output.sources)
 
     # Use assessment function to evaluate novelty
     try:

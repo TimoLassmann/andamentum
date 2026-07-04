@@ -12,8 +12,8 @@ Usage::
     manager.ensure_running()
 
     health = await check_health("http://127.0.0.1:4070")
-    if health["healthy"]:
-        print(f"SearXNG ready ({health['response_time_ms']:.0f}ms)")
+    if health.healthy:
+        print(f"SearXNG ready ({health.response_time_ms:.0f}ms)")
 """
 
 from __future__ import annotations
@@ -26,7 +26,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+
+from pydantic import BaseModel
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,22 @@ DEFAULT_SEARXNG_URL = os.getenv("SEARXNG_URL", f"http://127.0.0.1:{DEFAULT_HOST_
 CONTAINER_NAME = os.getenv("SEARXNG_CONTAINER", "mcp-searxng")
 SEARXNG_IMAGE = os.getenv("SEARXNG_IMAGE", "docker.io/searxng/searxng:latest")
 INTERNAL_PORT = 8080
+
+
+class HealthCheck(BaseModel):
+    """Result of a SearXNG health probe (L7: typed, not a dict grab-bag).
+
+    ``container_running`` is only meaningful for the synchronous
+    :meth:`SearxngManager.health_check` (which inspects the Podman
+    container); the async :func:`check_health` probes the HTTP endpoint
+    directly and leaves it at the default.
+    """
+
+    healthy: bool = False
+    container_running: bool = False
+    response_time_ms: float = 0.0
+    error: str | None = None
+    url: str = ""
 
 
 class SearxngManager:
@@ -253,24 +270,18 @@ class SearxngManager:
         )
         return out if code == 0 else (err or out or "no logs available")
 
-    def health_check(self, timeout: float = 5.0) -> dict[str, Any]:
+    def health_check(self, timeout: float = 5.0) -> HealthCheck:
         """Synchronous health check using urllib (no async dependencies)."""
-        result: dict[str, Any] = {
-            "healthy": False,
-            "container_running": False,
-            "response_time_ms": 0.0,
-            "error": None,
-            "url": f"http://127.0.0.1:{self.host_port}",
-        }
+        result = HealthCheck(url=f"http://127.0.0.1:{self.host_port}")
 
         try:
-            result["container_running"] = self.is_running()
+            result.container_running = self.is_running()
         except RuntimeError as e:
-            result["error"] = str(e)
+            result.error = str(e)
             return result
 
-        if not result["container_running"]:
-            result["error"] = "SearXNG container is not running"
+        if not result.container_running:
+            result.error = "SearXNG container is not running"
             return result
 
         health_url = f"http://127.0.0.1:{self.host_port}/healthz"
@@ -282,17 +293,17 @@ class SearxngManager:
                 req = urllib.request.Request(url, method="GET")
                 with urllib.request.urlopen(req, timeout=timeout) as response:
                     if response.status == 200:
-                        result["healthy"] = True
-                        result["response_time_ms"] = (time.time() - start) * 1000
+                        result.healthy = True
+                        result.response_time_ms = (time.time() - start) * 1000
                         return result
             except (urllib.error.URLError, urllib.error.HTTPError):
                 continue
 
-        result["error"] = f"SearXNG not responding at port {self.host_port}"
+        result.error = f"SearXNG not responding at port {self.host_port}"
         return result
 
 
-async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str, Any]:
+async def check_health(url: str | None = None, timeout: float = 5.0) -> HealthCheck:
     """Async health check for a SearXNG instance.
 
     Args:
@@ -300,17 +311,12 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str
         timeout: Request timeout in seconds.
 
     Returns:
-        Dict with keys: healthy, response_time_ms, error, url.
+        :class:`HealthCheck` with healthy, response_time_ms, error, url.
     """
     if url is None:
         url = DEFAULT_SEARXNG_URL
 
-    result: dict[str, Any] = {
-        "healthy": False,
-        "response_time_ms": 0.0,
-        "error": None,
-        "url": url,
-    }
+    result = HealthCheck(url=url)
 
     start = time.time()
     try:
@@ -321,10 +327,10 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str
                 f"{url}/search", params={"q": "test", "format": "json"}
             )
             if response.status_code == 200:
-                result["healthy"] = True
-                result["response_time_ms"] = (time.time() - start) * 1000
+                result.healthy = True
+                result.response_time_ms = (time.time() - start) * 1000
             else:
-                result["error"] = f"SearXNG returned HTTP {response.status_code}"
+                result.error = f"SearXNG returned HTTP {response.status_code}"
     except ImportError:
         # httpx not installed — fall back to urllib
         try:
@@ -333,11 +339,11 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> dict[str
             )
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 if response.status == 200:
-                    result["healthy"] = True
-                    result["response_time_ms"] = (time.time() - start) * 1000
+                    result.healthy = True
+                    result.response_time_ms = (time.time() - start) * 1000
         except Exception as e:
-            result["error"] = f"Health check failed: {e}"
+            result.error = f"Health check failed: {e}"
     except Exception as e:
-        result["error"] = f"Health check failed: {e}"
+        result.error = f"Health check failed: {e}"
 
     return result

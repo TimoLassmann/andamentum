@@ -9,8 +9,9 @@ Used by ``run_review_v3`` to populate ``ReviewMetrics.llm_calls`` and
 ``ReviewMetrics.reflection_rounds_used`` honestly — before this module
 existed those fields silently reported ``0`` in v3 because the v2
 manual-increment plumbing was never ported across the consolidation.
-Panel-mode (``run_panel_v3``) tracks its own count on ``PanelState``
-and is independent of this module.
+Panel-mode (``run_panel_v3``) uses the same mechanism: its workers bump
+the shared counter after each agent run (a State counter cannot reach
+concurrently-gathered calls).
 
 Single-call-per-task contract: ``start_run()`` resets the counter for
 the current context. Concurrent ``run_review_v3`` calls from the same

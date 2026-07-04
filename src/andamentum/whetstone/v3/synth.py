@@ -222,14 +222,28 @@ def to_review_result(
     llm_calls: int = 0,
     gap_rounds_used: int = 0,
     failed_criteria: list[str] | None = None,
+    total_criteria: int = 0,
+    soft_failure_threshold: float = 1.0,
 ) -> ReviewResult:
     edits = edits or []
+    failed = list(failed_criteria or [])
+    # Aggregate-failure gate (dialect L7): a run where most of the cascade
+    # crashed is not green. Callers that don't track the cascade leave
+    # total_criteria=0, which never trips the gate.
+    degraded_reason = ""
+    if total_criteria > 0 and len(failed) / total_criteria >= soft_failure_threshold:
+        degraded_reason = (
+            f"{len(failed)}/{total_criteria} review criteria crashed and "
+            f"contributed no findings: {', '.join(failed)}"
+        )
     gist_by_section = {g.section_id: g.gist for g in model.gists}
     return ReviewResult(
         summary=_flatten(review),
         findings=[_to_wfinding(f, model) for f in findings],
         edits=list(edits),
-        failed_criteria=list(failed_criteria or []),
+        failed_criteria=failed,
+        degraded=bool(degraded_reason),
+        degraded_reason=degraded_reason,
         document_map=[
             SectionCard(
                 section_id=s.id,

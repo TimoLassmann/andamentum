@@ -120,3 +120,51 @@ async def test_graph_runs_end_to_end_to_review_result() -> None:
     }
     # Document map reflects the sections.
     assert result.document_map
+    # Green run: the aggregate-failure gate must not trip.
+    assert not result.degraded
+    assert result.degraded_reason == ""
+
+
+async def test_all_criteria_crashed_flags_the_result_degraded() -> None:
+    """When EVERY criterion-review call crashes, the run still completes
+    (the per-criterion quarantine keeps the pipeline alive) but the
+    result must not come back green — the aggregate-failure gate flags
+    it with a reason naming the crashed criteria."""
+
+    def _crashing_review_agent(_criterion, _agent_model):
+        class _Agent:
+            def output_validator(self, fn):
+                return fn
+
+            async def run(self, _prompt, **_kwargs):
+                raise RuntimeError("simulated criterion crash")
+
+        return _Agent()
+
+    mods_using_legacy = ["extract", "gaps", "consolidate", "synth"]
+    with ExitStack() as stack:
+        for m in mods_using_legacy:
+            stack.enter_context(
+                patch(
+                    f"andamentum.whetstone.v3.{m}.build_pydantic_ai_agent", new=_router
+                )
+            )
+            stack.enter_context(
+                patch(f"andamentum.whetstone.v3.{m}.resolve_model", new=lambda x: None)
+            )
+        stack.enter_context(
+            patch(
+                "andamentum.whetstone.v3.review._build_agent",
+                new=_crashing_review_agent,
+            )
+        )
+        result = await run_review_v3(SRC, model="stub", cap=1, document_type="academic")
+
+    # Every criterion is recorded as failed and the gate tripped.
+    assert len(result.failed_criteria) == 5
+    assert result.degraded
+    assert "5/5" in result.degraded_reason
+    # The signal already acquired is still returned whole (here: none,
+    # but the synthesis summary is still produced rather than raising).
+    assert result.findings == []
+    assert result.summary

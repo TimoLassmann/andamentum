@@ -17,7 +17,7 @@ and drops any that can't be anchored (the hallucination gate).
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -206,6 +206,14 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
 _VALIDATOR_REQUOTE_ATTEMPTS = 2
 
 
+class _QuotedFinding(Protocol):
+    """Structural type for the items in an anchor-validated output's
+    ``findings`` list — ``_RawFinding`` and ``_ReexamineFinding`` both
+    satisfy it. All the validator needs is the verbatim quote."""
+
+    quote: str
+
+
 def make_anchor_validator(
     source: str,
     output_class: type,
@@ -245,7 +253,7 @@ def make_anchor_validator(
     the gap loop). Items in its ``findings`` list must have a
     ``.quote: str`` attribute.
     """
-    locked: dict[str, Any] = {}  # closure state: quote → finding
+    locked: dict[str, _QuotedFinding] = {}  # closure state: quote → finding
 
     async def validator(ctx: RunContext[Any], output: Any) -> Any:
         if ctx.partial_output:

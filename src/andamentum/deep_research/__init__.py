@@ -21,7 +21,7 @@ from .orchestrator import run_research
 # === Internal infrastructure (advanced use) ===
 from .circuit_breaker import CircuitBreaker, get_searxng_breaker
 from .content_extractor import extract_content, extract_html, extract_pdf
-from .searxng import SearxngManager, check_health as check_searxng_health
+from .searxng import HealthCheck, SearxngManager, check_health as check_searxng_health
 from .verification import verify_sources
 
 # === Result / data types ===
@@ -32,6 +32,7 @@ from .models import (
     EvidenceItem,
     EvidenceReport,
     FetchedPage,
+    FetchError,
     FetchPlan,
     FetchResults,
     FetchSummary,
@@ -40,6 +41,7 @@ from .models import (
     PageSummary,
     ResearchErrors,
     ResearchResult,
+    SearchError,
     SearchQuery,
     SearchResult,
     VerifierOutput,
@@ -74,12 +76,14 @@ __all__ = [
     "EvidenceItem",
     "EvidenceReport",
     "ExtractionError",
+    "FetchError",
     "FetchPlan",
     "FetchResults",
     "FetchSummary",
     "FetchedPage",
     "GapAnalysis",
     "GeneratorOutput",
+    "HealthCheck",
     "NoveltyAssessment",
     "NoveltyReport",
     "PageSummary",
@@ -87,6 +91,7 @@ __all__ = [
     "ResearchErrors",
     "ResearchResult",
     "ResearchState",
+    "SearchError",
     "SearchQuery",
     "SearchResult",
     "SimilarWork",
