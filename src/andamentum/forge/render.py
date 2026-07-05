@@ -168,10 +168,15 @@ def _contract_note(node: NodeSpec) -> str:
 def _state_writes(node: NodeSpec, agent: AgentSpec) -> str:
     """Deterministic `ctx.state.<write> = out.<field>` lines — the renderer wires a
     head's output into State (pairing writes to output fields positionally) so the
-    head's result is never silently dropped. No LLM, no hole."""
+    head's result is never silently dropped. No LLM, no hole.
+
+    A checkpoint node's loop counter is a control-plane write — the loop guard
+    increments it, it is never bound to the agent output — so it is excluded here."""
+    counter = f"{node.name.lower()}_loops" if node.control is NodeControl.CHECKPOINT else None
+    data_writes = [w for w in node.writes if w != counter]
     out_fields = [f.name for f in agent.output.fields]
     return "".join(
-        f"        ctx.state.{w} = out.{f}\n" for w, f in zip(node.writes, out_fields)
+        f"        ctx.state.{w} = out.{f}\n" for w, f in zip(data_writes, out_fields)
     )
 
 

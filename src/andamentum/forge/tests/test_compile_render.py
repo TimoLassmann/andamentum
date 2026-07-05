@@ -118,6 +118,50 @@ def test_judgment_over_text_is_promoted_to_head() -> None:
     assert len(spec.agents) == 1
 
 
+def test_checkpoint_head_loop_counter_not_counted_as_a_data_write(tmp_path: Path) -> None:
+    # A research loop: search -> synthesize -> checkpoint(judge sufficiency). The checkpoint
+    # is a HEAD producing ONE judgment field; compile adds its loop counter to writes. The
+    # counter is a control-plane write (incremented in the loop guard, never bound to the
+    # agent output), so it must NOT count against the head's single output field — else a
+    # clean loop design fails loud at compile with "declares 2 writes but ... 1 field".
+    from andamentum.forge.spec import NodeControl
+
+    plan = DesignPlan(
+        why=ForgeWhy(
+            purpose="Research a question until the evidence is sufficient.",
+            boundary_in="a question",
+            boundary_out="an evidence-based answer",
+        ),
+        nodes=[
+            NodeDraft(
+                id="n1", area="core", job="Search the web for evidence.",
+                kind=NodeKind.SPINE, consumes=["input"], produces=["search_results"],
+                network=True,
+            ),
+            NodeDraft(
+                id="n2", area="core", job="Synthesize the evidence into an answer.",
+                kind=NodeKind.HEAD, consumes=["search_results"], produces=["answer"],
+            ),
+            NodeDraft(
+                id="n3", area="core", job="Judge whether the evidence is sufficient.",
+                kind=NodeKind.HEAD, consumes=["answer"], produces=["sufficiency"],
+                control=NodeControl.CHECKPOINT,
+            ),
+        ],
+    )
+    spec = compile_spec(plan)  # must not raise
+    assert spec.loop_caps, "a checkpoint must declare a loop cap"
+    checkpoint = next(n for n in spec.nodes if n.control is NodeControl.CHECKPOINT)
+    counter = f"{checkpoint.name.lower()}_loops"
+    assert counter in checkpoint.writes  # the control counter IS a write...
+    # ...but the renderer binds only the single DATA write to the agent's single output.
+    render(spec, tmp_path)  # must not raise
+    nodes_src = (tmp_path / spec.name / "nodes.py").read_text()
+    # The single data write binds to the agent's single output; the counter never does.
+    assert "ctx.state.sufficiency = out." in nodes_src
+    assert f"ctx.state.{counter} = out." not in nodes_src
+
+
 def _plan() -> DesignPlan:
     return DesignPlan(
         why=ForgeWhy(

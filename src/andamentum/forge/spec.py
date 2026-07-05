@@ -572,6 +572,10 @@ class SystemSpec(BaseModel):
         #     contract entirely (work-graph Plan/Compose/Synthesize etc.) stay valid, and
         #     a terminal head (sole successor == End) with empty writes is allowed (it may
         #     return its output directly via out_text).
+        # A checkpoint node's loop counter is a CONTROL-plane write — the renderer
+        # increments it in the loop guard, never binds it to the agent output — so it
+        # must not count against the head's output fields in the cardinality check below.
+        counter_names = {lc.name for lc in self.loop_caps}
         agent_map = {a.name: a for a in self.agents}
         for n in self.nodes:
             if n.kind is not NodeKind.HEAD:
@@ -580,11 +584,13 @@ class SystemSpec(BaseModel):
             if agent is None:
                 continue  # already caught by R5 above
 
-            # (a) Too many writes — zip would silently drop the excess.
+            # (a) Too many DATA writes — zip would silently drop the excess. Control-plane
+            # loop counters are excluded (they are incremented, not bound to the output).
+            data_writes = [w for w in n.writes if w not in counter_names]
             n_out = len(agent.output.fields)
-            if len(n.writes) > n_out:
+            if len(data_writes) > n_out:
                 raise ValueError(
-                    f"head node {n.name!r} declares {len(n.writes)} writes "
+                    f"head node {n.name!r} declares {len(data_writes)} data writes "
                     f"but its agent {agent.name!r} output has only {n_out} field(s); "
                     "positional binding would silently drop the excess writes. "
                     "Either reduce writes to match the output fields, or add output fields."
