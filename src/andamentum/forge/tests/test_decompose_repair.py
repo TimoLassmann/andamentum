@@ -49,10 +49,25 @@ def _focus_id(board: str) -> str:
     return ""
 
 
+# Three nodes so the flaw lives in a MIDDLE node (n2): the deterministic sink-collapse only
+# merges TERMINAL signals into the last node, so a middle node reading nothing stays
+# unreachable and can be fixed only by the model re-selecting — this exercises the model
+# repair path, which the 2-node sink-collapse case would otherwise short-circuit.
+_JOBS = ["Read the document.", "Extract the key points.", "Write the bullets."]
+_PRODUCES = {"n1": "document_text", "n2": "key_points", "n3": "bullets"}
+
+
+def _declare(fid: str) -> NodeDeclaration:
+    kind = NodeKind.SPINE if fid == "n1" else NodeKind.HEAD
+    return NodeDeclaration(
+        kind=kind, produces=_PRODUCES[fid], produces_kind=DataKind.SIGNAL
+    )
+
+
 class _RepairSink:
-    """Declares a clean board (n1→document_text, n2→bullets); n2 first SELECTS a name not
-    on the board (an empty read), then selects the real producer once it sees feedback.
-    Counts the select_consumes calls per node so the test can assert one repair."""
+    """Declares a 3-step chain; n2 (a middle node) first SELECTS nothing (→ unreachable),
+    then reads document_text once it sees feedback. n1/n3 wire correctly. Counts the
+    select_consumes calls per node so the test can assert the model repair ran."""
 
     def __init__(self) -> None:
         self.select_calls: dict[str, int] = {}
@@ -61,54 +76,44 @@ class _RepairSink:
         if defn.name == "frame":
             return ForgeAreas(areas=["core"])
         if defn.name == "list_jobs":
-            return JobList(jobs=["Read the document.", "Write the bullets."])
+            return JobList(jobs=_JOBS)
         if defn.name == "declare_node":
-            fid = _focus_id(str(kwargs.get("board", "")))
-            if fid == "n1":
-                return NodeDeclaration(
-                    kind=NodeKind.SPINE,
-                    produces="document_text",
-                    produces_kind=DataKind.SIGNAL,
-                )
-            return NodeDeclaration(
-                kind=NodeKind.HEAD,
-                produces="bullets",
-                produces_kind=DataKind.SIGNAL,
-            )
+            return _declare(_focus_id(str(kwargs.get("board", ""))))
         if defn.name == "select_consumes":
-            board = str(kwargs.get("board", ""))
+            fid = _focus_id(str(kwargs.get("board", "")))
             feedback = str(kwargs.get("feedback", ""))
-            fid = _focus_id(board)
             self.select_calls[fid] = self.select_calls.get(fid, 0) + 1
             options = _parse_options(str(kwargs.get("options", "")))
             if fid == "n1":
                 return ConsumeSelection(consume_indices=[options["input"]])
-            # n2: pick a name nothing produces first (→ empty read); fix on feedback.
-            wanted = "document_text" if feedback else "sources"
-            idxs = [options[wanted]] if wanted in options else []
+            if fid == "n3":
+                return ConsumeSelection(consume_indices=[options["key_points"]])
+            # n2 (middle): read nothing first (→ unreachable), fix to document_text on feedback.
+            idxs = [options["document_text"]] if feedback else []
             return ConsumeSelection(consume_indices=idxs)
         raise AssertionError(f"unexpected agent {defn.name!r}")
 
 
 class _StubbornSink:
-    """Always selects a non-existent input for n2 — the loop can never converge."""
+    """n2 (a middle node) always reads nothing — it stays unreachable, and the sink-collapse
+    (which only fixes terminal sinks in the last node) cannot reach it, so the loop can never
+    converge."""
 
     async def run(self, defn: AgentDefinition, **kwargs: object) -> BaseModel:
         if defn.name == "frame":
             return ForgeAreas(areas=["core"])
         if defn.name == "list_jobs":
-            return JobList(jobs=["Read the document.", "Write the bullets."])
+            return JobList(jobs=_JOBS)
         if defn.name == "declare_node":
-            fid = _focus_id(str(kwargs.get("board", "")))
-            if fid == "n1":
-                return NodeDeclaration(kind=NodeKind.SPINE, produces="document_text")
-            return NodeDeclaration(kind=NodeKind.HEAD, produces="bullets")
+            return _declare(_focus_id(str(kwargs.get("board", ""))))
         if defn.name == "select_consumes":
             fid = _focus_id(str(kwargs.get("board", "")))
             options = _parse_options(str(kwargs.get("options", "")))
             if fid == "n1":
                 return ConsumeSelection(consume_indices=[options["input"]])
-            # never reads a real producer → n2 stays unreachable, the flaw is never fixed
+            if fid == "n3":
+                return ConsumeSelection(consume_indices=[options["key_points"]])
+            # n2 never reads a real producer → permanently unreachable, never fixed
             return ConsumeSelection(consume_indices=[])
         raise AssertionError(f"unexpected agent {defn.name!r}")
 
@@ -119,11 +124,12 @@ async def test_repair_loop_converges_to_clean() -> None:
         _WHY, ["core"], sink=sink, max_jobs_per_area=5, max_nodes=18
     )
     assert report.clean
-    # The board is wired: n2 reads what n1 produces.
+    # The middle node was re-wired by the model to read n1's output.
     n2 = next(n for n in plan.nodes if n.id == "n2")
     assert n2.consumes == ["document_text"]
     # n2's inputs were re-selected at least once (the initial pick left it unreachable; the
-    # repair fixed it) — and DECLARE was never re-run.
+    # model repair fixed it — the sink-collapse cannot reach a middle node) — and DECLARE
+    # was never re-run.
     assert sink.select_calls["n2"] >= 2
 
 

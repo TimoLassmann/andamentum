@@ -178,6 +178,38 @@ def resolve_consumes(
     return names, dropped
 
 
+def collapse_extra_sinks(drafts: list[NodeDraft]) -> list[str]:
+    """Deterministically resolve ``multiple_sinks`` from over-decomposition, no model call.
+
+    When several steps each produce an unconsumed final signal, the system output is the
+    LAST step's (matching ``diagnose._sinks`` / the compile backstop's topologically-last
+    rule). Make that last step CONSUME every extra terminal signal, so exactly one sink
+    remains and the earlier producers stop being dead-ends. Forward-window safe: every
+    merged producer is earlier than the last step, so no cycle is introduced. Returns the
+    merged names (empty when there is nothing to merge, or when the last step is not itself
+    the sole terminal — that shape is left to the model)."""
+    if len(drafts) < 2:
+        return []
+    consumed = set(assemble(drafts).readers)
+    last = drafts[-1]
+    last_is_terminal = any(
+        n not in consumed
+        for n in last.produces
+        if last.produces_kind is DataKind.SIGNAL
+    )
+    if not last_is_terminal:
+        return []
+    merged = [
+        n
+        for d in drafts[:-1]
+        if d.produces_kind is DataKind.SIGNAL
+        for n in d.produces
+        if n not in consumed and n not in last.consumes
+    ]
+    last.consumes.extend(merged)
+    return merged
+
+
 async def decompose(
     why: ForgeWhy,
     areas: list[str],
@@ -249,6 +281,17 @@ async def decompose(
                 f"{MAX_DESIGN_ROUNDS} repair rounds. The structural problems remain (surfaced, "
                 f"never dropped):\n{report.summary()}"
             )
+        # Deterministic sink-collapse first (over-decomposition merge, no model call); then
+        # let the model re-select only for what determinism could not fix.
+        merged = collapse_extra_sinks(drafts)
+        if merged:
+            notes.append(
+                f"decompose: merged {len(merged)} extra terminal signal(s) into the system "
+                f"output ({', '.join(merged)})"
+            )
+            report = diagnose(drafts, assemble(drafts))
+            if report.clean:
+                break
         await _repair_round(drafts, report, sink=sink, notes=notes)
 
     # Deterministic plan-coverage (Tier 1a): every framed concern must own >=1 step.
@@ -367,5 +410,6 @@ __all__ = [
     "dedupe_names",
     "build_option_names",
     "resolve_consumes",
+    "collapse_extra_sinks",
     "MAX_DESIGN_ROUNDS",
 ]
