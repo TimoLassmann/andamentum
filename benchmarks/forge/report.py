@@ -15,12 +15,24 @@ def _sample_outcome(score: CaseScore) -> str:
     if not score.runs:
         return "—"
     first = score.runs[0]
+    # Tier 1
     if first.kind == "built":
         feats = ",".join(sorted(first.features)) or "sequence"
         return f"built ({feats})"
+    if first.kind == "design_failed":
+        return f"design_failed: {first.error[:60]}"
+    # Tier 2
+    if first.kind == "works":
+        return f"works ({first.holes_filled}/{first.holes_total} holes)"
+    if first.kind == "incomplete":
+        holes = f"{first.holes_filled}/{first.holes_total} holes"
+        miss = f", unfilled: {','.join(first.remaining_holes)}" if first.remaining_holes else ""
+        return f"incomplete ({holes}, tests {first.tests_passed}✓/{first.tests_failed}✗{miss})"
+    if first.kind == "build_failed":
+        return f"build_failed: {first.error[:60]}"
     if first.kind == "refused":
         return "refused"
-    return f"design_failed: {first.error[:60]}"
+    return first.kind
 
 
 def render(scores: list[CaseScore], *, model: str) -> str:

@@ -23,11 +23,25 @@ class Case:
 
 @dataclass
 class RunOutcome:
-    """The result of one forge run over a case."""
+    """The result of one forge run over a case.
 
-    kind: str  # "built" | "refused" | "design_failed"
+    Tier 1 (design-only) uses ``kind`` ∈ {"built", "refused", "design_failed"} and
+    ``features``. Tier 2 (end-to-end build + sandbox audit) uses ``kind`` ∈
+    {"works", "incomplete", "refused", "build_failed"} and the build/audit fields
+    below — the reliability signal the design-shape score cannot see.
+    """
+
+    kind: str
     features: set[str] = field(default_factory=set)
     error: str = ""
+    # ── Tier-2 end-to-end signals (unset in Tier 1) ──────────────────────
+    works: bool | None = None
+    stage_reached: str = ""
+    holes_filled: int = 0
+    holes_total: int = 0
+    tests_passed: int = 0
+    tests_failed: int = 0
+    remaining_holes: list[str] = field(default_factory=list)
 
 
 @dataclass

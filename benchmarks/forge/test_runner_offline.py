@@ -10,9 +10,9 @@ passes a sequence case; a fitness head that returns rung ``app`` makes forge ref
 from __future__ import annotations
 
 from andamentum.core import AgentDefinition
-from andamentum.forge.schemas import Fitness, ForgeWhy, NodeTyping
+from andamentum.forge.schemas import Fitness, ForgeWhy
 from andamentum.forge.spec import NodeKind
-from andamentum.forge.tests.conftest import ScriptedSink
+from andamentum.forge.tests.conftest import NodeScript, ScriptedSink
 
 from .runner import run_case
 from .types import Case
@@ -32,10 +32,10 @@ def _coherent_sink() -> ScriptedSink:
         areas=["core"],
         jobs_by_area={"core": ["Parse the request.", "Answer the request."]},
         typings={
-            "n1": NodeTyping(
+            "n1": NodeScript(
                 kind=NodeKind.SPINE, consumes=["input"], produces=["parsed_request"]
             ),
-            "n2": NodeTyping(
+            "n2": NodeScript(
                 kind=NodeKind.HEAD, consumes=["parsed_request"], produces=["answer"]
             ),
         },
@@ -70,6 +70,37 @@ async def test_run_case_build_scores_built_and_passes() -> None:
     assert all(o.features == set() for o in score.runs)
     assert score.passes == 2
     assert score.pass_rate == 1.0
+
+
+async def test_run_case_tier2_end_to_end_scores_and_populates_signals() -> None:
+    """Tier-2 (full=True) drives render→build→audit with a stub sink + FakeSandbox.
+
+    Proves the end-to-end wiring deterministically (no model, no container): the run
+    reaches the audit stage, produces a works/incomplete verdict, and populates the
+    reliability signals (holes filled/total) the design-shape score cannot see.
+    """
+    from andamentum.forge.tests.conftest import FakeSandbox
+
+    case = Case(
+        brief="Summarise the document into three bullet points.",
+        expected="build",
+        grammar="sequence",
+    )
+    score = await run_case(
+        case,
+        model=_STUB_MODEL,
+        runs=1,
+        full=True,
+        sink=_coherent_sink(),
+        sandbox=FakeSandbox(exit_code=0, stdout="2 passed in 0.10s"),
+    )
+
+    assert score.total == 1
+    o = score.runs[0]
+    assert o.kind in {"works", "incomplete"}
+    assert o.stage_reached == "audit"
+    assert o.holes_total >= 1
+    assert o.works is not None
 
 
 async def test_run_case_refuse_scores_refused_and_passes() -> None:

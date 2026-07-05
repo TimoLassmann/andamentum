@@ -6,7 +6,8 @@ Usage::
     uv run python -m benchmarks.forge.cli --model <id> --runs 5
     uv run python -m benchmarks.forge.cli --model <id> --output report.md
     uv run python -m benchmarks.forge.cli --model <id> --case loop --case branch
-    uv run python -m benchmarks.forge.cli --model <id> --full   # Tier-2 hook (TODO)
+    uv run python -m benchmarks.forge.cli --model <id> --full   # Tier-2: end-to-end
+    uv run python -m benchmarks.forge.cli --model <id> --full --sandbox podman
 
 ``--model`` is required — forge's explicit-model rule: no default, no env var. Loads
 .env so the resolved provider's API key (e.g. OPENAI_API_KEY) is available.
@@ -55,7 +56,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--full",
         action="store_true",
-        help="Tier-2 end-to-end build (hook only; currently behaves like Tier 1)",
+        help="Tier-2: render + agent-author + sandbox-audit, score on whether it works",
+    )
+    p.add_argument(
+        "--sandbox",
+        choices=("subprocess", "podman"),
+        default="subprocess",
+        help="Tier-2 execution seam (default: subprocess; podman for network briefs)",
     )
     return p
 
@@ -74,7 +81,13 @@ async def _main_async(args: argparse.Namespace) -> int:
         print(f"No cases matched: {args.case}", file=sys.stderr)
         return 1
 
-    scores = await run_all(cases, model=args.model, runs=args.runs, full=args.full)
+    scores = await run_all(
+        cases,
+        model=args.model,
+        runs=args.runs,
+        full=args.full,
+        sandbox_backend=args.sandbox,
+    )
     report = render(scores, model=args.model)
     print(report)
 
