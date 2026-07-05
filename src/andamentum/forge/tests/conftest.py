@@ -32,7 +32,7 @@ from andamentum.forge.schemas import (
     RequirementsVerdict,
     SandboxResult,
 )
-from andamentum.forge.spec import NodeControl, NodeKind
+from andamentum.forge.spec import NodeControl, NodeKind, NodeMode
 
 
 class NodeScript(BaseModel):
@@ -49,6 +49,7 @@ class NodeScript(BaseModel):
     produces_kind: DataKind = DataKind.SIGNAL
     control: NodeControl = NodeControl.NONE
     network: bool = False
+    mode: NodeMode = NodeMode.WHOLE
 
 
 def _parse_options(options: str) -> dict[str, int]:
@@ -100,14 +101,21 @@ def _draft_body(context: str) -> str:
     """Synthesise a contract-valid spine body from the draft context: read every declared
     input, set every declared output, return the first declared successor. Enough to pass
     all static gates (contract, purity, fail-loud, read/write coverage) and make the smoke
-    graph run — the stub stands in for a real model."""
+    graph run — the stub stands in for a real model. A (map_item) hole gets a pure
+    per-item transform instead (uses `item`, returns a value, no ctx)."""
+    if "(map_item)" in context.splitlines()[0]:
+        return 'return "processed: " + item'
     lines = [
         f"_ = ctx.state.{name}" for name, _ in _parse_fields(context, "YOU MAY READ")
     ]
     for name, ann in _parse_fields(context, "YOU MUST SET"):
-        lines.append(
-            f"ctx.state.{name} = {'0' if ann.startswith('int') else chr(39) + 'x' + chr(39)}"
-        )
+        if ann.startswith("int"):
+            value = "0"
+        elif ann.startswith("list["):
+            value = "['x']"
+        else:
+            value = "'x'"
+        lines.append(f"ctx.state.{name} = {value}")
     target = next((s for s in _parse_successors(context) if s != "End"), None)
     lines.append(f"return {target}()" if target else "return End('done')")
     return "\n".join(lines)
@@ -177,6 +185,7 @@ class ScriptedSink:
                     produces_kind=script.produces_kind,
                     control=script.control,
                     network=script.network,
+                    mode=script.mode,
                 )
             return NodeDeclaration(kind=NodeKind.SPINE, produces=f"out_{fid}")
         if defn.name == "select_consumes":

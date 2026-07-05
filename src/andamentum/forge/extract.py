@@ -103,6 +103,11 @@ def _extract_hint(stmt: ast.Raise) -> str:
 
 
 def _infer_kind(method_name: str, hint: str) -> HoleKind:
+    if method_name == "_map_one":
+        # The renderer's map scaffold leaves exactly one hole on an 'each' node: the
+        # pure per-item transform. Keyed on the method name — the one thing the
+        # renderer guarantees — not on hint prose.
+        return HoleKind.MAP_ITEM
     if "Route on `out`" in hint:
         return HoleKind.ROUTING
     return HoleKind.SPINE_BODY

@@ -22,6 +22,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from .schemas import INPUT_TOKENS, NodeDraft
+from .spec import NodeMode
 
 
 class DataGraph(BaseModel):
@@ -65,4 +66,25 @@ def assemble(nodes: list[NodeDraft]) -> DataGraph:
     return DataGraph(writers=writers, readers=readers, edges=edges, inputs=inputs)
 
 
-__all__ = ["DataGraph", "assemble"]
+def collection_data(nodes: list[NodeDraft], *, input_is_collection: bool) -> set[str]:
+    """The datum names that are COLLECTIONS (lists of items), computed — never declared
+    per-datum. The rules are deterministic propagation:
+
+    - the graph input is a collection iff the understand head said so
+      (``ForgeWhy.input_is_collection`` — every input token is included then);
+    - an EACH node's produced datum is a collection (the list of its per-item results);
+    - a WHOLE node's produced datum is a scalar (even when it consumed a collection —
+      that is the reduce/synthesis case).
+
+    Pure; consumed by :mod:`diagnose` (the ``each_needs_collection`` check) and
+    :mod:`compile_spec` (field annotations + the fail-loud backstop), so the two can
+    never disagree about what is a list.
+    """
+    out: set[str] = set(INPUT_TOKENS) if input_is_collection else set()
+    for node in nodes:
+        if node.mode is NodeMode.EACH:
+            out |= set(node.produces)
+    return out
+
+
+__all__ = ["DataGraph", "assemble", "collection_data"]

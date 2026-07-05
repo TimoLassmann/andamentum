@@ -26,10 +26,11 @@ from .agents import DRAFT, MODEL_OUTPUT_ERRORS, REPAIR, AgentSink
 from .astcheck import (
     check_deps_access,
     check_fail_loud,
+    check_map_item_body,
     check_node_body,
     check_purity,
 )
-from .contract import Hole, NodeContract, node_contract
+from .contract import Hole, HoleKind, NodeContract, node_contract
 from .extract import discover_holes
 from .patch import apply_body
 from .reporter import ForgeReporter, NoopReporter
@@ -48,7 +49,32 @@ def _fields(label: str, items: list[tuple[str, str]]) -> list[str]:
     return [label] + [f"  ctx.state.{name}: {ann}" for name, ann in items]
 
 
+def _map_item_context(node: NodeSpec, hole: Hole) -> str:
+    """The draft context for a MAP_ITEM hole: a pure per-item transform, no ctx at all
+    (the rendered scaffold owns iteration, bounds, soft-fail, and the join)."""
+    lines = [
+        f"NODE: {node.name}  ({hole.kind.value})",
+        f"SIGNATURE: {hole.signature.strip()}",
+        f"JOB: {node.job or node.purpose or 'transform one item'} — applied to ONE item at a time.",
+        "",
+        "Write the body of a PURE per-item function. You get ONE item string (the `item` "
+        "parameter); return the transformed value (a str). The surrounding node maps this "
+        "function over every item and joins the results — do NOT write iteration.",
+        "No ctx, no state, no deps, no successors — they do not exist here: `item` in, value out.",
+    ]
+    if node.network:
+        lines.append(
+            "NETWORK NODE: you MAY import and use an HTTP client (httpx or requests) to reach the "
+            "endpoint this item names, and parse the response. Still forbidden: os, subprocess, "
+            "socket, open(), eval, clock/random. If the fetch fails, raise a ValueError naming the "
+            "item (the scaffold records it and skips the item)."
+        )
+    return "\n".join(lines)
+
+
 def _draft_context(node: NodeSpec, contract: NodeContract, hole: Hole) -> str:
+    if hole.kind is HoleKind.MAP_ITEM:
+        return _map_item_context(node, hole)
     reads = [(f.name, f.annotation) for f in contract.reads]
     writes = [(f.name, f.annotation) for f in contract.writes]
     lines = [
@@ -259,19 +285,26 @@ async def _build_one(
             last_error = f"compile error: {err}"
             continue
 
-        violations = check_node_body(
-            file,
-            hole.node,
-            hole.method,
-            reads=reads,
-            writes=writes,
-            successors=successors,
-        )
+        if hole.kind is HoleKind.MAP_ITEM:
+            # The map-item suite: the simplified pure-transform contract (uses `item`,
+            # returns a value, no ctx/self at all) + the shared purity and fail-loud
+            # gates. The state-contract and deps gates do not apply — the whole point
+            # of a map-item body is that it cannot see ctx.
+            violations = check_map_item_body(file, hole.node, hole.method)
+        else:
+            violations = check_node_body(
+                file,
+                hole.node,
+                hole.method,
+                reads=reads,
+                writes=writes,
+                successors=successors,
+            )
+            violations += check_deps_access(
+                file, hole.node, hole.method, allowed=allowed_deps
+            )
         violations += check_purity(
             file, hole.node, hole.method, allow_network=node.network
-        )
-        violations += check_deps_access(
-            file, hole.node, hole.method, allowed=allowed_deps
         )
         violations += check_fail_loud(file, hole.node, hole.method)
         if violations:

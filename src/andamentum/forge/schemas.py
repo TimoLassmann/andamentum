@@ -29,7 +29,7 @@ from andamentum.agentic_dialect import Violation
 
 from .runtime import EnvelopeTolerantModel
 
-from .spec import NodeControl, NodeKind, SystemSpec
+from .spec import NodeControl, NodeKind, NodeMode, SystemSpec
 
 # Tokens a node may name to mean "the graph input" (resolved to the input primary field).
 INPUT_TOKENS = frozenset({"input", "brief", "request"})
@@ -59,6 +59,13 @@ class ForgeWhy(EnvelopeTolerantModel):
         description="What the system takes in — the single natural-language input at the door"
     )
     boundary_out: str = Field(description="What the system produces — its final output")
+    input_is_collection: bool = Field(
+        default=False,
+        description=(
+            "True when the system's input is a LIST of items — several URLs, notes, emails — "
+            "processed item by item; false for one document, question, or request"
+        ),
+    )
 
 
 class Fitness(EnvelopeTolerantModel):
@@ -147,6 +154,13 @@ class NodeDeclaration(EnvelopeTolerantModel):
         default=False,
         description="True if the node reaches an external service over the internet",
     )
+    mode: NodeMode = Field(
+        default=NodeMode.WHOLE,
+        description=(
+            "each = this step runs once PER ITEM of a list the system processes; "
+            "whole (default) = the step sees its data all at once"
+        ),
+    )
 
 
 class ConsumeSelection(EnvelopeTolerantModel):
@@ -193,6 +207,9 @@ class FindingKind(str, Enum):
     )
     UNCOVERED_AREA = (
         "uncovered_area"  # a framed concern that decomposed to zero node jobs
+    )
+    EACH_NEEDS_COLLECTION = (
+        "each_needs_collection"  # an 'each' node must read exactly one collection
     )
 
 
@@ -256,6 +273,7 @@ class NodeDraft(BaseModel):
     produces_kind: DataKind = DataKind.SIGNAL
     control: NodeControl = NodeControl.NONE
     network: bool = False
+    mode: NodeMode = NodeMode.WHOLE
 
 
 class DesignPlan(BaseModel):

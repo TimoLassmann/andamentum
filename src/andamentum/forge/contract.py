@@ -22,6 +22,7 @@ from .spec import END, ModelSpec, NodeKind, SystemSpec
 class HoleKind(str, Enum):
     SPINE_BODY = "spine_body"  # spine node run(): the whole body is the hole
     ROUTING = "routing"  # multi-successor head run(): route on `out`
+    MAP_ITEM = "map_item"  # each-node _map_one(item): a pure per-item transform, no ctx
 
 
 class Hole(BaseModel):
@@ -67,13 +68,18 @@ def node_contract(spec: SystemSpec, node_name: str) -> NodeContract:
     node = next(n for n in spec.nodes if n.name == node_name)
     state_by_name = {f.name: f for f in spec.state.fields}
     primary = spec.input.primary_text_field
+    primary_field = next(f for f in spec.input.model.fields if f.name == primary)
 
     def resolve(name: str) -> IOField:
         f = state_by_name.get(name)
         if f is not None:
             return IOField(name=f.name, annotation=f.annotation, optional=f.optional)
         if name == primary:
-            return IOField(name=name, annotation="str", optional=False)
+            # The threaded input field keeps its declared annotation (a list[str] when
+            # the system's input is a collection of items, else str).
+            return IOField(
+                name=name, annotation=primary_field.annotation, optional=False
+            )
         return IOField(name=name, annotation="str", optional=True)
 
     agent_output: ModelSpec | None = None

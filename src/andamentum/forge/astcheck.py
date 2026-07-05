@@ -279,6 +279,52 @@ def check_deps_access(
     return out
 
 
+def check_map_item_body(file: Path, class_name: str, method_name: str) -> list[str]:
+    """The simplified contract for a MAP_ITEM hole (an 'each' node's ``_map_one``).
+
+    A map-item body is a PURE per-item transform — stricter and simpler than the node-body
+    contract: it must USE the ``item`` parameter and RETURN a value, and it must not touch
+    ``ctx`` (state/deps — the rendered scaffold owns them) or ``self`` (a pure function
+    needs only its item). Purity and fail-loud are the shared gates; this is the data
+    contract. Empty list = clean.
+    """
+    method = _find_method(ast.parse(file.read_text()), class_name, method_name)
+    if method is None:
+        return [f"method {class_name}.{method_name} not found"]
+
+    violations: list[str] = []
+    flagged: set[str] = set()
+    uses_item = False
+    returns_value = False
+    for n in ast.walk(method):
+        if isinstance(n, ast.Name):
+            if n.id == "item" and isinstance(n.ctx, ast.Load):
+                uses_item = True
+            elif n.id == "ctx" and "ctx" not in flagged:
+                flagged.add("ctx")
+                violations.append(
+                    "references ctx — a map-item body is a pure per-item transform with NO "
+                    "ctx, state, or deps access at all (the surrounding scaffold owns them)"
+                )
+            elif n.id == "self" and "self" not in flagged:
+                flagged.add("self")
+                violations.append(
+                    "references self — a map-item body is a pure function of its `item` "
+                    "parameter; it may not touch the node instance"
+                )
+        elif isinstance(n, ast.Return) and n.value is not None:
+            returns_value = True
+    if not uses_item:
+        violations.append(
+            "never reads the `item` parameter — the body must transform the ONE item it is given"
+        )
+    if not returns_value:
+        violations.append(
+            "never returns a value — the body must return the transformed item"
+        )
+    return violations
+
+
 def check_node_body(
     file: Path,
     class_name: str,

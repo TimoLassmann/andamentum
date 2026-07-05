@@ -15,6 +15,7 @@ Engine-free leaf worker (dialect Law 2).
 
 from __future__ import annotations
 
+from .assemble import collection_data
 from .naming import canonical_datum
 from .naming import to_pascal as _pascal
 from .naming import to_snake as _snake
@@ -30,10 +31,16 @@ from .spec import (
     ModelSpec,
     NodeControl,
     NodeKind,
+    NodeMode,
     NodeSpec,
     StateSpec,
     SystemSpec,
 )
+
+# The State field the rendered map scaffold records per-item failures into (soft-fail:
+# a failed item is skipped and logged; ALL items failing raises). Reserved — a datum
+# may not resolve to it.
+ITEM_FAILURES_FIELD = "item_failures"
 
 _DEFAULT_CHECKPOINT_CAP = 2
 
@@ -205,6 +212,40 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 "state (a value loaded, changed, saved). Declare it an entity (produces_kind="
                 "entity) so it persists across runs, or reshape the brief; a read-modify-write "
                 "signal would be silently forgotten when the run ends."
+            )
+
+    # Map-over-items ('each') backstops — fail loud, mirroring diagnose's
+    # each_needs_collection check (which repairs on the design path; a hand-authored plan
+    # lands here directly). Collection-ness is COMPUTED, never declared per-datum: the
+    # input is a collection iff the understand head said so, an EACH node's produce is a
+    # collection, a WHOLE node's produce is a scalar (assemble.collection_data — the one
+    # shared rule, so compile and diagnose cannot disagree).
+    collections = collection_data(
+        plan.nodes, input_is_collection=plan.why.input_is_collection
+    )
+    for c in plan.nodes:
+        if c.mode is not NodeMode.EACH:
+            continue
+        if c.control is not NodeControl.NONE:
+            raise ValueError(
+                f"node {c.job or c.id!r} is 'each' (one run per item) but also declares "
+                f"control={c.control.value!r}; a map step is a plain per-item transform (v1) — "
+                "make it 'whole', or drop the control role."
+            )
+        if c.produces_kind is DataKind.ENTITY:
+            raise ValueError(
+                f"node {c.job or c.id!r} is 'each' (one run per item) but produces an entity; "
+                "a map step produces the list of its per-item results (a signal, v1) — make it "
+                "'whole', or produce a signal."
+            )
+        streams = [d for d in c.consumes if d in collections]
+        stray = [d for d in c.consumes if d not in collections]
+        if len(streams) != 1 or stray:
+            raise ValueError(
+                f"node {c.job or c.id!r} is 'each' (one run per item) but reads "
+                f"{c.consumes or ['nothing']}; an 'each' step must consume exactly ONE "
+                f"collection (its stream) and nothing else — collections read: {streams}, "
+                f"scalars read: {stray}. Mark it 'whole', or have it read one collection."
             )
 
     # Fail loud on a dangling read. Every consumed signal must be produced by some node or
@@ -379,6 +420,7 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 produces=c.produces,
                 control=c.control,
                 network=c.network,
+                mode=c.mode,
                 serves=c.area,
             )
         )
@@ -408,24 +450,40 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
             )
         )
 
-    # state = the resolved SIGNAL fields (entities live in the store) + loop counters
+    # state = the resolved SIGNAL fields (entities live in the store) + loop counters.
+    # A collection datum (computed above) renders as list[str]; a scalar as str — the
+    # annotations FOLLOW the propagated collection-ness, they are never declared.
     state_fields: list[FieldSpec] = []
     seen: set[str] = set()
     for fname in sorted(set(field_of.values())):
         seen.add(fname)
-        state_fields.append(FieldSpec(name=fname, annotation="str", optional=True))
+        annotation = "list[str]" if origin[fname] in collections else "str"
+        state_fields.append(FieldSpec(name=fname, annotation=annotation, optional=True))
     for lc in loop_caps:
         if lc.name not in seen:
             seen.add(lc.name)
             state_fields.append(FieldSpec(name=lc.name, annotation="int", default="0"))
+    # Any 'each' node → the shared per-item failure log the rendered map scaffold
+    # appends to (soft-fail per item, aggregate raise when every item fails).
+    if any(c.mode is NodeMode.EACH for c in plan.nodes):
+        if ITEM_FAILURES_FIELD in seen:
+            raise ValueError(
+                f"a datum resolves to the reserved State field {ITEM_FAILURES_FIELD!r} "
+                "(the map scaffold's per-item failure log); rename that datum."
+            )
+        state_fields.append(
+            FieldSpec(name=ITEM_FAILURES_FIELD, annotation="list[str]", default="[]")
+        )
 
+    # Input law: one primary field — a list of items when the understand head flagged the
+    # input as a collection (the run entry splits the CLI text on newlines), else a str.
     input_spec = InputSpec(
         model=ModelSpec(
             name=f"{sys_pascal}Input",
             fields=[
                 FieldSpec(
                     name="request",
-                    annotation="str",
+                    annotation=("list[str]" if plan.why.input_is_collection else "str"),
                     description=plan.why.boundary_in or "the request",
                 )
             ],

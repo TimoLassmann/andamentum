@@ -272,7 +272,7 @@ async def decompose(
     report = DesignReport()
     for round_index in range(MAX_DESIGN_ROUNDS):
         graph = assemble(drafts)
-        report = diagnose(drafts, graph)
+        report = diagnose(drafts, graph, input_is_collection=why.input_is_collection)
         if report.clean:
             break
         if round_index == MAX_DESIGN_ROUNDS - 1:
@@ -289,7 +289,9 @@ async def decompose(
                 f"decompose: merged {len(merged)} extra terminal signal(s) into the system "
                 f"output ({', '.join(merged)})"
             )
-            report = diagnose(drafts, assemble(drafts))
+            report = diagnose(
+                drafts, assemble(drafts), input_is_collection=why.input_is_collection
+            )
             if report.clean:
                 break
         await _repair_round(drafts, report, sink=sink, notes=notes)
@@ -370,6 +372,7 @@ async def _declare_node(
     draft.produces_kind = decl.produces_kind
     draft.control = decl.control
     draft.network = decl.network
+    draft.mode = decl.mode
 
 
 async def _select_consumes(
