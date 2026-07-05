@@ -5,8 +5,8 @@ step is thin: read the surfaces, call one engine-free worker, assign, return a t
 successor. The whole authoring pipeline, in one graph:
 
     Understand → Assess → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
-        └ design heads ┘ fitness-gate    det     plan-mgr   det      det     agents  sandbox+
-                         (L9: refuse      (⇄ Frame)                  (static  agents
+        └ design heads ┘ fitness-gate    det      gate      det      det     agents  sandbox+
+                         (L9: refuse                                          (static  agents
                           non-functions)                             gates)
 
 The branches all route on ``deps.stop_after`` / ``deps.dest`` — operator-trusted
@@ -23,13 +23,7 @@ from pathlib import Path
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from .agents import MODEL_OUTPUT_ERRORS, AgentSink, CoreAgentSink
-from .attribute import attribute_failures
-from .audit import (
-    audit_rank,
-    audit_system,
-    failing_checks_summary,
-    feedback_for_targets,
-)
+from .audit import audit_system
 from .build import build_system
 from .compile_spec import compile_spec
 from .decompose import decompose
@@ -38,17 +32,14 @@ from .frame import frame
 from .render import render
 from .reporter import ForgeReporter, NoopReporter
 from .sandbox import SandboxPort, make_sandbox
-from .review import plan_board, review_plan
 from .schemas import (
     AuditReport,
-    AuditRound,
     BuildReport,
     DesignPlan,
     DesignReport,
     Fitness,
     ForgeResult,
     ForgeWhy,
-    PlanVerdict,
     VerificationReport,
 )
 from .spec import SystemSpec
@@ -61,12 +52,6 @@ MAX_JOBS_PER_AREA = 5
 MAX_NODES = 18
 # Per-node authoring: draft + (cap-1) repairs (the prior-art sweet spot).
 ATTEMPT_CAP = 3
-# Plan-manager feedback loop: the design is redesigned at most this many times before the
-# pipeline fails loud with the unresolved concerns (Law 5 — bound is a named constant).
-MAX_PLAN_REVIEW_ROUNDS = 2
-# Self-correction feedback loop: the built system is rebuilt at most this many times
-# before forge settles on the best build it reached (§4.2 — bound is a named constant).
-MAX_AUDIT_ROUNDS = 2
 
 #: How far the pipeline runs. Each is a superset of the previous.
 _STAGES = ("design", "render", "build", "audit")
@@ -86,7 +71,6 @@ class ForgeDeps:
     max_jobs_per_area: int = MAX_JOBS_PER_AREA
     max_nodes: int = MAX_NODES
     attempt_cap: int = ATTEMPT_CAP
-    max_audit_rounds: int = MAX_AUDIT_ROUNDS
     reporter: ForgeReporter = field(default_factory=NoopReporter)
 
 
@@ -102,7 +86,6 @@ class ForgeState:
     areas: list[str] = field(default_factory=list)
     plan: DesignPlan | None = None
     design_report: DesignReport | None = None
-    plan_review: PlanVerdict | None = None
     spec: SystemSpec | None = None
     rendered_files: list[str] = field(default_factory=list)
     report: VerificationReport | None = None
@@ -110,14 +93,6 @@ class ForgeState:
     audit: AuditReport | None = None
     # ── flow-control
     notes: list[str] = field(default_factory=list)
-    plan_review_rounds: int = 0
-    plan_feedback: list[str] = field(default_factory=list)
-    # ── self-correction loop (§4.2)
-    audit_rounds: int = 0
-    rebuild_targets: list[str] = field(default_factory=list)
-    best_build: BuildReport | None = None
-    best_audit: AuditReport | None = None
-    audit_history: list[AuditRound] = field(default_factory=list)
 
 
 Ctx = GraphRunContext[ForgeState, ForgeDeps]
@@ -170,7 +145,6 @@ class Frame(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
             why,
             sink=ctx.deps.sink,
             max_areas=ctx.deps.max_areas,
-            plan_feedback=ctx.state.plan_feedback,
         )
         ctx.state.areas = areas
         ctx.state.notes.extend(notes)
@@ -190,7 +164,6 @@ class Decompose(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
             sink=ctx.deps.sink,
             max_jobs_per_area=ctx.deps.max_jobs_per_area,
             max_nodes=ctx.deps.max_nodes,
-            plan_feedback=ctx.state.plan_feedback,
         )
         ctx.state.plan = plan
         ctx.state.design_report = design_report
@@ -200,10 +173,7 @@ class Decompose(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
 
 @dataclass
 class Compile(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
-    """Compile the board into a recipe-validated SystemSpec (deterministic).
-
-    Single-successor: the plan must pass the plan manager (Review) before any render.
-    """
+    """Compile the board into a recipe-validated SystemSpec (deterministic)."""
 
     async def run(self, ctx: Ctx) -> Review:
         plan = ctx.state.plan
@@ -214,35 +184,14 @@ class Compile(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
 
 @dataclass
 class Review(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
-    """Plan manager (Tier 1b): does the planned board serve the goal?
+    """Proceed to render, or finish for a design-only run.
 
-    On serves_goal (or no surviving concerns) → proceed (Render if the run wants it, else
-    Finish). On reject → loop back to Frame carrying the concerns, bounded by
-    MAX_PLAN_REVIEW_ROUNDS; at the cap, fail loud with the unresolved concerns (never a
-    silent pass). The Review→Frame back-edge is a declared, cap-bounded cycle (L5).
+    Per-area plan coverage is checked deterministically inside Decompose (the blocking
+    UNCOVERED_AREA finding); this node is the render/finish gate on ``stop_after``.
     """
 
-    async def run(self, ctx: Ctx) -> Frame | Render | Finish:
-        plan = ctx.state.plan
-        assert plan is not None
-        board = plan_board(plan.nodes)
-        jobs = [n.job for n in plan.nodes]
-        verdict = await review_plan(plan.why, board, jobs, sink=ctx.deps.sink)
-
-        if verdict.serves_goal or not verdict.uncovered_concerns:
-            ctx.state.plan_review = verdict
-            return Render() if _wants(ctx.deps, "render") else Finish()
-
-        ctx.state.plan_review_rounds += 1
-        if ctx.state.plan_review_rounds >= MAX_PLAN_REVIEW_ROUNDS:
-            raise ValueError(
-                "plan review did not converge after "
-                f"{MAX_PLAN_REVIEW_ROUNDS} redesign rounds; the plan still does not serve "
-                "the goal (surfaced, never silently passed). Unresolved concerns:\n"
-                + "\n".join(f"- {c}" for c in verdict.uncovered_concerns)
-            )
-        ctx.state.plan_feedback = verdict.uncovered_concerns
-        return Frame()
+    async def run(self, ctx: Ctx) -> Render | Finish:
+        return Render() if _wants(ctx.deps, "render") else Finish()
 
 
 @dataclass
@@ -272,167 +221,56 @@ class Verify(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
 
 @dataclass
 class Build(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
-    """Agents author every node body, statically gated (stage 3).
-
-    First pass (``rebuild_targets`` empty): ``targets=None`` — author every hole, the
-    original behaviour. A rebuild (Audit routed back through Render, §4.3): ``targets`` is
-    exactly the attributed set, every OTHER hole is re-applied verbatim from the best
-    build's bodies, and each target sees the audit failure that named it as repair
-    feedback. ``rebuild_targets`` is cleared after it is consumed.
-    """
+    """Agents author every node body, statically gated (stage 3)."""
 
     async def run(self, ctx: Ctx) -> Audit | Finish:
         dest = ctx.deps.dest
         spec = ctx.state.spec
         assert dest is not None and spec is not None
-        target_list = ctx.state.rebuild_targets
-        # Tri-state (§4.3): empty rebuild_targets → None (author all); a set → those only.
-        targets: set[str] | None = set(target_list) if target_list else None
-        prior_bodies = (
-            {f.node: f.body for f in ctx.state.best_build.filled}
-            if ctx.state.best_build is not None
-            else {}
-        )
-        feedback = (
-            feedback_for_targets(ctx.state.audit, target_list)
-            if target_list and ctx.state.audit is not None
-            else {}
-        )
         ctx.state.build = await build_system(
             spec,
             dest / spec.name,
             sink=ctx.deps.sink,
             attempt_cap=ctx.deps.attempt_cap,
             reporter=ctx.deps.reporter,
-            prior_bodies=prior_bodies,
-            targets=targets,
-            rebuild_feedback=feedback,
         )
-        ctx.state.rebuild_targets = []
         return Audit() if _wants(ctx.deps, "audit") else Finish()
 
 
 @dataclass
 class Audit(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
-    """Run the built system in the sandbox and review it end-to-end (stage 4), then route
-    the self-correction loop (§4.1/§4.4/§4.5).
+    """Run the built system in the sandbox and review it end-to-end (stage 4).
 
-    Ranks the audit by the total order ``audit_rank`` and keeps it as the new best iff it
-    strictly improves on the best reached *before* this round (``None`` ⇒ improves). On a
-    red audit it computes ``attribute_failures`` HERE — before the back-edge re-renders and
-    overwrites the filled ``nodes.py`` back to holes. Routing is a pure predicate:
-
-        works                          → Finish
-        (not works) and improvable     → Render  (rebuild the attributed targets)
-        otherwise                      → Finish  (settle on best; §4.6)
-
-    ``improvable`` = under the round cap AND attribution found ≥1 fixable target AND the
-    round strictly improved. A non-attributable red audit (``targets == []``) settles as a
-    loud terminal — re-authoring cannot fix it. The LLM never picks the path (dialect Law).
+    A single pass: run the built system's tests + smoke + ``check_code`` + the advisory
+    requirements/critic heads, record the verdict, and finish. The audit does not drive
+    flow — it is a terminal verdict (fail-loud, but never a raise).
     """
 
-    async def run(self, ctx: Ctx) -> Render | Finish:
+    async def run(self, ctx: Ctx) -> Finish:
         dest = ctx.deps.dest
         spec = ctx.state.spec
         assert dest is not None and spec is not None
-        audit = await audit_system(
+        ctx.state.audit = await audit_system(
             spec,
             ctx.state.brief,
             dest,
             sink=ctx.deps.sink,
             sandbox=ctx.deps.sandbox,
             build=ctx.state.build,
-            audit_rounds=ctx.state.audit_rounds,
             reporter=ctx.deps.reporter,
-        )
-        ctx.state.audit = audit
-
-        # Regression guard (§4.5): compare against the best reached BEFORE this round.
-        best_before = ctx.state.best_audit
-        improved = best_before is None or audit_rank(audit) > audit_rank(best_before)
-        if improved:
-            ctx.state.best_audit = audit
-            ctx.state.best_build = ctx.state.build
-
-        # Attribution is pure and runs here (the filled nodes.py is still on disk).
-        targets = (
-            []
-            if audit.works
-            else attribute_failures(audit, ctx.state.build, spec, dest)
-        )
-        under_cap = ctx.state.audit_rounds < ctx.deps.max_audit_rounds
-        improvable = under_cap and bool(targets) and improved
-
-        ctx.state.audit_history.append(
-            AuditRound(
-                index=audit.rounds,
-                rebuild_targets=list(targets) if improvable else [],
-                failing_checks=failing_checks_summary(audit),
-            )
-        )
-
-        if audit.works:
-            return Finish()
-        if improvable:
-            ctx.state.rebuild_targets = list(targets)
-            ctx.state.audit_rounds += 1
-            return Render()
-        # Settle (§4.6): not working and no further rebuild will help. Record why, with
-        # the cap, so the outcome is legible in the notes and the JSON dump.
-        reason = (
-            "reached the rebuild cap"
-            if not under_cap
-            else "no fixable target could be attributed"
-            if not targets
-            else "the last rebuild did not improve on the best"
-        )
-        ctx.state.notes.append(
-            f"self-correction: settled after {ctx.state.audit_rounds} rebuild(s) — "
-            f"audit did not converge ({reason}; cap {ctx.deps.max_audit_rounds})."
         )
         return Finish()
 
 
 @dataclass
 class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
-    """Assemble the ForgeResult (Assembly law: deterministic code builds the object).
-
-    Reports the *best* build/audit the self-correction loop reached (falling back to the
-    last build/audit when the loop never ran), plus the full ``audit_history``. When the
-    loop settled on a regression (§4.6) the last round's files sit in ``dest/`` but the
-    best is an EARLIER round — so, guarded to fire only on that path, it deterministically
-    re-materialises the best build onto disk (render pristine + re-apply every best body,
-    ``targets=∅`` — no authoring, no re-audit) so the package on disk equals the reported
-    best. No-op on every other path (design/render/build-only, converged audit).
-    """
+    """Assemble the ForgeResult (Assembly law: deterministic code builds the object)."""
 
     async def run(self, ctx: Ctx) -> End[ForgeResult]:
         spec = ctx.state.spec
         assert spec is not None
-        build = ctx.state.best_build if ctx.state.best_build is not None else ctx.state.build
-        audit = ctx.state.best_audit if ctx.state.best_audit is not None else ctx.state.audit
-
-        # Guarded settle re-materialisation (§4.6): only when a best exists that is NOT the
-        # last audit (a regression settle) and a destination is on disk.
-        dest = ctx.deps.dest
-        if (
-            dest is not None
-            and ctx.state.best_audit is not None
-            and ctx.state.best_audit is not ctx.state.audit
-            and build is not None
-        ):
-            render(spec, dest)
-            # No reporter here: this is deterministic disk fix-up (re-apply already-audited
-            # bodies), not a build stage — emitting build events after Build is "done" would
-            # show phantom activity to a reporter watching event counts (§ review P2-E2).
-            await build_system(
-                spec,
-                dest / spec.name,
-                sink=ctx.deps.sink,
-                attempt_cap=ctx.deps.attempt_cap,
-                prior_bodies={f.node: f.body for f in build.filled},
-                targets=set(),
-            )
+        build = ctx.state.build
+        audit = ctx.state.audit
 
         if audit is not None:
             stage = "audit"
@@ -449,11 +287,9 @@ class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
                 fitness=ctx.state.fitness,
                 rendered_files=ctx.state.rendered_files,
                 design_report=ctx.state.design_report,
-                plan_review=ctx.state.plan_review,
                 report=ctx.state.report,
                 build=build,
                 audit=audit,
-                audit_history=ctx.state.audit_history,
                 notes=ctx.state.notes,
             )
         )
@@ -489,7 +325,6 @@ async def run_forge(
     max_jobs_per_area: int = MAX_JOBS_PER_AREA,
     max_nodes: int = MAX_NODES,
     attempt_cap: int = ATTEMPT_CAP,
-    max_audit_rounds: int = MAX_AUDIT_ROUNDS,
     reporter: ForgeReporter | None = None,
 ) -> ForgeResult:
     """Design, render, build, and audit an agentic system from a brief.
@@ -524,7 +359,6 @@ async def run_forge(
         max_jobs_per_area=max_jobs_per_area,
         max_nodes=max_nodes,
         attempt_cap=attempt_cap,
-        max_audit_rounds=max_audit_rounds,
         reporter=resolved_reporter,
     )
     state = ForgeState(brief=brief)
@@ -603,13 +437,8 @@ def _stage_detail(name: str, state: ForgeState) -> str:
         s = state.spec
         heads = sum(1 for nd in s.nodes if nd.kind.value == "head")
         return f"{len(s.nodes)} nodes ({heads} head · {len(s.nodes) - heads} spine) · {len(s.agents)} agents"
-    if name == "Review" and state.plan_review is not None:
-        pr = state.plan_review
-        return (
-            "plan manager: serves the goal ✓"
-            if pr.serves_goal
-            else f"{len(pr.uncovered_concerns)} concern(s) — redesigning"
-        )
+    if name == "Review":
+        return "plan coverage ✓"
     if name == "Render":
         return f"{len(state.rendered_files)} files"
     if name == "Verify" and state.report is not None:
@@ -618,8 +447,7 @@ def _stage_detail(name: str, state: ForgeState) -> str:
         return f"{passed}/{len(r.checks)} checks"
     if name == "Build" and state.build is not None:
         b = state.build
-        extra = f" · {len(b.concerns)} concern(s)" if b.concerns else ""
-        return f"{len(b.filled)} authored · {len(b.unfillable)} unfillable{extra}"
+        return f"{len(b.filled)} authored · {len(b.unfillable)} unfillable"
     if name == "Audit" and state.audit is not None:
         return "WORKS" if state.audit.works else "INCOMPLETE"
     return ""

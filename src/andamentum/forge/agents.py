@@ -21,15 +21,14 @@ from andamentum.agentic_dialect import law
 from andamentum.core import AgentDefinition
 
 from .schemas import (
-    BodyVerdict,
+    ConsumeSelection,
     CriticVerdict,
     Fitness,
     ForgeAreas,
     ForgeWhy,
     JobList,
-    NodeTyping,
+    NodeDeclaration,
     PieceOut,
-    PlanVerdict,
     RequirementsVerdict,
 )
 
@@ -132,14 +131,10 @@ LIST_JOBS_PROMPT = (
     "'Check if another search round is needed.'"
 )
 
-TYPE_NODE_PROMPT = (
-    "You are specifying the fields of ONE step in a larger plan (shown to you, the step marked "
-    ">>>, with what every step already declares it reads/produces). Return just its fields. "
-    "\n\nSteps form a CHAIN: this step should almost always READ the output an earlier step "
-    "produces (most often the step right before it) and build on it. The graph input is named "
-    "`input` (the raw original text) — read it ONLY when this step genuinely needs the unprocessed "
-    "input, NEVER when an earlier step already turned it into something this step should refine. "
-    "Then PRODUCE one new variable a later step will read. "
+DECLARE_NODE_PROMPT = (
+    "You are declaring the OUTPUT and kind of ONE step in a larger plan (shown to you, the step "
+    "marked >>> with what every step declares it produces). Return just its fields. You declare "
+    "what this step PRODUCES — you do NOT choose its inputs here (that is a separate step). "
     "\n\n(1) kind — SPINE if the answer is computable from the inputs by a function you could "
     "name: math, regex, a lookup, a sort/filter on a field that ALREADY exists, an API call, or "
     "a branch on a value an earlier step produced. HEAD if producing the output needs READING "
@@ -147,25 +142,36 @@ TYPE_NODE_PROMPT = (
     "label, score, or condensed content is NOT a field, it must be derived from the prose. "
     "Ranking, selecting, scoring, classifying, extracting, or condensing OPEN TEXT is ALWAYS a "
     "head, never code. "
-    "(2) consumes — DECLARE the variables this step READS, by name. When you mean the output of an "
-    "earlier step, reuse that step's produced name EXACTLY (copy it character-for-character from "
-    "the board) so the two steps connect. Use `input` for the raw original text. A step may read "
-    "`input` and/or one or more earlier produced variables. "
-    "(3) produces — name EXACTLY ONE new variable this step writes — a short noun phrase, distinct "
-    "from every name already on the board — that a later step can read. "
-    "(4) produces_kind — signal (run-scoped value handed onward) or entity (a database record "
+    "(2) produces — name EXACTLY ONE new variable this step writes — a short noun phrase "
+    "describing its output — that a later step can read. (Don't worry about clashing with another "
+    "step's name; identical names are made unique automatically.) "
+    "(3) produces_kind — signal (run-scoped value handed onward) or entity (a database record "
     "stored and retrieved by id, like a User or Ticket — only for records that persist BEYOND "
     "the run and are queried later; never right for intermediate processing results). "
-    "(5) control — EXACTLY one of: none (default); checkpoint (loop control: 'run this area "
+    "(4) control — EXACTLY one of: none (default); checkpoint (loop control: 'run this area "
     "again, or move on?' — when an area repeats until a condition is met); decision (routes to "
     "DIFFERENT downstream pipelines — distinct paths to different outcomes, NOT loop control); "
     "consequential (requires human approval before proceeding). "
-    "(6) network — true ONLY if the step reaches an external service over the internet (web/HTTP "
+    "(5) network — true ONLY if the step reaches an external service over the internet (web/HTTP "
     "API, fetches a page, queries a remote database). A network step is ALWAYS spine. Default false. "
     "\n\nKEY RULES: 'should I run this area again?' → checkpoint. 'which of several different "
-    "paths?' → decision. A search/harvest loop that repeats until stall is ALWAYS a checkpoint. "
-    "\n\nIf the message includes feedback about a structural problem, fix EXACTLY what it names — "
-    "most often re-declaring `consumes`/`produces` to reuse an existing produced name verbatim."
+    "paths?' → decision. A search/harvest loop that repeats until stall is ALWAYS a checkpoint."
+)
+
+SELECT_CONSUMES_PROMPT = (
+    "You are choosing the INPUTS of ONE step (its job is shown). Below is a NUMBERED list of every "
+    "datum available to read: number 0 is `input` (the raw original text the whole system was "
+    "given), and each later number is a value an EARLIER step produces, annotated with that step's "
+    "job. Return `consume_indices` — the NUMBERS of the inputs this step reads. Choose numbers only "
+    "from the list; do NOT invent names. "
+    "\n\nSteps form a CHAIN: this step should almost always READ the output of an earlier step "
+    "(most often the one right before it) and build on it — pick that number. Pick number 0 "
+    "(`input`) ONLY when this step genuinely needs the unprocessed original text, NEVER when an "
+    "earlier step already turned it into something this step should refine. A step may read one or "
+    "more inputs (a fan-in); pick every number it truly needs, and no others. "
+    "\n\nIf the message includes feedback about a structural problem, fix EXACTLY what it names by "
+    "re-choosing the numbers — most often picking the number of the earlier step whose output this "
+    "step should read."
 )
 
 
@@ -177,22 +183,11 @@ FRAME = AgentDefinition(name="frame", prompt=FRAME_PROMPT, output_model=ForgeAre
 LIST_JOBS = AgentDefinition(
     name="list_jobs", prompt=LIST_JOBS_PROMPT, output_model=JobList
 )
-TYPE_NODE = AgentDefinition(
-    name="type_node", prompt=TYPE_NODE_PROMPT, output_model=NodeTyping
+DECLARE_NODE = AgentDefinition(
+    name="declare_node", prompt=DECLARE_NODE_PROMPT, output_model=NodeDeclaration
 )
-
-PLAN_MANAGER_PROMPT = (
-    "You are a project manager checking a PLAN against its GOAL before any code is written. "
-    "You are shown the system's purpose, what it takes in, what it must produce, and the "
-    "planned steps (each a name and a one-sentence job — no code). Decide serves_goal "
-    "(true/false): taken together, do these steps fulfil the purpose and produce the stated "
-    "output? List uncovered_concerns — concrete things the goal needs that NO step does. Be "
-    "specific and few; an empty list means the plan fully serves the goal. Do not invent "
-    "requirements the brief never asked for; do not restate steps that already exist."
-)
-
-PLAN_MANAGER = AgentDefinition(
-    name="plan_manager", prompt=PLAN_MANAGER_PROMPT, output_model=PlanVerdict
+SELECT_CONSUMES = AgentDefinition(
+    name="select_consumes", prompt=SELECT_CONSUMES_PROMPT, output_model=ConsumeSelection
 )
 
 
@@ -261,22 +256,9 @@ CRITIC_PROMPT = (
     "concrete problem in `issue`. List concrete issues; an empty list means you found none."
 )
 
-COMPONENT_MANAGER_PROMPT = (
-    "You are reviewing ONE component against the job it was given. You are shown the node's "
-    "job, its contract (the state fields it may read, must set, and the successors it may "
-    "return), and the authored function body. Decide implements_job (true/false): does the "
-    "body genuinely DO that job using its declared inputs — not a hardcoded stand-in, not a "
-    "body that ignores its inputs, not a plausible fake? If false, give ONE concrete issue "
-    "naming what is wrong, so the author can fix exactly that. The contract itself is already "
-    "verified — judge only whether the LOGIC implements the job."
-)
-
 DRAFT = AgentDefinition(name="build_draft", prompt=DRAFT_PROMPT, output_model=PieceOut)
 REPAIR = AgentDefinition(
     name="build_repair", prompt=REPAIR_PROMPT, output_model=PieceOut
-)
-COMPONENT_MANAGER = AgentDefinition(
-    name="component_manager", prompt=COMPONENT_MANAGER_PROMPT, output_model=BodyVerdict
 )
 REQUIREMENTS = AgentDefinition(
     name="requirements", prompt=REQUIREMENTS_PROMPT, output_model=RequirementsVerdict

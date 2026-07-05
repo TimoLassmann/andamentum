@@ -19,29 +19,7 @@ from pathlib import Path
 from andamentum.core import resolve_model_from_args
 
 from .graph import run_forge
-from .schemas import AuditRound, ForgeResult
-
-
-def _self_correction_lines(history: list[AuditRound]) -> list[str]:
-    """Human trace of the audit self-correction loop, from the round history.
-
-    Emitted only when the loop actually fired (more than one audit pass) — a clean
-    first build produces a single-entry history and no extra output. Pure so it is
-    unit-testable without constructing a whole ForgeResult."""
-    if len(history) <= 1:
-        return []
-    rebuilds = len(history) - 1
-    plural = "s" if rebuilds != 1 else ""
-    lines = [
-        f"\nself-correction: {len(history)} audit passes ({rebuilds} rebuild{plural})"
-    ]
-    for r in history:
-        state = "clean" if not r.failing_checks else f"failed — {r.failing_checks}"
-        line = f"  pass {r.index}: {state}"
-        if r.rebuild_targets:
-            line += f"   → re-authored: {', '.join(r.rebuild_targets)}"
-        lines.append(line)
-    return lines
+from .schemas import ForgeResult
 
 
 def _print_summary(result: ForgeResult) -> None:
@@ -72,14 +50,7 @@ def _print_summary(result: ForgeResult) -> None:
 
     if result.audit is not None:
         a = result.audit
-        rebuilds = max(len(result.audit_history) - 1, 0)
-        suffix = ""
-        if rebuilds:
-            outcome = "converged" if a.works else "settled"
-            suffix = (
-                f"  ({outcome} after {rebuilds} rebuild{'s' if rebuilds != 1 else ''})"
-            )
-        print(f"\naudit: {'WORKS' if a.works else 'INCOMPLETE'}{suffix}")
+        print(f"\naudit: {'WORKS' if a.works else 'INCOMPLETE'}")
         for c in a.checks:
             print(f"  [{'pass' if c.passed else 'FAIL'}] {c.name}: {c.detail}")
         if a.requirements is not None and a.requirements.gaps:
@@ -90,8 +61,6 @@ def _print_summary(result: ForgeResult) -> None:
             print("  critic issues:")
             for i in a.critic.issues:
                 print(f"    - {i.node}: {i.issue}" if i.node else f"    - {i.issue}")
-        for line in _self_correction_lines(result.audit_history):
-            print(line)
 
     if result.rendered_files:
         print(
@@ -137,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="emit the full ForgeResult (incl. self-correction audit_history) as JSON to stdout; disables the live dashboard",
+        help="emit the full ForgeResult as JSON to stdout; disables the live dashboard",
     )
     args = parser.parse_args(argv)
 

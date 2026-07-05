@@ -1,8 +1,8 @@
 """Discover ``NotImplementedError`` holes in a generated package.
 
 Parses ``nodes.py`` with ``ast`` so the result is robust to whitespace/formatting.
-The hole kinds come directly from the renderer: a spine body, a multi-successor head's
-routing, or a HumanGate ``decide``. Ported from the ``forge`` dump. Leaf worker.
+The hole kinds come directly from the renderer: a spine body or a multi-successor
+head's routing. Ported from the ``forge`` dump. Leaf worker.
 """
 
 from __future__ import annotations
@@ -103,8 +103,6 @@ def _extract_hint(stmt: ast.Raise) -> str:
 
 
 def _infer_kind(method_name: str, hint: str) -> HoleKind:
-    if method_name == "decide":
-        return HoleKind.GATE_DECIDE
     if "Route on `out`" in hint:
         return HoleKind.ROUTING
     return HoleKind.SPINE_BODY

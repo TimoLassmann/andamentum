@@ -22,7 +22,6 @@ from .spec import END, ModelSpec, NodeKind, SystemSpec
 class HoleKind(str, Enum):
     SPINE_BODY = "spine_body"  # spine node run(): the whole body is the hole
     ROUTING = "routing"  # multi-successor head run(): route on `out`
-    GATE_DECIDE = "gate_decide"  # HumanGate decide(): route on the human's answer
 
 
 class Hole(BaseModel):

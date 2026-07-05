@@ -23,10 +23,9 @@ from andamentum.forge.schemas import (
     ForgeWhy,
     NodeDraft,
     NodeKind,
-    NodeTyping,
 )
 
-from .conftest import FakeSandbox, ScriptedSink
+from .conftest import FakeSandbox, NodeScript, ScriptedSink
 
 
 def _plan() -> DesignPlan:
@@ -81,13 +80,13 @@ def _run_forge_kwargs() -> dict[str, object]:
         areas=["core"],
         jobs_by_area={"core": ["Parse the request.", "Answer the request."]},
         typings={
-            "n1": NodeTyping(
+            "n1": NodeScript(
                 kind=NodeKind.SPINE,
                 consumes=["input"],
                 produces=["parsed_request"],
                 produces_kind=DataKind.SIGNAL,
             ),
-            "n2": NodeTyping(
+            "n2": NodeScript(
                 kind=NodeKind.HEAD,
                 consumes=["parsed_request"],
                 produces=["answer"],
@@ -105,15 +104,6 @@ class _DraftFailsSink(ScriptedSink):
 
     async def run(self, defn: AgentDefinition, **kwargs: object) -> BaseModel:
         if defn.name in ("build_draft", "build_repair"):
-            raise _BOOM
-        return await super().run(defn, **kwargs)
-
-
-class _ManagerFailsSink(ScriptedSink):
-    """The advisory component manager fails hard; the gate-valid body must still stand."""
-
-    async def run(self, defn: AgentDefinition, **kwargs: object) -> BaseModel:
-        if defn.name == "component_manager":
             raise _BOOM
         return await super().run(defn, **kwargs)
 
@@ -154,22 +144,6 @@ async def test_build_degrades_to_unfillable_when_model_cannot_author(
     assert any(
         "failed to produce a valid body" in u.last_error for u in report.unfillable
     ), "the unfillable node records the model failure as its last error"
-
-
-# --- Build: the advisory component manager failing does not block a gate-valid body --
-
-
-async def test_component_manager_failure_keeps_the_gate_valid_body(
-    tmp_path: Path,
-) -> None:
-    spec = compile_spec(_plan())
-    render(spec, tmp_path)
-    pkg = tmp_path / spec.name
-    sink = _ManagerFailsSink(**_build_kwargs())  # type: ignore[arg-type]
-
-    report = await build_system(spec, pkg, sink=sink, attempt_cap=3)  # must NOT raise
-
-    assert report.all_filled, report.unfillable  # advisory failure never blocks fillability
 
 
 # --- Audit: advisory heads failing are skipped, the run still completes --------------

@@ -160,8 +160,6 @@ class RichReporter:
         self._stages: dict[str, _Stage] = {}
         self._build = _Build()
         self._audit = _Audit()
-        self._redesign_round = 0  # Review→Frame plan-review re-entries
-        self._rebuild_round = 0  # Audit→Render self-correction re-entries
         self._spinner = Spinner("dots", style="cyan")  # one instance → it animates
         self._live = None
 
@@ -200,17 +198,7 @@ class RichReporter:
         st = self._stages.get(name)
         if st is None:
             return
-        # Re-entry bumps a round indicator so a loop is shown as a new pass, not a
-        # corrupted re-run. The two loops are tracked separately so the label is honest:
-        # the Review→Frame plan-review loop (led by Frame) is a *redesign*; the
-        # Audit→Render self-correction loop (led by Render) is a *rebuild*. Only the
-        # loop's lead stage bumps, so one round counts once, not once per re-entered stage.
-        if st.status == "done" and name == "Frame":
-            self._redesign_round += 1
-        if st.status == "done" and name == "Render":
-            self._rebuild_round += 1
-        # Each audit pass starts from a clean result set; a rebuild round re-runs Audit,
-        # and appending would stack duplicate rows from the prior pass.
+        # Each audit pass starts from a clean result set (append would stack rows).
         if name == "Audit":
             self._audit = _Audit()
         st.status = "active"
@@ -284,10 +272,6 @@ class RichReporter:
         if self._dest:
             sub.append("  ·  → ", style="dim")
             sub.append(self._dest, style="dim")
-        if self._redesign_round:
-            sub.append(f"   ↻ redesign {self._redesign_round}", style="yellow")
-        if self._rebuild_round:
-            sub.append(f"   ↻ rebuild {self._rebuild_round}", style="yellow")
 
         grid = Table.grid(padding=(0, 1))
         grid.add_column(width=2, justify="center")

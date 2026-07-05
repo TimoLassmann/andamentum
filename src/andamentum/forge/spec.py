@@ -2,8 +2,7 @@
 
 A :class:`SystemSpec` is the typed declaration of one agentic system: the five
 things the recipe (``docs/AGENT_GRAPH_RECIPE.md`` §9) says every new system must
-declare — **Input, Entities, State, Nodes, Agents** — plus its loop caps and
-human-in-the-loop gates.
+declare — **Input, Entities, State, Nodes, Agents** — plus its loop caps.
 
 The purpose of this module is to make the recipe *checkable*. A ``SystemSpec``
 either validates against the recipe's Invariants and Rules or it raises. The
@@ -68,12 +67,6 @@ SIGNAL_BASE_TYPES = frozenset(
     }
 )
 
-#: Known primitive types that a ``SystemSpec.run_end_type`` may name directly.
-#: Model names are also valid (checked dynamically in the SystemSpec validator).
-RUN_END_PRIMITIVES = frozenset(
-    {"str", "int", "float", "bool", "list[str]", "list[int]", "bytes"}
-)
-
 #: The end-of-run sentinel a node may name as a successor.
 END = "End"
 
@@ -102,13 +95,6 @@ class AgentRole(str, Enum):
 #: Roles that do typed extraction into a guarded schema — allowed more output
 #: fields than reasoning roles (see MAX_FORM_FIELDS).
 FORM_ROLES = frozenset({AgentRole.COMPOSE, AgentRole.FILL})
-
-
-class GateKind(str, Enum):
-    """How a HumanGate resolves (recipe §4)."""
-
-    APPROVAL = "approval"  # proceed / reject before a consequential action
-    CHOICE = "choice"  # pick among options the system cannot resolve alone
 
 
 class NodeControl(str, Enum):
@@ -355,9 +341,6 @@ class NodeSpec(BaseModel):
     control: NodeControl = Field(
         default=NodeControl.NONE, description="Role in control flow (see NodeControl)"
     )
-    checkpoint_cap: int | None = Field(
-        default=None, description="Loop cap when control == checkpoint"
-    )
     serves: str = Field(
         default="",
         description="Trace link: the area/responsibility id this node serves",
@@ -406,14 +389,6 @@ class LoopCap(BaseModel):
     )
 
 
-class HitlGate(BaseModel):
-    """A human-in-the-loop pause/resume point (recipe §4)."""
-
-    node: str = Field(description="The node that suspends for human input")
-    kind: GateKind
-    purpose: str = ""
-
-
 class SystemSpec(BaseModel):
     """The complete, recipe-checked declaration of one agentic system.
 
@@ -438,17 +413,6 @@ class SystemSpec(BaseModel):
     entry_node: str = Field(description="The node the graph starts at")
 
     loop_caps: list[LoopCap] = Field(default_factory=list)
-    hitl_gates: list[HitlGate] = Field(default_factory=list)
-
-    run_end_type: str = Field(
-        default="str",
-        description=(
-            "The Python type that the graph returns when it reaches End. "
-            "Must be a known primitive (str/int/float/bool/list[str]/list[int]/bytes) "
-            "or the name of a declared agent output model in this spec. "
-            "Default 'str' keeps back-compatibility — the generated graph returns End(str)."
-        ),
-    )
 
     @field_validator("name")
     @classmethod
@@ -581,22 +545,6 @@ class SystemSpec(BaseModel):
                     "a loop counter must be annotated 'int' or 'int | None' so it can be incremented."
                 )
 
-        # HITL gates reference real nodes.
-        for g in self.hitl_gates:
-            if g.node not in node_names:
-                raise ValueError(f"hitl gate references unknown node {g.node!r}")
-
-        # Dichotomy: a HITL gate node is a HumanGate, not an LLM head. A head named by
-        # a gate would have its agent silently dropped at render — so forbid it. The
-        # head's judgment belongs in a separate node; the gate stays deterministic.
-        gate_nodes = {g.node for g in self.hitl_gates}
-        for n in self.nodes:
-            if n.name in gate_nodes and n.kind is NodeKind.HEAD:
-                raise ValueError(
-                    f"node {n.name!r} is both a HITL gate and a HEAD; a gate is not an LLM call. "
-                    "Make the gate node a spine node (put any head judgment in a separate node)."
-                )
-
         # Dichotomy: a head makes one LLM call and goes to exactly one next node.
         # Routing (more than one successor) belongs in a separate deterministic spine
         # node — so an LLM call never also does the path-picking. `compile` enforces
@@ -607,18 +555,6 @@ class SystemSpec(BaseModel):
                     f"head node {n.name!r} has {len(n.successors)} successors; a head goes to exactly one next "
                     "node. Put the routing in a separate spine node (head → router)."
                 )
-
-        # run_end_type must be a known primitive or the name of a declared agent output model.
-        declared_output_models = {a.output.name for a in self.agents}
-        if (
-            self.run_end_type not in RUN_END_PRIMITIVES
-            and self.run_end_type not in declared_output_models
-        ):
-            raise ValueError(
-                f"run_end_type {self.run_end_type!r} is not a known primitive "
-                f"({sorted(RUN_END_PRIMITIVES)}) and does not name a declared agent output model "
-                f"({sorted(declared_output_models) or '(none)'})."
-            )
 
         # Phase 4 — no silent output drop.
         #

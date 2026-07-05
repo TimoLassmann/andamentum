@@ -90,28 +90,37 @@ async def test_reporter_records_stage_detail(
         "Manage my reading list.", model="test", sink=reading_list_sink, reporter=rep
     )
     detail = dict(rep.finished)
-    assert "serves the goal" in detail["Review"]
+    assert "coverage" in detail["Review"]
     assert "steps" in detail["Decompose"]
     assert "nodes" in detail["Compile"]
 
 
 async def test_reporter_marks_the_failing_stage() -> None:
-    # A plan-review failure inside the graph is reported against the active stage. The
-    # rejecting sink from test_review loops Review until it fails loud at the cap.
-    from .test_review import _rejecting_sink
+    # A design-stage failure inside the graph is reported against the active stage. An
+    # empty framing makes frame() fail loud, so Frame is the reported failing stage.
+    from andamentum.forge.schemas import ForgeWhy
 
     rep = _Recording()
+    sink = ScriptedSink(
+        why=ForgeWhy(
+            purpose="Help the user manage a personal reading list.",
+            boundary_in="a natural-language request",
+            boundary_out="a text answer",
+        ),
+        areas=[],  # empty framing → frame() raises → the Frame stage fails loud
+        jobs_by_area={},
+    )
     try:
         await run_forge(
             "Manage my reading list.",
             model="test",
-            sink=_rejecting_sink(),
+            sink=sink,
             reporter=rep,
         )
     except ValueError:
         pass
     assert rep.failed, "the failing stage should be reported"
-    assert rep.failed[0][0] == "Review"
+    assert rep.failed[0][0] == "Frame"
 
 
 # --- the live dashboard renders --------------------------------------------------
@@ -160,38 +169,6 @@ def test_rich_reporter_handles_build_and_audit_substeps() -> None:
     rep.audit_check(name="tests", status="passed", detail="passed")
     # __rich__ must build a renderable without raising in every state.
     assert rep.__rich__() is not None
-
-
-def test_rich_reporter_bumps_round_on_audit_rebuild() -> None:
-    # A second pass through the Render→Verify→Build→Audit rebuild loop is a new round:
-    # Render (the loop's lead stage) re-entering bumps the *rebuild* indicator once —
-    # and never the redesign indicator (that belongs to the Review→Frame loop).
-    rep, _buf = _rich_reporter()
-    rep.planned(stages=["Render", "Verify", "Build", "Audit"])
-    for name in ("Render", "Verify", "Build", "Audit"):
-        rep.stage_started(name=name)
-        rep.stage_finished(name=name, detail="")
-    assert rep._rebuild_round == 0  # first pass is not a new round
-    # Rebuild round: the whole tail re-enters; only Render (the lead) bumps.
-    for name in ("Render", "Verify", "Build", "Audit"):
-        rep.stage_started(name=name)
-        rep.stage_finished(name=name, detail="")
-    assert rep._rebuild_round == 1  # exactly one bump per rebuild round
-    assert rep._redesign_round == 0  # a rebuild is not a redesign
-
-
-def test_rich_reporter_bumps_redesign_round_on_review_loop() -> None:
-    # The Review→Frame plan-review loop (led by Frame) bumps the *redesign* indicator,
-    # kept distinct from the audit rebuild indicator so the dashboard label is honest.
-    rep, _buf = _rich_reporter()
-    rep.planned(stages=["Frame", "Decompose", "Compile", "Review"])
-    for name in ("Frame", "Decompose", "Compile", "Review"):
-        rep.stage_started(name=name)
-        rep.stage_finished(name=name, detail="")
-    assert rep._redesign_round == 0  # first pass is not a redesign
-    rep.stage_started(name="Frame")  # Review→Frame re-entry
-    assert rep._redesign_round == 1
-    assert rep._rebuild_round == 0  # a redesign is not a rebuild
 
 
 def test_rich_reporter_replaces_audit_rows_per_pass() -> None:
