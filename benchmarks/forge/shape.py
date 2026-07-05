@@ -63,7 +63,7 @@ def detect_features(spec: SystemSpec) -> set[str]:
 
 
 def outcome_matches(case: Case, outcome: RunOutcome) -> bool:
-    """True if one run's outcome satisfies the case's expectation."""
+    """True if one Tier-1 (design-shape) run satisfies the case's expectation."""
     if case.expected == "refuse":
         return outcome.kind == "refused"
     if case.expected == "build":
@@ -74,4 +74,19 @@ def outcome_matches(case: Case, outcome: RunOutcome) -> bool:
             # A plain sequence must show no structural feature.
             return not (outcome.features & ALL_FEATURES)
         return feature in outcome.features
+    return False
+
+
+def outcome_matches_tier2(case: Case, outcome: RunOutcome) -> bool:
+    """True if one Tier-2 (end-to-end) run satisfies the case's expectation.
+
+    A refuse case still passes on a refusal. A build case passes only when the
+    generated system actually *works* — holes filled, tests pass, dialect-clean
+    (``audit.works``) — not merely that the design had the right shape. This is
+    the reliability metric Tier 1 cannot measure.
+    """
+    if case.expected == "refuse":
+        return outcome.kind == "refused"
+    if case.expected == "build":
+        return outcome.kind == "works"
     return False

@@ -95,7 +95,6 @@ def test_checkpoint_node_is_a_loop() -> None:
                 consumes=["gathered"],
                 produces=["checked"],
                 control=NodeControl.CHECKPOINT,
-                checkpoint_cap=3,
             ),
         ],
     )
