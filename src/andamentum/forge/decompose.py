@@ -210,6 +210,29 @@ def collapse_extra_sinks(drafts: list[NodeDraft]) -> list[str]:
     return merged
 
 
+def demote_orphan_entities(drafts: list[NodeDraft]) -> list[str]:
+    """Deterministically demote a mislabelled terminal ENTITY to a SIGNAL, no model call.
+
+    An entity that (a) no step reads and (b) its own producer does not read-modify-write
+    (no self-consume) serves no durable purpose — it is the system's ANSWER mislabelled as
+    a stored record, and it wedges the design (``no_output``: entities are not signal
+    terminals, so the board has no output; ``orphan_output``: dead stored work). Demoting
+    it to a signal turns the board into the correct rung-1 shape. A GENUINE rung-2
+    round-trip is protected twice over: a self-consuming producer or any reader keeps the
+    entity durable. Returns the demoted names (empty when nothing qualifies)."""
+    readers = set(assemble(drafts).readers)
+    demoted: list[str] = []
+    for d in drafts:
+        if d.produces_kind is not DataKind.ENTITY or not d.produces:
+            continue
+        name = d.produces[0]
+        if name in readers or name in d.consumes:
+            continue  # read downstream, or a read-modify-write self-edge — genuinely durable
+        d.produces_kind = DataKind.SIGNAL
+        demoted.append(name)
+    return demoted
+
+
 async def decompose(
     why: ForgeWhy,
     areas: list[str],
@@ -281,14 +304,22 @@ async def decompose(
                 f"{MAX_DESIGN_ROUNDS} repair rounds. The structural problems remain (surfaced, "
                 f"never dropped):\n{report.summary()}"
             )
-        # Deterministic sink-collapse first (over-decomposition merge, no model call); then
-        # let the model re-select only for what determinism could not fix.
+        # Deterministic repairs first (no model call); then let the model re-select only
+        # for what determinism could not fix.
+        demoted = demote_orphan_entities(drafts)
+        if demoted:
+            notes.append(
+                f"decompose: demoted {len(demoted)} unread, non-round-trip entity(ies) to "
+                f"signal — a stored record nothing reads is the answer mislabelled "
+                f"({', '.join(demoted)})"
+            )
         merged = collapse_extra_sinks(drafts)
         if merged:
             notes.append(
                 f"decompose: merged {len(merged)} extra terminal signal(s) into the system "
                 f"output ({', '.join(merged)})"
             )
+        if demoted or merged:
             report = diagnose(
                 drafts, assemble(drafts), input_is_collection=why.input_is_collection
             )
@@ -414,5 +445,6 @@ __all__ = [
     "build_option_names",
     "resolve_consumes",
     "collapse_extra_sinks",
+    "demote_orphan_entities",
     "MAX_DESIGN_ROUNDS",
 ]

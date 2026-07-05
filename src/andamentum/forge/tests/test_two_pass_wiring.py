@@ -25,6 +25,7 @@ from andamentum.forge.decompose import (
     build_option_names,
     collapse_extra_sinks,
     dedupe_names,
+    demote_orphan_entities,
     resolve_consumes,
     visible_producers,
 )
@@ -78,6 +79,49 @@ def test_collapse_extra_sinks_deterministically_resolves_multiple_sinks() -> Non
     after = {f.kind for f in diagnose(boards, assemble(boards)).findings}
     assert FindingKind.MULTIPLE_SINKS not in after
     assert FindingKind.UNINTENDED_CYCLE not in after  # merges are forward-only
+
+
+def test_demote_orphan_entity_fixes_the_mislabelled_terminal_answer() -> None:
+    """The observed stateful failure: the model labels the terminal answer an ENTITY
+    (nothing reads it, its producer doesn't round-trip) → no_output + orphan_output, and
+    the repair loop can't fix an output-shape problem by re-selecting. The deterministic
+    demotion turns it into the correct rung-1 shape."""
+    boards = [
+        _node("n1", "extracted_updates"),
+        _node("n2", "structured_updates"),
+        _node("n3", "updated_reading_list", kind=DataKind.ENTITY),  # the mislabel
+    ]
+    boards[1].consumes = ["extracted_updates"]
+    boards[2].consumes = ["structured_updates"]
+    before = {f.kind for f in diagnose(boards, assemble(boards)).findings}
+    assert FindingKind.NO_OUTPUT in before or FindingKind.ORPHAN_OUTPUT in before
+
+    demoted = demote_orphan_entities(boards)
+    assert demoted == ["updated_reading_list"]
+    assert boards[2].produces_kind is DataKind.SIGNAL
+
+    after = {f.kind for f in diagnose(boards, assemble(boards)).findings}
+    assert FindingKind.NO_OUTPUT not in after
+    assert FindingKind.ORPHAN_OUTPUT not in after
+
+
+def test_demote_protects_genuine_rung2_round_trips() -> None:
+    """A REAL durable entity is never demoted: either its producer read-modify-writes it
+    (the §7 self-edge) or a downstream step reads it (the test_stateful shape)."""
+    # Shape A: self-consuming rmw entity + downstream signal reader.
+    rmw = _node("n1", "saved_value", kind=DataKind.ENTITY)
+    rmw.consumes = ["saved_value"]  # the round-trip self-edge
+    answer = _node("n2", "answer")
+    answer.consumes = ["saved_value"]
+    assert demote_orphan_entities([rmw, answer]) == []
+    assert rmw.produces_kind is DataKind.ENTITY
+
+    # Shape B: entity not self-consumed but read downstream — still durable, untouched.
+    store = _node("n1", "record", kind=DataKind.ENTITY)
+    reader = _node("n2", "summary")
+    reader.consumes = ["record"]
+    assert demote_orphan_entities([store, reader]) == []
+    assert store.produces_kind is DataKind.ENTITY
 
 
 def test_forward_window_selection_cannot_form_an_unintended_cycle() -> None:
