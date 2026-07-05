@@ -10,17 +10,29 @@ branch, loop, fan-out, stateful), plus three out-of-scope briefs forge must refu
 fitness gate (an app, an agent, a service). Refusable cases carry a `note` describing the
 rung-1/2 function hiding inside them.
 
-## The two tiers
+## The three tiers
 
 - **Tier 1 (default)** — *design-only*. `run_forge(brief, model=..., dest=None)` runs
   understand → frame → decompose → compile → review and returns a `ForgeResult` whose
   `.spec` is inspected (`shape.detect_features`, purely structural — no model). A
   `ValueError` is forge refusing at the fitness gate (or failing the coherence loop), which
   the benchmark scores as a refusal. Fast, no sandbox, no generated-code execution.
-- **Tier 2 (`--full`)** — *end-to-end build + sandbox audit*. A documented hook only; this
-  pass does **not** implement it (it currently behaves like Tier 1, see the TODO in
-  `runner.py`). When implemented it will render, agent-author, and sandbox-audit the package
-  and score on whether it actually works.
+- **Tier 2 (`--full`)** — *end-to-end build + sandbox audit*. `run_forge(brief, model=...,
+  dest=<tmp>, stop_after="audit")` renders, agent-authors every node body, and
+  sandbox-audits the package; scored on `audit.works` (holes filled, generated tests pass,
+  dialect-clean). A reliability signal Tier 1 cannot see — but still a **smoke** bar, not a
+  correctness bar.
+- **Tier 3 (`--golden`)** — *golden-task correctness*. Builds the system, then **executes**
+  the rendered package's own CLI (`python -m <name> "<input>" --model <id>`) on a real
+  input, and scores whether the **output** actually covers the task. The rubric is
+  deterministic marker groups (`golden.py`): the output must contain at least one marker
+  from every group, case-insensitive. This catches the failure Tier 2 is blind to — a
+  structurally perfect workflow that is semantically wrong (the historical example: a
+  "summarise each note" system that processed ONE item passed Tier 2). A run is `correct`
+  only when the audit says works AND the run exits 0 AND every marker group is covered;
+  otherwise it is `wrong_output` / `run_failed` / `build_failed` / `refused`. All four
+  golden cases (reduce / per-item / sequence / branch) are text-only, so the built systems
+  execute offline-of-the-web and fit the subprocess sandbox.
 
 ## Running
 
@@ -38,8 +50,14 @@ uv run python -m benchmarks.forge.cli --model <model-id> --runs 5 --output repor
 # One subset of cases (substring match on the brief).
 uv run python -m benchmarks.forge.cli --model <model-id> --case loop --case branch
 
-# Tier-2 hook (currently == Tier 1).
+# Tier-2: end-to-end build + sandbox audit.
 uv run python -m benchmarks.forge.cli --model <model-id> --full
+
+# Tier-3: build, execute on a real input, score the output (default 1 run per case —
+# builds are expensive). --case filters on the golden key or brief substring.
+uv run python -m benchmarks.forge.cli --model <model-id> --golden
+uv run python -m benchmarks.forge.cli --model <model-id> --golden --case branch
+uv run python -m benchmarks.forge.cli --model <model-id> --golden --sandbox podman --output golden.md
 ```
 
 ### Offline self-tests (no model, no network)
@@ -54,7 +72,11 @@ uv run pytest benchmarks/forge -m "not benchmark" -q
 
 `test_shape.py` builds real `SystemSpec`s (via `compile_spec` over hand-built `DesignPlan`s)
 and asserts `detect_features`; `test_runner_offline.py` drives the full `run_case` +
-scoring path with a scripted sink for both a build and a refuse case.
+scoring path with a scripted sink for both a build and a refuse case;
+`test_golden_offline.py` proves the Tier-3 harness — `score_output` directly (full /
+partial / case-insensitive coverage) and the `run_golden` plumbing end-to-end (stub sink +
+`FakeSandbox` for the build, a monkeypatched `subprocess.run` for the execution) for the
+`correct`, `wrong_output`, and `run_failed` outcomes.
 
 ## Adding a case
 
