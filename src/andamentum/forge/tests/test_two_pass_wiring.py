@@ -23,6 +23,7 @@ from __future__ import annotations
 from andamentum.forge.assemble import assemble
 from andamentum.forge.decompose import (
     build_option_names,
+    collapse_extra_sinks,
     dedupe_names,
     resolve_consumes,
     visible_producers,
@@ -59,6 +60,24 @@ def test_forward_window_excludes_downstream_and_self_signals() -> None:
     # n4 (entity): sees earlier nodes AND itself (rung-2 read-modify-write self-edge).
     vis4 = {d.id for d in visible_producers(boards, 3)}
     assert "n4" in vis4 and "n1" in vis4
+
+
+def test_collapse_extra_sinks_deterministically_resolves_multiple_sinks() -> None:
+    """Over-decomposition leaves several unconsumed final signals (multiple_sinks). The
+    deterministic collapse merges the extras into the last node (the system output), so
+    exactly one sink remains — no model call, no cycle (every merged producer is earlier)."""
+    # Three parallel "final answer" producers, none consumed → 3 terminals = multiple_sinks.
+    boards = [_node("n1", "answer_a"), _node("n2", "answer_b"), _node("n3", "answer_c")]
+    before = {f.kind for f in diagnose(boards, assemble(boards)).findings}
+    assert FindingKind.MULTIPLE_SINKS in before
+
+    merged = collapse_extra_sinks(boards)
+    assert set(merged) == {"answer_a", "answer_b"}  # extras merged into the last node
+    assert boards[-1].consumes == ["answer_a", "answer_b"]
+
+    after = {f.kind for f in diagnose(boards, assemble(boards)).findings}
+    assert FindingKind.MULTIPLE_SINKS not in after
+    assert FindingKind.UNINTENDED_CYCLE not in after  # merges are forward-only
 
 
 def test_forward_window_selection_cannot_form_an_unintended_cycle() -> None:
