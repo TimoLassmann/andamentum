@@ -25,6 +25,11 @@ The full catalogue (one :class:`FindingKind` each):
                          per node, beyond plain unreachable/dead-end).
   - ``unintended_cycle`` a cycle among nodes none of which is a bounded-loop checkpoint.
                          A checkpoint back-edge is legitimate and is NOT a finding.
+  - ``each_needs_collection``  an 'each' (map-over-items) node whose inputs are not exactly
+                         ONE collection datum. Collection-ness is COMPUTED (input flag +
+                         each-node produces, via :func:`assemble.collection_data`), never
+                         declared per-datum. A WHOLE node consuming a collection is fine —
+                         that is the reduce/synthesis case.
 
 All deterministic and pure; thresholds are named module constants.
 """
@@ -33,9 +38,9 @@ from __future__ import annotations
 
 from rapidfuzz import fuzz
 
-from .assemble import DataGraph
+from .assemble import DataGraph, collection_data
 from .schemas import DataKind, DesignFinding, DesignReport, FindingKind, NodeDraft
-from .spec import NodeControl
+from .spec import NodeControl, NodeMode
 
 # rapidfuzz `partial_ratio` (0–100) above which two variable names are "probably the
 # same". `partial_ratio` (not plain `ratio`) catches the common near-miss where one name
@@ -57,8 +62,17 @@ def _nearest(name: str, candidates: list[str]) -> tuple[str, float]:
     return best_name, best_score
 
 
-def diagnose(nodes: list[NodeDraft], graph: DataGraph) -> DesignReport:
-    """Inspect the assembled DAG and gather every structural problem with a fix."""
+def diagnose(
+    nodes: list[NodeDraft],
+    graph: DataGraph,
+    *,
+    input_is_collection: bool = False,
+) -> DesignReport:
+    """Inspect the assembled DAG and gather every structural problem with a fix.
+
+    ``input_is_collection`` is the understand head's flag (``ForgeWhy``): it seeds the
+    computed collection-ness of the graph input for the ``each_needs_collection`` check.
+    """
     findings: list[DesignFinding] = []
     produced_names = sorted(graph.writers)
     consumed_names = sorted(graph.readers)
@@ -70,6 +84,11 @@ def diagnose(nodes: list[NodeDraft], graph: DataGraph) -> DesignReport:
     findings.extend(_orphans(nodes, graph, consumed_names))
     findings.extend(_reachability(nodes, graph, system_output))
     findings.extend(_cycles(nodes, graph))
+    findings.extend(
+        _each_streams(
+            nodes, collection_data(nodes, input_is_collection=input_is_collection)
+        )
+    )
 
     return DesignReport(findings=findings)
 
@@ -332,6 +351,60 @@ def _cycles(nodes: list[NodeDraft], graph: DataGraph) -> list[DesignFinding]:
                     "break the back edge, or mark the step that closes the loop as a checkpoint "
                     "(a bounded loop) if the repetition is intended"
                 ),
+            )
+        )
+    return findings
+
+
+def _each_streams(nodes: list[NodeDraft], collections: set[str]) -> list[DesignFinding]:
+    """An 'each' node must consume EXACTLY ONE collection datum (its stream) and nothing
+    else (the v1 map shape; scalar context can come later). A WHOLE node consuming a
+    collection is fine — that is the reduce/synthesis case, never a finding.
+
+    The repair loop can only re-run the SELECT pass, so the suggestion names a concrete
+    collection to read where one exists; when none exists at all, the mode itself is
+    wrong and the suggestion says to make the step 'whole' (the loop then fails loud at
+    the cap if the wiring cannot converge — surfaced, never silently degraded).
+    """
+    findings: list[DesignFinding] = []
+    for index, node in enumerate(nodes):
+        if node.mode is not NodeMode.EACH:
+            continue
+        streams = [name for name in node.consumes if name in collections]
+        scalars = [name for name in node.consumes if name not in collections]
+        if len(streams) == 1 and not scalars:
+            continue
+        # The concrete fix: the nearest available collection — the graph input (when it
+        # is a list) or the latest EARLIER each-node's produced list.
+        earlier = [
+            name
+            for other in nodes[:index]
+            if other.mode is NodeMode.EACH
+            for name in other.produces
+        ]
+        candidates = (["input"] if "input" in collections else []) + earlier
+        if candidates:
+            suggestion = (
+                f"have it read exactly one collection ({candidates[-1]!r} is available) "
+                "and nothing else — or mark the step 'whole' if it sees the data all at once"
+            )
+        else:
+            suggestion = (
+                "no collection exists for it to map over — mark the step 'whole' "
+                "(it sees the data all at once)"
+            )
+        findings.append(
+            DesignFinding(
+                kind=FindingKind.EACH_NEEDS_COLLECTION,
+                node=node.id,
+                variable=scalars[0] if scalars else "",
+                detail=(
+                    f"runs once PER ITEM ('each') but reads {node.consumes or ['nothing']}; "
+                    f"an 'each' step must read exactly ONE collection and nothing else "
+                    f"(collections here: {sorted(streams) or 'none'}, "
+                    f"scalars here: {sorted(scalars) or 'none'})"
+                ),
+                suggestion=suggestion,
             )
         )
     return findings

@@ -78,6 +78,20 @@ class NodeKind(str, Enum):
     HEAD = "head"  # one tiny LLM call
 
 
+class NodeMode(str, Enum):
+    """Whether a node runs once over its data or once per item of a consumed collection.
+
+    ``whole`` is the ordinary case: the node sees its data all at once. An ``each`` node
+    maps over exactly ONE consumed collection (its stream); the renderer writes the
+    iteration scaffold deterministically (bounded by ``max_items``, per-item soft-fail
+    into ``item_failures``, all-fail raise, declaration-order join) — the model declares
+    the mode, it never authors the iteration.
+    """
+
+    WHOLE = "whole"
+    EACH = "each"
+
+
 class AgentRole(str, Enum):
     """The legitimate LLM-head roles (recipe §5). 'other' is an escape hatch
     that the generator should treat as a smell to be justified, not a default."""
@@ -311,6 +325,11 @@ class NodeSpec(BaseModel):
         default=False,
         description="This spine node reaches the network (a declared external effect). Its body may use an "
         "HTTP client (httpx/requests); it runs only behind the container sandbox, never a bare subprocess.",
+    )
+    mode: NodeMode = Field(
+        default=NodeMode.WHOLE,
+        description="whole = one run over the data; each = one run per item of its single consumed "
+        "collection (the renderer writes the map scaffold — the model never authors iteration)",
     )
 
     # The node's RESOLVED data contract — concrete State field names (snake_case),

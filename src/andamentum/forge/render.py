@@ -17,9 +17,17 @@ Fully generated:
   - a stub test that imports the package, checks the graph assembles, and drives
     each single-successor head through the `agent_overrides` seam
 
+Fully generated too: every 'each' (map-over-items) node's iteration scaffold — read the
+stream, enforce the ``max_items`` bound (raise, never slice), gather per item, soft-fail
+expected per-item errors into ``item_failures``, raise when every item fails, join in
+declaration order. An EACH head is complete (``run_head`` per item with a per-item
+prompt); an EACH spine leaves exactly one hole, the pure per-item transform
+``_map_one(item)`` — the model never authors iteration.
+
 Left as holes (NotImplementedError, with guidance):
   - spine-node bodies (real logic: load, query, count, write)
   - multi-successor routing (head or spine)
+  - an 'each' spine node's ``_map_one(item)`` (a pure per-item transform, no ctx)
 
 The graph returns `str` (most recipe systems return a text answer).
 """
@@ -36,10 +44,17 @@ from .spec import (
     ModelSpec,
     NodeControl,
     NodeKind,
+    NodeMode,
     NodeSpec,
     StateSpec,
     SystemSpec,
 )
+
+# Hard bound on how many items a map-over-items ('each') node may process in one run —
+# stamped into the generated deps.py as its MAX_ITEMS constant (the Deps default the
+# scaffold checks against). Exceeding it RAISES in the generated code: fail loud, never
+# a silent slice.
+MAX_ITEMS = 50
 
 # The recipe's load-bearing laws, stamped into each generated package's docstring so
 # the constitution travels with the code (forge's "librarian", distilled to the three
@@ -129,6 +144,98 @@ def _render_state(name: str, state: StateSpec, extra: list[FieldSpec]) -> str:
     )
 
 
+# --- collection plumbing (map-over-items) ----------------------------------------
+
+
+def _primary_field(spec: SystemSpec) -> FieldSpec:
+    return next(
+        f for f in spec.input.model.fields if f.name == spec.input.primary_text_field
+    )
+
+
+def _input_is_collection(spec: SystemSpec) -> bool:
+    """True when the system's input is a list of items — read off the compiled spec
+    (the input model's primary annotation), never re-derived."""
+    return _primary_field(spec).annotation.replace(" ", "") == "list[str]"
+
+
+def _collection_fields(spec: SystemSpec) -> set[str]:
+    """The State field names that hold collections: every ``list[str]`` state field plus
+    the threaded input field when the input itself is a collection. Deterministic from
+    the compiled spec, so the renderer and compiler cannot disagree."""
+    fields = {
+        f.name
+        for f in spec.state.fields
+        if f.annotation.replace(" ", "") == "list[str]"
+    }
+    if _input_is_collection(spec):
+        fields.add(spec.input.primary_text_field)
+    return fields
+
+
+def _each_stream(node: NodeSpec, collection_fields: set[str]) -> str:
+    """The single collection State field an 'each' node maps over. The compiler
+    guarantees exactly one; a spec that violates it (hand-authored) fails loud here."""
+    if len(node.reads) != 1 or node.reads[0] not in collection_fields:
+        raise ValueError(
+            f"'each' node {node.name!r} must read exactly one collection State field; "
+            f"reads={node.reads}, collections={sorted(collection_fields)}. An 'each' node "
+            "maps over one stream — fix the spec (mark it 'whole', or wire one collection)."
+        )
+    return node.reads[0]
+
+
+def _map_scaffold(node: NodeSpec, stream: str, per_item: str, append: str) -> str:
+    """The deterministic middle of every 'each' node's run(): read the stream, enforce
+    the ``max_items`` bound (fail loud, no silent slice), gather the per-item calls,
+    soft-fail expected per-item errors into ``item_failures`` (skipping the item), raise
+    when EVERY item failed (aggregate loudness), and join results in declaration order.
+    ``per_item`` is the awaitable expression for one item; ``append`` extracts the str
+    result from one gather outcome."""
+    n = node.name
+    return (
+        f"        items = list(ctx.state.{stream})\n"
+        f"        if len(items) > ctx.deps.max_items:\n"
+        f"            raise ValueError(\n"
+        f'                f"{n}: {{len(items)}} items exceed the max_items bound of {{ctx.deps.max_items}}"\n'
+        f"            )\n"
+        f"        outcomes = await asyncio.gather(\n"
+        f"            *({per_item} for item in items), return_exceptions=True\n"
+        f"        )\n"
+        f"        results: list[str] = []\n"
+        f"        for index, outcome in enumerate(outcomes):\n"
+        f"            if isinstance(outcome, BaseException):\n"
+        f"                if not isinstance(outcome, MAP_ITEM_ERRORS):\n"
+        f"                    raise outcome\n"
+        f'                ctx.state.item_failures.append(f"{n} item {{index + 1}}: {{outcome}}")\n'
+        f"                continue\n"
+        f"            results.append({append})\n"
+        f"        if items and not results:\n"
+        f'            raise ValueError("{n}: every item failed: " + "; ".join(ctx.state.item_failures))\n'
+    )
+
+
+def _map_tail(node: NodeSpec) -> str:
+    """The join-assign + successor return of an 'each' node's run(). The list of per-item
+    results lands in the node's single declared write; a terminal 'each' node Ends with
+    the results joined by blank lines (deterministic, declaration order)."""
+    if len(node.writes) != 1:
+        raise ValueError(
+            f"'each' node {node.name!r} must declare exactly one write (the list of its "
+            f"per-item results); writes={node.writes}."
+        )
+    if len(node.successors) != 1:
+        raise ValueError(
+            f"'each' node {node.name!r} must have exactly one successor; "
+            f"successors={node.successors}."
+        )
+    assign = f"        ctx.state.{node.writes[0]} = results\n"
+    succ = node.successors[0]
+    if succ == END:
+        return assign + '        return End("\\n\\n".join(results))\n'
+    return assign + f"        return {succ}()\n"
+
+
 # --- node rendering -------------------------------------------------------------
 
 
@@ -185,6 +292,7 @@ def _render_node(
     node: NodeSpec,
     state_name: str,
     deps_name: str,
+    collection_fields: set[str],
 ) -> str:
     rt = _return_type(node.successors)
     ctx = _ctx(state_name, deps_name)
@@ -194,6 +302,39 @@ def _render_node(
 
     is_head = node.kind is NodeKind.HEAD
     single = len(node.successors) == 1
+
+    # An 'each' node: the renderer writes the whole map scaffold — the model NEVER
+    # authors iteration. EACH+HEAD is fully rendered (run_head per item, no hole);
+    # EACH+SPINE renders the scaffold and leaves ONE hole, the pure per-item
+    # transform `_map_one(item)` (no ctx access at all).
+    if node.mode is NodeMode.EACH:
+        stream = _each_stream(node, collection_fields)
+        if is_head:
+            agent = _agent_by_name(spec, node.agent)  # type: ignore[arg-type]
+            per_item = (
+                f'run_head(ctx.deps, "{agent.name}", {agent.output.name}, '
+                f"{agent.name.upper()}_PROMPT, _item_prompt_{agent.name}(item))"
+            )
+            body = _map_scaffold(
+                node, stream, per_item, f"outcome.{agent.output.fields[0].name}"
+            ) + _map_tail(node)
+            return (
+                f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
+                f"    async def run(self, ctx: {ctx}) -> {rt}:\n{body}"
+            )
+        body = _map_scaffold(
+            node, stream, "self._map_one(item)", "outcome"
+        ) + _map_tail(node)
+        purpose = f"{node.purpose} " if node.purpose else ""
+        return (
+            f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
+            f"    async def run(self, ctx: {ctx}) -> {rt}:\n{body}\n"
+            f"    async def _map_one(self, item: str) -> str:\n"
+            f"        raise NotImplementedError(\n"
+            f'            "Map item for {node.name!r}. {purpose}Transform ONE item string and '
+            f'return the result — a PURE per-item function: no ctx, no state, no deps."\n'
+            f"        )\n"
+        )
 
     if is_head:
         agent = _agent_by_name(spec, node.agent)  # type: ignore[arg-type]
@@ -325,13 +466,31 @@ def _deps_py(spec: SystemSpec, deps_name: str) -> str:
 
     ``agent_overrides`` is the dialect test seam — a stub keyed by agent name swapped
     in so the whole graph runs with no live model. Typed ``dict[str, object]`` (not
-    ``Any``) so the generated package itself passes the dialect's L7 gate.
+    ``Any``) so the generated package itself passes the dialect's L7 gate. When the
+    system maps over items ('each' nodes), the map bound rides here too: ``max_items``
+    defaults from the generated ``MAX_ITEMS`` constant, and the scaffold RAISES past it
+    (fail loud, never a silent slice).
     """
+    has_each = any(n.mode is NodeMode.EACH for n in spec.nodes)
+    max_items_const = (
+        "# Hard bound on items a map-over-items ('each') node may process in one run;\n"
+        "# exceeding it raises — fail loud, no silent slice.\n"
+        f"MAX_ITEMS = {MAX_ITEMS}\n\n\n"
+        if has_each
+        else ""
+    )
+    max_items_field = (
+        "    #: map-over-items bound: an 'each' node raises when its item count exceeds this.\n"
+        "    max_items: int = MAX_ITEMS\n"
+        if has_each
+        else ""
+    )
     return (
         '"""Dependencies — generated by forge: model handle, test seam, caps, store."""\n'
         "from __future__ import annotations\n\n"
         "from dataclasses import dataclass, field\n\n"
         "from andamentum.forge.runtime import Store\n\n\n"
+        f"{max_items_const}"
         "@dataclass(frozen=True)\n"
         f"class {deps_name}:\n"
         '    """Injected, never serialized (Rule R2): model handle, test seam, caps, store."""\n'
@@ -339,6 +498,7 @@ def _deps_py(spec: SystemSpec, deps_name: str) -> str:
         "    #: agent name -> stub with an `.output`; swap in to run without a live model.\n"
         "    agent_overrides: dict[str, object] = field(default_factory=dict)\n"
         f"    loop_cap: int = {max((c.limit for c in spec.loop_caps), default=2)}\n"
+        f"{max_items_field}"
         "    #: cross-run memory Port (dialect L1). Default in-memory (forgets at exit); the\n"
         "    #: run entry rebinds it to Store(path) for durable rung-2 memory. Reach it via\n"
         "    #: ctx.deps.store — a node never sees a path. Five ops: add/get/list/remove.\n"
@@ -354,33 +514,76 @@ def _nodes_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         + [state_name]
     )
     prompt_names = [f"{a.name.upper()}_PROMPT" for a in spec.agents]
+    collection_fields = _collection_fields(spec)
+    has_each = any(n.mode is NodeMode.EACH for n in spec.nodes)
     # Build a map from agent name to the head node that uses it (first match wins for
     # the rare case of shared agents) so we can scope each user-prompt to that node's
-    # declared reads — avoids leaking unrelated state fields into the prompt.
+    # declared reads — avoids leaking unrelated state fields into the prompt. An agent
+    # driven by an 'each' head gets a per-ITEM prompt builder instead (its user message
+    # is one item, not state).
     _agent_reads: dict[str, list[str]] = {}
+    _each_agents: set[str] = set()
     for _n in spec.nodes:
-        if _n.kind is NodeKind.HEAD and _n.agent and _n.agent not in _agent_reads:
-            _agent_reads[_n.agent] = list(_n.reads)
+        if _n.kind is not NodeKind.HEAD or not _n.agent or _n.agent in _agent_reads:
+            continue
+        _agent_reads[_n.agent] = list(_n.reads)
+        if _n.mode is NodeMode.EACH:
+            _each_agents.add(_n.agent)
 
     def _user_prompt_body(agent_name: str) -> str:
         # Assemble a readable, labelled user message from the head's declared inputs — one
         # "Label:\n<value>" block per read, blank-line separated. NOT a JSON dump: the model
         # reasons better over framed prose, and the node's job lives in its system prompt.
+        # A collection read renders through _label_items so the head sees every item as a
+        # numbered block, not a Python-list repr.
         reads = _agent_reads.get(agent_name, [])
         if not reads:
             # A head with no declared inputs: its system prompt (the node's job) drives it.
             return '    return ""'
-        pieces = ", ".join(f'f"{_humanize(r)}:\\n{{ctx.state.{r}}}"' for r in reads)
+        pieces = ", ".join(
+            f'_label_items("{_humanize(r)}", ctx.state.{r})'
+            if r in collection_fields
+            else f'f"{_humanize(r)}:\\n{{ctx.state.{r}}}"'
+            for r in reads
+        )
         return f'    return "\\n\\n".join([{pieces}])'
 
-    user_prompts = "\n\n".join(
-        f"def _user_prompt_{a.name}(ctx: {_ctx(state_name, deps_name)}) -> str:\n"
-        f"    # The {a.name} head's inputs, labelled, as its user message (refine the wording freely).\n"
-        f"{_user_prompt_body(a.name)}"
+    def _prompt_builder(a: AgentSpec) -> str:
+        if a.name in _each_agents:
+            return (
+                f"def _item_prompt_{a.name}(item: str) -> str:\n"
+                f"    # The {a.name} head's per-item user message (refine the wording freely).\n"
+                '    return f"Item:\\n{item}"'
+            )
+        return (
+            f"def _user_prompt_{a.name}(ctx: {_ctx(state_name, deps_name)}) -> str:\n"
+            f"    # The {a.name} head's inputs, labelled, as its user message (refine the wording freely).\n"
+            f"{_user_prompt_body(a.name)}"
+        )
+
+    # The numbered-items helper: emitted when some WHOLE head reads a collection, so a
+    # synthesis head sees all items legibly ("Item 1: ...\n\nItem 2: ...").
+    needs_label_items = any(
+        a.name not in _each_agents
+        and any(r in collection_fields for r in _agent_reads.get(a.name, []))
         for a in spec.agents
     )
+    label_items_helper = (
+        "def _label_items(label: str, items: list[str]) -> str:\n"
+        "    # A collection rendered legibly for a head: one numbered block per item.\n"
+        '    blocks = "\\n\\n".join(f"Item {i}:\\n{item}" for i, item in enumerate(items, start=1))\n'
+        '    return f"{label}:\\n{blocks}"'
+        if needs_label_items
+        else ""
+    )
+
+    builders = [b for b in [label_items_helper] if b] + [
+        _prompt_builder(a) for a in spec.agents
+    ]
+    user_prompts = "\n\n".join(builders)
     nodes = "\n\n".join(
-        _render_node(spec, n, state_name, deps_name) for n in spec.nodes
+        _render_node(spec, n, state_name, deps_name, collection_fields)
+        for n in spec.nodes
     )
     # Omit the prompts import entirely when there are no agents (all-spine systems);
     # preserve exactly two blank lines before the first function definition either way.
@@ -398,14 +601,21 @@ def _nodes_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         if any(len(n.successors) > 1 for n in spec.nodes)
         else ""
     )
+    # An 'each' node's rendered scaffold gathers its per-item calls and soft-fails on the
+    # shared MAP_ITEM_ERRORS tuple; both imports appear only when the system maps.
+    asyncio_import = "import asyncio\n\n" if has_each else ""
+    runtime_names = (
+        "MAP_ITEM_ERRORS, loop_allowed, run_head" if has_each else "loop_allowed, run_head"
+    )
     return (
         '"""Nodes — generated by forge. Heads are complete; spine bodies, routing,\n'
         'and gate decisions are NotImplementedError holes for you to fill."""\n'
         "from __future__ import annotations\n\n"
+        f"{asyncio_import}"
         "from dataclasses import dataclass\n"
         f"{typing_import}\n"
         "from pydantic_graph import BaseNode, End, GraphRunContext\n\n"
-        "from andamentum.forge.runtime import loop_allowed, run_head  # noqa: F401\n\n"
+        f"from andamentum.forge.runtime import {runtime_names}  # noqa: F401\n\n"
         f"from .deps import {deps_name}\n"
         f"from .models import {', '.join(model_names)}\n"
         f"{prompts_import}\n\n"
@@ -425,6 +635,20 @@ def _graph_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         "\n".join(f"    # - {r}" for r in spec.input.validation_rules)
         or "    # (no extra rules declared)"
     )
+    # A collection input: the door splits the raw text into ITEMS on newlines (one item
+    # per line — documented in the generated docstring), then validates the list.
+    if _input_is_collection(spec):
+        split_doc = (
+            "    The input is a LIST of items: the text is split on NEWLINES, one item\n"
+            "    per non-blank line.\n"
+        )
+        build_input = (
+            "    items = [line.strip() for line in text.splitlines() if line.strip()]\n"
+            f"    return {spec.input.model.name}({primary}=items)"
+        )
+    else:
+        split_doc = ""
+        build_input = f"    return {spec.input.model.name}({primary}=text)"
 
     # Stateful function (dialect L1 / recipe rung-2): wrap the pure graph in a load before
     # and a save after — run(text, store) = save(store, f(text, load(store))). The entry is
@@ -460,10 +684,11 @@ def _graph_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         f"def validate_input(text: str) -> {spec.input.model.name}:\n"
         '    """Validate at the door (Input law). Rules from the spec:\n'
         f"{rules}\n"
+        f"{split_doc}"
         '    """\n'
         "    if not text or not text.strip():\n"
         '        raise ValueError("input must not be blank")\n'
-        f"    return {spec.input.model.name}({primary}=text)\n\n\n"
+        f"{build_input}\n\n\n"
         f"async def run_{spec.name}(\n"
         f"    text: str, *, model: str, store: str | None = None\n"
         f") -> str:\n"
@@ -511,13 +736,21 @@ def _main_py(spec: SystemSpec) -> str:
     the input is validated at the door by ``run_<name>`` and fails loud on blank/invalid.
     """
     entry = f"run_{spec.name}"
-    primary = next(
-        f for f in spec.input.model.fields if f.name == spec.input.primary_text_field
-    )
+    primary = _primary_field(spec)
     help_text = (primary.description or "the input text").replace('"', "'")
+    collection_doc = ""
+    if _input_is_collection(spec):
+        # The door (validate_input) splits the text into items on newlines; say so where
+        # the operator reads it — the module docstring and the argument help.
+        help_text += " (a LIST: one item per line)"
+        collection_doc = (
+            "The input is a LIST of items: the text is split on NEWLINES, one item per "
+            "non-blank line.\n"
+        )
     return (
         f'"""CLI launcher — run this system as `python -m {spec.name} "<text>" --model <id>`.\n\n'
         "Generated by forge: an adapter over the package\\'s run entry (the graph drives flow).\n"
+        f"{collection_doc}"
         '"""\n'
         "from __future__ import annotations\n\n"
         "import argparse\n"
@@ -606,6 +839,13 @@ def _smoke_test_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
     primary = spec.input.primary_text_field
     out_models = [a.output.name for a in spec.agents]
     model_imports = ", ".join([state_name, *out_models])
+    # A collection input is seeded with a 2-item list — so the map scaffolds actually
+    # iterate in the smoke — mirroring the run entry's newline split.
+    primary_seed = (
+        '["smoke item one", "smoke item two"]'
+        if _input_is_collection(spec)
+        else '"smoke test request"'
+    )
     # Seed entity State fields to "" — the first-run default the run entry uses when the
     # store is empty — so a rung-2 body that reads its entity sees a str, not None, even
     # though the smoke drives the graph directly (bypassing the entry's load).
@@ -649,7 +889,7 @@ def _smoke_test_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         "    # Store(None) is the in-memory store: the same object production uses, so the\n"
         "    # smoke exercises the real load/save paths offline (no file, no Ollama).\n"
         f'    deps = {deps_name}(model="smoke", agent_overrides=overrides, store=Store(None))\n'
-        f'    state = {state_name}({primary}="smoke test request"{entity_seeds})\n'
+        f"    state = {state_name}({primary}={primary_seed}{entity_seeds})\n"
         f"    out = asyncio.run(graph.run(_n.{spec.entry_node}(), state=state, deps=deps))\n"
         "    assert out is not None\n"
     )
@@ -665,11 +905,16 @@ def render(spec: SystemSpec, dest: Path) -> list[Path]:
     state_name = "".join(p.capitalize() for p in spec.name.split("_")) + "State"
     deps_name = "".join(p.capitalize() for p in spec.name.split("_")) + "Deps"
 
-    # The input's primary text must reach the entry node; thread it through state.
-    primary = next(
-        f for f in spec.input.model.fields if f.name == spec.input.primary_text_field
-    )
-    input_extra = [FieldSpec(name=primary.name, annotation="str", default="''")]
+    # The input's primary text must reach the entry node; thread it through state with
+    # its declared annotation (a list[str] when the system's input is a collection).
+    primary = _primary_field(spec)
+    input_extra = [
+        FieldSpec(
+            name=primary.name,
+            annotation=primary.annotation,
+            default="[]" if _input_is_collection(spec) else "''",
+        )
+    ]
 
     pkg = dest / spec.name
     tests = pkg / "tests"

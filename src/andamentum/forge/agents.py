@@ -71,7 +71,9 @@ class CoreAgentSink:
 UNDERSTAND_PROMPT = (
     "Restate the user's brief as a problem, not a solution. Give the purpose in one "
     "honest paragraph, what the system takes in (one natural-language input) and what "
-    "it produces. Do not mention graphs or nodes."
+    "it produces. Set input_is_collection true ONLY when the input is a LIST of items — "
+    "several URLs, notes, emails — processed item by item; false for one document, "
+    "question, or request. Do not mention graphs or nodes."
 )
 
 FITNESS_PROMPT = (
@@ -161,6 +163,9 @@ DECLARE_NODE_PROMPT = (
     "consequential (requires human approval before proceeding). "
     "(5) network — true ONLY if the step reaches an external service over the internet (web/HTTP "
     "API, fetches a page, queries a remote database). A network step is ALWAYS spine. Default false. "
+    "(6) mode — 'each' ONLY when this step must run once PER ITEM of a list the system processes "
+    "(summarise EACH article, classify EACH email); 'whole' (the default) when the step sees the "
+    "data all at once. A step that combines/merges/synthesises across items is ALWAYS 'whole'. "
     "\n\nKEY RULES: 'should I run this area again?' → checkpoint. 'which of several different "
     "paths?' → decision. A search/harvest loop that repeats until stall is ALWAYS a checkpoint."
 )
@@ -235,7 +240,10 @@ DRAFT_PROMPT = (
     "FAIL LOUD — never a silent fallback: do NOT wrap logic in a broad `except` that swallows the "
     "error, do NOT default or `continue` when state is missing or wrong, do NOT paper over a value "
     "with `or <default>`. If something required is absent or unexpected, let it raise. A node that "
-    "runs but produces the wrong thing is worse than one that stops."
+    "runs but produces the wrong thing is worse than one that stops. "
+    "EXCEPTION — when the context marks the hole (map_item): it is a PURE per-item function, not a "
+    "node run(). There is no ctx at all; you get ONE `item` string and return the transformed VALUE, "
+    "never a successor."
 )
 
 REPAIR_PROMPT = (

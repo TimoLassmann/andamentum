@@ -1,6 +1,6 @@
 """The fixed spine that generated systems import — written once, engine-free.
 
-Four pieces, deliberately tiny:
+Five pieces, deliberately tiny:
 
 - ``run_head`` — the single LLM seam. A generated head node calls this; it routes
   through ``andamentum.core.run_agent_with_fallback`` (tool-calling output with a
@@ -17,6 +17,11 @@ Four pieces, deliberately tiny:
 - ``loop_allowed`` — the termination guard. A checkpoint node calls this before it
   loops back; the bound is a counter in State checked against a Deps cap (recipe I6 /
   dialect L5). The model never decides when to stop.
+- ``MAP_ITEM_ERRORS`` — the per-item failure types a generated map-over-items ('each')
+  scaffold soft-fails on: the failed item is recorded in ``item_failures`` and skipped;
+  any OTHER exception propagates, and when EVERY item fails the scaffold raises
+  (aggregate loudness, dialect L7). One named constant so every generated scaffold
+  agrees on what "an expected per-item failure" is.
 - ``Store`` — the durable memory Port for a **stateful function** (dialect L1: cross-run
   memory lives in a Port-backed store, loaded at start, saved at end). A keyed
   ``(collection, key, value-as-JSON)`` CRUD store over stdlib ``sqlite3``; ``path=None``
@@ -39,7 +44,23 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel, model_validator
 
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
+
 _OutT = TypeVar("_OutT", bound=BaseModel)
+
+#: The per-item failure types a generated map scaffold treats as ONE item failing: a
+#: model-output failure (schema-invalid after the runner's retries, or a transient
+#: provider/HTTP error) or a data-shape error raised by a pure per-item transform.
+#: The scaffold records the failure and skips the item (soft-fail); anything outside
+#: this tuple propagates unchanged — and if EVERY item fails the scaffold raises.
+MAP_ITEM_ERRORS: tuple[type[Exception], ...] = (
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+)
 
 # The JSON-Schema vocabulary. A payload whose top-level keys ALL come from this set —
 # with a dict under "properties" — is a schema envelope, not an instance: no forge or
