@@ -182,7 +182,6 @@ def test_cli_json_emits_parseable_forgeresult(monkeypatch, capsys) -> None:
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)  # must be clean, parseable JSON
     assert "spec" in payload and payload["stage_reached"] == "design"
-    assert "audit_history" in payload  # the loop record is in the machine surface
 
 
 def test_cli_human_summary_path(monkeypatch, capsys) -> None:

@@ -1,24 +1,28 @@
 """Worker: decompose the framed problem into a coherent, fully-typed node board.
 
-Three bounded stages, all engine-free:
+Bounded, engine-free stages. Stage 1 lists jobs; Stage 2 elicits each node's I/O in
+TWO passes — declare-then-select — so producer→consumer wiring is correct BY
+CONSTRUCTION rather than by the model reproducing matching name strings across calls:
 
   Stage 1 — ``list_jobs`` per area (fan-out): name each area's steps as plain sentences.
             A list of strings is the one shape small models fill reliably.
-  Stage 2 — ``type_node`` per job: the model DECLARES each node's kind and its
-            ``consumes``/``produces`` variable names FREELY (it is shown the whole board
-            so it reuses names, but selection is not forced). Names are canonicalised via
-            :func:`naming.canonical_datum` so casing/spacing variants of one concept unify.
-  Stage 3 — the refine loop (bounded by ``MAX_DESIGN_ROUNDS``): assemble the declared
-            board into a data DAG (:mod:`assemble`), diagnose every structural problem
-            (:mod:`diagnose`), and — for each flagged node — re-run ``type_node`` with the
-            finding's detail + suggestion as feedback. Converge to a clean board, or **fail
-            loud** with the full report after the cap.
-
-The robustness comes from the determinism doing the heavy lifting: :mod:`diagnose` finds
-every dangling read / orphan / near-miss / cycle and proposes a concrete fix ("reads
-``bullets``; nearest produced name is ``bullet_statements`` — did you mean that?"), so the
-model only applies a targeted correction. That is what makes the loop converge on small
-local models, and why the closed-registry forced selection is no longer needed.
+  Stage 2a — ``declare_node`` per job (DECLARE): the model declares ONLY each node's
+            kind and its ONE produced name (plus produces_kind / control / network). It
+            declares NO inputs. Deterministic code then canonicalises and DEDUPES the
+            produced names so the produced set P is GLOBALLY UNIQUE by construction (a
+            canonical collision gets a numeric suffix, e.g. ``_2``).
+  Stage 2b — ``select_consumes`` per job (SELECT): the model is shown the CLOSED,
+            NUMBERED list of readable data (``input`` followed by every name in P, each
+            annotated with its producer's job) and returns ``consume_indices`` — ORDINALS
+            into that list, never name strings. Deterministic code maps indices → names.
+            A consume can therefore never reference a name no step produces; an
+            out-of-range index is dropped and recorded (never silently kept as a phantom).
+  Stage 3 — the refine loop (bounded by ``MAX_DESIGN_ROUNDS``): assemble the board into a
+            data DAG (:mod:`assemble`), diagnose every structural problem (:mod:`diagnose`),
+            and — for each flagged node — RE-RUN ONLY pass 2b (``select_consumes``) with the
+            finding as feedback. Producer names are FROZEN after 2a, so a repair can never
+            reinvent a produce: the name-matching thrash is gone. Converge to a clean
+            board, or **fail loud** with the full report after the cap.
 
 A detected problem is never silently dropped, defaulted, or rewritten: it is surfaced in
 the :class:`DesignReport` and repaired, or — at the cap — raised. A system that runs but
@@ -32,41 +36,146 @@ from __future__ import annotations
 
 import asyncio
 
-from .agents import LIST_JOBS, TYPE_NODE, AgentSink
+from .agents import DECLARE_NODE, LIST_JOBS, SELECT_CONSUMES, AgentSink
 from .assemble import assemble
 from .diagnose import diagnose
 from .naming import canonical_datum
 from .review import plan_coverage
 from .schemas import (
     INPUT_TOKENS,
+    ConsumeSelection,
+    DataKind,
     DesignFinding,
     DesignPlan,
     DesignReport,
     ForgeWhy,
     JobList,
+    NodeDeclaration,
     NodeDraft,
-    NodeTyping,
 )
+from .spec import NodeControl
 
 # How many assemble→diagnose→repair rounds before the design fails loud (Law 5).
 MAX_DESIGN_ROUNDS = 4
 
+# The single graph-input datum presented at ordinal 0 in every select list.
+INPUT_OPTION = "input"
 
-def _board(drafts: list[NodeDraft], focus_id: str) -> str:
-    """A plain-text view of the whole plan, the focus node marked ``>>>``."""
+
+def _job_board(drafts: list[NodeDraft], focus_id: str) -> str:
+    """A plain-text view of every step's job, the focus node marked ``>>>``."""
     lines: list[str] = []
     for d in drafts:
         mark = ">>>" if d.id == focus_id else "   "
-        cons = ", ".join(d.consumes) or "—"
-        prod = ", ".join(d.produces) or "?"
-        lines.append(
-            f"{mark} {d.id} [{d.kind.value}] {d.job}  (consumes: {cons}; produces: {prod})"
-        )
+        area = f"[{d.area}] " if d.area else ""
+        lines.append(f"{mark} {d.id} {area}{d.job}")
     return "\n".join(lines)
 
 
-def _canon(name: str) -> str:
-    return canonical_datum(name, INPUT_TOKENS)
+def dedupe_names(
+    raw_names: list[str], fallbacks: list[str], input_tokens: frozenset[str]
+) -> list[str]:
+    """Canonicalise ``raw_names`` and make them globally unique (order-preserving).
+
+    A blank raw name falls back to the paired ``fallbacks`` entry. A canonical collision
+    (with an earlier produced name OR an input token, which a produce must never shadow)
+    gets a numeric suffix (``_2``, ``_3``, …). Pure and deterministic — this is what makes
+    the produced-name set unique by construction, so ``duplicate_producer`` cannot arise.
+    """
+    used: set[str] = set(input_tokens)
+    out: list[str] = []
+    for raw, fallback in zip(raw_names, fallbacks):
+        base = canonical_datum(raw, input_tokens) if raw.strip() else ""
+        if not base:
+            base = canonical_datum(fallback, input_tokens)
+        unique = base
+        suffix = 2
+        while unique in used:
+            unique = f"{base}_{suffix}"
+            suffix += 1
+        used.add(unique)
+        out.append(unique)
+    return out
+
+
+def build_option_names(produced: list[str]) -> list[str]:
+    """The closed, ordinal-indexed list of names for the input plus ``produced``: the graph
+    input (ordinal 0) followed by every produced name. Pure ordinal→name mapping."""
+    return [INPUT_OPTION, *produced]
+
+
+def visible_producers(drafts: list[NodeDraft], focus_index: int) -> list[NodeDraft]:
+    """The producer nodes a node at ``focus_index`` may read, in ordinal order.
+
+    A node sees only inputs it can legitimately depend on — so an accidental cycle is
+    impossible **by construction** while every real grammar stays expressible:
+
+    - **every EARLIER node** (``j < focus_index``) — ordinary forward data flow (chain,
+      fan-in, fan-out, branch);
+    - **a later CHECKPOINT node** — the loop back-edge: a bounded-loop checkpoint is the one
+      legitimate cycle (``diagnose`` exempts it), so a body step may read the checkpoint's
+      decision;
+    - **the focus node's OWN output iff it is an ENTITY** — the rung-2 read-modify-write
+      self-edge (``diagnose`` exempts the entity round-trip).
+
+    A later *signal* node and a non-entity self-read are excluded, which is exactly what
+    made the unconstrained closed set explode into cycles: the model could pick any node,
+    including downstream and itself.
+    """
+    visible: list[NodeDraft] = []
+    for j, d in enumerate(drafts):
+        if not d.produces:
+            continue
+        if j < focus_index:
+            visible.append(d)
+        elif j == focus_index:
+            if d.produces_kind is DataKind.ENTITY:
+                visible.append(d)
+        elif d.control is NodeControl.CHECKPOINT:
+            visible.append(d)
+    return visible
+
+
+def _option_names_for(drafts: list[NodeDraft], focus_index: int) -> list[str]:
+    """The ordinal→name list a node at ``focus_index`` selects over (input + its visible
+    producers) — the frozen, cycle-safe closed set for that node."""
+    return build_option_names(
+        [d.produces[0] for d in visible_producers(drafts, focus_index)]
+    )
+
+
+def _options_text_for(drafts: list[NodeDraft], focus_index: int) -> str:
+    """The numbered list shown to ``select_consumes`` for the node at ``focus_index`` — the
+    input plus each VISIBLE producer, annotated with its producing step's job."""
+    lines = [f"0. {INPUT_OPTION} — the raw original text given to the whole system"]
+    for i, d in enumerate(visible_producers(drafts, focus_index), start=1):
+        lines.append(f"{i}. {d.produces[0]} — produced by step {d.id}: {d.job}")
+    return "\n".join(lines)
+
+
+def resolve_consumes(
+    indices: list[int], option_names: list[str]
+) -> tuple[list[str], list[int]]:
+    """Map selected ordinals → data names over the closed ``option_names`` list.
+
+    Returns ``(names, dropped)``: ``names`` are the in-range selections resolved to real
+    data names (de-duplicated, order-preserving); ``dropped`` are the out-of-range ordinals
+    (recorded by the caller, never silently ignored). By construction every resolved name is
+    a real produced name or the input token — so ``dangling_read`` / ``near_miss`` cannot
+    arise from a resolved consume.
+    """
+    names: list[str] = []
+    dropped: list[int] = []
+    seen: set[str] = set()
+    for idx in indices:
+        if 0 <= idx < len(option_names):
+            name = option_names[idx]
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+        else:
+            dropped.append(idx)
+    return names, dropped
 
 
 async def decompose(
@@ -76,7 +185,6 @@ async def decompose(
     sink: AgentSink,
     max_jobs_per_area: int,
     max_nodes: int,
-    plan_feedback: list[str] | None = None,
 ) -> tuple[DesignPlan, DesignReport, list[str]]:
     """Return ``(plan, report, notes)`` — the typed node board, the (clean) structural
     diagnosis, and any advisory notes. Raises if the board cannot be made coherent within
@@ -112,17 +220,23 @@ async def decompose(
             "decompose produced no steps; the brief did not yield an actionable design"
         )
 
-    # Stage 2: type every node, declaring consumes/produces FREELY (no forced selection).
-    # The board is shown so names get reused; canonicalisation unifies casing/spacing.
-    # On a plan-review loopback, the surviving concerns become typing feedback so the
-    # redesign wires a step in for each (empty on the first pass — no behaviour change).
-    plan_fb = _plan_feedback_text(plan_feedback)
-    for d in drafts:
-        await _type_node(d, drafts, sink=sink, feedback=plan_fb)
+    # Stage 2a: DECLARE — each node's kind + its ONE produced name (no inputs yet).
+    await asyncio.gather(*(_declare_node(d, drafts, sink=sink) for d in drafts))
+    # Deterministic dedupe → the produced set is globally unique BY CONSTRUCTION.
+    unique = dedupe_names(
+        [d.produces[0] if d.produces else "" for d in drafts],
+        [f"{d.id}_out" for d in drafts],
+        INPUT_TOKENS,
+    )
+    for d, name in zip(drafts, unique):
+        d.produces = [name]
 
-    # Stage 3: assemble → diagnose → repair, bounded. Converge to clean, or fail loud with
-    # the full report. Each round re-types only the flagged nodes, with the finding's
-    # detail + suggestion as concrete feedback.
+    # Stage 2b: SELECT — each node picks its inputs BY ORDINAL from the frozen closed set.
+    for d in drafts:
+        await _select_consumes(d, drafts, sink=sink, feedback="", notes=notes)
+
+    # Stage 3: assemble → diagnose → repair, bounded. A repair re-runs ONLY pass 2b for a
+    # flagged node (producer names are frozen), so wiring converges instead of thrashing.
     report = DesignReport()
     for round_index in range(MAX_DESIGN_ROUNDS):
         graph = assemble(drafts)
@@ -135,7 +249,7 @@ async def decompose(
                 f"{MAX_DESIGN_ROUNDS} repair rounds. The structural problems remain (surfaced, "
                 f"never dropped):\n{report.summary()}"
             )
-        await _repair_round(drafts, report, sink=sink)
+        await _repair_round(drafts, report, sink=sink, notes=notes)
 
     # Deterministic plan-coverage (Tier 1a): every framed concern must own >=1 step.
     # Blocking and fail-loud, consistent with the structural cap path above.
@@ -150,27 +264,19 @@ async def decompose(
     return DesignPlan(why=why, nodes=drafts), report, notes
 
 
-def _plan_feedback_text(concerns: list[str] | None) -> str:
-    """Turn surviving plan-manager concerns into typing feedback for the redesign pass."""
-    if not concerns:
-        return ""
-    lines = [
-        "A plan review found the previous design did not fully serve the goal. The goal "
-        "still needs these — make sure a step covers each (add/retype steps so its "
-        "consumes/produces wire it in):"
-    ]
-    lines += [f"- {c}" for c in concerns]
-    return "\n".join(lines)
-
-
 async def _repair_round(
-    drafts: list[NodeDraft], report: DesignReport, *, sink: AgentSink
+    drafts: list[NodeDraft],
+    report: DesignReport,
+    *,
+    sink: AgentSink,
+    notes: list[str],
 ) -> None:
-    """Re-type each node a finding names, feeding the finding's detail + suggestion back.
+    """Re-select the inputs of each node a finding names, feeding the finding back.
 
     Findings without a node (e.g. ``multiple_sinks`` / ``no_output``) are routed to the
     terminal node — the last board node — since that is where the system output lives.
-    Nothing is dropped: every finding produces a targeted re-type with concrete feedback.
+    Only pass 2b re-runs: produced names are frozen, so a repair cannot manufacture a new
+    ``duplicate_producer`` or orphan cascade — it can only re-wire what a node reads.
     """
     by_node: dict[str, list[DesignFinding]] = {}
     for finding in report.findings:
@@ -182,15 +288,15 @@ async def _repair_round(
         if not flags:
             continue
         feedback = _feedback_for(flags)
-        await _type_node(d, drafts, sink=sink, feedback=feedback)
+        await _select_consumes(d, drafts, sink=sink, feedback=feedback, notes=notes)
 
 
 def _feedback_for(findings: list[DesignFinding]) -> str:
     """The concrete repair feedback for one node — the findings' detail + suggestion."""
     lines = [
-        "Your declared inputs/outputs for this step caused a structural problem. Fix it by "
-        "re-declaring `consumes`/`produces` (reuse the EXACT name an earlier step produced "
-        "when you mean its output):"
+        "The inputs you chose for this step caused a structural problem. Fix it by RE-CHOOSING "
+        "the input numbers (pick the number of the earlier step whose output this step should "
+        "read):"
     ]
     for f in findings:
         line = f"- {f.detail}"
@@ -200,33 +306,66 @@ def _feedback_for(findings: list[DesignFinding]) -> str:
     return "\n".join(lines)
 
 
-async def _type_node(
+async def _declare_node(
+    draft: NodeDraft,
+    drafts: list[NodeDraft],
+    *,
+    sink: AgentSink,
+) -> None:
+    """DECLARE pass: type ONE node's kind + its single produced name (no inputs).
+
+    The raw produced name is stored as-is; the caller canonicalises + dedupes it afterward.
+    """
+    decl = await sink.run(
+        DECLARE_NODE,
+        job=draft.job,
+        board=_job_board(drafts, draft.id),
+    )
+    assert isinstance(decl, NodeDeclaration)
+    draft.kind = decl.kind
+    draft.produces = [decl.produces]
+    draft.produces_kind = decl.produces_kind
+    draft.control = decl.control
+    draft.network = decl.network
+
+
+async def _select_consumes(
     draft: NodeDraft,
     drafts: list[NodeDraft],
     *,
     sink: AgentSink,
     feedback: str,
+    notes: list[str],
 ) -> None:
-    """Type ONE node from its job + the whole board, declaring reads/writes freely.
+    """SELECT pass: choose ONE node's inputs by ordinal from the frozen closed set.
 
-    Canonicalises the declared names so casing/spacing variants of one concept unify.
     ``feedback`` carries the diagnoser's finding + suggestion during a repair round; it is
-    empty on the first pass.
+    empty on the first pass. Out-of-range ordinals are dropped and recorded in ``notes``.
     """
-    typing = await sink.run(
-        TYPE_NODE,
+    focus_index = drafts.index(draft)
+    option_names = _option_names_for(drafts, focus_index)
+    selection = await sink.run(
+        SELECT_CONSUMES,
         job=draft.job,
-        board=_board(drafts, draft.id),
+        board=_job_board(drafts, draft.id),
+        options=_options_text_for(drafts, focus_index),
         feedback=feedback,
     )
-    assert isinstance(typing, NodeTyping)
-    draft.kind = typing.kind
-    draft.consumes = [_canon(c) for c in typing.consumes if c.strip()]
-    draft.produces = [_canon(p) for p in typing.produces if p.strip()][:1]
-    draft.produces_kind = typing.produces_kind
-    draft.control = typing.control
-    draft.network = typing.network
+    assert isinstance(selection, ConsumeSelection)
+    names, dropped = resolve_consumes(selection.consume_indices, option_names)
+    draft.consumes = names
+    if dropped:
+        notes.append(
+            f"decompose: node {draft.id} selected out-of-range input ordinal(s) "
+            f"{dropped} (valid 0..{len(option_names) - 1}); dropped"
+        )
 
 
-# Re-exported for callers that build a board directly (e.g. tests).
-__all__ = ["decompose", "MAX_DESIGN_ROUNDS"]
+# Re-exported for callers that build a board directly (e.g. tests) and the offline harness.
+__all__ = [
+    "decompose",
+    "dedupe_names",
+    "build_option_names",
+    "resolve_consumes",
+    "MAX_DESIGN_ROUNDS",
+]

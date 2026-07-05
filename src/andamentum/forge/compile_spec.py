@@ -8,7 +8,7 @@ dump's ``design/compile.py``, retargeted to consume this module's ``DesignPlan``
 Order is a deterministic topological backbone over *signal* dependencies (entities
 create no edge): each node follows the single next node, so shared-datum consumers are
 sequenced, not branched. Only ``decision`` nodes branch; ``checkpoint`` adds a bounded
-loop-back; ``consequential`` gets a HITL gate. Reachability is enforced by ``SystemSpec``.
+loop-back; ``consequential`` renders as a spine hole. Reachability is enforced by ``SystemSpec``.
 
 Engine-free leaf worker (dialect Law 2).
 """
@@ -25,8 +25,6 @@ from .spec import (
     AgentSpec,
     EntitySpec,
     FieldSpec,
-    GateKind,
-    HitlGate,
     InputSpec,
     LoopCap,
     ModelSpec,
@@ -343,7 +341,6 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
 
     nodes: list[NodeSpec] = []
     loop_caps: list[LoopCap] = []
-    hitl: list[HitlGate] = []
     for c in order:
         succ = (
             (branch_targets(c) or backbone_next(c))
@@ -359,18 +356,7 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 succ = succ + [area_first]
             checkpoint_counter = f"{node_names[c.id].lower()}_loops"
             loop_caps.append(
-                LoopCap(
-                    name=checkpoint_counter,
-                    limit=c.checkpoint_cap or _DEFAULT_CHECKPOINT_CAP,
-                )
-            )
-        if c.control is NodeControl.CONSEQUENTIAL:
-            hitl.append(
-                HitlGate(
-                    node=node_names[c.id],
-                    kind=GateKind.APPROVAL,
-                    purpose=c.job or node_names[c.id],
-                )
+                LoopCap(name=checkpoint_counter, limit=_DEFAULT_CHECKPOINT_CAP)
             )
         node_reads = contract_fields(c.consumes)
         node_writes = contract_fields(c.produces)
@@ -392,7 +378,6 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
                 consumes=c.consumes,
                 produces=c.produces,
                 control=c.control,
-                checkpoint_cap=c.checkpoint_cap,
                 network=c.network,
                 serves=c.area,
             )
@@ -459,5 +444,4 @@ def compile_spec(plan: DesignPlan) -> SystemSpec:
         nodes=nodes,
         entry_node=entry,
         loop_caps=loop_caps,
-        hitl_gates=hitl,
     )

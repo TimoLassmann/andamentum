@@ -18,13 +18,18 @@ from andamentum.forge.schemas import (
     DataKind,
     Fitness,
     ForgeWhy,
-    NodeTyping,
     PieceOut,
 )
 from andamentum.forge.spec import NodeKind
 from pydantic import BaseModel
 
-from .conftest import FakeSandbox, ScriptedSink, _parse_fields, _parse_successors
+from .conftest import (
+    FakeSandbox,
+    NodeScript,
+    ScriptedSink,
+    _parse_fields,
+    _parse_successors,
+)
 
 
 def _concat_body(context: str) -> str:
@@ -75,13 +80,13 @@ def _stateful_sink() -> _AppendSink:
         typings={
             # n1 reads the saved value + the request and rewrites the saved value: a
             # read-modify-write durable entity (the §7 round-trip signature).
-            "n1": NodeTyping(
+            "n1": NodeScript(
                 kind=NodeKind.SPINE,
                 consumes=["saved_value", "input"],
                 produces=["saved_value"],
                 produces_kind=DataKind.ENTITY,
             ),
-            "n2": NodeTyping(
+            "n2": NodeScript(
                 kind=NodeKind.SPINE,
                 consumes=["saved_value"],
                 produces=["answer"],

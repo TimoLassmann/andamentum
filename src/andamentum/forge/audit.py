@@ -25,7 +25,6 @@ from pathlib import Path
 from andamentum.agentic_dialect import check_code
 
 from .agents import CRITIC, MODEL_OUTPUT_ERRORS, REQUIREMENTS, AgentSink
-from .diagnose import _NEAR_MISS_THRESHOLD, _nearest
 from .extract import discover_holes
 from .reporter import ForgeReporter, NoopReporter
 from .sandbox import SandboxPort, SandboxUnavailableError
@@ -101,42 +100,6 @@ def _parse_counts(output: str) -> tuple[int, int, int]:
     return passed, failed, errored
 
 
-def _named_check(audit: AuditReport, name: str) -> CheckResult | None:
-    return next((c for c in audit.checks if c.name == name), None)
-
-
-def audit_rank(audit: AuditReport) -> tuple[bool, int, int, bool]:
-    """The regression guard's total order (§4.5): rank an audit by
-    ``(works, tests_passed, -tests_failed, dialect_clean)``. A strictly greater tuple is
-    a strictly better audit (a tie is non-improving). Pure — reads the retained counts
-    off the ``tests``/``dialect`` checks; a missing check ranks as 0 / not-clean."""
-    tests = _named_check(audit, "tests")
-    dialect = _named_check(audit, "dialect")
-    passed = tests.tests_passed if tests is not None else 0
-    failed = tests.tests_failed if tests is not None else 0
-    clean = dialect.passed if dialect is not None else False
-    return (audit.works, passed, -failed, clean)
-
-
-def failing_checks_summary(audit: AuditReport) -> str:
-    """A short one-line summary of the checks that failed this pass (empty when every
-    check passed) — the ``AuditRound.failing_checks`` record and the per-target rebuild
-    feedback fall back to it."""
-    return "; ".join(f"{c.name}: {c.detail}" for c in audit.checks if not c.passed)
-
-
-def feedback_for_targets(audit: AuditReport, targets: list[str]) -> dict[str, str]:
-    """Map each re-authored target to the audit-failure text it should see when
-    re-authored (§4.3 step 3): the audit issues that name it, else the overall
-    failing-check summary — so every target sees a concrete failure to address."""
-    summary = failing_checks_summary(audit)
-    out: dict[str, str] = {}
-    for t in targets:
-        mentions = [i.detail for i in audit.issues if t in i.detail]
-        out[t] = "\n".join(mentions) if mentions else summary
-    return out
-
-
 def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResult:
     # The container mounts the RESOLVED dest (e.g. /tmp → /private/tmp on macOS), so any
     # path handed to pytest in argv must be resolved too — an unresolved path is not
@@ -188,20 +151,6 @@ def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResul
     )
 
 
-def _reconcile_node(name: str, node_names: list[str]) -> str:
-    """Map a critic-named node string to a REAL spec node name (§4.4 signal 4).
-
-    Node names are per-spec, so the critic emits a free string; reconcile it to an
-    actual node via the same tiered ``partial_ratio`` match ``diagnose`` uses for
-    near-miss variable names. An exact hit wins outright; otherwise the closest name
-    above ``_NEAR_MISS_THRESHOLD`` wins. Returns ``""`` when nothing reconciles — an
-    unreconcilable name is dropped (never a rebuild target)."""
-    if name in node_names:
-        return name
-    nearest, score = _nearest(name, node_names)
-    return nearest if nearest and score >= _NEAR_MISS_THRESHOLD else ""
-
-
 def _run_dialect(spec: SystemSpec, dest: Path) -> CheckResult:
     violations = check_code(dest / spec.name)
     if not violations:
@@ -226,14 +175,9 @@ async def audit_system(
     sink: AgentSink,
     sandbox: SandboxPort,
     build: BuildReport | None,
-    audit_rounds: int = 0,
     reporter: ForgeReporter | None = None,
 ) -> AuditReport:
-    """Audit the assembled system at ``dest/<spec.name>``.
-
-    ``audit_rounds`` is the number of rebuilds performed so far (§4.2); the report's
-    ``rounds`` is set to ``audit_rounds + 1`` — the audit-pass count. Passed as a plain
-    int so this worker stays engine-free (no ForgeState access)."""
+    """Audit the assembled system at ``dest/<spec.name>`` — a single pass."""
     rep: ForgeReporter = reporter if reporter is not None else NoopReporter()
     pkg = dest / spec.name
     checks: list[CheckResult] = []
@@ -307,10 +251,9 @@ async def audit_system(
             detail="",
         )
         for problem in critic.issues:
-            # Reconcile the critic's free node name to a real spec node; when it reconciles,
-            # surface the attribution in the issue, else record the bare problem.
-            node = _reconcile_node(problem.node, node_names)
-            detail = f"{node}: {problem.issue}" if node else problem.issue
+            detail = (
+                f"{problem.node}: {problem.issue}" if problem.node else problem.issue
+            )
             issues.append(AuditIssue(source="critic", detail=detail))
     else:
         rep.audit_check(name="critic", status="skipped", detail="model unavailable")
@@ -318,7 +261,6 @@ async def audit_system(
     works = tests.passed and dialect.passed and not remaining
     return AuditReport(
         works=works,
-        rounds=audit_rounds + 1,
         checks=checks,
         requirements=requirements,
         critic=critic,

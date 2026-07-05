@@ -21,8 +21,8 @@ thing is one graph; `graph.py` is the **only** engine-aware file.
 
 ```
 Understand → Assess → Frame → Decompose → Compile → Review → Render → Verify → Build → Audit → Finish → End
-   └ design ┘ fitness    └ design ┘          det    plan-mgr   det      det    agents   sandbox + agents
-              gate (L9)                             (⇄ Frame)
+   └ design ┘ fitness    └ design ┘          det     gate      det      det    agents   sandbox + agents
+              gate (L9)
 ```
 
 The **front fitness gate** enforces forge's scope (a *sharp function generator*; see
@@ -38,32 +38,36 @@ once the store lands, rung 2 (stateful) — and refuses apps / agents / services
   (`refusal_message`), never a silent pass. The scenario corpus
   (`tests/scenario_corpus.py`) is the acceptance test.
 
-Two **manager-grounding** heads sit on top of the deterministic substrate — a goal-vs-plan
-check before any code is written, and a job-vs-body check after each body passes the static
-gates:
+The plan is grounded by a deterministic coverage check before any code is written:
 
-- **Review** (`review.py`, the `plan_manager` head): before render, asks "do the planned
-  steps, taken together, serve the goal?" Tier 1a is a deterministic coverage check
-  (`plan_coverage` — every framed area must own ≥1 step, else a blocking `UNCOVERED_AREA`
-  finding, run inside `decompose` before it returns). Tier 1b is the one LLM call
-  (`review_plan`) plus a rapidfuzz dedup of its concerns against the existing node jobs. On
-  reject, **Review loops back to Frame** carrying the surviving concerns (fed into both
-  `frame` and `decompose` as redesign feedback), bounded by `MAX_PLAN_REVIEW_ROUNDS` — at
-  the cap it **fails loud** with the unresolved concerns. The `Review→Frame` back-edge is a
-  declared, cap-bounded cycle; `graph.py` stays the only engine-aware file.
+- **Review** (`review.py`): `plan_coverage` requires every framed area to own ≥1 step, else
+  a blocking `UNCOVERED_AREA` finding is raised inside `decompose` before it returns. The
+  `Review` node itself is then just the render/finish gate on `stop_after` — no LLM call, no
+  back-edge. `graph.py` stays the only engine-aware file.
 
-- **Design** (`understand` / `frame` / `decompose`): the model declares the system —
-  areas, steps, and each node's kind (spine/head) and its `consumes`/`produces` variable
-  names, **freely**. Then `decompose` runs a bounded **assemble → diagnose → repair** loop:
-  - `assemble.py` matches producers→consumers into a typed `DataGraph` (puzzle-fit). Fan-in,
-    fan-out, and back-edges fall out of the matching — the full grammar, nothing forced linear.
-  - `diagnose.py` (pure, `rapidfuzz`) gathers every structural problem with a concrete
-    suggested fix: dangling read, near-miss name, orphan output, duplicate producer,
-    multiple/zero sinks, unreachable, dead-end, disconnected, unintended cycle.
-  - the repair loop re-types each flagged node with the finding+suggestion as feedback,
-    bounded by `MAX_DESIGN_ROUNDS`. It converges to a clean design, or **fails loud** with
-    the full report at the cap. The determinism does the heavy lifting; the model only
-    applies targeted corrections (which is what makes it converge on small/local models).
+- **Design** (`understand` / `frame` / `decompose`): the model declares the system in a
+  **two-pass** scheme that makes wiring correct BY CONSTRUCTION (no character-for-character
+  name reproduction across calls):
+  - Stage 1 (`list_jobs`): the ordered node board — areas, steps, node ids.
+  - Stage 2a DECLARE (`declare_node`): each node declares only its kind and ONE produced
+    name (+ produces_kind/control/network); deterministic code canonicalises and **dedupes**
+    the produced names, so the produced set is globally UNIQUE by construction.
+  - Stage 2b SELECT (`select_consumes`): each node picks its inputs as ORDINALS into the
+    closed, numbered list `input` + every produced name (`build_option_names`); deterministic
+    `resolve_consumes` maps ordinals → real names. A consume can never reference a name no
+    step produces; an out-of-range ordinal is dropped and recorded in `notes` (never a phantom).
+  - Then `decompose` runs a bounded **assemble → diagnose → repair** loop:
+    - `assemble.py` matches producers→consumers into a typed `DataGraph` (puzzle-fit,
+      now total). Fan-in, fan-out, and back-edges fall out of the matching.
+    - `diagnose.py` (pure, `rapidfuzz`) gathers every genuine structural problem with a
+      concrete fix: orphan output, multiple/zero sinks, unreachable, dead-end, disconnected,
+      unintended cycle. (`duplicate_producer` / `near_miss` / `dangling_read` are now
+      impossible on the primary path — the unique-produces + index-selected-consumes
+      construction rules them out; their checks remain as defensive backstops.)
+    - the repair loop re-runs ONLY pass 2b (`select_consumes`) for each flagged node with the
+      finding+suggestion as feedback, bounded by `MAX_DESIGN_ROUNDS`. Producer names are
+      FROZEN after 2a, so a repair can never reinvent a produce — the name-matching thrash is
+      gone. It converges, or **fails loud** with the full report at the cap.
 - **Compile** (`compile_spec.py`, deterministic): assembles the validated `SystemSpec`.
   Canonicalises data names, promotes judgment-over-text spine nodes to heads (symmetric to
   the network/consequential→spine demotion), and keeps single-writer / dangling / orphan
@@ -104,16 +108,9 @@ node body (`astcheck.py`, fed back into the bounded repair loop):
 
 These also reflect the standing project rule: **fail loud, no fallbacks — in the code forge
 *generates*, not just in forge itself.** A system that runs but does the wrong thing is
-worse than one that stops.
-
-On top of the deterministic gates, a **component manager** (`component_manager` head) runs
-*after* a body passes every static gate: it judges whether the body genuinely does the
-node's job (not a hardcoded stand-in, not a body that ignores its inputs). It is an
-**advisory improver, not a gate** — the deterministic gates decide fillability, never the
-manager. On an objection within budget, the manager's `issue` is fed into the same
-draft/repair loop as a static-gate violation. At budget exhaustion, a body that passed the
-gates is **kept** (never downgraded to unfillable) and the unresolved objection is recorded
-as a `BuildConcern` in the `BuildReport.concerns` list.
+worse than one that stops. The deterministic gates alone decide fillability: a body that
+passes every gate is filled; a body that never does within `attempt_cap` is honest
+`unfillable` (its `NotImplementedError` restored).
 
 ## The sandbox
 
@@ -144,19 +141,18 @@ The backend is an explicit keyword arg (`--sandbox`), never an env var.
    guarantee it.
 4. **One code path; flat agent schemas; explicit `model=`; no env vars; bounded loops via
    named constants.** The standard andamentum/dialect conventions. The caps are module
-   constants in their workers: `MAX_DESIGN_ROUNDS` (`decompose.py`), `MAX_PLAN_REVIEW_ROUNDS`
-   (`graph.py`, the Review⇄Frame loop), `ATTEMPT_CAP` / fan-out bounds (`graph.py`).
+   constants in their workers: `MAX_DESIGN_ROUNDS` (`decompose.py`), `ATTEMPT_CAP` / fan-out
+   bounds (`graph.py`).
 
 ## File map
 
 `graph.py` the pipeline (State / Deps / steps / `run_forge`) · `schemas.py` boundary types +
 `ForgeResult` · `spec.py` the `SystemSpec` + recipe validators · `naming.py` identifier
 helpers · `understand.py` / `frame.py` / `decompose.py` design workers · `fitness.py` the front
-fitness gate (L9 — `assess_fitness` / `is_buildable` / `refusal_message`) · `review.py` the plan-manager
-worker (deterministic `plan_coverage` + semantic `review_plan` + `plan_board`) · `assemble.py`
+fitness gate (L9 — `assess_fitness` / `is_buildable` / `refusal_message`) · `review.py` the
+deterministic per-area `plan_coverage` check · `assemble.py`
 puzzle-fit DAG · `diagnose.py` the structural diagnostic engine · `compile_spec.py` board →
-spec · `render.py` deterministic spec → package · `build.py` per-node authoring loop
-(+ the component-manager grounding) ·
+spec · `render.py` deterministic spec → package · `build.py` per-node authoring loop ·
 `astcheck.py` / `patch.py` / `extract.py` the build gates + body editing · `verify.py`
 render-stage checks · `audit.py` whole-system audit · `sandbox.py` + `Containerfile` the
 execution seam · `runtime.py` the engine-free spine a **generated** package imports

@@ -2,7 +2,8 @@
 
 Two families live here:
 
-- **Agent outputs** (``ForgeWhy``, ``ForgeAreas``, ``JobList``, ``NodeTyping``) — the
+- **Agent outputs** (``ForgeWhy``, ``ForgeAreas``, ``JobList``, ``NodeDeclaration``,
+  ``ConsumeSelection``) — the
   small, flat, enum-guarded models the design heads fill. Each obeys the dialect's
   "small heads": ≤6 flat fields, closed vocabularies as enums. These are *not* the
   generated system's agents — they are forge's own.
@@ -108,7 +109,7 @@ class JobList(EnvelopeTolerantModel):
     """Decompose stage 1: an area's atomic steps as plain sentences (no types yet).
 
     A list of strings is the one list shape small models handle reliably — the typed
-    fields are filled later, one node at a time (``NodeTyping``).
+    fields are filled later, one node at a time (``NodeDeclaration`` + ``ConsumeSelection``).
     """
 
     jobs: list[str] = Field(
@@ -116,24 +117,23 @@ class JobList(EnvelopeTolerantModel):
     )
 
 
-class NodeTyping(EnvelopeTolerantModel):
-    """Decompose stage 2: the typed fields for ONE already-named node.
+class NodeDeclaration(EnvelopeTolerantModel):
+    """Decompose pass 2a (DECLARE): the typed fields for ONE already-named node — its
+    kind and the SINGLE output it produces. It declares NO inputs here.
 
-    One object, never an array — the model fills this for a single job it is handed,
-    while seeing the whole plan as context.
+    Inputs are chosen in a separate pass (2b) as ORDINALS into a closed list, never as
+    free-text names, so a consume can never reference a name no step produces. Producing
+    one name per node, deduped deterministically afterwards, makes the produced-name set
+    globally unique by construction — which is what removes the small-model wiring thrash.
     """
 
     kind: NodeKind = Field(
         default=NodeKind.SPINE,
         description="spine = code-computable (math, lookup, regex, API call, routing); head = LLM judgment over text",
     )
-    consumes: list[str] = Field(
-        default_factory=list,
-        description="Exact data names this node reads — reuse a name from the plan, or 'input'",
-    )
-    produces: list[str] = Field(
-        default_factory=list,
-        description="Exactly one NEW data name this node writes (a short noun phrase)",
+    produces: str = Field(
+        default="",
+        description="ONE NEW data name this node writes — a short noun phrase (e.g. 'ranked candidates')",
     )
     produces_kind: DataKind = Field(
         default=DataKind.SIGNAL,
@@ -149,15 +149,18 @@ class NodeTyping(EnvelopeTolerantModel):
     )
 
 
-class PlanVerdict(EnvelopeTolerantModel):
-    """The plan-manager head: does the node board, as planned, serve the goal?"""
+class ConsumeSelection(EnvelopeTolerantModel):
+    """Decompose pass 2b (SELECT): which inputs this node reads, chosen BY NUMBER from a
+    closed, numbered list of available data (the graph input plus every produced name).
 
-    serves_goal: bool = Field(
-        description="True if the planned steps, taken together, fulfil the system's purpose"
-    )
-    uncovered_concerns: list[str] = Field(
+    The model returns ordinals, never name strings — so a selected input is always a real,
+    already-produced datum. An out-of-range number is dropped and recorded (never silently
+    kept as a phantom read).
+    """
+
+    consume_indices: list[int] = Field(
         default_factory=list,
-        description="Concrete things the goal needs that no planned step does (empty if it serves the goal)",
+        description="The NUMBERS of the inputs this step reads, taken from the numbered list shown (usually the output of an earlier step)",
     )
 
 
@@ -253,7 +256,6 @@ class NodeDraft(BaseModel):
     produces_kind: DataKind = DataKind.SIGNAL
     control: NodeControl = NodeControl.NONE
     network: bool = False
-    checkpoint_cap: int | None = None
 
 
 class DesignPlan(BaseModel):
@@ -336,21 +338,11 @@ class UnfillableNode(BaseModel):
     attempts: int
 
 
-class BuildConcern(BaseModel):
-    """A component-manager objection that survived the repair budget — the body passed
-    every static gate but the manager still doubts it implements the job. Advisory: the
-    deterministically-valid body was KEPT (gates decide fillability, not the manager)."""
-
-    node: str
-    issue: str
-
-
 class BuildReport(BaseModel):
     """Summary of the per-node build stage."""
 
     filled: list[FilledNode] = Field(default_factory=list)
     unfillable: list[UnfillableNode] = Field(default_factory=list)
-    concerns: list[BuildConcern] = Field(default_factory=list)
 
     @property
     def all_filled(self) -> bool:
@@ -359,18 +351,6 @@ class BuildReport(BaseModel):
     @property
     def remaining_holes(self) -> list[str]:
         return [u.node for u in self.unfillable]
-
-
-class BodyVerdict(EnvelopeTolerantModel):
-    """The component-manager head: does this authored body do the node's job?"""
-
-    implements_job: bool = Field(
-        description="True if the body genuinely implements the node's stated job"
-    )
-    issue: str = Field(
-        default="",
-        description="The single concrete reason it does not (empty if it does)",
-    )
 
 
 class RequirementsVerdict(EnvelopeTolerantModel):
@@ -423,33 +403,11 @@ class AuditReport(BaseModel):
     works: bool = Field(
         description="True when the system assembles, smoke-runs, and stays dialect-clean"
     )
-    rounds: int = 0
     checks: list[CheckResult] = Field(default_factory=list)
     requirements: RequirementsVerdict | None = None
     critic: CriticVerdict | None = None
     remaining_holes: list[str] = Field(default_factory=list)
     issues: list[AuditIssue] = Field(default_factory=list)
-
-
-class AuditRound(BaseModel):
-    """One entry in the self-correction history — the record of a single audit pass.
-
-    Written once per audit pass so the final ``ForgeResult`` carries a round-by-round
-    account of what failed and what was re-authored to try to fix it (§4.2/§4.6)."""
-
-    index: int = Field(description="1-based audit-pass index (audit_rounds + 1)")
-    rebuild_targets: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Node names attributed from THIS pass's failure and re-authored heading into "
-            "the next pass. Empty when this pass converged (works) or the loop settled "
-            "(cap hit / regression / nothing attributable)."
-        ),
-    )
-    failing_checks: str = Field(
-        default="",
-        description="Short summary of the checks that failed this pass (empty if clean)",
-    )
 
 
 # --- the result -----------------------------------------------------------------
@@ -472,19 +430,11 @@ class ForgeResult(BaseModel):
         default=None,
         description="The deterministic structural diagnosis of the node board (clean after repair)",
     )
-    plan_review: PlanVerdict | None = Field(
-        default=None,
-        description="The accepted plan-manager verdict (serves_goal, residual concerns)",
-    )
     report: VerificationReport | None = Field(
         default=None, description="Cheap deterministic render-stage verdict"
     )
     build: BuildReport | None = None
     audit: AuditReport | None = None
-    audit_history: list[AuditRound] = Field(
-        default_factory=list,
-        description="One entry per audit pass — the self-correction round-by-round account",
-    )
     notes: list[str] = Field(
         default_factory=list,
         description="Advisory notes: caps hit, truncations, fallbacks",

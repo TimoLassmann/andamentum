@@ -20,10 +20,8 @@ Fully generated:
 Left as holes (NotImplementedError, with guidance):
   - spine-node bodies (real logic: load, query, count, write)
   - multi-successor routing (head or spine)
-  - HumanGate `decide` (route on the human's answer)
 
-The output is RunEndT = `str` for the MVP (most recipe systems return a text
-answer); a future spec field can make this explicit.
+The graph returns `str` (most recipe systems return a text answer).
 """
 
 from __future__ import annotations
@@ -134,8 +132,8 @@ def _render_state(name: str, state: StateSpec, extra: list[FieldSpec]) -> str:
 # --- node rendering -------------------------------------------------------------
 
 
-def _return_type(successors: list[str], run_end_type: str) -> str:
-    parts = [f"End[{run_end_type}]" if s == END else f'"{s}"' for s in successors]
+def _return_type(successors: list[str]) -> str:
+    parts = ["End[str]" if s == END else f'"{s}"' for s in successors]
     return parts[0] if len(parts) == 1 else "Union[" + ", ".join(parts) + "]"
 
 
@@ -182,28 +180,12 @@ def _render_node(
     node: NodeSpec,
     state_name: str,
     deps_name: str,
-    gate_keys: dict[str, str],
-    run_end_type: str,
 ) -> str:
-    rt = _return_type(node.successors, run_end_type)
+    rt = _return_type(node.successors)
     ctx = _ctx(state_name, deps_name)
     doc = f'    """{node.purpose}"""\n' if node.purpose else ""
     head = f"@dataclass\nclass {node.name}"
     succ_list = ", ".join(node.successors)
-
-    # HumanGate nodes (those referenced by a hitl gate).
-    if node.name in gate_keys:
-        return (
-            f"{head}(HumanGate[{state_name}, {deps_name}, {run_end_type}]):\n"
-            f"{doc}"
-            f"    gate_key = {gate_keys[node.name]!r}\n\n"
-            f"    def prompt(self, ctx: {ctx}) -> str:\n"
-            f"        return {node.purpose!r}\n\n"
-            f"    def decide(self, answer: str, ctx: {ctx}) -> {rt}:\n"
-            f"        raise NotImplementedError(\n"
-            f'            "Route on the human\'s answer for {node.name} among: {succ_list}."\n'
-            f"        )\n"
-        )
 
     is_head = node.kind is NodeKind.HEAD
     single = len(node.successors) == 1
@@ -227,12 +209,12 @@ def _render_node(
             else:
                 tail = f"        return {succ}()\n"
             return (
-                f"{head}(BaseNode[{state_name}, {deps_name}, {run_end_type}]):\n{doc}"
+                f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
                 f"    async def run(self, ctx: {ctx}) -> {rt}:\n{call}{writes}{tail}"
             )
         # multi-successor head: writes are wired deterministically; routing is the hole.
         return (
-            f"{head}(BaseNode[{state_name}, {deps_name}, {run_end_type}]):\n{doc}"
+            f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
             f"    async def run(self, ctx: {ctx}) -> {rt}:\n{call}{writes}"
             f"        raise NotImplementedError(\n"
             f'            "Route on `out` for {node.name} among: {succ_list}.{_reads_note(node)}"\n'
@@ -270,7 +252,7 @@ def _render_node(
         loopback_return = f"{loopback_node}()"
         counter = lc.name
         return (
-            f"{head}(BaseNode[{state_name}, {deps_name}, {run_end_type}]):\n{doc}"
+            f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
             f"    async def run(self, ctx: {ctx}) -> {rt}:\n"
             f"        if loop_allowed(ctx.state.{counter}, ctx.deps.loop_cap):\n"
             f"            ctx.state.{counter} += 1\n"
@@ -286,7 +268,7 @@ def _render_node(
         else f"Return among: {succ_list}."
     )
     return (
-        f"{head}(BaseNode[{state_name}, {deps_name}, {run_end_type}]):\n{doc}"
+        f"{head}(BaseNode[{state_name}, {deps_name}, str]):\n{doc}"
         f"    async def run(self, ctx: {ctx}) -> {rt}:\n"
         f'        raise NotImplementedError("Spine node {node.name!r}. {purpose}{_contract_note(node)}{nxt}")\n'
     )
@@ -359,10 +341,7 @@ def _deps_py(spec: SystemSpec, deps_name: str) -> str:
     )
 
 
-def _nodes_py(
-    spec: SystemSpec, state_name: str, deps_name: str, gate_keys: dict[str, str]
-) -> str:
-    run_end_type = spec.run_end_type
+def _nodes_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
     model_names = (
         [spec.input.model.name]
         + [e.model.name for e in spec.entities]
@@ -396,8 +375,7 @@ def _nodes_py(
         for a in spec.agents
     )
     nodes = "\n\n".join(
-        _render_node(spec, n, state_name, deps_name, gate_keys, run_end_type)
-        for n in spec.nodes
+        _render_node(spec, n, state_name, deps_name) for n in spec.nodes
     )
     # Omit the prompts import entirely when there are no agents (all-spine systems);
     # preserve exactly two blank lines before the first function definition either way.
@@ -438,7 +416,6 @@ def _graph_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
     """
     node_names = [n.name for n in spec.nodes]
     primary = spec.input.primary_text_field
-    run_end_type = spec.run_end_type
     rules = (
         "\n".join(f"    # - {r}" for r in spec.input.validation_rules)
         or "    # (no extra rules declared)"
@@ -484,7 +461,7 @@ def _graph_py(spec: SystemSpec, state_name: str, deps_name: str) -> str:
         f"    return {spec.input.model.name}({primary}=text)\n\n\n"
         f"async def run_{spec.name}(\n"
         f"    text: str, *, model: str, store: str | None = None\n"
-        f") -> {run_end_type}:\n"
+        f") -> str:\n"
         '    """Validate the input, build initial State + Deps, and run the graph to End.\n\n'
         "    ``store`` is a path to a durable database for cross-run memory (a stateful\n"
         "    function); ``None`` (the default) means an ephemeral in-memory store, so the\n"
@@ -682,9 +659,6 @@ def render(spec: SystemSpec, dest: Path) -> list[Path]:
     """
     state_name = "".join(p.capitalize() for p in spec.name.split("_")) + "State"
     deps_name = "".join(p.capitalize() for p in spec.name.split("_")) + "Deps"
-    # v1 renders consequential nodes as spine holes (a human-approval step the author
-    # fills), not the persistence-backed HumanGate machinery — so no gate keys.
-    gate_keys: dict[str, str] = {}
 
     # The input's primary text must reach the entry node; thread it through state.
     primary = next(
@@ -701,7 +675,7 @@ def render(spec: SystemSpec, dest: Path) -> list[Path]:
         pkg / "models.py": _models_py(spec, state_name, input_extra),
         pkg / "prompts.py": _prompts_py(spec),
         pkg / "deps.py": _deps_py(spec, deps_name),
-        pkg / "nodes.py": _nodes_py(spec, state_name, deps_name, gate_keys),
+        pkg / "nodes.py": _nodes_py(spec, state_name, deps_name),
         pkg / "graph.py": _graph_py(spec, state_name, deps_name),
         pkg / "__init__.py": _init_py(spec, state_name, deps_name),
         pkg / "__main__.py": _main_py(spec),

@@ -24,10 +24,10 @@ from andamentum.forge.fitness import (
     is_buildable,
     refusal_message,
 )
-from andamentum.forge.schemas import Fitness, ForgeWhy, NodeTyping
+from andamentum.forge.schemas import Fitness, ForgeWhy
 from andamentum.forge.spec import NodeKind
 
-from .conftest import ScriptedSink
+from .conftest import NodeScript, ScriptedSink
 from .scenario_corpus import CORPUS
 
 
@@ -48,10 +48,10 @@ class _FitnessScenarioSink(ScriptedSink):
             areas=["core"],
             jobs_by_area={"core": ["Parse the request.", "Answer the request."]},
             typings={
-                "n1": NodeTyping(
+                "n1": NodeScript(
                     kind=NodeKind.SPINE, consumes=["input"], produces=["parsed_request"]
                 ),
-                "n2": NodeTyping(
+                "n2": NodeScript(
                     kind=NodeKind.HEAD, consumes=["parsed_request"], produces=["answer"]
                 ),
             },

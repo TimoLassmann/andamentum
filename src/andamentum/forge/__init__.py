@@ -30,8 +30,6 @@ from .sandbox import SandboxPort, SandboxUnavailableError, make_sandbox
 from .schemas import (
     AuditIssue,
     AuditReport,
-    AuditRound,
-    BuildConcern,
     BuildReport,
     CheckResult,
     CriticVerdict,
@@ -41,7 +39,6 @@ from .schemas import (
     ForgeResult,
     NodeDraft,
     NodeFinding,
-    PlanVerdict,
     RequirementsVerdict,
     VerificationReport,
 )
@@ -71,13 +68,10 @@ __all__ = [
     "graph",
     # Types reachable from a returned ForgeResult — exported so a caller can annotate /
     # isinstance-check the result tree without reaching into andamentum.forge.schemas.
-    "AuditRound",
     "AuditIssue",
-    "BuildConcern",
     "CriticVerdict",
     "NodeFinding",
     "Fitness",
     "DesignReport",
-    "PlanVerdict",
     "RequirementsVerdict",
 ]
