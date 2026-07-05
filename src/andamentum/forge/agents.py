@@ -125,10 +125,17 @@ LIST_JOBS_PROMPT = (
     "('identify', then 'extract', then 'refine' the same thing is ONE step). Each step does "
     "exactly one thing. One sentence each, 12 words or fewer, no semicolons. Do NOT specify "
     "types, inputs, or outputs yet — only the sentences. "
+    "\n\nA LOOP IS WRITTEN ONCE, NEVER UNROLLED. If the area repeats until a condition is met "
+    "(search until the evidence is enough, retry until it succeeds), write the body ONE time "
+    "plus ONE check step that repeats it — that check step's whole job is to run the earlier "
+    "steps again. Do NOT write the search/gather/synthesize step more than once, do NOT add a "
+    "second or third check step, and do NOT write out separate 'first search', 'fill the gaps', "
+    "'search again' phases: they are the SAME one step, repeated by the loop. Two or three "
+    "steps is right for a loop; eight is unrolling. "
     "\n\nGood single-step areas: 'Summarize the text into three bullet points.'  "
     "'Translate the paragraph into French.' "
-    "\n\nGood multi-step area (a genuine loop): 'Search PubMed with the query terms.'  "
-    "'Check if another search round is needed.'"
+    "\n\nGood multi-step area (a genuine loop, EXACTLY these two steps): 'Search the web with "
+    "the query terms.'  'Check if another search round is needed.'"
 )
 
 DECLARE_NODE_PROMPT = (
