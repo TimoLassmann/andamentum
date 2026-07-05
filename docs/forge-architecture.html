@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge — how it works now</title>
+<style>
+/* andamentum forge architecture map. Reuses the components.css tokens verbatim. */
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&display=swap');
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; padding:0; }
+
+:root {
+  --am-font-serif:'Source Serif 4',Georgia,serif; --am-font-sans:'Inter',system-ui,sans-serif;
+  --am-font-mono:'SF Mono',Monaco,Consolas,monospace;
+  --am-fs-display:32px; --am-fs-h2:22px; --am-fs-lead:20px; --am-fs-prose:19px; --am-fs-h3:18px;
+  --am-fs-ref:17px; --am-fs-body:16px; --am-fs-ui:15px; --am-fs-meta:14px; --am-fs-small:13px;
+  --am-fs-micro:12px; --am-fs-tag:11px; --am-fs-eyebrow:9px;
+  --am-lh-prose:1.85;
+  --am-sp-1:4px; --am-sp-2:8px; --am-sp-3:12px; --am-sp-4:16px; --am-sp-5:20px; --am-sp-6:24px;
+  --am-sp-7:32px; --am-sp-8:40px; --am-sp-9:48px; --am-sp-10:64px;
+  --am-rad-1:3px; --am-rad-2:4px; --am-rad-3:6px; --am-rad-4:8px; --am-hair:1px;
+  --am-paper:#f9f7f4; --am-paper-2:#f4f1ec; --am-paper-3:#f0ede8; --am-paper-4:#e8e4de;
+  --am-ink:#1a1a1a; --am-ink-2:#2b2b2b; --am-ink-3:#555; --am-ink-4:#777; --am-ink-5:#999;
+  --am-ink-6:#bbb; --am-ink-7:#ccc;
+  --am-rule:#e8e4de; --am-rule-2:#ebe7e0; --am-rule-3:#d4d0c8;
+  --am-link:#7c6a4f; --am-link-rule:#d4d0c8;
+  --am-info-bg:#e8eaee; --am-info-accent:#6e7a8c; --am-info-ink:#3e4a5c;
+  --am-warn-bg:#ece5d2; --am-warn-accent:#9a8559; --am-warn-ink:#5a4818;
+  --am-success-bg:#e3e6d9; --am-success-accent:#5e7a6a; --am-success-ink:#2e4636;
+  --am-danger-bg:#f1ddd4; --am-danger-accent:#9c4a36; --am-danger-ink:#6e2818;
+  --am-note-accent:#c4b99a; --am-select-bg:#ece3cf; --am-select-ink:#1a1a1a;
+  color-scheme:light;
+}
+:root[data-theme="dark"] {
+  --am-paper:#18160f; --am-paper-2:#201d16; --am-paper-3:#28241c; --am-paper-4:#312c23;
+  --am-ink:#ede8df; --am-ink-2:#d8d2c5; --am-ink-3:#b5ad9d; --am-ink-4:#948c7c; --am-ink-5:#756e60;
+  --am-ink-6:#5c564a; --am-ink-7:#46413a;
+  --am-rule:#36312a; --am-rule-2:#2e2922; --am-rule-3:#4a4438;
+  --am-link:#c4b08a; --am-link-rule:#4a4438;
+  --am-info-bg:#1c2026; --am-info-accent:#8a99ac; --am-info-ink:#c2cedb;
+  --am-warn-accent:#b8a37a; --am-success-bg:#1f231d; --am-success-accent:#8a9e8e; --am-success-ink:#b8c8bd;
+  --am-danger-bg:#2a1d18; --am-danger-accent:#c47a64; --am-danger-ink:#d8a796;
+  --am-note-accent:#6a6149; --am-select-bg:#3a3322; --am-select-ink:#ede8df;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --am-paper:#18160f; --am-paper-2:#201d16; --am-paper-3:#28241c; --am-paper-4:#312c23;
+  --am-ink:#ede8df; --am-ink-2:#d8d2c5; --am-ink-3:#b5ad9d; --am-ink-4:#948c7c; --am-ink-5:#756e60;
+  --am-ink-6:#5c564a; --am-ink-7:#46413a; --am-rule:#36312a; --am-rule-2:#2e2922; --am-rule-3:#4a4438;
+  --am-link:#c4b08a; --am-link-rule:#4a4438; --am-info-bg:#1c2026; --am-info-accent:#8a99ac; --am-info-ink:#c2cedb;
+  --am-success-bg:#1f231d; --am-success-accent:#8a9e8e; --am-success-ink:#b8c8bd;
+  --am-danger-bg:#2a1d18; --am-danger-accent:#c47a64; --am-danger-ink:#d8a796; --am-note-accent:#6a6149;
+}}
+
+body { background:var(--am-paper); color:var(--am-ink-2); font-family:var(--am-font-sans);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+::selection { background:var(--am-select-bg); color:var(--am-select-ink); }
+
+.doc { font-family:var(--am-font-serif); line-height:var(--am-lh-prose); font-size:var(--am-fs-prose);
+  color:var(--am-ink-2); max-width:880px; margin:0 auto; padding:60px 24px 96px; }
+
+.head { margin-bottom:var(--am-sp-8); padding-bottom:var(--am-sp-6);
+  border-bottom:var(--am-hair) solid var(--am-rule); }
+.eyebrow { font-family:var(--am-font-sans); font-size:var(--am-fs-eyebrow); font-weight:600;
+  text-transform:uppercase; letter-spacing:0.6px; color:var(--am-ink-5); margin:0 0 var(--am-sp-4); }
+h1 { font-family:var(--am-font-serif); font-size:var(--am-fs-display); font-weight:700; color:var(--am-ink);
+  line-height:1.15; letter-spacing:-0.01em; margin:0 0 var(--am-sp-3); }
+.subtitle { font-family:var(--am-font-serif); font-size:var(--am-fs-lead); color:var(--am-ink-3);
+  margin:0; line-height:1.5; font-weight:400; }
+.meta { font-family:var(--am-font-sans); font-size:var(--am-fs-small); color:var(--am-ink-5); margin:var(--am-sp-4) 0 0; }
+
+h2 { font-family:var(--am-font-serif); font-size:var(--am-fs-h2); font-weight:700; color:var(--am-ink);
+  line-height:1.3; margin:var(--am-sp-9) 0 var(--am-sp-4); padding-top:var(--am-sp-6);
+  border-top:var(--am-hair) solid var(--am-rule); }
+h2 .n { font-family:var(--am-font-sans); font-size:var(--am-fs-meta); font-weight:600; color:var(--am-ink-5);
+  margin-right:var(--am-sp-3); font-variant-numeric:tabular-nums; }
+h3 { font-family:var(--am-font-serif); font-size:var(--am-fs-h3); font-weight:600; color:var(--am-ink);
+  margin:var(--am-sp-6) 0 var(--am-sp-2); }
+p { margin:0 0 var(--am-sp-5); }
+strong { font-weight:600; color:var(--am-ink); }
+em { font-style:italic; }
+code { font-family:var(--am-font-mono); font-size:0.84em; background:var(--am-paper-3); padding:1px 6px;
+  border-radius:var(--am-rad-1); color:var(--am-ink-2); }
+
+.callout { font-size:var(--am-fs-lead); line-height:1.6; color:var(--am-ink); margin:0 0 var(--am-sp-7); }
+
+.note { font-family:var(--am-font-sans); font-size:var(--am-fs-meta); line-height:1.65;
+  background:var(--am-paper-2); border-left:2px solid var(--am-note-accent);
+  border-radius:0 var(--am-rad-2) var(--am-rad-2) 0; padding:var(--am-sp-4) var(--am-sp-5);
+  margin:0 0 var(--am-sp-6); color:var(--am-ink-3); }
+.note.info { border-left-color:var(--am-info-accent); }
+.note.info .lbl { color:var(--am-info-ink); }
+.note.danger { border-left-color:var(--am-danger-accent); }
+.note.danger .lbl { color:var(--am-danger-ink); }
+.note.success { border-left-color:var(--am-success-accent); }
+.note.success .lbl { color:var(--am-success-ink); }
+.note .lbl { display:block; font-size:var(--am-fs-eyebrow); font-weight:600; text-transform:uppercase;
+  letter-spacing:0.6px; color:var(--am-ink-5); margin-bottom:var(--am-sp-2); }
+.note strong { color:var(--am-ink); }
+
+.figure { margin:var(--am-sp-2) 0 var(--am-sp-6); }
+.figure svg { display:block; width:100%; height:auto; }
+.figcap { font-family:var(--am-font-sans); font-size:var(--am-fs-small); color:var(--am-ink-4);
+  margin-top:var(--am-sp-3); line-height:1.55; text-align:center; }
+.svg-box { fill:var(--am-paper-2); stroke:var(--am-rule-3); stroke-width:1; }
+.svg-box-det { fill:var(--am-success-bg); stroke:var(--am-success-accent); stroke-width:1.1; }
+.svg-box-llm { fill:var(--am-info-bg); stroke:var(--am-info-accent); stroke-width:1.1; }
+.svg-box-sbx { fill:var(--am-warn-bg); stroke:var(--am-warn-accent); stroke-width:1.1; }
+.svg-t { font-family:var(--am-font-sans); fill:var(--am-ink); }
+.svg-t2 { font-family:var(--am-font-sans); fill:var(--am-ink-4); }
+.svg-line { stroke:var(--am-ink-6); stroke-width:1.4; fill:none; }
+
+/* two-column cards */
+.nouns { display:grid; grid-template-columns:1fr 1fr; gap:var(--am-sp-4); margin:0 0 var(--am-sp-6); }
+.noun { border:var(--am-hair) solid var(--am-rule-3); border-radius:var(--am-rad-3);
+  background:var(--am-paper-2); padding:var(--am-sp-5); }
+.noun h4 { font-family:var(--am-font-sans); font-size:var(--am-fs-tag); font-weight:700; letter-spacing:0.5px;
+  text-transform:uppercase; color:var(--am-info-ink); margin:0 0 var(--am-sp-2); }
+.noun.det h4 { color:var(--am-success-ink); }
+.noun p { font-family:var(--am-font-sans); font-size:var(--am-fs-meta); line-height:1.6; color:var(--am-ink-3); margin:0; }
+.noun p + p { margin-top:var(--am-sp-3); }
+.noun code { font-size:0.82em; }
+
+.scroll { overflow-x:auto; margin:0 0 var(--am-sp-6); border:var(--am-hair) solid var(--am-rule-3); border-radius:var(--am-rad-3); }
+table { border-collapse:collapse; width:100%; font-family:var(--am-font-sans); font-size:var(--am-fs-small); line-height:1.5; min-width:560px; }
+thead th { text-align:left; font-weight:600; color:var(--am-ink); background:var(--am-paper-3);
+  padding:var(--am-sp-3) var(--am-sp-4); border-bottom:var(--am-hair) solid var(--am-rule-3); }
+tbody th { text-align:left; font-weight:600; color:var(--am-ink); vertical-align:top; padding:var(--am-sp-3) var(--am-sp-4);
+  background:var(--am-paper-2); border-right:var(--am-hair) solid var(--am-rule); white-space:nowrap; }
+tbody td { padding:var(--am-sp-3) var(--am-sp-4); vertical-align:top; color:var(--am-ink-2); border-bottom:var(--am-hair) solid var(--am-rule-2); }
+tbody tr:last-child td, tbody tr:last-child th { border-bottom:0; }
+td code, th code { font-size:0.84em; }
+.tag-det { color:var(--am-success-ink); font-weight:600; }
+.tag-llm { color:var(--am-info-ink); font-weight:600; }
+.tag-sbx { color:var(--am-warn-ink); font-weight:600; }
+
+ol.min, ul.min { font-family:var(--am-font-sans); font-size:var(--am-fs-meta); line-height:1.6; counter-reset:step; list-style:none; padding:0; margin:0 0 var(--am-sp-6); }
+ol.min li, ul.min li { position:relative; padding:var(--am-sp-3) 0 var(--am-sp-3) var(--am-sp-8); border-bottom:var(--am-hair) solid var(--am-rule-2); }
+ol.min li:last-child, ul.min li:last-child { border-bottom:0; }
+ol.min li::before { counter-increment:step; content:counter(step); position:absolute; left:0; top:var(--am-sp-3);
+  width:24px; height:24px; border-radius:50%; border:1.5px solid var(--am-ink-6); color:var(--am-ink-3);
+  font-size:var(--am-fs-small); font-weight:600; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
+ol.min li strong, ul.min li strong { color:var(--am-ink); }
+ol.min li small, ul.min li small { color:var(--am-ink-4); display:block; margin-top:2px; }
+
+hr { border:0; border-top:var(--am-hair) solid var(--am-rule); margin:var(--am-sp-8) 0; }
+.foot { font-family:var(--am-font-sans); font-size:var(--am-fs-meta); line-height:1.65; color:var(--am-ink-4);
+  background:var(--am-paper-2); border-radius:var(--am-rad-3); padding:var(--am-sp-5) var(--am-sp-6); }
+.foot h3 { font-family:var(--am-font-sans); font-size:var(--am-fs-small); text-transform:uppercase; letter-spacing:0.5px;
+  color:var(--am-ink-5); margin:0 0 var(--am-sp-2); font-weight:600; }
+.foot code { font-size:0.85em; }
+
+.toggle { position:fixed; top:16px; right:16px; font-family:var(--am-font-sans); font-size:var(--am-fs-micro);
+  font-weight:600; letter-spacing:0.4px; text-transform:uppercase; color:var(--am-ink-4); background:var(--am-paper-2);
+  border:var(--am-hair) solid var(--am-rule-3); border-radius:var(--am-rad-2); padding:6px 10px; cursor:pointer; }
+.toggle:hover { color:var(--am-ink); }
+
+.legend { display:flex; flex-wrap:wrap; gap:var(--am-sp-4); margin:0 0 var(--am-sp-5); font-family:var(--am-font-sans); font-size:var(--am-fs-small); color:var(--am-ink-4); }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.lg-det { background:var(--am-success-bg); border:1px solid var(--am-success-accent); }
+.lg-llm { background:var(--am-info-bg); border:1px solid var(--am-info-accent); }
+.lg-sbx { background:var(--am-warn-bg); border:1px solid var(--am-warn-accent); }
+
+@media (max-width:640px){
+  .doc{ padding:40px 18px 72px; font-size:17px; } h1{ font-size:26px; }
+  .nouns{ grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="var r=document.documentElement;r.setAttribute('data-theme',r.getAttribute('data-theme')==='dark'?'light':'dark')">Theme</button>
+
+<article class="doc">
+
+<header class="head">
+  <p class="eyebrow">andamentum · forge</p>
+  <h1>Forge, after the trim</h1>
+  <p class="subtitle">A natural-language brief becomes a runnable agentic system. The model declares the shape; deterministic code does the load-bearing work; agents fill in the bodies; a sandbox checks the result. One graph, one straight line through it.</p>
+  <p class="meta">Reflects the <code>forge-simplify</code> branch — the self-correction loop, two advisory heads, and the dead code are gone (−2,313 lines). Companion to <em>The Agentic Dialect</em>.</p>
+</header>
+
+<section>
+  <p class="callout">Forge turns one sentence — <em>"summarise the document into three bullets"</em>, <em>"classify a support ticket and route it"</em> — into a small, typed, dialect-conforming package you can run. It is not a chatbot and not an app: it builds a <strong>function</strong>, refusing anything with an external control loop at the door. The recurring idea underneath every stage is one line: <strong>the model proposes, deterministic code disposes.</strong></p>
+
+  <div class="legend">
+    <span><i class="lg-llm"></i> model call (a head)</span>
+    <span><i class="lg-det"></i> deterministic code (no model)</span>
+    <span><i class="lg-sbx"></i> sandboxed execution</span>
+  </div>
+
+  <div class="figure">
+    <svg viewBox="0 0 900 190" role="img" aria-label="The forge pipeline, left to right">
+      <!-- design -->
+      <rect class="svg-box-llm" x="8"  y="40" width="86" height="46" rx="5"/>
+      <text class="svg-t" x="51" y="61" font-size="11" font-weight="600" text-anchor="middle">Understand</text>
+      <text class="svg-t2" x="51" y="76" font-size="9" text-anchor="middle">restate</text>
+      <rect class="svg-box-llm" x="102" y="40" width="74" height="46" rx="5"/>
+      <text class="svg-t" x="139" y="61" font-size="11" font-weight="600" text-anchor="middle">Assess</text>
+      <text class="svg-t2" x="139" y="76" font-size="9" text-anchor="middle">fitness</text>
+      <rect class="svg-box-llm" x="184" y="40" width="66" height="46" rx="5"/>
+      <text class="svg-t" x="217" y="61" font-size="11" font-weight="600" text-anchor="middle">Frame</text>
+      <text class="svg-t2" x="217" y="76" font-size="9" text-anchor="middle">areas</text>
+      <rect class="svg-box-llm" x="258" y="40" width="92" height="46" rx="5"/>
+      <text class="svg-t" x="304" y="61" font-size="11" font-weight="600" text-anchor="middle">Decompose</text>
+      <text class="svg-t2" x="304" y="76" font-size="9" text-anchor="middle">+ repair loop</text>
+      <!-- deterministic middle -->
+      <rect class="svg-box-det" x="358" y="40" width="76" height="46" rx="5"/>
+      <text class="svg-t" x="396" y="61" font-size="11" font-weight="600" text-anchor="middle">Compile</text>
+      <text class="svg-t2" x="396" y="76" font-size="9" text-anchor="middle">spec</text>
+      <rect class="svg-box-det" x="442" y="40" width="66" height="46" rx="5"/>
+      <text class="svg-t" x="475" y="61" font-size="11" font-weight="600" text-anchor="middle">Review</text>
+      <text class="svg-t2" x="475" y="76" font-size="9" text-anchor="middle">gate</text>
+      <rect class="svg-box-det" x="516" y="40" width="66" height="46" rx="5"/>
+      <text class="svg-t" x="549" y="61" font-size="11" font-weight="600" text-anchor="middle">Render</text>
+      <text class="svg-t2" x="549" y="76" font-size="9" text-anchor="middle">package</text>
+      <rect class="svg-box-det" x="590" y="40" width="62" height="46" rx="5"/>
+      <text class="svg-t" x="621" y="61" font-size="11" font-weight="600" text-anchor="middle">Verify</text>
+      <text class="svg-t2" x="621" y="76" font-size="9" text-anchor="middle">imports</text>
+      <!-- build + audit -->
+      <rect class="svg-box-llm" x="660" y="40" width="66" height="46" rx="5"/>
+      <text class="svg-t" x="693" y="61" font-size="11" font-weight="600" text-anchor="middle">Build</text>
+      <text class="svg-t2" x="693" y="76" font-size="9" text-anchor="middle">bodies</text>
+      <rect class="svg-box-sbx" x="734" y="40" width="62" height="46" rx="5"/>
+      <text class="svg-t" x="765" y="61" font-size="11" font-weight="600" text-anchor="middle">Audit</text>
+      <text class="svg-t2" x="765" y="76" font-size="9" text-anchor="middle">run it</text>
+      <rect class="svg-box" x="804" y="40" width="64" height="46" rx="5"/>
+      <text class="svg-t" x="836" y="61" font-size="11" font-weight="600" text-anchor="middle">Finish</text>
+      <text class="svg-t2" x="836" y="76" font-size="9" text-anchor="middle">result</text>
+
+      <!-- flow arrows (linear) -->
+      <path class="svg-line" d="M94 63 L102 63"/>
+      <path class="svg-line" d="M176 63 L184 63"/>
+      <path class="svg-line" d="M250 63 L258 63"/>
+      <path class="svg-line" d="M350 63 L358 63"/>
+      <path class="svg-line" d="M434 63 L442 63"/>
+      <path class="svg-line" d="M508 63 L516 63"/>
+      <path class="svg-line" d="M582 63 L590 63"/>
+      <path class="svg-line" d="M652 63 L660 63"/>
+      <path class="svg-line" d="M726 63 L734 63"/>
+      <path class="svg-line" d="M796 63 L804 63"/>
+
+      <text class="svg-t2" x="180" y="120" font-size="10" text-anchor="middle">model declares</text>
+      <text class="svg-t2" x="500" y="120" font-size="10" text-anchor="middle">deterministic assembles &amp; renders</text>
+      <text class="svg-t2" x="765" y="120" font-size="10" text-anchor="middle">agents fill · sandbox checks</text>
+      <path class="svg-line" d="M20 132 L346 132" stroke-dasharray="2 3"/>
+      <path class="svg-line" d="M360 132 L650 132" stroke-dasharray="2 3"/>
+      <path class="svg-line" d="M662 132 L796 132" stroke-dasharray="2 3"/>
+    </svg>
+    <p class="figcap">One graph, one straight line. There are no back-edges now: the redesign loop and the self-correction loop were removed. Every branch that remains is a <em>stop-here</em> decision (design-only, render-only, build-only), never a cycle.</p>
+  </div>
+</section>
+
+<h2><span class="n">1</span>The one idea: the model proposes, code disposes</h2>
+<p>Generating a working program from a sentence is unreliable if you let a model do the whole thing. Forge's answer is to give the model only the jobs it is good at — <em>naming the parts</em> and <em>writing a small typed body</em> — and hand every load-bearing decision to deterministic code that can be tested and cannot hallucinate.</p>
+
+<div class="nouns">
+  <div class="noun">
+    <h4>What the model does</h4>
+    <p>Restates the brief, judges its shape, names the areas and the nodes, declares each node's inputs and outputs, and writes each node's body. It works in small, flat, structured answers — the kind a small local model fills reliably.</p>
+  </div>
+  <div class="noun det">
+    <h4>What deterministic code does</h4>
+    <p>Matches the declared inputs to outputs into a graph, diagnoses every structural flaw, compiles and validates the spec, renders the whole package, and checks each authored body against its contract. No model writes the final wiring or the final files.</p>
+  </div>
+</div>
+
+<p>So a run is a relay: the model declares, code assembles and checks, the model corrects what code flagged, code renders, the model writes bodies, code gates them, and a sandbox runs the result. Wherever a check <em>can</em> be deterministic, it is — and where the model is asked for something, the answer is immediately verified by code rather than trusted.</p>
+
+<h2><span class="n">2</span>The pipeline, stage by stage</h2>
+<p>Eleven nodes in a single <code>pydantic-graph</code>. <code>graph.py</code> is the only engine-aware file; every stage below it is an engine-free worker. The three colours match the legend above — a model call, deterministic code, or sandboxed execution.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Stage</th><th>Kind</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><th>Understand</th><td><span class="tag-llm">head</span></td><td>Restates the brief as a problem: purpose and boundaries (in / out).</td></tr>
+    <tr><th>Assess</th><td><span class="tag-llm">head</span></td><td>The <strong>fitness gate</strong>. Is the brief realisable as a function? A non-function shape (app / agent / service) is <strong>refused at the door</strong> with a concrete reshape — never quietly built wrong.</td></tr>
+    <tr><th>Frame</th><td><span class="tag-llm">head</span></td><td>Splits the problem into its 2–4 big concerns (areas).</td></tr>
+    <tr><th>Decompose</th><td><span class="tag-llm">heads</span> + <span class="tag-det">det</span></td><td>Lists the jobs per area, then types each node — its kind and its named <code>consumes</code> / <code>produces</code>. A deterministic <strong>assemble → diagnose → repair</strong> loop matches producers to consumers, gathers every structural flaw with a concrete fix, and re-types only the flagged nodes until the design is clean or it fails loud.</td></tr>
+    <tr><th>Compile</th><td><span class="tag-det">det</span></td><td>Assembles the validated <code>SystemSpec</code>. Canonicalises names, runs the deterministic per-area coverage check, keeps single-writer / dangling / orphan checks as fail-loud backstops.</td></tr>
+    <tr><th>Review</th><td><span class="tag-det">det</span></td><td>A plain gate: proceed to render, or stop here for a design-only run. (The per-area coverage check already ran inside Decompose.)</td></tr>
+    <tr><th>Render</th><td><span class="tag-det">det</span></td><td>Code — not a model — writes the package: models, prompts, Deps, graph wiring, a smoke test, and a <code>__main__</code> CLI. Node bodies are left as <code>NotImplementedError</code> holes.</td></tr>
+    <tr><th>Verify</th><td><span class="tag-det">det</span></td><td>A cheap render-stage check: the package parses, imports, assembles, and matches the recipe.</td></tr>
+    <tr><th>Build</th><td><span class="tag-llm">heads</span> + <span class="tag-det">det</span></td><td>For each hole, an agent drafts the body; static gates check it; on a failure the agent repairs it with the exact violated obligation. No model-written code runs here.</td></tr>
+    <tr><th>Audit</th><td><span class="tag-sbx">sandbox</span> + <span class="tag-llm">heads</span></td><td>The built system finally <em>executes</em> — in the sandbox. Runs its own tests, <code>check_code</code> over the package, and two advisory heads (requirements, critic). A single pass; the verdict is recorded, not looped on.</td></tr>
+    <tr><th>Finish</th><td><span class="tag-det">det</span></td><td>Assembles the <code>ForgeResult</code> — the spec, what was built, and the audit verdict.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note info">
+  <span class="lbl">Where control can leave early</span>
+  <code>run_forge(brief, *, model, dest=None, stop_after=...)</code> runs as far as you ask. With <code>dest=None</code> it is <strong>design-only</strong> — understand through review, returning the validated spec without writing a file. <code>stop_after</code> ∈ {design, render, build, audit} caps it at each superset. Those are the only branches; each is a clean stop, not a loop.
+</div>
+
+<h2><span class="n">3</span>The nine heads</h2>
+<p>Every model call is one named head — a prompt plus a small typed output schema, called through a shared runner with an explicit <code>model=</code>. There are nine, in three groups. A simple five-node system makes on the order of twenty-odd calls; the design heads dominate the count.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Group</th><th>Heads</th><th>Job</th></tr></thead>
+  <tbody>
+    <tr><th>Design</th><td><code>understand</code>, <code>fitness</code>, <code>frame</code>, <code>list_jobs</code>, <code>type_node</code></td><td>Name the problem, judge its shape, and declare the node board — kinds and typed inputs/outputs.</td></tr>
+    <tr><th>Authoring</th><td><code>build_draft</code>, <code>build_repair</code></td><td>Write each node body against its exact contract; repair it when a static gate objects.</td></tr>
+    <tr><th>Audit (advisory)</th><td><code>requirements</code>, <code>critic</code></td><td>Does the built system serve the brief? What is missing or faked? These <em>inform</em> — they never decide whether the build passed.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="lbl">Two heads were removed in the trim</span>
+  <code>plan_manager</code> (an LLM "does this plan serve the goal?" that looped the whole design back to Frame) and <code>component_manager</code> (an advisory "does this body do its job?" run after every gate-valid body). Both were prompt-hope on top of deterministic checks that already decided the outcome. The cheap deterministic coverage check they sat beside was kept.
+</div>
+
+<h2><span class="n">4</span>The build gates: a suggestion becomes a guarantee</h2>
+<p>The authoring stage is the fragile part — a model writing Python. Forge's discipline is that every instruction in the build prompt has a matching deterministic check that verifies the model obeyed it. A body is only accepted when it passes all of them; otherwise the exact violated obligation is fed back and the body is repaired, bounded by an attempt cap.</p>
+
+<ul class="min">
+  <li><strong>contract</strong> — reads, writes, and returns only what the node <em>declared</em>. No dynamic or bulk state access.
+    <small>Catches a hallucinated field name at build time, never as a runtime error.</small></li>
+  <li><strong>coverage</strong> — actually reads every declared input and sets every declared output.
+    <small>Catches a body that quietly drops its input or never produces its output.</small></li>
+  <li><strong>deps</strong> — touches only the dependencies the rendered <code>Deps</code> actually provides.
+    <small>A node that needs a resource the system never declared fails loud here, rather than inventing one.</small></li>
+  <li><strong>purity</strong> — no process control, raw files, sockets, clock, or randomness; a network client only when the node declared it (and then only behind the container).
+    <small>Keeps generated code deterministic and safe to run.</small></li>
+  <li><strong>fail-loud</strong> — no broad <code>except</code> that swallows the error.
+    <small>The house rule, enforced on generated code: a system that runs but does the wrong thing is worse than one that stops.</small></li>
+</ul>
+
+<h2><span class="n">5</span>The sandbox: the one place generated code runs</h2>
+<p>Model-written code never executes in the forge process. It runs only in the Audit stage, behind a sandbox Port. <strong>Podman is the default</strong> — host-isolated, read-only mount, scrubbed environment, memory and process caps; a pure node runs with no network, a declared-network node keeps the isolation but is allowed onto the net. A no-container <strong>subprocess fallback</strong> exists for pure nodes, but it is not host-isolated, so it <em>refuses</em> to run network code.</p>
+
+<div class="note info">
+  <span class="lbl">This matters for what audits cleanly</span>
+  A brief whose system fetches from the network (say, "summarise these URLs") can only be audited under Podman. Without the container image built, its tests cannot run, and the audit reports the system as incomplete even when every body was authored correctly — a backend limitation, not a fault in the generated code.
+</div>
+
+<h2><span class="n">6</span>What the trim changed</h2>
+<p>The simplification removed machinery that a personal tool did not need — roughly a third of the module — without changing what forge builds on the happy path.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Removed</th><th>Why it went</th></tr></thead>
+  <tbody>
+    <tr><th>The self-correction loop</th><td>Best-build tracking, a regression guard, failure attribution, and re-materialising the best build onto disk — all to retry a red audit a couple of times. The largest, most intricate subsystem, for marginal gain. Audit is now a single honest pass.</td></tr>
+    <tr><th>The <code>component_manager</code> head</th><td>Advisory-only: it never decided whether a body was accepted (the static gates did). It roughly doubled the build-stage model calls for a nudge.</td></tr>
+    <tr><th>The <code>review_plan</code> loop</th><td>An LLM plan-approval that looped the whole design back to Frame. The deterministic per-area coverage check — the genuinely useful part — was kept.</td></tr>
+    <tr><th>Dead code</th><td>A human-gate render path that was never reached, a checkpoint-cap field never set, and a return-type knob always fixed to <code>str</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note success">
+  <span class="lbl">Measured, not assumed</span>
+  The change kept every test green and did not regress the end-to-end success rate. On the one brief that exercised the removed loop directly, the build-and-audit path ran <strong>2.3× faster</strong> for an identical outcome — the self-correction loop had been rebuilding and re-auditing without fixing anything.
+</div>
+
+<h2><span class="n">7</span>What "works well" honestly means today</h2>
+<p>Forge reliably produces a running system when the brief is simple enough that its nodes need little or no hand-written body. Where it is still unreliable is not the machinery that was trimmed — it is two things upstream and underneath, and they are the next work, not this one.</p>
+
+<div class="nouns">
+  <div class="noun">
+    <h4>Design-loop stochasticity</h4>
+    <p>Decompose needs the model to re-use produced-variable names <em>exactly</em> so code can match them. A small model that misses a few names burns the repair rounds and the design fails loud. It is non-deterministic run to run — the single biggest reliability lever, and the honest reason two runs of the same brief can differ.</p>
+  </div>
+  <div class="noun">
+    <h4>The sandbox boundary</h4>
+    <p>Network briefs need Podman to audit at all. On a machine without the container image, a whole class of otherwise-correct systems is reported incomplete simply because their tests cannot be run.</p>
+  </div>
+</div>
+
+<hr>
+
+<div class="foot">
+  <h3>Run it</h3>
+  <p><code>andamentum-forge build "&lt;brief&gt;" --model &lt;id&gt; --sandbox podman</code> for the full design → render → author → audit pipeline, or <code>design</code> for a validated spec only. <code>--stop-after {render,build,audit}</code> caps the run; <code>--verbose</code> shows a live dashboard. There is no default model and no env-var fallback — the model is always explicit. The whole graph is testable with no live model and no container via stub Ports.</p>
+</div>
+
+</article>
+</body>
+</html>
