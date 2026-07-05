@@ -5,9 +5,59 @@
 > "complete." Read this top to bottom before touching code. The companion visual overview is
 > `docs/forge-architecture.html` (current post-trim architecture).
 
-**Status date:** 2026-07-05  ·  **Branch:** `forge-simplify` (uncommitted — see Phase 0)
-**One-line status:** *Simpler, faster, and now measurable — but not yet reliable. The reliability
-work is real and scoped below; it is the reason this plan exists.*
+**Status date:** 2026-07-05  ·  **Branch:** `forge-simplify` (committed through the map primitive)
+**One-line status:** *Reliability transformed and a real-work capability added. The rest of this
+plan below the status update is the ORIGINAL brief — read the update first; much of it is done.*
+
+---
+
+## STATUS UPDATE — 2026-07-05 (read this first; the plan below predates it)
+
+Most of the plan below is **done and committed**. What actually happened and where it stands:
+
+**Design-loop reliability — transformed.** Root cause was NOT the machinery the trim removed; it
+was `decompose` wiring producers→consumers by exact free-text name string (the model reproducing
+names across calls, the repair loop reinventing them). Fixes, all committed:
+- **Two-pass declare-then-select with ordinal selection** (§ commit "trim + fix"): the model
+  DECLARES one produced name per node (deduped → globally unique), then SELECTS consumes by
+  ORDINAL from a forward-windowed closed set. `duplicate_producer` / `near_miss` / `dangling_read`
+  and accidental cycles are now impossible **by construction**. Convergence went from ~1-in-5
+  grammars to strong.
+- **Loop grammar** (0/6 → 6/6): a checkpoint-head loop-counter was miscounted as a data write
+  (fixed in spec.py/render.py), and the model unrolled loops (anti-unrolling list_jobs prompt).
+- **Deterministic `multiple_sinks` collapse** (over-decomposition): the last node consumes extra
+  terminal signals; no model call, forward-safe.
+
+**Real-work capability — the `each`/map primitive** (the highest-value add). Forge could not
+represent "for each item of a list" — a list brief collapsed the input to a scalar and the workflow
+processed ONE item. Now: the model gains one closed choice (`mode: whole|each`) + an
+`input_is_collection` flag; deterministic code computes collection-ness and the RENDERER writes the
+map scaffold (bounded gather, per-item soft-fail, all-fail raise, join sole writer); an each-spine
+hole is a pure `_map_one(item)`. Validated live (build-then-EXECUTE golden tasks): a "summarise each
+note + combine" workflow covers all 3 notes; a "greet each name" workflow picks `each`, the scaffold
+fires, all 3 names covered.
+
+**Measured (design convergence, n=6):**
+- `gemma4:31b-nvfp4`, 5 original grammars: seq 6/6, fanout 6/6, loop 6/6, branch 4/6, stateful 2/6.
+- `gemma4:26b-nvfp4` (faster; validated as a viable target), 5 + map: seq 6/6, **map 6/6**, fanout
+  5/6, stateful 5/6, branch 4/6, loop 4/6 — **83% overall, zero name-flaws/cycles, no regression
+  from the mode option.** (The 31b stateful 2/6 was stochastic noise; 26b shows 5/6.)
+
+**What is NOT done (the real remaining work):**
+- **The end-to-end Tier-2 *works*-rate at n≥5 under Podman is still unrun** — the numbers above are
+  design *convergence* (necessary, not sufficient). The Podman image IS built. This is the
+  definitive "complete" measure. NOTE: forge's own audit scores `audit.works` (holes filled + tests
+  pass + dialect-clean) — a **smoke** test, not a **correctness** test. A **Tier-3 golden-task**
+  signal (build → run on a real input → judge the output covers the task) is what would measure
+  "does real work"; the two golden scripts in the session scratchpad are the prototype.
+- **`stateful`/rung-2** is the fragile grammar (noisy 2/6–5/6). The read-modify-write entity design
+  is the weak spot the codebase itself flags as needing calibration.
+- **The next thread (design direction):** forge is STANDALONE by rule (it must not import other
+  andamentum modules), so "compose vetted capabilities" is out. The frontier is **more primitives
+  like `each`** — small, closed choices for the model with deterministic scaffolds behind them. The
+  common real-work shapes not yet primitives: filter (keep items matching a judged condition),
+  per-item routing, and a genuinely reliable read-modify-write. Each follows the proven pattern:
+  ONE closed choice for the model, determinism does the rest.
 
 ---
 
