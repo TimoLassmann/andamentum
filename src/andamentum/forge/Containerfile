@@ -5,14 +5,19 @@
 #
 # forge's audit (stage 4) runs each built system's test suite + end-to-end smoke inside
 # an ephemeral container from this image, with `--network none` (pure systems) and
-# memory/pids caps. The generated package is mounted read-only at runtime; this image
-# only provides the lean andamentum runtime, so a generated body can touch nothing on the
-# host.
+# memory/pids caps. The generated package is COPIED IN over stdin (a tar stream unpacked
+# under /home/sandbox/pkg) — not bind-mounted — so no host path is shared into the VM and
+# a generated body can touch nothing on the host. This image only provides the lean
+# andamentum runtime.
 #
-# Lean by design: a generated package's import + stub-smoke path pulls only pydantic /
-# pydantic-graph / numpy / httpx / rich (traced) — never torch / docling / matplotlib. So
-# we install those explicitly + pytest, then `andamentum --no-deps` (source only). This
-# keeps the image small and the build fast, while staying a faithful host-isolated sandbox.
+# Lean by design: a generated package imports `andamentum.forge.runtime`, which runs
+# `andamentum/forge/__init__.py` — today an eager re-export that pulls the builder chain
+# (audit → agents → pydantic-ai; diagnose / schemas → rapidfuzz) plus the runtime (→ core).
+# So the import surface is pydantic / pydantic-graph / pydantic-ai / rapidfuzz / numpy /
+# httpx / rich — but never torch / docling / matplotlib. We install that subset explicitly
+# (WITH deps, so pydantic-ai's own requirements resolve) + pytest, then `andamentum
+# --no-deps` (source only). Small image, fast build, faithful host-isolated sandbox.
+# (A future __init__-laziness cleanup could drop the builder deps here — see TIER2 plan.)
 #
 # This is the default backend (PodmanSandbox). If podman is not installed, a *pure* run
 # degrades to an out-of-process subprocess with a warning; a *network* run refuses. To opt
@@ -26,7 +31,7 @@ WORKDIR /opt/andamentum
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir pydantic "pydantic-graph>=0.1,<2" numpy httpx rich pytest \
+RUN pip install --no-cache-dir pydantic "pydantic-graph>=0.1,<2" pydantic-ai rapidfuzz numpy httpx rich pytest \
     && pip install --no-cache-dir --no-deps .
 
 USER sandbox

@@ -4,11 +4,14 @@ A ``SandboxPort`` runs a command out-of-process and returns a typed ``SandboxRes
 Two real impls, plus a stub for tests:
 
 - ``PodmanSandbox`` (the default): the command runs inside an ephemeral container
-  (memory/pids caps, host filesystem mounted read-only, non-root user). A pure run gets
-  ``--network none``; a node that declares a network effect runs with the network on but
-  every other isolation intact. The *host* cannot be touched. If podman is unavailable, a
-  *pure* run degrades to a subprocess with a loud warning; a *network* run refuses (there
-  is no safe backend) — never a silent unprotected run.
+  (memory/pids caps, non-root user). The package is **copied in** over stdin (a tar stream
+  extracted inside the container) rather than bind-mounted — so the container needs no host
+  path shared into the VM, and the host filesystem is never exposed at all (strictly more
+  isolated than a read-only mount, and portable across any podman machine config). A pure
+  run gets ``--network none``; a node that declares a network effect runs with the network
+  on but every other isolation intact. The *host* cannot be touched. If podman is
+  unavailable, a *pure* run degrades to a subprocess with a loud warning; a *network* run
+  refuses (there is no safe backend) — never a silent unprotected run.
 - ``SubprocessSandbox``: a child process with a scrubbed env (no host secrets), POSIX
   rlimits, and a hard timeout that SIGKILLs the process group. Out-of-process, but NOT
   host-isolated, so it refuses network execution.
@@ -20,10 +23,13 @@ sibling ``schemas`` only; no graph engine.
 
 from __future__ import annotations
 
+import io
 import os
+import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
@@ -43,6 +49,36 @@ _KEEP_ENV = (
 )
 
 _DEFAULT_IMAGE = "andamentum-forge-sandbox"
+
+#: Where the copied-in package tree is unpacked inside the container. Must be writable by
+#: the image's non-root ``sandbox`` user (uid 10001) — its home is the safe choice, since
+#: ``/`` is root-owned. This path mirrors the host *mount root*: a host path ``{mount}/x``
+#: becomes ``{_SANDBOX_ROOT}/x`` inside, and every command path is rewritten accordingly.
+_SANDBOX_ROOT = "/home/sandbox/pkg"
+
+
+def _tar_stream(root: Path) -> bytes:
+    """Serialise ``root``'s tree into an in-memory tar (members rooted at ``.``).
+
+    Extracted with ``tar -x -C {_SANDBOX_ROOT}`` inside the container, so a host file at
+    ``root/pkg/tests`` lands at ``{_SANDBOX_ROOT}/pkg/tests``.
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        tar.add(str(root), arcname=".")
+    return buf.getvalue()
+
+
+def _to_container_path(value: str, mount: str) -> str:
+    """Rewrite a host path under ``mount`` to its in-container location.
+
+    Anything not under ``mount`` (a bare ``python``, a pytest flag) is returned unchanged.
+    """
+    if value == mount:
+        return _SANDBOX_ROOT
+    if value.startswith(mount + os.sep):
+        return _SANDBOX_ROOT + value[len(mount) :]
+    return value
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -188,42 +224,59 @@ class PodmanSandbox:
         raw_mount = extra_path or cwd
         if raw_mount is None:
             raise SandboxUnavailableError(
-                "podman execution needs a mount point (cwd or extra_path); none was given."
+                "podman execution needs a source root (cwd or extra_path); none was given."
             )
 
-        # Podman bind mounts require ABSOLUTE paths; resolve so a caller may pass a
-        # relative dest, and the same absolute path is used inside and out.
+        # The package tree is COPIED IN, not bind-mounted: `mount` is the host root we tar
+        # up, `_SANDBOX_ROOT` is where it lands inside. Resolve so a caller may pass a
+        # relative dest; every command path under `mount` is rewritten to the in-container
+        # location. No host path is shared with the container.
         mount = raw_mount.resolve()
-        workdir = cwd.resolve() if cwd is not None else mount
-        pypath = extra_path.resolve() if extra_path is not None else mount
+        mount_s = str(mount)
+        workdir = str(cwd.resolve()) if cwd is not None else mount_s
+        pypath = str(extra_path.resolve()) if extra_path is not None else mount_s
+        workdir_c = _to_container_path(workdir, mount_s)
+        pypath_c = _to_container_path(pypath, mount_s)
         network = [] if allow_network else ["--network", "none"]
-        inner = (
-            ["python", *list(argv)[1:]]
-            if argv and argv[0] == sys.executable
-            else list(argv)
+        argv_c = [
+            _to_container_path(a, mount_s)
+            for a in (
+                ["python", *list(argv)[1:]]
+                if argv and argv[0] == sys.executable
+                else list(argv)
+            )
+        ]
+        # Unpack the tar from stdin, cd into the (now-existing) workdir, then hand off to
+        # the real command via `exec "$@"` (so its exit code/signals propagate cleanly).
+        shell = (
+            f"mkdir -p {shlex.quote(_SANDBOX_ROOT)} "
+            f"&& tar -xf - -C {shlex.quote(_SANDBOX_ROOT)} "
+            f"&& cd {shlex.quote(workdir_c)} "
+            f'&& exec "$@"'
         )
         cmd = [
-            "podman", "run", "--rm",
+            "podman", "run", "--rm", "-i",  # -i: the tar stream arrives on stdin
             *network,
             "--cap-drop=all",  # drop all Linux capabilities — untrusted code needs none
             "--security-opt=no-new-privileges",  # no setuid/setgid escalation
             f"--memory={mem_mb}m",
             "--pids-limit=256",
             "--cpus=2",  # bound CPU so a runaway body can't peg the host
-            "-v", f"{mount}:{mount}:ro",
-            "-w", str(workdir),
-            "-e", f"PYTHONPATH={pypath}",
+            "-e", f"PYTHONPATH={pypath_c}",
             "-e", "PYTHONDONTWRITEBYTECODE=1",
             self.image,
-            *inner,
+            "sh", "-c", shell, "sh", *argv_c,  # $0=sh, $1.. = the rewritten argv
         ]  # fmt: skip
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout + 10
+                cmd,
+                input=_tar_stream(mount),
+                capture_output=True,
+                timeout=timeout + 10,
             )
             return SandboxResult(
-                stdout=proc.stdout or "",
-                stderr=proc.stderr or "",
+                stdout=proc.stdout.decode("utf-8", "replace"),
+                stderr=proc.stderr.decode("utf-8", "replace"),
                 exit_code=proc.returncode,
             )
         except subprocess.TimeoutExpired:
