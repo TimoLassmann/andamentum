@@ -81,6 +81,31 @@ def test_collapse_extra_sinks_deterministically_resolves_multiple_sinks() -> Non
     assert FindingKind.UNINTENDED_CYCLE not in after  # merges are forward-only
 
 
+def test_demote_each_without_collection_unwedges_a_scalar_board() -> None:
+    """The observed seq failure: the model marks a node `each` on a non-collection brief.
+    The repair loop can only re-select consumes — it cannot change mode — so the board
+    wedges on each_needs_collection until the cap. The deterministic demotion flips it to
+    WHOLE when NO collection exists to stream over."""
+    from andamentum.forge.decompose import demote_each_without_collection
+    from andamentum.forge.spec import NodeMode
+
+    a = _node("n1", "summary")
+    b = _node("n2", "core_themes")
+    b.mode = NodeMode.EACH  # each on a board with no collection anywhere
+    b.consumes = ["summary"]
+    demoted = demote_each_without_collection([a, b], input_is_collection=False)
+    assert demoted == ["n2"]
+    assert b.mode is NodeMode.WHOLE
+
+    # Protected: a real collection exists (list input) — mis-selection is the model's to
+    # fix by re-selecting, so the mode is left alone.
+    c = _node("n1", "per_item_result")
+    c.mode = NodeMode.EACH
+    c.consumes = ["summary_of_something"]  # wrong pick, but `input` IS a collection
+    assert demote_each_without_collection([c], input_is_collection=True) == []
+    assert c.mode is NodeMode.EACH
+
+
 def test_demote_orphan_entity_fixes_the_mislabelled_terminal_answer() -> None:
     """The observed stateful failure: the model labels the terminal answer an ENTITY
     (nothing reads it, its producer doesn't round-trip) → no_output + orphan_output, and

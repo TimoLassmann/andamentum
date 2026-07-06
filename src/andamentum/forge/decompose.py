@@ -53,7 +53,7 @@ from .schemas import (
     NodeDeclaration,
     NodeDraft,
 )
-from .spec import NodeControl
+from .spec import NodeControl, NodeMode
 
 # How many assemble→diagnose→repair rounds before the design fails loud (Law 5).
 MAX_DESIGN_ROUNDS = 4
@@ -210,6 +210,36 @@ def collapse_extra_sinks(drafts: list[NodeDraft]) -> list[str]:
     return merged
 
 
+def demote_each_without_collection(
+    drafts: list[NodeDraft], *, input_is_collection: bool
+) -> list[str]:
+    """Deterministically demote an EACH node with no collection to read to WHOLE.
+
+    The repair loop can only re-select consumes — it cannot change a node's declared
+    ``mode``, so an ``each`` node on a board with no collection stream wedges the design
+    (``each_needs_collection`` every round until the cap). But the fix is exactly the
+    finding's own suggestion, and it is decidable: when NONE of the node's visible
+    consumables is a collection, per-item execution is meaningless — flip it to WHOLE
+    (surfaced in notes). An each node that merely mis-selected (a collection exists on
+    the board but it read a scalar) is left to the model repair, which CAN fix that by
+    re-selecting. Returns the demoted node ids."""
+    from .assemble import collection_data
+
+    collections = collection_data(drafts, input_is_collection=input_is_collection)
+    demoted: list[str] = []
+    for d in drafts:
+        if d.mode is not NodeMode.EACH:
+            continue
+        # Collections this node could possibly stream over: any collection datum except
+        # its own produce (which is a collection *because* it is each — circular).
+        own = set(d.produces)
+        if any(name not in own for name in collections):
+            continue  # a real collection exists somewhere — re-selection can fix it
+        d.mode = NodeMode.WHOLE
+        demoted.append(d.id)
+    return demoted
+
+
 def demote_orphan_entities(drafts: list[NodeDraft]) -> list[str]:
     """Deterministically demote a mislabelled terminal ENTITY to a SIGNAL, no model call.
 
@@ -306,6 +336,14 @@ async def decompose(
             )
         # Deterministic repairs first (no model call); then let the model re-select only
         # for what determinism could not fix.
+        mode_demoted = demote_each_without_collection(
+            drafts, input_is_collection=why.input_is_collection
+        )
+        if mode_demoted:
+            notes.append(
+                f"decompose: demoted {len(mode_demoted)} each-node(s) to whole — no "
+                f"collection exists to stream over ({', '.join(mode_demoted)})"
+            )
         demoted = demote_orphan_entities(drafts)
         if demoted:
             notes.append(
@@ -319,7 +357,7 @@ async def decompose(
                 f"decompose: merged {len(merged)} extra terminal signal(s) into the system "
                 f"output ({', '.join(merged)})"
             )
-        if demoted or merged:
+        if mode_demoted or demoted or merged:
             report = diagnose(
                 drafts, assemble(drafts), input_is_collection=why.input_is_collection
             )
@@ -445,6 +483,7 @@ __all__ = [
     "build_option_names",
     "resolve_consumes",
     "collapse_extra_sinks",
+    "demote_each_without_collection",
     "demote_orphan_entities",
     "MAX_DESIGN_ROUNDS",
 ]
