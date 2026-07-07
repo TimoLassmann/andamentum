@@ -5,7 +5,9 @@ declared, a ``return <Node>()`` that is not a declared successor, dynamic state
 access, forbidden imports (process control, raw files/sockets, clock/random),
 code-eval builtins, and a broad ``except`` that swallows errors (a silent fallback —
 ``check_fail_loud``). A network client is allowed only when the node declared
-``network=True`` (and therefore runs behind the container sandbox).
+``network=True`` (and therefore runs behind the container sandbox). Which third-party
+*packages* a body may import is NOT gated here — the open policy discovers them
+(``provision.discover_requirements``) and installs them into a per-system sandbox image.
 
 Runs after ``py_compile`` and before any execution, so most hallucinations are caught
 for free, in-process, with a precise message. Ported from the ``forge`` dump. Leaf

@@ -23,6 +23,7 @@ import pytest
 from andamentum.forge.sandbox import (
     _SANDBOX_ROOT,
     PodmanSandbox,
+    SandboxUnavailableError,
     _to_container_path,
 )
 
@@ -47,8 +48,7 @@ def test_rewrite_leaves_unrelated_values_untouched() -> None:
     assert _to_container_path("--tb=short", "/home/u/work") == "--tb=short"
     # A sibling path that merely shares a prefix string is NOT under the root.
     assert (
-        _to_container_path("/home/u/workshop/x", "/home/u/work")
-        == "/home/u/workshop/x"
+        _to_container_path("/home/u/workshop/x", "/home/u/work") == "/home/u/workshop/x"
     )
 
 
@@ -60,9 +60,7 @@ _IMAGE = "andamentum-forge-sandbox"
 def _image_present() -> bool:
     if shutil.which("podman") is None:
         return False
-    proc = subprocess.run(
-        ["podman", "image", "exists", _IMAGE], capture_output=True
-    )
+    proc = subprocess.run(["podman", "image", "exists", _IMAGE], capture_output=True)
     return proc.returncode == 0
 
 
@@ -90,7 +88,15 @@ def _write_pkg(dest: Path) -> Path:
 def test_copyin_collects_and_runs_tests_from_an_unshared_path(tmp_path: Path) -> None:
     pkg = _write_pkg(tmp_path)
     res = PodmanSandbox().run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(pkg / "tests")],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            str(pkg / "tests"),
+        ],
         cwd=tmp_path,
         extra_path=tmp_path,
         timeout=60,
@@ -134,3 +140,60 @@ def test_network_run_reaches_the_net(tmp_path: Path) -> None:
         allow_network=True,
     )
     assert "NET_OK" in res.stdout, f"{res.stdout}\n{res.stderr}"
+
+
+# --- live: per-system dependency provisioning (Stage 2) --------------------------------
+
+
+def _write_pkg_needing(dest: Path, top_import: str) -> Path:
+    """A package whose test imports a non-baked third-party package."""
+    pkg = dest / "widget"
+    tests = pkg / "tests"
+    tests.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (tests / "__init__.py").write_text("")
+    (tests / "test_dep.py").write_text(
+        f"import {top_import}\n\ndef test_import():\n    assert {top_import} is not None\n"
+    )
+    return pkg
+
+
+@_needs_podman
+def test_extra_deps_are_provisioned_into_a_per_system_image(tmp_path: Path) -> None:
+    # `cowsay` is tiny, pure-python, and not baked into the base image — so a green run here
+    # proves the per-system image layer installed it before the (offline) test run.
+    pkg = _write_pkg_needing(tmp_path, "cowsay")
+    res = PodmanSandbox().run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            str(pkg / "tests"),
+        ],
+        cwd=tmp_path,
+        extra_path=tmp_path,
+        timeout=600,
+        allow_network=False,  # the TEST run is offline; install happened at image build
+        extra_deps=frozenset({"cowsay"}),
+    )
+    assert res.exit_code == 0, f"{res.stdout}\n{res.stderr}"
+    assert "1 passed" in res.stdout
+
+
+@_needs_podman
+def test_a_bogus_dependency_fails_loud_at_provisioning(tmp_path: Path) -> None:
+    pkg = _write_pkg_needing(
+        tmp_path, "json"
+    )  # body irrelevant; provisioning fails first
+    with pytest.raises(SandboxUnavailableError, match="could not provision"):
+        PodmanSandbox().run(
+            [sys.executable, "-m", "pytest", "-q", str(pkg / "tests")],
+            cwd=tmp_path,
+            extra_path=tmp_path,
+            timeout=600,
+            allow_network=False,
+            extra_deps=frozenset({"this-forge-package-does-not-exist-xyz"}),
+        )

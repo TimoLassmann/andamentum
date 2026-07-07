@@ -138,6 +138,7 @@ class FakeSandbox:
         timeout=30,
         mem_mb=512,
         allow_network=False,
+        extra_deps=frozenset(),
     ) -> SandboxResult:
         return self._result
 
