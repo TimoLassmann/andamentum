@@ -26,6 +26,7 @@ from andamentum.agentic_dialect import check_code
 
 from .agents import CRITIC, MODEL_OUTPUT_ERRORS, REQUIREMENTS, AgentSink
 from .extract import discover_holes
+from .provision import discover_requirements
 from .reporter import ForgeReporter, NoopReporter
 from .sandbox import SandboxPort, SandboxUnavailableError
 from .schemas import (
@@ -106,6 +107,11 @@ def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResul
     # mounted inside the container and pytest would collect nothing.
     dest = dest.resolve()
     pkg = dest / spec.name
+    # The system's long-tail packages (anything its bodies import beyond the base image) —
+    # the host-isolating backend bakes these into a per-system image before the run; an empty
+    # set is the fast path (base image used directly). A bogus import surfaces here as a loud
+    # provisioning failure (caught below), not a silent skip.
+    extra_deps = discover_requirements(pkg)
     try:
         res = sandbox.run(
             # `-p no:cacheprovider`: the package is mounted read-only in the container,
@@ -128,6 +134,7 @@ def _run_tests(sandbox: SandboxPort, spec: SystemSpec, dest: Path) -> CheckResul
             extra_path=dest,
             timeout=_TEST_TIMEOUT,
             allow_network=spec.has_network,
+            extra_deps=extra_deps,
         )
     except SandboxUnavailableError as e:
         return CheckResult(name="tests", passed=False, detail=str(e))

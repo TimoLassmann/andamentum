@@ -106,6 +106,11 @@ node body (`astcheck.py`, fed back into the bounded repair loop):
   only when the node declared `network=True` (then it runs behind the container).
 - **fail-loud** — no broad `except` that swallows the error (no silent fallback).
 
+Third-party *imports* are NOT gated (the policy is open): a body may import any package. What
+it needs beyond the base image is discovered (`provision.discover_requirements`) and installed
+into a **per-system sandbox image** for the audit — see "The sandbox" below. A bogus/typo'd
+package fails loud at image build, before the test run.
+
 These also reflect the standing project rule: **fail loud, no fallbacks — in the code forge
 *generates*, not just in forge itself.** A system that runs but does the wrong thing is
 worse than one that stops. The deterministic gates alone decide fillability: a body that
@@ -116,10 +121,18 @@ passes every gate is filled; a body that never does within `attempt_cap` is hone
 
 `sandbox.py` is the one seam through which LLM-written code executes — never in the forge
 process. `make_sandbox(backend)` returns the Port; **Podman is the default** (host-isolated:
-read-only mount, scrubbed env, memory/pids caps; a pure run gets `--network none`, a
-declared-network node keeps isolation but is allowed onto the net). `SubprocessSandbox` is
-the no-container fallback (out-of-process, but **not** host-isolated — it refuses network
-execution). Build the image from the repo root:
+the package is COPIED IN over stdin as a tar — no host path shared with the VM — scrubbed
+env, memory/pids caps; a pure run gets `--network none`, a declared-network node keeps
+isolation but is allowed onto the net). `SubprocessSandbox` is the no-container fallback
+(out-of-process, but **not** host-isolated — it refuses network execution).
+
+**Per-system dependency provisioning.** A generated system may import beyond the base image
+(the infra + baked commons). `provision.discover_requirements(pkg)` finds those long-tail
+packages; `PodmanSandbox` bakes them into a small per-system image (`FROM base` + `pip
+install`, content-addressed by the dep set so identical needs reuse one cached image) at
+image-*build* time, so the audit test run stays fully offline. The policy is **open** — any
+import is installed, not gated; a bogus name fails loud at the image build. `SubprocessSandbox`
+ignores `extra_deps` (it runs in the host env). Build the base image from the repo root:
 
 ```
 podman build -t andamentum-forge-sandbox -f src/andamentum/forge/Containerfile .

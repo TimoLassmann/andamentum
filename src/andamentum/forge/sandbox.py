@@ -23,6 +23,7 @@ sibling ``schemas`` only; no graph engine.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import shlex
@@ -30,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
@@ -90,7 +92,11 @@ class SandboxUnavailableError(RuntimeError):
 
 
 class SandboxPort(Protocol):
-    """Run ``argv`` out-of-process; return a typed verdict, never raise on child failure."""
+    """Run ``argv`` out-of-process; return a typed verdict, never raise on child failure.
+
+    ``extra_deps`` are pip packages the generated system needs beyond the base image (its
+    discovered long tail); a host-isolating backend provisions them before the run.
+    """
 
     def run(
         self,
@@ -101,6 +107,7 @@ class SandboxPort(Protocol):
         timeout: int = 30,
         mem_mb: int = 512,
         allow_network: bool = False,
+        extra_deps: frozenset[str] = frozenset(),
     ) -> SandboxResult: ...
 
 
@@ -125,7 +132,13 @@ class SubprocessSandbox:
         timeout: int = 30,
         mem_mb: int = 512,
         allow_network: bool = False,
+        extra_deps: frozenset[str] = frozenset(),
     ) -> SandboxResult:
+        # `extra_deps` are honoured only by the container backend (it builds a per-system
+        # image). A subprocess runs in the host interpreter's env: whatever is importable
+        # there is what the generated code sees. We do not install into the host env — if a
+        # discovered dep is absent it fails loud at the run (an honest ImportError), never a
+        # silent host mutation.
         if allow_network:
             raise SandboxUnavailableError(
                 "this node reaches the network, which may only run behind the container sandbox (host-isolated). "
@@ -197,6 +210,51 @@ class PodmanSandbox:
 
     def __init__(self, image: str = _DEFAULT_IMAGE) -> None:
         self.image = image
+        # Per-system image tags this process has already built (or confirmed present), so a
+        # repeated dep-set skips the `podman image exists` probe. Content-addressed by the
+        # sorted dep set, so identical needs share one cached image across builds.
+        self._provisioned: set[str] = set()
+
+    def _provision_image(self, extra_deps: frozenset[str]) -> str:
+        """Return a base-image derivative with ``extra_deps`` pip-installed (build-or-reuse).
+
+        The generated system's long-tail packages are baked into a small layer ON TOP of the
+        base image at *build* time (where network to PyPI is expected), so the actual audit
+        run stays fully offline (``--network none`` for pure systems). Content-addressed: the
+        tag is a hash of the sorted dep set, so the same needs reuse one cached image and a
+        bogus package name fails loud HERE (pip can't resolve it), before the test run.
+        """
+        digest = hashlib.sha256("\n".join(sorted(extra_deps)).encode()).hexdigest()[:16]
+        tag = f"{self.image}-sys-{digest}"
+        if tag in self._provisioned:
+            return tag
+        exists = subprocess.run(["podman", "image", "exists", tag], capture_output=True)
+        if exists.returncode == 0:
+            self._provisioned.add(tag)
+            return tag
+        pkgs = " ".join(shlex.quote(d) for d in sorted(extra_deps))
+        containerfile = (
+            f"FROM {self.image}\n"
+            "USER root\n"
+            f"RUN pip install --no-cache-dir {pkgs}\n"
+            "USER sandbox\n"
+        )
+        with tempfile.TemporaryDirectory() as ctx:
+            (Path(ctx) / "Containerfile").write_text(containerfile)
+            built = subprocess.run(
+                ["podman", "build", "-t", tag, ctx],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        if built.returncode != 0:
+            raise SandboxUnavailableError(
+                f"could not provision the generated system's dependencies {sorted(extra_deps)} "
+                f"into a sandbox image — `pip install` failed (a bogus/unavailable package name, "
+                f"or no network at build time):\n{(built.stderr or built.stdout)[-1500:]}"
+            )
+        self._provisioned.add(tag)
+        return tag
 
     def run(
         self,
@@ -207,6 +265,7 @@ class PodmanSandbox:
         timeout: int = 30,
         mem_mb: int = 512,
         allow_network: bool = False,
+        extra_deps: frozenset[str] = frozenset(),
     ) -> SandboxResult:
         if shutil.which("podman") is None:
             # Fail loud, never a silent downgrade. Silently running LLM-authored code in an
@@ -226,6 +285,11 @@ class PodmanSandbox:
             raise SandboxUnavailableError(
                 "podman execution needs a source root (cwd or extra_path); none was given."
             )
+
+        # A system whose bodies import beyond the base image runs in a per-system derivative
+        # with those packages baked in; one that stays within the base uses it directly (the
+        # fast path — no image build).
+        image = self._provision_image(extra_deps) if extra_deps else self.image
 
         # The package tree is COPIED IN, not bind-mounted: `mount` is the host root we tar
         # up, `_SANDBOX_ROOT` is where it lands inside. Resolve so a caller may pass a
@@ -264,7 +328,7 @@ class PodmanSandbox:
             "--cpus=2",  # bound CPU so a runaway body can't peg the host
             "-e", f"PYTHONPATH={pypath_c}",
             "-e", "PYTHONDONTWRITEBYTECODE=1",
-            self.image,
+            image,
             "sh", "-c", shell, "sh", *argv_c,  # $0=sh, $1.. = the rewritten argv
         ]  # fmt: skip
         try:

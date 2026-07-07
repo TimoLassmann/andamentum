@@ -34,5 +34,14 @@ COPY src ./src
 RUN pip install --no-cache-dir pydantic "pydantic-graph>=0.1,<2" pydantic-ai rapidfuzz numpy httpx rich pytest \
     && pip install --no-cache-dir --no-deps .
 
+# --- Domain commons: light, high-frequency libraries a *generated* system may import and
+#     use directly (text / web / feeds / dates / docs), so the common cases work with zero
+#     per-system install. A separate layer, so widening it does not rebuild the infra layer.
+#     Import name → pip name (some differ): bs4 → beautifulsoup4, dateutil → python-dateutil,
+#     yaml → pyyaml. KEEP IN SYNC with astcheck._BASE_IMAGE_IMPORTS. Heavier libs (pandas,
+#     Pillow, lxml) are deliberately NOT baked — they arrive via the on-demand install path.
+RUN pip install --no-cache-dir \
+    beautifulsoup4 feedparser python-dateutil pyyaml requests markdown pypdf
+
 USER sandbox
 # No ENTRYPOINT: forge invokes `python -m pytest <pkg>/tests` inside this image.
