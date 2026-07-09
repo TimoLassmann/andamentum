@@ -18,6 +18,7 @@ from andamentum.epistemic.judgment_signal import (
     distribution_entropy,
     distribution_is_one_hot,
     normalize_distribution,
+    support_contradict_split,
 )
 from andamentum.epistemic.judge import apply_judgment
 from andamentum.epistemic.agents.output_models import EvidenceJudgmentOutput
@@ -42,6 +43,27 @@ class TestNormalize:
     def test_all_zero_rejected(self) -> None:
         with pytest.raises(ValueError):
             normalize_distribution(0, 0, 0)
+
+
+class TestSupportContradictSplit:
+    def test_uses_distribution_when_present(self) -> None:
+        # The (supports, contradicts) pair is read directly; no_bearing ignored.
+        assert support_contradict_split([0.7, 0.2, 0.1], "supports") == (0.7, 0.2)
+
+    def test_distribution_wins_over_judgment(self) -> None:
+        # A captured distribution is authoritative even if support_judgment
+        # (its own argmax) is passed alongside.
+        assert support_contradict_split([0.1, 0.8, 0.1], "contradicts") == (0.1, 0.8)
+
+    def test_hard_vote_fallback_when_no_distribution(self) -> None:
+        assert support_contradict_split(None, "supports") == (1.0, 0.0)
+        assert support_contradict_split(None, "contradicts") == (0.0, 1.0)
+        assert support_contradict_split(None, "no_bearing") == (0.0, 0.0)
+        assert support_contradict_split(None, None) == (0.0, 0.0)
+
+    def test_one_hot_distribution_equals_hard_vote(self) -> None:
+        # The limiting-case guarantee the counting posterior relies on.
+        assert support_contradict_split([1.0, 0.0, 0.0], "supports") == (1.0, 0.0)
 
 
 class TestDerivedSignals:

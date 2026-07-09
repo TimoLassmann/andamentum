@@ -441,6 +441,7 @@ class AssessConvergenceOperation(BaseOperation):
         from ..convergence_detector import detect_convergence
         from ..domain_classifier import classify_evidence_domain as default_classify
         from ..primitives import DomainClassification
+        from .identifier_extraction import extract_identifiers
 
         claim = await self.repo.get("claim", work.entity_id)
 
@@ -462,6 +463,9 @@ class AssessConvergenceOperation(BaseOperation):
         # Build evidence items list for detect_convergence and collect classifications
         evidence_items: list[dict[str, Any]] = []
         classifications: list[DomainClassification] = []
+        # Independence-floor keys (Tier A — exact identifiers only), one per
+        # evidence item in the same order as evidence_items/classifications.
+        source_keys: list[str | None] = []
 
         # Gather all eligible representatives, then cap at LLM_PANEL_CAP
         # by quality so the per-rep LLM classify and the O(N²) within-domain
@@ -526,6 +530,20 @@ class AssessConvergenceOperation(BaseOperation):
                 }
             )
 
+            # Independence-floor key: an exact identifier (DOI/PMID/arXiv)
+            # extracted deterministically from the source ref + content. Two
+            # items sharing a key are provably the same paper (surfaced by two
+            # providers), so they cannot count as independent domains.
+            ids = extract_identifiers(ev.source_ref, content[:1000])
+            if ids.doi:
+                source_keys.append(f"doi:{ids.doi.lower()}")
+            elif ids.pmid:
+                source_keys.append(f"pmid:{ids.pmid}")
+            elif ids.arxiv:
+                source_keys.append(f"arxiv:{ids.arxiv.lower()}")
+            else:
+                source_keys.append(None)
+
         # Step 2: Pairwise independence check for evidence within same domain cluster
         pairwise_independence: Dict[Tuple[str, str], bool] = {}
         if self.agent_runner and len(classifications) >= 2:
@@ -567,6 +585,7 @@ class AssessConvergenceOperation(BaseOperation):
             pairwise_independence=pairwise_independence
             if pairwise_independence
             else None,
+            independent_source_keys=source_keys,
         )
 
         # Create WEAK_CONVERGENCE uncertainty if convergence is weak

@@ -41,6 +41,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .judgment_signal import support_contradict_split
 from .repository import EpistemicRepository
 
 # Confidence penalties live in ``epistemic.thresholds`` (the canonical
@@ -80,16 +81,74 @@ def _evidence_counting_vote(e) -> tuple[float, float]:
     """
     cluster_size = max(1, getattr(e, "corroboration_count", 1) or 1)
     weight = 1.0 + math.log(cluster_size)
-    dist = getattr(e, "judgment_distribution", None)
-    if dist is not None and len(dist) == 3:
-        return weight * dist[0], weight * dist[1]
-    # No distribution captured — fall back to the hard vote (identical to the
-    # pre-Tier-1 counting).
-    if e.support_judgment == "supports":
-        return weight, 0.0
-    if e.support_judgment == "contradicts":
-        return 0.0, weight
-    return 0.0, 0.0
+    p_supports, p_contradicts = support_contradict_split(
+        getattr(e, "judgment_distribution", None), e.support_judgment
+    )
+    return weight * p_supports, weight * p_contradicts
+
+
+def _claim_directional_masses(claim, evidence) -> tuple[float, float]:
+    """Per-claim (supporting, contradicting) soft-vote mass over its eligible
+    evidence — the same eligibility filter and weighting the objective-level
+    counting posterior uses, scoped to one claim."""
+    supporting = 0.0
+    contradicting = 0.0
+    for e in evidence:
+        if (
+            e.entity_id in claim.evidence_ids
+            and not e.invalidated
+            and e.cluster_status not in ("corroborative", "deferred")
+        ):
+            s, c = _evidence_counting_vote(e)
+            supporting += s
+            contradicting += c
+    return supporting, contradicting
+
+
+def ibe_contradicted_by_independent_signals(
+    ibe_verdict: str | None,
+    supporting_mass: float,
+    contradicting_mass: float,
+    adversarial_balance: float | None,
+) -> bool:
+    """Concordance tripwire (coherentism / consilience): does the IBE direction
+    disagree with BOTH independent legs at once?
+
+    The posterior's direction rests on the IBE verdict. Two other signals bear on
+    direction: the confidence-weighted counting mass (which aggregates the same
+    judge that fed IBE, so it is only *partly* independent) and the adversarial
+    balance (a genuinely independent leg — different evidence pool, different
+    agent). The tripwire fires ONLY when the IBE direction is opposed by *both*:
+
+      * IBE ``supports`` while the mass nets contradicting AND balance is REFUTED
+        (``< ADVERSARIAL_REFUTED_THRESHOLD``), or
+      * IBE ``contradicts`` while the mass nets supporting AND balance is SURVIVED
+        (``>= ADVERSARIAL_SURVIVED_THRESHOLD``).
+
+    Requiring the independent adversarial leg to disagree (not counting alone)
+    is the load-bearing safeguard. When it fires the caller *suspends* that
+    claim's directional verdict (treats it as insufficient) — it never asserts
+    the opposite direction, because when the signals disagree IBE is by design
+    the smarter one; this only withholds a confident verdict that its own
+    independent checks contradict. ``adversarial_balance is None`` (no adversarial
+    leg measured) can never fire — the conjunction is unavailable.
+    """
+    from .thresholds import (
+        ADVERSARIAL_REFUTED_THRESHOLD,
+        ADVERSARIAL_SURVIVED_THRESHOLD,
+    )
+
+    if adversarial_balance is None or ibe_verdict not in ("supports", "contradicts"):
+        return False
+    mass_nets_supporting = supporting_mass > contradicting_mass
+    mass_nets_contradicting = contradicting_mass > supporting_mass
+    if ibe_verdict == "supports":
+        return mass_nets_contradicting and (
+            adversarial_balance < ADVERSARIAL_REFUTED_THRESHOLD
+        )
+    return mass_nets_supporting and (
+        adversarial_balance >= ADVERSARIAL_SURVIVED_THRESHOLD
+    )
 
 
 # Question types where posterior P(Y) is meaningful.
@@ -407,6 +466,21 @@ async def compute_posterior(
         c for c in active_claims if c.integrated_assessment is not None
     ]
 
+    # Concordance tripwire (coherentism): flag claims whose IBE direction is
+    # contradicted by BOTH the counting mass and the adversarial band. Flagged
+    # claims have their directional verdict SUSPENDED (treated as insufficient)
+    # in whichever aggregation path runs below — suspend-only, never flipped.
+    suspended_ids: set[str] = set()
+    for c in integrated_claims:
+        s_mass, c_mass = _claim_directional_masses(c, evidence)
+        if ibe_contradicted_by_independent_signals(
+            c.integrated_assessment,
+            s_mass,
+            c_mass,
+            getattr(c, "adversarial_balance", None),
+        ):
+            suspended_ids.add(c.entity_id)
+
     integration_verdict: str | None = None
     integration_confidence: float | None = None
 
@@ -455,7 +529,9 @@ async def compute_posterior(
         else:
             weights = extract_weights_from_decomposition(decomposition, ordered)
         assert combination_rule is not None  # guarded by use_rule_aware
-        combined = combine_claim_verdicts(ordered, combination_rule, weights=weights)
+        combined = combine_claim_verdicts(
+            ordered, combination_rule, weights=weights, suspended_ids=suspended_ids
+        )
 
         if combined.posterior is not None:
             posterior = combined.posterior
@@ -486,6 +562,10 @@ async def compute_posterior(
         confidence_sum = 0.0
         for c in integrated_claims:
             verdict = c.integrated_assessment
+            # Concordance tripwire: a suspended claim's direction is not
+            # trusted — treat it as insufficient (neutral 0.5), never flipped.
+            if c.entity_id in suspended_ids:
+                verdict = "insufficient"
             confidence = c.integrated_confidence or 0.5
             confidence = max(0.0, min(1.0, confidence))
             # Cycle-cap penalty: a capped claim's IBE-certified verdict

@@ -618,9 +618,11 @@ class TestDownstreamFiltering:
         await repo.save(claim)
 
         op = ScrutiniseClaimOperation(repo, None)
-        summaries = await op._gather_evidence_summaries(claim)
+        eligible = await op._gather_eligible_evidence(claim)
+        summaries = await op._gather_evidence_summaries(claim, eligible)
 
         # Should only have 1 summary (representative), not 2
+        assert len(eligible) == 1
         assert len(summaries) == 1
         assert "Representative finding" in summaries[0]
 
@@ -659,8 +661,10 @@ class TestDownstreamFiltering:
         await repo.save(claim)
 
         op = ScrutiniseClaimOperation(repo, None)
-        summaries = await op._gather_evidence_summaries(claim)
+        eligible = await op._gather_eligible_evidence(claim)
+        summaries = await op._gather_evidence_summaries(claim, eligible)
 
+        assert len(eligible) == 1
         assert len(summaries) == 1
         assert "Representative finding" in summaries[0]
 

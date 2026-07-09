@@ -10,7 +10,11 @@ All other scoring is deterministic counting of these judgments.
 Architecture: Layer 1 (framework-agnostic, pure Pydantic)
 """
 
-from .output_models import EvidenceJudgmentOutput, IndependenceJudgmentOutput
+from .output_models import (
+    EvidenceJudgmentOutput,
+    IndependenceJudgmentOutput,
+    ParaphraseClaimOutput,
+)
 from . import AgentDefinition, register_agent
 
 # ── epistemic_judge_evidence ──────────────────────────────────────────
@@ -240,6 +244,44 @@ JUDGE_INDEPENDENCE = register_agent(
         name="epistemic_judge_independence",
         prompt=JUDGE_INDEPENDENCE_PROMPT,
         output_model=IndependenceJudgmentOutput,
+        retries=2,
+        output_retries=3,
+    )
+)
+
+
+# ── epistemic_paraphrase_claim (reproducibility tripwire) ──────────────
+
+PARAPHRASE_CLAIM_PROMPT = """\
+# Claim Paraphraser
+
+You restate a claim in different words while preserving its exact meaning. \
+Your paraphrase is used to test whether a confident judgment about the claim \
+is reproducible or brittle — so the wording must differ but the meaning must \
+NOT.
+
+## Rules
+
+1. **Preserve meaning exactly.** Same assertion, same scope, same direction, \
+same strength. Do not add, drop, strengthen, weaken, hedge, or negate.
+2. **Change the surface form.** Use different sentence structure and synonyms. \
+Reorder clauses. Switch active/passive. A reader must recognise it as the same \
+claim said differently — not a different claim.
+3. **Keep every qualifier.** Populations, conditions, magnitudes, and time \
+frames in the original must all appear in the paraphrase.
+4. **Stay domain-neutral.** Do not inject domain knowledge or interpretation.
+
+## Output
+
+- paraphrase: the reworded claim.
+
+Now paraphrase the given claim."""
+
+JUDGE_PARAPHRASE = register_agent(
+    AgentDefinition(
+        name="epistemic_paraphrase_claim",
+        prompt=PARAPHRASE_CLAIM_PROMPT,
+        output_model=ParaphraseClaimOutput,
         retries=2,
         output_retries=3,
     )

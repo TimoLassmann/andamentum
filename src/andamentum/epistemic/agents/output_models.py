@@ -106,21 +106,6 @@ class ExtractEvidenceOutput(BaseModel):
 # ── Verification ─────────────────────────────────────────────────────────
 
 
-class AssessEvidenceOutput(BaseModel):
-    """Output from epistemic_assess_evidence agent (split scrutiny: evidence weight only)."""
-
-    claim_id: str = Field(description="ID of the claim being assessed")
-    evidence_weight: Literal["strong", "moderate", "weak", "conflicting"] = Field(
-        description="Overall evidential weight for the claim"
-    )
-    confidence_estimate: float = Field(
-        description="0.0-1.0 probability claim is true given evidence"
-    )
-    justification: str = Field(
-        description="Brief explanation of why this weight was assigned"
-    )
-
-
 class IdentifySingleIssueOutput(BaseModel):
     """Output from epistemic_identify_single_issue agent.
 
@@ -572,6 +557,28 @@ class DraftClaimOutput(BaseModel):
     scope: str = Field(description="Under what conditions this claim holds")
     direction: Literal["supports", "undermines", "neutral"] = Field(
         description="The claim's stance toward the research question"
+    )
+
+
+# ── Claim paraphrase (reproducibility tripwire) ─────────────────────────
+
+
+class ParaphraseClaimOutput(BaseModel):
+    """Output from epistemic_paraphrase_claim agent.
+
+    A single meaning-preserving restatement of a claim, used by the
+    reproducibility tripwire to re-judge a confident (one-hot) evidence
+    judgment under different wording — a genuine paraphrase-flip is a
+    silent-irreproducibility signal that entropy is structurally blind to.
+    Flat single field so small local models fill it reliably.
+    """
+
+    paraphrase: str = Field(
+        description=(
+            "The same claim restated in different words, preserving its exact "
+            "meaning, scope, and direction. Do NOT strengthen, weaken, negate, "
+            "or narrow it — only reword."
+        )
     )
 
 

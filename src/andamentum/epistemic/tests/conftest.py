@@ -152,12 +152,6 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "limitations": ["Single study"],
         "experimental_context": "Educational research",
     },
-    "epistemic_assess_evidence": {
-        "claim_id": "c-1",
-        "evidence_weight": "moderate",
-        "confidence_estimate": 0.75,
-        "justification": "Evidence supports the claim with moderate confidence",
-    },
     "epistemic_identify_single_issue": {
         "has_issue": False,
         "description": "",

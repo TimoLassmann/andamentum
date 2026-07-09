@@ -148,11 +148,10 @@ uncertainty-depth). Read by: graph/nodes.py at all three sites."""
 # runs whose verdicts must agree on direction before
 # ``integrated_assessment`` is committed for a claim. When the K runs
 # don't agree, ``integrated_assessment`` falls back to
-# ``insufficient`` — the same Reichenbach-style "agreement across
-# independent samples" commitment that motivates the K=2 provider
-# tournament. K=2 is the minimum sample size at which "agreement"
-# carries any information; higher K trades more LLM calls for stricter
-# agreement.
+# ``insufficient`` — a Reichenbach-style "agreement across
+# independent samples" commitment. K=2 is the minimum sample size at
+# which "agreement" carries any information; higher K trades more LLM
+# calls for stricter agreement.
 #
 # The default lives here; the actual K used by a graph run is read
 # from ``EpistemicGraphState.ibe_agreement_k`` so callers can override
@@ -162,9 +161,8 @@ IBE_AGREEMENT_K_DEFAULT: int = 2
 """Number of independent IBE chain runs whose verdicts must agree
 before ``integrated_assessment`` is committed. K=1 disables the
 agreement check (legacy single-run behaviour). K=2 is the minimum
-sample size that detects disagreement and is the canonical default —
-parallels ``RESEARCH_MODE_PROVIDER_K`` at the provider-tournament
-layer. Read by: ``operations.integration.SelectBestExplanationOperation``
+sample size that detects disagreement and is the canonical default.
+Read by: ``operations.integration.SelectBestExplanationOperation``
 via ``EpistemicGraphState.ibe_agreement_k``."""
 
 
@@ -286,6 +284,80 @@ Read by: ``judgment_signal.distribution_is_one_hot`` and
 ``Evidence.judgment_one_hot``."""
 
 
+# ── Scrutiny evidence weight (deterministic; replaces an LLM call) ──
+#
+# Scrutiny's evidence-weight verdict (strong / moderate / weak /
+# conflicting) used to be a free LLM categorical
+# (``epistemic_assess_evidence``). It is now computed from data the
+# system already holds: per-evidence verbalized judgment distributions
+# (Tier 0), quality scores, and corroboration counts. Each eligible
+# representative contributes quality-weighted, corroboration-weighted
+# supporting and contradicting mass:
+#
+#   mass = (1 + log(corroboration)) * quality_eff * p_direction
+#
+# where ``p_direction`` is the soft vote from ``support_contradict_split``
+# and ``quality_eff`` falls back to ``SCRUTINY_DEFAULT_QUALITY`` when the
+# source carries no bibliometric score (web pages, notes). The verdict
+# is a function of the resulting supporting / contradicting masses.
+#
+# IMPORTANT: these four constants set the strong/moderate/weak/conflict
+# boundaries. Their VALUES are initial and benchmark-pending — they must
+# be validated on a representative epistemic benchmark (canonical local
+# models) before being relied on, per the module convention that a
+# threshold carries both a theoretical basis and its read sites. The
+# SHAPE (quality- and corroboration-weighted directional mass) is the
+# load-bearing commitment; the exact cutoffs are tunable.
+
+SCRUTINY_DEFAULT_QUALITY: float = 0.5
+"""Neutral quality prior for evidence with no bibliometric
+``quality_score`` (identifier-less sources — web pages, notes). Absence
+of a citation-based score is not evidence of low quality, so the prior
+is middling, not punitive. Read by: ``scrutiny_weight.compute_evidence_weight``."""
+
+SCRUTINY_STRONG_MASS_THRESHOLD: float = 1.5
+"""At or above this dominant-direction mass, the evidence weight is
+``strong``. ~1.5 corresponds to a well-corroborated high-quality line or
+two independent moderate ones. Read by:
+``scrutiny_weight.compute_evidence_weight``."""
+
+SCRUTINY_WEAK_MASS_THRESHOLD: float = 0.4
+"""Below this dominant-direction mass, the evidence is too thin to
+establish weight (``weak`` → needs_resolution): mostly no-bearing mass,
+or barely any evidence at all. A single mid-quality supporting item
+(~0.5) clears it. Read by: ``scrutiny_weight.compute_evidence_weight``."""
+
+SCRUTINY_CONFLICT_MINORITY_FRACTION: float = 0.35
+"""Minimum share of the total directional mass that the minority
+(losing) direction must hold for the evidence to count as ``conflicting``
+(genuine disagreement → fail) rather than a dominant direction with minor
+dissent. Paired with ``SCRUTINY_WEAK_MASS_THRESHOLD`` as an absolute floor
+on the minority mass so a rounding wobble never reads as conflict. Read by:
+``scrutiny_weight.compute_evidence_weight``."""
+
+
+# ── Promotion-gate judgment confidence floor (Tier 1.5) ────────────
+#
+# Stage promotion counts discrete supporting *sources*
+# (``gates.count_supporting_sources``). A high-entropy supporting
+# judgment — the judge placed only a slim plurality on "supports" — is
+# a shaky source to promote a claim on. This floor keeps the count
+# DISCRETE (Reichenbach's ≥2 is about *distinct* sources, not
+# fractional confidence) but requires each counted source's verbalized
+# judgment confidence to clear the bar. One-hot judgments (the
+# small-model degeneracy mode, confidence ≥ JUDGMENT_ONE_HOT_THRESHOLD)
+# always clear it, and evidence with NO captured distribution
+# (adversarial / pre-Tier-0) is exempt — absence of a measured
+# confidence is not evidence of low confidence — so the backward-compat
+# limiting case is preserved. Value is initial and benchmark-pending.
+
+GATE_MIN_JUDGMENT_CONFIDENCE: float = 0.6
+"""Minimum verbalized judgment confidence (top-class mass) for a
+supporting evidence item to count toward ``min_supporting_sources`` at a
+stage gate. Evidence with no captured distribution is exempt (counts
+regardless). Read by: ``gates.count_supporting_sources``."""
+
+
 __all__ = [
     "ADVERSARIAL_REFUTED_THRESHOLD",
     "ADVERSARIAL_SURVIVED_THRESHOLD",
@@ -301,4 +373,9 @@ __all__ = [
     "CONVERGENCE_INTRA_DIVERSITY_THRESHOLD",
     "CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW",
     "JUDGMENT_ONE_HOT_THRESHOLD",
+    "SCRUTINY_DEFAULT_QUALITY",
+    "SCRUTINY_STRONG_MASS_THRESHOLD",
+    "SCRUTINY_WEAK_MASS_THRESHOLD",
+    "SCRUTINY_CONFLICT_MINORITY_FRACTION",
+    "GATE_MIN_JUDGMENT_CONFIDENCE",
 ]

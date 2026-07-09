@@ -1,10 +1,16 @@
-"""Verification agents — assess_evidence, identify_single_issue, generate_counterquery,
+"""Verification agents — identify_single_issue, generate_counterquery,
 check_pairwise_independence, deductive_validation, verify_computationally, analyze_argument,
 evaluate_counterargument, classify_evidence_domain, assess_evidence_quality,
-contrastive_evaluation, cross_claim_consistency."""
+contrastive_evaluation, cross_claim_consistency.
+
+Note: the former ``epistemic_assess_evidence`` agent (scrutiny evidence weight)
+was retired — the weight is now computed deterministically from the per-evidence
+judgment distributions, quality scores, and corroboration counts in
+``scrutiny_weight.compute_evidence_weight``. See ``docs/epistemic/
+harness_backstops_design.md`` item 3.
+"""
 
 from .output_models import (
-    AssessEvidenceOutput,
     IdentifySingleIssueOutput,
     DeductiveValidationOutput,
     VerifyComputationallyOutput,
@@ -18,114 +24,6 @@ from .output_models import (
     CrossClaimConsistencyOutput,
 )
 from . import AgentDefinition, register_agent
-
-# ── epistemic_assess_evidence (split scrutiny: evidence weight) ──────────
-
-ASSESS_EVIDENCE_PROMPT = """\
-# Evidence Weight Assessor
-
-You assess the WEIGHT of evidence supporting a claim. You do NOT identify issues, caveats, \
-or nuances — a separate agent handles that. Your ONLY job is to determine how strongly the \
-available evidence supports or contradicts the claim.
-
-## Source Quality Matters
-
-When assessing evidence, consider both **quantity AND quality** of sources. The source type \
-and reference are provided — use your knowledge to judge authority:
-
-- **Curated expert databases** (e.g., ClinVar, UniProt, OMIM, Ensembl) contain expert-reviewed, \
-structured data. A single entry from such sources can provide strong evidence for factual claims \
-within their domain.
-- **Peer-reviewed literature** (e.g., PubMed, PMC) provides vetted scientific evidence. Consider \
-study quality, not just existence.
-- **General web sources** require more corroboration — cross-reference when possible.
-
-**Key insight**: A single source from an authoritative database can warrant "moderate" or even \
-"strong" assessment. Don't automatically rate single-source evidence as "weak" — assess the \
-SOURCE QUALITY first.
-
-## Evidence Weight Categories
-
-### Strong (confidence 0.85-1.0)
-- High-quality authoritative source(s) directly support the claim, OR
-- Multiple independent sources agree on the core claim
-- Directional consistency even if specifics vary
-- Examples: "Paris is the capital of France", "BRCA1 c.5266dupC is pathogenic (ClinVar)"
-
-### Moderate (confidence 0.6-0.85)
-- Evidence supports the claim more than it contradicts
-- Authoritative single source with acknowledged limitations, OR
-- Multiple sources with some methodological concerns
-- Examples: "Spaced repetition improves retention" (effect sizes vary)
-
-### Weak (confidence 0.3-0.6)
-- Low-quality or unvetted sources only
-- Significant gaps in evidence
-- Plausible but not well-established
-
-### Conflicting (confidence varies)
-- Sources make mutually exclusive factual assertions (apply the "can both be true?" test). \
-If sources merely differ on scope, degree, or definition, that is moderate evidence, NOT conflicting.
-
-## Output
-
-- `claim_id`: ID of the claim reviewed
-- `evidence_weight`: strong, moderate, weak, or conflicting
-- `confidence_estimate`: 0.0-1.0 probability estimate
-- `justification`: Brief explanation of why you assigned this weight
-
-## Examples
-
-### Example 1: Strong evidence
-Claim: "Paris is the capital of France"
-Evidence: Multiple authoritative sources confirm this.
-```
-evidence_weight: "strong"
-confidence_estimate: 0.98
-justification: "Overwhelming consensus from authoritative sources. No credible source disputes this."
-```
-
-### Example 2: Moderate evidence
-Claim: "Spaced repetition improves long-term retention"
-Evidence: Multiple studies support the direction but effect sizes vary.
-```
-evidence_weight: "moderate"
-confidence_estimate: 0.78
-justification: "Multiple studies support the direction. Effect sizes vary (d=0.4-1.2) but no study finds \
-the opposite direction."
-```
-
-### Example 3: Weak evidence
-Claim: "This new drug cures Alzheimer's"
-Evidence: Only one Phase 1 trial.
-```
-evidence_weight: "weak"
-confidence_estimate: 0.35
-justification: "Single early-phase trial with no long-term data. Insufficient evidence to assess efficacy."
-```
-
-### Example 4: Conflicting evidence
-Claim: "The treatment has no side effects"
-Evidence: Phase 2 trial found 15% incidence of headaches.
-```
-evidence_weight: "conflicting"
-confidence_estimate: 0.25
-justification: "'No side effects' directly contradicts documented 15% headache incidence. \
-These cannot both be true."
-```
-
-Now assess the evidence weight for the given claim."""
-
-register_agent(
-    AgentDefinition(
-        name="epistemic_assess_evidence",
-        prompt=ASSESS_EVIDENCE_PROMPT,
-        output_model=AssessEvidenceOutput,
-        retries=3,
-        output_retries=5,
-    )
-)
-
 
 # ── epistemic_identify_single_issue (narrow, per-evidence) ──────────────
 

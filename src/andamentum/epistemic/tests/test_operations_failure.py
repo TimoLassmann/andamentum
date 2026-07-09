@@ -419,16 +419,24 @@ class TestScrutinyOperationFailure:
 
     @pytest.mark.asyncio
     async def test_agent_failure_propagates(self, tmp_path):
-        """If scrutiny agent throws, operation should fail.
+        """If the scrutiny issue-identification agent throws, the operation fails.
 
-        Tests the split path (epistemic_assess_evidence) since it is preferred
-        when the split agents are registered.
+        The evidence weight is now deterministic; the remaining LLM call in
+        scrutiny is ``epistemic_identify_single_issue``. Its failure must
+        propagate (no silent swallowing). Eligible evidence is attached so the
+        issue agent is actually invoked.
         """
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
-        claim = await _save_claim(repo, obj.entity_id)
+        ev = await _save_evidence(
+            repo, obj.entity_id, extracted=True, content="Some finding", quality_score=0.8
+        )
+        ev.support_judgment = "supports"
+        ev.judgment_distribution = [0.9, 0.05, 0.05]
+        await repo.save(ev)
+        claim = await _save_claim(repo, obj.entity_id, evidence_ids=[ev.entity_id])
 
-        runner = PartiallyFailingRunner(fail_on={"epistemic_assess_evidence"})
+        runner = PartiallyFailingRunner(fail_on={"epistemic_identify_single_issue"})
         op = ScrutiniseClaimOperation(repo, runner)
         work = OperationInput(
             entity_id=claim.entity_id, entity_type="claim", operation="scrutinise_claim"
@@ -438,11 +446,19 @@ class TestScrutinyOperationFailure:
             await op.execute(work)
 
     @pytest.mark.asyncio
-    async def test_no_agent_runner_defaults_to_pass(self, tmp_path):
-        """Without agent runner, scrutiny verdict defaults to pass."""
+    async def test_no_agent_runner_computes_weight_deterministically(self, tmp_path):
+        """Without an agent runner, the verdict is still computed from the
+        deterministic evidence weight (no LLM needed) — supporting evidence
+        passes; the issue-identification channel is simply skipped."""
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
-        claim = await _save_claim(repo, obj.entity_id)
+        ev = await _save_evidence(
+            repo, obj.entity_id, extracted=True, content="Supporting", quality_score=0.8
+        )
+        ev.support_judgment = "supports"
+        ev.judgment_distribution = [0.9, 0.05, 0.05]
+        await repo.save(ev)
+        claim = await _save_claim(repo, obj.entity_id, evidence_ids=[ev.entity_id])
 
         op = ScrutiniseClaimOperation(repo, agent_runner=None)
         work = OperationInput(

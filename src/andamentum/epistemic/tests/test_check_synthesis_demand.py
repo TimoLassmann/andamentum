@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 
 from andamentum.document_store import DocumentStore
-from andamentum.epistemic.entities import Claim, Objective
+from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import (
     CombinedVerdictData,
@@ -29,6 +29,7 @@ from andamentum.epistemic.entities.decomposition import (
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     CheckSynthesisDemand,
+    Scrutinize,
     Synthesize,
     SynthesizeInsufficient,
 )
@@ -40,6 +41,18 @@ class _FakeRunContext:
     def __init__(self, state, deps):
         self.state = state
         self.deps = deps
+
+
+class _FlippingRunner:
+    """Paraphrases a claim, then re-judges its evidence to a flipped verdict —
+    simulating a confident-but-non-reproducible judgment for the tripwire."""
+
+    async def run(self, agent_name: str, **kwargs):
+        if agent_name == "epistemic_paraphrase_claim":
+            return type("P", (), {"paraphrase": "reworded claim"})()
+        if agent_name == "epistemic_judge_evidence":
+            return type("J", (), {"verdict": "contradicts"})()
+        raise AssertionError(f"unexpected agent {agent_name}")
 
 
 # ── Deterministic gate: open-research mode (no decomposition) ────────
@@ -277,6 +290,124 @@ async def test_decisive_contradicts_posterior_gates_to_satisfied(
     ]
     assert "needs_more=False" in msgs[0]
     assert "contradicts" in msgs[0].lower()
+
+
+# ── Reproducibility tripwire on the decisive gate (item 2a) ──────────
+
+
+async def test_decisive_posterior_reproducibility_flip_loops_back(
+    tmp_path: Path, caplog
+) -> None:
+    """A decisive posterior whose supporting judgment is one-hot but flips
+    under paraphrase must NOT finalize — it loops back to Scrutinize."""
+    store = DocumentStore.for_database("repro_flip", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(
+        description="x",
+        decomposition=Decomposition(
+            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
+            combination_rule="AND",
+            combined_verdict=CombinedVerdictData(
+                posterior=0.92,
+                verdict="supports",
+                combination_rule="AND",
+                claim_posteriors=[0.92],
+                n_no_verdict=0,
+            ),
+        ),
+    )
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    ev = Evidence(
+        entity_id="e1",
+        objective_id=obj.entity_id,
+        extracted=True,
+        extracted_content="A confident finding",
+        support_judgment="supports",
+        judgment_distribution=[1.0, 0.0, 0.0],  # one-hot → entropy-blind
+    )
+    await repo.save(ev)
+    claim = Claim(
+        entity_id="c1",
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        stage=ClaimStage.SUPPORTED,
+        evidence_ids=["e1"],
+    )
+    await repo.save(claim)
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=_FlippingRunner(), embedding_model="t")
+
+    with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
+        next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    # The flip converts the decisive-satisfied shortcut into needs_more, and the
+    # eligible claim loops back for another round of scrutiny.
+    assert isinstance(next_node, Scrutinize)
+    assert "c1" in state.claims_needing_rescrutiny
+
+
+async def test_decisive_posterior_reproducible_judgment_finalizes(
+    tmp_path: Path,
+) -> None:
+    """A one-hot judgment that HOLDS under paraphrase does not block synthesis."""
+
+    class _HoldingRunner:
+        async def run(self, agent_name: str, **kwargs):
+            if agent_name == "epistemic_paraphrase_claim":
+                return type("P", (), {"paraphrase": "reworded"})()
+            if agent_name == "epistemic_judge_evidence":
+                return type("J", (), {"verdict": "supports"})()
+            raise AssertionError(f"unexpected agent {agent_name}")
+
+    store = DocumentStore.for_database("repro_hold", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(
+        description="x",
+        decomposition=Decomposition(
+            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
+            combination_rule="AND",
+            combined_verdict=CombinedVerdictData(
+                posterior=0.92,
+                verdict="supports",
+                combination_rule="AND",
+                claim_posteriors=[0.92],
+                n_no_verdict=0,
+            ),
+        ),
+    )
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    ev = Evidence(
+        entity_id="e1",
+        objective_id=obj.entity_id,
+        extracted=True,
+        extracted_content="A confident finding",
+        support_judgment="supports",
+        judgment_distribution=[1.0, 0.0, 0.0],
+    )
+    await repo.save(ev)
+    claim = Claim(
+        entity_id="c1",
+        objective_id=obj.entity_id,
+        statement="X causes Y",
+        stage=ClaimStage.SUPPORTED,
+        evidence_ids=["e1"],
+    )
+    await repo.save(claim)
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=_HoldingRunner(), embedding_model="t")
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert isinstance(next_node, Synthesize)
 
 
 # ── No agent runner ──────────────────────────────────────────────────

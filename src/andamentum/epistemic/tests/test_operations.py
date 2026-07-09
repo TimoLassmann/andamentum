@@ -594,11 +594,30 @@ class TestExtractRequiresGatherer:
 
 class TestScrutiny:
     async def test_scrutiny_pass(self, repo, fake_runner):
+        # Scrutiny weight is now deterministic: two high-quality supporting
+        # judgments produce enough dominant-direction mass to pass.
         obj = Objective(
             entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
         )
         await repo.save(obj)
-        c = Claim(entity_id="c-1", objective_id="obj-1", statement="X causes Y")
+        for i in range(2):
+            await repo.save(
+                Evidence(
+                    entity_id=f"e-{i}",
+                    objective_id="obj-1",
+                    extracted=True,
+                    extracted_content=f"Supporting finding {i}",
+                    quality_score=0.8,
+                    support_judgment="supports",
+                    judgment_distribution=[0.9, 0.05, 0.05],
+                )
+            )
+        c = Claim(
+            entity_id="c-1",
+            objective_id="obj-1",
+            statement="X causes Y",
+            evidence_ids=["e-0", "e-1"],
+        )
         await repo.save(c)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")
@@ -612,38 +631,39 @@ class TestScrutiny:
         assert loaded.scrutiny_verdict == "pass"
 
     async def test_scrutiny_fail(self, repo, fake_runner):
-        # Override split agents with a failing scrutiny response
-        fake_runner._overrides["epistemic_assess_evidence"] = {
-            "claim_id": "c-1",
-            "evidence_weight": "conflicting",
-            "confidence_estimate": 0.25,
-            "justification": "Evidence contradicts the claim",
-        }
-        fake_runner._overrides["epistemic_identify_issues"] = {
-            "claim_id": "c-1",
-            "issues": [
-                {
-                    "description": "Poorly scoped",
-                    "issue_type": "scope_difference",
-                    "reversal_test": False,
-                },
-            ],
-        }
-        # Also override legacy agent for backward compat testing
-        fake_runner._overrides["epistemic_scrutinise_claim"] = {
-            "passes_scrutiny": False,
-            "recommendation": "demote",
-            "issues_found": ["Poorly scoped"],
-            "issue_types": ["scope"],
-            "evidence_weight": 0.2,
-            "confidence_estimate": 0.3,
-        }
+        # Genuinely conflicting evidence (one strong supports, one strong
+        # contradicts) deterministically yields "conflicting" → fail.
         obj = Objective(
             entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
         )
         await repo.save(obj)
+        await repo.save(
+            Evidence(
+                entity_id="e-sup",
+                objective_id="obj-1",
+                extracted=True,
+                extracted_content="A strongly supports the claim",
+                quality_score=0.8,
+                support_judgment="supports",
+                judgment_distribution=[0.9, 0.05, 0.05],
+            )
+        )
+        await repo.save(
+            Evidence(
+                entity_id="e-con",
+                objective_id="obj-1",
+                extracted=True,
+                extracted_content="B strongly contradicts the claim",
+                quality_score=0.8,
+                support_judgment="contradicts",
+                judgment_distribution=[0.05, 0.9, 0.05],
+            )
+        )
         c = Claim(
-            entity_id="c-1", objective_id="obj-1", statement="Everything is related"
+            entity_id="c-1",
+            objective_id="obj-1",
+            statement="Everything is related",
+            evidence_ids=["e-sup", "e-con"],
         )
         await repo.save(c)
 
