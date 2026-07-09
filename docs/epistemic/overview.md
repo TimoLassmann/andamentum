@@ -47,7 +47,7 @@ PrepareObjective  (classify · clarify · concept-analysis)
    ↓
 Decompose         (question → sub-claims)
    ↓
-PlanEvidence + ExtractEvidence  (provider tournament K=2)
+PlanEvidence + ExtractEvidence  (description-driven dispatch — one agent call per provider, commit or abstain)
    ↓
 CreateClaims
    ↓
@@ -74,18 +74,18 @@ Every persistent thing the system reasons over is one of seven entity types. The
 | Entity | Role | Key fields |
 |---|---|---|
 | **Objective** | The research question and what's been done about it. | `question`, `question_type`, `decomposition`, `artefact_id`, `snapshot_id`, `claim_to_verify` |
-| **Evidence** | A piece of source content extracted from a provider. | `source_type`, `source_ref`, `extracted_content`, `quality_score`, `support_judgment`, `invalidated` |
+| **Evidence** | A piece of source content extracted from a provider. | `source_type`, `source_ref`, `extracted_content`, `quality_score`, `support_judgment`, `judgment_distribution` (verbalized 3-way belief distribution behind the verdict; `judgment_confidence` / `judgment_entropy` / `judgment_one_hot` are computed from it), `invalidated` |
 | **Claim** | A scoped proposition under investigation. | `statement`, `scope`, `stage`, `scrutiny_verdict`, `integrated_assessment`, `integrated_confidence`, `adversarial_balance`, `convergence_verdict`, `cycle_capped`, `integration_candidates` |
 | **Uncertainty** | An identified doubt, gap, or open question about a claim. | `description`, `uncertainty_type`, `blocking`, `resolved`, `resolution` |
 | **Decision** | The "what would change my mind?" record at ACTIONABLE stage. | `criteria`, `actionable_threshold`, `what_would_change_mind` |
 | **Snapshot** | An immutable freeze of the objective's state at synthesis time. | `artefact_id`, `frozen_at`, `claim_ids`, `evidence_ids` |
-| **Artefact** | The synthesised report (markdown / HTML). | `artefact_type` ∈ {`summary`, `insufficient`}, `content`, `title` |
+| **Artefact** | The synthesised report (markdown / HTML). | `artefact_type` (free-form; the pipeline stamps `summary` or `insufficient`), `content`, `title` |
 
 Every field on these entities represents something real: a verdict, a score, a stage. Nothing exists purely to signal scheduling.
 
 The final report is reachable from `Objective` via two routes: directly through `Objective.artefact_id → Artefact.content`, and through the immutable freeze `Objective.snapshot_id → Snapshot.artefact_id → Artefact.content`. Both point at the same `Artefact`.
 
-`Prediction` entities (in `entities/prediction.py`) record the ROBUST stage's falsifying commitments but are not part of the seven core primitives.
+`Prediction` entities (in `entities/prediction.py`) record the ROBUST stage's falsifying commitments, and `IntentRecord` entities (in `entities/intent_record.py`) record investigation intents; neither is part of the seven core primitives.
 
 ---
 
@@ -202,7 +202,7 @@ SynthesizeInsufficient   → (terminal)
   - reads: `objective_id`
   - ops: `ScoreLikeliness`
 - **SelectBestExplanation**
-  - reads: `objective_id`
+  - reads: `ibe_agreement_k`, `objective_id`
   - ops: `SelectBestExplanation`
 - **PromoteSupported**
   - reads: `objective_id`
@@ -259,7 +259,7 @@ Claims advance through five stages. Promotion requires passing a deterministic g
 Each gate is the conjunction of:
 
 1. **Counted preconditions**: evidence count, source diversity, uncertainty count. Pure data lookups.
-2. **Track requirements**: verification tracks the question type marks PRIMARY for this stage. SECONDARY tracks contribute when present but don't gate; SKIP tracks are not required.
+2. **Track requirements**: verification tracks the question type marks PRIMARY or SECONDARY for this stage — both gate promotion when the stage's gate names them. Only SKIP and IF_APPLICABLE tracks are never required.
 3. **Quality breakpoints**: adversarial balance band, convergence verdict, etc.
 
 Routing-awareness means a normative claim is not refused promotion because its computational-verification track is empty; that track is SKIP for normative questions.
@@ -358,7 +358,7 @@ The K-agreement check addresses this. After the chain has run once, `SelectBestE
 - If all K runs agree on canonical direction (`supports` / `contradicts` / `insufficient`), the verdict is committed; `integrated_confidence` is set to the minimum across the K runs.
 - If the runs disagree, `integrated_assessment` falls back to `insufficient` and `integrated_confidence` to 0.5 — independent reasoning passes failed to converge, so a single-run argmax is not certified.
 
-K is tunable per run via the `ibe_agreement_k` parameter on `run_epistemic_graph`. The default is `IBE_AGREEMENT_K_DEFAULT = 2` — the minimum sample size at which "agreement" carries information, paralleling the K=2 commitment in the provider tournament. Higher K trades LLM cost for stricter agreement; setting K=1 disables the check (legacy single-run behaviour).
+K is tunable per run via the `ibe_agreement_k` parameter on `run_epistemic_graph`. The default is `IBE_AGREEMENT_K_DEFAULT = 2` — the minimum sample size at which "agreement" carries information. Higher K trades LLM cost for stricter agreement; setting K=1 disables the check (legacy single-run behaviour).
 
 K=2 doubles the IBE chain's LLM-call count for any claim that reaches verification. In typical runs this is roughly +10–15% of total LLM cost per case. K=20 is permitted; the cost scales linearly.
 
@@ -411,7 +411,7 @@ The demand is not layer-specific. One uniform shape travels everywhere; each con
 
 Evidence gathering runs through a single per-provider dispatch agent (`epistemic_dispatch_provider`):
 
-- Each provider class self-describes via four attributes: `description` (scope and strengths/weaknesses), `query_guidance` (native query syntax catalogue), `query_examples` (representative claim → native-query pairs), `output_kind`.
+- Each provider class self-describes via class attributes: `description` (scope and strengths/weaknesses), `query_guidance` (native query syntax catalogue), `query_examples` (representative claim → native-query pairs, with `None`-query entries teaching abstention), `output_kind`, plus `independence_group` and `provider_contract_version` (declared on the class; `independence_group` is not yet consumed by any pipeline stage).
 - For each claim (or sub-claim, or follow-up intent), the dispatch agent is invoked once per provider in parallel. It either commits one or two native-syntax queries or abstains for that provider.
 - Adding a new provider is a class-attribute task — no agent design, no taxonomy update.
 - Investigation rounds use the same dispatch path: the `epistemic_investigate_claim` agent generates a methodological *angle* (intent), and the dispatch agent receives the *claim* as the subject and the *intent* as the angle modifier. Queries combine both, so retrieved evidence stays grounded in the claim's subject matter while exploring the intent's dimension.
@@ -432,12 +432,17 @@ The termination guarantee is the per-sub-claim cap (`scrutiny_resolve_cycles[cla
 
 ## 10. Confidence scoring
 
-The aggregated posterior is computed by `compute_posterior` in `confidence.py`. It blends two signals via weighted model averaging:
+The aggregated posterior is computed by `compute_posterior` in `confidence.py`. It is **abductive-primary**: the IBE chain is the system's certifier of directional verdicts, and the posterior honours the chain's per-claim verdict rather than re-deriving direction from per-item counts. (An earlier design blended a sigmoid-of-counts with the integration verdict via a tunable mixing constant; that blend was removed — the constant couldn't be justified against held-out data.)
 
-- **Counting posterior** — Bayesian count of effective supporting vs contradicting evidence per claim, log-odds composed across claims, normalised.
-- **Integration posterior** — derived from the IBE chain's `integrated_assessment` weighted by `integrated_confidence`.
+- **Integration path (the headline)** — each integrated claim maps its verdict to a probability: `supports` at confidence *c* → `0.5 + c/2`, `contradicts` → `0.5 − c/2`, `insufficient` → `0.5`. Decomposed runs aggregate rule-aware via `combine_claim_verdicts` (AND → min, OR → max, WEIGHTED_AND → weighted mean), so the headline agrees with `CombineClaimVerdicts`; open-research and seed-claim runs use a confidence-weighted average.
+- **No-certified-verdict gate** — when active claims exist but none reached IBE certification, the posterior is forced to 0.5 with `terminal_state="oscillation_detected"` (or `retrieval_failed` when that's the more specific diagnostic), mirroring `CheckCompletion`'s routing to `SynthesizeInsufficient` under the same condition. Counting on uncertified evidence is structurally unsafe: its direction can flip run-to-run with no change in epistemic state.
+- **Counting posterior (diagnostic + narrow fallback)** — a soft-vote count of supporting vs contradicting evidence, `sigmoid(Σ supporting − Σ contradicting)`. Always computed and reported for inspection (`counting_posterior`, `supporting_count`, `contradicting_count`); it carries the headline only in the counting-fallback branches (a UNION combination rule, which has no scalar verdict, or a run with no claims at all).
 
-The blending weight reflects how much the IBE chain certified. When all claims have an integrated assessment, the integration signal dominates. When none do, the counting signal carries the verdict. When some do and some don't, the blend interpolates.
+### Verbalized-confidence soft votes (Tier 0 / Tier 1)
+
+The evidence-claim judge (`epistemic_judge_evidence`) emits a verbalized 3-way belief distribution over `{supports, contradicts, no_bearing}` rather than a bare label; the categorical `support_judgment` is its argmax, and the distribution plus derived signals (`judgment_confidence`, `judgment_entropy`, `judgment_one_hot` — pure math in `judgment_signal.py`) are stored on the `Evidence`.
+
+The counting posterior consumes the distribution as a **soft vote** (`_evidence_counting_vote`): with distribution `[p_s, p_c, p_n]` and cluster weight `w = 1 + log(corroboration)`, an item contributes `w·p_s` to supporting and `w·p_c` to contradicting — a near-tie judgment nets ~0, a confident one nets ~±w. A one-hot distribution reproduces the old hard vote exactly, and evidence without a distribution (adversarial counter-evidence, legacy data) falls back to the hard `support_judgment` vote, so pre-Tier-0 behaviour is preserved as a limiting case.
 
 ### Posterior penalties
 
@@ -468,29 +473,35 @@ Not every verification track applies to every question. The system classifies th
 
 ### Seven question types
 
-| Type | Example | Decomposes? |
+Defined in `routing.py:ROUTING_TABLE` and enumerated identically by the classifier agent (`epistemic_classify_question`):
+
+| Type | Question shape | Example |
 |---|---|---|
-| **Empirical** | Is APOE4 associated with Alzheimer's risk? | Yes |
-| **Causal** | Does smoking cause lung cancer? | Yes |
-| **Comparative** | Is drug A more effective than drug B? | Yes |
-| **Definitional** | What is a metalloproteinase? | No (single-claim) |
-| **Predictive** | Will treatment X reduce mortality? | Yes |
-| **Methodological** | Is the proposed RCT design adequate? | Yes |
-| **Verificatory** | Does paper P support claim C? | No (seed claim is the question) |
+| **verificatory** | "Is P true?" — binary truth-claims; needs adversarial testing | Does X cause Y? |
+| **explanatory** | "Why P?" / "How does P work?" — causal/mechanistic | What causes X? |
+| **exploratory** | "What might be involved in P?" — hypothesis generation, breadth over depth | What are the effects of X? |
+| **comparative** | "Is A better / more likely than B?" — ranking; symmetry of scrutiny matters | Is X a better treatment than Y? |
+| **predictive** | "What will happen if P?" — forward projection; falsifiability decisive | Will X cause Y? |
+| **compositional** | "What are the parts/factors of X?" — analytical decomposition | What factors contribute to X? |
+| **normative** | "Should we do X?" — value-laden; separates facts from value commitments | Should we use X? |
+
+Every type decomposes; what differs is the *kind* of sub-claim (falsifiable test claims for verificatory with an AND rule, mechanistic step-claims for explanatory, and so on — the decomposition agent's guidance is type-specific). The exception is verify mode (`Objective.claim_to_verify`), which skips decomposition entirely.
 
 ### Routing matrix
 
-P = Primary (gates promotion), S = Secondary (contributes when present), A = If applicable, — = Skipped.
+P = Primary, S = Secondary (both gate promotion when a stage's gate names the track), A = If applicable, — = Skipped. Only SKIP and IF_APPLICABLE tracks are never required.
 
-| Track | Empirical | Causal | Comparative | Definitional | Predictive | Methodological | Verificatory |
+| Track | verificatory | explanatory | exploratory | comparative | predictive | compositional | normative |
 |---|---|---|---|---|---|---|---|
-| Adversarial | P | P | P | S | P | P | P |
-| Convergence | P | P | P | S | S | S | P |
-| Deductive | — | S | — | P | — | P | — |
-| Computational | A | A | A | — | P | A | — |
-| Contrastive | S | P | P | — | S | S | S |
-| Cross-claim consistency | S | S | S | S | S | S | — |
-| Argument analysis | S | S | S | P | S | P | S |
+| Adversarial | P | S | — | S | S | — | S |
+| Convergence | P | S | S | — | — | P | — |
+| Deductive | S | P | — | S | P | — | P |
+| Computational | A | A | — | — | P | — | — |
+| Contrastive | — | P | — | P | — | — | — |
+| Cross-claim consistency | — | — | P | P | — | P | P |
+| Argument analysis | S | P | — | — | — | — | P |
+
+Each routing profile also carries per-stage `gate_thresholds` overrides — e.g. verificatory's PROVISIONAL gate requires convergence, comparative's requires a contrastive evaluation, normative's requires fact–value separation at every stage. `routing.py` is pure data; it is the authoritative spec for conditional verification.
 
 The classification is set once in `PrepareObjective` and stored on `Objective.question_type`. `SetRoutingDefaultsOperation`, run when a claim crosses into SUPPORTED, reads the type and pre-marks SKIP tracks as not-applicable on the claim itself, so downstream verifiers don't waste calls.
 
@@ -542,6 +553,12 @@ Every decision-relevant numeric threshold lives in `epistemic/thresholds.py`. Ea
 | `CONVERGENCE_INTRA_DIVERSITY_THRESHOLD` | 0.5 | cluster diversity check |
 | `CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW` | 0.3 | `shared_error_modes` warning |
 
+### Verbalized-confidence calibration
+
+| Constant | Value | Read by |
+|---|---|---|
+| `JUDGMENT_ONE_HOT_THRESHOLD` | 0.95 | `judgment_signal.distribution_is_one_hot` — top-class mass at or above this marks the judgment's entropy as uninformative (the small-model degeneracy mode identified in the local-model calibration study) |
+
 The constants are deliberately few. Adding a new threshold requires the same justification (theoretical basis plus the sites that read it) as the existing set. Bare numeric literals in decision logic across the rest of `epistemic/` are an architectural smell.
 
 ---
@@ -554,16 +571,17 @@ Top-level layout under `src/andamentum/epistemic/`:
 |---|---|
 | `thresholds.py` | Single source of truth for every decision-relevant numeric threshold. |
 | `entities/` | The seven primitives plus `Prediction` and decomposition types. Pure pydantic data classes. |
-| `operations/` | 17 operation classes (`BaseOperation` subclasses). Pure transforms. |
-| `graph/` | The 23-node DAG. `nodes.py` · `state.py` · `topology.py` · `base.py`. |
+| `operations/` | 37 operation classes (`BaseOperation` subclasses) across 17 modules. Pure transforms. |
+| `graph/` | The 23-node DAG. `nodes.py` · `state.py` · `topology.py` · `base.py` · `stages.py` (named stage runners with enforced exit invariants). |
 | `gates.py` | Stage promotion gates. `STAGE_GATES` dict plus `validate_promotion` (routing-aware). |
-| `providers/` | 10 evidence providers plus `CONTRIBUTING.md`. Each returns `list[GatheredEvidence]`; never raises. |
+| `providers/` | 11 evidence providers (10 domain APIs plus `web_search`) plus `CONTRIBUTING.md`. Each returns `list[GatheredEvidence]`; never raises. |
 | `convergence_detector.py` | Reichenbach common-cause cluster analysis. |
-| `confidence.py` | Posterior aggregation; counting plus integration via weighted model averaging. |
+| `confidence.py` | Posterior aggregation; abductive-primary with a diagnostic counting posterior (see section 10). |
+| `judgment_signal.py` | Pure math for the verbalized judgment distribution: normalisation, argmax verdict, confidence, entropy, one-hot detection. Leaf module, no epistemic deps. |
 | `demand.py` | The `Demand` Pydantic model used everywhere lazy-escalation happens. |
-| `repository.py` | `EpistemicRepository` wraps `StorageBackend`; in-memory backend in `storage.py`. |
+| `repository.py` | `EpistemicRepository` wraps a `DocumentStore` (from `andamentum.document_store`). |
 | `runner.py` | `DefaultAgentRunner` wrapping `core.AgentRunner` with the epistemic agent registry. |
-| `cli.py` | `andamentum-epistemic` entry point. Two modes: `ask` and `verify`. |
+| `cli.py` | `andamentum-epistemic` entry point. Primary modes: `ask` (research) and `verify` (seed-claim); further subcommands `run`, `agents`, `preflight`, `stage`, `inspect`, `confidence`. |
 | `tests/` | Tests live next to the code they test. `test_topology.py` asserts reachability properties. |
 
 ### Entry point
@@ -582,11 +600,15 @@ result = await run_epistemic_graph(
 
 The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both resolve `--model` from the argument or `$ANDAMENTUM_MAIN_LLM_MODEL`, and exit with an error if neither is set.
 
+### Stage runners
+
+`graph/stages.py` partitions the graph into six named stages — `preplanning`, `initial_evidence`, `scrutiny_and_investigation`, `verification`, `integration`, `synthesis` — each an (entry node, exit node) pair with an enforced **exit invariant**: an async predicate over the repository (e.g. every claim-linked evidence has a `support_judgment` before leaving scrutiny) that raises `StageInvariantError` if the stage boundary is not quiescent. Invariant violations crash loudly rather than letting a half-finished stage silently degrade the posterior toward 0.5. The `andamentum-epistemic stage <name>` subcommand runs a single stage, resuming from a checkpoint database via `--from-db` — useful for debugging one stage in isolation.
+
 ---
 
 ## 14. Operations catalogue
 
-One module per family in `operations/`. Total: 17 modules.
+One module per family in `operations/`. Total: 37 operation classes across 17 modules.
 
 | Module | Operations |
 |---|---|
@@ -594,14 +616,15 @@ One module per family in `operations/`. Total: 17 modules.
 | `dispatch_gather` | `DispatchGatherOperation` (initial gather via description-driven dispatch) plus the module-level `dispatch_and_persist_for_text` helper shared with investigation |
 | `seed_claim`, `multi_seed_claim`, `claims` | `SeedClaimOperation`, `MultiSeedClaimOperation`, `ProposeClaimsOperation`, plus `top_n_representatives` (claim-relevance rerank, async) |
 | `evidence` | `ExtractEvidenceOperation` (residual stub-extraction path; the dispatch flow normally persists Evidence with content + scoring already attached, so this path is rarely exercised) |
-| `scrutiny`, `investigation` | `ScrutiniseClaimOperation`, `InvestigateClaimOperation` |
+| `scrutiny`, `investigation` | `ScrutiniseClaimOperation`, `InvestigateClaimOperation`, `GeneratePredictionOperation`, `RecordDecisionOperation` |
 | `uncertainty`, `concerns` | `ResolveUncertaintyOperation`, `DeduplicateConcernsOperation` |
 | `verification` | `AdversarialSearchOperation`, `AnalyzeArgumentOperation`, `AssessConvergenceOperation`, `ContrastiveEvaluationOperation`, `CrossClaimConsistencyOperation`, `ValidateDeductivelyOperation`, `VerifyComputationallyOperation` |
 | `integration` | `EnumerateCandidatesOperation`, `ScoreLovelinessOperation`, `ScoreLikelinessOperation`, `SelectBestExplanationOperation` (plus framing-tie cap helper) |
-| `stage_management` | `PromoteClaimOperation`, `DemoteClaimOperation`, `PromoteAsRefutedOperation`, `SoftPromoteOperation`, `AbandonStaleClaimOperation`, `SetRoutingDefaultsOperation`, `GeneratePredictionOperation`, `RecordDecisionOperation` |
+| `stage_management` | `PromoteClaimOperation`, `DemoteClaimOperation`, `PromoteAsRefutedOperation`, `SoftPromoteOperation` |
 | `synthesis` | `FreezeSnapshotOperation`, `SynthesizeReportOperation` (writer ⇄ validator), `SynthesizeInsufficientReportOperation` |
-| `belief_maintenance` | TMS cascade after evidence invalidation |
-| `analysis`, `identifier_extraction`, `cleanup` | Helpers used during scrutiny and investigation |
+| `belief_maintenance` | TMS cascade after evidence invalidation, plus `SetRoutingDefaultsOperation` |
+| `cleanup` | `AbandonStaleClaimOperation` |
+| `analysis`, `identifier_extraction` | Helpers used during scrutiny and investigation |
 
 Every operation inherits from `BaseOperation` and conforms to the same shape: takes an `OperationInput`, does work, returns `OperationResult`.
 
@@ -623,5 +646,6 @@ Providers retrieve and structure evidence. They never assess quality (`quality_s
 | `open_targets` | Open Targets | drug-target evidence |
 | `openalex` | OpenAlex | cross-disciplinary scholarly |
 | `pubmed` | PubMed / NCBI | biomedical literature |
+| `web_search` | SearxNG web search | general-domain fallback |
 
-Total: 10 providers. The iterative tournament selects K=2 distinct providers per sub-claim by default, escalating up to all 10 only when scrutiny demands more.
+Total: 11 providers. Default runs offer all 11 to the dispatch agent (`get_all_providers()`); `get_biomedical_providers()` returns the 10 domain APIs without `web_search` for biomedical runs that need the precision of the specialist set. There is no separate provider-selection tournament: the description-driven dispatch agent (section 9) is invoked once per provider and each either commits native-syntax queries or abstains.

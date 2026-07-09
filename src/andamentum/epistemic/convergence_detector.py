@@ -42,6 +42,29 @@ CONVERGENCE_THRESHOLDS = {
 }
 
 
+def count_independent_sources(source_keys: List[Optional[str]]) -> int:
+    """Number of distinct independent sources given per-evidence identity keys.
+
+    The independence floor (Reichenbach, Tier A). A key is an **exact**
+    identifier (normalised DOI / PMID / arXiv id) — never a string or author
+    heuristic, which the 2026-07-07 critical review flagged as non-deterministic
+    and error-prone in both directions. Items that share a key are the same
+    underlying source and collapse to one; items with no key (``None``) each
+    count as their own source, because absence of a shared *exact* identifier is
+    not evidence of dependence. The result therefore never over-collapses: it can
+    only shrink the effective source count when two items are *provably* the same
+    paper.
+    """
+    distinct: set[str] = set()
+    unkeyed = 0
+    for key in source_keys:
+        if key:
+            distinct.add(key)
+        else:
+            unkeyed += 1
+    return len(distinct) + unkeyed
+
+
 def detect_convergence(
     evidence_items: List[Dict[str, Any]],
     claim_id: str,
@@ -49,6 +72,7 @@ def detect_convergence(
     evidence_qualities: Optional[Dict[str, float]] = None,
     precomputed_classifications: Optional[List[DomainClassification]] = None,
     pairwise_independence: Optional[Dict[Tuple[str, str], bool]] = None,
+    independent_source_keys: Optional[List[Optional[str]]] = None,
 ) -> ConvergentEvidence:
     """Detect cross-domain convergence in evidence.
 
@@ -67,6 +91,12 @@ def detect_convergence(
             epistemic_check_pairwise_independence agent. When provided, within-cluster
             pairs judged independent signal hidden methodological diversity and boost
             the independence score.
+        independent_source_keys: Optional list of exact-identifier keys (normalised
+            DOI / PMID / arXiv id, or None), one per evidence item in the same order,
+            for the independence floor. When two or more items provably trace to the
+            same source (shared key), the cross-domain convergence they appear to
+            provide is illusory — the floor downgrades the verdict. Exact identifiers
+            only (Tier A); see ``count_independent_sources``.
 
     Returns:
         ConvergentEvidence with full convergence analysis
@@ -146,9 +176,32 @@ def detect_convergence(
         clusters, convergence_detected, strength, independence_checks
     )
 
+    # Step 8b: Independence floor (Reichenbach, Tier A — exact identifiers only).
+    # Domain diversity is meaningless if the evidence traces to too few distinct
+    # sources: the same paper surfaced by two providers can classify into two
+    # domain clusters and masquerade as cross-domain convergence. When fewer than
+    # ``min_independent_domains`` distinct sources back the evidence, the apparent
+    # convergence is downgraded. This can only ever WEAKEN the verdict (a claim
+    # loses the IBE fast-path and gets more scrutiny), never strengthen it — the
+    # safe direction.
+    floor_note = ""
+    if independent_source_keys is not None and convergence_detected:
+        effective_sources = count_independent_sources(independent_source_keys)
+        if effective_sources < CONVERGENCE_THRESHOLDS["min_independent_domains"]:
+            convergence_detected = False
+            if verdict == "CONVERGENT":
+                verdict = "PARTIAL"
+            floor_note = (
+                f" Independence floor: the evidence traces to only "
+                f"{effective_sources} distinct source(s) (shared DOI/PMID), so "
+                f"the apparent cross-domain agreement is not independent "
+                f"corroboration."
+            )
+
     # Step 9: Generate explanation
-    explanation = _generate_explanation(
-        clusters, verdict, independence_score, convergence_detected
+    explanation = (
+        _generate_explanation(clusters, verdict, independence_score, convergence_detected)
+        + floor_note
     )
 
     # Step 10: Find missing domains and strongest per domain

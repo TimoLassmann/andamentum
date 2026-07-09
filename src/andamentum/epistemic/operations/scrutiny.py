@@ -19,15 +19,20 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
+from ..scrutiny_weight import compute_evidence_weight
 
 
 class ScrutiniseClaimOperation(BaseOperation):
     """Run skeptic review on a claim.
 
-    Uses a split-agent architecture:
-    1. epistemic_assess_evidence — evaluates evidence weight (focused judgment)
-    2. epistemic_identify_single_issue — identifies issues one at a time (focused judgment)
-    3. Deterministic combination — computes verdict from agent outputs
+    Architecture:
+    1. Deterministic evidence weight (``scrutiny_weight.compute_evidence_weight``)
+       — strong / moderate / weak / conflicting from the per-evidence judgment
+       distributions, quality scores, and corroboration counts. No LLM call.
+    2. epistemic_identify_single_issue — identifies issues one at a time (the
+       content-reading channel: methodological objections become named issues).
+    3. Deterministic combination — blocking issues downgrade the weight, then
+       the verdict follows from it.
 
     Updates scrutiny_verdict to "pass", "fail", or "needs_resolution".
     May create Uncertainty entities for issues found.
@@ -61,12 +66,14 @@ class ScrutiniseClaimOperation(BaseOperation):
         blob = "\n".join(parts).encode("utf-8")
         return hashlib.sha256(blob).hexdigest()
 
-    async def _gather_evidence_summaries(self, claim: Claim) -> list[str]:
-        """Gather formatted evidence summaries for agent input.
+    async def _gather_eligible_evidence(self, claim: Claim) -> list[Evidence]:
+        """The claim's eligible representative evidence: extracted, not
+        invalidated, and not a corroborative/deferred cluster member.
 
-        Caps the returned list at LLM_PANEL_CAP highest-quality
-        representatives so the assess_evidence and contradiction prompts
-        stay bounded as the underlying evidence base grows.
+        This is the set the deterministic evidence-weight is computed over
+        (and the candidate pool the LLM issue-finder's representatives are
+        drawn from). It mirrors the counting posterior's eligibility filter,
+        so weight and posterior see the same evidence.
         """
         candidates: list[Evidence] = []
         for eid in claim.evidence_ids:
@@ -78,7 +85,16 @@ class ScrutiniseClaimOperation(BaseOperation):
             if ev.cluster_status in ("corroborative", "deferred"):
                 continue
             candidates.append(ev)
+        return candidates
 
+    async def _gather_evidence_summaries(
+        self, claim: Claim, candidates: list[Evidence]
+    ) -> list[str]:
+        """Format the top representatives for the issue-identification agent.
+
+        Caps at LLM_PANEL_CAP highest-quality representatives so the
+        per-evidence issue prompts stay bounded as the evidence base grows.
+        """
         evidence_summaries: list[str] = []
         selected = await top_n_representatives(
             candidates,
@@ -168,17 +184,32 @@ class ScrutiniseClaimOperation(BaseOperation):
 
     MAX_ISSUES = 5  # Maximum per-evidence calls (caps cost for large evidence sets)
 
+    @staticmethod
+    def _verdict_from_weight(evidence_weight: str) -> str:
+        """Map the (possibly blocking-downgraded) evidence weight to a verdict.
+
+        strong / moderate → pass · conflicting → fail · weak → needs_resolution.
+        """
+        if evidence_weight in ("strong", "moderate"):
+            return "pass"
+        if evidence_weight == "conflicting":
+            return "fail"
+        return "needs_resolution"
+
     async def _execute_split(
         self,
         claim: Claim,
+        eligible_evidence: list[Evidence],
         evidence_summaries: list[str],
     ) -> str:
-        """Execute using split agents + deterministic combination.
+        """Deterministic evidence weight + per-evidence issue identification.
 
-        Per-evidence issue identification: each evidence item is checked
-        independently against the claim (Kahneman independence principle).
-        One additional call checks all evidence together for contradictions.
-        All calls run in parallel — no shared context, no anchoring.
+        The evidence weight is computed deterministically from
+        ``eligible_evidence`` (no LLM). Per-evidence issue identification then
+        checks each representative independently against the claim (Kahneman
+        independence), plus one contradiction call over all of them; all run in
+        parallel — no shared context, no anchoring. Blocking issues downgrade
+        the weight before the verdict is mapped.
 
         Downstream DeduplicateConcernsOperation handles any duplicate
         uncertainties that result from multiple calls finding the same issue.
@@ -187,24 +218,11 @@ class ScrutiniseClaimOperation(BaseOperation):
         """
         import asyncio
 
-        evidence_text = (
-            "\n\n".join(evidence_summaries)
-            if evidence_summaries
-            else "[No evidence available]"
-        )
+        # Deterministic evidence weight over the full eligible representative
+        # set (replaces the retired epistemic_assess_evidence LLM categorical).
+        weight = compute_evidence_weight(eligible_evidence)
 
-        # Agent A: Assess evidence weight (flat output, 4 fields — reliable)
-        # Sees ALL evidence for holistic weight assessment.
-        assess_result = await self.run_agent(
-            "epistemic_assess_evidence",
-            claim_id=claim.entity_id,
-            claim=claim.statement,
-            scope=claim.scope,
-            evidence=evidence_text,
-            evidence_count=len(evidence_summaries),
-        )
-
-        # Agent B: Identify issues — one call per evidence item + one contradiction call.
+        # Identify issues — one call per evidence item + one contradiction call.
         # Each per-evidence call sees only ONE evidence item (independent judgment).
         # The contradiction call sees all items but asks only about contradictions.
         found_issues: list[dict[str, object]] = []
@@ -247,13 +265,14 @@ class ScrutiniseClaimOperation(BaseOperation):
         for ev_summary in evidence_summaries[: self.MAX_ISSUES]:
             tasks.append(asyncio.ensure_future(_check_single_evidence(ev_summary)))
         if len(evidence_summaries) >= 2:
-            tasks.append(asyncio.ensure_future(_check_contradictions(evidence_text)))
+            all_evidence_text = "\n\n".join(evidence_summaries)
+            tasks.append(asyncio.ensure_future(_check_contradictions(all_evidence_text)))
 
         results = await asyncio.gather(*tasks)
         found_issues = [r for r in results if r is not None]
 
         # ── Deterministic combination ────────────────────────────────────
-        evidence_weight: str = assess_result.evidence_weight
+        evidence_weight: str = weight.label
 
         # Check for blocking issues via reversal_test
         has_blocking = any(iss["reversal_test"] for iss in found_issues)
@@ -263,13 +282,7 @@ class ScrutiniseClaimOperation(BaseOperation):
             evidence_weight = "moderate"
 
         # Compute verdict deterministically from evidence weight
-        passes_scrutiny = evidence_weight in ("strong", "moderate")
-        if passes_scrutiny:
-            verdict = "pass"
-        elif evidence_weight == "conflicting":
-            verdict = "fail"
-        else:
-            verdict = "needs_resolution"
+        verdict = self._verdict_from_weight(evidence_weight)
 
         # Build parallel issue/type lists for _handle_issues
         issue_descriptions = [str(iss["description"]) for iss in found_issues]
@@ -320,32 +333,36 @@ class ScrutiniseClaimOperation(BaseOperation):
             )
 
         _deferred = 0  # track deferred cluster count for visibility
-        if self.agent_runner:
-            # If this is re-scrutiny after investigation, cluster the claim's
-            # evidence first. Investigation may have fetched many new items that
-            # need to be reduced to a representative subset before scrutiny.
-            if claim.investigation_count > 0:
-                all_evidence = []
-                for eid in claim.evidence_ids:
-                    ev = await self.repo.get("evidence", eid)
-                    if (
-                        isinstance(ev, Evidence)
-                        and ev.extracted
-                        and ev.extracted_content
-                        and not ev.invalidated
-                    ):
-                        all_evidence.append(ev)
-                if len(all_evidence) >= 2:
-                    _reps, _total, _deferred = await select_top_k_evidence(
-                        self.repo, all_evidence, embedding_model=self.embedding_model
-                    )
+        # If this is re-scrutiny after investigation, cluster the claim's
+        # evidence first (embedding-based, no LLM). Investigation may have
+        # fetched many new items that need reducing to a representative subset
+        # before the weight is computed over them.
+        if claim.investigation_count > 0:
+            all_evidence = []
+            for eid in claim.evidence_ids:
+                ev = await self.repo.get("evidence", eid)
+                if (
+                    isinstance(ev, Evidence)
+                    and ev.extracted
+                    and ev.extracted_content
+                    and not ev.invalidated
+                ):
+                    all_evidence.append(ev)
+            if len(all_evidence) >= 2:
+                _reps, _total, _deferred = await select_top_k_evidence(
+                    self.repo, all_evidence, embedding_model=self.embedding_model
+                )
 
-            evidence_summaries = await self._gather_evidence_summaries(claim)
-            verdict = await self._execute_split(claim, evidence_summaries)
-            claim.scrutiny_verdict = verdict
+        eligible = await self._gather_eligible_evidence(claim)
+        if self.agent_runner:
+            evidence_summaries = await self._gather_evidence_summaries(claim, eligible)
+            verdict = await self._execute_split(claim, eligible, evidence_summaries)
         else:
-            # No agent runner - pass by default
-            claim.scrutiny_verdict = "pass"
+            # No agent runner: the evidence weight is still deterministic; only
+            # the LLM issue-identification channel is unavailable, so the verdict
+            # follows from the weight alone.
+            verdict = self._verdict_from_weight(compute_evidence_weight(eligible).label)
+        claim.scrutiny_verdict = verdict
 
         # Stamp the fingerprint of the inputs we just scrutinised so a
         # subsequent call with identical inputs short-circuits.

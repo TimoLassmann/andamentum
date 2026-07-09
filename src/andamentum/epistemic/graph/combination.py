@@ -82,12 +82,20 @@ def _verdict_label(p: float) -> str:
     return "insufficient"
 
 
-def _claim_posterior(claim: Claim) -> float | None:
+def _claim_posterior(claim: Claim, suspended: bool = False) -> float | None:
     """Derive a claim's posterior from its integration verdict.
 
     Returns None when the claim has no integration verdict — IBE
     didn't run on it (e.g. it's still HYPOTHESIS, abandoned, or
     cycle-capped before promotion).
+
+    When ``suspended`` (the concordance tripwire flagged the IBE
+    direction as contradicted by both the counting mass and the
+    adversarial band — see ``confidence.ibe_contradicted_by_independent_signals``),
+    the claim still has a verdict but its *direction* is not trusted:
+    it contributes a neutral 0.5, exactly as an ``insufficient`` verdict
+    would. This is suspend-only — it never flips the claim to the
+    opposite direction, only withholds the disputed one.
 
     For cycle-capped claims with a verdict (IBE ran, then cap fired
     later), apply ``CYCLE_CAP_CONFIDENCE_PENALTY`` to the confidence —
@@ -98,6 +106,8 @@ def _claim_posterior(claim: Claim) -> float | None:
     """
     if claim.integrated_assessment is None:
         return None
+    if suspended:
+        return 0.5
     confidence = claim.integrated_confidence or 0.0
     if getattr(claim, "cycle_capped", False):
         from ..thresholds import CYCLE_CAP_CONFIDENCE_PENALTY
@@ -115,6 +125,7 @@ def combine_claim_verdicts(
     claims: list[Claim],
     combination_rule: str,
     weights: list[float] | None = None,
+    suspended_ids: set[str] | None = None,
 ) -> CombinedVerdict:
     """Aggregate per-claim posteriors into a combined verdict.
 
@@ -127,8 +138,14 @@ def combine_claim_verdicts(
             consumed only by WEIGHTED_AND. None or all-equal makes
             WEIGHTED_AND degenerate to a simple mean. Negative weights
             raise ValueError.
+        suspended_ids: optional set of claim entity_ids whose IBE direction
+            the concordance tripwire flagged as contradicted by the
+            independent signals. Suspended claims contribute a neutral 0.5
+            (as ``insufficient`` would) instead of their directional verdict.
+            None/empty leaves behaviour unchanged.
     """
     rule = combination_rule.upper()
+    suspended = suspended_ids or set()
 
     claim_posteriors: list[float | None] = []
     n_abandoned = 0
@@ -149,7 +166,7 @@ def combine_claim_verdicts(
         # docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md).
         if getattr(c, "cycle_capped", False):
             n_capped += 1
-        p = _claim_posterior(c)
+        p = _claim_posterior(c, suspended=c.entity_id in suspended)
         claim_posteriors.append(p)
         if p is None:
             n_no_verdict += 1

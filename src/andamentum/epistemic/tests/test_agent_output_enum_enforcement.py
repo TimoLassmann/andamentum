@@ -226,14 +226,6 @@ class TestVerdictLikeLiteralConstraints:
     deductive_soundness, recommendation, validity, soundness, direction).
     Each was bare ``str`` with values in the description — now a Literal."""
 
-    def test_evidence_weight_has_enum(self) -> None:
-        from andamentum.epistemic.agents.output_models import AssessEvidenceOutput
-
-        values = _field_allowed_values(
-            AssessEvidenceOutput.model_json_schema(), "evidence_weight"
-        )
-        assert set(values) == {"strong", "moderate", "weak", "conflicting"}
-
     def test_deductive_soundness_has_enum(self) -> None:
         from andamentum.epistemic.agents.output_models import (
             DeductiveValidationOutput,
@@ -277,15 +269,18 @@ class TestVerdictLikeLiteralConstraints:
         )
         assert set(values) == {"supports", "undermines", "neutral"}
 
-    def test_rejects_invalid_evidence_weight(self) -> None:
-        from andamentum.epistemic.agents.output_models import AssessEvidenceOutput
+    def test_rejects_invalid_deductive_soundness(self) -> None:
+        from andamentum.epistemic.agents.output_models import (
+            DeductiveValidationOutput,
+        )
 
         with pytest.raises(ValidationError):
-            AssessEvidenceOutput(
+            DeductiveValidationOutput(
                 claim_id="c1",
-                evidence_weight="overwhelming",  # type: ignore[arg-type]
+                deductive_soundness="airtight",  # type: ignore[arg-type]
                 confidence_estimate=0.9,
-                justification="x",
+                passes_deductive_validation=True,
+                recommendation="promote",
             )
 
 
@@ -432,7 +427,6 @@ EXPECTED_ENUM_FIELDS: list[tuple[str, str]] = [
     ("ClarifyQuestionOutput", "ambiguity_level"),
     ("ClassifyQuestionOutput", "question_type"),
     ("ExtractEvidenceOutput", "source_type"),
-    ("AssessEvidenceOutput", "evidence_weight"),
     ("IdentifySingleIssueOutput", "issue_type"),
     ("DeductiveValidationOutput", "deductive_soundness"),
     ("DeductiveValidationOutput", "recommendation"),

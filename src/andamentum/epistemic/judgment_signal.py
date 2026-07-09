@@ -89,6 +89,32 @@ def distribution_is_one_hot(distribution: list[float]) -> bool:
     return max(distribution) >= JUDGMENT_ONE_HOT_THRESHOLD
 
 
+def support_contradict_split(
+    distribution: list[float] | None, support_judgment: str | None
+) -> tuple[float, float]:
+    """The (supporting, contradicting) probability mass of one judgment, in [0, 1].
+
+    Prefers the verbalized distribution (Tier 0): ``distribution[0]`` supports,
+    ``distribution[1]`` contradicts, ``distribution[2]`` (no_bearing) counts for
+    neither. When no distribution was captured — adversarial counter-evidence or
+    pre-Tier-0 data — it falls back to the hard one-vote-per-item from
+    ``support_judgment``, so the two regimes coincide exactly in the limiting
+    case (a one-hot distribution equals its own hard vote).
+
+    This is the *unweighted* primitive. Callers apply their own corroboration
+    (Reichenbach ``1 + log(cluster_size)``) and/or quality weighting on top; it
+    lives here so the counting posterior (``confidence``) and the scrutiny
+    weight (``scrutiny_weight``) share one soft-vote definition.
+    """
+    if distribution is not None and len(distribution) == 3:
+        return distribution[0], distribution[1]
+    if support_judgment == "supports":
+        return 1.0, 0.0
+    if support_judgment == "contradicts":
+        return 0.0, 1.0
+    return 0.0, 0.0
+
+
 __all__ = [
     "JUDGMENT_CLASSES",
     "normalize_distribution",
@@ -96,4 +122,5 @@ __all__ = [
     "distribution_confidence",
     "distribution_entropy",
     "distribution_is_one_hot",
+    "support_contradict_split",
 ]

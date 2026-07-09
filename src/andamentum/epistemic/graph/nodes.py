@@ -2561,16 +2561,51 @@ class CheckSynthesisDemand(Node):
                 if combined.posterior >= POSTERIOR_DECISIVE_THRESHOLD
                 else "contradicts"
             )
-            demand = Demand.satisfied(
-                justification=(
-                    f"Combined posterior {combined.posterior:.3f} ({direction}) "
-                    f"is decisive; the verdict direction is clear from the "
-                    f"per-claim verdicts ({combined.combination_rule} over "
-                    f"{len([p for p in combined.claim_posteriors if p is not None])} "
-                    "aggregated claims). No further investigation likely "
-                    "to change the headline."
+            # Reproducibility tripwire (P7, demand-gated): a decisive verdict is
+            # exactly the load-bearing moment to check that the confident
+            # (one-hot) judgments underpinning it are not paraphrase-brittle —
+            # the one error class a single verbalized judgment is structurally
+            # blind to. Bounded + strictly sequential; only fires here, at the
+            # decisive gate. A detected flip withholds the decisive shortcut and
+            # loops back for more inquiry (suspend-only — it never asserts a new
+            # direction).
+            repro = None
+            if deps.agent_runner is not None:
+                from ..reproducibility import check_claims_reproducibility
+
+                repro = await check_claims_reproducibility(
+                    active_claims, deps.repo, deps.agent_runner
                 )
-            )
+            if repro is not None and repro.flip_found:
+                demand = Demand.needs(
+                    justification=(
+                        f"Combined posterior {combined.posterior:.3f} ({direction}) "
+                        "looked decisive, but a reproducibility check found a "
+                        "confident evidence judgment that flips under paraphrase. "
+                        + repro.detail
+                    ),
+                    target_hint=(
+                        "Re-scrutinise the claim whose one-hot judgment was not "
+                        "reproducible before finalising a decisive verdict."
+                    ),
+                )
+            else:
+                demand = Demand.satisfied(
+                    justification=(
+                        f"Combined posterior {combined.posterior:.3f} ({direction}) "
+                        f"is decisive; the verdict direction is clear from the "
+                        f"per-claim verdicts ({combined.combination_rule} over "
+                        f"{len([p for p in combined.claim_posteriors if p is not None])} "
+                        "aggregated claims). No further investigation likely "
+                        "to change the headline."
+                        + (
+                            f" Reproducibility check: {repro.checks_run} "
+                            "one-hot judgment(s) held under paraphrase."
+                            if repro is not None and repro.checks_run > 0
+                            else ""
+                        )
+                    )
+                )
         # ── LLM judgment ─────────────────────────────────────────────
         # Deterministic gates didn't determine the answer — ask the
         # check_synthesis_demand agent for a judgment.

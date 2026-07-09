@@ -157,13 +157,13 @@ def test_check_synthesis_demand_routes_to_insufficient() -> None:
 
 def test_topology_size_matches_node_count() -> None:
     """Sanity: the topology helper found roughly the right number
-    of nodes. Currently 21 in graph/nodes.py. This test isn't a hard
-    contract (the count will change during Move 3); it's an early
-    warning if the reflection helper accidentally drops nodes.
+    of nodes. Currently 23 in graph/nodes.py. This test isn't a hard
+    contract; it's an early warning if the reflection helper
+    accidentally drops nodes.
     """
     topo = topology()
     assert 15 <= len(topo) <= 30, (
-        f"Topology contains {len(topo)} nodes — expected ~21. "
-        "If Move 3 has progressed, update the bounds; otherwise the "
+        f"Topology contains {len(topo)} nodes — expected ~23. "
+        "If nodes were added or removed, update the bounds; otherwise the "
         "topology() helper may be missing or double-counting nodes."
     )

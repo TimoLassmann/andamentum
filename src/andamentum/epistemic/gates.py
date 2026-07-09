@@ -22,6 +22,7 @@ from .entities import Claim, ClaimStage, Evidence
 from .thresholds import (
     ADVERSARIAL_REFUTED_THRESHOLD,
     ADVERSARIAL_SURVIVED_THRESHOLD,
+    GATE_MIN_JUDGMENT_CONFIDENCE,
 )
 
 if TYPE_CHECKING:
@@ -401,25 +402,30 @@ async def _any_evidence_judged(claim: "Claim", repo: "EpistemicRepository") -> b
 
 
 async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") -> int:
-    """Count evidence judged as 'supports' for this claim.
+    """Count confidently-supporting evidence sources for this claim.
 
-    Counts every non-invalidated, supports-judged evidence item. The gate
-    asks "is there support at all?" — clustering's role is to inform
-    posterior weighting (see compute_posterior), not to qualify or
-    disqualify evidence at the gate. Filtering by cluster_status here
-    caused real supports to disappear from the gate's view when HDBSCAN
-    grouped them with other items and picked a non-supports medoid as
-    the cluster's representative.
+    Counts every non-invalidated, supports-judged evidence item whose
+    verbalized judgment confidence clears ``GATE_MIN_JUDGMENT_CONFIDENCE``
+    (Tier 1.5). The count stays DISCRETE — Reichenbach's ≥2 requirement is
+    about *distinct* sources, not fractional confidence — but a shaky,
+    high-entropy supporting judgment should not help ratchet a claim up a
+    stage. Evidence with no captured distribution (``judgment_confidence is
+    None`` — adversarial / pre-Tier-0) is exempt and counts regardless, so
+    the backward-compat limiting case is preserved.
 
-    Symmetrical with count_support_contradict, which never had the
-    cluster_status filter. The asymmetry was a bug.
+    The gate asks "is there confident support at all?" — clustering's role is
+    to inform posterior weighting (see compute_posterior), not to qualify or
+    disqualify evidence at the gate. Filtering by cluster_status here caused
+    real supports to disappear from the gate's view when HDBSCAN grouped them
+    with other items and picked a non-supports medoid as the cluster's
+    representative.
 
     Args:
         claim: The claim to check
         repo: Repository for loading evidence
 
     Returns:
-        Count of supporting evidence items, regardless of cluster_status
+        Count of confidently-supporting evidence items, regardless of cluster_status
     """
     count = 0
     for eid in claim.evidence_ids:
@@ -427,8 +433,12 @@ async def count_supporting_sources(claim: "Claim", repo: "EpistemicRepository") 
             evidence = await repo.get("evidence", eid)
             if evidence.invalidated:
                 continue
-            if getattr(evidence, "support_judgment", None) == "supports":
-                count += 1
+            if getattr(evidence, "support_judgment", None) != "supports":
+                continue
+            confidence = getattr(evidence, "judgment_confidence", None)
+            if confidence is not None and confidence < GATE_MIN_JUDGMENT_CONFIDENCE:
+                continue  # high-entropy support — too shaky to ratchet a stage
+            count += 1
         except Exception as e:
             logger.warning(
                 "count_supporting_sources: failed to load evidence %s: %s", eid, e

@@ -268,36 +268,55 @@ Key rules:
 
 ## Registration
 
-Register your provider in `providers/__init__.py`:
+The provider's self-description lives as **class attributes on the provider
+class** — the dispatch agent reads them directly off the class at runtime:
 
 ```python
-from .your_provider import YourProvider
+class YourProvider:
+    """Evidence provider using the Your API."""
 
-register_provider(
-    "your_provider",
-    YourProvider,
-    description=(
+    description = (
         "Description of what this provider searches and when to use it. "
         "Be specific about the domain. Include 3-4 example queries. "
         "Example queries: 'query one', 'query two', 'query three'."
-    ),
-    query_guidance=(
+    )
+
+    query_guidance = (
         "How the query reaches the API (e.g., goes to `/search` `q` "
         "parameter). Native syntax supported (Boolean, field operators, "
         "phrase quoting, IDs). Catalogue of 5-7 syntactically distinct "
         "query styles that all work — frame as 'all of these work', not "
         "'this is optimal', so the formulator varies its output across "
         "calls. Note any operators that are silently ignored."
-    ),
-)
+    )
+
+    # (natural-language need, native-syntax query) pairs; a None query marks
+    # an out-of-domain need the dispatch agent should abstain on.
+    query_examples: list[tuple[str, str | None]] = [
+        ("some in-domain research need", "native syntax for it"),
+        # ...6-8 pairs, including 2-3 out-of-domain abstain examples...
+        ("clearly out-of-domain need", None),
+    ]
+
+    output_kind = "assertion_evidence"
+    independence_group = "your_group"  # providers sharing an upstream corpus
+    provider_contract_version = 1
 ```
 
-The description is shown to the LLM planning agent that decides which
-providers to query. Write it to help the agent make good routing decisions —
-be specific about what this provider covers and what it does not.
+Then index the class in `providers/__init__.py` — registration itself takes
+only the name and the class:
 
-Also add 6-8 example queries to `PROVIDER_EXAMPLES` in the same file. These
-are used by the semantic routing system for embedding-based provider matching.
+```python
+from .your_provider import YourProvider
+
+register_provider("your_provider", YourProvider)
+```
+
+The `description` is shown to the dispatch agent that decides which providers
+to query (or abstain from). Write it to help the agent make good routing
+decisions — be specific about what this provider covers and what it does not.
+The `query_examples` pairs teach the dispatch agent this provider's native
+syntax and, via the `None` entries, when to abstain.
 
 ## Error handling
 
@@ -367,8 +386,8 @@ Before submitting a new provider:
 - [ ] `limitations` lists real caveats (or empty list)
 - [ ] Heavy imports (`httpx`, `time`) inside methods, not at module level
 - [ ] `CheckResult` imported under `TYPE_CHECKING`
-- [ ] Registered in `providers/__init__.py` with description
-- [ ] Example queries added to `PROVIDER_EXAMPLES`
+- [ ] Class carries `description`, `query_guidance`, `query_examples`, `output_kind`, `independence_group`, `provider_contract_version` attributes
+- [ ] Registered in `providers/__init__.py` via `register_provider("name", Class)`
 - [ ] Tests added in `tests/test_providers.py`
 - [ ] No content truncation anywhere
 - [ ] No quality pre-computation anywhere
