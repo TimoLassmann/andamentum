@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,9 +23,10 @@
   --am-fs-meta:    14px;
   --am-fs-small:   13px;
   --am-fs-micro:   12px;
+  --am-fs-lead:    20px;
   --am-fs-eyebrow: 10px;
 
-  --am-lh-prose: 1.75;
+  --am-lh-prose: 1.85;
   --am-lh-tight: 1.25;
   --am-lh-ui:    1.5;
 
@@ -135,20 +136,26 @@ body {
 }
 
 /* ── Title block ─────────────────────────────────────────────────────── */
-.doc-heading { margin-bottom: var(--am-sp-8); }
+.doc-heading {
+  margin-bottom: var(--am-sp-8);
+  padding-bottom: var(--am-sp-6);
+  border-bottom: 1px solid var(--am-rule);
+}
 .doc-heading h1 {
-  font-family: var(--am-font-mono);
+  font-family: var(--am-font-serif);
   font-size: var(--am-fs-display);
-  font-weight: 600;
-  line-height: var(--am-lh-tight);
+  font-weight: 700;
+  line-height: 1.15;
   letter-spacing: -0.01em;
   color: var(--am-ink);
   margin: 0 0 var(--am-sp-3);
 }
 .doc-subtitle {
-  font-size: var(--am-fs-prose);
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-lead);
+  font-weight: 400;
+  line-height: 1.5;
   color: var(--am-ink-3);
-  font-style: italic;
   margin: 0 0 var(--am-sp-4);
 }
 .doc-meta {
@@ -167,12 +174,20 @@ body {
 h2 {
   font-family: var(--am-font-serif);
   font-size: var(--am-fs-h2);
-  font-weight: 600;
-  line-height: var(--am-lh-tight);
+  font-weight: 700;
+  line-height: 1.3;
   color: var(--am-ink);
   margin: var(--am-sp-10) 0 var(--am-sp-4);
   padding-top: var(--am-sp-5);
   border-top: 1px solid var(--am-rule);
+}
+h2 .n {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-meta);
+  font-weight: 600;
+  color: var(--am-ink-5);
+  margin-right: var(--am-sp-3);
+  font-variant-numeric: tabular-nums;
 }
 h3 {
   font-family: var(--am-font-serif);
@@ -255,12 +270,12 @@ pre code {
 .callout.tone-danger .eyebrow { color: var(--am-danger-accent); }
 .callout.tone-danger strong { color: var(--am-danger-ink); }
 
+/* The lead paragraph. No rules of its own: the title block already closes
+   with one and the first h2 opens with one, so borders here stack into a
+   double rule with dead space between. */
 .verdict {
-  font-size: var(--am-fs-prose);
-  padding: var(--am-sp-5) 0;
-  border-top: 1px solid var(--am-rule);
-  border-bottom: 1px solid var(--am-rule);
-  margin: 0 0 var(--am-sp-7);
+  font-size: var(--am-fs-lead);
+  margin: 0 0 var(--am-sp-6);
   color: var(--am-ink-2);
 }
 .verdict strong { color: var(--am-ink); }
@@ -289,6 +304,13 @@ th {
 }
 td code, th code { font-size: 0.9em; }
 td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-note {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-meta);
+  line-height: var(--am-lh-ui);
+  color: var(--am-ink-4);
+  margin: calc(-1 * var(--am-sp-2)) 0 var(--am-sp-6);
+}
 
 /* ── Field / definition list ─────────────────────────────────────────── */
 .fields {
@@ -402,7 +424,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   </div>
 
   <section>
-    <h2>What it is, and when to reach for it</h2>
+    <h2><span class="n">1</span>What it is, and when to reach for it</h2>
     <p><code>llm_judge</code> is the small, general primitive for the recurring question <em>&ldquo;is this model output any good, and how sure are we?&rdquo;</em> It does two things and nothing else:</p>
     <ul>
       <li><strong>Score</strong> one output against a set of criteria (<code>judge_score</code>).</li>
@@ -419,7 +441,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   </section>
 
   <section>
-    <h2>The two functions</h2>
+    <h2><span class="n">2</span>The two functions</h2>
     <div class="duo">
       <div class="card">
         <p class="eyebrow">score one output</p>
@@ -479,7 +501,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>The mode lives in one parameter</h2>
+    <h2><span class="n">3</span>The mode lives in one parameter</h2>
     <p>There is <strong>one code path per function</strong>. The <em>type</em> of <code>model</code> is the only mode switch:</p>
     <div class="table-scroll">
       <table>
@@ -502,7 +524,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>Schemas</h2>
+    <h2><span class="n">4</span>Schemas</h2>
     <p>Every boundary type is flat, or a list of flat models — at most one level of nesting — so small local models fill them reliably. Crucially, <strong>the model never fills these public types directly.</strong> It only ever fills a private, single-distribution elicitation schema (one criterion, or one comparison order); <code>signals.py</code> and <code>panel.py</code> assemble the public results from one or more of those calls.</p>
 
     <h3><code>Criterion</code> — one axis to judge against</h3>
@@ -572,7 +594,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>How confidence and doubt are derived</h2>
+    <h2><span class="n">5</span>How confidence and doubt are derived</h2>
     <p>The two experiments both landed on the same core lesson: a verbalized <strong>distribution</strong> over discrete outcomes beats asking the model for a bare confidence number, and the reasoning must be written <em>before</em> the numbers (the derive-then-judge / G-Eval form-filling pattern). So the model is only ever asked to distribute 100 belief points; the two headline signals are computed from that distribution by pure, deterministic math in <code>signals.py</code> — no I/O, no LLM, unit-tested in isolation.</p>
     <ul>
       <li><strong>confidence = the mass on the reported verdict.</strong> Not the maximum mass — the mass on the label actually being returned. The two differ whenever a tie-break moves the verdict off the raw argmax: an even a/b split reports <code>tie</code>, and its confidence is the mass on <code>tie</code>, not the (larger) mass sitting on a and b. 1.0 means the distribution was one-hot.</li>
@@ -593,7 +615,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>Panel consensus is an agreement gate</h2>
+    <h2><span class="n">6</span>Panel consensus is an agreement gate</h2>
     <p>The single most important finding from both experiments: <strong>pooling judges does not boost accuracy over the best single judge.</strong> A panel's only validated value is as an <strong>agreement gate</strong> — a filter that tells you when to trust a verdict more and when to route it for a second look. So this module never fabricates a &ldquo;smarter&rdquo; averaged answer.</p>
     <p>The panel runs <strong>strictly sequentially</strong> — one judge at a time, a plain <code>for</code>/<code>await</code> loop, never <code>asyncio.gather</code> — because Ollama serialises inference per process anyway, and the andamentum-wide rule is to never run two local-model calls concurrently. Aggregation mirrors <code>epistemic.operations.integration</code> K-agreement:</p>
     <div class="table-scroll">
@@ -615,7 +637,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>How to read the signals</h2>
+    <h2><span class="n">7</span>How to read the signals</h2>
     <div class="callout tone-danger">
       <p class="eyebrow">Read this before using doubt for anything</p>
       <p><strong>Doubt is a suspicion-raiser only.</strong> High doubt is a reason to escalate or route for a second look. <strong>Low doubt never proves the verdict is correct</strong> — it only means the judge was not internally conflicted. A stably-wrong model has low doubt. Any integration must use doubt to <em>raise</em> suspicion and trigger more scrutiny, never to <em>grant</em> trust or fast-track a decision.</p>
@@ -639,7 +661,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
   </section>
 
   <section>
-    <h2>Command line</h2>
+    <h2><span class="n">8</span>Command line</h2>
     <p>The <code>andamentum-llm-judge</code> script exposes both functions as subcommands. <code>--model</code> is required (no hidden default); pass it once for the fast path, or repeat it / give a comma-separated list for a panel. Output is JSON to stdout by default (<code>-o</code> writes a file).</p>
 <pre><code><span class="tok-com"># fast single judge</span>
 andamentum-llm-judge score <span class="tok-str">"Paris is the capital of France."</span> \
@@ -655,42 +677,77 @@ andamentum-llm-judge compare <span class="tok-str">"answer one"</span> <span cla
   </section>
 
   <section>
-    <h2>Measured behaviour</h2>
+    <h2><span class="n">9</span>Measured behaviour</h2>
     <p>The offline test suite proves the module assembles its numbers correctly; it says nothing about whether the <em>judgments</em> are any good. These are live runs of the shipped entry points against gold labels — 10 <code>judge_compare</code> pairs from JudgeBench (objective which-is-better) and 10 <code>judge_score</code> claims from SciFact (SUPPORT / CONTRADICT / NOINFO, scored under a single <em>factual accuracy</em> criterion). Reproduce with <code>uv run python benchmarks/llm_judge/benchmark.py --model &lt;id&gt;</code>.</p>
 
+    <h3>Accuracy against gold</h3>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>Model</th><th>Task</th><th>Accuracy</th><th>Mean confidence</th><th>Mean doubt</th><th>Flagged <code>needs_review</code></th><th>Accuracy — unflagged</th><th>Accuracy — flagged</th>
+            <th>Judge</th><th>Task</th><th>Accuracy</th><th>Mean confidence</th><th>Mean doubt</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td rowspan="2"><code>gemma4:31b-cloud</code><br><span class="badge badge--success">capable</span></td>
+            <td rowspan="2"><code>gemma4:31b-cloud</code> <span class="badge badge--success">capable</span></td>
             <td><code>judge_compare</code></td>
-            <td class="num"><strong>100%</strong> (10/10)</td><td class="num">0.99</td><td class="num">0.02</td><td class="num">0 / 10</td><td class="num">100% (10)</td><td class="num">—</td>
+            <td class="num"><strong>100%</strong> (10/10)</td><td class="num">0.99</td><td class="num">0.02</td>
           </tr>
           <tr>
             <td><code>judge_score</code></td>
-            <td class="num"><strong>80%</strong> (8/10)</td><td class="num">0.93</td><td class="num">0.16</td><td class="num">2 / 10</td><td class="num">75% (8)</td><td class="num">100% (2)</td>
+            <td class="num"><strong>80%</strong> (8/10)</td><td class="num">0.93</td><td class="num">0.16</td>
           </tr>
           <tr>
-            <td rowspan="2"><code>openai:gpt-5.4-nano</code><br><span class="badge badge--warn">nano-class</span></td>
+            <td rowspan="2"><code>gpt-5.4-nano</code> <span class="badge badge--warn">nano-class</span></td>
             <td><code>judge_compare</code></td>
-            <td class="num">80% (8/10)</td><td class="num">0.70</td><td class="num">0.61</td><td class="num">6 / 10</td><td class="num">100% (4)</td><td class="num">67% (6)</td>
+            <td class="num">80% (8/10)</td><td class="num">0.70</td><td class="num">0.61</td>
           </tr>
           <tr>
             <td><code>judge_score</code></td>
-            <td class="num">50% (5/10)</td><td class="num">0.82</td><td class="num">0.41</td><td class="num">3 / 10</td><td class="num">43% (7)</td><td class="num">67% (3)</td>
-          </tr>
-          <tr>
-            <td><code>ollama:gemma4:31b-nvfp4</code><br><span class="badge">local</span></td>
-            <td colspan="7">Not completed. Drives the module correctly (the examples it reached were decided correctly, at confidence 1.00 / doubt 0.00), but at <strong>~225 s per compare example</strong> a full run needs ~40 minutes, so it was abandoned rather than reported. <code>gemma4:31b-cloud</code> is the same model class and stands in for it above.</td>
+            <td class="num">50% (5/10)</td><td class="num">0.82</td><td class="num">0.41</td>
           </tr>
         </tbody>
       </table>
     </div>
+    <p class="table-note"><code>ollama:gemma4:31b-nvfp4</code> (the same model, run locally) is <strong>not reported</strong>: it drives the module correctly — the examples it reached were decided correctly, at confidence 1.00 / doubt 0.00 — but at <strong>~225 s per compare example</strong> a full run needs ~40 minutes, so it was abandoned rather than quoted from a partial. <code>gemma4:31b-cloud</code> is the same model class and stands in for it.</p>
+
+    <h3>Does <code>needs_review</code> actually catch the errors?</h3>
+    <p>This is the question the whole gate exists to answer. Split each run by the flag and compare accuracy on either side: a useful gate is <em>less</em> accurate on the examples it flagged, because that is where the mistakes are.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Judge</th><th>Task</th><th>Flagged</th><th>Accuracy — unflagged</th><th>Accuracy — flagged</th><th>Gate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td rowspan="2"><code>gemma4:31b-cloud</code></td>
+            <td><code>judge_compare</code></td>
+            <td class="num">0 / 10</td><td class="num">100% (10)</td><td class="num">—</td>
+            <td>nothing to catch</td>
+          </tr>
+          <tr>
+            <td><code>judge_score</code></td>
+            <td class="num">2 / 10</td><td class="num">75% (8)</td><td class="num">100% (2)</td>
+            <td><span class="badge badge--danger">missed both errors</span></td>
+          </tr>
+          <tr>
+            <td rowspan="2"><code>gpt-5.4-nano</code></td>
+            <td><code>judge_compare</code></td>
+            <td class="num">6 / 10</td><td class="num">100% (4)</td><td class="num">67% (6)</td>
+            <td><span class="badge badge--success">worked</span></td>
+          </tr>
+          <tr>
+            <td><code>judge_score</code></td>
+            <td class="num">3 / 10</td><td class="num">43% (7)</td><td class="num">67% (3)</td>
+            <td><span class="badge badge--danger">inverted</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>On <code>judge_compare</code> the gate does its job: for the nano judge, every answer it left unflagged was correct (100%, 4 items) while the ones it flagged were only 67% correct. It cannot make a weak judge accurate, but it can tell you which of its answers to distrust — which is exactly what an agreement gate is for.</p>
 
     <h3>What the numbers say</h3>
     <p><strong>Judge capability dominates everything.</strong> Same examples, same code: the capable judge goes 100% / 80%, the nano-class judge goes 80% / 50%. Nothing in the module compensates for a weak judge, and it does not try to — there is one uniform code path and no model-tier branching.</p>
@@ -704,9 +761,7 @@ andamentum-llm-judge compare <span class="tok-str">"answer one"</span> <span cla
       <p><strong>Practical guidance.</strong> <code>judge_compare</code> is validated and can be trusted as a preference signal on a capable judge. For <code>judge_score</code> as a learning signal, prefer a <strong>panel</strong> over a single fast judge: a panel adds the <em>structural</em> split-detection trigger, which does not depend on the doubt heuristic that failed here.</p>
     </div>
 
-    <p>The compare gate, by contrast, did its job on the nano judge — 100% accurate on the 4 it left unflagged versus 67% on the 6 it flagged. That is the agreement gate working as designed: it cannot make a weak judge accurate, but it can tell you which of its answers to distrust.</p>
-
-    <h2>Where things live</h2>
+    <h2><span class="n">10</span>Where things live</h2>
     <div class="table-scroll">
       <table>
         <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
