@@ -295,3 +295,107 @@ async def test_compare_confidence_is_the_mass_on_the_reported_winner(monkeypatch
     assert result.winner == "tie"
     assert result.confidence == pytest.approx(0.10)
     assert result.needs_review is True
+
+
+# ── expected_preference: the continuous companion to `winner` ─────────────
+
+
+async def test_judge_compare_fast_exposes_expected_preference(monkeypatch):
+    scripted = {
+        "AB": _pair("a looks better", 85, 5, 10),
+        "BA": _pair("a still looks better", 10, 5, 85),
+    }
+
+    async def fake_elicit(
+        output_1, output_2, context, criteria, *, model, order, temperature
+    ):
+        return scripted[order]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_pairwise", AsyncMock(side_effect=fake_elicit)
+    )
+
+    result = await judge_compare(OUTPUT_A, OUTPUT_B, model="anthropic:claude-haiku-4-5")
+
+    # E[preference for A] off the order-averaged histogram — a wins, so > 0.5.
+    canon_ab = signals.canonicalize(scripted["AB"].to_row(), "AB")
+    canon_ba = signals.canonicalize(scripted["BA"].to_row(), "BA")
+    avg = signals.order_average(canon_ab, canon_ba)
+    expected = signals.expectation(avg, signals.COMPARE_EXPECTATION_WEIGHTS)
+    assert result.expected_preference == pytest.approx(expected)
+    assert result.winner == "a"
+    assert result.expected_preference > 0.5
+
+
+async def test_judge_compare_expected_preference_symmetric_under_swap(monkeypatch):
+    """Swapping which output is A must mirror expected_preference around 0.5 —
+    the position-neutrality the both-orders machinery guarantees, now visible
+    on the continuous signal too."""
+    scripted = {
+        "AB": _pair("a wins", 80, 10, 10),
+        "BA": _pair("a wins", 10, 10, 80),
+    }
+
+    async def fake_elicit(
+        output_1, output_2, context, criteria, *, model, order, temperature
+    ):
+        # Depends only on order, not on which text is A — so swapping A/B
+        # inputs yields the mirror-image histogram.
+        return scripted[order]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_pairwise", AsyncMock(side_effect=fake_elicit)
+    )
+
+    forward = await judge_compare(OUTPUT_A, OUTPUT_B, model="m")
+    swapped_scripted = {
+        "AB": _pair("b wins", 10, 10, 80),
+        "BA": _pair("b wins", 80, 10, 10),
+    }
+
+    async def fake_elicit_swapped(
+        output_1, output_2, context, criteria, *, model, order, temperature
+    ):
+        return swapped_scripted[order]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_pairwise", AsyncMock(side_effect=fake_elicit_swapped)
+    )
+    swapped = await judge_compare(OUTPUT_A, OUTPUT_B, model="m")
+
+    assert forward.expected_preference == pytest.approx(
+        1.0 - swapped.expected_preference
+    )
+
+
+async def test_judge_compare_panel_expected_preference_pools_the_judges(monkeypatch):
+    scripted = {
+        ("m1", "AB"): _pair("a wins", 80, 10, 10),
+        ("m1", "BA"): _pair("a wins", 10, 10, 80),
+        ("m2", "AB"): _pair("a wins", 75, 15, 10),
+        ("m2", "BA"): _pair("a wins", 15, 10, 75),
+        ("m3", "AB"): _pair("b wins", 10, 10, 80),
+        ("m3", "BA"): _pair("b wins", 80, 10, 10),
+    }
+
+    async def fake_elicit(
+        output_1, output_2, context, criteria, *, model, order, temperature
+    ):
+        return scripted[(model, order)]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_pairwise", AsyncMock(side_effect=fake_elicit)
+    )
+
+    result = await judge_compare(OUTPUT_A, OUTPUT_B, model=["m1", "m2", "m3"])
+
+    # Pooled mean of each judge's order-averaged canonical histogram.
+    avgs = []
+    for m in ("m1", "m2", "m3"):
+        canon_ab = signals.canonicalize(scripted[(m, "AB")].to_row(), "AB")
+        canon_ba = signals.canonicalize(scripted[(m, "BA")].to_row(), "BA")
+        avgs.append(signals.order_average(canon_ab, canon_ba))
+    expected = signals.expectation(
+        signals.mean_distributions(avgs), signals.COMPARE_EXPECTATION_WEIGHTS
+    )
+    assert result.expected_preference == pytest.approx(expected)

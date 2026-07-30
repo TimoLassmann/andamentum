@@ -133,6 +133,20 @@ class ScoreResult(BaseModel):
     ``signals.needs_review_score``): panel split (not unanimous) OR
     doubt >= a fixed threshold. It is a routing hint, never a block —
     the result is always returned.
+
+    ``expected_score`` is the CONTINUOUS companion to ``overall``: the
+    expectation of the (equal-weight, criterion-averaged) belief
+    distribution under ``meets``=1, ``partial``=0.5, ``fails``=0, so it lands
+    in ``[0, 1]`` with higher = better. The benchmark in
+    ``benchmarks/judge_scoring`` found this scalar a far stronger RANKING
+    signal than the argmax label (AUROC ≈ 0.98 vs 76-83% argmax accuracy on
+    the same elicited numbers) — it costs zero extra model calls, being read
+    off the distribution already in hand. USE THE LABEL FOR A DECISION, THE
+    SCALAR FOR RANKING / ROUTING / THRESHOLDING. On a close panel split the
+    argmax of ``expected_score`` can disagree with ``overall`` (which is the
+    majority VOTE, not the pooled-mean argmax) — that is the same
+    label-vs-continuous divergence documented for ``per_criterion``, not a
+    bug.
     """
 
     per_criterion: list[CriterionScore]
@@ -140,6 +154,12 @@ class ScoreResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     doubt: float = Field(ge=0.0, le=1.0)
     needs_review: bool
+    expected_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Continuous score in [0,1] (meets=1, partial=0.5, fails=0) — "
+        "a ranking signal; use `overall` for the decision.",
+    )
     judges: list[JudgeVote] | None = None
 
 
@@ -172,6 +192,19 @@ class CompareResult(BaseModel):
     ``needs_review`` follows ``signals.needs_review_compare``: order
     inconsistency (any judge, or the fast-mode single judge) OR panel split
     OR doubt above threshold. Never blocks the caller.
+
+    ``expected_preference`` is the CONTINUOUS companion to ``winner``:
+    ``E[preference for A]`` in ``[0, 1]`` — the expectation of the
+    order-averaged (and, for a panel, judge-pooled) ``[pa, ptie, pb]``
+    histogram under ``a``=1, ``tie``=0.5, ``b``=0. Above 0.5 favours A, below
+    0.5 favours B, exactly 0.5 is indifferent. The benchmark in
+    ``benchmarks/judge_scoring`` found it edges out the argmax on accuracy by
+    converting ties into graded decisions, and — like ``expected_score`` on
+    :class:`ScoreResult` — it is read off the distribution already computed,
+    at zero extra model-call cost. USE ``winner`` FOR A DECISION, THIS SCALAR
+    FOR RANKING / THRESHOLDING. It can land on the 'wrong' side of 0.5 from a
+    hung-panel ``winner='tie'`` — the scalar exposes the lean the conservative
+    tie-break deliberately refuses to call.
     """
 
     reasoning: str = Field(
@@ -182,6 +215,12 @@ class CompareResult(BaseModel):
     doubt: float = Field(ge=0.0, le=1.0)
     order_consistent: bool
     needs_review: bool
+    expected_preference: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="E[preference for A] in [0,1] (a=1, tie=0.5, b=0) — a ranking "
+        "signal; use `winner` for the decision.",
+    )
     judges: list[JudgeVote] | None = None
 
 

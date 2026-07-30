@@ -132,7 +132,7 @@ async def run_score_fast(
     (
         criterion_scores,
         _dists,
-        _overall_dist,
+        overall_dist,
         verdict,
         confidence,
         doubt,
@@ -146,6 +146,9 @@ async def run_score_fast(
         confidence=confidence,
         doubt=doubt,
         needs_review=needs_review,
+        expected_score=signals.expectation(
+            overall_dist, signals.SCORE_EXPECTATION_WEIGHTS
+        ),
         judges=None,
     )
 
@@ -161,7 +164,7 @@ async def run_compare_fast(
     """Single-judge judge_compare (both orders always run). Returns the
     parts ``__init__.py`` assembles into a
     :class:`~andamentum.llm_judge.schemas.CompareResult`."""
-    _avg, winner, confidence, doubt, oc, reasoning = await _judge_compare_once(
+    avg, winner, confidence, doubt, oc, reasoning = await _judge_compare_once(
         output_a,
         output_b,
         criteria,
@@ -177,6 +180,9 @@ async def run_compare_fast(
         doubt=doubt,
         order_consistent=oc,
         needs_review=needs_review,
+        expected_preference=signals.expectation(
+            avg, signals.COMPARE_EXPECTATION_WEIGHTS
+        ),
         judges=None,
     )
 
@@ -253,12 +259,23 @@ async def run_score_panel(
             )
         )
 
+    # Continuous score from the panel-POOLED belief (mean of the judges'
+    # rolled-up distributions) — the same distribution `per_criterion` pools
+    # from, so the scalar and the reported rows agree. This is a pooled-mean
+    # quantity, deliberately NOT re-derived from the majority vote: the
+    # continuous signal's whole value is that it keeps the graded lean the
+    # argmax discards.
+    expected_score = signals.expectation(
+        signals.mean_distributions(overall_dists), signals.SCORE_EXPECTATION_WEIGHTS
+    )
+
     return ScoreResultParts(
         per_criterion=pooled_criterion_scores,
         overall=majority,
         confidence=panel_confidence,
         doubt=panel_doubt,
         needs_review=needs_review,
+        expected_score=expected_score,
         judges=judges,
     )
 
@@ -338,6 +355,13 @@ async def run_compare_panel(
         panel_order_consistent, unanimous, panel_doubt
     )
 
+    # E[preference for A] from the panel-pooled order-averaged histograms —
+    # mean across judges of each judge's canonical [pa, ptie, pb]. Keeps the
+    # panel's graded lean even when the majority `winner` is a hung 'tie'.
+    expected_preference = signals.expectation(
+        signals.mean_distributions(avgs), signals.COMPARE_EXPECTATION_WEIGHTS
+    )
+
     return CompareResultParts(
         reasoning=reasoning,
         winner=majority,
@@ -345,6 +369,7 @@ async def run_compare_panel(
         doubt=panel_doubt,
         order_consistent=panel_order_consistent,
         needs_review=needs_review,
+        expected_preference=expected_preference,
         judges=judges,
     )
 
@@ -370,6 +395,7 @@ class ScoreResultParts:
         confidence: float,
         doubt: float,
         needs_review: bool,
+        expected_score: float,
         judges: list[JudgeVote] | None,
     ) -> None:
         self.per_criterion = per_criterion
@@ -377,6 +403,7 @@ class ScoreResultParts:
         self.confidence = confidence
         self.doubt = doubt
         self.needs_review = needs_review
+        self.expected_score = expected_score
         self.judges = judges
 
 
@@ -393,6 +420,7 @@ class CompareResultParts:
         doubt: float,
         order_consistent: bool,
         needs_review: bool,
+        expected_preference: float,
         judges: list[JudgeVote] | None,
     ) -> None:
         self.reasoning = reasoning
@@ -401,6 +429,7 @@ class CompareResultParts:
         self.doubt = doubt
         self.order_consistent = order_consistent
         self.needs_review = needs_review
+        self.expected_preference = expected_preference
         self.judges = judges
 
 

@@ -357,3 +357,98 @@ async def test_fast_path_row_still_matches_a_well_behaved_judge_exactly(monkeypa
     result = await judge_score("out", criteria=_SINGLE_CRITERION, model="m")
     row = result.per_criterion[0]
     assert (row.meets, row.partial, row.fails) == (80, 15, 5)
+
+
+# ── expected_score: the continuous companion to `overall` ─────────────────
+
+
+async def test_judge_score_fast_exposes_expected_score(monkeypatch):
+    scripted = {
+        "correctness": _dist("looks right", 80, 15, 5),
+        "clarity": _dist("clear enough", 60, 30, 10),
+    }
+
+    async def fake_elicit(output, criterion, context, *, model, temperature):
+        return scripted[criterion.name]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_criterion_score", AsyncMock(side_effect=fake_elicit)
+    )
+
+    result = await judge_score(
+        "some output", criteria=CRITERIA, model="anthropic:claude-haiku-4-5"
+    )
+
+    # Derived from the equal-weight, criterion-averaged distribution — the
+    # same `mean` the verdict/confidence come from — under meets=1/partial=0.5.
+    mean = signals.mean_distributions(
+        [signals.normalize_three(80, 15, 5), signals.normalize_three(60, 30, 10)]
+    )
+    expected = signals.expectation(mean, signals.SCORE_EXPECTATION_WEIGHTS)
+    assert result.expected_score == pytest.approx(expected)
+    assert 0.0 <= result.expected_score <= 1.0
+
+
+async def test_judge_score_expected_score_ranks_within_a_verdict(monkeypatch):
+    """Two outputs both argmax to 'meets' but one is a clearer pass — the
+    argmax collapses them, expected_score separates them. This is the whole
+    point of exposing the continuous value."""
+
+    async def elicit_for(meets, partial, fails):
+        async def fake(output, criterion, context, *, model, temperature):
+            return _dist("x", meets, partial, fails)
+
+        return fake
+
+    monkeypatch.setattr(
+        elicit_module,
+        "elicit_criterion_score",
+        AsyncMock(side_effect=await elicit_for(95, 4, 1)),
+    )
+    strong = await judge_score(
+        "strong", criteria=_SINGLE_CRITERION, model="anthropic:claude-haiku-4-5"
+    )
+
+    monkeypatch.setattr(
+        elicit_module,
+        "elicit_criterion_score",
+        AsyncMock(side_effect=await elicit_for(55, 40, 5)),
+    )
+    weak = await judge_score(
+        "weak", criteria=_SINGLE_CRITERION, model="anthropic:claude-haiku-4-5"
+    )
+
+    assert strong.overall == weak.overall == "meets"  # argmax collapses them
+    assert strong.expected_score > weak.expected_score  # continuous separates
+
+
+async def test_judge_score_panel_expected_score_pools_the_judges(monkeypatch):
+    scripted = {
+        "m1": _dist("meets", 90, 5, 5),
+        "m2": _dist("meets", 85, 10, 5),
+        "m3": _dist("partial", 10, 80, 10),
+    }
+
+    async def fake_elicit(output, criterion, context, *, model, temperature):
+        return scripted[model]
+
+    monkeypatch.setattr(
+        elicit_module, "elicit_criterion_score", AsyncMock(side_effect=fake_elicit)
+    )
+
+    result = await judge_score(
+        "some output", criteria=_SINGLE_CRITERION, model=["m1", "m2", "m3"]
+    )
+
+    # Panel expected_score is the expectation of the POOLED belief (mean of
+    # the judges' rolled-up distributions) — not re-derived from the majority
+    # vote, so it keeps the dissenter's lean the argmax discards.
+    pooled = signals.mean_distributions(
+        [
+            signals.normalize_three(90, 5, 5),
+            signals.normalize_three(85, 10, 5),
+            signals.normalize_three(10, 80, 10),
+        ]
+    )
+    expected = signals.expectation(pooled, signals.SCORE_EXPECTATION_WEIGHTS)
+    assert result.expected_score == pytest.approx(expected)

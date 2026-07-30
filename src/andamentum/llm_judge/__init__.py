@@ -201,6 +201,7 @@ async def judge_score(
         confidence=parts.confidence,
         doubt=parts.doubt,
         needs_review=parts.needs_review,
+        expected_score=parts.expected_score,
         judges=parts.judges,
     )
 
@@ -262,5 +263,6 @@ async def judge_compare(
         doubt=parts.doubt,
         order_consistent=parts.order_consistent,
         needs_review=parts.needs_review,
+        expected_preference=parts.expected_preference,
         judges=parts.judges,
     )

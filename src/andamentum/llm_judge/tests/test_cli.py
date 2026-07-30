@@ -28,6 +28,7 @@ def _fake_score_result() -> ScoreResult:
         confidence=0.9,
         doubt=0.1,
         needs_review=False,
+        expected_score=0.85,
         judges=None,
     )
 
@@ -40,6 +41,7 @@ def _fake_compare_result() -> CompareResult:
         doubt=0.1,
         order_consistent=True,
         needs_review=False,
+        expected_preference=0.8,
         judges=None,
     )
 
@@ -296,6 +298,7 @@ def test_stdout_payload_is_the_full_result_schema(calls, capsys):
         "doubt",
         "order_consistent",
         "needs_review",
+        "expected_preference",
         "judges",
     }
 
