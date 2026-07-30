@@ -14,6 +14,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
 | **chunker** | Structural-first semantic chunking of long markdown into 2k–10k char self-contained units. |
+| [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one output against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
 | [**document_store**](./document_store/overview.md) | SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal RRF search and LLM metadata extraction. |
 | [**deep_research**](./deep_research/overview.md) | Web research pipeline (search → fetch → extract → verify → synthesize) over a local SearXNG instance. |
 | **core** | Shared model resolution, agent runners, fetch gate, audit log, and embedding clients. |
@@ -41,11 +42,12 @@ from andamentum.chunker import extract_units
 from andamentum.document_store import ingest, search
 from andamentum.deep_research import ResearchState
 from andamentum.vision_critique import critique_figure
+from andamentum.llm_judge import judge_score, judge_compare
 ```
 
 ## CLIs
 
-Eight scripts installed by the package. Run `--help` on any binary for full flag reference.
+Nine scripts installed by the package. Run `--help` on any binary for full flag reference.
 
 | Script | What it does | LLM? |
 |---|---|---|
@@ -57,5 +59,6 @@ Eight scripts installed by the package. Run `--help` on any binary for full flag
 | `andamentum-chunker` | Structural-first semantic chunking. | required |
 | `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON. | required (multimodal) |
 | `andamentum-research` | Web research over local SearXNG. | required |
+| `andamentum-llm-judge` | LLM-as-judge → JSON. `score <output>` or `compare <a> <b>`. One `--model` = fast single judge; repeated = sequential panel with an agreement gate. | required |
 
 The LLM-using CLIs resolve their model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`. The CLI exits with a clear error if neither is set — no hidden defaults.
