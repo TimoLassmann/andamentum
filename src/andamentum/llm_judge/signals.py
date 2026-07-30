@@ -38,6 +38,22 @@ COMPARE_LABELS: tuple[str, str, str] = ("a", "tie", "b")
 # Conservative: on a tie, prefer 'tie' over declaring a winner.
 COMPARE_TIEBREAK: tuple[str, str, str] = ("tie", "a", "b")
 
+# ── Continuous-expectation weights ──────────────────────────────────────
+#
+# The benchmark (benchmarks/judge_scoring) found the EXPECTATION of the
+# elicited belief distribution to be a far better ranking signal than the
+# argmax label the module reports as its verdict — same numbers, zero extra
+# calls, AUROC ≈ 0.98 separating SUPPORT from CONTRADICT vs 76-83% argmax
+# accuracy. These weights turn a 3-way belief vector into one scalar in
+# [0, 1]. Ordering matches SCORE_LABELS / COMPARE_LABELS respectively.
+#
+# Score: meets=1, partial=0.5, fails=0 — "how well does this meet the
+# criteria", higher = better.
+SCORE_EXPECTATION_WEIGHTS: tuple[float, float, float] = (1.0, 0.5, 0.0)
+# Compare: a=1, tie=0.5, b=0 — E[preference for A]. >0.5 favours A, <0.5
+# favours B, exactly 0.5 = indifferent.
+COMPARE_EXPECTATION_WEIGHTS: tuple[float, float, float] = (1.0, 0.5, 0.0)
+
 # The label a compare mode reports when it cannot pick a winner. A tie among
 # judges is NOT broken toward 'a' or 'b': doing so would reintroduce, at the
 # panel layer, exactly the position bias that running both presentation
@@ -175,6 +191,30 @@ def to_percentages(dist: list[float]) -> list[int]:
         for i in order[:leftover]:
             floors[i] += 1
     return floors
+
+
+def expectation(dist: list[float], weights: tuple[float, ...]) -> float:
+    """Weighted expectation of a probability vector — a continuous scalar.
+
+    ``dist`` is a normalized distribution over labels; ``weights[i]`` is the
+    scalar value assigned to ``dist[i]`` (see
+    :data:`SCORE_EXPECTATION_WEIGHTS` / :data:`COMPARE_EXPECTATION_WEIGHTS`).
+    With those weights the result lands in ``[0, 1]``.
+
+    This is the continuous ranking signal the argmax verdict throws away: the
+    verdict answers "which label", the expectation answers "how far toward the
+    best label" — the latter separates near-misses from clear passes that the
+    former collapses to the same word.
+
+    Raises:
+        ValueError: if ``dist`` and ``weights`` differ in length — a mismatch
+            would silently score against the wrong labels.
+    """
+    if len(dist) != len(weights):
+        raise ValueError(
+            f"dist (len {len(dist)}) and weights (len {len(weights)}) must match"
+        )
+    return sum(w * p for w, p in zip(weights, dist))
 
 
 def mean_distributions(dists: list[list[float]]) -> list[float]:
@@ -396,6 +436,8 @@ __all__ = [
     "COMPARE_LABELS",
     "COMPARE_TIEBREAK",
     "COMPARE_UNDECIDED",
+    "SCORE_EXPECTATION_WEIGHTS",
+    "COMPARE_EXPECTATION_WEIGHTS",
     "TIE_TOLERANCE",
     "NEEDS_REVIEW_DOUBT_THRESHOLD",
     "normalize_three",
@@ -404,6 +446,7 @@ __all__ = [
     "normalized_entropy",
     "argmax_label",
     "to_percentages",
+    "expectation",
     "mean_distributions",
     "roll_up_score",
     "canonicalize",

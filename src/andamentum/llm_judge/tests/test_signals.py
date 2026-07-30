@@ -467,3 +467,46 @@ def test_normalize_three_rejects_non_finite_values(bad):
     thing a judge must never be."""
     with pytest.raises(ValueError, match="finite"):
         signals.normalize_three(bad, 50, 50)
+
+
+# ── expectation: the continuous ranking signal ───────────────────────────
+
+
+def test_expectation_score_weights_meets_partial_fails():
+    """meets=1, partial=0.5, fails=0 — a scalar in [0, 1], higher = better.
+    A one-hot 'meets' is 1.0; one-hot 'fails' is 0.0; one-hot 'partial' is
+    0.5; a flat split lands at the midpoint."""
+    W = signals.SCORE_EXPECTATION_WEIGHTS
+    assert signals.expectation([1.0, 0.0, 0.0], W) == pytest.approx(1.0)
+    assert signals.expectation([0.0, 0.0, 1.0], W) == pytest.approx(0.0)
+    assert signals.expectation([0.0, 1.0, 0.0], W) == pytest.approx(0.5)
+    # 0.6 meets + 0.1 partial + 0.3 fails = 0.6 + 0.05 = 0.65
+    assert signals.expectation([0.6, 0.1, 0.3], W) == pytest.approx(0.65)
+
+
+def test_expectation_compare_weights_a_tie_b():
+    """a=1, tie=0.5, b=0 — E[preference for A]. Symmetric pairs mirror
+    around 0.5, an even a/b split is exactly 0.5."""
+    W = signals.COMPARE_EXPECTATION_WEIGHTS
+    assert signals.expectation([1.0, 0.0, 0.0], W) == pytest.approx(1.0)  # all A
+    assert signals.expectation([0.0, 0.0, 1.0], W) == pytest.approx(0.0)  # all B
+    assert signals.expectation([0.5, 0.0, 0.5], W) == pytest.approx(0.5)  # even split
+    assert signals.expectation([0.0, 1.0, 0.0], W) == pytest.approx(0.5)  # all tie
+    # A leaning pair mirrors its swap around 0.5.
+    lean_a = signals.expectation([0.7, 0.1, 0.2], W)
+    lean_b = signals.expectation([0.2, 0.1, 0.7], W)
+    assert lean_a == pytest.approx(1.0 - lean_b)
+
+
+def test_expectation_stays_in_unit_interval_for_any_distribution():
+    for dist in ([0.34, 0.33, 0.33], [0.9, 0.05, 0.05], [0.1, 0.1, 0.8]):
+        for W in (signals.SCORE_EXPECTATION_WEIGHTS, signals.COMPARE_EXPECTATION_WEIGHTS):
+            v = signals.expectation(dist, W)
+            assert 0.0 <= v <= 1.0
+
+
+def test_expectation_rejects_length_mismatch():
+    """A dist/weights length mismatch would silently score against the wrong
+    labels — fail loud instead."""
+    with pytest.raises(ValueError, match="must match"):
+        signals.expectation([0.5, 0.5], signals.SCORE_EXPECTATION_WEIGHTS)
