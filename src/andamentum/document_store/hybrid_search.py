@@ -12,6 +12,7 @@ from .chunks_search import (
     reciprocal_rank_fusion,
 )
 from .fts import fts_search
+from .fts_query import prepare_fts_query
 import json
 
 
@@ -235,7 +236,7 @@ def _tag_based_search(
             ORDER BY bm25_score
             LIMIT ?
         """,
-            (query, *doc_ids, limit * 2),
+            (prepare_fts_query(query), *doc_ids, limit * 2),
         )
 
         rows = cursor.fetchall()
