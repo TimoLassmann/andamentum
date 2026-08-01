@@ -24,6 +24,7 @@ import aiosqlite
 
 from .chunks_search import RRF_K, SearchConfig
 from .database import get_async_connection
+from .fts_query import prepare_fts_query
 from .embeddings import EmbeddingService
 from .hybrid_search import multi_strategy_search
 
@@ -186,6 +187,7 @@ async def search_fts5(
     Returns:
         List of (doc_uuid, score) tuples, score normalized to 0-1
     """
+    match_query = prepare_fts_query(query)
     async with get_async_connection(db_path) as db:
         db.row_factory = aiosqlite.Row
 
@@ -198,7 +200,7 @@ async def search_fts5(
             ORDER BY rank
             LIMIT ?
             """,
-            (query, limit),
+            (match_query, limit),
         ) as cursor:
             rows = await cursor.fetchall()
 

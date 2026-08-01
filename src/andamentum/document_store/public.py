@@ -10,6 +10,20 @@ Core functions:
     repair(database) → RepairReport
     find_duplicates(database) → list[DuplicateGroup]
 
+Deferred ingestion — capture now, enrich later:
+    ingest(..., process="defer")        queue enrichment instead of running it
+    ingest_source(database, path/URL)   queue a source for conversion + enrichment
+    process_pending(database, ...)      drain the queue; resumable and pausable
+    pending_status(database)            queue depth, model-free
+    retry_failed(database)              requeue documents that failed
+
+The expensive stages (source→markdown conversion, and chunk/embed/LLM metadata)
+can both be deferred. Each stage transition commits as it completes, so a drain
+can be paused or killed and resumed by simply calling process_pending again —
+losing at most the single in-flight document's work. Conversion is injected via
+``convert_fn`` so this module never imports ``andamentum.harvest``; see
+``document_store.pipeline`` for the harvest-backed wiring.
+
 Read side — three uniform functions for humans and agents alike:
     search()             unstructured recall over content (NL + RRF ranking)
     find_by_metadata()   structured query — exact match or set-membership
@@ -40,13 +54,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Mapping, Optional
+from typing import Awaitable, Callable, Literal, Mapping, Optional
 
 
 from andamentum.chunker import extract_units
 from andamentum.core.embeddings import make_ollama_embedder
 
+from . import queue as _queue
 from .api import DocumentStore
 from .chunker_adapter import units_to_chunks
 from .extraction import extract_chunk_metadata, extract_document_metadata
@@ -64,6 +80,16 @@ MetadataScalar = str | int | bool | None
 #: All conditions are AND-ed. A scalar matches by equality; a list/tuple/set
 #: matches by set-membership (``field IN (...)``).
 MetadataFilterValue = MetadataScalar | list[MetadataScalar]
+
+#: When the expensive work runs. ``"now"`` does it inline (the default, and the
+#: historical behaviour); ``"defer"`` records it as a todo for
+#: :func:`process_pending` to drain later.
+ProcessMode = Literal["now", "defer"]
+
+#: Converts a source reference (path or URL) to markdown. Injected rather than
+#: imported so the store core never depends on ``andamentum.harvest`` — see
+#: ``document_store.pipeline`` for the harvest-backed implementation.
+ConvertFn = Callable[[str], Awaitable[str]]
 
 # Module-level caches
 _stores: dict[str, DocumentStore] = {}
@@ -85,10 +111,20 @@ async def _get_store(database: str) -> DocumentStore:
     return _stores[database]
 
 
-async def _preflight(database: str, model: str, embedding_model: str) -> None:
+async def _preflight(
+    database: str,
+    model: str,
+    embedding_model: str,
+    *,
+    auto_repair: bool = True,
+) -> None:
     """Test that embedding service and LLM are reachable. Raises on failure.
 
     Called once per (database, model, embedding_model) combination.
+
+    ``auto_repair`` runs the crash-recovery sweep on first access. It is
+    disabled by :func:`process_pending`, which is itself the drain — running the
+    sweep first would duplicate that work and bypass the pause controls.
     """
     cache_key = f"{database}:{model}:{embedding_model}"
     if cache_key in _preflight_done:
@@ -124,6 +160,8 @@ async def _preflight(database: str, model: str, embedding_model: str) -> None:
     )
 
     # Run repair on first access — fix any incomplete ingestions from previous crashes
+    if not auto_repair:
+        return
     store = await _get_store(database)
     report = await _repair_incomplete(store, model, embedding_model)
     if report.documents_repaired > 0:
@@ -194,9 +232,84 @@ class RepairReport:
     failures: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ProcessReport:
+    """Outcome of a :func:`process_pending` drain."""
+
+    documents_converted: int = 0
+    """pending_source → pending_enrich transitions (markdown now persisted)."""
+
+    documents_enriched: int = 0
+    """pending_enrich → complete transitions."""
+
+    documents_failed: int = 0
+    """Documents whose stage raised; left as 'failed' with the reason recorded."""
+
+    documents_skipped: int = 0
+    """pending_source documents left alone because no convert_fn was supplied."""
+
+    stopped_early: bool = False
+    """True if the drain stopped on should_continue / max_docs / max_seconds
+    rather than exhausting the queue. Remaining work is still queued."""
+
+    remaining: int = 0
+    """Outstanding pending documents at the moment the drain returned."""
+
+    failures: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PendingStatus:
+    """Queue depth for a database, as counts per ingest status."""
+
+    pending_source: int = 0
+    pending_enrich: int = 0
+    complete: int = 0
+    failed: int = 0
+
+    @property
+    def pending(self) -> int:
+        """Total outstanding work (both pending stages)."""
+        return self.pending_source + self.pending_enrich
+
+
 # ---------------------------------------------------------------------------
 # ingest()
 # ---------------------------------------------------------------------------
+
+
+def _fallback_title(content: str) -> str:
+    """Deterministic title: the first non-empty line, stripped of heading marks.
+
+    Used when the caller gives no title and no LLM runs (``process="defer"``),
+    so a deferred document is still identifiable in a listing before enrichment.
+    """
+    return next(
+        (
+            line.strip().lstrip("#").strip()
+            for line in content.split("\n")
+            if line.strip()
+        ),
+        "Untitled",
+    )
+
+
+def _require_models(
+    process: ProcessMode, model: str | None, embedding_model: str | None
+) -> None:
+    """Validate the model arguments against the chosen mode.
+
+    ``process="now"`` does LLM + embedding work inline and needs both;
+    ``process="defer"`` does neither, so demanding them would make a raw capture
+    pay for a round-trip it never uses. Fail loud rather than silently
+    downgrading a "now" request to a deferred one.
+    """
+    if process == "now" and (model is None or embedding_model is None):
+        raise ValueError(
+            "process='now' runs metadata extraction and embedding inline, so it "
+            "requires both model= and embedding_model=. Pass them, or use "
+            "process='defer' to queue the work for process_pending()."
+        )
 
 
 async def ingest(
@@ -206,8 +319,9 @@ async def ingest(
     source: str = "manual",
     metadata: dict | None = None,
     *,
-    model: str,
-    embedding_model: str,
+    model: str | None = None,
+    embedding_model: str | None = None,
+    process: ProcessMode = "now",
 ) -> str:
     """Add content to the knowledge base. Returns doc_id.
 
@@ -217,22 +331,52 @@ async def ingest(
     - Phase 2 (can fail): Chunk, embed, extract metadata, store chunks.
       If this fails, repair() can re-run it later.
 
+    With ``process="defer"`` phase 1 shrinks to *register + FTS only* — no LLM
+    call at all, using the deterministic first-line title — and the document is
+    marked ``pending_enrich`` for :func:`process_pending` to finish later. The
+    document is keyword-searchable immediately but not semantically searchable
+    (no chunks/embeddings) and carries no LLM metadata until the drain runs.
+
     Args:
         database: Database name (e.g., "brain")
         content: Text content (markdown or plain text)
-        title: Optional title. If None, LLM generates one.
+        title: Optional title. If None, LLM generates one (or the first line is
+            used when deferring).
         source: Where content came from (manual, slack, claude_code, zotero, voice)
         metadata: Optional dict merged with LLM-extracted metadata. Caller values win.
-        model: LLM model for metadata extraction.
-        embedding_model: Embedding model.
+        model: LLM model for metadata extraction. Required when process="now".
+        embedding_model: Embedding model. Required when process="now".
+        process: "now" runs enrichment inline; "defer" queues it.
 
     Returns:
         Document ID (UUID string)
 
     Raises:
+        ValueError: If process="now" and model/embedding_model are missing.
         RuntimeError: If embedding service or LLM model is unavailable.
     """
+    _require_models(process, model, embedding_model)
     store = await _get_store(database)
+
+    if process == "defer":
+        # No LLM, no embeddings — just persist and index for keyword search.
+        doc_meta_dict: dict = {"source": source, "title": title or _fallback_title(content)}
+        if metadata:
+            doc_meta_dict.update(metadata)
+        doc_id = await store.register_document(
+            title=doc_meta_dict["title"],
+            content=content,
+            metadata=doc_meta_dict,
+        )
+        await _queue.set_ingest_status(
+            str(store.db_path), doc_id, _queue.PENDING_ENRICH
+        )
+        logger.info(
+            f"Queued '{doc_meta_dict['title']}' in {database} for enrichment: doc_id={doc_id}"
+        )
+        return doc_id
+
+    assert model is not None and embedding_model is not None  # _require_models
     await _preflight(database, model, embedding_model)
 
     # --- Phase 1: Register document (atomic, FTS5 immediate) ---
@@ -241,15 +385,7 @@ async def ingest(
     if title:
         doc_meta.title = title
     elif not doc_meta.title:
-        first_line = next(
-            (
-                line.strip().lstrip("#").strip()
-                for line in content.split("\n")
-                if line.strip()
-            ),
-            "Untitled",
-        )
-        doc_meta.title = first_line
+        doc_meta.title = _fallback_title(content)
 
     doc_meta_dict = doc_meta.model_dump(
         mode="json"
@@ -265,8 +401,81 @@ async def ingest(
 
     # --- Phase 2: Chunk, embed, store (can be repaired if interrupted) ---
     await _run_phase2(store, doc_id, content, doc_meta.title, model, embedding_model)
+    await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.COMPLETE)
 
     logger.info(f"Ingested '{doc_meta.title}' into {database}: doc_id={doc_id}")
+    return doc_id
+
+
+async def ingest_source(
+    database: str,
+    source: str,
+    title: str | None = None,
+    metadata: dict | None = None,
+    *,
+    convert_fn: ConvertFn | None = None,
+    model: str | None = None,
+    embedding_model: str | None = None,
+    process: ProcessMode = "defer",
+) -> str:
+    """Queue a *source* (file path or URL) for conversion, then enrichment.
+
+    This is the entry point that makes source→markdown conversion resumable.
+    With ``process="defer"`` (the default) nothing expensive happens here: the
+    source reference is recorded as ``pending_source`` and
+    :func:`process_pending` converts it — inside the drain, where the resulting
+    markdown is committed before enrichment starts. Converting *outside* the
+    drain (calling harvest yourself, then :func:`ingest`) works but is not
+    checkpointed: an interrupted run re-parses every in-flight document.
+
+    ``convert_fn`` is injected so the store core never imports
+    ``andamentum.harvest``. Use ``document_store.pipeline`` for the
+    harvest-backed version, or pass your own converter.
+
+    Args:
+        database: Database name.
+        source: File path or URL to convert.
+        title: Optional title. Defaults to the source's last path segment until
+            conversion runs.
+        metadata: Optional metadata dict.
+        convert_fn: Async ``(source) -> markdown``. Required for process="now";
+            for "defer" it may be supplied later to :func:`process_pending`.
+        model: LLM model. Required when process="now".
+        embedding_model: Embedding model. Required when process="now".
+        process: "now" converts + enriches inline; "defer" queues both.
+
+    Returns:
+        Document ID (UUID string).
+
+    Raises:
+        ValueError: If process="now" without convert_fn/model/embedding_model.
+    """
+    _require_models(process, model, embedding_model)
+    if process == "now" and convert_fn is None:
+        raise ValueError(
+            "process='now' must convert the source inline, so it requires "
+            "convert_fn=. Use document_store.pipeline for the harvest-backed "
+            "converter, or use process='defer' to queue the source."
+        )
+
+    store = await _get_store(database)
+    doc_id = await _queue.register_pending_source(
+        str(store.db_path), source, title=title, metadata=metadata
+    )
+
+    if process == "defer":
+        logger.info(f"Queued source '{source}' in {database}: doc_id={doc_id}")
+        return doc_id
+
+    assert convert_fn is not None and model is not None and embedding_model is not None
+    await _preflight(database, model, embedding_model)
+    await _convert_document(store, doc_id, source, convert_fn)
+    doc = await store.read(doc_id)
+    if doc is None:  # pragma: no cover — just written above
+        raise RuntimeError(f"Document {doc_id} vanished during ingest_source")
+    await _enrich_document(
+        store, doc_id, doc.content, doc.metadata.title, model, embedding_model
+    )
     return doc_id
 
 
@@ -365,6 +574,215 @@ async def _run_phase2(
             )
     finally:
         await embed_svc.close()
+
+
+# ---------------------------------------------------------------------------
+# Deferred ingestion: the two drainable stages, and the drain itself
+# ---------------------------------------------------------------------------
+
+
+async def _convert_document(
+    store: DocumentStore,
+    doc_id: str,
+    source: str,
+    convert_fn: ConvertFn,
+) -> str:
+    """Stage 1: source → markdown. Commits the markdown, then advances status.
+
+    The commit ordering is the whole point: once this returns, the expensive
+    conversion is durable, so a later interruption resumes at enrichment and
+    never re-parses the source.
+    """
+    markdown = await convert_fn(source)
+    if not markdown.strip():
+        raise ValueError(f"Conversion produced no content for source: {source}")
+
+    # Writes markdown + hash + size and retitles; the FTS trigger fires on the
+    # UPDATE, so the document becomes keyword-searchable at this point.
+    await store.update(
+        doc_id, new_content=markdown, new_title=_fallback_title(markdown)
+    )
+    await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.PENDING_ENRICH)
+    return markdown
+
+
+async def _enrich_document(
+    store: DocumentStore,
+    doc_id: str,
+    content: str,
+    title: str,
+    model: str,
+    embedding_model: str,
+) -> None:
+    """Stage 2: doc-level LLM metadata + phase 2, then mark complete.
+
+    This is the work ``process="defer"`` skipped: the doc-level extraction that
+    normally happens in phase 1, plus chunking/embedding/chunk metadata.
+    """
+    doc_meta = await extract_document_metadata(content, model=model)
+    extracted = doc_meta.model_dump(mode="json", exclude_none=True)
+    # The caller's own metadata (and any title they chose) was written at queue
+    # time and stays authoritative — LLM output fills gaps, it doesn't overwrite.
+    extracted.pop("source", None)
+    extracted.pop("title", None)
+    if extracted:
+        await store.update(doc_id, metadata=extracted, merge_metadata=True)
+
+    await _run_phase2(store, doc_id, content, title, model, embedding_model)
+    await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.COMPLETE)
+
+
+async def process_pending(
+    database: str,
+    *,
+    model: str,
+    embedding_model: str,
+    convert_fn: ConvertFn | None = None,
+    should_continue: Callable[[], bool] | None = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
+    max_docs: int | None = None,
+    max_seconds: float | None = None,
+) -> ProcessReport:
+    """Drain the deferred-ingestion queue. Resumable, pausable, idempotent.
+
+    Processes one document at a time, committing each stage transition as it
+    completes, so the run can be stopped at any point and continued later by
+    simply calling this again — there is no cursor to persist. A hard kill
+    loses at most the single in-flight document's work.
+
+    Sources are drained before markdown, so a partial run leaves behind cheap
+    remaining work rather than unconverted sources.
+
+    Args:
+        database: Database name.
+        model: LLM model for metadata extraction.
+        embedding_model: Embedding model.
+        convert_fn: Async ``(source) -> markdown`` for ``pending_source`` items.
+            If None, those items are counted as skipped and left queued — a
+            markdown-only caller is never forced to supply a converter.
+        should_continue: Checked *between* documents; return False to pause
+            cleanly after the current document commits.
+        on_progress: Called after each document as ``(done, total, title)``.
+        max_docs: Stop after this many documents.
+        max_seconds: Stop once this much wall-clock has elapsed (checked
+            between documents, so one long document may overrun it).
+
+    Returns:
+        ProcessReport with per-stage counts and whether it stopped early.
+
+    Raises:
+        RuntimeError: If the embedding service or LLM is unavailable.
+    """
+    store = await _get_store(database)
+    # auto_repair=False: this *is* the drain. Letting preflight's crash-recovery
+    # sweep run first would duplicate the work and ignore the pause controls.
+    await _preflight(database, model, embedding_model, auto_repair=False)
+
+    db_path = str(store.db_path)
+    report = ProcessReport()
+    started = time.monotonic()
+
+    pending = await _queue.list_pending(db_path)
+    total = len(pending)
+    done = 0
+
+    for item in pending:
+        if should_continue is not None and not should_continue():
+            report.stopped_early = True
+            break
+        if max_docs is not None and done >= max_docs:
+            report.stopped_early = True
+            break
+        if max_seconds is not None and (time.monotonic() - started) >= max_seconds:
+            report.stopped_early = True
+            break
+
+        doc_id = item["doc_id"]
+        title = item["title"] or "Untitled"
+
+        try:
+            if item["status"] == _queue.PENDING_SOURCE:
+                if convert_fn is None:
+                    report.documents_skipped += 1
+                    continue
+                content = await _convert_document(
+                    store, doc_id, item["source"], convert_fn
+                )
+                report.documents_converted += 1
+                title = _fallback_title(content)
+            else:
+                content = item["content"] or ""
+
+            if not content.strip():
+                raise ValueError("No content to enrich")
+
+            await _enrich_document(
+                store, doc_id, content, title, model, embedding_model
+            )
+            report.documents_enriched += 1
+        except Exception as e:
+            # Never swallow: record the reason on the row and in the report, so
+            # a failure is inspectable rather than an invisible stall.
+            msg = f"Failed to process '{title}' ({doc_id}): {type(e).__name__}: {e}"
+            report.documents_failed += 1
+            report.failures.append(msg)
+            logger.warning(msg)
+            await _queue.set_ingest_status(
+                db_path, doc_id, _queue.FAILED, error=f"{type(e).__name__}: {e}"
+            )
+
+        done += 1
+        if on_progress is not None:
+            on_progress(done, total, title)
+
+    counts = await _queue.count_by_status(db_path)
+    report.remaining = counts[_queue.PENDING_SOURCE] + counts[_queue.PENDING_ENRICH]
+    return report
+
+
+async def pending_status(database: str) -> PendingStatus:
+    """Queue depth for ``database`` — how much work is outstanding.
+
+    Cheap (a single GROUP BY) and model-free, so an app can poll it to render a
+    "N pending" badge without touching an LLM or embedding backend.
+    """
+    store = await _get_store(database)
+    counts = await _queue.count_by_status(str(store.db_path))
+    return PendingStatus(
+        pending_source=counts[_queue.PENDING_SOURCE],
+        pending_enrich=counts[_queue.PENDING_ENRICH],
+        complete=counts[_queue.COMPLETE],
+        failed=counts[_queue.FAILED],
+    )
+
+
+async def retry_failed(database: str) -> int:
+    """Requeue every ``failed`` document for another drain. Returns the count.
+
+    Failures stay visible until explicitly retried — the drain never silently
+    re-attempts them, so a systematic problem (a missing file, an unreachable
+    model) surfaces instead of looping.
+    """
+    from .database import get_async_connection
+
+    store = await _get_store(database)
+    db_path = str(store.db_path)
+    async with get_async_connection(db_path) as db:
+        async with db.execute(
+            "SELECT doc_uuid, markdown_content FROM documents "
+            "WHERE ingest_status = ? AND deleted_at IS NULL",
+            (_queue.FAILED,),
+        ) as cursor:
+            rows = list(await cursor.fetchall())
+
+    for doc_uuid, content in rows:
+        # Markdown already present → resume at enrichment; otherwise the
+        # conversion never landed, so go back to the source stage.
+        status = (
+            _queue.PENDING_ENRICH if (content or "").strip() else _queue.PENDING_SOURCE
+        )
+        await _queue.set_ingest_status(db_path, doc_uuid, status)
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -467,9 +885,18 @@ async def _repair_incomplete(
 
     from .database import get_async_connection
 
+    # Only documents that *claim* to be complete are candidates for crash
+    # recovery. Documents sitting in the deferred queue (pending_source /
+    # pending_enrich) are incomplete on purpose — sweeping them here would turn
+    # any interactive search into a synchronous drain of the whole backlog,
+    # defeating both the defer and the pause. 'failed' is likewise left alone
+    # until retry_failed() requeues it.
     async with get_async_connection(str(store.db_path)) as db:
         async with db.execute(
-            "SELECT doc_uuid, dc_title, markdown_content FROM documents WHERE markdown_content IS NOT NULL AND deleted_at IS NULL"
+            "SELECT doc_uuid, dc_title, markdown_content FROM documents "
+            "WHERE markdown_content IS NOT NULL AND deleted_at IS NULL "
+            "AND ingest_status = ?",
+            (_queue.COMPLETE,),
         ) as cursor:
             all_docs = list(await cursor.fetchall())
 
