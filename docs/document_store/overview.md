@@ -16,6 +16,10 @@ The core async functions that form the public surface:
 | `delete(database, doc_id)` | Remove a document and all its chunks |
 | `repair(database)` | Fix incomplete ingestions after crashes |
 | `find_duplicates(database)` | Detect near-duplicate documents via embeddings |
+| `ingest_source(database, path_or_url)` | Queue a PDF/DOCX/HTML source for later conversion + enrichment |
+| `process_pending(database)` | Drain the deferred-ingestion queue — resumable and pausable |
+| `pending_status(database)` | Queue depth per stage (no model needed) |
+| `retry_failed(database)` | Requeue documents whose processing failed |
 
 ### The three read functions
 
@@ -84,6 +88,88 @@ An LLM decomposes the query into a search plan (semantic query + optional metada
 Two-phase design:
 - **Phase 1** (atomic): document stored in SQLite, FTS5 keyword-searchable immediately
 - **Phase 2** (repairable): content chunked, each chunk embedded, LLM extracts metadata; if interrupted, `repair()` re-runs it
+
+## Deferred ingestion — capture now, enrich later
+
+The expensive work (converting a source to markdown, and chunking/embedding/LLM
+metadata) can be queued instead of run inline, then drained on demand or on a
+schedule. The queue is three columns on `documents`, because the unit of work
+*is* a document:
+
+```
+pending_source ──convert──► pending_enrich ──enrich──► complete
+       └──────────────── failed ◄────────────────┘
+```
+
+```python
+from andamentum.document_store import ingest, ingest_source, process_pending, pending_status
+
+# Capture fast: register + FTS index only. No LLM call, no embeddings.
+await ingest("research", note_text, process="defer")
+
+# Queue a slow source (PDF/DOCX/HTML). Nothing is converted yet.
+await ingest_source("research", "~/papers/big.pdf")
+
+print((await pending_status("research")).pending)   # -> 2
+
+# Drain later — e.g. overnight, capped so it stops before morning.
+report = await process_pending(
+    "research", model=..., embedding_model=...,
+    convert_fn=...,                    # see "Conversion" below
+    max_seconds=6 * 3600,
+    should_continue=lambda: not stop_button_pressed,
+    on_progress=lambda done, total, title: print(f"[{done}/{total}] {title}"),
+)
+```
+
+**Resumable and pausable.** Each stage transition commits as it completes, so
+all state lives in the database — there is no in-memory cursor to lose.
+"Resume" is simply calling `process_pending` again; it picks up whatever is
+still pending. Pausing (via `should_continue`, `max_docs`, or `max_seconds`) is
+checked *between* documents, so a pause never interrupts a commit. A hard kill
+mid-document loses **at most that one document's** work — everything already
+committed is kept, and phase 2 is idempotent.
+
+Because conversion is checkpointed (`pending_source → pending_enrich` persists
+the markdown), an interrupted run never re-parses a PDF it already converted.
+
+**Conversion is injected, not imported.** `process_pending` takes a
+`convert_fn: (source) -> markdown` so this module never depends on
+`andamentum.harvest`. `document_store.pipeline` is the *only* place harvest is
+imported and simply pre-fills that parameter — it is a convenience, not a
+gateway; an app may call the core directly with its own converter:
+
+```python
+from andamentum.document_store.pipeline import ingest_source, drain   # harvest-backed
+await drain("research", model=..., embedding_model=...)
+```
+
+> **Note.** Converting *outside* the drain (calling harvest yourself, then
+> `ingest()`) works, but is **not** checkpointed: an interrupted run re-parses
+> every in-flight document. For resumable bulk work, enqueue sources and let
+> `process_pending` convert them.
+
+A deferred document is keyword-searchable immediately but **not** semantically
+searchable, and carries no LLM metadata, until the drain runs. `repair()`
+deliberately ignores `pending_*` documents, so an interactive `search()` never
+turns into a synchronous drain of the backlog.
+
+### CLI
+
+The store owns a drainable queue, not a scheduler — cron/launchd supplies the clock.
+
+```bash
+andamentum-docstore ingest research notes.md --defer
+andamentum-docstore ingest-source research ~/papers/big.pdf
+andamentum-docstore status research
+andamentum-docstore process-pending research \
+    --model ollama:gemma4:26b-nvfp4 --embedding-model embeddinggemma:latest \
+    --max-seconds 21600
+andamentum-docstore retry-failed research
+```
+
+`Ctrl-C` (or `SIGTERM`) pauses cleanly: the in-flight document finishes and
+commits, then the run exits. Re-run the same command to resume.
 
 ## Installation
 

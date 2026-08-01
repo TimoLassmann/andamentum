@@ -62,6 +62,14 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
             -- Cluster assignment (Phase 2: DHP temporal clustering)
             cluster_id INTEGER,
 
+            -- Deferred-ingestion queue (see queue.py). 'complete' means all
+            -- stages ran; 'pending_source'/'pending_enrich' are deliberate
+            -- todo states drained by process_pending(); 'failed' records a
+            -- stage that raised, kept for inspection rather than dropped.
+            ingest_status TEXT NOT NULL DEFAULT 'complete',
+            ingest_error TEXT,
+            ingest_updated_at TEXT,
+
             -- Soft delete (NULL = active, timestamp = deleted)
             deleted_at TEXT DEFAULT NULL
         )
@@ -84,8 +92,25 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"
     )
 
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_ingest_status "
+        "ON documents(ingest_status)"
+    )
+
     # Migration: add deleted_at column to existing databases
     try:
         cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT DEFAULT NULL")
     except Exception:
         pass  # Column already exists
+
+    # Migration: deferred-ingestion queue columns. Existing rows predate the
+    # queue and are, by definition, already fully ingested — 'complete'.
+    for ddl in (
+        "ALTER TABLE documents ADD COLUMN ingest_status TEXT NOT NULL DEFAULT 'complete'",
+        "ALTER TABLE documents ADD COLUMN ingest_error TEXT",
+        "ALTER TABLE documents ADD COLUMN ingest_updated_at TEXT",
+    ):
+        try:
+            cursor.execute(ddl)
+        except Exception:
+            pass  # Column already exists

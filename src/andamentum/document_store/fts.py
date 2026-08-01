@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .connection import get_connection, DEFAULT_DB_PATH
 from .chunks_search import SearchResult
+from .fts_query import prepare_fts_query
 
 
 def fts_search(
@@ -40,6 +41,7 @@ def fts_search(
     if db_path is None:
         db_path = DEFAULT_DB_PATH
 
+    match_query = prepare_fts_query(query)
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
 
@@ -61,7 +63,7 @@ def fts_search(
             ORDER BY fts.rank
             LIMIT ?
         """,
-            (query, limit),
+            (match_query, limit),
         )
 
         rows = cursor.fetchall()
