@@ -36,6 +36,20 @@ class TestPrepareFtsQuery:
     def test_various_punctuated_tokens_quoted(self, q):
         assert prepare_fts_query(q) == f'"{q}"'
 
+    @pytest.mark.parametrize(
+        "word", ["and", "or", "not", "near"]
+    )
+    def test_lowercase_boolean_word_is_prose_not_an_operator(self, word):
+        """Regression: prose containing a lowercase 'and' was treated as a
+        deliberate power-query and returned UNESCAPED, so a hyphenated token in
+        the same query reached FTS5 raw. FTS5 only honours UPPERCASE operators.
+        """
+        q = f"pre-training a model {word} guessing hidden words"
+        assert prepare_fts_query(q) == f'"pre-training" a model {word} guessing hidden words'
+
+    def test_uppercase_boolean_still_passes_through(self):
+        assert prepare_fts_query("pre-training AND bert") == "pre-training AND bert"
+
     def test_pure_punctuation_falls_back(self):
         # Degenerate all-punctuation query: no worse than before, not crashing prep.
         assert prepare_fts_query(":: ->") == ":: ->"
@@ -84,3 +98,12 @@ class TestAgainstRealFts5Index:
     def test_prose_query_unaffected(self, fts):
         # prepared == raw for prose, and it still matches all three docs.
         assert self._match(fts, prepare_fts_query("Sanger sequencing")) == [1, 2, 3]
+
+    def test_hyphenated_prose_with_lowercase_and_does_not_crash(self, fts):
+        """The exact shape that crashed the deferred-ingestion experiment:
+        a hyphenated word plus a lowercase 'and'. Raw it raises
+        OperationalError('no such column: ...'); prepared it must be safe."""
+        q = "pre-training a model and hiding random words"
+        with pytest.raises(sqlite3.OperationalError):
+            self._match(fts, q)
+        assert self._match(fts, prepare_fts_query(q)) == []
