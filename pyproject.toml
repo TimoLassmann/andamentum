@@ -88,6 +88,7 @@ andamentum-proofread    = "andamentum.proofread.cli:main"
 andamentum-agentic-dialect      = "andamentum.agentic_dialect.cli:main"
 andamentum-forge        = "andamentum.forge.cli:main"
 andamentum-llm-judge    = "andamentum.llm_judge.cli:main"
+andamentum-docstore     = "andamentum.document_store.cli:main"
 
 [project.optional-dependencies]
 # trafilatura (Apache-2.0, MIT-compatible) is kept out of the default
