@@ -121,10 +121,23 @@ def main() -> int:
         f"{_fmt(cross.get('repeated_enrichment_seconds'))} s | measured as killed_at minus "
         "the converter ledger's last ts_end — the work the resume redoes |",
         f"| concurrency speedup | {_fmt(cross['concurrency_speedup'])} | sequential total "
-        "over in-pipeline seconds for the SAME doc_uuid. Read against the replicate spread "
-        f"of {_fmt(cross.get('concurrency_speedup_replicate_spread'))} (the same content "
-        "enriched twice in one lineage) — see H-m1's verdict, which is INCONCLUSIVE when "
-        "the effect is inside it |",
+        "over in-pipeline seconds for the SAME doc_uuid (attributed by identity, never by "
+        "title). "
+        + (
+            f"Replicate spread {_fmt(cross['concurrency_speedup_replicate_spread'])} from "
+            "the same content enriched twice in one lineage; H-m1 is reported "
+            "INCONCLUSIVE when the effect sits inside it."
+            if cross.get("concurrency_speedup_replicate_spread")
+            else "**n=1, NO VARIANCE ESTIMATE.** The lineage does contain a second "
+            "enrichment of identical content, but it settled at a drain's FIRST progress "
+            "tick, whose interval starts at the drain's t0 and therefore contains the "
+            "preflight tax and a Docling conversion; attributing it would repeat exactly "
+            "the error this edition corrected, so it is refused rather than corrected by "
+            "assumption. Read this ratio as a single observation, not as a measured "
+            "effect: it is close to 1.0, which is consistent with the fan-out buying "
+            "nothing against a serialising Ollama, and it is not evidence of a 5% gain."
+        )
+        + " |",
         f"| report-vs-database mismatches (H-x) | {_fmt(cross['report_db_mismatches'])} | "
         "all six ProcessReport fields, across every drain including the subprocess resume |",
         f"| two-transaction window observed (H-c4) | {_fmt(cross['hc4_window_observed'])} | "

@@ -1,22 +1,9 @@
-{"ts_start": 1785580567.045372, "ts_end": 1785580582.498528, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 1, "status": 200, "error_type": null}
-{"ts_start": 1785580582.595653, "ts_end": 1785580582.69903, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 4, "status": 200, "error_type": null}
-{"ts_start": 1785580582.5954728, "ts_end": 1785580582.710239, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 2, "status": 200, "error_type": null}
-{"ts_start": 1785580582.595317, "ts_end": 1785580582.7146869, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 1, "status": 200, "error_type": null}
-{"ts_start": 1785580582.595891, "ts_end": 1785580582.72366, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 7, "status": 200, "error_type": null}
-{"ts_start": 1785580582.595806, "ts_end": 1785580582.733137, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 6, "status": 200, "error_type": null}
-{"ts_start": 1785580582.59642, "ts_end": 1785580582.7425752, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.5957289, "ts_end": 1785580582.747484, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 5, "status": 200, "error_type": null}
-{"ts_start": 1785580582.595571, "ts_end": 1785580582.757005, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 3, "status": 200, "error_type": null}
-{"ts_start": 1785580582.699541, "ts_end": 1785580582.779892, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.710707, "ts_end": 1785580582.7906501, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.715435, "ts_end": 1785580582.7955258, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.7241101, "ts_end": 1785580582.80635, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.733634, "ts_end": 1785580582.815994, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.7429602, "ts_end": 1785580582.824634, "method": "POST", "host": "localhost:11434", "path": "/api/embeddings", "in_flight_at_start": 8, "status": 200, "error_type": null}
-{"ts_start": 1785580582.908389, "ts_end": 1785580583.1263318, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "in_flight_at_start": 1, "status": 200, "error_type": null}
-{"ts_start": 1785580582.9084952, "ts_end": 1785580583.195714, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "in_flight_at_start": 2, "status": 200, "error_type": null}
-{"ts_start": 1785580582.915443, "ts_end": 1785580598.601541, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 3, "status": 200, "error_type": null}
-{"ts_start": 1785580582.91585, "ts_end": 1785580607.131448, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 6, "status": 200, "error_type": null}
-{"ts_start": 1785580582.915972, "ts_end": 1785580623.525311, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 7, "status": 200, "error_type": null}
-{"ts_start": 1785580582.915599, "ts_end": 1785580629.0050402, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 4, "status": 200, "error_type": null}
-{"ts_start": 1785580582.9157262, "ts_end": 1785580638.733203, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 5, "status": 200, "error_type": null}
+{"ts_start": 1785594167.1964731, "ts_end": 1785594178.681016, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 1, "in_flight_at_start_path": 1, "status": 200, "error_type": null}
+{"ts_start": 1785594178.8327181, "ts_end": 1785594179.117373, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "global_depth_at_start": 1, "in_flight_at_start_path": 1, "status": 200, "error_type": null}
+{"ts_start": 1785594178.8328252, "ts_end": 1785594179.187623, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "global_depth_at_start": 2, "in_flight_at_start_path": 2, "status": 200, "error_type": null}
+{"ts_start": 1785594178.842454, "ts_end": 1785594185.866463, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 4, "in_flight_at_start_path": 2, "status": 200, "error_type": null}
+{"ts_start": 1785594178.842308, "ts_end": 1785594198.7328, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 3, "in_flight_at_start_path": 1, "status": 200, "error_type": null}
+{"ts_start": 1785594178.8428202, "ts_end": 1785594203.5667782, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 7, "in_flight_at_start_path": 5, "status": 200, "error_type": null}
+{"ts_start": 1785594178.8425758, "ts_end": 1785594213.835814, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 5, "in_flight_at_start_path": 3, "status": 200, "error_type": null}
+{"ts_start": 1785594178.84271, "ts_end": 1785594231.504141, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 6, "in_flight_at_start_path": 4, "status": 200, "error_type": null}
+{"ts_start": 1785594185.8883111, "ts_end": 1785594242.640953, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 5, "in_flight_at_start_path": 5, "status": 200, "error_type": null}

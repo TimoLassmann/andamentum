@@ -1,13 +1,13 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.deviations/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T11:39:58.986692+00:00",
+  "written_at": "2026-08-01T14:43:14.871648+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
-  "n_deviations": 13,
+  "n_deviations": 17,
   "policy": "Every change to a hypothesis, metric, threshold or scoring rule made after a measurement was observed appears here, with the direction it could have moved a verdict. Written by hand at the moment of the change; a generated log would only record the deviations someone remembered to generate.",
   "deviations": [
     {
@@ -112,6 +112,43 @@
         "H-a3"
       ],
       "could_have_moved_the_verdict": "No verdict change \u2014 four orders of magnitude below the threshold."
+    },
+    {
+      "when": "edition 2, DURING the run, after claim_d_pause failed loud",
+      "what": "`top_up_queue` now stamps a per-CALL counter into each top-up document's text, and RAISES if the queue is still short afterwards. Consequence for provenance: `provenance.json`'s `harness.harness_sha256` is the harness as it stood at run START, while `MANIFEST.json`'s `harness_sha256` covers the FINAL harness. They differ by exactly this handful of files. By the end of the run those were `scripts/claim_d_pause.py` (this fix), `scripts/drain.py` (the post-commit clock origin), `scripts/manifest.py` (self-exclusion) and `scripts/deviations.py` (these entries). MANIFEST.json's `harness_sha256` covers the final state and is the one to trust; the measurements themselves were produced by the final versions, because every rule that consumes those files was re-run after they changed.",
+      "why": "Making the should_continue arm real (H-d5) meant calling top_up_queue TWICE \u2014 once before arm 3, once before arm 4. `ingest` deduplicates on a content hash, and the top-up text was keyed only on the document index, so call 2's document 0 was byte-identical to call 1's and silently collapsed onto it. The CLI arm then ran against a 2-document queue and drained it to completion: '[1/2] ... remaining: 0', no 'Paused' line. That is the SAME defect this edition set out to remove, reintroduced one arm to the left \u2014 and it was caught only because H-d/arm4_message asserts the operator-visible pause message rather than assuming it. The rule exited non-zero and Snakemake removed the artefact; nothing was published from the broken arm. `rule provenance` was deliberately NOT re-run: it would mint a new run_id and every existing artefact's provenance_ref would then fail validation, forcing a full re-measurement for a one-file change that only claim_d_pause consumes.",
+      "affects": [
+        "H-d1",
+        "H-d5"
+      ],
+      "could_have_moved_the_verdict": "The broken arm FAILED and blocked the DAG. The fix makes the arm measurable at all; it cannot turn a fail into a pass, because the arm produced no publishable measurement before it."
+    },
+    {
+      "when": "edition 2, after H-m1 was first scored",
+      "what": "report.md now states plainly that concurrency_speedup has **n=1 and no variance estimate** in this run, instead of citing a replicate spread that came back null.",
+      "why": "H-m1's pre-registered rationale says the run 'contains a free replicate ... and the softening rule below uses it'. The mechanism is wired and pre-registered, but this run's geometry did not feed it: the second enrichment of identical content settled at a drain's FIRST progress tick, whose interval starts at the drain's t0 and so contains the preflight tax and a Docling conversion. `attribute_document_seconds` refuses index 0 by design \u2014 attributing it is precisely the error that produced edition 1's 1.067 \u2014 so only one clean instance exists and the spread is null. Saying 'n=1, no variance estimate' is more honest than manufacturing a band, and the softening rule remains registered for a run whose geometry supplies two attributable instances.",
+      "affects": [
+        "H-m1"
+      ],
+      "could_have_moved_the_verdict": "Weakens the published claim: 1.052 is a single observation consistent with 1.0, not a measured 5% effect. The registered threshold (<= 1.3) still passes."
+    },
+    {
+      "when": "edition 2, after the first `--verify` run",
+      "what": "`results/MANIFEST.json` is EXCLUDED from its own artefact list (`manifest.SELF`).",
+      "why": "A file cannot contain its own hash. Including it recorded whatever the PREVIOUS run had written, so `manifest --verify` reported a permanent false discrepancy on exactly the file the integrity check exists to make trustworthy. Observed: 'results/MANIFEST.json: sha256 ce399f96 != recorded 948d5f64'.",
+      "affects": [
+        "integrity checking, no hypothesis"
+      ],
+      "could_have_moved_the_verdict": "Removes a false positive; every other artefact is still hashed."
+    },
+    {
+      "when": "edition 2, after the first complete scoreboard was read",
+      "what": "`post_commit_seconds` now subtracts the last progress tick from a wall-clock measured against the SAME origin (`t0`) instead of against `started`.",
+      "why": "The two clocks are set a few milliseconds apart \u2014 `t0` before the initial settled-row poll, `started` after it \u2014 so the subtraction under-counted by that gap and returned a NEGATIVE duration whenever the true post-commit time was ~0. It published as `pause_discarded_seconds = -0.0187 s` and would have drawn negative bars in fig3, a figure whose whole point this edition is that every bar is a real measurement. The magnitude (~6 ms per arm against a 55 s document) never threatened H-d1's scored threshold, which read 0.0 either way.",
+      "affects": [
+        "H-d1"
+      ],
+      "could_have_moved_the_verdict": "Neutral on the verdict; removes a physically impossible value from a reported observation and a published figure."
     },
     {
       "when": "edition 1, not recorded at the time",

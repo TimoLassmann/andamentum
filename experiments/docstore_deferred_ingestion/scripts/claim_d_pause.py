@@ -48,6 +48,7 @@ Run:  uv run python -m experiments.docstore_deferred_ingestion.scripts.claim_d_p
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import signal
 import subprocess
@@ -189,10 +190,30 @@ async def setup_fullsize_queue(database: str) -> dict[str, Any]:
     }
 
 
+#: Distinguishes one ``top_up_queue`` call from the next. See the dedup note below.
+_TOP_UP_CALLS = itertools.count()
+
+
 async def top_up_queue(database: str, *, minimum_pending: int) -> dict[str, Any]:
-    """Ensure at least ``minimum_pending`` cheap documents are queued. LLM-free."""
+    """Ensure at least ``minimum_pending`` cheap documents are queued. LLM-free.
+
+    THE CALL COUNTER IS LOAD-BEARING. ``ingest`` deduplicates on a content hash,
+    so two calls that build the same text produce the same hash and the second
+    returns the EXISTING doc_id instead of queueing anything. This function is
+    invoked twice (before arm 3 and before arm 4); with only ``index`` in the
+    prefix, call 2's document 0 was byte-identical to call 1's document 0 and
+    silently collapsed onto it. The CLI arm then ran against a 2-document queue,
+    drained it to completion, and measured an exhausted queue rather than a
+    pause — exactly the defect this experiment exists to have fixed, reappearing
+    one arm to the left. Measured: '[1/2] ... remaining: 0' and no 'Paused' line.
+
+    And because a silent shortfall is what made that possible, the post-condition
+    is now CHECKED rather than assumed: if the queue is still short after the
+    ingests, this raises instead of letting a later arm quietly measure nothing.
+    """
     from andamentum.document_store import ingest, pending_status
 
+    call = next(_TOP_UP_CALLS)
     status = await pending_status(database)
     needed = max(0, minimum_pending - status.pending)
     baseline = C.read_json(C.RESULTS / "conversion_baseline.json")
@@ -202,21 +223,35 @@ async def top_up_queue(database: str, *, minimum_pending: int) -> dict[str, Any]
     for index in range(needed):
         conv = baseline["conversions"][index % len(baseline["conversions"])]
         text = (C.EXP_DIR / conv["markdown_path"]).read_text()[:truncate_at]
-        # A distinct prefix keeps file_path/content-hash dedup from collapsing a
-        # top-up onto the original document.
+        # The (call, index) pair makes every top-up document's content unique
+        # across the whole rule, so neither the original documents nor an earlier
+        # top-up can absorb it.
         added.append(
             await ingest(
                 database,
-                f"# top-up {index} {conv['arxiv_id']}\n\n{text}",
+                f"# top-up call {call} doc {index} {conv['arxiv_id']}\n\n{text}",
                 source=f"arxiv:{conv['arxiv_id']}",
-                metadata={"arxiv_id": conv["arxiv_id"], "arm": "top_up"},
+                metadata={"arxiv_id": conv["arxiv_id"], "arm": "top_up", "call": call},
                 model=None,
                 embedding_model=None,
                 process="defer",
             )
         )
+
+    after = await pending_status(database)
+    if after.pending < minimum_pending:
+        raise RuntimeError(
+            f"top_up_queue({database!r}, minimum_pending={minimum_pending}) ended with "
+            f"only {after.pending} pending ({status.pending} before, {len(added)} "
+            "ingests issued). The most likely cause is content-hash dedup collapsing a "
+            "top-up onto an existing row, which would leave the next arm measuring an "
+            "exhausted queue instead of a pause. Failing loud rather than measuring "
+            "nothing."
+        )
     return {
+        "call": call,
         "pending_before": status.pending,
+        "pending_after": after.pending,
         "minimum_required": minimum_pending,
         "documents_added": added,
         "why": (

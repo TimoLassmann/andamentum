@@ -1,180 +1,203 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.manifest/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T10:53:41.414373+00:00",
+  "written_at": "2026-08-01T14:43:48.797764+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
-  "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
-  "n_artefacts": 122,
+  "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+  "n_artefacts": 163,
+  "n_harness_files": 35,
+  "harness_sha256": "9e9cd0c56ce731a68339ac0ba9addf85bb8764607cab2feece599a416124e2c7",
+  "harness_note": "one digest over the Snakefile and every harness script. Cross-check it against provenance.json's git.harness_sha256 \u2014 they are computed independently over the same file set",
+  "n_unschemad": 90,
   "skipped": [
     ".snakemake",
     "__pycache__",
     "dbs",
     "pdfs"
   ],
+  "self_excluded": [
+    "bench/manifest.tsv",
+    "results/MANIFEST.json"
+  ],
+  "self_excluded_why": "neither is final when this rule hashes: MANIFEST.json would have to contain its own hash, and Snakemake writes bench/manifest.tsv only after the rule body returns. Including them would record the PREVIOUS run's bytes and make --verify report a permanent false discrepancy",
   "skipped_note": "databases and downloaded PDFs are not hashed into the manifest: they are large, machine-local and disposable. data/REGISTRY.json carries the PDF hashes instead.",
   "artefacts": [
     {
       "path": "results/SCHEMAS.json",
-      "bytes": 22048,
-      "sha256": "21cae4c0ac1fe76435a160a85035c80e78a71abb03ea4613eafdfa6f04e564e0",
+      "bytes": 37402,
+      "sha256": "7843d71228370442939a063af1e0afcc9b1af36d157c0a7fec2b6554f83c328d",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "results/SCHEMAS.md",
-      "bytes": 13793,
-      "sha256": "6d07effa063218ca2cce27ea2986230509ee7e81202ea9cafbd6c14c057466a9",
+      "bytes": 24204,
+      "sha256": "2034925aa6e7cea95ee5c2e31f0a8e0f686af19dea40a854a45aa98a007daaac",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "results/claim_a_defer.json",
-      "bytes": 19364,
-      "sha256": "bf9d3dced90af7d349f23e9afdbb20b9e69a0a12ee948d8aab8b97411058ffab",
+      "bytes": 20640,
+      "sha256": "b6611a1835c2340c0a6b1d1be7b9ff5633c2820f6bd42c705083e18fcb25170b",
       "producing_rule": "claim_a_defer",
       "schema": "andamentum.experiment.docstore_deferred.claim_a/1"
     },
     {
       "path": "results/claim_b_drain.json",
-      "bytes": 51139,
-      "sha256": "9301c2f3941a8d6d987a5400b032b501456a3804b71ea6f601316e117f612186",
+      "bytes": 55413,
+      "sha256": "4f7d855422edc00a452f30b65e81108de4142b487df309d5d7179a47531086a6",
       "producing_rule": "claim_b_drain",
       "schema": "andamentum.experiment.docstore_deferred.claim_b/1"
     },
     {
       "path": "results/claim_c_kill.json",
-      "bytes": 14276,
-      "sha256": "1064a7727a1d8bf0b7d3e015121000470d9dfbc8fc9768ca836e2d2a50780745",
+      "bytes": 15124,
+      "sha256": "6aceff6c4b6ee6fd1ed80786d377fe9340b51d9de3c7edaa34d5603461ae6648",
       "producing_rule": "claim_c_kill",
       "schema": "andamentum.experiment.docstore_deferred.claim_c_kill/1"
     },
     {
       "path": "results/claim_c_resume.json",
-      "bytes": 16478,
-      "sha256": "21be5220125c5ac1d4148e47869bb045f3c97786bd62f216197a78cb004a9c7c",
+      "bytes": 21344,
+      "sha256": "b0e20d034fa81a896da329be10d759f347f1a9ba9d18bdf8d812c2436c0061de",
       "producing_rule": "claim_c_resume",
       "schema": "andamentum.experiment.docstore_deferred.claim_c_resume/1"
     },
     {
       "path": "results/claim_d_pause.json",
-      "bytes": 92844,
-      "sha256": "45cf8afa4b3e3cf26b7d9d6c6b22572a6b0bffb43ffbdcef59511ff030b5ccc9",
+      "bytes": 114409,
+      "sha256": "b02014f6c0bc55154704e9d0d1789c944827a8e7b83f133491a756f815a61731",
       "producing_rule": "claim_d_pause",
       "schema": "andamentum.experiment.docstore_deferred.claim_d/1"
     },
     {
       "path": "results/claim_e_post.json",
-      "bytes": 118923,
-      "sha256": "a286a84b7f6015415c72eeab77447493f9a9f353dd1e8c7df9ec5b4200a0a65e",
+      "bytes": 85681,
+      "sha256": "356f93d530d899876fabaf0b7b5ea551b91dede14db0dd67d2608019793ce40c",
       "producing_rule": "claim_e_post",
       "schema": "andamentum.experiment.docstore_deferred.claim_e_post/1"
     },
     {
       "path": "results/claim_e_pre.json",
-      "bytes": 21490,
-      "sha256": "7e2057d88644f9f420c870a909ee664b2ef343e88ecdbf83097e2e90d645f53c",
+      "bytes": 23123,
+      "sha256": "1c442883829a68a80058d8018af2b573791aeed4dfe4906de0d65d3badf830ba",
       "producing_rule": "claim_e_pre",
       "schema": "andamentum.experiment.docstore_deferred.claim_e_pre/1"
     },
     {
       "path": "results/claim_f_fail.json",
-      "bytes": 99443,
-      "sha256": "1e2a46740d9cb5221899a87abc92d84f27cf69cd6d397b4ac5bd03ca79da58b4",
+      "bytes": 107022,
+      "sha256": "bb9506e0154fcae240ef3fb290d376d2fc0ccfdcb6b7424202e228c99ff3c16f",
       "producing_rule": "claim_f_fail",
       "schema": "andamentum.experiment.docstore_deferred.claim_f/1"
     },
     {
       "path": "results/claims.json",
-      "bytes": 18979,
-      "sha256": "49460f787ba0a8a4afda32f0df3cced4faf26a55b8a8e82e605f392f42b1b9d1",
+      "bytes": 31818,
+      "sha256": "2b43f9ebc4efc989b56d6f75a78c7a03919ee9f79fadb14807735bdc599fcb38",
       "producing_rule": "analyze",
       "schema": "andamentum.experiment.docstore_deferred.claims/1"
     },
     {
+      "path": "results/cli_smoke.json",
+      "bytes": 15278,
+      "sha256": "253e98c18dd708bb5301f02cdafca11229e47e13792dca5a46332b0f18e03c75",
+      "producing_rule": "cli_smoke",
+      "schema": "andamentum.experiment.docstore_deferred.cli_smoke/1"
+    },
+    {
       "path": "results/conversion_baseline.json",
-      "bytes": 2251,
-      "sha256": "b71c97275880daa8422cc91aef439dd7be8b842295db2a8bd490510d699fc4d7",
+      "bytes": 2660,
+      "sha256": "19819a90e16affd5ea9b4e9f79883a24d6580a1a2714dc00370cc1b734f52b24",
       "producing_rule": "convert_reference",
       "schema": "andamentum.experiment.docstore_deferred.conversion_baseline/1"
     },
     {
       "path": "results/data_integrity.json",
       "bytes": 1817,
-      "sha256": "882256265ef38b82d0f84af0ecce6480630a7c365794c18b2dc6221064075b0d",
+      "sha256": "5bc27b343bf3014df107d3c6305cc45fe0c64ac53258cc0a278ba2124589be6a",
       "producing_rule": "verify_registry",
       "schema": "andamentum.experiment.docstore_deferred.data_integrity/1"
     },
     {
+      "path": "results/deviations.json",
+      "bytes": 17499,
+      "sha256": "238fa6d961262c6523ee4fcf5efe06d83be90b144f4e26f3de1dfea7ac5b1cb9",
+      "producing_rule": "deviations",
+      "schema": "andamentum.experiment.docstore_deferred.deviations/1"
+    },
+    {
       "path": "results/drain_overhead.json",
-      "bytes": 7698,
-      "sha256": "2d3011e1eb12aae1f91c1efa075ca14f98742b97be5f89bb8f59c08458c91dfb",
+      "bytes": 11629,
+      "sha256": "51ec22104401689917794b2707c28af6154d3e99dbca12c29e36bdceadbf5882",
       "producing_rule": "drain_overhead",
       "schema": "andamentum.experiment.docstore_deferred.drain_overhead/1"
     },
     {
       "path": "results/events/claim_a.jsonl",
-      "bytes": 2763,
-      "sha256": "170446a63418497effb933417890b3e990488b8bc467626425560f19cfbf295e",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 2766,
+      "sha256": "d7c90458ff11f3c679595adff71e183ec04999e16b01e21a6981585b90459e2b",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events/claim_b.jsonl",
-      "bytes": 3776,
-      "sha256": "55270b2d5478d66ccfd5ad7e498fe49e3a6fa4c369630e82fa5431735cbb937e",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 3777,
+      "sha256": "069ccbd126ee87bb56a78812a489e8b56570f8db4127e502b87f7769ccb50905",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events/claim_c_kill.jsonl",
-      "bytes": 1854,
-      "sha256": "44ba6c1b480c87b5d8c8ad743c03a44b56761ca1de8f3aa84650fccf0d0cab58",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 1857,
+      "sha256": "b95459021a536ae903e28589421f1ffa16a30e375730a2063175473ca025950c",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events/claim_c_resume.jsonl",
       "bytes": 419,
-      "sha256": "4632a8b7e349d1c7275c259c61a7cc4b32e37647bda9ade2e49d51b8cad555d3",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "3c49684ca819dca5589b020b3b866908e2cbafa19775606de8f59e9b48828d64",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events/claim_d.jsonl",
-      "bytes": 4663,
-      "sha256": "af0cd022e3c0534b937cbdadf81c982d820722279fcc862707c2d54ceffc5a4c",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 4678,
+      "sha256": "415630f6f2c8dd02aa39cace118006af907b29da6ee492fc827c941eee672b3d",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events/claim_f.jsonl",
-      "bytes": 8913,
-      "sha256": "2fa9fb8ea0e48de308d48318e8232cbffa08ec1c4f241f9689cb96487fb37eb3",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 8905,
+      "sha256": "722d6a25a494669f56df69b30a5fc87bacc333344f7eeb668e44d055fe431367",
+      "producing_rule": "each claim rule (one file per rule)",
+      "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/events.csv",
-      "bytes": 10439,
-      "sha256": "2b95dc0678c33ce51360df7ca9e7b052a7e7744f03885e1c9d4357c408c0611c",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 10453,
+      "sha256": "dd5a08409b1f1c8fa192cb3772174a971ce3087b4a385e9134bd285988356831",
+      "producing_rule": "merge_events",
+      "schema": "andamentum.experiment.docstore_deferred.events_csv/1"
     },
     {
       "path": "results/events.jsonl",
-      "bytes": 22388,
-      "sha256": "8d17cd1810d4aeb559065aa138fe0efe76a58267cde089d2cbe2aab7b8eb1a94",
+      "bytes": 22402,
+      "sha256": "45307960f37c043b7d21edf366df73e6d1b96f1164a5feb277faa8b016b1c672",
       "producing_rule": "merge_events",
       "schema": "andamentum.experiment.docstore_deferred.events/1"
     },
     {
       "path": "results/gate_llm.json",
-      "bytes": 4808,
-      "sha256": "4d363ac0ead5f0d16582223a052c866b93904df7e625ff6b449a41f56f5fa532",
+      "bytes": 4327,
+      "sha256": "3e672917360bd0e5fe925e04214e7a9496b75a454afe20411d3e0b69256e890e",
       "producing_rule": "gate_llm",
       "schema": "andamentum.experiment.docstore_deferred.gate_llm/1"
     },
@@ -182,377 +205,384 @@
       "path": "results/ledgers/a_defer_http.jsonl",
       "bytes": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "producing_rule": null,
-      "schema": null
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/a_now_http.jsonl",
-      "bytes": 10817,
-      "sha256": "b5e45d9c4e91c1c58ec6947a225be10dac666d6738aa810f2adf9c01a035707f",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 12636,
+      "sha256": "7a8edd50493ec9d732cebbcc6aee09c9b292fcebf5b67b61f4cce405bbae7d71",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/b_convert.jsonl",
-      "bytes": 350,
-      "sha256": "4bc7f908116c15cf8830a0dd1cc9a39eafa01966957bc07b72e056245d4d59df",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 347,
+      "sha256": "70b484004cfc76cc69336625664db7a68098548bd52d2521519fec802e97ba6b",
+      "producing_rule": "claim_b_drain / claim_c_kill / claim_c_resume / claim_d_pause / claim_f_fail",
+      "schema": "andamentum.experiment.docstore_deferred.converter_ledger/1"
     },
     {
       "path": "results/ledgers/b_http.jsonl",
-      "bytes": 72373,
-      "sha256": "21ad480589282d5c3917ebbb87bf18c1a78032d56993a9294a842e0f69cca927",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 84580,
+      "sha256": "686e6960dd0f76a10dd4574147ef83b5103aa9f60747bff2316db6f6bd2b621d",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/c1_http.jsonl",
-      "bytes": 389,
-      "sha256": "6cdc85054ef18256ca03cb88adb10f440e51a2a6b4ae0074b30c6d1014439fe4",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 454,
+      "sha256": "1a2b3c9efe21b69a693d3657c349d502cf27cc7c0444d394e8a7dd613104a86d",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/c2_http.jsonl",
-      "bytes": 57235,
-      "sha256": "8ea449798156f414399dea942456967dba614125f80e99cacbb0e21f5c2c8155",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 66680,
+      "sha256": "75b53cf17260774a29681374b58b7ea848609252b19fa8a2f83c837d418711cd",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/d_convert.jsonl",
-      "bytes": 350,
-      "sha256": "d7e2ff43d359d381903ab520615fc054df7bb2d31f784cbc9cc8b3db14332d1c",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 349,
+      "sha256": "548723e505161454c35233f1f2f5bbaa1554fe4e9d0367f2e17dfcc8636cbfe6",
+      "producing_rule": "claim_b_drain / claim_c_kill / claim_c_resume / claim_d_pause / claim_f_fail",
+      "schema": "andamentum.experiment.docstore_deferred.converter_ledger/1"
     },
     {
       "path": "results/ledgers/d_final_http.jsonl",
-      "bytes": 4273,
-      "sha256": "a167b8bd2d38c95cb149556dce48af42ebd9ca70b28fe7bae614c31447cb5fcd",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 2063,
+      "sha256": "21326e3ae3314e9cfe3cdee6267e26867d03d9f7ffa440a97b4117b2815fb15d",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/d_http.jsonl",
-      "bytes": 17985,
-      "sha256": "8010bbe99d4bff8fa6309fe0e829552f7ceba2040a9bef60fa046f1e25776488",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 21259,
+      "sha256": "7e7c9508eec1d745af1d38267b7d848bd295f6fe170cc77efaea949501fedab1",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/e_post_http.jsonl",
-      "bytes": 2278,
-      "sha256": "d416b3d3c6143e72ea6f83b9641d07b3a5e0bed8ba530b2e195bd2b5f812e08a",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 2675,
+      "sha256": "5e4a4cf27464074df8028a628d3f5056ca82a49fa1fcb11ecee409ea0de5de29",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/e_pre_http.jsonl",
-      "bytes": 1506,
-      "sha256": "84cad5c9508c284a7df535eca9e2dd7e8f535a7721a93dd4dcf3e2b4f1070f64",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 1773,
+      "sha256": "c5e41fe17245888e85f445701201f19859c5d3cea800425d0857ba2a6625b5db",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/f_convert.jsonl",
-      "bytes": 7059,
-      "sha256": "85c53f21976879ced21f127ef2ae9c7ed04ef3d0c2f8b5500169aff4ba76b0fa",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 7042,
+      "sha256": "5b9829825d1711adfb300a07987ce9f0b6ee59c7c4ad5639848a40c80109a033",
+      "producing_rule": "claim_b_drain / claim_c_kill / claim_c_resume / claim_d_pause / claim_f_fail",
+      "schema": "andamentum.experiment.docstore_deferred.converter_ledger/1"
     },
     {
       "path": "results/ledgers/f_http.jsonl",
-      "bytes": 23725,
-      "sha256": "76880b1662e0c0f6259572ee744b4aa0e9bf081d2850e662b6ffaa8b37f635c0",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 28166,
+      "sha256": "46a85bb811f7705d12b06972f7f9a4ea940956d332fda643b9804e2b5f26f7ba",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/gate_http.jsonl",
-      "bytes": 386,
-      "sha256": "fd0676a13c2356af6da6fe358e9875e9ab0af6616ad02ba837e94d40bb53ac84",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 454,
+      "sha256": "35e945da3923a446fcef492322d3ba47d58dbcdf4b484c14ba85e6e67ad3aeed",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/kill_convert.final.jsonl",
       "bytes": 1051,
-      "sha256": "5a2d3c7d4e3e632a8ce25607d8a791b1d981561ffd2d7bcc2243e89d2be38b62",
+      "sha256": "f9703e6021030f0d3191d7fa60fabfdb348501e1d9f9fa3d0b8fd96a286e611c",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "results/ledgers/kill_convert.jsonl",
       "bytes": 1051,
-      "sha256": "5a2d3c7d4e3e632a8ce25607d8a791b1d981561ffd2d7bcc2243e89d2be38b62",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "f9703e6021030f0d3191d7fa60fabfdb348501e1d9f9fa3d0b8fd96a286e611c",
+      "producing_rule": "claim_b_drain / claim_c_kill / claim_c_resume / claim_d_pause / claim_f_fail",
+      "schema": "andamentum.experiment.docstore_deferred.converter_ledger/1"
     },
     {
       "path": "results/ledgers/micro_http.jsonl",
-      "bytes": 7465,
-      "sha256": "f9403e547536b12f0899e694c3e8870dd4e9859c1feb32e8e11d734df8113a4c",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 8951,
+      "sha256": "115e8d7c9b15b85e3e3db66e40aa06ef8b398bdae7839a062a4afd897e763eed",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/overhead_0_http.jsonl",
-      "bytes": 387,
-      "sha256": "15e2d9f71ae8be049df177bde48ea851302a02488f7f87c66a28ed0745d16e9a",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 454,
+      "sha256": "e8b74a99cb9e278e68139694da7d70831d96488a2cfa567ca4a36ceaf2eff745",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/overhead_1_http.jsonl",
-      "bytes": 387,
-      "sha256": "51fee8cc5c0ba420114d08fb513e45c891f383aef0247c28478232ebd3a5d4c4",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 453,
+      "sha256": "fbe37adbf00a5bdb5376f0a4e0da39b327865ca0a2ed88de87a794ff5dbebc1d",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/ledgers/overhead_2_http.jsonl",
-      "bytes": 387,
-      "sha256": "66e90041c98c8f03c6e3c49addefb71253ad9c2acfff80aa2a558fbf5945cd3e",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 455,
+      "sha256": "26ccef4161ecd47e0cf479e5be975e09e8076f94b01435de0677cc6ed2610c55",
+      "producing_rule": "every measurement rule (one ledger per arm)",
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1"
     },
     {
       "path": "results/micro_stages.json",
-      "bytes": 7582,
-      "sha256": "3aacbba43034ce131a867052abab6b46f67d249ce75e1962b4f7a1bcc260dfa3",
+      "bytes": 9310,
+      "sha256": "2b7d728db79f85555cc4c345ef2391bcc4b040ac3e7cf2e83cf6e76c07a5f8cb",
       "producing_rule": "micro_stages",
       "schema": "andamentum.experiment.docstore_deferred.micro_stages/1"
     },
     {
       "path": "results/per_document.csv",
       "bytes": 791,
-      "sha256": "f0b70886fa2aa7e6970087aa439c6675c83ffbdb949554c70d6bf54f76aaf142",
+      "sha256": "145544187869089f1d965c3c7b84a28f0c5731537a30cb29eeaa226b79e5794c",
       "producing_rule": "analyze",
       "schema": "andamentum.experiment.docstore_deferred.per_document/1"
     },
     {
       "path": "results/preregistration.json",
-      "bytes": 14567,
-      "sha256": "cdc897d5592477367ae53897720b5c844d51f796a242a321a4b35922144f7cb0",
+      "bytes": 22086,
+      "sha256": "5a2e1899d632fdeff563dd94bf1454fafed48ce6818a2963ff50c2d00be104a5",
       "producing_rule": "prereg",
       "schema": "andamentum.experiment.docstore_deferred.preregistration/1"
     },
     {
       "path": "results/provenance.json",
-      "bytes": 5673,
-      "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f",
+      "bytes": 26216,
+      "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561",
       "producing_rule": "provenance",
       "schema": "andamentum.experiment.provenance/1"
     },
     {
       "path": "results/snapshots/d_arm1_max_docs_post.json",
       "bytes": 5539,
-      "sha256": "b6580e829acbbe6deab30c05a982738e6bb05c57edb5b5a8cb436b15760b6c5e",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "d66600e9e200c2b43c3328e984a92362aa3a9b283d85ecde505422361f0bc7c8",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_arm1_max_docs_pre.json",
       "bytes": 5456,
-      "sha256": "538fbac61e7e9922475c54263b15af664e0a8c2e34ea8d113b80dad5f6873fbe",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "c1bb8a4e561b30e0b323a075327a173d3a2de6a973426a306fdebea73f0eebb1",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_arm2_max_seconds_post.json",
       "bytes": 5698,
-      "sha256": "dc239949cb73cd40faff915027edb1021b7b2dd3c9aca5c421ddff6fd1d6e958",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "7165f1e3ec891637fdab0a3a4d0e526b5ff6f020e33ea1188849f0958e790c0d",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_arm2_max_seconds_pre.json",
       "bytes": 5541,
-      "sha256": "751b1b0e693e8c4359e99487a2ba470d72a3ee6b54b040cef0eeb499d1907006",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "74ba0954a39d2ec62f59202a1219e15613e9c85dcc507784da71fb040cd500b9",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_arm3_should_continue_post.json",
-      "bytes": 5754,
-      "sha256": "cb26bad1cd59b6dbedf5917e02974c5b1ef9207b5cfbee4d39c4709d6e35c8ed",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 6600,
+      "sha256": "10e6bbb9cf7d6af034e5af2b609a7e19d6c4f656ff01bea4dcf25b7a09babdf8",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_arm3_should_continue_pre.json",
-      "bytes": 5701,
-      "sha256": "130de9bb297eeead0ecff4c5606530f573ed61169ab6bc24d12ebb7565abfad3",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 6547,
+      "sha256": "8ffbfcae927086ed2546cbf69d7b8ff973ca4e32ecc500854da375d7cc42b926",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_final_post.json",
-      "bytes": 8352,
-      "sha256": "51c9547964c097665fdac99ba60365930cac6969d302b32060cc5feedea9d78c",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 8433,
+      "sha256": "422f2368dffbf37bd753d78c1cf8f36c8822f06e119ea48c9a94938d19e5ebe0",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/d_final_pre.json",
-      "bytes": 8299,
-      "sha256": "897dedba7cae5cd51fda4827bbc60d9716d0d82c1e3a970b56c0be9248bd3371",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 8380,
+      "sha256": "d0db740bbb751863c1c654939b0aa49aa2b6ffa9f22b439f25cd343e9258cbf6",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain1_max_docs_2_post.json",
       "bytes": 5553,
-      "sha256": "444528f5fce03baaf831f1417fe84d2f7c36a127d9d558e2fa4f542cf48c511d",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "8560ac19eb5f6115a7b92cf12a79569e3e787c691efddaea32deac163328fa67",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain1_max_docs_2_pre.json",
       "bytes": 5417,
-      "sha256": "3705e87b254dde69b21204a794b68d0050b5ad9c09611c6e0eb7ae2c073a6017",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "2e4667cbb410adbd0b0fb7e23f6aee1ed675d66aa425e9b8fe451118b6c070ce",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain2_unrestricted_post.json",
       "bytes": 5717,
-      "sha256": "8c033483215db59d26258165e765d701713bc3734e77ec543b24e97fa2cb02a5",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "489eb03a7242367dabddcaee73cb10c3069086426f7459efe8ea6ae4f97c3649",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain2_unrestricted_pre.json",
       "bytes": 5554,
-      "sha256": "663dee8dcf8567b43f0cffbbe350895e7f2cb480b6216b7fbbe3200d5db6e2ae",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "cb9921cdb757a7ce9f7e028b62e9892cc5b855a56eacc43bf8432942fc7a8a6f",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain3_noop_post.json",
       "bytes": 5709,
-      "sha256": "af8fcdab8cd4c5bc56c8087b19cd50fee82a61e30b73a7874c6d51ce4e935da4",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "a328f7b7600013b9703d4b151e3b89e9bf0d5252e514ccd4151c4a61ab8d65f2",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/drain3_noop_pre.json",
       "bytes": 5708,
-      "sha256": "33af23f5c571dd8531ff98147ef8087962a823359eea8015e1f4c5e2b694d5dd",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "73a0bce196f210a989a401786b685e257bf5926c91983f4c0637061fb783d0d2",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain1_post.json",
       "bytes": 6110,
-      "sha256": "96dd6a13ef8e535fd6e04fc1d1d0664f7a2bb9b9bf894707647829e74406d3b3",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "2ac581927653c9fe1b749d82a436eef78d9cf14e9f06297e1ba860808665a7a9",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain1_pre.json",
       "bytes": 5352,
-      "sha256": "ddcb8a512d1e9d42969bc3f9d7ca648087f4074772ba89bea22a3a912f8e0914",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "842d2006125e183309122af3ce9a46a9c01d780cb0be87875341cc0194ebfdad",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain2_post.json",
       "bytes": 6110,
-      "sha256": "b4b47af1e3f6bcee3b565f91dfc383c71e75dc2223922398fa5cfdd751014817",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "b2ba9442c69fd6b1df42599f8f50a6360c104a05d12037f5e06a08564f27025e",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain2_pre.json",
       "bytes": 5434,
-      "sha256": "17a35b3cec5d68d0679189bb1b5805e0d0fa78f6af1cc207a03dc806d5735a4d",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "f3759bd4469343e90109d2b9f43a32efd12628f44ef62623aa8fb19372d57b81",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain3_fixed_post.json",
       "bytes": 6071,
-      "sha256": "d66d32200957a37670d8a6e6a4fdeb7e844efb95b73deb2654886d7f7b576475",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "9d50dff24395bbe58254005162cd7186fa5de3d79009131372dab0e6915952ee",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain3_fixed_pre.json",
       "bytes": 5440,
-      "sha256": "299e95b2570ba9c0d2e0c82deac121c9b29d79e428e1d67c800775bc83d313cd",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "835c7faca71d8a3c9896697acb8546e9c53097fb17f4c6b29471532ec74db174",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain4_stage_post.json",
       "bytes": 6071,
-      "sha256": "8c76ca948c1a5800282449388baaef9f8b02cc93ceee31ffa815e404f2a30381",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "0e3ce411fc6dbdf237b99b2fbae6b7c5aef75b2153d98d8ba0f7fcd22f512a31",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/snapshots/f_drain4_stage_pre.json",
       "bytes": 5522,
-      "sha256": "3be3b78e846fc75458775040b047080415208e5dcd5ac1671807908ffb50a607",
-      "producing_rule": null,
-      "schema": null
+      "sha256": "d47234b73179c9f028f4161b4574f9a48e84dd6986c309a592c30914e58a11ba",
+      "producing_rule": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1"
     },
     {
       "path": "results/timings.csv",
-      "bytes": 537,
-      "sha256": "3cf5b57a3cdccb122aab91b5512f50f376484fbde1e03f3bb5de2c24b4671d3a",
+      "bytes": 640,
+      "sha256": "e0737b2a1aab9303ac226495ef5d92a93de6fc543ce918238a81f054e651dc06",
       "producing_rule": "analyze",
       "schema": "andamentum.experiment.docstore_deferred.timings/1"
     },
     {
       "path": "results/validation.json",
-      "bytes": 1481,
-      "sha256": "ea05960706b2511bb68fb3013c31d566ab406d9dac9a51b3e4b4db57d60a820c",
+      "bytes": 2953,
+      "sha256": "20c050924b14e141a94583411274108d791b3793c4a0c5cdbf816b1b990f73f9",
       "producing_rule": "validate_results",
       "schema": "andamentum.experiment.docstore_deferred.validation/1"
     },
     {
+      "path": "results/working_tree.patch",
+      "bytes": 1102919,
+      "sha256": "c34adf156cc2c354ec01a86825fec0b6869671534fbb685546ba946294f30831",
+      "producing_rule": "provenance",
+      "schema": "andamentum.experiment.docstore_deferred.working_tree_patch/1"
+    },
+    {
       "path": "figures/fig1_stage_timeline.png",
-      "bytes": 56343,
-      "sha256": "05415dadc84900538a136df103aaf5cf459bcc5944aae1a04e11f1d29bab87a0",
+      "bytes": 49276,
+      "sha256": "c05a9edd79ffa273b30e6296138a42af1f4af4581c2e9506ca836efeec9e0ddc",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "figures/fig2_retrieval_recall_pre_vs_post.png",
-      "bytes": 58663,
-      "sha256": "fa8d420975c0b6bc0379f4cf2f1b9036015f519bce3c1260cd450963665e9996",
+      "bytes": 83725,
+      "sha256": "d6551c076cc384b7fe2e98b567654c8e0d29abd77fa2e8dfb53b3fd634930062",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "figures/fig3_stop_cost_by_mode.png",
-      "bytes": 65264,
-      "sha256": "919d676d7330da5c2c66a940136a81f1cccdb2f847dd6c62103ffe73c8d84507",
+      "bytes": 66890,
+      "sha256": "9fddd9800babb1e9cb28b0f5d2557323e3e0b7a81700ad9609465c89d28e6ec3",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "figures/fig4_enrichment_attribution.png",
-      "bytes": 50075,
-      "sha256": "1ce2478147efdaba047d87699393d50c59b01eabe3d717d5ef4d6de8727cd69d",
+      "bytes": 50087,
+      "sha256": "4653f622cc859ea426c99e50324f69888bd9e3df08e8439121249e3ab3de126d",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "figures/figures_status.json",
-      "bytes": 364,
-      "sha256": "ff9df8d842d2997c68bfa5ba3cf50d30376527964397bab53e99b957435f0e86",
-      "producing_rule": null,
-      "schema": null
+      "bytes": 1037,
+      "sha256": "9c1d7ffa9704452c74d77727f948070454fc425ee54f27951a18de17160d5639",
+      "producing_rule": "figures",
+      "schema": "andamentum.experiment.docstore_deferred.figures_status/1"
     },
     {
       "path": "data/REGISTRY.json",
-      "bytes": 3394,
-      "sha256": "a4340c6e605ba759472612cfedc08335c6c261b45fe4e856f152829af39b15c2",
+      "bytes": 3393,
+      "sha256": "5aa146cb3d4fdd5e839cf5562ea35ffafadabcff7fb995dbb30773ae0df0f71c",
       "producing_rule": "fetch_pdfs",
       "schema": "andamentum.experiment.docstore_deferred.registry/1"
     },
@@ -574,6 +604,20 @@
       "path": "data/bad_sources/whitespace_only.md",
       "bytes": 13,
       "sha256": "24902830c65b9d921a4bbbdd1d19465d15e4c0b643d3c7409643b11dc138345a",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "data/cli_smoke/broken.pdf",
+      "bytes": 41,
+      "sha256": "d97b11b49128516e489955f364ab09c6880034367e0c8c39e865fd49a65e007e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "data/cli_smoke/note.md",
+      "bytes": 6045,
+      "sha256": "6981899c2ec97156bad269e9c95ba7eab36fa80991023e30071ffa9a62562415",
       "producing_rule": null,
       "schema": null
     },
@@ -607,190 +651,169 @@
     },
     {
       "path": "logs/kill_run1.log",
-      "bytes": 1939,
-      "sha256": "59ee43583e1c5141759aa56a4c01cb4dce329075d97d137dd1c5991c893f2f71",
+      "bytes": 1938,
+      "sha256": "eaefd07b721a32501f86b0e2f586a2704b24502683491b40f79f299c71a5a043",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "logs/kill_run2.log",
-      "bytes": 4331,
-      "sha256": "b4e70639f91d6cf99a1bb9bf3d47418de2cdc244a919e51e96ad6b8e3abf439a",
+      "bytes": 4415,
+      "sha256": "cb11c551983444a177ba128c98b9b9f01840938ef0daf2acf1b978fb815e3fde",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "logs/pause_cli.log",
-      "bytes": 283,
-      "sha256": "518fcb02d27ba78032b7267c1639894bd30f2d73739febc9297e41860784c9ce",
+      "bytes": 305,
+      "sha256": "17dacc56340aaa23da00ecbea3977346f593a729daea21eed8118287fff8669a",
       "producing_rule": null,
       "schema": null
     },
     {
-      "path": "logs/run_cycle1.log",
-      "bytes": 7998,
-      "sha256": "3b5639f138cff9f5e08d6ef5512798a4c44ef0397eccd7dafea1a274e6f00929",
+      "path": "logs/pause_cli_fullsize.log",
+      "bytes": 297,
+      "sha256": "aac496e8cebca2f42c8ab1b8ee1d2c90a0e623a8d08d46b72a755bdaedc9a8f4",
       "producing_rule": null,
       "schema": null
     },
     {
-      "path": "logs/run_cycle1_final.log",
-      "bytes": 57015,
-      "sha256": "33de1448cde9a93757b0315aebcafdf06c2f1b74b8325161aeda46646ef50f81",
+      "path": "logs/run_edition2.log",
+      "bytes": 35092,
+      "sha256": "740f32c59b83fc5c07fb660629c4c1c78f87e5d4a777a07fadcd08bf10798af4",
       "producing_rule": null,
       "schema": null
     },
     {
-      "path": "logs/run_cycle1b.log",
-      "bytes": 9962,
-      "sha256": "9484afcf6cae415e5a398e74a6295ecd4d9fe67f69876161c6091b226e0287ff",
+      "path": "logs/run_edition2b.log",
+      "bytes": 12240,
+      "sha256": "c97d72a774a47e230200b759e0e26014f54780c0af82ae733e06860ed615a6e5",
       "producing_rule": null,
       "schema": null
     },
     {
-      "path": "logs/run_cycle1c.log",
-      "bytes": 6020,
-      "sha256": "544fd25f8acd490d2f38a8ee7d2a36ca9f579caae729400f6bbdf5e93269952e",
+      "path": "logs/run_edition2c.log",
+      "bytes": 32903,
+      "sha256": "cc4f66373d625d677b86e4709c31b8f1a2e9c2d4fd1b1765fe8ed2ac6799bf71",
       "producing_rule": null,
       "schema": null
     },
     {
-      "path": "logs/run_cycle1d.log",
-      "bytes": 8033,
-      "sha256": "458edb24256ea3683b651d94f171c6894f20bffd42aa737a703520f2cd2c76ba",
-      "producing_rule": null,
-      "schema": null
-    },
-    {
-      "path": "logs/run_cycle1e.log",
-      "bytes": 10177,
-      "sha256": "d3dde00d1196aa23fc7a56f654869e98447b69d525ee07635acd0fdde97eb079",
-      "producing_rule": null,
-      "schema": null
-    },
-    {
-      "path": "logs/run_cycle1f.log",
-      "bytes": 7754,
-      "sha256": "76b44121707c5aa2ee397ab1d56ac7852f3e12c2ab19427663326251618ffbae",
-      "producing_rule": null,
-      "schema": null
-    },
-    {
-      "path": "logs/run_cycle1g.log",
-      "bytes": 22156,
-      "sha256": "36d13c64c8a4c03b8f4ed3574b8f464448898609cda4628627773864cc436acd",
-      "producing_rule": null,
-      "schema": null
-    },
-    {
-      "path": "logs/run_cycle1h.log",
-      "bytes": 25349,
-      "sha256": "6776be7e72c38db52243eef2a2a52a1375837d6441444327d24de1e7e3aef0d1",
+      "path": "logs/run_edition2d.log",
+      "bytes": 31822,
+      "sha256": "bdf9a2c5300fa8557a0e9afa9b0782650caa4a4ba080abeb601802813fd72a4a",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/analyze.tsv",
       "bytes": 110,
-      "sha256": "3445e48451d10e55749ad8656c34e50323f8acb26d2058103c9e9989582f39f0",
+      "sha256": "98bb80d8cb243039158fd52b228400765301759efdf74674aeea805493764c5d",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_a_defer.tsv",
       "bytes": 112,
-      "sha256": "c75a5d18b6a6324c02bdfa9ee8866e24ed0ca7dac50edb7049d169443ef090be",
+      "sha256": "6b5ac8ce677a096a330bc8be585ff635f26037a796400fb2ce05870b8c3c5a49",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_b_drain.tsv",
       "bytes": 113,
-      "sha256": "930e83c7e79ed8a3bc60b69acbf4ede1427925ba98b5c4355c8ad50f2593ed7c",
+      "sha256": "6416e2c1055d4eaeb51d23e22d2b7236533e445aa484736b30aa4f9a0af00b75",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_c_kill.tsv",
       "bytes": 112,
-      "sha256": "4ede3dfab357c6b228b0dae6c44735b9012d7b261a41f757a6874390e9eb59fb",
+      "sha256": "7de6d44a03f4f59a68dbe1b752591782f92c4f1e50b64168acf5e88d56fe2c39",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_c_resume.tsv",
       "bytes": 113,
-      "sha256": "1161846ba849093620c7fda880f1bb9f33478c554673fb539741773295b36b2a",
+      "sha256": "e5a7584c593db010e4d693e032c2175bd728404adb7b9ace94ef55cf58d22c74",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_d_pause.tsv",
-      "bytes": 112,
-      "sha256": "64e6b24e9787a3bf3d00bb15d2cd841cbe0e9668193ad37ca99df01494630475",
+      "bytes": 113,
+      "sha256": "0f5c8a6cf4eb3ebf897fdc8713ae6c8a49344069d69031d2fdfd0695eef5d6c9",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_e_post.tsv",
       "bytes": 111,
-      "sha256": "d24506e46ea5eb59288ba848a77eddbb300adddade0f9a6a9a395f8b31ce53df",
+      "sha256": "15858bd14851ecdf0b37ad7179f0a7a8adeb89198eee80da76be179ea8687365",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_e_pre.tsv",
       "bytes": 110,
-      "sha256": "0e824dcb6128805f4fede944bd01df55375099288cf9559b39bae4a7b5b2c650",
+      "sha256": "707326e85055e76926e3b7392e3f37a3858861d6db5b231bfe3399cd99ce4224",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/claim_f_fail.tsv",
       "bytes": 112,
-      "sha256": "bf994111a7ba1589455bc2e1de30154da4180ec4ca501ffe5db10094c2387ebc",
+      "sha256": "bb9b01e387fad6d7502ac52950d8df4dcc6468aaed74469b83aff8ec84489013",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "bench/cli_smoke.tsv",
+      "bytes": 112,
+      "sha256": "159fe342734620e4eb0c3d62b7496f4420367901d6dae45446258721fc1c8b15",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/convert_reference.tsv",
       "bytes": 112,
-      "sha256": "88946cd04ffe34033a9b8fe5e1599c878065c970b41708312c5a57fe82cd532b",
+      "sha256": "205b1d90413e7dfeb6209523e7cbdd066d477e58e09011e0e001c658bb1ea74c",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "bench/deviations.tsv",
+      "bytes": 110,
+      "sha256": "2fcff02fc8a9154355e00dad89104485da3e3b05f9b80442c05d72f5463854ab",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/drain_overhead.tsv",
       "bytes": 111,
-      "sha256": "0098e7d2b4f480c0646e558ca5e80f94ea3af1274cc8c7be5177c1f75f698e6b",
+      "sha256": "48364d7d02826ee920163e78a678b6da3afadeffaef189fca79b222b7f728440",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/fetch_pdfs.tsv",
       "bytes": 111,
-      "sha256": "cdcb9c0587cc687193b843e8a8246d6e2c8ee0666fd634d03882ab02e1bfaa52",
+      "sha256": "b46a389fc08bcbb7118379f1c3034870419f3fa224a4531ab52f9792f5f446eb",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/figures.tsv",
       "bytes": 110,
-      "sha256": "df674452edced6067123b448fc189b5e8f6745aecc6c34fdb0e5093e4492ec88",
+      "sha256": "cff2359b6c9b009e66c3358914dd4ce040963439202210bdd3414b1de08ee76a",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "bench/gate_llm.tsv",
       "bytes": 111,
-      "sha256": "b4d6ba0683342944b2c0cda1f627c62919ed381068ec747409e3e889288b4ee7",
-      "producing_rule": null,
-      "schema": null
-    },
-    {
-      "path": "bench/manifest.tsv",
-      "bytes": 110,
-      "sha256": "98bb80d8cb243039158fd52b228400765301759efdf74674aeea805493764c5d",
+      "sha256": "9474f7213f699e4cf50fa12bb6003f1f1f2927b99c20fe050ba4584d10790867",
       "producing_rule": null,
       "schema": null
     },
@@ -804,7 +827,7 @@
     {
       "path": "bench/micro_stages.tsv",
       "bytes": 112,
-      "sha256": "f97990c4421fff967bd29c9f46c2791d34d492093b80937f370b974703febd71",
+      "sha256": "872912c3d0d14a19c053059dff633afcc141143a02e3fa2a739e8e765c599740",
       "producing_rule": null,
       "schema": null
     },
@@ -818,7 +841,7 @@
     {
       "path": "bench/provenance.tsv",
       "bytes": 110,
-      "sha256": "942cf0ca611459f5a9a5a7d9fb429d9406f16a02a4a46902e46b5fe3b9d90032",
+      "sha256": "765c3b73943cf9513e8026e72717b910fdfdcd03d90ce7a3e4e15d1829175088",
       "producing_rule": null,
       "schema": null
     },
@@ -839,7 +862,7 @@
     {
       "path": "bench/validate_results.tsv",
       "bytes": 110,
-      "sha256": "2fcff02fc8a9154355e00dad89104485da3e3b05f9b80442c05d72f5463854ab",
+      "sha256": "3445e48451d10e55749ad8656c34e50323f8acb26d2058103c9e9989582f39f0",
       "producing_rule": null,
       "schema": null
     },
@@ -851,23 +874,296 @@
       "schema": null
     },
     {
+      "path": "scripts/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/_common.py",
+      "bytes": 13697,
+      "sha256": "9ef610c8c247c76050971ea3fee39177a8ce269461d0ed06d622415f614b39c2",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/analyze.py",
+      "bytes": 26950,
+      "sha256": "e42d3902701b4a38cf889af05178510a42b0715a5acce65fc13950729d5fb497",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/build_report.py",
+      "bytes": 13033,
+      "sha256": "532d7a9e165b6b500baf31d36a13762185afd6765b7e323810704fa4e3b28cab",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_a_defer.py",
+      "bytes": 16065,
+      "sha256": "d2a628675ae589fb8ebe87bc1fe825094fe139f00cc8c890720f19b77c8fe292",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_b_drain.py",
+      "bytes": 7133,
+      "sha256": "b8cec48da2e9cc0788cf7b49f7dc740349caec13728ccdddd7ca852c46368fb5",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_c_kill.py",
+      "bytes": 17063,
+      "sha256": "aafc5fd06978ad0b745a608aa11ad5319dc9bfe8215cb6b46b8fb18840e2a986",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_c_resume.py",
+      "bytes": 17279,
+      "sha256": "fafd50f8e6109053b690dbbfc3e74bb8238e3c5c7d55c31cf48f66d4b1e3ea48",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_d_pause.py",
+      "bytes": 37619,
+      "sha256": "11ac983d4a25b0ae6db3d4e2d44892cdb43d5b405c0277442607ac019938df5d",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_e_post.py",
+      "bytes": 9321,
+      "sha256": "be397dad8a138e0a778234abf26a5911d3fa4c9dd4b5c3fc5f0bd00963640542",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_e_pre.py",
+      "bytes": 4677,
+      "sha256": "32cbc785614d95e1042bad452c7aef5d7ebdca8aed0eddcd9c8d121485fd5e2c",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/claim_f_fail.py",
+      "bytes": 15279,
+      "sha256": "01f72a6f2acc84a9df3c7496627600fa70e22282e572eed63a25106875ce39ec",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/cli_smoke.py",
+      "bytes": 10837,
+      "sha256": "fbe4c8fa657d90f49403ec44d15b25dce62ce22eb8ada64e54d346e182d63fdc",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/convert_reference.py",
+      "bytes": 5124,
+      "sha256": "e60b7725e812961f28eeaa870b11bf3daccb9c9c43d446a62550a59930e91bda",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/corpus.py",
+      "bytes": 5954,
+      "sha256": "32f8f60e10e2d83e24580137d4b465819690754cb47c4f327c77b0e815ac5a8b",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/deviations.py",
+      "bytes": 21991,
+      "sha256": "7d8c15c9d1706754d815ffdd7c5212075092c00900fa93a90ff80cccc82ace44",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/drain.py",
+      "bytes": 15936,
+      "sha256": "5062ffe1bd52e48022b5eb702eb6d35ff7a35dfe4eec0541ff5949e4de9eba94",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/drain_overhead.py",
+      "bytes": 5390,
+      "sha256": "09197ab308af116e6a33915f8b2ad4e2094bf09bd4eae5e4935dc970245b2991",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/drain_worker.py",
+      "bytes": 3274,
+      "sha256": "a70d63fa9485c487a83a390a04c58848bb966dadf642e265c68f95084af0722e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/events.py",
+      "bytes": 2960,
+      "sha256": "fab527c4bbb11b67f979e4f689c67da1593d109b0bd2d6c7034ad03420f1fba9",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/fetch_pdfs.py",
+      "bytes": 6944,
+      "sha256": "3c31b07a1bc3b48ecada1fdfa932fd5c5c2d05f3c7f89f625c1f4254e7d79dd9",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/fingerprint.py",
+      "bytes": 10968,
+      "sha256": "7ff391e99a1c2027d058c762339238dabe690fa4c94fe7c8094069d424fa99f3",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/gate_llm.py",
+      "bytes": 8581,
+      "sha256": "fe08d2f830b5230bccce092190b1a2f081cf81bb5f1571281aefad2605491625",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/instrument.py",
+      "bytes": 16082,
+      "sha256": "e3550bf3038f1779556816b0a70a2d69b9462f624c1cad7d1081568e6cec929e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/make_figures.py",
+      "bytes": 9435,
+      "sha256": "a70774a6160af0be0997afcf06edd1a1132fa6140c7bfe7d9f6ec770f24abc1e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/manifest.py",
+      "bytes": 7555,
+      "sha256": "08326fcd60a180d141e3a7e859d0b0dd1be859278abdad89867740079693d411",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/merge_events.py",
+      "bytes": 1692,
+      "sha256": "0e3177811415ca571fa5b3cd45b22c09ea765760b21d250d1fdc9fb784bc8feb",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/micro_stages.py",
+      "bytes": 14571,
+      "sha256": "dc3f2dd1d467ee0a2c0fee9e459125923ece6010b284cb02fa03435458448ce4",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/prereg.py",
+      "bytes": 24938,
+      "sha256": "8d8b7eedbe5ee93e332aa6591f6740c0e9bf50df895e5182e01c8a1642c3495e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/provenance.py",
+      "bytes": 11516,
+      "sha256": "8aaf296dc3ec968916e09d51316886f4cc02cc6e73e53a464dd88f21b0ea29f6",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/retrieval.py",
+      "bytes": 8434,
+      "sha256": "324ea9734ee2df9cee05e38d7d82bbb0afbe40bd5de46dc95e369ff0ee97a1ca",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/schemas.py",
+      "bytes": 34054,
+      "sha256": "2881f54b9ef9cdd3ad53f876408af707770094dbd5b440e5b7bcf3c65afa4334",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/validate_results.py",
+      "bytes": 9357,
+      "sha256": "564d111312140f6cbb59d1c1736dca95cc69d8272d84f809e8db0265410cac5c",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "scripts/verify_registry.py",
+      "bytes": 2480,
+      "sha256": "bb8d3a0558abb3a54ab2a5ecf3c6079b48969e2d2e8a8f8b5206720c389416bd",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "tests/conftest.py",
+      "bytes": 1237,
+      "sha256": "10e38dc41d81c1bd5fc12066f8b0460ffbf0b68cd8ebf534c3d9f381e023cd26",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "tests/test_harness_offline.py",
+      "bytes": 24496,
+      "sha256": "784aa12425aef242bf2a5be621da6b3b1cbbe0765a816738c9734faabbeacfac",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
       "path": "report.md",
-      "bytes": 4896,
-      "sha256": "d87f3c3734024bd8225186944353163a86f229cf25178b35e3b9136a5f65d1f8",
+      "bytes": 11614,
+      "sha256": "89548fc3dc488bc97c7060282c05858548bb7c2827ad2d9d5bc5e61d178d4ef4",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "report.html",
+      "bytes": 29003,
+      "sha256": "bd7465379b86521caf4bbe16b386b2c214f7ab1837f133fe731c1f4e6a8428c9",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "Snakefile",
+      "bytes": 27611,
+      "sha256": "84d20e6103ef06955e4ece099f4b77af8386cb60284aa010288a409a7fbb9b29",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "config.yaml",
-      "bytes": 2649,
-      "sha256": "e38bd9416e2455326ae125fe2088db60e4fc27dd6ea54fa1e0833809f9444629",
+      "bytes": 2935,
+      "sha256": "693d2b32de989fac4138cdfcdbfdf6362076cff9739131ccf1115cd2da258b4f",
       "producing_rule": null,
       "schema": null
     },
     {
       "path": "README.md",
-      "bytes": 16513,
-      "sha256": "e3f59cd3441e94d8deccaa514cc8fb1254ee86c0b4b4c09c8676a5d165fb2d90",
+      "bytes": 23994,
+      "sha256": "020cadfa264ba8bca5a572dec539d8916c216b8f14ad9134f63fb45183fefd3b",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 1251,
+      "sha256": "d8f043a3a0616faee1b78810e94f891c8eaba0e2c9ab304fe5912ef3a4fabb87",
       "producing_rule": null,
       "schema": null
     }

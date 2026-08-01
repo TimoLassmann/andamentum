@@ -1,14 +1,14 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.preregistration/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T11:39:58.931989+00:00",
+  "written_at": "2026-08-01T11:41:35.833697+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "title": "Deferred ingestion on the real path: a pre-registered, ledger-instrumented validation of the document_store drain",
-  "registered_at": "2026-08-01T11:39:58.931814+00:00",
+  "registered_at": "2026-08-01T11:41:35.833500+00:00",
   "models": {
     "llm": "ollama:gemma4:26b-nvfp4",
     "embedding": "embeddinggemma:latest",

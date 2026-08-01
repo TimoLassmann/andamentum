@@ -543,8 +543,8 @@
 <p>A pre-registered, ledger-instrumented validation of the <code>document_store</code> drain
 against real arXiv PDFs and a local Ollama.</p>
 <ul>
-<li><strong>run_id</strong>: <code>2026-08-01T09:18:21.148823+00:00-b5c34a3</code></li>
-<li><strong>git</strong>: <code>b5c34a3</code> on <code>exp/docstore-deferred-validation</code> (working tree DIRTY)</li>
+<li><strong>run_id</strong>: <code>2026-08-01T11:41:20.809973+00:00-2ad69e5</code></li>
+<li><strong>git</strong>: <code>2ad69e5</code> on <code>exp/docstore-deferred-validation</code> (working tree DIRTY)</li>
 <li><strong>host</strong>: macOS-26.6-arm64-arm-64bit</li>
 </ul>
 <h2 id="models-pinned-by-digest-not-by-tag">Models (pinned by digest, not by tag)</h2>
@@ -573,7 +573,7 @@ against real arXiv PDFs and a local Ollama.</p>
 </tbody>
 </table>
 <h2 id="scoreboard">Scoreboard</h2>
-<p>28 PASS · 0 FAIL · 0 INCONCLUSIVE · 0 NOT MEASURED</p>
+<p>33 PASS · 0 FAIL · 0 INCONCLUSIVE · 0 NOT MEASURED</p>
 <table>
 <thead>
 <tr>
@@ -583,6 +583,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <th>threshold</th>
 <th>measured</th>
 <th>verdict</th>
+<th>note</th>
 </tr>
 </thead>
 <tbody>
@@ -593,6 +594,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>&gt;= 1</code></td>
 <td>3</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a1</code></td>
@@ -601,6 +603,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a2</code></td>
@@ -609,22 +612,25 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a3</code></td>
 <td>a</td>
 <td><code>defer_median_seconds</code></td>
 <td><code>&lt; 1.0</code></td>
-<td>0.0093</td>
+<td>0.009222</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a3</code></td>
 <td>a</td>
 <td><code>defer_now_ratio</code></td>
 <td><code>&lt; 0.02</code></td>
-<td>2.464e-05</td>
+<td>4.915e-05</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a4</code></td>
@@ -633,6 +639,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-a5</code></td>
@@ -641,6 +648,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-b</code></td>
@@ -649,6 +657,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-b</code></td>
@@ -657,6 +666,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>&lt;= 2</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-b</code></td>
@@ -665,6 +675,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c1</code></td>
@@ -673,6 +684,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 3</code></td>
 <td>3</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c1</code></td>
@@ -681,6 +693,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c1</code></td>
@@ -689,6 +702,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 2</code></td>
 <td>2</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c2</code></td>
@@ -697,6 +711,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 1</code></td>
 <td>1</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c3</code></td>
@@ -705,6 +720,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 1</code></td>
 <td>1</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-c4</code></td>
@@ -713,6 +729,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td>observation</td>
 <td>0</td>
 <td><strong>OBSERVATION</strong></td>
+<td>observation only — no pre-registered threshold</td>
 </tr>
 <tr>
 <td><code>H-d1</code></td>
@@ -721,22 +738,43 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-d1</code></td>
 <td>d</td>
-<td><code>pause_discarded_seconds</code></td>
-<td><code>== 0</code></td>
-<td>0</td>
+<td><code>pause_discarded_document_fraction</code></td>
+<td><code>&lt; 0.5</code></td>
+<td>1.568e-05</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>H-d5</code></td>
+<td>d</td>
+<td><code>should_continue_stopped_early</code></td>
+<td><code>== 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>H-d5</code></td>
+<td>d</td>
+<td><code>should_continue_remaining</code></td>
+<td><code>&gt;= 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-d2</code></td>
 <td>d</td>
 <td><code>max_seconds_overrun_documents</code></td>
 <td><code>&lt;= 1</code></td>
-<td>0.5481</td>
+<td>0.8091</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-d3</code></td>
@@ -745,30 +783,52 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 1</code></td>
 <td>1</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-d4</code></td>
 <td>d</td>
-<td><code>kill_repeated_stages</code></td>
-<td><code>&lt;= 1</code></td>
+<td><code>documents_pending_enrich_at_resume</code></td>
+<td><code>== 1</code></td>
 <td>1</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>H-d4</code></td>
+<td>d</td>
+<td><code>kill_repeated_enrichment_over_conversion</code></td>
+<td><code>&lt; 1.0</code></td>
+<td>0.01192</td>
+<td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-e1</code></td>
 <td>e</td>
-<td><code>post_chunk_recall_at_3</code></td>
+<td><code>post_chunk_recall_at_1</code></td>
 <td><code>&gt;= 1.0</code></td>
 <td>1</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-e1</code></td>
 <td>e</td>
-<td><code>pre_chunk_recall_at_3</code></td>
-<td><code>== 0.0</code></td>
-<td>0</td>
+<td><code>pre_unified_recall_at_3</code></td>
+<td><code>&lt; 0.5</code></td>
+<td>0.25</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>H-e1</code></td>
+<td>e</td>
+<td><code>post_unified_recall_at_3</code></td>
+<td><code>&gt;= 1.0</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-e2</code></td>
@@ -777,6 +837,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-f1</code></td>
@@ -785,6 +846,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 4</code></td>
 <td>4</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-f1</code></td>
@@ -793,6 +855,7 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-f2</code></td>
@@ -801,14 +864,16 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-f2</code></td>
 <td>f</td>
-<td><code>stage_test_converter_calls</code></td>
+<td><code>stage_test_converter_calls_good_doc</code></td>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>H-x</code></td>
@@ -817,6 +882,61 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>== 0</code></td>
 <td>0</td>
 <td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>H-m1</code></td>
+<td>cross-cutting</td>
+<td><code>concurrency_speedup</code></td>
+<td><code>&lt;= 1.3</code></td>
+<td>1.052</td>
+<td><strong>PASS</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>OBS/stage_test_converter_calls_total</code></td>
+<td>observation</td>
+<td><code>stage_test_converter_calls_total</code></td>
+<td>observation</td>
+<td>3</td>
+<td><strong>OBSERVATION</strong></td>
+<td>measured and reported; no pre-registered threshold</td>
+</tr>
+<tr>
+<td><code>OBS/pause_discarded_seconds</code></td>
+<td>observation</td>
+<td><code>pause_discarded_seconds</code></td>
+<td>observation</td>
+<td>0.003289</td>
+<td><strong>OBSERVATION</strong></td>
+<td>measured and reported; no pre-registered threshold</td>
+</tr>
+<tr>
+<td><code>OBS/pre_chunk_recall_at_3</code></td>
+<td>observation</td>
+<td><code>pre_chunk_recall_at_3</code></td>
+<td>observation</td>
+<td>0</td>
+<td><strong>OBSERVATION</strong></td>
+<td>measured and reported; no pre-registered threshold</td>
+</tr>
+<tr>
+<td><code>OBS/post_chunk_recall_at_3</code></td>
+<td>observation</td>
+<td><code>post_chunk_recall_at_3</code></td>
+<td>observation</td>
+<td>1</td>
+<td><strong>OBSERVATION</strong></td>
+<td>measured and reported; no pre-registered threshold</td>
+</tr>
+<tr>
+<td><code>OBS/post_chunk_mrr</code></td>
+<td>observation</td>
+<td><code>post_chunk_mrr</code></td>
+<td>observation</td>
+<td>1</td>
+<td><strong>OBSERVATION</strong></td>
+<td>measured and reported; no pre-registered threshold</td>
 </tr>
 </tbody>
 </table>
@@ -831,9 +951,39 @@ against real arXiv PDFs and a local Ollama.</p>
 </thead>
 <tbody>
 <tr>
-<td>max concurrent Ollama requests in flight</td>
+<td>max concurrent Ollama requests in flight (GLOBAL)</td>
 <td>8</td>
-<td><code>_run_phase2</code> fans out under <code>Semaphore(_INGEST_CONCURRENCY=5)</code>; this is what the library actually does, reported not changed</td>
+<td>whole-process depth over all endpoints at once — an upper bound on any single one, not an attribution</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;peak on <code>/api/embeddings</code></td>
+<td>8</td>
+<td>counted by a per-endpoint in-flight counter</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;peak on <code>/v1/chat/completions</code></td>
+<td>5</td>
+<td>counted by a per-endpoint in-flight counter</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;peak on <code>/api/embed</code></td>
+<td>2</td>
+<td>counted by a per-endpoint in-flight counter</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;peak on <code>/robots.txt</code></td>
+<td>1</td>
+<td>counted by a per-endpoint in-flight counter</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;peak on <code>/pdf/0000.00000</code></td>
+<td>1</td>
+<td>counted by a per-endpoint in-flight counter</td>
+</tr>
+<tr>
+<td>deepest fan-out attributed to</td>
+<td><code>/api/embeddings</code></td>
+<td>The deepest fan-out is on /api/embeddings at 8 concurrent requests, counted by a per-endpoint in-flight counter. The global figure beside it is the whole-process depth over all endpoints at once and is an upper bound on any single one. Two distinct fan-outs exist and must not be conflated: core.embeddings.make_embedder gathers /api/embeddings under Semaphore(8) inside the chunker's embedding_fn, and _run_phase2 gathers chunk-metadata extraction on /v1/chat/completions under Semaphore(_INGEST_CONCURRENCY=5). Both are PRE-EXISTING library behaviour, reported not changed — and both contradict this project's one-inference-at-a-time rule.</td>
 </tr>
 <tr>
 <td>doc-embedding skip rate</td>
@@ -841,39 +991,56 @@ against real arXiv PDFs and a local Ollama.</p>
 <td><code>_embed_doc_level</code> swallows an oversized-input failure with an INFO log, so one of the four RRF signals can go dark without an error</td>
 </tr>
 <tr>
-<td>preflight tax (seconds / requests)</td>
-<td>1.847 / 2</td>
-<td>what a cron-driven drain pays on every wake-up</td>
+<td>preflight tax, min / median / max</td>
+<td>1.424 / 1.808 / 2.157 s over 2 requests</td>
+<td>what a cron-driven drain pays on every wake-up. The COLD run (the one a cron wake-up actually resembles) is 2.157 s; all three ran back-to-back against an already-warm Ollama, so none is a true cold start</td>
 </tr>
 <tr>
 <td>checkpoint savings</td>
-<td>14.98 s</td>
-<td>conversion seconds not repeated after the hard kill</td>
+<td>15.71 s</td>
+<td>conversion seconds not repeated after the hard kill, from this lineage's own converter ledger. INCLUDES one-time Docling initialisation (4.7 s, measured by converting one PDF twice); the MARGINAL saving is the warm cost, 11.53 s</td>
+</tr>
+<tr>
+<td>enrichment discarded by the SIGKILL</td>
+<td>0.1873 s</td>
+<td>measured as killed_at minus the converter ledger's last ts_end — the work the resume redoes</td>
 </tr>
 <tr>
 <td>concurrency speedup</td>
-<td>1.067</td>
-<td>~1.0 means the semaphore is decoration against an Ollama that serialises same-model calls</td>
+<td>1.052</td>
+<td>sequential total over in-pipeline seconds for the SAME doc_uuid (attributed by identity, never by title). <strong>n=1, NO VARIANCE ESTIMATE.</strong> The lineage does contain a second enrichment of identical content, but it settled at a drain's FIRST progress tick, whose interval starts at the drain's t0 and therefore contains the preflight tax and a Docling conversion; attributing it would repeat exactly the error this edition corrected, so it is refused rather than corrected by assumption. Read this ratio as a single observation, not as a measured effect: it is close to 1.0, which is consistent with the fan-out buying nothing against a serialising Ollama, and it is not evidence of a 5% gain.</td>
 </tr>
 <tr>
 <td>report-vs-database mismatches (H-x)</td>
 <td>0</td>
-<td>the ProcessReport is what a cron job logs; disagreement makes every operational claim unsafe</td>
+<td>all six ProcessReport fields, across every drain including the subprocess resume</td>
 </tr>
 <tr>
 <td>two-transaction window observed (H-c4)</td>
 <td>no</td>
-<td><code>_convert_document</code> commits markdown then flips status separately</td>
+<td><code>_convert_document</code> commits markdown then flips status separately. A NULL result bounds nothing: the two commits are microseconds apart and the poller samples every 0.25 s</td>
 </tr>
 <tr>
 <td>SIGTERM to exit</td>
-<td>67.57 s</td>
-<td>size a launchd/cron shutdown grace period with this</td>
+<td>274.2 s</td>
+<td>size a launchd/cron shutdown grace period with this. Measured with an UNTRUNCATED document in flight (39009 chars, 26 chunks) = 10.55 s/chunk</td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;the same, on a 6000-char truncation</td>
+<td>61.23 s</td>
+<td>CONTRAST ONLY, not guidance — ~2 chunks against the corpus's 25-43</td>
 </tr>
 </tbody>
 </table>
-<h2 id="noise-band">Noise band</h2>
-<p>Relative spread of per-call LLM latency: 1.413 over 37 samples. Any wall-clock ratio inside that band is reported INCONCLUSIVE, never rounded up to PASS.</p>
+<h2 id="noise-band-and-how-a-measurement-becomes-a-verdict">Noise band and how a measurement becomes a verdict</h2>
+<p>Relative spread of per-request latency on <code>/chat/completions</code>: 0.4922 over 512 raw samples (one endpoint, one distribution — read from the per-request JSONL ledgers, not from pooled order statistics).</p>
+<p>Replicate spread of in-pipeline enrichment: —, from the same content enriched twice inside claim (b) — the run's only true repeated measurement.</p>
+<p>Which metrics may be softened to INCONCLUSIVE, what each is compared against, and where its band comes from are all registered in <code>results/preregistration.json</code> under <code>scoring_rules</code>; the analyzer reads them from there and can no more invent a scoring rule than it can invent a threshold. Post-hoc changes are itemised in <code>results/deviations.json</code>.</p>
+<h2 id="statistical-power-stated-plainly">Statistical power, stated plainly</h2>
+<ul>
+<li>Retrieval probes discriminate between 5 candidate documents, so chance recall@1 is 0.2 and chance recall@3 is 0.6. the probes discriminate between 4 topically disjoint papers with no hard negatives, so this measures 'the index is not empty and not scrambled', NOT 'retrieval quality is high'. Read recall@1 and MRR against the chance baselines above, not recall@3 against 1.0.</li>
+<li>Every timing claim is n=1: one kill, one resume, one pause per mechanism, one drain sequence. The exact count- and state-based hypotheses (H-a1, H-a2, H-b, H-c1, H-c2, H-c3, H-f1, H-x) are discrete facts that need no n; the derived TIMINGS carry no uncertainty except where a replicate exists.</li>
+</ul>
 <h2 id="what-is-not-reproducible-here">What is NOT reproducible here</h2>
 <ul>
 <li>LLM-generated metadata CONTENT (nondeterministic even at temperature 0)</li>
@@ -887,16 +1054,23 @@ against real arXiv PDFs and a local Ollama.</p>
 <li>chunk boundaries for a fixed input and chunker configuration</li>
 </ul>
 <h2 id="figures">Figures</h2>
-<p><img alt="stage timeline" src="figures/fig1_stage_timeline.png" />
-<img alt="retrieval recall" src="figures/fig2_retrieval_recall_pre_vs_post.png" />
-<img alt="stop cost" src="figures/fig3_stop_cost_by_mode.png" />
-<img alt="enrichment attribution" src="figures/fig4_enrichment_attribution.png" /></p>
+<p><img alt="fig1_stage_timeline.png" src="figures/fig1_stage_timeline.png" /></p>
+<p><em>Process wall time per rule (Snakemake <code>benchmark:</code>) — one quantity, every rule.</em></p>
+<p><img alt="fig2_retrieval_recall_pre_vs_post.png" src="figures/fig2_retrieval_recall_pre_vs_post.png" /></p>
+<p><em>recall@1 by signal, before and after the drain, with the chance level plotted as its own bar.</em></p>
+<p><img alt="fig3_stop_cost_by_mode.png" src="figures/fig3_stop_cost_by_mode.png" /></p>
+<p><em>Discarded work per stop mechanism. EVERY bar is measured: the library arms from their own post-commit wall-clock, the SIGKILL from <code>killed_at</code> minus the converter ledger's last <code>ts_end</code>. The CLI arms are deliberately absent — their in-flight document is allowed to finish, so 'discarded seconds' is not the quantity that describes them.</em></p>
+<p><img alt="fig4_enrichment_attribution.png" src="figures/fig4_enrichment_attribution.png" /></p>
+<p><em>Sequential component breakdown for one paper. Note that <code>extract_units</code> Stage 2 calls the embedding model, so 'chunking' is not pure CPU.</em></p>
 <h2 id="provenance-and-integrity">Provenance and integrity</h2>
 <ul>
-<li><code>results/provenance.json</code> — git, versions, model digests, allowlisted env</li>
+<li><strong>harness sha256</strong>: <code>f427f042e5a957b6ccbd</code> over 36 files — the Snakefile, config.yaml and every <code>scripts/*.py</code>. One value identifies the measuring apparatus.</li>
+<li><code>results/provenance.json</code> — git, versions, model digests, allowlisted env, and <code>results/working_tree.patch</code> whenever the tree is dirty (required by <code>validate_results</code>, so a run cannot record a sha that names code nobody has)</li>
+<li><code>results/preregistration.json</code> — hypotheses, thresholds AND scoring rules</li>
+<li><code>results/deviations.json</code> — every post-hoc change, with the direction it could have moved a verdict</li>
 <li><code>data/REGISTRY.json</code> — per-paper sha256 + URL provenance</li>
 <li><code>results/validation.json</code> — schema + referential integrity (exits 1 on violation)</li>
-<li><code>results/MANIFEST.json</code> — sha256 of every artefact with its producing rule</li>
+<li><code>results/MANIFEST.json</code> — sha256 of every artefact AND of every harness script; re-check it with <code>uv run python -m experiments.docstore_deferred_ingestion.scripts.manifest --verify</code></li>
 </ul>
 </section>
 </article>
