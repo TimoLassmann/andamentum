@@ -1,21 +1,382 @@
 {
   "schema": "andamentum.experiment.provenance/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T09:18:21.728985+00:00",
-  "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+  "written_at": "2026-08-01T11:41:21.392552+00:00",
+  "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
   "experiment": "docstore_deferred_ingestion",
   "git": {
-    "head": "b5c34a387bf137a305a505e06caff08046cb49f4",
-    "head_short": "b5c34a3",
+    "head": "2ad69e52b249655f123a0362acdd83830abdd7a4",
+    "head_short": "2ad69e5",
     "branch": "exp/docstore-deferred-validation",
     "dirty": true,
     "status_porcelain": [
-      "M src/andamentum/document_store/fts_query.py",
-      " M src/andamentum/document_store/tests/test_fts_query.py",
+      "D experiments/docstore_deferred_ingestion/bench/analyze.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_a_defer.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_b_drain.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_c_kill.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_c_resume.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_d_pause.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_e_post.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_e_pre.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/claim_f_fail.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/convert_reference.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/drain_overhead.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/fetch_pdfs.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/figures.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/gate_llm.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/manifest.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/merge_events.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/micro_stages.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/prereg.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/provenance.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/report.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/schemas.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/validate_results.tsv",
+      " D experiments/docstore_deferred_ingestion/bench/verify_registry.tsv",
+      " D experiments/docstore_deferred_ingestion/figures/fig1_stage_timeline.png",
+      " D experiments/docstore_deferred_ingestion/figures/fig2_retrieval_recall_pre_vs_post.png",
+      " D experiments/docstore_deferred_ingestion/figures/fig3_stop_cost_by_mode.png",
+      " D experiments/docstore_deferred_ingestion/figures/fig4_enrichment_attribution.png",
+      " D experiments/docstore_deferred_ingestion/figures/figures_status.json",
+      " D experiments/docstore_deferred_ingestion/report.html",
+      " D experiments/docstore_deferred_ingestion/report.md",
+      " D experiments/docstore_deferred_ingestion/results/MANIFEST.json",
+      " D experiments/docstore_deferred_ingestion/results/SCHEMAS.json",
+      " D experiments/docstore_deferred_ingestion/results/SCHEMAS.md",
+      " D experiments/docstore_deferred_ingestion/results/claim_a_defer.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_b_drain.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_c_kill.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_c_resume.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_d_pause.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_e_post.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_e_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/claim_f_fail.json",
+      " D experiments/docstore_deferred_ingestion/results/claims.json",
+      " D experiments/docstore_deferred_ingestion/results/conversion_baseline.json",
+      " D experiments/docstore_deferred_ingestion/results/data_integrity.json",
+      " D experiments/docstore_deferred_ingestion/results/deviations.json",
+      " D experiments/docstore_deferred_ingestion/results/drain_overhead.json",
+      " D experiments/docstore_deferred_ingestion/results/events.csv",
+      " D experiments/docstore_deferred_ingestion/results/events.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_a.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_b.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_c_kill.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_c_resume.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_d.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/events/claim_f.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/gate_llm.json",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/a_defer_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/a_now_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/b_convert.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/b_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/c1_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/c2_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/d_convert.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/d_final_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/d_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/e_post_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/e_pre_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/f_convert.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/f_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/gate_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/kill_convert.final.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/kill_convert.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/micro_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/overhead_0_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/overhead_1_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/ledgers/overhead_2_http.jsonl",
+      " D experiments/docstore_deferred_ingestion/results/micro_stages.json",
+      " D experiments/docstore_deferred_ingestion/results/per_document.csv",
+      " D experiments/docstore_deferred_ingestion/results/preregistration.json",
+      " D experiments/docstore_deferred_ingestion/results/provenance.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm1_max_docs_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm1_max_docs_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm2_max_seconds_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm2_max_seconds_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm3_should_continue_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_arm3_should_continue_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_final_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/d_final_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain1_max_docs_2_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain1_max_docs_2_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain2_unrestricted_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain2_unrestricted_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain3_noop_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/drain3_noop_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain1_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain1_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain2_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain2_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain3_fixed_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain3_fixed_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain4_stage_post.json",
+      " D experiments/docstore_deferred_ingestion/results/snapshots/f_drain4_stage_pre.json",
+      " D experiments/docstore_deferred_ingestion/results/timings.csv",
+      " D experiments/docstore_deferred_ingestion/results/validation.json",
       "?? .snakemake/",
       "?? benchmarks/epistemic/pipeline_scifact/",
       "?? benchmarks/scifact/"
-    ]
+    ],
+    "working_tree_patch": "results/working_tree.patch",
+    "working_tree_patch_sha256": "c34adf156cc2c354ec01a86825fec0b6869671534fbb685546ba946294f30831",
+    "working_tree_patch_stat": [
+      ".../docstore_deferred_ingestion/bench/analyze.tsv  |    2 -",
+      " .../bench/claim_a_defer.tsv                        |    2 -",
+      " .../bench/claim_b_drain.tsv                        |    2 -",
+      " .../bench/claim_c_kill.tsv                         |    2 -",
+      " .../bench/claim_c_resume.tsv                       |    2 -",
+      " .../bench/claim_d_pause.tsv                        |    2 -",
+      " .../bench/claim_e_post.tsv                         |    2 -",
+      " .../bench/claim_e_pre.tsv                          |    2 -",
+      " .../bench/claim_f_fail.tsv                         |    2 -",
+      " .../bench/convert_reference.tsv                    |    2 -",
+      " .../bench/drain_overhead.tsv                       |    2 -",
+      " .../bench/fetch_pdfs.tsv                           |    2 -",
+      " .../docstore_deferred_ingestion/bench/figures.tsv  |    2 -",
+      " .../docstore_deferred_ingestion/bench/gate_llm.tsv |    2 -",
+      " .../docstore_deferred_ingestion/bench/manifest.tsv |    2 -",
+      " .../bench/merge_events.tsv                         |    2 -",
+      " .../bench/micro_stages.tsv                         |    2 -",
+      " .../docstore_deferred_ingestion/bench/prereg.tsv   |    2 -",
+      " .../bench/provenance.tsv                           |    2 -",
+      " .../docstore_deferred_ingestion/bench/report.tsv   |    2 -",
+      " .../docstore_deferred_ingestion/bench/schemas.tsv  |    2 -",
+      " .../bench/validate_results.tsv                     |    2 -",
+      " .../bench/verify_registry.tsv                      |    2 -",
+      " .../figures/fig1_stage_timeline.png                |  Bin 49146 -> 0 bytes",
+      " .../figures/fig2_retrieval_recall_pre_vs_post.png  |  Bin 81188 -> 0 bytes",
+      " .../figures/fig3_stop_cost_by_mode.png             |  Bin 18581 -> 0 bytes",
+      " .../figures/fig4_enrichment_attribution.png        |  Bin 50075 -> 0 bytes",
+      " .../figures/figures_status.json                    |   35 -",
+      " .../docstore_deferred_ingestion/report.html        |  904 --------",
+      " experiments/docstore_deferred_ingestion/report.md  |  139 --",
+      " .../results/MANIFEST.json                          |  875 -------",
+      " .../results/SCHEMAS.json                           | 1156 ----------",
+      " .../docstore_deferred_ingestion/results/SCHEMAS.md |  504 ----",
+      " .../results/claim_a_defer.json                     |  547 -----",
+      " .../results/claim_b_drain.json                     | 1356 -----------",
+      " .../results/claim_c_kill.json                      |  397 ----",
+      " .../results/claim_c_resume.json                    |  464 ----",
+      " .../results/claim_d_pause.json                     | 2400 --------------------",
+      " .../results/claim_e_post.json                      |  750 ------",
+      " .../results/claim_e_pre.json                       |  640 ------",
+      " .../results/claim_f_fail.json                      | 2349 -------------------",
+      " .../results/claims.json                            |  727 ------",
+      " .../results/conversion_baseline.json               |   66 -",
+      " .../results/data_integrity.json                    |   52 -",
+      " .../results/deviations.json                        |  136 --",
+      " .../results/drain_overhead.json                    |  257 ---",
+      " .../docstore_deferred_ingestion/results/events.csv |   51 -",
+      " .../results/events.jsonl                           |   50 -",
+      " .../results/events/claim_a.jsonl                   |    6 -",
+      " .../results/events/claim_b.jsonl                   |    8 -",
+      " .../results/events/claim_c_kill.jsonl              |    4 -",
+      " .../results/events/claim_c_resume.jsonl            |    1 -",
+      " .../results/events/claim_d.jsonl                   |   10 -",
+      " .../results/events/claim_f.jsonl                   |   21 -",
+      " .../results/gate_llm.json                          |  154 --",
+      " .../results/ledgers/a_defer_http.jsonl             |    0",
+      " .../results/ledgers/a_now_http.jsonl               |   55 -",
+      " .../results/ledgers/b_convert.jsonl                |    1 -",
+      " .../results/ledgers/b_http.jsonl                   |  370 ---",
+      " .../results/ledgers/c1_http.jsonl                  |    2 -",
+      " .../results/ledgers/c2_http.jsonl                  |  293 ---",
+      " .../results/ledgers/d_convert.jsonl                |    1 -",
+      " .../results/ledgers/d_final_http.jsonl             |   22 -",
+      " .../results/ledgers/d_http.jsonl                   |   92 -",
+      " .../results/ledgers/e_post_http.jsonl              |   12 -",
+      " .../results/ledgers/e_pre_http.jsonl               |    8 -",
+      " .../results/ledgers/f_convert.jsonl                |   16 -",
+      " .../results/ledgers/f_http.jsonl                   |  121 -",
+      " .../results/ledgers/gate_http.jsonl                |    2 -",
+      " .../results/ledgers/kill_convert.final.jsonl       |    3 -",
+      " .../results/ledgers/kill_convert.jsonl             |    3 -",
+      " .../results/ledgers/micro_http.jsonl               |   38 -",
+      " .../results/ledgers/overhead_0_http.jsonl          |    2 -",
+      " .../results/ledgers/overhead_1_http.jsonl          |    2 -",
+      " .../results/ledgers/overhead_2_http.jsonl          |    2 -",
+      " .../results/micro_stages.json                      |  238 --",
+      " .../results/per_document.csv                       |    6 -",
+      " .../results/preregistration.json                   |  408 ----",
+      " .../results/provenance.json                        |  195 --",
+      " .../results/snapshots/d_arm1_max_docs_post.json    |  149 --",
+      " .../results/snapshots/d_arm1_max_docs_pre.json     |  146 --",
+      " .../results/snapshots/d_arm2_max_seconds_post.json |  158 --",
+      " .../results/snapshots/d_arm2_max_seconds_pre.json  |  149 --",
+      " .../snapshots/d_arm3_should_continue_post.json     |  161 --",
+      " .../snapshots/d_arm3_should_continue_pre.json      |  158 --",
+      " .../results/snapshots/d_final_post.json            |  239 --",
+      " .../results/snapshots/d_final_pre.json             |  236 --",
+      " .../results/snapshots/drain1_max_docs_2_post.json  |  147 --",
+      " .../results/snapshots/drain1_max_docs_2_pre.json   |  141 --",
+      " .../snapshots/drain2_unrestricted_post.json        |  156 --",
+      " .../results/snapshots/drain2_unrestricted_pre.json |  147 --",
+      " .../results/snapshots/drain3_noop_post.json        |  156 --",
+      " .../results/snapshots/drain3_noop_pre.json         |  156 --",
+      " .../results/snapshots/f_drain1_post.json           |  140 --",
+      " .../results/snapshots/f_drain1_pre.json            |  137 --",
+      " .../results/snapshots/f_drain2_post.json           |  140 --",
+      " .../results/snapshots/f_drain2_pre.json            |  140 --",
+      " .../results/snapshots/f_drain3_fixed_post.json     |  143 --",
+      " .../results/snapshots/f_drain3_fixed_pre.json      |  140 --",
+      " .../results/snapshots/f_drain4_stage_post.json     |  143 --",
+      " .../results/snapshots/f_drain4_stage_pre.json      |  143 --",
+      " .../results/timings.csv                            |   12 -",
+      " .../results/validation.json                        |   51 -",
+      " 103 files changed, 19485 deletions(-)"
+    ],
+    "working_tree_patch_note": "tracked-file modifications only \u2014 `git diff HEAD` does not carry untracked files, which the porcelain list above names with '??'"
+  },
+  "harness": {
+    "n_files": 36,
+    "files": [
+      {
+        "path": "Snakefile",
+        "sha256": "84d20e6103ef06955e4ece099f4b77af8386cb60284aa010288a409a7fbb9b29"
+      },
+      {
+        "path": "config.yaml",
+        "sha256": "693d2b32de989fac4138cdfcdbfdf6362076cff9739131ccf1115cd2da258b4f"
+      },
+      {
+        "path": "scripts/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "scripts/_common.py",
+        "sha256": "9ef610c8c247c76050971ea3fee39177a8ce269461d0ed06d622415f614b39c2"
+      },
+      {
+        "path": "scripts/analyze.py",
+        "sha256": "e42d3902701b4a38cf889af05178510a42b0715a5acce65fc13950729d5fb497"
+      },
+      {
+        "path": "scripts/build_report.py",
+        "sha256": "da1d4c29430f7c94f42dc147f597ccd61a6ba31b1d9ec41cee2ddae857b0f5e6"
+      },
+      {
+        "path": "scripts/claim_a_defer.py",
+        "sha256": "d2a628675ae589fb8ebe87bc1fe825094fe139f00cc8c890720f19b77c8fe292"
+      },
+      {
+        "path": "scripts/claim_b_drain.py",
+        "sha256": "b8cec48da2e9cc0788cf7b49f7dc740349caec13728ccdddd7ca852c46368fb5"
+      },
+      {
+        "path": "scripts/claim_c_kill.py",
+        "sha256": "aafc5fd06978ad0b745a608aa11ad5319dc9bfe8215cb6b46b8fb18840e2a986"
+      },
+      {
+        "path": "scripts/claim_c_resume.py",
+        "sha256": "fafd50f8e6109053b690dbbfc3e74bb8238e3c5c7d55c31cf48f66d4b1e3ea48"
+      },
+      {
+        "path": "scripts/claim_d_pause.py",
+        "sha256": "07b9a45cea89dc0a935e356dffd4a35281c5a281252d256a2877b6e4a09fbb9d"
+      },
+      {
+        "path": "scripts/claim_e_post.py",
+        "sha256": "be397dad8a138e0a778234abf26a5911d3fa4c9dd4b5c3fc5f0bd00963640542"
+      },
+      {
+        "path": "scripts/claim_e_pre.py",
+        "sha256": "32cbc785614d95e1042bad452c7aef5d7ebdca8aed0eddcd9c8d121485fd5e2c"
+      },
+      {
+        "path": "scripts/claim_f_fail.py",
+        "sha256": "01f72a6f2acc84a9df3c7496627600fa70e22282e572eed63a25106875ce39ec"
+      },
+      {
+        "path": "scripts/cli_smoke.py",
+        "sha256": "fbe4c8fa657d90f49403ec44d15b25dce62ce22eb8ada64e54d346e182d63fdc"
+      },
+      {
+        "path": "scripts/convert_reference.py",
+        "sha256": "e60b7725e812961f28eeaa870b11bf3daccb9c9c43d446a62550a59930e91bda"
+      },
+      {
+        "path": "scripts/corpus.py",
+        "sha256": "32f8f60e10e2d83e24580137d4b465819690754cb47c4f327c77b0e815ac5a8b"
+      },
+      {
+        "path": "scripts/deviations.py",
+        "sha256": "8e27fe7a2809f2a8358832802b4ae825301bc441e8090c3d77d0be7944b6efcf"
+      },
+      {
+        "path": "scripts/drain.py",
+        "sha256": "c1074cae4b726f4c4c3b28c8375872ed325890f56e179a6efbf7853af88dc6d0"
+      },
+      {
+        "path": "scripts/drain_overhead.py",
+        "sha256": "09197ab308af116e6a33915f8b2ad4e2094bf09bd4eae5e4935dc970245b2991"
+      },
+      {
+        "path": "scripts/drain_worker.py",
+        "sha256": "a70d63fa9485c487a83a390a04c58848bb966dadf642e265c68f95084af0722e"
+      },
+      {
+        "path": "scripts/events.py",
+        "sha256": "fab527c4bbb11b67f979e4f689c67da1593d109b0bd2d6c7034ad03420f1fba9"
+      },
+      {
+        "path": "scripts/fetch_pdfs.py",
+        "sha256": "3c31b07a1bc3b48ecada1fdfa932fd5c5c2d05f3c7f89f625c1f4254e7d79dd9"
+      },
+      {
+        "path": "scripts/fingerprint.py",
+        "sha256": "7ff391e99a1c2027d058c762339238dabe690fa4c94fe7c8094069d424fa99f3"
+      },
+      {
+        "path": "scripts/gate_llm.py",
+        "sha256": "fe08d2f830b5230bccce092190b1a2f081cf81bb5f1571281aefad2605491625"
+      },
+      {
+        "path": "scripts/instrument.py",
+        "sha256": "e3550bf3038f1779556816b0a70a2d69b9462f624c1cad7d1081568e6cec929e"
+      },
+      {
+        "path": "scripts/make_figures.py",
+        "sha256": "a70774a6160af0be0997afcf06edd1a1132fa6140c7bfe7d9f6ec770f24abc1e"
+      },
+      {
+        "path": "scripts/manifest.py",
+        "sha256": "b649e05ee24b947ec736ac60a7d344d759786cb374bba0ebb62ad577575cad0e"
+      },
+      {
+        "path": "scripts/merge_events.py",
+        "sha256": "0e3177811415ca571fa5b3cd45b22c09ea765760b21d250d1fdc9fb784bc8feb"
+      },
+      {
+        "path": "scripts/micro_stages.py",
+        "sha256": "dc3f2dd1d467ee0a2c0fee9e459125923ece6010b284cb02fa03435458448ce4"
+      },
+      {
+        "path": "scripts/prereg.py",
+        "sha256": "8d8b7eedbe5ee93e332aa6591f6740c0e9bf50df895e5182e01c8a1642c3495e"
+      },
+      {
+        "path": "scripts/provenance.py",
+        "sha256": "8aaf296dc3ec968916e09d51316886f4cc02cc6e73e53a464dd88f21b0ea29f6"
+      },
+      {
+        "path": "scripts/retrieval.py",
+        "sha256": "324ea9734ee2df9cee05e38d7d82bbb0afbe40bd5de46dc95e369ff0ee97a1ca"
+      },
+      {
+        "path": "scripts/schemas.py",
+        "sha256": "2881f54b9ef9cdd3ad53f876408af707770094dbd5b440e5b7bcf3c65afa4334"
+      },
+      {
+        "path": "scripts/validate_results.py",
+        "sha256": "564d111312140f6cbb59d1c1736dca95cc69d8272d84f809e8db0265410cac5c"
+      },
+      {
+        "path": "scripts/verify_registry.py",
+        "sha256": "bb8d3a0558abb3a54ab2a5ecf3c6079b48969e2d2e8a8f8b5206720c389416bd"
+      }
+    ],
+    "harness_sha256": "f427f042e5a957b6ccbdd198c3267b9b7d5ed03914792700ef7cb996c3453c66",
+    "meaning": "sha256 over the sorted per-file digests of the Snakefile, config.yaml and every scripts/*.py \u2014 one value that identifies the measuring apparatus"
   },
   "machine": {
     "platform": "macOS-26.6-arm64-arm-64bit",
@@ -25,9 +386,9 @@
     "python_executable": "/Users/timo/code/andamentum/.venv/bin/python3",
     "cpu_count": 16,
     "load_average": [
-      2.033203125,
-      2.09033203125,
-      2.0810546875
+      2.3017578125,
+      2.42431640625,
+      2.38427734375
     ]
   },
   "sqlite": {
@@ -84,44 +445,7 @@
     }
   },
   "ollama_ps_at_start": {
-    "models": [
-      {
-        "name": "gemma4:26b-nvfp4",
-        "model": "gemma4:26b-nvfp4",
-        "size": 26067311220,
-        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
-        "details": {
-          "parent_model": "",
-          "format": "safetensors",
-          "family": "",
-          "families": null,
-          "parameter_size": "",
-          "quantization_level": "nvfp4"
-        },
-        "expires_at": "2026-08-01T17:20:51.995358+08:00",
-        "size_vram": 26067311220,
-        "context_length": 131072
-      },
-      {
-        "name": "embeddinggemma:latest",
-        "model": "embeddinggemma:latest",
-        "size": 673028505,
-        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
-        "details": {
-          "parent_model": "",
-          "format": "gguf",
-          "family": "gemma3",
-          "families": [
-            "gemma3"
-          ],
-          "parameter_size": "307.58M",
-          "quantization_level": "BF16"
-        },
-        "expires_at": "2026-08-01T17:20:49.870716+08:00",
-        "size_vram": 673028505,
-        "context_length": 2048
-      }
-    ]
+    "models": []
   },
   "environment_allowlisted": {
     "DOCUMENT_STORE_DIR": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs",
@@ -171,8 +495,10 @@
       "now": "dfr_now",
       "kill": "dfr_kill",
       "pause": "dfr_pause",
+      "pause_full": "dfr_pause_full",
       "fail": "dfr_fail",
-      "empty": "dfr_empty"
+      "empty": "dfr_empty",
+      "cli": "dfr_cli"
     },
     "lineages": {
       "main_documents": 4,

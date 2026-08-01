@@ -1,18 +1,18 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.claims/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T11:40:08.006094+00:00",
+  "written_at": "2026-08-01T14:38:57.806088+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "measured_metrics": {
     "gate_topics_count": 3,
     "defer_ollama_requests": 0,
     "defer_state_violations": 0,
-    "defer_median_seconds": 0.009300312492996454,
-    "defer_now_ratio": 2.4636773652760503e-05,
+    "defer_median_seconds": 0.00922227100818418,
+    "defer_now_ratio": 4.915313842814372e-05,
     "defer_fts_misses": 0,
     "source_fts_hits": 0,
     "drain3_enriched": 0,
@@ -24,62 +24,64 @@
     "markdown_sha_stable": 1,
     "sqlite_ok": 1,
     "pause_midstage_documents": 0,
-    "pause_discarded_document_fraction": null,
-    "pause_discarded_seconds": 0.0,
-    "should_continue_stopped_early": 0,
-    "should_continue_remaining": 0,
-    "max_seconds_overrun_documents": 0.5480711797244192,
+    "pause_discarded_document_fraction": 1.5683144579729806e-05,
+    "pause_discarded_seconds": 0.0032886250119190663,
+    "should_continue_stopped_early": 1,
+    "should_continue_remaining": 1,
+    "max_seconds_overrun_documents": 0.8091090511525355,
     "first_processed_is_source": 1,
     "documents_pending_enrich_at_resume": 1,
-    "kill_repeated_enrichment_over_conversion": null,
-    "post_chunk_recall_at_1": null,
+    "kill_repeated_enrichment_over_conversion": 0.011918281795436936,
+    "post_chunk_recall_at_1": 1.0,
     "post_chunk_recall_at_3": 1.0,
-    "post_chunk_mrr": null,
+    "post_chunk_mrr": 1.0,
     "pre_chunk_recall_at_3": 0.0,
-    "pre_unified_recall_at_3": null,
-    "post_unified_recall_at_3": null,
+    "pre_unified_recall_at_3": 0.25,
+    "post_unified_recall_at_3": 1.0,
     "enrichment_structure_violations": 0,
     "failed_count": 4,
     "errors_without_type_name": 0,
     "retry_wrong_stage": 0,
     "stage_test_converter_calls_good_doc": 0,
     "stage_test_converter_calls_total": 3,
-    "concurrency_speedup": 1.0674842633203572,
+    "concurrency_speedup": 1.0516307750294789,
     "report_db_mismatches": 0,
     "hc4_window_observed": 0
   },
   "noise_band": {
     "chat_path_fragment": "/chat/completions",
-    "n_samples": 508,
+    "n_samples": 512,
     "ledger_sources": [
       "a_now_http.jsonl:39",
       "b_http.jsonl:177",
       "c1_http.jsonl:1",
-      "c2_http.jsonl:124",
-      "d_final_http.jsonl:6",
-      "d_http.jsonl:50",
+      "c2_http.jsonl:123",
+      "d_final_http.jsonl:7",
+      "d_http.jsonl:51",
       "e_post_http.jsonl:2",
-      "f_http.jsonl:79",
+      "f_http.jsonl:81",
       "gate_http.jsonl:1",
-      "micro_http.jsonl:26",
+      "micro_http.jsonl:27",
       "overhead_0_http.jsonl:1",
       "overhead_1_http.jsonl:1",
       "overhead_2_http.jsonl:1"
     ],
     "in_pipeline_replicate_spread": null,
-    "in_pipeline_replicate_seconds": null,
+    "in_pipeline_replicate_seconds": [
+      287.11753537500044
+    ],
     "source": "raw per-request latencies on /v1/chat/completions across every ledger in the run \u2014 one endpoint, one distribution. The replicate spread beside it comes from the SAME content enriched twice inside claim_b, and is the band concurrency_speedup is judged against.",
-    "mean_seconds": 43.183631602234726,
-    "stdev_seconds": 20.307131086380604,
-    "min_seconds": 0.001461029052734375,
-    "max_seconds": 114.78125476837158,
-    "relative_spread": 0.47025065592977416,
+    "mean_seconds": 43.70259011304006,
+    "stdev_seconds": 21.511885239484286,
+    "min_seconds": 0.5810577869415283,
+    "max_seconds": 113.6409010887146,
+    "relative_spread": 0.4922336452791966,
     "usable": true
   },
   "cross_cutting": {
     "max_concurrent_ollama_in_flight": 8,
     "max_in_flight_by_path": {
-      "/v1/chat/completions": 7,
+      "/v1/chat/completions": 5,
       "/api/embed": 2,
       "/api/embeddings": 8,
       "/robots.txt": 1,
@@ -89,27 +91,48 @@
     "max_in_flight_top_peak": 8,
     "max_in_flight_note": "The deepest fan-out is on /api/embeddings at 8 concurrent requests, counted by a per-endpoint in-flight counter. The global figure beside it is the whole-process depth over all endpoints at once and is an upper bound on any single one. Two distinct fan-outs exist and must not be conflated: core.embeddings.make_embedder gathers /api/embeddings under Semaphore(8) inside the chunker's embedding_fn, and _run_phase2 gathers chunk-metadata extraction on /v1/chat/completions under Semaphore(_INGEST_CONCURRENCY=5). Both are PRE-EXISTING library behaviour, reported not changed \u2014 and both contradict this project's one-inference-at-a-time rule.",
     "doc_embedding_skip_rate": 0.0,
-    "preflight_tax_seconds": 1.8468520420137793,
+    "preflight_tax_seconds": 1.8080386250221636,
     "preflight_tax_seconds_range": [
-      1.6202084999822546,
-      1.8468520420137793,
-      2.6044183330086526
+      1.4238382909970824,
+      1.8080386250221636,
+      2.1570381250057835
     ],
-    "preflight_tax_cold_seconds": 2.6044183330086526,
+    "preflight_tax_cold_seconds": 2.1570381250057835,
     "preflight_tax_requests": 2,
     "report_db_mismatches": 0,
-    "checkpoint_savings_seconds": 14.975933249981608,
-    "checkpoint_savings_basis": null,
-    "docling_init_seconds": null,
-    "repeated_enrichment_seconds": null,
-    "concurrency_speedup": 1.0674842633203572,
+    "checkpoint_savings_seconds": 15.713669374992605,
+    "checkpoint_savings_basis": {
+      "source": "the kill lineage's own converter-ledger entry for this document",
+      "in_drain_conversion_seconds": 15.713669374992605,
+      "in_drain_was_first_in_its_process": true,
+      "includes_docling_initialisation": true,
+      "standalone_first_call_seconds": 16.229221792018507,
+      "docling_warm_conversion_seconds": 11.529142625018721,
+      "docling_init_seconds": 4.700079166999785,
+      "marginal_saving_note": "The resume process converts two more PDFs regardless, so it pays Docling initialisation either way. The MARGINAL saving is therefore the warm conversion cost, not the first-call cost \u2014 both are recorded so the distinction is on the artefact's face rather than in a reader's head."
+    },
+    "docling_init_seconds": 4.700079166999785,
+    "repeated_enrichment_seconds": 0.18727993965148926,
+    "concurrency_speedup": 1.0516307750294789,
     "concurrency_speedup_replicate_spread": null,
     "hc4_window_observed": false,
-    "sigterm_to_exit_seconds": 67.56742683300399,
-    "sigterm_to_exit_seconds_truncated": null,
-    "sigterm_in_flight_document": null,
-    "sigterm_seconds_per_chunk": null,
-    "retrieval_power": null
+    "sigterm_to_exit_seconds": 274.20968895801343,
+    "sigterm_to_exit_seconds_truncated": 61.22776537502068,
+    "sigterm_in_flight_document": {
+      "doc_uuid": "8bb1c1d3-447b-4635-b521-265b763e1d81",
+      "dc_title": "fullsize_target 1412.6980v9",
+      "markdown_chars": 39009,
+      "n_chunks": 26,
+      "n_documents_committed_during_arm": 2
+    },
+    "sigterm_seconds_per_chunk": 10.546526498385132,
+    "retrieval_power": {
+      "n_probes": 8,
+      "n_candidate_documents": 5,
+      "chance_recall_at_1": 0.2,
+      "chance_recall_at_3": 0.6,
+      "limitation": "the probes discriminate between 4 topically disjoint papers with no hard negatives, so this measures 'the index is not empty and not scrambled', NOT 'retrieval quality is high'. Read recall@1 and MRR against the chance baselines above, not recall@3 against 1.0."
+    }
   },
   "artefacts_present": [
     "a",
@@ -183,7 +206,7 @@
         "op": "<",
         "value": 1.0
       },
-      "measured": 0.009300312492996454,
+      "measured": 0.00922227100818418,
       "falsifier": "median >= 1.0 s, or ratio >= 0.02",
       "statement": "Median per-document ingest(process='defer') wall time < 1.0 s on a ~50k-char paper, and t_defer / t_now < 0.02 against the process='now' control.",
       "note": "",
@@ -199,15 +222,15 @@
         "op": "<",
         "value": 0.02
       },
-      "measured": 2.4636773652760503e-05,
+      "measured": 4.915313842814372e-05,
       "falsifier": "median >= 1.0 s, or ratio >= 0.02",
       "statement": "Median per-document ingest(process='defer') wall time < 1.0 s on a ~50k-char paper, and t_defer / t_now < 0.02 against the process='now' control.",
       "note": "",
       "verdict": "PASS",
       "band_source": "chat_latency_relative_spread",
       "band_reference": 0.02,
-      "band_relative_spread": 0.47025065592977416,
-      "separation_log_ratio": 6.69924736186131
+      "band_relative_spread": 0.4922336452791966,
+      "separation_log_ratio": 6.008546853899265
     },
     {
       "id": "H-a4",
@@ -405,11 +428,12 @@
         "op": "<",
         "value": 0.5
       },
-      "measured": null,
+      "measured": 1.5683144579729806e-05,
       "falsifier": "any document left failed or partially enriched by a pause, or post-commit wall-clock amounting to a substantial fraction of a document",
       "statement": "Pauses via max_docs, max_seconds, should_continue and SIGTERM to the real CLI (on both a truncated and a full-size in-flight document) all stop BETWEEN documents: on EACH ARM'S OWN post-drain snapshot no row is 'failed' and no non-complete row carries chunk or chunk-embedding rows; and the wall-clock each library arm spends after its last commit is under half of that same drain's longest single-document cost.",
-      "note": "the producing rule did not write this value",
-      "verdict": "NOT_MEASURED"
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
     },
     {
       "id": "H-d5",
@@ -420,11 +444,11 @@
         "op": "==",
         "value": 1
       },
-      "measured": 0,
+      "measured": 1,
       "falsifier": "stopped_early=False, or remaining==0 \u2014 an exhausted queue, not a pause",
       "statement": "The should_continue arm genuinely PAUSES rather than exhausting its queue: the drain reports stopped_early=True with work still queued after processing exactly one document.",
       "note": "",
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "band_source": "not a registered ratio metric"
     },
     {
@@ -436,11 +460,11 @@
         "op": ">=",
         "value": 1
       },
-      "measured": 0,
+      "measured": 1,
       "falsifier": "stopped_early=False, or remaining==0 \u2014 an exhausted queue, not a pause",
       "statement": "The should_continue arm genuinely PAUSES rather than exhausting its queue: the drain reports stopped_early=True with work still queued after processing exactly one document.",
       "note": "",
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "band_source": "not a registered ratio metric"
     },
     {
@@ -452,7 +476,7 @@
         "op": "<=",
         "value": 1
       },
-      "measured": 0.5480711797244192,
+      "measured": 0.8091090511525355,
       "falsifier": "an overrun exceeding one document's cost, or a stop mid-document",
       "statement": "Elapsed wall-clock of a drain with max_seconds=T satisfies T <= elapsed <= T + (longest single-document processing time in that drain).",
       "note": "",
@@ -500,11 +524,12 @@
         "op": "<",
         "value": 1.0
       },
-      "measured": null,
+      "measured": 0.011918281795436936,
       "falsifier": "more or fewer than one document mid-stage at resume, or repeated enrichment costing more than the conversion the checkpoint preserved",
       "statement": "After the SIGKILL the only work repeated on resume is the enrichment of the single in-flight document: EXACTLY one row is pending_enrich when the resume starts, and the repeated enrichment seconds (killed_at minus the converter ledger's last ts_end) are strictly less than that document's measured in-drain conversion time.",
-      "note": "the producing rule did not write this value",
-      "verdict": "NOT_MEASURED"
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
     },
     {
       "id": "H-e1",
@@ -515,11 +540,12 @@
         "op": ">=",
         "value": 1.0
       },
-      "measured": null,
+      "measured": 1.0,
       "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
       "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
-      "note": "the producing rule did not write this value",
-      "verdict": "NOT_MEASURED"
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
     },
     {
       "id": "H-e1",
@@ -530,11 +556,12 @@
         "op": "<",
         "value": 0.5
       },
-      "measured": null,
+      "measured": 0.25,
       "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
       "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
-      "note": "the producing rule did not write this value",
-      "verdict": "NOT_MEASURED"
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
     },
     {
       "id": "H-e1",
@@ -545,11 +572,12 @@
         "op": ">=",
         "value": 1.0
       },
-      "measured": null,
+      "measured": 1.0,
       "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
       "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
-      "note": "the producing rule did not write this value",
-      "verdict": "NOT_MEASURED"
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
     },
     {
       "id": "H-e2",
@@ -656,7 +684,7 @@
         "op": "<=",
         "value": 1.3
       },
-      "measured": 1.0674842633203572,
+      "measured": 1.0516307750294789,
       "falsifier": "a speedup above 1.3, which would mean the fan-out is doing real work",
       "statement": "Enriching one document strictly sequentially costs no more than 1.3x its in-pipeline cost under the shipped Semaphore(_INGEST_CONCURRENCY=5) fan-out \u2014 i.e. the fan-out buys little against an Ollama that serialises same-model calls. The ratio is attributed by doc_uuid, never by title, and is reported INCONCLUSIVE when it sits within the measured replicate spread of 1.0.",
       "note": "",
@@ -679,7 +707,7 @@
       "claim": "observation",
       "metric": "pause_discarded_seconds",
       "threshold": null,
-      "measured": 0.0,
+      "measured": 0.0032886250119190663,
       "verdict": "OBSERVATION",
       "falsifier": null,
       "statement": "raw wall-clock the library pause arms spent after their last commit, summed. Scored as a fraction of one document under H-d1.",
@@ -712,16 +740,16 @@
       "claim": "observation",
       "metric": "post_chunk_mrr",
       "threshold": null,
-      "measured": null,
+      "measured": 1.0,
       "verdict": "OBSERVATION",
       "falsifier": null,
       "statement": "mean reciprocal rank over the same 8 probes.",
       "note": "measured and reported; no pre-registered threshold"
     }
   ],
-  "n_pass": 26,
-  "n_fail": 2,
+  "n_pass": 33,
+  "n_fail": 0,
   "n_inconclusive": 0,
-  "n_not_measured": 5,
+  "n_not_measured": 0,
   "n_observation": 6
 }

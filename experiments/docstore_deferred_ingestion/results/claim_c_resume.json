@@ -1,14 +1,14 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.claim_c_resume/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T10:25:17.584753+00:00",
+  "written_at": "2026-08-01T13:07:19.350622+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "database": "dfr_kill",
-  "target_doc_id": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
+  "target_doc_id": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
   "target_arxiv_id": "1706.03762v7",
   "pre_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
   "post_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
@@ -38,7 +38,7 @@
   "snapshot_pre": {
     "label": "claim_c_resume_pre",
     "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
-    "logical_fingerprint": "81941f7a1fc628cb7f01ac64df5d4f8acf1ea569a58c9817e9f1872261c17fe7",
+    "logical_fingerprint": "c4518bdb1f095bc418ced5d4af1b8616b60590f67bbc599aa0b8a3e725390bfd",
     "status_counts": {
       "pending_source": 2,
       "pending_enrich": 1,
@@ -48,31 +48,11 @@
     "n_documents": 3,
     "documents": [
       {
-        "doc_uuid": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
-        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
-        "ingest_status": "pending_enrich",
-        "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:02:35.544777+00:00",
-        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
-        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
-        "markdown_chars": 48959,
-        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
-        "n_chunks": 0,
-        "n_chunk_embeddings": 0,
-        "has_doc_embedding": false,
-        "metadata_keys": [
-          "arxiv_id"
-        ],
-        "llm_metadata_populated": false,
-        "created_date": "2026-08-01T10:02:17.355231+00:00",
-        "updated_date": "2026-08-01T18:02:35.540193"
-      },
-      {
-        "doc_uuid": "d6c43f0e-dfeb-4eae-a736-842a2e314128",
+        "doc_uuid": "03ccb9ac-7c62-4677-8f4c-df44834fd3e0",
         "dc_title": "1512.03385v1.pdf",
         "ingest_status": "pending_source",
         "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:02:17.358063+00:00",
+        "ingest_updated_at": "2026-08-01T12:43:21.920078+00:00",
         "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
         "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "markdown_chars": 0,
@@ -84,15 +64,15 @@
           "arxiv_id"
         ],
         "llm_metadata_populated": false,
-        "created_date": "2026-08-01T10:02:17.358063+00:00",
-        "updated_date": "2026-08-01T10:02:17.358063+00:00"
+        "created_date": "2026-08-01T12:43:21.920078+00:00",
+        "updated_date": "2026-08-01T12:43:21.920078+00:00"
       },
       {
-        "doc_uuid": "ddb6a1cc-7be6-4dab-8abe-9d2bda2f9730",
+        "doc_uuid": "6543a46d-d2eb-43c0-ab7d-b3207f067f7f",
         "dc_title": "1810.04805v2.pdf",
         "ingest_status": "pending_source",
         "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:02:17.356693+00:00",
+        "ingest_updated_at": "2026-08-01T12:43:21.918815+00:00",
         "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
         "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "markdown_chars": 0,
@@ -104,14 +84,34 @@
           "arxiv_id"
         ],
         "llm_metadata_populated": false,
-        "created_date": "2026-08-01T10:02:17.356693+00:00",
-        "updated_date": "2026-08-01T10:02:17.356693+00:00"
+        "created_date": "2026-08-01T12:43:21.918815+00:00",
+        "updated_date": "2026-08-01T12:43:21.918815+00:00"
+      },
+      {
+        "doc_uuid": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:40.574030+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.917337+00:00",
+        "updated_date": "2026-08-01T20:43:40.569671"
       }
     ],
     "file_advisory": {
       "advisory_only": true,
       "file_bytes": 356352,
-      "file_sha256": "0332c3427bbf2e5ebc9bfd2fb0f70962d3174b3deeb79ec8a2edefe7b5404b97",
+      "file_sha256": "fea45c09fb8b1e09e547b94eabee206f5a37abca2b82cbcb8c20d8ad80663cc3",
       "page_count": 87,
       "journal_mode": "wal",
       "sidecars": {
@@ -125,7 +125,7 @@
       {
         "name": "gemma4:26b-nvfp4",
         "model": "gemma4:26b-nvfp4",
-        "size": 25840458356,
+        "size": 26018519668,
         "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
         "details": {
           "parent_model": "",
@@ -135,8 +135,8 @@
           "parameter_size": "",
           "quantization_level": "nvfp4"
         },
-        "expires_at": "2026-08-01T18:07:35.705905+08:00",
-        "size_vram": 25840458356,
+        "expires_at": "2026-08-01T20:48:40.823017+08:00",
+        "size_vram": 26018519668,
         "context_length": 131072
       },
       {
@@ -154,14 +154,14 @@
           "parameter_size": "307.58M",
           "quantization_level": "BF16"
         },
-        "expires_at": "2026-08-01T18:07:17.81995+08:00",
+        "expires_at": "2026-08-01T20:48:22.375941+08:00",
         "size_vram": 673028505,
         "context_length": 2048
       }
     ]
   },
   "resume_returncode": 0,
-  "resume_seconds": 1361.521835499996,
+  "resume_seconds": 1418.2950972919934,
   "resume_log": "logs/kill_run2.log",
   "resume_report": {
     "documents_converted": 2,
@@ -182,33 +182,33 @@
   "ledger_entries_added_by_resume": 2,
   "ledger": [
     {
-      "ts_start": 1785578539.63253,
-      "ts_end": 1785578555.533664,
-      "seconds": 15.901188957999693,
+      "ts_start": 1785588204.850097,
+      "ts_end": 1785588220.563842,
+      "seconds": 15.713669374992605,
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
-      "pid": 96205,
+      "pid": 3652,
       "chars": 48959,
       "sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
       "error_type": null,
       "error_message": null
     },
     {
-      "ts_start": 1785578558.044662,
-      "ts_end": 1785578574.7089431,
-      "seconds": 16.66433929197956,
+      "ts_start": 1785588223.108425,
+      "ts_end": 1785588239.509604,
+      "seconds": 16.401100250019226,
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
-      "pid": 96222,
+      "pid": 3676,
       "chars": 70241,
       "sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
       "error_type": null,
       "error_message": null
     },
     {
-      "ts_start": 1785579077.646453,
-      "ts_end": 1785579087.344982,
-      "seconds": 9.698563209007261,
+      "ts_start": 1785588754.8320901,
+      "ts_end": 1785588765.9756532,
+      "seconds": 11.14350941698649,
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
-      "pid": 96222,
+      "pid": 3676,
       "chars": 64381,
       "sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
       "error_type": null,
@@ -219,7 +219,7 @@
   "snapshot_final": {
     "label": "claim_c_final",
     "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
-    "logical_fingerprint": "13a69b885051ead0da9700c0701904a4280a4c0eaf5d9bc571a4b77cb9d6dc21",
+    "logical_fingerprint": "db64804487288832288b26a407e8cdb566e86950e81373a30dac2c66e18677bf",
     "status_counts": {
       "pending_source": 0,
       "pending_enrich": 0,
@@ -229,34 +229,11 @@
     "n_documents": 3,
     "documents": [
       {
-        "doc_uuid": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
-        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
-        "ingest_status": "complete",
-        "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:25:16.675102+00:00",
-        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
-        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
-        "markdown_chars": 48959,
-        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
-        "n_chunks": 37,
-        "n_chunk_embeddings": 37,
-        "has_doc_embedding": true,
-        "metadata_keys": [
-          "arxiv_id",
-          "created_at",
-          "people",
-          "projects"
-        ],
-        "llm_metadata_populated": true,
-        "created_date": "2026-08-01T10:02:17.355231+00:00",
-        "updated_date": "2026-08-01T18:18:53.359198"
-      },
-      {
-        "doc_uuid": "d6c43f0e-dfeb-4eae-a736-842a2e314128",
+        "doc_uuid": "03ccb9ac-7c62-4677-8f4c-df44834fd3e0",
         "dc_title": "Deep Residual Learning for Image Recognition",
         "ingest_status": "complete",
         "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:18:37.410296+00:00",
+        "ingest_updated_at": "2026-08-01T13:00:40.675071+00:00",
         "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
         "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
         "markdown_chars": 64381,
@@ -271,15 +248,15 @@
           "projects"
         ],
         "llm_metadata_populated": true,
-        "created_date": "2026-08-01T10:02:17.358063+00:00",
-        "updated_date": "2026-08-01T18:11:45.332375"
+        "created_date": "2026-08-01T12:43:21.920078+00:00",
+        "updated_date": "2026-08-01T20:53:06.811768"
       },
       {
-        "doc_uuid": "ddb6a1cc-7be6-4dab-8abe-9d2bda2f9730",
+        "doc_uuid": "6543a46d-d2eb-43c0-ab7d-b3207f067f7f",
         "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
         "ingest_status": "complete",
         "ingest_error": null,
-        "ingest_updated_at": "2026-08-01T10:11:17.641807+00:00",
+        "ingest_updated_at": "2026-08-01T12:52:34.827466+00:00",
         "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
         "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
         "markdown_chars": 70241,
@@ -294,14 +271,37 @@
           "projects"
         ],
         "llm_metadata_populated": true,
-        "created_date": "2026-08-01T10:02:17.356693+00:00",
-        "updated_date": "2026-08-01T18:03:03.122271"
+        "created_date": "2026-08-01T12:43:21.918815+00:00",
+        "updated_date": "2026-08-01T20:44:10.042763"
+      },
+      {
+        "doc_uuid": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T13:07:18.542263+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 37,
+        "n_chunk_embeddings": 37,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "arxiv_id",
+          "created_at",
+          "people",
+          "projects"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T12:43:21.917337+00:00",
+        "updated_date": "2026-08-01T21:00:58.061384"
       }
     ],
     "file_advisory": {
       "advisory_only": true,
       "file_bytes": 7774208,
-      "file_sha256": "1d9fcf9793168aa846668140eda814f4aefa58fce8722bdc303ab4fd1e400f12",
+      "file_sha256": "3bea032814c8f8c28e06e8c9997dd5ecadba22f0171e0cf2d55b796f94f0272a",
       "page_count": 1898,
       "journal_mode": "wal",
       "sidecars": {
@@ -338,30 +338,140 @@
     ]
   },
   "sqlite_ok": true,
-  "checkpoint_savings_seconds": 14.975933249981608,
+  "checkpoint_savings_seconds": 15.713669374992605,
   "checkpoint_savings_documents": 1,
-  "repeated_enrichment_seconds_estimate": 283.1222807499871,
+  "checkpoint_savings_basis": {
+    "source": "the kill lineage's own converter-ledger entry for this document",
+    "in_drain_conversion_seconds": 15.713669374992605,
+    "in_drain_was_first_in_its_process": true,
+    "includes_docling_initialisation": true,
+    "standalone_first_call_seconds": 16.229221792018507,
+    "docling_warm_conversion_seconds": 11.529142625018721,
+    "docling_init_seconds": 4.700079166999785,
+    "marginal_saving_note": "The resume process converts two more PDFs regardless, so it pays Docling initialisation either way. The MARGINAL saving is therefore the warm conversion cost, not the first-call cost \u2014 both are recorded so the distinction is on the artefact's face rather than in a reader's head."
+  },
+  "repeated_enrichment_seconds": 0.18727993965148926,
+  "repeated_enrichment_basis": {
+    "killed_at": 1785588220.751122,
+    "last_conversion_ts_end": 1785588220.563842,
+    "last_conversion_source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+    "meaning": "wall-clock between the conversion committing and the SIGKILL: the enrichment work the resume must redo. Upper bound \u2014 it also contains the pending_source -> pending_enrich status flip and the supervisor's poll latency"
+  },
+  "repeated_enrichment_over_conversion": 0.011918281795436936,
   "checkpoint_economics_note": "The saving is the SMALLER of the two stages: conversion is tens of seconds while enrichment is minutes at the measured per-chunk LLM latency. That is a deflating but useful result \u2014 it tells a future optimiser to attack the LLM loop, not the converter.",
+  "reconciliation": {
+    "fields_checked": [
+      "documents_enriched",
+      "documents_failed",
+      "remaining",
+      "documents_converted",
+      "documents_skipped",
+      "stopped_early"
+    ],
+    "checks": [
+      {
+        "field": "documents_enriched",
+        "report": 3,
+        "database": 3,
+        "source": "delta in complete count",
+        "agrees": true
+      },
+      {
+        "field": "documents_failed",
+        "report": 0,
+        "database": 0,
+        "source": "delta in failed count",
+        "agrees": true
+      },
+      {
+        "field": "remaining",
+        "report": 0,
+        "database": 0,
+        "source": "post-drain pending_source + pending_enrich",
+        "agrees": true
+      },
+      {
+        "field": "documents_converted",
+        "report": 2,
+        "database": 2,
+        "source": "error-free converter-ledger entries appended by this drain",
+        "agrees": true
+      },
+      {
+        "field": "documents_skipped",
+        "report": 0,
+        "database": 0,
+        "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+        "agrees": true
+      },
+      {
+        "field": "stopped_early",
+        "report": false,
+        "database": 0,
+        "source": "stopped_early implies >= 1 document still queued (implication only)",
+        "agrees": true
+      }
+    ],
+    "n_mismatches": 0,
+    "mismatches": [],
+    "pre_status_counts": {
+      "pending_source": 2,
+      "pending_enrich": 1,
+      "complete": 0,
+      "failed": 0
+    },
+    "post_status_counts": {
+      "pending_source": 0,
+      "pending_enrich": 0,
+      "complete": 3,
+      "failed": 0
+    }
+  },
+  "report_db_mismatches": 0,
   "http": {
     "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/c2_http.jsonl",
-    "requests_total": 293,
+    "requests_total": 292,
     "requests_by_path": {
       "/api/embed": 7,
-      "/v1/chat/completions": 124,
+      "/v1/chat/completions": 123,
       "/api/embeddings": 162
     },
     "max_in_flight": 8,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
     "max_in_flight_by_path": {
       "/api/embed": 2,
-      "/v1/chat/completions": 7,
+      "/v1/chat/completions": 5,
       "/api/embeddings": 8
     },
     "latency_seconds": {
-      "n": 293,
-      "min": 0.07719612121582031,
-      "median": 0.24877309799194336,
-      "max": 114.78125476837158,
-      "sum": 6016.146417379379
+      "n": 292,
+      "min": 0.07831025123596191,
+      "median": 0.3357260227203369,
+      "max": 113.6409010887146,
+      "sum": 6331.447066068649
+    },
+    "latency_seconds_by_path": {
+      "/api/embed": {
+        "n": 7,
+        "min": 0.13182973861694336,
+        "median": 1.3403570652008057,
+        "max": 1.582590103149414,
+        "sum": 8.284213542938232
+      },
+      "/v1/chat/completions": {
+        "n": 123,
+        "min": 1.0078039169311523,
+        "median": 48.323336124420166,
+        "max": 113.6409010887146,
+        "sum": 6294.253987312317
+      },
+      "/api/embeddings": {
+        "n": 162,
+        "min": 0.07831025123596191,
+        "median": 0.10020303726196289,
+        "max": 0.7775402069091797,
+        "sum": 28.908865213394165
+      }
     }
   },
   "ollama_ps_after": {
@@ -369,7 +479,7 @@
       {
         "name": "gemma4:26b-nvfp4",
         "model": "gemma4:26b-nvfp4",
-        "size": 26393578100,
+        "size": 26219072116,
         "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
         "details": {
           "parent_model": "",
@@ -379,8 +489,8 @@
           "parameter_size": "",
           "quantization_level": "nvfp4"
         },
-        "expires_at": "2026-08-01T18:30:16.226466+08:00",
-        "size_vram": 26393578100,
+        "expires_at": "2026-08-01T21:12:18.086624+08:00",
+        "size_vram": 26219072116,
         "context_length": 131072
       }
     ]
@@ -440,25 +550,50 @@
       "detail": ""
     },
     {
-      "hypothesis": "H-d4",
+      "hypothesis": "H-d4/documents_not_reconverted",
       "passed": true,
       "measured": 1,
-      "expected": "<= 1 document's work repeated",
-      "detail": "only the single in-flight document's enrichment should be redone"
+      "expected": 1,
+      "detail": "exactly the one document converted before the kill; 0 would mean the checkpoint was ignored and everything was re-converted, 2+ would mean the resume did not finish"
+    },
+    {
+      "hypothesis": "H-d4/repeated_under_conversion",
+      "passed": true,
+      "measured": 0.011918281795436936,
+      "expected": "< 1 (repeated enrichment cheaper than the conversion it preserved)",
+      "detail": "the pre-registered statement's second clause, which previously had no metric attached to it at all"
     },
     {
       "hypothesis": "checkpoint_savings_seconds",
       "passed": null,
-      "measured": 14.975933249981608,
+      "measured": 15.713669374992605,
       "expected": null,
-      "detail": "1 document(s) not re-converted"
+      "detail": "1 document(s) not re-converted; measured in-drain, includes one-time Docling initialisation"
+    },
+    {
+      "hypothesis": "H-x/claim_c_resume",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
     },
     {
       "hypothesis": "resume_max_in_flight",
       "passed": null,
       "measured": 8,
       "expected": null,
-      "detail": "peak concurrent Ollama requests issued by the library's own _INGEST_CONCURRENCY=5 fan-out \u2014 a pre-existing observation, not a change this experiment makes"
+      "detail": "GLOBAL peak concurrent Ollama requests \u2014 an upper bound over all endpoints, NOT an attribution. The per-endpoint breakdown is the next observation; attributing the global peak to a single semaphore is how an earlier report ended up blaming Semaphore(5) for a peak of 8"
+    },
+    {
+      "hypothesis": "resume_max_in_flight_by_path",
+      "passed": null,
+      "measured": {
+        "/api/embed": 2,
+        "/v1/chat/completions": 5,
+        "/api/embeddings": 8
+      },
+      "expected": null,
+      "detail": "peak concurrency counted per endpoint, from a per-path in-flight counter"
     }
   ]
 }

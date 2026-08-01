@@ -1,14 +1,14 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.validation/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T10:53:41.327566+00:00",
+  "written_at": "2026-08-01T14:43:14.959029+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "verdict": "PASS",
-  "n_artefacts_checked": 21,
+  "n_artefacts_checked": 46,
   "artefacts_checked": [
     "results/preregistration.json",
     "results/provenance.json",
@@ -30,8 +30,42 @@
     "results/events.jsonl",
     "results/timings.csv",
     "results/per_document.csv",
-    "results/MANIFEST.json"
+    "results/MANIFEST.json",
+    "results/deviations.json",
+    "results/cli_smoke.json",
+    "results/snapshots/d_arm1_max_docs_post.json",
+    "results/snapshots/d_arm1_max_docs_pre.json",
+    "results/snapshots/d_arm2_max_seconds_post.json",
+    "results/snapshots/d_arm2_max_seconds_pre.json",
+    "results/snapshots/d_arm3_should_continue_post.json",
+    "results/snapshots/d_arm3_should_continue_pre.json",
+    "results/snapshots/d_final_post.json",
+    "results/snapshots/d_final_pre.json",
+    "results/snapshots/drain1_max_docs_2_post.json",
+    "results/snapshots/drain1_max_docs_2_pre.json",
+    "results/snapshots/drain2_unrestricted_post.json",
+    "results/snapshots/drain2_unrestricted_pre.json",
+    "results/snapshots/drain3_noop_post.json",
+    "results/snapshots/drain3_noop_pre.json",
+    "results/snapshots/f_drain1_post.json",
+    "results/snapshots/f_drain1_pre.json",
+    "results/snapshots/f_drain2_post.json",
+    "results/snapshots/f_drain2_pre.json",
+    "results/snapshots/f_drain3_fixed_post.json",
+    "results/snapshots/f_drain3_fixed_pre.json",
+    "results/snapshots/f_drain4_stage_post.json",
+    "results/snapshots/f_drain4_stage_pre.json",
+    "figures/figures_status.json"
   ],
+  "glob_artefacts_checked": {
+    "results/ledgers/*_convert.jsonl": 4,
+    "results/ledgers/*_http.jsonl": 15,
+    "results/snapshots/*.json": 22,
+    "results/events/*.jsonl": 6,
+    "results/events.csv": 1,
+    "results/working_tree.patch": 1,
+    "figures/figures_status.json": 1
+  },
   "n_violations": 0,
   "violations": [],
   "referential": {
@@ -45,7 +79,7 @@
       "1412.6980v9",
       "1706.03762v7"
     ],
-    "n_doc_ids_in_fingerprints": 22,
-    "n_doc_ids_referenced": 22
+    "n_doc_ids_in_fingerprints": 28,
+    "n_doc_ids_referenced": 28
   }
 }

@@ -1,12 +1,12 @@
 rule,benchmark_wall_seconds,in_script_component_seconds,in_script_component_meaning,ollama_requests,ollama_seconds,max_in_flight_global
-gate_llm,12.31,,,2,11.176318645477295,1
-claim_a_defer,378.03,,,,,
-claim_e_pre,1.94,,,8,1.4515256881713867,1
-claim_b_drain,1897.29,,,370,8467.874880313873,8
-claim_e_post,7.49,,,12,5.694369077682495,1
-micro_stages,283.66,283.1222807499871,sum of timed components,38,282.71350288391113,7
-claim_c_kill,18.67,,,,,
-claim_c_resume,1361.85,1361.521835499996,one drain / subprocess,293,6016.146417379379,8
-claim_d_pause,722.41,,,,,
-claim_f_fail,854.41,,,121,3616.3805408477783,7
-drain_overhead,7.88,,,,,
+gate_llm,23.04,,,2,21.879732608795166,1
+claim_a_defer,353.32,,,,,
+claim_e_pre,1.95,,,8,1.4468598365783691,1
+claim_b_drain,1878.33,,,370,8436.1127307415,8
+claim_e_post,8.00,,,12,5.8846435546875,1
+micro_stages,302.52,301.94163625096553,sum of timed components,39,301.5347788333893,7
+claim_c_kill,19.22,,,,,
+claim_c_resume,1418.48,1418.2950972919934,one drain / subprocess,292,6331.447066068649,8
+claim_d_pause,1124.82,,,,,
+claim_f_fail,886.96,,,123,3697.698535680771,7
+drain_overhead,6.99,,,,,

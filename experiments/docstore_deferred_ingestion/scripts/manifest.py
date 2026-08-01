@@ -76,6 +76,14 @@ def describe(path: Path) -> dict[str, Any]:
     }
 
 
+#: Files this rule cannot honestly hash, because they are not final until after
+#: it has finished. `MANIFEST.json` would have to contain its own hash; Snakemake
+#: writes `bench/manifest.tsv` only once the rule body returns. Left in, each
+#: records the PREVIOUS run's bytes and `--verify` reports a permanent false
+#: discrepancy — on the very file the check exists to make trustworthy.
+SELF_EXCLUDED = frozenset({"results/MANIFEST.json", "bench/manifest.tsv"})
+
+
 def verify(manifest: dict[str, Any]) -> list[str]:
     """Re-hash every recorded artefact. Returns the discrepancies.
 
@@ -123,6 +131,8 @@ def main() -> int:
                 continue
             if any(part in SKIP_DIRS for part in path.relative_to(C.EXP_DIR).parts):
                 continue
+            if str(path.relative_to(C.EXP_DIR)) in SELF_EXCLUDED:
+                continue
             artefacts.append(describe(path))
 
     for name in ROOT_FILES:
@@ -145,6 +155,13 @@ def main() -> int:
         ),
         "n_unschemad": len([a for a in artefacts if a["schema"] is None]),
         "skipped": sorted(SKIP_DIRS),
+        "self_excluded": sorted(SELF_EXCLUDED),
+        "self_excluded_why": (
+            "neither is final when this rule hashes: MANIFEST.json would have to "
+            "contain its own hash, and Snakemake writes bench/manifest.tsv only "
+            "after the rule body returns. Including them would record the PREVIOUS "
+            "run's bytes and make --verify report a permanent false discrepancy"
+        ),
         "skipped_note": (
             "databases and downloaded PDFs are not hashed into the manifest: they are "
             "large, machine-local and disposable. data/REGISTRY.json carries the PDF "

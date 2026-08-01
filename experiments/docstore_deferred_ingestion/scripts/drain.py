@@ -301,6 +301,14 @@ async def instrumented_drain(
         max_seconds=max_seconds,
     )
     elapsed = time.monotonic() - started
+    # ONE ORIGIN FOR THE POST-COMMIT SUBTRACTION. `elapsed` runs from `started`
+    # while progress ticks run from `t0`, and `t0` is set a few milliseconds
+    # EARLIER (the initial `settled_before` poll sits between them). Subtracting a
+    # tick from `elapsed` therefore under-counts by that gap and, when the true
+    # post-commit time is ~0, produces a NEGATIVE duration — which is what a
+    # published "seconds of discarded work" bar showed. Both quantities are
+    # measured against `t0` here so the difference is a real interval.
+    finished_since_t0 = time.monotonic() - t0
 
     post = snapshot(db_path, label=f"{label}_post")
     ledger_delta = (
@@ -347,7 +355,7 @@ async def instrumented_drain(
     # that document's processing. Measuring it is what makes "stops BETWEEN
     # documents" falsifiable instead of asserted by construction.
     post_commit_seconds = (
-        elapsed - progress[-1]["monotonic_s"] if progress else None
+        finished_since_t0 - progress[-1]["monotonic_s"] if progress else None
     )
 
     return {

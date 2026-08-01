@@ -1,11 +1,11 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.registry/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T09:18:33.291399+00:00",
+  "written_at": "2026-08-01T11:41:35.569650+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "registry_version": 1,
   "n_papers": 4,
@@ -18,14 +18,14 @@
       "path": "data/pdfs/1706.03762v7.pdf",
       "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
       "bytes": 2215244,
-      "downloaded_at": "2026-08-01T09:18:23.116972+00:00",
+      "downloaded_at": "2026-08-01T11:41:23.213679+00:00",
       "requested_url": "https://arxiv.org/pdf/1706.03762v7",
       "final_url": "https://arxiv.org/pdf/1706.03762v7",
       "http_status": 200,
       "content_type": "application/pdf",
       "etag": "\"sha256:2dec5e68ae1f3fd90a82678deab4944bef4114beab661b04bd8b9ee725273072\"",
       "last_modified": "Fri, 12 Apr 2024 23:47:34 GMT",
-      "download_seconds": 1.1810051249922253,
+      "download_seconds": 1.689075000002049,
       "attempts": 1
     },
     {
@@ -35,14 +35,14 @@
       "path": "data/pdfs/1810.04805v2.pdf",
       "sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
       "bytes": 775166,
-      "downloaded_at": "2026-08-01T09:18:26.521875+00:00",
+      "downloaded_at": "2026-08-01T11:41:26.643393+00:00",
       "requested_url": "https://arxiv.org/pdf/1810.04805v2",
       "final_url": "https://arxiv.org/pdf/1810.04805v2",
       "http_status": 200,
       "content_type": "application/pdf",
       "etag": "COLYpb+g3PwCEAE=",
       "last_modified": "Sun, 22 Jan 2023 22:44:52 GMT",
-      "download_seconds": 0.3930215830041561,
+      "download_seconds": 0.41956708297948353,
       "attempts": 1
     },
     {
@@ -52,14 +52,14 @@
       "path": "data/pdfs/1512.03385v1.pdf",
       "sha256": "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a",
       "bytes": 819383,
-      "downloaded_at": "2026-08-01T09:18:29.953914+00:00",
+      "downloaded_at": "2026-08-01T11:41:30.083133+00:00",
       "requested_url": "https://arxiv.org/pdf/1512.03385v1",
       "final_url": "https://arxiv.org/pdf/1512.03385v1",
       "http_status": 200,
       "content_type": "application/pdf",
       "etag": "CPOo3LWn1/wCEAE=",
       "last_modified": "Fri, 20 Jan 2023 23:32:33 GMT",
-      "download_seconds": 0.41951424998114817,
+      "download_seconds": 0.43149600000469945,
       "attempts": 1
     },
     {
@@ -69,14 +69,14 @@
       "path": "data/pdfs/1412.6980v9.pdf",
       "sha256": "eab9c73ae2ceda884b94830bda99312254bac4806f6c9f045cbab90721ecda31",
       "bytes": 584641,
-      "downloaded_at": "2026-08-01T09:18:33.291323+00:00",
+      "downloaded_at": "2026-08-01T11:41:35.569419+00:00",
       "requested_url": "https://arxiv.org/pdf/1412.6980v9",
       "final_url": "https://arxiv.org/pdf/1412.6980v9",
       "http_status": 200,
       "content_type": "application/pdf",
       "etag": "CK7WjbfL1vwCEAE=",
       "last_modified": "Fri, 20 Jan 2023 16:41:00 GMT",
-      "download_seconds": 0.3249340000038501,
+      "download_seconds": 2.472474791982677,
       "attempts": 1
     }
   ],

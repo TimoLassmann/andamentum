@@ -1,14 +1,14 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.claim_f/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T10:51:33.671282+00:00",
+  "written_at": "2026-08-01T14:38:49.830243+00:00",
   "provenance_ref": {
-    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
-    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "database": "dfr_fail",
-  "good_doc_id": "2316cd43-239f-499d-a04e-19259cbc625d",
+  "good_doc_id": "17bbe38c-9876-481f-9514-e99be16253d6",
   "good_source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
   "bad_sources": [
     {
@@ -16,28 +16,28 @@
       "description": "a file path that does not exist",
       "why": "the commonest real-world failure: the file moved after being queued",
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-      "doc_id": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc"
+      "doc_id": "1c6a9cd1-5396-4245-9583-169241ec871e"
     },
     {
       "key": "garbage_pdf",
       "description": "400 bytes of random data saved with a .pdf extension",
       "why": "exercises the extraction backend's own error, not a pre-flight check",
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-      "doc_id": "429423a3-a020-4d26-992e-75c353e365ab"
+      "doc_id": "112dfd4b-1f43-4a03-bd00-9ab250a953ba"
     },
     {
       "key": "missing_url",
       "description": "https://arxiv.org/pdf/0000.00000 \u2014 a clearly non-existent arXiv id",
       "why": "a real 404 over the real network. NOT a localhost URL: core.url_safety's SSRF guard would reject that for a different reason than the one under test and muddy the result",
       "source": "https://arxiv.org/pdf/0000.00000",
-      "doc_id": "aedd583e-7c71-492c-b02a-ca479969f9f9"
+      "doc_id": "965f06c6-78a0-45a8-bcce-7340c336ecca"
     },
     {
       "key": "whitespace_markdown",
       "description": "a .md file containing only whitespace",
       "why": "drives the ValueError('Conversion produced no content') branch inside _convert_document, which raises BEFORE the write and therefore correctly routes back to pending_source on retry",
       "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-      "doc_id": "4b1e4ff2-df24-4c53-9806-fb14c81016d3"
+      "doc_id": "470a90cd-6aab-448e-af02-5e86e41007f5"
     }
   ],
   "ollama_ps_before": {
@@ -45,7 +45,7 @@
       {
         "name": "gemma4:26b-nvfp4",
         "model": "gemma4:26b-nvfp4",
-        "size": 26094471796,
+        "size": 26056809076,
         "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
         "details": {
           "parent_model": "",
@@ -55,8 +55,8 @@
           "parameter_size": "",
           "quantization_level": "nvfp4"
         },
-        "expires_at": "2026-08-01T18:42:18.732364+08:00",
-        "size_vram": 26094471796,
+        "expires_at": "2026-08-01T22:29:02.639976+08:00",
+        "size_vram": 26056809076,
         "context_length": 131072
       },
       {
@@ -74,7 +74,7 @@
           "parameter_size": "307.58M",
           "quantization_level": "BF16"
         },
-        "expires_at": "2026-08-01T18:41:23.194063+08:00",
+        "expires_at": "2026-08-01T22:27:59.186517+08:00",
         "size_vram": 673028505,
         "context_length": 2048
       }
@@ -84,7 +84,7 @@
   "errors_without_type_name": [],
   "failure_fidelity": [
     {
-      "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
+      "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
       "dc_title": "garbage.pdf",
       "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
       "exception_type": "ExtractionError",
@@ -92,7 +92,15 @@
       "mode": "garbage_pdf"
     },
     {
-      "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
+      "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
+      "dc_title": "does_not_exist.pdf",
+      "ingest_error": "FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+      "exception_type": "FetchError",
+      "markdown_chars": 0,
+      "mode": "missing_path"
+    },
+    {
+      "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
       "dc_title": "whitespace_only.md",
       "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
       "exception_type": "ExtractionError",
@@ -100,27 +108,19 @@
       "mode": "whitespace_markdown"
     },
     {
-      "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
+      "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
       "dc_title": "0000.00000",
       "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
       "exception_type": "FetchError",
       "markdown_chars": 0,
       "mode": "missing_url"
-    },
-    {
-      "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
-      "dc_title": "does_not_exist.pdf",
-      "ingest_error": "FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-      "exception_type": "FetchError",
-      "markdown_chars": 0,
-      "mode": "missing_path"
     }
   ],
   "report_failures": [
-    "Failed to process 'does_not_exist.pdf' (decb2a6f-48bc-4f50-b5d2-3d56bee79ebc): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-    "Failed to process 'garbage.pdf' (429423a3-a020-4d26-992e-75c353e365ab): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-    "Failed to process '0000.00000' (aedd583e-7c71-492c-b02a-ca479969f9f9): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "Failed to process 'whitespace_only.md' (4b1e4ff2-df24-4c53-9806-fb14c81016d3): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
+    "Failed to process 'does_not_exist.pdf' (1c6a9cd1-5396-4245-9583-169241ec871e): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+    "Failed to process 'garbage.pdf' (112dfd4b-1f43-4a03-bd00-9ab250a953ba): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+    "Failed to process '0000.00000' (965f06c6-78a0-45a8-bcce-7340c336ecca): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "Failed to process 'whitespace_only.md' (470a90cd-6aab-448e-af02-5e86e41007f5): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
   ],
   "retry_returned": 4,
   "retry_wrong_stage": [],
@@ -144,28 +144,66 @@
   ],
   "http": {
     "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/f_http.jsonl",
-    "requests_total": 121,
+    "requests_total": 123,
     "requests_by_path": {
       "/api/embed": 7,
-      "/v1/chat/completions": 79,
+      "/v1/chat/completions": 81,
       "/api/embeddings": 30,
       "/robots.txt": 1,
       "/pdf/0000.00000": 4
     },
     "max_in_flight": 7,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
     "max_in_flight_by_path": {
       "/api/embed": 2,
-      "/v1/chat/completions": 7,
+      "/v1/chat/completions": 5,
       "/api/embeddings": 7,
       "/robots.txt": 1,
       "/pdf/0000.00000": 1
     },
     "latency_seconds": {
-      "n": 121,
-      "min": 0.02217888832092285,
-      "median": 36.08462190628052,
-      "max": 77.87483191490173,
-      "sum": 3616.3805408477783
+      "n": 123,
+      "min": 0.016666889190673828,
+      "median": 37.55237293243408,
+      "max": 77.31760907173157,
+      "sum": 3697.698535680771
+    },
+    "latency_seconds_by_path": {
+      "/api/embed": {
+        "n": 7,
+        "min": 0.13242387771606445,
+        "median": 0.8154020309448242,
+        "max": 0.9147241115570068,
+        "sum": 5.284430742263794
+      },
+      "/v1/chat/completions": {
+        "n": 81,
+        "min": 0.990494966506958,
+        "median": 45.85264611244202,
+        "max": 77.31760907173157,
+        "sum": 3687.651234149933
+      },
+      "/api/embeddings": {
+        "n": 30,
+        "min": 0.08084988594055176,
+        "median": 0.12749695777893066,
+        "max": 0.16872096061706543,
+        "sum": 3.710476875305176
+      },
+      "/robots.txt": {
+        "n": 1,
+        "min": 0.5071558952331543,
+        "median": 0.5071558952331543,
+        "max": 0.5071558952331543,
+        "sum": 0.5071558952331543
+      },
+      "/pdf/0000.00000": {
+        "n": 4,
+        "min": 0.016666889190673828,
+        "median": 0.18155694007873535,
+        "max": 0.23517894744873047,
+        "sum": 0.5452380180358887
+      }
     }
   },
   "report_db_mismatches": 0,
@@ -173,7 +211,8 @@
     "drain1": {
       "label": "f_drain1",
       "database": "dfr_fail",
-      "elapsed_seconds": 276.7121680830023,
+      "elapsed_seconds": 292.0677305830177,
+      "post_commit_seconds": 0.0012600829941220582,
       "report": {
         "documents_converted": 1,
         "documents_enriched": 1,
@@ -182,10 +221,10 @@
         "stopped_early": false,
         "remaining": 0,
         "failures": [
-          "Failed to process 'does_not_exist.pdf' (decb2a6f-48bc-4f50-b5d2-3d56bee79ebc): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-          "Failed to process 'garbage.pdf' (429423a3-a020-4d26-992e-75c353e365ab): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-          "Failed to process '0000.00000' (aedd583e-7c71-492c-b02a-ca479969f9f9): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-          "Failed to process 'whitespace_only.md' (4b1e4ff2-df24-4c53-9806-fb14c81016d3): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
+          "Failed to process 'does_not_exist.pdf' (1c6a9cd1-5396-4245-9583-169241ec871e): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+          "Failed to process 'garbage.pdf' (112dfd4b-1f43-4a03-bd00-9ab250a953ba): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+          "Failed to process '0000.00000' (965f06c6-78a0-45a8-bcce-7340c336ecca): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "Failed to process 'whitespace_only.md' (470a90cd-6aab-448e-af02-5e86e41007f5): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
         ]
       },
       "progress": [
@@ -193,7 +232,13 @@
           "done": 1,
           "total": 5,
           "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
-          "monotonic_s": 276.0443837920029,
+          "monotonic_s": 291.37157191601,
+          "settled_doc_uuids": [
+            "17bbe38c-9876-481f-9514-e99be16253d6"
+          ],
+          "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
+          "settled_status": "complete",
+          "markdown_chars": 38978,
           "status_counts_at_instant": {
             "pending_source": 4,
             "pending_enrich": 0,
@@ -205,7 +250,13 @@
           "done": 2,
           "total": 5,
           "title": "does_not_exist.pdf",
-          "monotonic_s": 276.0565311250102,
+          "monotonic_s": 291.3837175410008,
+          "settled_doc_uuids": [
+            "1c6a9cd1-5396-4245-9583-169241ec871e"
+          ],
+          "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 3,
             "pending_enrich": 0,
@@ -217,7 +268,13 @@
           "done": 3,
           "total": 5,
           "title": "garbage.pdf",
-          "monotonic_s": 276.0729016250116,
+          "monotonic_s": 291.39922991598723,
+          "settled_doc_uuids": [
+            "112dfd4b-1f43-4a03-bd00-9ab250a953ba"
+          ],
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 2,
             "pending_enrich": 0,
@@ -229,7 +286,13 @@
           "done": 4,
           "total": 5,
           "title": "0000.00000",
-          "monotonic_s": 276.69352129200706,
+          "monotonic_s": 292.0507375409943,
+          "settled_doc_uuids": [
+            "965f06c6-78a0-45a8-bcce-7340c336ecca"
+          ],
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 1,
             "pending_enrich": 0,
@@ -241,7 +304,13 @@
           "done": 5,
           "total": 5,
           "title": "whitespace_only.md",
-          "monotonic_s": 276.71096983301686,
+          "monotonic_s": 292.0677421250148,
+          "settled_doc_uuids": [
+            "470a90cd-6aab-448e-af02-5e86e41007f5"
+          ],
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 0,
             "pending_enrich": 0,
@@ -253,7 +322,7 @@
       "snapshot_pre": {
         "label": "f_drain1_pre",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "38f6fa2568c74f90edb51a53bed6a879b3d181c7a137e115fe72c3faf0579f54",
+        "logical_fingerprint": "56a6e2e5c9739918afdcdb1065929d832abcf86af1c34abba128aae2c5fb666d",
         "status_counts": {
           "pending_source": 5,
           "pending_enrich": 0,
@@ -263,31 +332,11 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
-            "dc_title": "1412.6980v9.pdf",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:37:20.597343+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T10:37:20.597343+00:00"
-          },
-          {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
             "dc_title": "garbage.pdf",
             "ingest_status": "pending_source",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:37:20.600389+00:00",
+            "ingest_updated_at": "2026-08-01T14:24:03.884354+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -300,16 +349,16 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
           },
           {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
+            "dc_title": "1412.6980v9.pdf",
             "ingest_status": "pending_source",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:37:23.613204+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "ingest_updated_at": "2026-08-01T14:24:03.881585+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
             "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -317,40 +366,18 @@
             "n_chunk_embeddings": 0,
             "has_doc_embedding": false,
             "metadata_keys": [
-              "arm",
-              "mode"
+              "arm"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T14:24:03.881585+00:00"
           },
           {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:37:20.601749+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "does_not_exist.pdf",
             "ingest_status": "pending_source",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:37:20.598831+00:00",
+            "ingest_updated_at": "2026-08-01T14:24:03.883084+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -363,14 +390,56 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T10:37:20.598831+00:00"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T14:24:03.883084+00:00"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:24:06.897138+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:24:03.885799+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
           "file_bytes": 180224,
-          "file_sha256": "6051c6369d3de7eb38e31a37459e13b6ed420bfe8351c9d872c41d8452f90fc1",
+          "file_sha256": "72595e713d1a5b627936f1261d61e26587cee166d8c4de6fb8675f0f0757cbde",
           "page_count": 44,
           "journal_mode": "wal",
           "sidecars": {
@@ -382,7 +451,7 @@
       "snapshot_post": {
         "label": "f_drain1_post",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "9296fdd6c9a21ce4ead5c2b0d71610276fd577fdbb1a352db755ced843a3c2e9",
+        "logical_fingerprint": "9c58cb8773b0ed4f6a5c370344206cf1c1b80165b259e37c1026a5a2121574c8",
         "status_counts": {
           "pending_source": 0,
           "pending_enrich": 0,
@@ -392,11 +461,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+            "ingest_updated_at": "2026-08-01T14:28:58.337375+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -411,78 +501,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-            "ingest_updated_at": "2026-08-01T10:41:59.750212+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
-            "ingest_updated_at": "2026-08-01T10:42:00.383885+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "failed",
-            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-            "ingest_updated_at": "2026-08-01T10:42:00.357690+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "does_not_exist.pdf",
             "ingest_status": "failed",
             "ingest_error": "FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-            "ingest_updated_at": "2026-08-01T10:41:59.734055+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.321723+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -495,14 +522,56 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T10:37:20.598831+00:00"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T14:24:03.883084+00:00"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
+            "ingest_updated_at": "2026-08-01T14:28:59.001436+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "failed",
+            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+            "ingest_updated_at": "2026-08-01T14:28:58.978495+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
           "file_bytes": 6840320,
-          "file_sha256": "c52f5328eb814967124d291ccd5bb8e61122f746793d2743462e0bd86b4e8d29",
+          "file_sha256": "d3494cbd8580e8e641a4d71ea8f02afaf0533c3ba6c810bd1ea841b91a9d362e",
           "page_count": 1670,
           "journal_mode": "wal",
           "sidecars": {
@@ -511,60 +580,60 @@
           }
         }
       },
-      "fingerprint_pre": "38f6fa2568c74f90edb51a53bed6a879b3d181c7a137e115fe72c3faf0579f54",
-      "fingerprint_post": "9296fdd6c9a21ce4ead5c2b0d71610276fd577fdbb1a352db755ced843a3c2e9",
+      "fingerprint_pre": "56a6e2e5c9739918afdcdb1065929d832abcf86af1c34abba128aae2c5fb666d",
+      "fingerprint_post": "9c58cb8773b0ed4f6a5c370344206cf1c1b80165b259e37c1026a5a2121574c8",
       "fingerprint_moved": true,
       "converter_ledger_delta": [
         {
-          "ts_start": 1785580645.904479,
-          "ts_end": 1785580654.49091,
-          "seconds": 8.586364666000009,
+          "ts_start": 1785594248.783013,
+          "ts_end": 1785594255.999125,
+          "seconds": 7.216162959026406,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 38978,
           "sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
           "error_type": null,
           "error_message": null
         },
         {
-          "ts_start": 1785580919.733058,
-          "ts_end": 1785580919.73311,
-          "seconds": 5.1790993893519044e-05,
+          "ts_start": 1785594538.3209531,
+          "ts_end": 1785594538.32098,
+          "seconds": 2.662499900907278e-05,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf"
         },
         {
-          "ts_start": 1785580919.745146,
-          "ts_end": 1785580919.749469,
-          "seconds": 0.004323166998801753,
+          "ts_start": 1785594538.3331,
+          "ts_end": 1785594538.336614,
+          "seconds": 0.0035140420077368617,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
           "error_message": "docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid."
         },
         {
-          "ts_start": 1785580919.7615209,
-          "ts_end": 1785580920.352121,
-          "seconds": 0.5905953329929616,
+          "ts_start": 1785594538.348552,
+          "ts_end": 1785594538.975925,
+          "seconds": 0.6273772080021445,
           "source": "https://arxiv.org/pdf/0000.00000",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
         },
         {
-          "ts_start": 1785580920.38224,
-          "ts_end": 1785580920.382702,
-          "seconds": 0.00046187499538064003,
+          "ts_start": 1785594539.000126,
+          "ts_end": 1785594539.000319,
+          "seconds": 0.00019329198403283954,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
@@ -575,6 +644,14 @@
       "http_delta_requests": 42,
       "http_delta_ollama_requests": 40,
       "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
         "checks": [
           {
             "field": "documents_enriched",
@@ -602,6 +679,20 @@
             "report": 1,
             "database": 1,
             "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
             "agrees": true
           }
         ],
@@ -630,7 +721,7 @@
     "after_retry1": {
       "label": "f_retry1",
       "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-      "logical_fingerprint": "c7109bc1394c9d2430933c20de044c3ad44c2f5fbe4398e05310a6239c3a83cb",
+      "logical_fingerprint": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
       "status_counts": {
         "pending_source": 4,
         "pending_enrich": 0,
@@ -640,11 +731,32 @@
       "n_documents": 5,
       "documents": [
         {
-          "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "dc_title": "garbage.pdf",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:28:59.051121+00:00",
+          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:03.884354+00:00",
+          "updated_date": "2026-08-01T14:24:03.884354+00:00"
+        },
+        {
+          "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
           "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
           "ingest_status": "complete",
           "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+          "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
           "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
           "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
           "markdown_chars": 38978,
@@ -659,78 +771,15 @@
             "projects"
           ],
           "llm_metadata_populated": true,
-          "created_date": "2026-08-01T10:37:20.597343+00:00",
-          "updated_date": "2026-08-01T18:37:55.472061"
+          "created_date": "2026-08-01T14:24:03.881585+00:00",
+          "updated_date": "2026-08-01T22:24:27.688126"
         },
         {
-          "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-          "dc_title": "garbage.pdf",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:42:00.434469+00:00",
-          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:20.600389+00:00",
-          "updated_date": "2026-08-01T10:37:20.600389+00:00"
-        },
-        {
-          "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-          "dc_title": "whitespace_only.md",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:42:00.438198+00:00",
-          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:23.613204+00:00",
-          "updated_date": "2026-08-01T10:37:23.613204+00:00"
-        },
-        {
-          "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-          "dc_title": "0000.00000",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:42:00.436880+00:00",
-          "source_file_path": "https://arxiv.org/pdf/0000.00000",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:20.601749+00:00",
-          "updated_date": "2026-08-01T10:37:20.601749+00:00"
-        },
-        {
-          "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+          "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
           "dc_title": "does_not_exist.pdf",
           "ingest_status": "pending_source",
           "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:42:00.433096+00:00",
+          "ingest_updated_at": "2026-08-01T14:28:59.049575+00:00",
           "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
           "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
           "markdown_chars": 0,
@@ -743,14 +792,56 @@
             "mode"
           ],
           "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:20.598831+00:00",
-          "updated_date": "2026-08-01T10:37:20.598831+00:00"
+          "created_date": "2026-08-01T14:24:03.883084+00:00",
+          "updated_date": "2026-08-01T14:24:03.883084+00:00"
+        },
+        {
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "dc_title": "whitespace_only.md",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:28:59.054695+00:00",
+          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:06.897138+00:00",
+          "updated_date": "2026-08-01T14:24:06.897138+00:00"
+        },
+        {
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "dc_title": "0000.00000",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:28:59.053442+00:00",
+          "source_file_path": "https://arxiv.org/pdf/0000.00000",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:03.885799+00:00",
+          "updated_date": "2026-08-01T14:24:03.885799+00:00"
         }
       ],
       "file_advisory": {
         "advisory_only": true,
         "file_bytes": 6844416,
-        "file_sha256": "45e6633e11046ab31b1de4cd2d8557660942f1359107b7a71aab99ecb2dbe647",
+        "file_sha256": "4cabdd49f6fb45be0db355a6757f179449152f18c614443449fc8df95177de42",
         "page_count": 1671,
         "journal_mode": "wal",
         "sidecars": {
@@ -762,7 +853,8 @@
     "drain2": {
       "label": "f_drain2",
       "database": "dfr_fail",
-      "elapsed_seconds": 0.18234462500549853,
+      "elapsed_seconds": 0.21972808399004862,
+      "post_commit_seconds": 0.0011963750002905726,
       "report": {
         "documents_converted": 0,
         "documents_enriched": 0,
@@ -771,10 +863,10 @@
         "stopped_early": false,
         "remaining": 0,
         "failures": [
-          "Failed to process 'does_not_exist.pdf' (decb2a6f-48bc-4f50-b5d2-3d56bee79ebc): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-          "Failed to process 'garbage.pdf' (429423a3-a020-4d26-992e-75c353e365ab): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-          "Failed to process '0000.00000' (aedd583e-7c71-492c-b02a-ca479969f9f9): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-          "Failed to process 'whitespace_only.md' (4b1e4ff2-df24-4c53-9806-fb14c81016d3): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
+          "Failed to process 'does_not_exist.pdf' (1c6a9cd1-5396-4245-9583-169241ec871e): FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+          "Failed to process 'garbage.pdf' (112dfd4b-1f43-4a03-bd00-9ab250a953ba): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+          "Failed to process '0000.00000' (965f06c6-78a0-45a8-bcce-7340c336ecca): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "Failed to process 'whitespace_only.md' (470a90cd-6aab-448e-af02-5e86e41007f5): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
         ]
       },
       "progress": [
@@ -782,7 +874,13 @@
           "done": 1,
           "total": 4,
           "title": "does_not_exist.pdf",
-          "monotonic_s": 0.01622816702001728,
+          "monotonic_s": 0.02813999998033978,
+          "settled_doc_uuids": [
+            "1c6a9cd1-5396-4245-9583-169241ec871e"
+          ],
+          "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 3,
             "pending_enrich": 0,
@@ -794,7 +892,13 @@
           "done": 2,
           "total": 4,
           "title": "garbage.pdf",
-          "monotonic_s": 0.03694970899960026,
+          "monotonic_s": 0.04354216699721292,
+          "settled_doc_uuids": [
+            "112dfd4b-1f43-4a03-bd00-9ab250a953ba"
+          ],
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 2,
             "pending_enrich": 0,
@@ -806,7 +910,13 @@
           "done": 3,
           "total": 4,
           "title": "0000.00000",
-          "monotonic_s": 0.1662355000153184,
+          "monotonic_s": 0.21595662497566082,
+          "settled_doc_uuids": [
+            "965f06c6-78a0-45a8-bcce-7340c336ecca"
+          ],
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 1,
             "pending_enrich": 0,
@@ -818,7 +928,13 @@
           "done": 4,
           "total": 4,
           "title": "whitespace_only.md",
-          "monotonic_s": 0.18118075001984835,
+          "monotonic_s": 0.23178924998501316,
+          "settled_doc_uuids": [
+            "470a90cd-6aab-448e-af02-5e86e41007f5"
+          ],
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 0,
             "pending_enrich": 0,
@@ -830,7 +946,7 @@
       "snapshot_pre": {
         "label": "f_drain2_pre",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "c7109bc1394c9d2430933c20de044c3ad44c2f5fbe4398e05310a6239c3a83cb",
+        "logical_fingerprint": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
         "status_counts": {
           "pending_source": 4,
           "pending_enrich": 0,
@@ -840,11 +956,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:28:59.051121+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -859,78 +996,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:00.434469+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:00.438198+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:00.436880+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "does_not_exist.pdf",
             "ingest_status": "pending_source",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:00.433096+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:59.049575+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -943,14 +1017,56 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T10:37:20.598831+00:00"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T14:24:03.883084+00:00"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:28:59.054695+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:28:59.053442+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
           "file_bytes": 6844416,
-          "file_sha256": "45e6633e11046ab31b1de4cd2d8557660942f1359107b7a71aab99ecb2dbe647",
+          "file_sha256": "4cabdd49f6fb45be0db355a6757f179449152f18c614443449fc8df95177de42",
           "page_count": 1671,
           "journal_mode": "wal",
           "sidecars": {
@@ -962,7 +1078,7 @@
       "snapshot_post": {
         "label": "f_drain2_post",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "9296fdd6c9a21ce4ead5c2b0d71610276fd577fdbb1a352db755ced843a3c2e9",
+        "logical_fingerprint": "9c58cb8773b0ed4f6a5c370344206cf1c1b80165b259e37c1026a5a2121574c8",
         "status_counts": {
           "pending_source": 0,
           "pending_enrich": 0,
@@ -972,11 +1088,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+            "ingest_updated_at": "2026-08-01T14:29:02.171572+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -991,78 +1128,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-            "ingest_updated_at": "2026-08-01T10:42:03.542124+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
-            "ingest_updated_at": "2026-08-01T10:42:03.685207+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "failed",
-            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-            "ingest_updated_at": "2026-08-01T10:42:03.667772+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "does_not_exist.pdf",
             "ingest_status": "failed",
             "ingest_error": "FetchError: file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-            "ingest_updated_at": "2026-08-01T10:42:03.520421+00:00",
+            "ingest_updated_at": "2026-08-01T14:29:02.155527+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -1075,14 +1149,56 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T10:37:20.598831+00:00"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T14:24:03.883084+00:00"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
+            "ingest_updated_at": "2026-08-01T14:29:02.357285+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "failed",
+            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+            "ingest_updated_at": "2026-08-01T14:29:02.337288+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
           "file_bytes": 6844416,
-          "file_sha256": "54c97ae7e9749ea4983ef224d7795dfdd38588ccc0915c53cf84395fad37adce",
+          "file_sha256": "298578a6591b1961c1c0366c1c9cfbcecdad7c879218f59d98e99ed5b4f0c0b6",
           "page_count": 1671,
           "journal_mode": "wal",
           "sidecars": {
@@ -1091,49 +1207,49 @@
           }
         }
       },
-      "fingerprint_pre": "c7109bc1394c9d2430933c20de044c3ad44c2f5fbe4398e05310a6239c3a83cb",
-      "fingerprint_post": "9296fdd6c9a21ce4ead5c2b0d71610276fd577fdbb1a352db755ced843a3c2e9",
+      "fingerprint_pre": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
+      "fingerprint_post": "9c58cb8773b0ed4f6a5c370344206cf1c1b80165b259e37c1026a5a2121574c8",
       "fingerprint_moved": true,
       "converter_ledger_delta": [
         {
-          "ts_start": 1785580923.5194,
-          "ts_end": 1785580923.5194361,
-          "seconds": 3.5874982131645083e-05,
+          "ts_start": 1785594542.15456,
+          "ts_end": 1785594542.15459,
+          "seconds": 3.0333991162478924e-05,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "file not found: /Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf"
         },
         {
-          "ts_start": 1785580923.534205,
-          "ts_end": 1785580923.541216,
-          "seconds": 0.0070111250097397715,
+          "ts_start": 1785594542.168339,
+          "ts_end": 1785594542.170799,
+          "seconds": 0.002459999988786876,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
           "error_message": "docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid."
         },
         {
-          "ts_start": 1785580923.554935,
-          "ts_end": 1785580923.6664221,
-          "seconds": 0.11148599997977726,
+          "ts_start": 1785594542.183785,
+          "ts_end": 1785594542.335455,
+          "seconds": 0.15167129199835472,
           "source": "https://arxiv.org/pdf/0000.00000",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
         },
         {
-          "ts_start": 1785580923.6842182,
-          "ts_end": 1785580923.6843562,
-          "seconds": 0.00013791699893772602,
+          "ts_start": 1785594542.356172,
+          "ts_end": 1785594542.3563259,
+          "seconds": 0.0001544170081615448,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
@@ -1144,6 +1260,14 @@
       "http_delta_requests": 1,
       "http_delta_ollama_requests": 0,
       "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
         "checks": [
           {
             "field": "documents_enriched",
@@ -1172,6 +1296,20 @@
             "database": 0,
             "source": "error-free converter-ledger entries appended by this drain",
             "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
+            "agrees": true
           }
         ],
         "n_mismatches": 0,
@@ -1199,7 +1337,8 @@
     "drain3_fixed": {
       "label": "f_drain3_fixed",
       "database": "dfr_fail",
-      "elapsed_seconds": 273.9436454999959,
+      "elapsed_seconds": 263.19428095800686,
+      "post_commit_seconds": 0.001312042004428804,
       "report": {
         "documents_converted": 1,
         "documents_enriched": 1,
@@ -1208,9 +1347,9 @@
         "stopped_early": false,
         "remaining": 0,
         "failures": [
-          "Failed to process 'garbage.pdf' (429423a3-a020-4d26-992e-75c353e365ab): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-          "Failed to process '0000.00000' (aedd583e-7c71-492c-b02a-ca479969f9f9): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-          "Failed to process 'whitespace_only.md' (4b1e4ff2-df24-4c53-9806-fb14c81016d3): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
+          "Failed to process 'garbage.pdf' (112dfd4b-1f43-4a03-bd00-9ab250a953ba): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+          "Failed to process '0000.00000' (965f06c6-78a0-45a8-bcce-7340c336ecca): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "Failed to process 'whitespace_only.md' (470a90cd-6aab-448e-af02-5e86e41007f5): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
         ]
       },
       "progress": [
@@ -1218,7 +1357,13 @@
           "done": 1,
           "total": 4,
           "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
-          "monotonic_s": 273.7906961249828,
+          "monotonic_s": 262.8841540419962,
+          "settled_doc_uuids": [
+            "1c6a9cd1-5396-4245-9583-169241ec871e"
+          ],
+          "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
+          "settled_status": "complete",
+          "markdown_chars": 38978,
           "status_counts_at_instant": {
             "pending_source": 3,
             "pending_enrich": 0,
@@ -1230,7 +1375,13 @@
           "done": 2,
           "total": 4,
           "title": "garbage.pdf",
-          "monotonic_s": 273.8046967079863,
+          "monotonic_s": 262.89873820901266,
+          "settled_doc_uuids": [
+            "112dfd4b-1f43-4a03-bd00-9ab250a953ba"
+          ],
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 2,
             "pending_enrich": 0,
@@ -1242,7 +1393,13 @@
           "done": 3,
           "total": 4,
           "title": "0000.00000",
-          "monotonic_s": 273.9269982499827,
+          "monotonic_s": 263.1888514170132,
+          "settled_doc_uuids": [
+            "965f06c6-78a0-45a8-bcce-7340c336ecca"
+          ],
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 1,
             "pending_enrich": 0,
@@ -1254,7 +1411,13 @@
           "done": 4,
           "total": 4,
           "title": "whitespace_only.md",
-          "monotonic_s": 273.94153558299877,
+          "monotonic_s": 263.2062096669979,
+          "settled_doc_uuids": [
+            "470a90cd-6aab-448e-af02-5e86e41007f5"
+          ],
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 0,
             "pending_enrich": 0,
@@ -1266,7 +1429,7 @@
       "snapshot_pre": {
         "label": "f_drain3_fixed_pre",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "c7109bc1394c9d2430933c20de044c3ad44c2f5fbe4398e05310a6239c3a83cb",
+        "logical_fingerprint": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
         "status_counts": {
           "pending_source": 4,
           "pending_enrich": 0,
@@ -1276,11 +1439,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:29:02.405429+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -1295,78 +1479,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:03.731154+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:03.733661+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:03.732416+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "does_not_exist.pdf",
             "ingest_status": "pending_source",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:42:03.729768+00:00",
+            "ingest_updated_at": "2026-08-01T14:29:02.403914+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "markdown_chars": 0,
@@ -1379,14 +1500,56 @@
               "mode"
             ],
             "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T10:37:20.598831+00:00"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T14:24:03.883084+00:00"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:29:02.408070+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:29:02.406760+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
           "file_bytes": 6844416,
-          "file_sha256": "9640f7a69136ab2a697e2d211a98d8b08ab5fc78f3d75472c05d05430999197b",
+          "file_sha256": "34c77185776b3c3b007a4a3c1fe11a6666c3d77f9c7fe7578b06762e520b8a7b",
           "page_count": 1671,
           "journal_mode": "wal",
           "sidecars": {
@@ -1398,7 +1561,7 @@
       "snapshot_post": {
         "label": "f_drain3_fixed_post",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "218e4e8c5464b3d1eb1b18c20308eac6967eaf62ff4412f4baf9bb49b657c005",
+        "logical_fingerprint": "7b6ba8e7b2921000f6ab8aad89a4affbc5db3bb60187c89ea90d0a4b8206a9b1",
         "status_counts": {
           "pending_source": 0,
           "pending_enrich": 0,
@@ -1408,11 +1571,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+            "ingest_updated_at": "2026-08-01T14:33:28.373986+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+            "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -1427,78 +1611,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-            "ingest_updated_at": "2026-08-01T10:46:40.585839+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
-            "ingest_updated_at": "2026-08-01T10:46:40.720333+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "failed",
-            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-            "ingest_updated_at": "2026-08-01T10:46:40.703820+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.569066+00:00",
+            "ingest_updated_at": "2026-08-01T14:33:28.356947+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -1514,15 +1635,57 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T18:42:25.219505"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T22:29:20.950071"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
+            "ingest_updated_at": "2026-08-01T14:33:28.677091+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "failed",
+            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+            "ingest_updated_at": "2026-08-01T14:33:28.651334+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
-          "file_bytes": 7024640,
-          "file_sha256": "05ab9ab296e31a5e8c2a0d14ee595b9242a03e8a0afba4eb6ce9b4d950bc0008",
-          "page_count": 1715,
+          "file_bytes": 7028736,
+          "file_sha256": "42e5416d8783cb651acbc9d0e97fdb6e2ce8aeeb96e94bb89f6a30f258c39c39",
+          "page_count": 1716,
           "journal_mode": "wal",
           "sidecars": {
             "-wal": 0,
@@ -1530,49 +1693,49 @@
           }
         }
       },
-      "fingerprint_pre": "c7109bc1394c9d2430933c20de044c3ad44c2f5fbe4398e05310a6239c3a83cb",
-      "fingerprint_post": "218e4e8c5464b3d1eb1b18c20308eac6967eaf62ff4412f4baf9bb49b657c005",
+      "fingerprint_pre": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
+      "fingerprint_post": "7b6ba8e7b2921000f6ab8aad89a4affbc5db3bb60187c89ea90d0a4b8206a9b1",
       "fingerprint_moved": true,
       "converter_ledger_delta": [
         {
-          "ts_start": 1785580926.791355,
-          "ts_end": 1785580932.24351,
-          "seconds": 5.45211295800982,
+          "ts_start": 1785594545.4807382,
+          "ts_end": 1785594549.74262,
+          "seconds": 4.261912957997993,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 38978,
           "sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
           "error_type": null,
           "error_message": null
         },
         {
-          "ts_start": 1785581200.583102,
-          "ts_end": 1785581200.585104,
-          "seconds": 0.0020024169934913516,
+          "ts_start": 1785594808.37106,
+          "ts_end": 1785594808.3731441,
+          "seconds": 0.002083291008602828,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
           "error_message": "docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid."
         },
         {
-          "ts_start": 1785581200.597074,
-          "ts_end": 1785581200.702695,
-          "seconds": 0.10561979198246263,
+          "ts_start": 1785594808.385618,
+          "ts_end": 1785594808.644275,
+          "seconds": 0.25865750000230037,
           "source": "https://arxiv.org/pdf/0000.00000",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
         },
         {
-          "ts_start": 1785581200.71939,
-          "ts_end": 1785581200.719533,
-          "seconds": 0.00014349998673424125,
+          "ts_start": 1785594808.675798,
+          "ts_end": 1785594808.675978,
+          "seconds": 0.00018050000653602183,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
@@ -1583,6 +1746,14 @@
       "http_delta_requests": 39,
       "http_delta_ollama_requests": 38,
       "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
         "checks": [
           {
             "field": "documents_enriched",
@@ -1610,6 +1781,20 @@
             "report": 1,
             "database": 1,
             "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
             "agrees": true
           }
         ],
@@ -1638,7 +1823,7 @@
     "after_stage_retry": {
       "label": "f_stage",
       "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-      "logical_fingerprint": "bcb573172d854dac3acba0e52d5d5a019a86f2805b86cce528c913c1f9dae61f",
+      "logical_fingerprint": "2574bb826e871681d4526fd14d94de9907ce0980da3d5443f8129abd08f7b611",
       "status_counts": {
         "pending_source": 3,
         "pending_enrich": 1,
@@ -1648,11 +1833,32 @@
       "n_documents": 5,
       "documents": [
         {
-          "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "dc_title": "garbage.pdf",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:33:28.735358+00:00",
+          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:03.884354+00:00",
+          "updated_date": "2026-08-01T14:24:03.884354+00:00"
+        },
+        {
+          "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
           "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
           "ingest_status": "pending_enrich",
           "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:46:40.768997+00:00",
+          "ingest_updated_at": "2026-08-01T14:33:28.731099+00:00",
           "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
           "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
           "markdown_chars": 38978,
@@ -1667,78 +1873,15 @@
             "projects"
           ],
           "llm_metadata_populated": true,
-          "created_date": "2026-08-01T10:37:20.597343+00:00",
-          "updated_date": "2026-08-01T18:37:55.472061"
+          "created_date": "2026-08-01T14:24:03.881585+00:00",
+          "updated_date": "2026-08-01T22:24:27.688126"
         },
         {
-          "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-          "dc_title": "garbage.pdf",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:46:40.773093+00:00",
-          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:20.600389+00:00",
-          "updated_date": "2026-08-01T10:37:20.600389+00:00"
-        },
-        {
-          "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-          "dc_title": "whitespace_only.md",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:46:40.775751+00:00",
-          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:23.613204+00:00",
-          "updated_date": "2026-08-01T10:37:23.613204+00:00"
-        },
-        {
-          "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-          "dc_title": "0000.00000",
-          "ingest_status": "pending_source",
-          "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:46:40.774519+00:00",
-          "source_file_path": "https://arxiv.org/pdf/0000.00000",
-          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "markdown_chars": 0,
-          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "n_chunks": 0,
-          "n_chunk_embeddings": 0,
-          "has_doc_embedding": false,
-          "metadata_keys": [
-            "arm",
-            "mode"
-          ],
-          "llm_metadata_populated": false,
-          "created_date": "2026-08-01T10:37:20.601749+00:00",
-          "updated_date": "2026-08-01T10:37:20.601749+00:00"
-        },
-        {
-          "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+          "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
           "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
           "ingest_status": "complete",
           "ingest_error": null,
-          "ingest_updated_at": "2026-08-01T10:46:40.569066+00:00",
+          "ingest_updated_at": "2026-08-01T14:33:28.356947+00:00",
           "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
           "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
           "markdown_chars": 38978,
@@ -1754,15 +1897,57 @@
             "projects"
           ],
           "llm_metadata_populated": true,
-          "created_date": "2026-08-01T10:37:20.598831+00:00",
-          "updated_date": "2026-08-01T18:42:25.219505"
+          "created_date": "2026-08-01T14:24:03.883084+00:00",
+          "updated_date": "2026-08-01T22:29:20.950071"
+        },
+        {
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "dc_title": "whitespace_only.md",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:33:28.738054+00:00",
+          "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:06.897138+00:00",
+          "updated_date": "2026-08-01T14:24:06.897138+00:00"
+        },
+        {
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "dc_title": "0000.00000",
+          "ingest_status": "pending_source",
+          "ingest_error": null,
+          "ingest_updated_at": "2026-08-01T14:33:28.736774+00:00",
+          "source_file_path": "https://arxiv.org/pdf/0000.00000",
+          "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "markdown_chars": 0,
+          "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "n_chunks": 0,
+          "n_chunk_embeddings": 0,
+          "has_doc_embedding": false,
+          "metadata_keys": [
+            "arm",
+            "mode"
+          ],
+          "llm_metadata_populated": false,
+          "created_date": "2026-08-01T14:24:03.885799+00:00",
+          "updated_date": "2026-08-01T14:24:03.885799+00:00"
         }
       ],
       "file_advisory": {
         "advisory_only": true,
-        "file_bytes": 7065600,
-        "file_sha256": "ed439caab3fc07a866d1a504ab9e089f3e682f19c80b86c2539413337af52952",
-        "page_count": 1725,
+        "file_bytes": 7069696,
+        "file_sha256": "10539738160f1a8bdafa466935bfb642aa97bc33eb585cec95888bcc649a695d",
+        "page_count": 1726,
         "journal_mode": "wal",
         "sidecars": {
           "-wal": 0,
@@ -1773,7 +1958,8 @@
     "drain4_stage": {
       "label": "f_drain4_stage",
       "database": "dfr_fail",
-      "elapsed_seconds": 292.78965324998717,
+      "elapsed_seconds": 320.9930540829955,
+      "post_commit_seconds": 0.0013597499928437173,
       "report": {
         "documents_converted": 0,
         "documents_enriched": 1,
@@ -1782,9 +1968,9 @@
         "stopped_early": false,
         "remaining": 0,
         "failures": [
-          "Failed to process 'garbage.pdf' (429423a3-a020-4d26-992e-75c353e365ab): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-          "Failed to process '0000.00000' (aedd583e-7c71-492c-b02a-ca479969f9f9): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-          "Failed to process 'whitespace_only.md' (4b1e4ff2-df24-4c53-9806-fb14c81016d3): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
+          "Failed to process 'garbage.pdf' (112dfd4b-1f43-4a03-bd00-9ab250a953ba): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+          "Failed to process '0000.00000' (965f06c6-78a0-45a8-bcce-7340c336ecca): FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "Failed to process 'whitespace_only.md' (470a90cd-6aab-448e-af02-5e86e41007f5): ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain"
         ]
       },
       "progress": [
@@ -1792,7 +1978,13 @@
           "done": 1,
           "total": 4,
           "title": "garbage.pdf",
-          "monotonic_s": 0.018827916006557643,
+          "monotonic_s": 0.025662042025942355,
+          "settled_doc_uuids": [
+            "112dfd4b-1f43-4a03-bd00-9ab250a953ba"
+          ],
+          "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 2,
             "pending_enrich": 1,
@@ -1804,7 +1996,13 @@
           "done": 2,
           "total": 4,
           "title": "0000.00000",
-          "monotonic_s": 0.14556495801662095,
+          "monotonic_s": 0.38259933301014826,
+          "settled_doc_uuids": [
+            "965f06c6-78a0-45a8-bcce-7340c336ecca"
+          ],
+          "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 1,
             "pending_enrich": 1,
@@ -1816,7 +2014,13 @@
           "done": 3,
           "total": 4,
           "title": "whitespace_only.md",
-          "monotonic_s": 0.16034258299623616,
+          "monotonic_s": 0.4001825420127716,
+          "settled_doc_uuids": [
+            "470a90cd-6aab-448e-af02-5e86e41007f5"
+          ],
+          "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+          "settled_status": "failed",
+          "markdown_chars": 0,
           "status_counts_at_instant": {
             "pending_source": 0,
             "pending_enrich": 1,
@@ -1828,7 +2032,13 @@
           "done": 4,
           "total": 4,
           "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
-          "monotonic_s": 292.7883124999935,
+          "monotonic_s": 321.0022486670059,
+          "settled_doc_uuids": [
+            "17bbe38c-9876-481f-9514-e99be16253d6"
+          ],
+          "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
+          "settled_status": "complete",
+          "markdown_chars": 38978,
           "status_counts_at_instant": {
             "pending_source": 0,
             "pending_enrich": 0,
@@ -1840,7 +2050,7 @@
       "snapshot_pre": {
         "label": "f_drain4_stage_pre",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "bcb573172d854dac3acba0e52d5d5a019a86f2805b86cce528c913c1f9dae61f",
+        "logical_fingerprint": "2574bb826e871681d4526fd14d94de9907ce0980da3d5443f8129abd08f7b611",
         "status_counts": {
           "pending_source": 3,
           "pending_enrich": 1,
@@ -1850,11 +2060,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:33:28.735358+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "pending_enrich",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.768997+00:00",
+            "ingest_updated_at": "2026-08-01T14:33:28.731099+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -1869,78 +2100,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:37:55.472061"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:24:27.688126"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.773093+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.775751+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "pending_source",
-            "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.774519+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.569066+00:00",
+            "ingest_updated_at": "2026-08-01T14:33:28.356947+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -1956,15 +2124,57 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T18:42:25.219505"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T22:29:20.950071"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:33:28.738054+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T14:33:28.736774+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
-          "file_bytes": 7065600,
-          "file_sha256": "ed439caab3fc07a866d1a504ab9e089f3e682f19c80b86c2539413337af52952",
-          "page_count": 1725,
+          "file_bytes": 7069696,
+          "file_sha256": "10539738160f1a8bdafa466935bfb642aa97bc33eb585cec95888bcc649a695d",
+          "page_count": 1726,
           "journal_mode": "wal",
           "sidecars": {
             "-wal": 0,
@@ -1975,7 +2185,7 @@
       "snapshot_post": {
         "label": "f_drain4_stage_post",
         "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
-        "logical_fingerprint": "218e4e8c5464b3d1eb1b18c20308eac6967eaf62ff4412f4baf9bb49b657c005",
+        "logical_fingerprint": "7b6ba8e7b2921000f6ab8aad89a4affbc5db3bb60187c89ea90d0a4b8206a9b1",
         "status_counts": {
           "pending_source": 0,
           "pending_enrich": 0,
@@ -1985,11 +2195,32 @@
         "n_documents": 5,
         "documents": [
           {
-            "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+            "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+            "dc_title": "garbage.pdf",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+            "ingest_updated_at": "2026-08-01T14:33:28.803322+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.884354+00:00",
+            "updated_date": "2026-08-01T14:24:03.884354+00:00"
+          },
+          {
+            "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:51:33.615183+00:00",
+            "ingest_updated_at": "2026-08-01T14:38:49.774648+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -2004,78 +2235,15 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.597343+00:00",
-            "updated_date": "2026-08-01T18:46:59.748508"
+            "created_date": "2026-08-01T14:24:03.881585+00:00",
+            "updated_date": "2026-08-01T22:33:40.665961"
           },
           {
-            "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
-            "dc_title": "garbage.pdf",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
-            "ingest_updated_at": "2026-08-01T10:46:40.832645+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.600389+00:00",
-            "updated_date": "2026-08-01T10:37:20.600389+00:00"
-          },
-          {
-            "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
-            "dc_title": "whitespace_only.md",
-            "ingest_status": "failed",
-            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
-            "ingest_updated_at": "2026-08-01T10:46:40.971993+00:00",
-            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:23.613204+00:00",
-            "updated_date": "2026-08-01T10:37:23.613204+00:00"
-          },
-          {
-            "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
-            "dc_title": "0000.00000",
-            "ingest_status": "failed",
-            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-            "ingest_updated_at": "2026-08-01T10:46:40.954750+00:00",
-            "source_file_path": "https://arxiv.org/pdf/0000.00000",
-            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "markdown_chars": 0,
-            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "n_chunks": 0,
-            "n_chunk_embeddings": 0,
-            "has_doc_embedding": false,
-            "metadata_keys": [
-              "arm",
-              "mode"
-            ],
-            "llm_metadata_populated": false,
-            "created_date": "2026-08-01T10:37:20.601749+00:00",
-            "updated_date": "2026-08-01T10:37:20.601749+00:00"
-          },
-          {
-            "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+            "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
             "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
             "ingest_status": "complete",
             "ingest_error": null,
-            "ingest_updated_at": "2026-08-01T10:46:40.569066+00:00",
+            "ingest_updated_at": "2026-08-01T14:33:28.356947+00:00",
             "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
             "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
             "markdown_chars": 38978,
@@ -2091,15 +2259,57 @@
               "projects"
             ],
             "llm_metadata_populated": true,
-            "created_date": "2026-08-01T10:37:20.598831+00:00",
-            "updated_date": "2026-08-01T18:42:25.219505"
+            "created_date": "2026-08-01T14:24:03.883084+00:00",
+            "updated_date": "2026-08-01T22:29:20.950071"
+          },
+          {
+            "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+            "dc_title": "whitespace_only.md",
+            "ingest_status": "failed",
+            "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
+            "ingest_updated_at": "2026-08-01T14:33:29.172925+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:06.897138+00:00",
+            "updated_date": "2026-08-01T14:24:06.897138+00:00"
+          },
+          {
+            "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+            "dc_title": "0000.00000",
+            "ingest_status": "failed",
+            "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+            "ingest_updated_at": "2026-08-01T14:33:29.146682+00:00",
+            "source_file_path": "https://arxiv.org/pdf/0000.00000",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "arm",
+              "mode"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T14:24:03.885799+00:00",
+            "updated_date": "2026-08-01T14:24:03.885799+00:00"
           }
         ],
         "file_advisory": {
           "advisory_only": true,
-          "file_bytes": 7106560,
-          "file_sha256": "44c1bd7dc4f6bf71dfbe1b41dbb2948f9ee8c68b7ee91ba7f4b1a7538b3a3653",
-          "page_count": 1735,
+          "file_bytes": 7114752,
+          "file_sha256": "c1985c4a7023c8aa2459a1edc123d82631343a4ba4ab79ea6f9a4c908d924ac3",
+          "page_count": 1737,
           "journal_mode": "wal",
           "sidecars": {
             "-wal": 0,
@@ -2107,38 +2317,38 @@
           }
         }
       },
-      "fingerprint_pre": "bcb573172d854dac3acba0e52d5d5a019a86f2805b86cce528c913c1f9dae61f",
-      "fingerprint_post": "218e4e8c5464b3d1eb1b18c20308eac6967eaf62ff4412f4baf9bb49b657c005",
+      "fingerprint_pre": "2574bb826e871681d4526fd14d94de9907ce0980da3d5443f8129abd08f7b611",
+      "fingerprint_post": "7b6ba8e7b2921000f6ab8aad89a4affbc5db3bb60187c89ea90d0a4b8206a9b1",
       "fingerprint_moved": true,
       "converter_ledger_delta": [
         {
-          "ts_start": 1785581200.826379,
-          "ts_end": 1785581200.831823,
-          "seconds": 0.005444332986371592,
+          "ts_start": 1785594808.800451,
+          "ts_end": 1785594808.802593,
+          "seconds": 0.0021417500101961195,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
           "error_message": "docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid."
         },
         {
-          "ts_start": 1785581200.844285,
-          "ts_end": 1785581200.95349,
-          "seconds": 0.1092042499803938,
+          "ts_start": 1785594808.8146272,
+          "ts_end": 1785594809.139756,
+          "seconds": 0.3251301249838434,
           "source": "https://arxiv.org/pdf/0000.00000",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "FetchError",
           "error_message": "HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
         },
         {
-          "ts_start": 1785581200.9710011,
-          "ts_end": 1785581200.971148,
-          "seconds": 0.00014633301179856062,
+          "ts_start": 1785594809.171674,
+          "ts_end": 1785594809.171843,
+          "seconds": 0.00016929200501181185,
           "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
-          "pid": 97196,
+          "pid": 7503,
           "chars": 0,
           "sha256": null,
           "error_type": "ExtractionError",
@@ -2146,9 +2356,17 @@
         }
       ],
       "converter_calls": 3,
-      "http_delta_requests": 39,
-      "http_delta_ollama_requests": 38,
+      "http_delta_requests": 41,
+      "http_delta_ollama_requests": 40,
       "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
         "checks": [
           {
             "field": "documents_enriched",
@@ -2176,6 +2394,20 @@
             "report": 0,
             "database": 0,
             "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
             "agrees": true
           }
         ],
@@ -2207,7 +2439,7 @@
       {
         "name": "gemma4:26b-nvfp4",
         "model": "gemma4:26b-nvfp4",
-        "size": 26144545396,
+        "size": 26321754740,
         "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
         "details": {
           "parent_model": "",
@@ -2217,28 +2449,9 @@
           "parameter_size": "",
           "quantization_level": "nvfp4"
         },
-        "expires_at": "2026-08-01T18:56:33.297502+08:00",
-        "size_vram": 26144545396,
+        "expires_at": "2026-08-01T22:43:49.456418+08:00",
+        "size_vram": 26321754740,
         "context_length": 131072
-      },
-      {
-        "name": "embeddinggemma:latest",
-        "model": "embeddinggemma:latest",
-        "size": 673028505,
-        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
-        "details": {
-          "parent_model": "",
-          "format": "gguf",
-          "family": "gemma3",
-          "families": [
-            "gemma3"
-          ],
-          "parameter_size": "307.58M",
-          "quantization_level": "BF16"
-        },
-        "expires_at": "2026-08-01T18:52:01.118085+08:00",
-        "size_vram": 673028505,
-        "context_length": 2048
       }
     ]
   },

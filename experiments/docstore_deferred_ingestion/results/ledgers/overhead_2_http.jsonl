@@ -1,2 +1,2 @@
-{"ts_start": 1785581500.753866, "ts_end": 1785581500.8779662, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "in_flight_at_start": 1, "status": 200, "error_type": null}
-{"ts_start": 1785581501.547776, "ts_end": 1785581502.319121, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 1, "status": 200, "error_type": null}
+{"ts_start": 1785595135.6374779, "ts_end": 1785595135.7647018, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "global_depth_at_start": 1, "in_flight_at_start_path": 1, "status": 200, "error_type": null}
+{"ts_start": 1785595136.430277, "ts_end": 1785595137.3883772, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "global_depth_at_start": 1, "in_flight_at_start_path": 1, "status": 200, "error_type": null}
