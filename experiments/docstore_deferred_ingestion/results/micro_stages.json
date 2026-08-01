@@ -1,0 +1,238 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.micro_stages/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T10:02:16.876133+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "database": "dfr_main",
+  "arxiv_id": "1412.6980v9",
+  "doc_id": "e1c3e89b-3b9f-41fe-abcb-8c73277e3a8d",
+  "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+  "markdown_chars": 38978,
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26295503476,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T18:02:33.0323+08:00",
+        "size_vram": 26295503476,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T18:02:33.157288+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/micro_http.jsonl",
+    "requests_total": 38,
+    "requests_by_path": {
+      "/v1/chat/completions": 26,
+      "/api/embeddings": 10,
+      "/api/embed": 2
+    },
+    "max_in_flight": 7,
+    "max_in_flight_by_path": {
+      "/v1/chat/completions": 1,
+      "/api/embeddings": 7,
+      "/api/embed": 1
+    },
+    "latency_seconds": {
+      "n": 38,
+      "min": 0.08773922920227051,
+      "median": 7.552006006240845,
+      "max": 24.043227910995483,
+      "sum": 282.71350288391113
+    }
+  },
+  "n_chunks": 25,
+  "chunk_chars": [
+    121,
+    1126,
+    2681,
+    1946,
+    1702,
+    2391,
+    2039,
+    3249,
+    2768,
+    596,
+    2061,
+    1786,
+    2782,
+    1440,
+    17,
+    1753,
+    557,
+    735,
+    761,
+    515,
+    13,
+    2746,
+    1460,
+    16,
+    3717
+  ],
+  "doc_metadata_title": "Introduction of the Adam stochastic optimization method",
+  "timings_seconds": {
+    "extract_document_metadata": 19.15176145802252,
+    "extract_units": 0.29368558299029246,
+    "units_to_chunks": 0.0005583750025834888,
+    "embed_batch": 0.5905179590045009,
+    "extract_chunk_metadata_sequential": 262.87528566698893,
+    "embed_doc_level": 0.21047170797828585
+  },
+  "sequential_total_seconds": 283.1222807499871,
+  "per_chunk_seconds": [
+    4.9930946250096895,
+    8.299684041994624,
+    10.636985000019195,
+    10.260450082976604,
+    6.740346333011985,
+    6.517112250003265,
+    10.093882790999487,
+    8.154828041006112,
+    17.62047958400217,
+    17.49836354199215,
+    17.32063004199881,
+    13.111212999996496,
+    12.681085208983859,
+    11.788036082987674,
+    6.571900167007698,
+    11.160524666978745,
+    6.34917050000513,
+    7.577536583994515,
+    7.585466416028794,
+    11.652309290977428,
+    3.7154473749978933,
+    24.068296915997053,
+    14.149182833003579,
+    3.3386898750031833,
+    10.990549124981044
+  ],
+  "per_chunk_seconds_stats": {
+    "n": 25,
+    "min": 3.3386898750031833,
+    "median": 10.260450082976604,
+    "max": 24.068296915997053,
+    "sum": 262.8752643739572
+  },
+  "doc_embedding_error": null,
+  "doc_embedding_note": "recorded, not swallowed: in the shipped pipeline _embed_doc_level catches exactly this and logs at INFO, which is why claim (e) is stated over chunk embeddings",
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26198837876,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T18:07:16.639428+08:00",
+        "size_vram": 26198837876,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T18:07:16.850884+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "limitation": "the in-pipeline comparison gathers three workloads across two models, so a ratio near 1.0 is decisive but ~1.3 is ambiguous between fan-out gain and embed/LLM overlap \u2014 read the latency distribution alongside",
+  "in_pipeline_enrichment_seconds": 265.2238449580036,
+  "concurrency_speedup": 1.0674842633203572,
+  "max_in_flight_llm": 1,
+  "max_in_flight_embeddings": 7,
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "concurrency_speedup",
+      "passed": null,
+      "measured": 1.0674842633203572,
+      "expected": null,
+      "detail": "sum(sequential components) / in-pipeline seconds for the same document. ~1.0 means _INGEST_CONCURRENCY=5 is decoration against an Ollama that serialises same-model calls, and the honest optimisation is fewer/larger chunks or a smaller extraction model"
+    },
+    {
+      "hypothesis": "max_in_flight_sequential_arm",
+      "passed": null,
+      "measured": 7,
+      "expected": null,
+      "detail": "whole-ledger peak, INCLUDING concurrency created inside callees"
+    },
+    {
+      "hypothesis": "max_in_flight_by_path",
+      "passed": null,
+      "measured": {
+        "/v1/chat/completions": 1,
+        "/api/embeddings": 7,
+        "/api/embed": 1
+      },
+      "expected": null,
+      "detail": "peak concurrency attributed to the endpoint that produced it"
+    },
+    {
+      "hypothesis": "micro_stages/sequential",
+      "passed": true,
+      "measured": 1,
+      "expected": "<= 1",
+      "detail": "the sequential baseline is only a baseline if the LLM calls it prices really were issued one at a time"
+    },
+    {
+      "hypothesis": "embedding_fanout_observed",
+      "passed": null,
+      "measured": 7,
+      "expected": null,
+      "detail": "FINDING, not a harness artefact: core.embeddings.make_embedder gathers up to Semaphore(8) concurrent /api/embeddings calls inside the chunker's embedding_fn, and it uses the single-prompt /api/embeddings endpoint rather than the batched /api/embed array. Ollama serialises same-model calls, so this fan-out buys little while contradicting the project's one-inference-at-a-time rule. Reported here; NOT changed by this experiment, because it is shared core infrastructure unrelated to the deferred-ingestion queue under test"
+    }
+  ]
+}

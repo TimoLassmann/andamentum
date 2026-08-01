@@ -1,0 +1,154 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.gate_llm/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T09:18:45.646109+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "gate_text_chars": 2985,
+  "gate_text_sha256": "d0422f81608d9b9d0089f9356e139209a5aa30bf037f61c565944feea754da64",
+  "resolved_ollama_base_url": "http://localhost:11434/v1",
+  "llm_model": "ollama:gemma4:26b-nvfp4",
+  "embedding_model": "embeddinggemma:latest",
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26067311220,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T17:20:51.995358+08:00",
+        "size_vram": 26067311220,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T17:20:49.870716+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "extract_chunk_metadata_seconds": 11.710577582998667,
+  "embed_batch_seconds": 0.12026620798860677,
+  "embedding_dimensions": 768,
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/gate_http.jsonl",
+    "requests_total": 2,
+    "requests_by_path": {
+      "/v1/chat/completions": 1,
+      "/api/embed": 1
+    },
+    "max_in_flight": 1,
+    "max_in_flight_by_path": {
+      "/v1/chat/completions": 1,
+      "/api/embed": 1
+    },
+    "latency_seconds": {
+      "n": 2,
+      "min": 0.11927676200866699,
+      "median": 11.057041883468628,
+      "max": 11.057041883468628,
+      "sum": 11.176318645477295
+    }
+  },
+  "topics": [
+    "deferred ingestion",
+    "capture and enrichment architecture",
+    "state-driven job scheduling"
+  ],
+  "topics_count": 3,
+  "people": [],
+  "has_decision": false,
+  "has_action_item": false,
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26469374580,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T17:23:45.47175+08:00",
+        "size_vram": 26469374580,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T17:23:45.623223+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-G",
+      "passed": true,
+      "measured": 3,
+      "expected": ">= 1 topic",
+      "detail": "Empty topics here means extraction.py caught a provider error and returned defaults. Every downstream enrichment measurement would be of a degraded path."
+    },
+    {
+      "hypothesis": "H-G/embedding",
+      "passed": true,
+      "measured": 768,
+      "expected": "> 0 dimensions",
+      "detail": "the embedding backend must actually return a vector"
+    },
+    {
+      "hypothesis": "gate_latency_seconds",
+      "passed": null,
+      "measured": {
+        "extract_chunk_metadata": 11.710577582998667,
+        "embed_batch": 0.12026620798860677
+      },
+      "expected": null,
+      "detail": "a sub-second extract_chunk_metadata is itself the signature of the swallowed-provider-error failure mode"
+    }
+  ]
+}

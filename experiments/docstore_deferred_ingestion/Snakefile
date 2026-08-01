@@ -1,0 +1,785 @@
+# Snakefile — docstore deferred-ingestion validation on the REAL path
+# ====================================================================
+#
+# ONE-COMMAND RUN, FROM THE REPO ROOT:
+#
+#     uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile \
+#         --cores 1 --resources ollama=1 --printshellcmds
+#
+# `--cores 1` IS A CORRECTNESS CONSTRAINT, NOT AN OPTIMISATION HINT.
+# Ollama serialises same-model calls, and this project forbids concurrent local
+# inference. Every rule that drives a model additionally declares `threads: 1`
+# and `resources: ollama=1`, so even a mistyped `--cores 4` cannot co-schedule
+# two inference rules. Rules with no model traffic (fetch, convert_reference,
+# analyze, figures, report, manifest) carry no ollama resource.
+# `retries: 0` everywhere — a silent Snakemake retry would append to a ledger
+# twice and corrupt a count.
+#
+#
+# TWO ENVIRONMENT VARIABLES, EXPORTED BY EVERY STORE- OR MODEL-TOUCHING RULE
+# ==========================================================================
+#     DOCUMENT_STORE_DIR = {EXP}/dbs          # isolation from the user's real 'brain'
+#     OLLAMA_BASE_URL    = http://localhost:11434/v1
+#
+# The second is NOT optional. VERIFIED: without it,
+# extract_chunk_metadata(model="ollama:gemma4:26b-nvfp4") returns in 0.47 s with
+# EMPTY topics, having caught the pydantic-ai provider error inside
+# extraction.py, logged a warning, and returned DEFAULTS. With it, the same call
+# takes 10.85 s and returns populated topics. A drain in the first state reports
+# `documents_enriched` for every document while writing no LLM metadata at all.
+# `rule gate_llm` proves the wiring before any measurement runs, and EVERY
+# measurement rule takes its output as an input.
+#
+# Both are also re-asserted at import time inside scripts/_common.py, which
+# raises unless DOCUMENT_STORE_DIR is set AND resolves inside this experiment
+# directory. Belt and braces: the real store must be unreachable by
+# construction, not by remembering.
+#
+# DATABASE NAMING GOTCHA (verified in lifecycle.py): EPHEMERAL_PREFIXES =
+# ("ask_", "test_", "varfolders", "tmp") silently redirects such databases into
+# <DOCUMENT_STORE_DIR>/.ephemeral/. Every experiment database is therefore named
+# dfr_* — dfr_main, dfr_now, dfr_kill, dfr_pause, dfr_fail, dfr_empty.
+# fingerprint.py FAILS LOUD on a missing database file rather than emitting zeros.
+#
+#
+# ASCII DAG
+# =========
+#
+#   prereg ──────────────► results/preregistration.json   (thresholds AND scoring rules)
+#   provenance ──────────► results/provenance.json  (+ working_tree.patch when dirty)
+#   deviations ──────────► results/deviations.json  (the amendment trail)
+#   schemas ─────────────► results/SCHEMAS.json + SCHEMAS.md
+#         │
+#         ▼
+#   fetch_pdfs ──────────► data/pdfs/{id}.pdf (4) + data/REGISTRY.json
+#         │
+#         ▼
+#   verify_registry ─────► results/data_integrity.json      [sha256 gate, exits 1]
+#         │
+#         ▼
+#   convert_reference ───► data/markdown/{id}.md (4)
+#         │                results/conversion_baseline.json  [per-PDF harvest seconds]
+#         │
+#         ▼
+#   gate_llm ────────────► results/gate_llm.json    [BLOCKING: the LLM really enriches]
+#         │
+#         ├── LINEAGE MAIN  (dfr_main / dfr_now)   claims (a) (b) (e)
+#         │     claim_a_defer ──► results/claim_a_defer.json
+#         │           ▼
+#         │     claim_e_pre ────► results/claim_e_pre.json
+#         │           ▼
+#         │     claim_b_drain ──► results/claim_b_drain.json
+#         │           ▼
+#         │     claim_e_post ───► results/claim_e_post.json
+#         │           ▼
+#         │     micro_stages ───► results/micro_stages.json
+#         │
+#         ├── LINEAGE KILL  (dfr_kill)   claim (c) — the centrepiece
+#         │     claim_c_kill ───► results/claim_c_kill.json
+#         │           │           results/ledgers/kill_convert.jsonl   (created here)
+#         │           ▼
+#         │     claim_c_resume ─► results/claim_c_resume.json
+#         │                       results/ledgers/kill_convert.jsonl   (SAME FILE, appended
+#         │                         as a documented SIDE EFFECT — Snakemake refuses to let
+#         │                         two rules declare one output, so the rule declares a
+#         │                         verbatim copy, kill_convert.final.jsonl, instead)
+#         │
+#         ├── CLI SMOKE     (dfr_cli)    every subcommand through the console script
+#         │     cli_smoke ──────► results/cli_smoke.json
+#         │
+#         ├── LINEAGE PAUSE (dfr_pause + dfr_pause_full)  claim (d)
+#         │     claim_d_pause ──► results/claim_d_pause.json
+#         │
+#         ├── LINEAGE FAIL  (dfr_fail)   claim (f)
+#         │     claim_f_fail ───► results/claim_f_fail.json
+#         │
+#         └── drain_overhead (dfr_empty) ► results/drain_overhead.json
+#                           │
+#                           ▼
+#                   merge_events ──► results/events.jsonl, results/events.csv
+#                           ▼
+#                   analyze ──► results/claims.json, timings.csv, per_document.csv
+#                           ▼
+#                   validate_results ──► results/validation.json   [exits 1 on violation]
+#                           ▼
+#                   figures ──► figures/fig1..fig4.png
+#                           ▼
+#                   report ──► report.md (+ report.html)
+#                           ▼
+#                   manifest ──► results/MANIFEST.json
+#                           ▼
+#                   rule all
+#
+#
+# SEQUENCING NOTE — RESOURCE EDGES, NOT DATA EDGES
+# ================================================
+# The five lineages are logically INDEPENDENT but MUST NOT run concurrently
+# (Ollama). They are chained into ONE linear order by explicit ARTIFICIAL input
+# edges:
+#
+#     claim_c_kill   takes results/micro_stages.json
+#     cli_smoke      takes results/claim_c_resume.json
+#     claim_d_pause  takes results/cli_smoke.json
+#     claim_f_fail   takes results/claim_d_pause.json
+#     drain_overhead takes results/claim_f_fail.json
+#
+# These are RESOURCE edges. They exist so a single linear order is forced by the
+# DAG itself rather than by the operator remembering a flag.
+#
+# CONSEQUENCE, AND THE MITIGATION FOR IT: a failure in one lineage blocks
+# everything downstream. Every claim rule therefore writes its result JSON with
+# an explicit `verdict` field EVEN ON ASSERTION FAILURE and only THEN exits
+# non-zero — a failed claim leaves an inspectable artefact, never an empty
+# results directory.
+#
+#
+# MEASURED TIME BUDGET (derived, not guessed)
+# ===========================================
+# Measured during design: one extract_chunk_metadata call on gemma4:26b-nvfp4 =
+# 10.85 s at 4.3k chars; embed_batch of 12x2000 chars = 0.31 s warm. A ~50k-char
+# paper chunks to ~13-15 units at target_max_chars=4000, so one full enrichment
+# is ~15 chunk calls + 1 doc-metadata call ~= 3-4 min. Docling ~20-40 s/PDF.
+#
+#   convert_reference (4 PDFs + 1 warm repeat, no LLM)            ~3 min
+#   gate_llm                                                      ~1 min
+#   LINEAGE MAIN: 5 enrichments + 1 'now' control + probes        ~19 min
+#   micro_stages (1 paper, sequential)                            ~4 min
+#   LINEAGE KILL: 3 conversions + ~4 enrichment attempts          ~14 min
+#   cli_smoke: 6 subcommands, 2 capped 1-document drains          ~3 min
+#   LINEAGE PAUSE: 1 conversion + 6 short enrichments + 2 CLI arms
+#                  (arm 5 commits ONE FULL-SIZE document)         ~15 min
+#   LINEAGE FAIL: 2 conversions + ~3 enrichments + 8 fast fails   ~8 min
+#   drain_overhead + analysis + figures + report                  ~3 min
+#                                                                 --------
+#                                                                 ~70 min
+#
+# Nothing else may use Ollama for the duration. Every rule caches its output, so
+# a partial run resumes rather than restarting.
+
+
+import os
+
+EXP       = "experiments/docstore_deferred_ingestion"
+SCRIPTS   = "experiments.docstore_deferred_ingestion.scripts"
+DATA      = f"{EXP}/data"
+RESULTS   = f"{EXP}/results"
+LEDGERS   = f"{RESULTS}/ledgers"
+FIGS      = f"{EXP}/figures"
+BENCH     = f"{EXP}/bench"
+DBS       = os.path.abspath(f"{EXP}/dbs")
+
+# The ENV prefix. Prepended to EVERY store- or model-touching shell command.
+ENV = (
+    f"DOCUMENT_STORE_DIR={DBS} "
+    "OLLAMA_BASE_URL=http://localhost:11434/v1 "
+)
+
+# Version-pinned arXiv ids. Must match scripts/corpus.py and config.yaml.
+ARXIV_IDS = ["1706.03762v7", "1810.04805v2", "1512.03385v1", "1412.6980v9"]
+
+PDFS     = [f"{DATA}/pdfs/{aid}.pdf" for aid in ARXIV_IDS]
+MARKDOWN = [f"{DATA}/markdown/{aid}.md" for aid in ARXIV_IDS]
+
+# Everything below gate_llm depends on it — that is what makes it structurally
+# impossible to measure a drain through a mis-wired provider.
+GATE = f"{RESULTS}/gate_llm.json"
+PROV = f"{RESULTS}/provenance.json"
+PREREG = f"{RESULTS}/preregistration.json"
+
+FIGURES = [
+    f"{FIGS}/fig1_stage_timeline.png",
+    f"{FIGS}/fig2_retrieval_recall_pre_vs_post.png",
+    f"{FIGS}/fig3_stop_cost_by_mode.png",
+    f"{FIGS}/fig4_enrichment_attribution.png",
+]
+
+
+rule all:
+    """Default target: the report, the manifest, and everything they depend on."""
+    input:
+        f"{RESULTS}/MANIFEST.json",
+        f"{EXP}/report.md",
+        f"{RESULTS}/validation.json",
+        f"{RESULTS}/SCHEMAS.md",
+        f"{RESULTS}/deviations.json",
+
+
+rule deviations:
+    """The amendment trail. Every post-hoc change, with the direction it could cut.
+
+    A DECLARED ARTEFACT so `validate_results` fails the run if it goes missing —
+    a pre-registration editable after the fact with no trail provides the
+    appearance of the guarantee rather than the guarantee."""
+    input:
+        PROV,
+    output:
+        f"{RESULTS}/deviations.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/deviations.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.deviations"
+
+
+# ---------------------------------------------------------------------------
+# Pre-registration, provenance, schemas — no measurement, no model
+# ---------------------------------------------------------------------------
+
+
+rule prereg:
+    """Every hypothesis + numeric threshold + falsifier, BEFORE any measurement.
+
+    Depends on provenance only so the pre-registration carries the run's real
+    run_id — no measurement has happened at this point."""
+    input:
+        PROV,
+    output:
+        PREREG,
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/prereg.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.prereg"
+
+
+rule provenance:
+    """run_id, git, versions, uv.lock sha256, and BOTH pinned model digests.
+
+    FAILS LOUD if either pinned model is absent from ollama /api/tags: an
+    experiment that silently runs against a model it did not intend has no
+    measurement at all."""
+    output:
+        PROV,
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/provenance.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.provenance"
+
+
+rule schemas:
+    """SCHEMAS.json (validator) + SCHEMAS.md (human table) from ONE definition."""
+    input:
+        PROV,
+    output:
+        f"{RESULTS}/SCHEMAS.json",
+        f"{RESULTS}/SCHEMAS.md",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/schemas.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.schemas"
+
+
+# ---------------------------------------------------------------------------
+# Data acquisition + integrity gate
+# ---------------------------------------------------------------------------
+
+
+rule fetch_pdfs:
+    """ONE rule producing ALL four PDFs — not a wildcard rule.
+
+    Downloads stay strictly sequential with a polite delay regardless of --cores.
+    The arXiv API is blocked here and is never used; direct VERSIONED PDF URLs
+    are. Re-fetch: matching sha256 -> skip; MISMATCH -> RegistryDriftError."""
+    input:
+        PROV,
+    output:
+        PDFS,
+        f"{DATA}/REGISTRY.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/fetch_pdfs.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.fetch_pdfs"
+
+
+rule verify_registry:
+    """Re-hash every registered PDF; EXIT 1 on drift.
+
+    Every measurement rule takes this output as an input, so Snakemake — not
+    operator discipline — is the gate."""
+    input:
+        f"{DATA}/REGISTRY.json",
+        PDFS,
+    output:
+        f"{RESULTS}/data_integrity.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/verify_registry.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.verify_registry"
+
+
+rule convert_reference:
+    """Standalone harvest.extract per PDF. No LLM; heavy CPU; Docling stderr is noisy.
+
+    Supplies the markdown corpus for LINEAGE MAIN and the per-PDF conversion-cost
+    constant for checkpoint_savings_seconds. A conversion exceeding the configured
+    timeout RAISES."""
+    input:
+        f"{RESULTS}/data_integrity.json",
+    output:
+        MARKDOWN,
+        f"{RESULTS}/conversion_baseline.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/convert_reference.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.convert_reference"
+
+
+# ---------------------------------------------------------------------------
+# THE BLOCKING GATE
+# ---------------------------------------------------------------------------
+
+
+rule gate_llm:
+    """H-G. Exactly two sequential Ollama calls; asserts non-empty topics.
+
+    Runs before every measurement rule, and every measurement rule declares this
+    output as an input."""
+    input:
+        f"{RESULTS}/data_integrity.json",
+        PREREG,
+    output:
+        GATE,
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/gate_llm.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.gate_llm"
+
+
+# ---------------------------------------------------------------------------
+# LINEAGE MAIN — claims (a) (b) (e), databases dfr_main / dfr_now
+# ---------------------------------------------------------------------------
+
+
+rule claim_a_defer:
+    """H-a1..H-a5. Defer is LLM-free (transport AND persisted state), fast, findable."""
+    input:
+        GATE,
+        MARKDOWN,
+        f"{RESULTS}/conversion_baseline.json",
+    output:
+        f"{RESULTS}/claim_a_defer.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_a_defer.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_a_defer"
+
+
+rule claim_e_pre:
+    """Claim (e) CONTROL arm + the search()-auto_repair tripwire."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_a_defer.json",
+    output:
+        f"{RESULTS}/claim_e_pre.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_e_pre.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_e_pre"
+
+
+rule claim_b_drain:
+    """H-b. max_docs=2 -> unrestricted -> a THIRD drain that must be a genuine no-op."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_e_pre.json",
+    output:
+        f"{RESULTS}/claim_b_drain.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_b_drain.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_b_drain"
+
+
+rule claim_e_post:
+    """H-e1/H-e2. The same probes after the drain + structural completeness."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_b_drain.json",
+    output:
+        f"{RESULTS}/claim_e_post.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_e_post.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_e_post"
+
+
+rule micro_stages:
+    """Sequential attribution of enrichment + the Semaphore(5) fan-out ratio.
+
+    Reads ONE already-converted paper's markdown back OUT of dfr_main — no
+    re-conversion, no re-ingest."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_e_post.json",
+    output:
+        f"{RESULTS}/micro_stages.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/micro_stages.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.micro_stages"
+
+
+# ---------------------------------------------------------------------------
+# LINEAGE KILL — claim (c), database dfr_kill.  THE CENTREPIECE.
+# ---------------------------------------------------------------------------
+
+
+rule claim_c_kill:
+    """SIGKILL a real drain the instant the conversion checkpoint should hold.
+
+    RESOURCE EDGE: takes micro_stages.json purely to serialise Ollama access.
+    Deliberately SIGKILL, not SIGTERM — a cooperative stop structurally cannot
+    leave a converted-but-unenriched document (all three stop conditions are
+    checked at the TOP of the loop iteration, and a source is converted AND
+    enriched inside one iteration)."""
+    input:
+        GATE,
+        f"{RESULTS}/micro_stages.json",   # RESOURCE EDGE (Ollama serialisation)
+        PDFS,
+    output:
+        f"{RESULTS}/claim_c_kill.json",
+        f"{LEDGERS}/kill_convert.jsonl",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_c_kill.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_c_kill"
+
+
+rule cli_smoke:
+    """The CLI surface: every subcommand, through the venv console script.
+
+    Until this rule existed, exactly ONE of six subcommands had ever run against a
+    real database. Everything here is LLM-free except two capped `process-pending`
+    drains of ONE truncated document each, so it is cheap — but it still declares
+    the ollama resource, because those two do drive the model.
+
+    RESOURCE EDGE: takes claim_c_resume.json purely to serialise Ollama access."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_c_resume.json",   # RESOURCE EDGE
+        f"{RESULTS}/conversion_baseline.json",
+        PDFS,
+    output:
+        f"{RESULTS}/cli_smoke.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/cli_smoke.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.cli_smoke"
+
+
+rule claim_c_resume:
+    """Resume in a FRESH process. H-c1/H-c2/H-c3/H-d4 + the checkpoint's price.
+
+    LEDGER OWNERSHIP — a deliberate deviation from the design sketch, forced by
+    Snakemake. The sketch had this rule declare kill_convert.jsonl as BOTH input
+    and output; Snakemake refuses (AmbiguousRuleException — two rules cannot
+    produce one file). So the ledger stays claim_c_kill's output and this rule
+    declares it as an INPUT that it APPENDS to as a documented side effect. It is
+    the single exception to the 'every rule truncates its own ledgers' rule.
+
+    RE-RUN SAFETY, since Snakemake can no longer protect this: the script FAILS
+    LOUD if the ledger already holds the full expected count, telling you to
+    re-run from claim_c_kill rather than silently appending a second time and
+    corrupting the count. A copy of the final ledger is emitted as a declared
+    output so the DAG still owns an immutable record of the end state."""
+    input:
+        f"{RESULTS}/claim_c_kill.json",
+        f"{LEDGERS}/kill_convert.jsonl",
+        f"{RESULTS}/conversion_baseline.json",
+    output:
+        f"{RESULTS}/claim_c_resume.json",
+        f"{LEDGERS}/kill_convert.final.jsonl",   # verbatim copy of the end state
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_c_resume.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_c_resume"
+
+
+# ---------------------------------------------------------------------------
+# LINEAGE PAUSE — claim (d), database dfr_pause
+# ---------------------------------------------------------------------------
+
+
+rule claim_d_pause:
+    """Four cooperative stop mechanisms, all stopping BETWEEN documents.
+
+    RESOURCE EDGE: takes claim_c_resume.json purely to serialise Ollama access."""
+    input:
+        GATE,
+        f"{RESULTS}/cli_smoke.json",   # RESOURCE EDGE
+        f"{RESULTS}/conversion_baseline.json",
+        PDFS,
+    output:
+        f"{RESULTS}/claim_d_pause.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_d_pause.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_d_pause"
+
+
+# ---------------------------------------------------------------------------
+# LINEAGE FAIL — claim (f), database dfr_fail
+# ---------------------------------------------------------------------------
+
+
+rule claim_f_fail:
+    """H-f1/H-f2. Four REAL failure modes, no monkeypatching.
+
+    Contacts the real arxiv.org exactly once per drain for the 404 case, with a
+    polite sleep. NOT a localhost URL — core.url_safety's SSRF guard would reject
+    that for a different reason than the one under test.
+
+    RESOURCE EDGE: takes claim_d_pause.json purely to serialise Ollama access."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_d_pause.json",   # RESOURCE EDGE
+        PDFS,
+    output:
+        f"{RESULTS}/claim_f_fail.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/claim_f_fail.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.claim_f_fail"
+
+
+# ---------------------------------------------------------------------------
+# The preflight tax
+# ---------------------------------------------------------------------------
+
+
+rule drain_overhead:
+    """THREE FRESH PROCESSES against an EMPTY queue.
+
+    Fresh is mandatory: _stores and _preflight_done are module-level per-process
+    caches, so a repeat inside one process would measure zero.
+
+    RESOURCE EDGE: takes claim_f_fail.json purely to serialise Ollama access."""
+    input:
+        GATE,
+        f"{RESULTS}/claim_f_fail.json",   # RESOURCE EDGE
+    output:
+        f"{RESULTS}/drain_overhead.json",
+    threads: 1
+    resources:
+        ollama=1,
+    retries: 0
+    benchmark:
+        f"{BENCH}/drain_overhead.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.drain_overhead"
+
+
+# ---------------------------------------------------------------------------
+# Analysis, validation, figures, report, manifest — no model traffic
+# ---------------------------------------------------------------------------
+
+
+rule merge_events:
+    """Concatenate the per-rule event logs in rule order -> JSONL + flat CSV."""
+    input:
+        f"{RESULTS}/drain_overhead.json",
+    output:
+        f"{RESULTS}/events.jsonl",
+        f"{RESULTS}/events.csv",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/merge_events.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.merge_events"
+
+
+rule analyze:
+    """Score every hypothesis against its PRE-REGISTERED threshold. Never a new one.
+
+    The softening rule is read from PREREG too — analyze can no more invent a
+    scoring rule than it can invent a threshold, and it RAISES on a prereg file
+    with no `scoring_rules` block."""
+    input:
+        PREREG,
+        f"{RESULTS}/events.jsonl",
+        f"{RESULTS}/cli_smoke.json",
+        f"{RESULTS}/claim_a_defer.json",
+        f"{RESULTS}/claim_e_pre.json",
+        f"{RESULTS}/claim_b_drain.json",
+        f"{RESULTS}/claim_e_post.json",
+        f"{RESULTS}/micro_stages.json",
+        f"{RESULTS}/claim_c_kill.json",
+        f"{RESULTS}/claim_c_resume.json",
+        f"{RESULTS}/claim_d_pause.json",
+        f"{RESULTS}/claim_f_fail.json",
+        f"{RESULTS}/drain_overhead.json",
+    output:
+        f"{RESULTS}/claims.json",
+        f"{RESULTS}/timings.csv",
+        f"{RESULTS}/per_document.csv",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/analyze.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.analyze"
+
+
+rule figures:
+    """Four figures. Each is drawn inside its own try/except so a plotting
+    problem can never hide a measured result."""
+    input:
+        f"{RESULTS}/claims.json",
+        f"{RESULTS}/timings.csv",
+    output:
+        FIGURES,
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/figures.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.make_figures"
+
+
+rule report:
+    """report.md from the measured artefacts, then report.html via andamentum-typeset."""
+    input:
+        f"{RESULTS}/claims.json",
+        FIGURES,
+    output:
+        f"{EXP}/report.md",
+        f"{EXP}/report.html",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/report.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.build_report && "
+        f"uv run andamentum-typeset {EXP}/report.md --style report -o {EXP}/report.html"
+
+
+rule validate_results:
+    """Schema + referential integrity over every results JSON. EXITS 1 on violation."""
+    input:
+        f"{RESULTS}/SCHEMAS.json",
+        f"{RESULTS}/claims.json",
+        f"{RESULTS}/deviations.json",
+        f"{EXP}/report.md",
+        FIGURES,
+    output:
+        f"{RESULTS}/validation.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/validate_results.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.validate_results"
+
+
+rule manifest:
+    """sha256 + producing rule + schema for every artefact."""
+    input:
+        f"{RESULTS}/validation.json",
+        f"{EXP}/report.md",
+        FIGURES,
+    output:
+        f"{RESULTS}/MANIFEST.json",
+    threads: 1
+    retries: 0
+    benchmark:
+        f"{BENCH}/manifest.tsv"
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.manifest"
+
+
+# ---------------------------------------------------------------------------
+# NOT IN `all`
+# ---------------------------------------------------------------------------
+
+
+rule archive:
+    """Copy results/ figures/ bench/ report.* verbatim into runs/<run_id>/.
+
+    results/ is flat (house style), so a re-run overwrites; archiving is how
+    history survives. Not a dependency of `all` — call it explicitly, or let
+    run.sh call it as the final step."""
+    input:
+        f"{RESULTS}/MANIFEST.json",
+    shell:
+        f"{ENV} uv run python -m {SCRIPTS}.manifest --archive"
+
+
+rule clean_dbs:
+    """The deliberate clean-slate reset. Removes dbs/ only — data/ is kept."""
+    shell:
+        f"rm -rf {EXP}/dbs && echo 'removed {EXP}/dbs'"
+
+
+rule clean:
+    """FULL reset: everything a re-run must regenerate.
+
+    WHY THIS EXISTS. `results/`, `figures/` and `report.*` are committed evidence,
+    so a stranger who clones this and types the README's one command gets
+    "Nothing to be done (all requested files are present and up to date)" — the
+    shipped answer, with nothing executed. There was no documented way to force a
+    fresh run and `clean_dbs` removes only the databases.
+
+    `data/` is NOT removed: the PDFs are checksum-guarded by data/REGISTRY.json,
+    and re-downloading them on every run would be rude to arxiv.org. To re-run
+    only the analysis chain instead, delete results/claims.json."""
+    shell:
+        f"rm -rf {RESULTS} {FIGS} {BENCH} {EXP}/dbs {EXP}/logs "
+        f"{EXP}/report.md {EXP}/report.html && "
+        "echo 'removed results/ figures/ bench/ dbs/ logs/ report.* — data/ kept'"

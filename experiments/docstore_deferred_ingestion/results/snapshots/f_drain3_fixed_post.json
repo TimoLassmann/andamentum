@@ -1,0 +1,143 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.snapshot/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T10:46:40.762819+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "label": "f_drain3_fixed_post",
+  "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
+  "logical_fingerprint": "218e4e8c5464b3d1eb1b18c20308eac6967eaf62ff4412f4baf9bb49b657c005",
+  "status_counts": {
+    "pending_source": 0,
+    "pending_enrich": 0,
+    "complete": 2,
+    "failed": 3
+  },
+  "n_documents": 5,
+  "documents": [
+    {
+      "doc_uuid": "2316cd43-239f-499d-a04e-19259cbc625d",
+      "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "ingest_status": "complete",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T10:41:59.719026+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+      "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "n_chunks": 25,
+      "n_chunk_embeddings": 25,
+      "has_doc_embedding": true,
+      "metadata_keys": [
+        "arm",
+        "created_at",
+        "people",
+        "projects"
+      ],
+      "llm_metadata_populated": true,
+      "created_date": "2026-08-01T10:37:20.597343+00:00",
+      "updated_date": "2026-08-01T18:37:55.472061"
+    },
+    {
+      "doc_uuid": "429423a3-a020-4d26-992e-75c353e365ab",
+      "dc_title": "garbage.pdf",
+      "ingest_status": "failed",
+      "ingest_error": "ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.",
+      "ingest_updated_at": "2026-08-01T10:46:40.585839+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T10:37:20.600389+00:00",
+      "updated_date": "2026-08-01T10:37:20.600389+00:00"
+    },
+    {
+      "doc_uuid": "4b1e4ff2-df24-4c53-9806-fb14c81016d3",
+      "dc_title": "whitespace_only.md",
+      "ingest_status": "failed",
+      "ingest_error": "ExtractionError: source file:///Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md is empty  attempted: plain",
+      "ingest_updated_at": "2026-08-01T10:46:40.720333+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T10:37:23.613204+00:00",
+      "updated_date": "2026-08-01T10:37:23.613204+00:00"
+    },
+    {
+      "doc_uuid": "aedd583e-7c71-492c-b02a-ca479969f9f9",
+      "dc_title": "0000.00000",
+      "ingest_status": "failed",
+      "ingest_error": "FetchError: HTTP fetch failed for https://arxiv.org/pdf/0000.00000: Client error '404 Not Found' for url 'https://arxiv.org/pdf/0000.00000'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+      "ingest_updated_at": "2026-08-01T10:46:40.703820+00:00",
+      "source_file_path": "https://arxiv.org/pdf/0000.00000",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T10:37:20.601749+00:00",
+      "updated_date": "2026-08-01T10:37:20.601749+00:00"
+    },
+    {
+      "doc_uuid": "decb2a6f-48bc-4f50-b5d2-3d56bee79ebc",
+      "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "ingest_status": "complete",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T10:46:40.569066+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+      "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "n_chunks": 25,
+      "n_chunk_embeddings": 25,
+      "has_doc_embedding": true,
+      "metadata_keys": [
+        "arm",
+        "created_at",
+        "mode",
+        "people",
+        "projects"
+      ],
+      "llm_metadata_populated": true,
+      "created_date": "2026-08-01T10:37:20.598831+00:00",
+      "updated_date": "2026-08-01T18:42:25.219505"
+    }
+  ],
+  "file_advisory": {
+    "advisory_only": true,
+    "file_bytes": 7024640,
+    "file_sha256": "05ab9ab296e31a5e8c2a0d14ee595b9242a03e8a0afba4eb6ce9b4d950bc0008",
+    "page_count": 1715,
+    "journal_mode": "wal",
+    "sidecars": {
+      "-wal": 0,
+      "-shm": 32768
+    }
+  }
+}

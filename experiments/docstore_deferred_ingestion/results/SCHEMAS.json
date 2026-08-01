@@ -1,0 +1,1156 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.schemas/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:39:59.039653+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "envelope": [
+    {
+      "name": "schema",
+      "type": "string",
+      "units": "-",
+      "meaning": "the artefact's schema id"
+    },
+    {
+      "name": "schema_version",
+      "type": "string",
+      "units": "-",
+      "meaning": "the experiment-wide schema generation"
+    },
+    {
+      "name": "written_at",
+      "type": "ISO-8601 UTC",
+      "units": "-",
+      "meaning": "when this file was written"
+    },
+    {
+      "name": "provenance_ref",
+      "type": "object",
+      "units": "-",
+      "meaning": "{run_id, file, sha256} pointing at results/provenance.json"
+    }
+  ],
+  "artefacts": {
+    "results/preregistration.json": {
+      "schema": "andamentum.experiment.docstore_deferred.preregistration/1",
+      "produced_by": "prereg",
+      "description": "Every hypothesis with its numeric threshold and falsifier, written before any measurement exists. analyze.py may only compare against this file.",
+      "required": [
+        "hypotheses",
+        "n_hypotheses"
+      ],
+      "fields": [
+        {
+          "name": "hypotheses[].id",
+          "type": "string",
+          "units": "-",
+          "meaning": "hypothesis id, e.g. H-c2"
+        },
+        {
+          "name": "hypotheses[].claim",
+          "type": "string",
+          "units": "-",
+          "meaning": "which lettered claim it belongs to"
+        },
+        {
+          "name": "hypotheses[].threshold",
+          "type": "object|null",
+          "units": "-",
+          "meaning": "{metric, op, value}"
+        },
+        {
+          "name": "hypotheses[].falsifier",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "what would flip it"
+        }
+      ]
+    },
+    "results/provenance.json": {
+      "schema": "andamentum.experiment.provenance/1",
+      "produced_by": "provenance",
+      "description": "Run identity: git, versions, model digests, machine, allowlisted env.",
+      "required": [
+        "run_id",
+        "git",
+        "machine",
+        "packages",
+        "ollama"
+      ],
+      "fields": [
+        {
+          "name": "run_id",
+          "type": "string",
+          "units": "-",
+          "meaning": "'<UTC ISO8601>-<git short sha>'"
+        },
+        {
+          "name": "ollama.pinned_models.<name>.digest",
+          "type": "string",
+          "units": "-",
+          "meaning": "THE load-bearing pin: the tag is mutable, the digest is not"
+        },
+        {
+          "name": "git.dirty",
+          "type": "bool",
+          "units": "-",
+          "meaning": "whether the working tree had uncommitted changes"
+        },
+        {
+          "name": "environment_allowlisted",
+          "type": "object",
+          "units": "-",
+          "meaning": "only DOCUMENT_STORE_DIR / OLLAMA_BASE_URL / TZ / LANG \u2014 never the full environ"
+        }
+      ]
+    },
+    "data/REGISTRY.json": {
+      "schema": "andamentum.experiment.docstore_deferred.registry/1",
+      "produced_by": "fetch_pdfs",
+      "description": "Per-paper input provenance. Committed; data/pdfs/ is gitignored.",
+      "required": [
+        "papers",
+        "registry_version"
+      ],
+      "fields": [
+        {
+          "name": "papers[].arxiv_id",
+          "type": "string",
+          "units": "-",
+          "meaning": "VERSIONED id, e.g. 1706.03762v7"
+        },
+        {
+          "name": "papers[].sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "content hash of the downloaded PDF"
+        },
+        {
+          "name": "papers[].bytes",
+          "type": "int",
+          "units": "bytes",
+          "meaning": "file size"
+        },
+        {
+          "name": "papers[].final_url",
+          "type": "string",
+          "units": "-",
+          "meaning": "URL after redirects"
+        },
+        {
+          "name": "papers[].etag",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "upstream ETag, when offered"
+        },
+        {
+          "name": "papers[].download_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "wall-clock of the fetch"
+        }
+      ]
+    },
+    "results/data_integrity.json": {
+      "schema": "andamentum.experiment.docstore_deferred.data_integrity/1",
+      "produced_by": "verify_registry",
+      "description": "Re-hash of every registered PDF. Exits 1 on drift.",
+      "required": [
+        "verdict",
+        "checks",
+        "n_failed"
+      ],
+      "fields": [
+        {
+          "name": "checks[].ok",
+          "type": "bool",
+          "units": "-",
+          "meaning": "sha256 and size both match the registry"
+        }
+      ]
+    },
+    "results/conversion_baseline.json": {
+      "schema": "andamentum.experiment.docstore_deferred.conversion_baseline/1",
+      "produced_by": "convert_reference",
+      "description": "Standalone harvest.extract per PDF: the markdown corpus, and the per-PDF conversion cost that prices the checkpoint.",
+      "required": [
+        "conversions",
+        "docling_version"
+      ],
+      "fields": [
+        {
+          "name": "conversions[].conversion_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "harvest.extract wall-clock"
+        },
+        {
+          "name": "conversions[].markdown_chars",
+          "type": "int",
+          "units": "characters",
+          "meaning": "extracted length"
+        },
+        {
+          "name": "conversions[].markdown_sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "valid WITHIN a docling version only \u2014 never compared across runs"
+        }
+      ]
+    },
+    "results/gate_llm.json": {
+      "schema": "andamentum.experiment.docstore_deferred.gate_llm/1",
+      "produced_by": "gate_llm",
+      "description": "H-G. The blocking precondition that the LLM really enriches.",
+      "required": [
+        "verdict",
+        "topics",
+        "topics_count",
+        "extract_chunk_metadata_seconds"
+      ],
+      "fields": [
+        {
+          "name": "topics_count",
+          "type": "int",
+          "units": "count",
+          "meaning": "non-empty is the pass condition"
+        },
+        {
+          "name": "extract_chunk_metadata_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "a sub-second value is the signature of the swallowed-provider-error path"
+        },
+        {
+          "name": "resolved_ollama_base_url",
+          "type": "string",
+          "units": "-",
+          "meaning": "what the process actually saw"
+        }
+      ]
+    },
+    "results/claim_a_defer.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_a/1",
+      "produced_by": "claim_a_defer",
+      "description": "H-a1..H-a5: defer is LLM-free, fast, findable \u2014 but not for sources.",
+      "required": [
+        "verdict",
+        "defer_records",
+        "defer_ollama_requests",
+        "defer_now_ratio"
+      ],
+      "fields": [
+        {
+          "name": "defer_ollama_requests",
+          "type": "int",
+          "units": "count",
+          "meaning": "MUST be 0 (H-a1)"
+        },
+        {
+          "name": "defer_median_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "median per-document defer cost"
+        },
+        {
+          "name": "defer_now_ratio",
+          "type": "float",
+          "units": "ratio",
+          "meaning": "t_defer / t_now \u2014 the portable claim"
+        },
+        {
+          "name": "source_probe.self_hits",
+          "type": "int",
+          "units": "count",
+          "meaning": "MUST be 0 (H-a5)"
+        }
+      ]
+    },
+    "results/claim_e_pre.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_e_pre/1",
+      "produced_by": "claim_e_pre",
+      "description": "Claim (e) control arm + the auto_repair tripwire.",
+      "required": [
+        "verdict",
+        "probes",
+        "pre_chunk_recall_at_3"
+      ],
+      "fields": [
+        {
+          "name": "pre_chunk_recall_at_3",
+          "type": "float",
+          "units": "0-1",
+          "meaning": "must be 0 \u2014 there are no chunks yet"
+        },
+        {
+          "name": "fingerprint_moved",
+          "type": "bool",
+          "units": "-",
+          "meaning": "tripwire: search()'s auto_repair must not drain"
+        }
+      ]
+    },
+    "results/claim_b_drain.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_b/1",
+      "produced_by": "claim_b_drain",
+      "description": "H-b: resumable, and a no-op drain is genuinely a no-op.",
+      "required": [
+        "verdict",
+        "drains",
+        "drain3_enriched",
+        "drain3_ollama_requests"
+      ],
+      "fields": [
+        {
+          "name": "drains[].fingerprint_pre",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "logical fingerprint before"
+        },
+        {
+          "name": "drains[].fingerprint_moved",
+          "type": "bool",
+          "units": "-",
+          "meaning": "did the meaning change"
+        },
+        {
+          "name": "drains[].reconciliation.n_mismatches",
+          "type": "int",
+          "units": "count",
+          "meaning": "H-x, must be 0"
+        },
+        {
+          "name": "drain3_ollama_requests",
+          "type": "int",
+          "units": "count",
+          "meaning": "the no-op drain's request count"
+        }
+      ]
+    },
+    "results/claim_e_post.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_e_post/1",
+      "produced_by": "claim_e_post",
+      "description": "H-e1/H-e2: the drain created semantic reachability.",
+      "required": [
+        "verdict",
+        "probes",
+        "post_chunk_recall_at_3",
+        "per_document"
+      ],
+      "fields": [
+        {
+          "name": "post_chunk_recall_at_3",
+          "type": "float",
+          "units": "0-1",
+          "meaning": "chunk-embedding recall@3 after"
+        },
+        {
+          "name": "doc_embedding_skip_rate",
+          "type": "float",
+          "units": "0-1",
+          "meaning": "MEASURED not asserted \u2014 _embed_doc_level swallows oversized input"
+        },
+        {
+          "name": "public_search_smoke",
+          "type": "object",
+          "units": "-",
+          "meaning": "RECORDED, never scored (LLM planner)"
+        }
+      ]
+    },
+    "results/micro_stages.json": {
+      "schema": "andamentum.experiment.docstore_deferred.micro_stages/1",
+      "produced_by": "micro_stages",
+      "description": "Sequential attribution of enrichment, and the fan-out ratio.",
+      "required": [
+        "verdict",
+        "timings_seconds",
+        "sequential_total_seconds"
+      ],
+      "fields": [
+        {
+          "name": "timings_seconds.<stage>",
+          "type": "float",
+          "units": "s",
+          "meaning": "per-component sequential cost"
+        },
+        {
+          "name": "concurrency_speedup",
+          "type": "float|null",
+          "units": "ratio",
+          "meaning": "sequential total / in-pipeline seconds; ~1.0 means Semaphore(5) is decoration"
+        },
+        {
+          "name": "per_chunk_seconds",
+          "type": "float[]",
+          "units": "s",
+          "meaning": "the unit of run-to-run variance"
+        }
+      ]
+    },
+    "results/claim_c_kill.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_c_kill/1",
+      "produced_by": "claim_c_kill",
+      "description": "The SIGKILL, the gate that opened it, and the post-kill truth.",
+      "required": [
+        "verdict",
+        "pre_kill_markdown_sha256",
+        "sqlite_integrity",
+        "hc4_window"
+      ],
+      "fields": [
+        {
+          "name": "pre_kill_markdown_sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "H-c2's before value"
+        },
+        {
+          "name": "sqlite_integrity.integrity_ok",
+          "type": "bool",
+          "units": "-",
+          "meaning": "H-c3"
+        },
+        {
+          "name": "hc4_window.observed",
+          "type": "bool",
+          "units": "-",
+          "meaning": "the two-transaction window, if seen"
+        }
+      ]
+    },
+    "results/claim_c_resume.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_c_resume/1",
+      "produced_by": "claim_c_resume",
+      "description": "H-c1/H-c2/H-c3/H-d4 and the checkpoint's price in seconds.",
+      "required": [
+        "verdict",
+        "ledger_entries",
+        "ledger_duplicates",
+        "markdown_sha_stable"
+      ],
+      "fields": [
+        {
+          "name": "ledger_entries",
+          "type": "int",
+          "units": "count",
+          "meaning": "MUST equal the number of sources"
+        },
+        {
+          "name": "ledger_duplicates",
+          "type": "string[]",
+          "units": "-",
+          "meaning": "MUST be empty"
+        },
+        {
+          "name": "markdown_sha_stable",
+          "type": "bool",
+          "units": "-",
+          "meaning": "H-c2, within one run only"
+        },
+        {
+          "name": "checkpoint_savings_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "conversion seconds not repeated, taken from THIS lineage's own converter-ledger entry. INCLUDES one-time Docling initialisation (that conversion was first in its process); the measured warm cost and docling_init_seconds sit in checkpoint_savings_basis so the marginal saving is legible"
+        },
+        {
+          "name": "repeated_enrichment_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "MEASURED on this lineage: killed_at minus the converter ledger's last ts_end \u2014 the enrichment the resume must redo. Previously this field copied micro_stages' sequential total, a different paper in a different database"
+        },
+        {
+          "name": "repeated_enrichment_over_conversion",
+          "type": "float",
+          "units": "ratio",
+          "meaning": "H-d4's second threshold: repeated enrichment must cost less than the conversion the checkpoint preserved"
+        },
+        {
+          "name": "reconciliation.n_mismatches",
+          "type": "int",
+          "units": "count",
+          "meaning": "H-x for the subprocess resume drain, which previously bypassed it"
+        }
+      ]
+    },
+    "results/claim_d_pause.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_d/1",
+      "produced_by": "claim_d_pause",
+      "description": "Four pause mechanisms, all stopping between documents.",
+      "required": [
+        "verdict",
+        "arms",
+        "pause_midstage_documents"
+      ],
+      "fields": [
+        {
+          "name": "pause_midstage_documents",
+          "type": "object[]",
+          "units": "-",
+          "meaning": "MUST be empty (H-d1). Union over EACH ARM'S OWN post-drain snapshot of rows that are 'failed' or carry chunk/chunk-embedding rows while not 'complete'. Computed per arm on purpose: the snapshot after the final unrestricted drain would have repaired exactly this"
+        },
+        {
+          "name": "pause_discarded_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "MEASURED: wall-clock each library arm spent after its last committed document, summed. Not a constant"
+        },
+        {
+          "name": "pause_discarded_document_fraction",
+          "type": "float",
+          "units": "ratio",
+          "meaning": "the worst arm's post-commit seconds over that drain's own longest single-document cost \u2014 H-d1's scored secondary threshold"
+        },
+        {
+          "name": "max_seconds.overrun_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "H-d2"
+        },
+        {
+          "name": "sigterm_to_exit_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "ARM 5: measured with an UNTRUNCATED document in flight. THIS is the number that sizes a launchd/cron shutdown grace period"
+        },
+        {
+          "name": "sigterm_to_exit_seconds_truncated",
+          "type": "float",
+          "units": "s",
+          "meaning": "ARM 4: the same measurement on a 6000-char truncation (~2 chunks). Reported for contrast ONLY \u2014 NOT operational guidance"
+        },
+        {
+          "name": "sigterm_in_flight_document",
+          "type": "object",
+          "units": "-",
+          "meaning": "size of the document arm 5 committed while the signal was in flight, which is what makes the latency interpretable"
+        }
+      ]
+    },
+    "results/claim_f_fail.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claim_f/1",
+      "produced_by": "claim_f_fail",
+      "description": "H-f1/H-f2: failures recorded and diagnosable; retry routes by stage.",
+      "required": [
+        "verdict",
+        "failure_fidelity",
+        "retry_returned",
+        "stage_test"
+      ],
+      "fields": [
+        {
+          "name": "failure_fidelity[].ingest_error",
+          "type": "string",
+          "units": "-",
+          "meaning": "verbatim error column"
+        },
+        {
+          "name": "failure_fidelity[].exception_type",
+          "type": "string",
+          "units": "-",
+          "meaning": "what a UI can match on"
+        },
+        {
+          "name": "stage_test_converter_calls",
+          "type": "int",
+          "units": "count",
+          "meaning": "ALL conversions in the stage-test drain, including the still-broken sources that correctly return to pending_source"
+        },
+        {
+          "name": "stage_test_converter_calls_good_doc",
+          "type": "int",
+          "units": "count",
+          "meaning": "conversions of the MARKDOWN-BEARING document \u2014 MUST be 0 (H-f2)"
+        }
+      ]
+    },
+    "results/drain_overhead.json": {
+      "schema": "andamentum.experiment.docstore_deferred.drain_overhead/1",
+      "produced_by": "drain_overhead",
+      "description": "The fixed preflight tax a cron-driven drain pays on every wake-up.",
+      "required": [
+        "verdict",
+        "median_seconds",
+        "median_ollama_requests"
+      ],
+      "fields": [
+        {
+          "name": "median_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "across three FRESH processes"
+        },
+        {
+          "name": "median_ollama_requests",
+          "type": "float",
+          "units": "count",
+          "meaning": "expected 2: 1 embed + 1 chat"
+        }
+      ]
+    },
+    "results/claims.json": {
+      "schema": "andamentum.experiment.docstore_deferred.claims/1",
+      "produced_by": "analyze",
+      "description": "One row per hypothesis: threshold, measured value, verdict.",
+      "required": [
+        "rows",
+        "n_pass",
+        "n_fail",
+        "n_inconclusive"
+      ],
+      "fields": [
+        {
+          "name": "rows[].id",
+          "type": "string",
+          "units": "-",
+          "meaning": "hypothesis id"
+        },
+        {
+          "name": "rows[].threshold",
+          "type": "object|null",
+          "units": "-",
+          "meaning": "READ FROM preregistration.json"
+        },
+        {
+          "name": "rows[].measured",
+          "type": "any",
+          "units": "-",
+          "meaning": "the observed value"
+        },
+        {
+          "name": "rows[].verdict",
+          "type": "string",
+          "units": "-",
+          "meaning": "PASS | FAIL | INCONCLUSIVE | OBSERVATION"
+        },
+        {
+          "name": "rows[].falsifier",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "what would have flipped it"
+        }
+      ]
+    },
+    "results/validation.json": {
+      "schema": "andamentum.experiment.docstore_deferred.validation/1",
+      "produced_by": "validate_results",
+      "description": "Schema + referential-integrity validation of every results file.",
+      "required": [
+        "verdict",
+        "violations"
+      ],
+      "fields": [
+        {
+          "name": "violations",
+          "type": "string[]",
+          "units": "-",
+          "meaning": "empty means valid; any entry exits 1"
+        }
+      ]
+    },
+    "results/events.jsonl": {
+      "schema": "andamentum.experiment.docstore_deferred.events/1",
+      "produced_by": "merge_events",
+      "description": "Every OBSERVED queue transition, concatenated in rule order. TRAP: documents_skipped uses `continue` WITHOUT incrementing `done`, so on_progress never fires for a skipped source and `done` can end below `total`.",
+      "required": [],
+      "fields": [
+        {
+          "name": "ts_utc",
+          "type": "float",
+          "units": "s since epoch",
+          "meaning": "wall-clock of the observation"
+        },
+        {
+          "name": "monotonic_s",
+          "type": "float",
+          "units": "s",
+          "meaning": "seconds since the rule started"
+        },
+        {
+          "name": "observer",
+          "type": "string",
+          "units": "-",
+          "meaning": "on_progress | poll | report"
+        },
+        {
+          "name": "from_status/to_status",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "the transition observed"
+        }
+      ]
+    },
+    "results/timings.csv": {
+      "schema": "andamentum.experiment.docstore_deferred.timings/1",
+      "produced_by": "analyze",
+      "description": "Per-rule cost roll-up.",
+      "required": [],
+      "fields": [
+        {
+          "name": "rule",
+          "type": "string",
+          "units": "-",
+          "meaning": "the producing rule"
+        },
+        {
+          "name": "benchmark_wall_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "process wall time from Snakemake's benchmark:. Populated for EVERY rule and one single quantity, so it is the only column safe to plot on one axis. Its memory/IO columns are literally 0 on this macOS host and are NOT measurements"
+        },
+        {
+          "name": "in_script_component_seconds",
+          "type": "float|empty",
+          "units": "s",
+          "meaning": "in-script time.monotonic, populated only where an artefact carries one. NOT commensurable across rules \u2014 for micro_stages it is a SUM OF COMPONENTS, elsewhere a single drain \u2014 which is why it is not plotted"
+        },
+        {
+          "name": "in_script_component_meaning",
+          "type": "string",
+          "units": "-",
+          "meaning": "which of those two the value is, stated per row"
+        },
+        {
+          "name": "ollama_requests",
+          "type": "int",
+          "units": "count",
+          "meaning": "from the http ledger"
+        },
+        {
+          "name": "ollama_seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "summed request latency"
+        },
+        {
+          "name": "max_in_flight_global",
+          "type": "int",
+          "units": "count",
+          "meaning": "whole-process depth over all endpoints; per-endpoint peaks live in each artefact's http.max_in_flight_by_path"
+        }
+      ]
+    },
+    "results/per_document.csv": {
+      "schema": "andamentum.experiment.docstore_deferred.per_document/1",
+      "produced_by": "analyze",
+      "description": "One row per document in the main lineage after the drain.",
+      "required": [],
+      "fields": [
+        {
+          "name": "doc_uuid",
+          "type": "string",
+          "units": "-",
+          "meaning": "the document"
+        },
+        {
+          "name": "n_chunks",
+          "type": "int",
+          "units": "count",
+          "meaning": "chunks written by enrichment"
+        },
+        {
+          "name": "n_chunk_embeddings",
+          "type": "int",
+          "units": "count",
+          "meaning": "must equal n_chunks"
+        },
+        {
+          "name": "has_doc_embedding",
+          "type": "bool",
+          "units": "-",
+          "meaning": "measured, not asserted"
+        },
+        {
+          "name": "llm_metadata_populated",
+          "type": "bool",
+          "units": "-",
+          "meaning": "persistent trace of the H-G failure"
+        }
+      ]
+    },
+    "results/MANIFEST.json": {
+      "schema": "andamentum.experiment.docstore_deferred.manifest/1",
+      "produced_by": "manifest",
+      "description": "Every artefact with sha256, bytes, producing rule and schema.",
+      "required": [
+        "artefacts"
+      ],
+      "fields": [
+        {
+          "name": "artefacts[].sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "content hash"
+        },
+        {
+          "name": "artefacts[].producing_rule",
+          "type": "string",
+          "units": "-",
+          "meaning": "which rule wrote it"
+        },
+        {
+          "name": "harness_sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "one digest over Snakefile + config.yaml + every scripts/*.py"
+        }
+      ]
+    },
+    "results/deviations.json": {
+      "schema": "andamentum.experiment.docstore_deferred.deviations/1",
+      "produced_by": "deviations",
+      "description": "Every change to a hypothesis, metric, threshold or scoring rule made AFTER a measurement was observed. A pre-registration that can be edited after the fact with no amendment trail provides the appearance of the guarantee rather than the guarantee.",
+      "required": [
+        "deviations",
+        "n_deviations"
+      ],
+      "fields": [
+        {
+          "name": "deviations[].what",
+          "type": "string",
+          "units": "-",
+          "meaning": "the change"
+        },
+        {
+          "name": "deviations[].why",
+          "type": "string",
+          "units": "-",
+          "meaning": "what made it necessary"
+        },
+        {
+          "name": "deviations[].affects",
+          "type": "string[]",
+          "units": "-",
+          "meaning": "hypothesis ids it could move"
+        },
+        {
+          "name": "deviations[].could_have_moved_the_verdict",
+          "type": "string",
+          "units": "-",
+          "meaning": "the honest direction: harder, easier, or neutral"
+        }
+      ]
+    },
+    "results/cli_smoke.json": {
+      "schema": "andamentum.experiment.docstore_deferred.cli_smoke/1",
+      "produced_by": "cli_smoke",
+      "description": "Every andamentum-docstore subcommand run through the venv console script: exit code, stdout shape, and `status` output parsed back and compared with the database.",
+      "required": [
+        "verdict",
+        "invocations",
+        "subcommands_exercised"
+      ],
+      "fields": [
+        {
+          "name": "invocations[].argv",
+          "type": "string[]",
+          "units": "-",
+          "meaning": "the exact command line"
+        },
+        {
+          "name": "invocations[].returncode",
+          "type": "int",
+          "units": "-",
+          "meaning": "process exit code"
+        },
+        {
+          "name": "status_parsed",
+          "type": "object",
+          "units": "counts",
+          "meaning": "the `status` output, parsed"
+        },
+        {
+          "name": "status_database_counts",
+          "type": "object",
+          "units": "counts",
+          "meaning": "the same counts read straight from sqlite \u2014 must agree"
+        }
+      ]
+    }
+  },
+  "artefact_globs": {
+    "results/ledgers/*_convert.jsonl": {
+      "schema": "andamentum.experiment.docstore_deferred.converter_ledger/1",
+      "produced_by": "claim_b_drain / claim_c_kill / claim_c_resume / claim_d_pause / claim_f_fail",
+      "format": "JSONL, one object per line, append-only, fsynced before return",
+      "description": "ONE LINE PER convert_fn INVOCATION. The load-bearing instrument for the checkpoint claim: 'conversion is not repeated' reduces to a line count a reader can verify by opening a text file. fsynced before the wrapper returns, which is what makes it valid evidence under a SIGKILL.",
+      "required": [],
+      "fields": [
+        {
+          "name": "ts_start",
+          "type": "float",
+          "units": "s since epoch",
+          "meaning": "when the conversion began"
+        },
+        {
+          "name": "ts_end",
+          "type": "float",
+          "units": "s since epoch",
+          "meaning": "when it returned or raised"
+        },
+        {
+          "name": "seconds",
+          "type": "float",
+          "units": "s",
+          "meaning": "monotonic duration"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "units": "-",
+          "meaning": "the path or URL converted; DUPLICATES FALSIFY H-c1"
+        },
+        {
+          "name": "pid",
+          "type": "int",
+          "units": "-",
+          "meaning": "which process converted it \u2014 kill vs resume"
+        },
+        {
+          "name": "chars",
+          "type": "int",
+          "units": "characters",
+          "meaning": "length of the markdown produced; 0 on error"
+        },
+        {
+          "name": "sha256",
+          "type": "hex string|null",
+          "units": "-",
+          "meaning": "hash of the markdown; H-c2 compares it"
+        },
+        {
+          "name": "error_type",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "exception class name, or null on success"
+        },
+        {
+          "name": "error_message",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "first 500 chars of the message"
+        }
+      ]
+    },
+    "results/ledgers/*_http.jsonl": {
+      "schema": "andamentum.experiment.docstore_deferred.http_ledger/1",
+      "produced_by": "every measurement rule (one ledger per arm)",
+      "format": "JSONL, one object per httpx request, appended in completion order",
+      "description": "Every HTTP request the recording process made, with in-flight depth at start. H-a1 (defer is LLM-free) is the emptiness of one of these files.",
+      "required": [],
+      "fields": [
+        {
+          "name": "ts_start / ts_end",
+          "type": "float",
+          "units": "s since epoch",
+          "meaning": "request start / completion"
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "units": "-",
+          "meaning": "HTTP method"
+        },
+        {
+          "name": "host",
+          "type": "string",
+          "units": "-",
+          "meaning": "netloc; '11434' identifies Ollama"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "units": "-",
+          "meaning": "/v1/chat/completions | /api/embeddings | /api/embed"
+        },
+        {
+          "name": "global_depth_at_start",
+          "type": "int",
+          "units": "count",
+          "meaning": "requests open across ALL endpoints when this one started \u2014 an upper bound on any single endpoint, never an attribution"
+        },
+        {
+          "name": "in_flight_at_start_path",
+          "type": "int",
+          "units": "count",
+          "meaning": "requests open ON THIS PATH when this one started \u2014 the per-endpoint concurrency figure"
+        },
+        {
+          "name": "status",
+          "type": "int|null",
+          "units": "-",
+          "meaning": "HTTP status, or null if the request raised"
+        },
+        {
+          "name": "error_type",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "exception class name on failure"
+        }
+      ]
+    },
+    "results/snapshots/*.json": {
+      "schema": "andamentum.experiment.docstore_deferred.snapshot/1",
+      "produced_by": "drain.instrumented_drain (pre and post, one pair per drain)",
+      "format": "JSON with the standard envelope",
+      "description": "The complete read-only observation of one database at one instant: the logical fingerprint, status counts, and a full row dump. Every headline count in this experiment is re-derivable from these offline.",
+      "required": [
+        "logical_fingerprint",
+        "status_counts",
+        "documents"
+      ],
+      "fields": [
+        {
+          "name": "label",
+          "type": "string",
+          "units": "-",
+          "meaning": "which drain and which side (pre / post)"
+        },
+        {
+          "name": "logical_fingerprint",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "sha256 over the MEANING of every row (uuid|status|file_hash|markdown_len|n_chunks|has_doc_embedding|n_chunk_embeddings|metadata_keys). The file hash is not used: WAL checkpoints move bytes without changing meaning"
+        },
+        {
+          "name": "status_counts",
+          "type": "object",
+          "units": "counts",
+          "meaning": "pending_source / pending_enrich / complete / failed"
+        },
+        {
+          "name": "documents[].ingest_status",
+          "type": "string",
+          "units": "-",
+          "meaning": "the row's queue state"
+        },
+        {
+          "name": "documents[].markdown_sha256",
+          "type": "hex string",
+          "units": "-",
+          "meaning": "H-c2's byte-identity check"
+        },
+        {
+          "name": "documents[].n_chunks",
+          "type": "int",
+          "units": "count",
+          "meaning": "chunk rows written by enrichment"
+        },
+        {
+          "name": "documents[].n_chunk_embeddings",
+          "type": "int",
+          "units": "count",
+          "meaning": "must equal n_chunks when complete"
+        },
+        {
+          "name": "documents[].llm_metadata_populated",
+          "type": "bool",
+          "units": "-",
+          "meaning": "the H-G failure's persistent trace"
+        },
+        {
+          "name": "file_advisory",
+          "type": "object",
+          "units": "-",
+          "meaning": "byte-level facts, ADVISORY \u2014 nothing asserts on them"
+        }
+      ]
+    },
+    "results/events/*.jsonl": {
+      "schema": "andamentum.experiment.docstore_deferred.events/1",
+      "produced_by": "each claim rule (one file per rule)",
+      "format": "JSONL, one observed transition per line",
+      "description": "The per-rule event log merged by `merge_events` into results/events.jsonl and events.csv. Same field set as that merged file.",
+      "required": [],
+      "fields": [
+        {
+          "name": "ts_utc",
+          "type": "float",
+          "units": "s since epoch",
+          "meaning": "wall-clock of the observation"
+        },
+        {
+          "name": "monotonic_s",
+          "type": "float",
+          "units": "s",
+          "meaning": "seconds since the rule started"
+        },
+        {
+          "name": "observer",
+          "type": "string",
+          "units": "-",
+          "meaning": "on_progress | poll | report"
+        },
+        {
+          "name": "from_status / to_status",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "the transition observed"
+        }
+      ]
+    },
+    "results/events.csv": {
+      "schema": "andamentum.experiment.docstore_deferred.events_csv/1",
+      "produced_by": "merge_events",
+      "format": "CSV with a header row",
+      "description": "The flat rendering of results/events.jsonl, same fields.",
+      "required": [],
+      "fields": [
+        {
+          "name": "(see results/events.jsonl)",
+          "type": "-",
+          "units": "-",
+          "meaning": "identical field set"
+        }
+      ]
+    },
+    "results/working_tree.patch": {
+      "schema": "andamentum.experiment.docstore_deferred.working_tree_patch/1",
+      "produced_by": "provenance",
+      "format": "unified diff (`git diff HEAD`)",
+      "description": "WRITTEN ONLY WHEN THE TREE IS DIRTY, and REQUIRED whenever git.dirty is true. A recorded sha with dirty=true and no diff names code that cannot be recovered \u2014 the previous edition of this run was measured against an uncommitted one-line fix without which it crashes.",
+      "required": [],
+      "fields": [
+        {
+          "name": "(whole file)",
+          "type": "text",
+          "units": "-",
+          "meaning": "hashed into provenance.json as git.working_tree_patch_sha256"
+        }
+      ]
+    },
+    "figures/figures_status.json": {
+      "schema": "andamentum.experiment.docstore_deferred.figures_status/1",
+      "produced_by": "figures",
+      "format": "JSON with the standard envelope",
+      "description": "Per-figure success/failure. Consulted by build_report, which prints a visible FIGURE COULD NOT BE DRAWN line rather than embedding a placeholder as though it were a result.",
+      "required": [
+        "figures"
+      ],
+      "fields": [
+        {
+          "name": "figures[].figure",
+          "type": "string",
+          "units": "-",
+          "meaning": "the PNG filename"
+        },
+        {
+          "name": "figures[].ok",
+          "type": "bool",
+          "units": "-",
+          "meaning": "false means the file is a placeholder"
+        },
+        {
+          "name": "figures[].error",
+          "type": "string|null",
+          "units": "-",
+          "meaning": "type and message when not ok"
+        }
+      ]
+    }
+  }
+}

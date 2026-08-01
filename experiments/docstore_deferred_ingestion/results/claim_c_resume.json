@@ -1,0 +1,464 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claim_c_resume/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T10:25:17.584753+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "database": "dfr_kill",
+  "target_doc_id": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
+  "target_arxiv_id": "1706.03762v7",
+  "pre_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+  "post_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+  "ledger_entries_before_resume": 1,
+  "integrity_before_resume": {
+    "integrity_check": [
+      "ok"
+    ],
+    "quick_check": [
+      "ok"
+    ],
+    "integrity_ok": true,
+    "quick_ok": true,
+    "sidecar_files": [
+      {
+        "file": "dfr_kill.db-wal",
+        "bytes": 0
+      },
+      {
+        "file": "dfr_kill.db-shm",
+        "bytes": 32768
+      }
+    ]
+  },
+  "sidecars_preserved": true,
+  "sidecars_note": "no -wal/-shm file is deleted and no repair is run: the resume must succeed through the library's ordinary path or the durability claim fails honestly",
+  "snapshot_pre": {
+    "label": "claim_c_resume_pre",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
+    "logical_fingerprint": "81941f7a1fc628cb7f01ac64df5d4f8acf1ea569a58c9817e9f1872261c17fe7",
+    "status_counts": {
+      "pending_source": 2,
+      "pending_enrich": 1,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 3,
+    "documents": [
+      {
+        "doc_uuid": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:02:35.544777+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T10:02:17.355231+00:00",
+        "updated_date": "2026-08-01T18:02:35.540193"
+      },
+      {
+        "doc_uuid": "d6c43f0e-dfeb-4eae-a736-842a2e314128",
+        "dc_title": "1512.03385v1.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:02:17.358063+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T10:02:17.358063+00:00",
+        "updated_date": "2026-08-01T10:02:17.358063+00:00"
+      },
+      {
+        "doc_uuid": "ddb6a1cc-7be6-4dab-8abe-9d2bda2f9730",
+        "dc_title": "1810.04805v2.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:02:17.356693+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T10:02:17.356693+00:00",
+        "updated_date": "2026-08-01T10:02:17.356693+00:00"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 356352,
+      "file_sha256": "0332c3427bbf2e5ebc9bfd2fb0f70962d3174b3deeb79ec8a2edefe7b5404b97",
+      "page_count": 87,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 25840458356,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T18:07:35.705905+08:00",
+        "size_vram": 25840458356,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T18:07:17.81995+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "resume_returncode": 0,
+  "resume_seconds": 1361.521835499996,
+  "resume_log": "logs/kill_run2.log",
+  "resume_report": {
+    "documents_converted": 2,
+    "documents_enriched": 3,
+    "documents_failed": 0,
+    "documents_skipped": 0,
+    "stopped_early": false,
+    "remaining": 0,
+    "failures": []
+  },
+  "ledger_entries": 3,
+  "ledger_sources": [
+    "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+    "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+    "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf"
+  ],
+  "ledger_duplicates": [],
+  "ledger_entries_added_by_resume": 2,
+  "ledger": [
+    {
+      "ts_start": 1785578539.63253,
+      "ts_end": 1785578555.533664,
+      "seconds": 15.901188957999693,
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+      "pid": 96205,
+      "chars": 48959,
+      "sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "ts_start": 1785578558.044662,
+      "ts_end": 1785578574.7089431,
+      "seconds": 16.66433929197956,
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+      "pid": 96222,
+      "chars": 70241,
+      "sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "ts_start": 1785579077.646453,
+      "ts_end": 1785579087.344982,
+      "seconds": 9.698563209007261,
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+      "pid": 96222,
+      "chars": 64381,
+      "sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+      "error_type": null,
+      "error_message": null
+    }
+  ],
+  "final_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+  "snapshot_final": {
+    "label": "claim_c_final",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
+    "logical_fingerprint": "13a69b885051ead0da9700c0701904a4280a4c0eaf5d9bc571a4b77cb9d6dc21",
+    "status_counts": {
+      "pending_source": 0,
+      "pending_enrich": 0,
+      "complete": 3,
+      "failed": 0
+    },
+    "n_documents": 3,
+    "documents": [
+      {
+        "doc_uuid": "53bb7c9d-3438-464b-9a7d-a3fa652548ab",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:25:16.675102+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 37,
+        "n_chunk_embeddings": 37,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "arxiv_id",
+          "created_at",
+          "people",
+          "projects"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T10:02:17.355231+00:00",
+        "updated_date": "2026-08-01T18:18:53.359198"
+      },
+      {
+        "doc_uuid": "d6c43f0e-dfeb-4eae-a736-842a2e314128",
+        "dc_title": "Deep Residual Learning for Image Recognition",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:18:37.410296+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+        "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "markdown_chars": 64381,
+        "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "n_chunks": 39,
+        "n_chunk_embeddings": 39,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "arxiv_id",
+          "created_at",
+          "people",
+          "projects"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T10:02:17.358063+00:00",
+        "updated_date": "2026-08-01T18:11:45.332375"
+      },
+      {
+        "doc_uuid": "ddb6a1cc-7be6-4dab-8abe-9d2bda2f9730",
+        "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T10:11:17.641807+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+        "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "markdown_chars": 70241,
+        "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "n_chunks": 43,
+        "n_chunk_embeddings": 43,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "arxiv_id",
+          "created_at",
+          "people",
+          "projects"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T10:02:17.356693+00:00",
+        "updated_date": "2026-08-01T18:03:03.122271"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 7774208,
+      "file_sha256": "1d9fcf9793168aa846668140eda814f4aefa58fce8722bdc303ab4fd1e400f12",
+      "page_count": 1898,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "markdown_sha_stable": true,
+  "final_status_counts": {
+    "pending_source": 0,
+    "pending_enrich": 0,
+    "complete": 3,
+    "failed": 0
+  },
+  "integrity_after_resume": {
+    "integrity_check": [
+      "ok"
+    ],
+    "quick_check": [
+      "ok"
+    ],
+    "integrity_ok": true,
+    "quick_ok": true,
+    "sidecar_files": [
+      {
+        "file": "dfr_kill.db-wal",
+        "bytes": 0
+      },
+      {
+        "file": "dfr_kill.db-shm",
+        "bytes": 32768
+      }
+    ]
+  },
+  "sqlite_ok": true,
+  "checkpoint_savings_seconds": 14.975933249981608,
+  "checkpoint_savings_documents": 1,
+  "repeated_enrichment_seconds_estimate": 283.1222807499871,
+  "checkpoint_economics_note": "The saving is the SMALLER of the two stages: conversion is tens of seconds while enrichment is minutes at the measured per-chunk LLM latency. That is a deflating but useful result \u2014 it tells a future optimiser to attack the LLM loop, not the converter.",
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/c2_http.jsonl",
+    "requests_total": 293,
+    "requests_by_path": {
+      "/api/embed": 7,
+      "/v1/chat/completions": 124,
+      "/api/embeddings": 162
+    },
+    "max_in_flight": 8,
+    "max_in_flight_by_path": {
+      "/api/embed": 2,
+      "/v1/chat/completions": 7,
+      "/api/embeddings": 8
+    },
+    "latency_seconds": {
+      "n": 293,
+      "min": 0.07719612121582031,
+      "median": 0.24877309799194336,
+      "max": 114.78125476837158,
+      "sum": 6016.146417379379
+    }
+  },
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26393578100,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T18:30:16.226466+08:00",
+        "size_vram": 26393578100,
+        "context_length": 131072
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-c3/resume_opens",
+      "passed": true,
+      "measured": {
+        "returncode": 0,
+        "report": true
+      },
+      "expected": "exit 0 with a report",
+      "detail": "the resume opened the post-SIGKILL database through the library's normal path with no manual intervention"
+    },
+    {
+      "hypothesis": "H-c1/entries",
+      "passed": true,
+      "measured": 3,
+      "expected": 3,
+      "detail": "3 sources must produce exactly 3 conversions in total"
+    },
+    {
+      "hypothesis": "H-c1/no_duplicates",
+      "passed": true,
+      "measured": [],
+      "expected": [],
+      "detail": "a repeated source string is a re-conversion"
+    },
+    {
+      "hypothesis": "H-c1/resume_converted",
+      "passed": true,
+      "measured": 2,
+      "expected": 2,
+      "detail": "the already-converted document #1 must NOT be converted again"
+    },
+    {
+      "hypothesis": "H-c2",
+      "passed": true,
+      "measured": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "expected": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "detail": "byte identity within ONE run. A call counter cannot distinguish 'not re-converted' from 're-converted to the same string'"
+    },
+    {
+      "hypothesis": "H-c/complete",
+      "passed": true,
+      "measured": 3,
+      "expected": 3,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-c/no_failures",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-d4",
+      "passed": true,
+      "measured": 1,
+      "expected": "<= 1 document's work repeated",
+      "detail": "only the single in-flight document's enrichment should be redone"
+    },
+    {
+      "hypothesis": "checkpoint_savings_seconds",
+      "passed": null,
+      "measured": 14.975933249981608,
+      "expected": null,
+      "detail": "1 document(s) not re-converted"
+    },
+    {
+      "hypothesis": "resume_max_in_flight",
+      "passed": null,
+      "measured": 8,
+      "expected": null,
+      "detail": "peak concurrent Ollama requests issued by the library's own _INGEST_CONCURRENCY=5 fan-out \u2014 a pre-existing observation, not a change this experiment makes"
+    }
+  ]
+}

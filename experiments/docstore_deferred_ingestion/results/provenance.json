@@ -1,0 +1,195 @@
+{
+  "schema": "andamentum.experiment.provenance/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T09:18:21.728985+00:00",
+  "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+  "experiment": "docstore_deferred_ingestion",
+  "git": {
+    "head": "b5c34a387bf137a305a505e06caff08046cb49f4",
+    "head_short": "b5c34a3",
+    "branch": "exp/docstore-deferred-validation",
+    "dirty": true,
+    "status_porcelain": [
+      "M src/andamentum/document_store/fts_query.py",
+      " M src/andamentum/document_store/tests/test_fts_query.py",
+      "?? .snakemake/",
+      "?? benchmarks/epistemic/pipeline_scifact/",
+      "?? benchmarks/scifact/"
+    ]
+  },
+  "machine": {
+    "platform": "macOS-26.6-arm64-arm-64bit",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.12.0 (main, Oct  2 2023, 20:56:14) [Clang 16.0.3 ]",
+    "python_executable": "/Users/timo/code/andamentum/.venv/bin/python3",
+    "cpu_count": 16,
+    "load_average": [
+      2.033203125,
+      2.09033203125,
+      2.0810546875
+    ]
+  },
+  "sqlite": {
+    "sqlite_version": "3.43.1",
+    "pysqlite_version": "2.6.0",
+    "fts5_available": true
+  },
+  "packages": {
+    "andamentum": "0.3.0",
+    "docling": "2.102.2",
+    "trafilatura": "2.1.0",
+    "rapidocr-onnxruntime": null,
+    "aiosqlite": "0.22.1",
+    "sqlite-vec": "0.1.9",
+    "pydantic": "2.13.4",
+    "pydantic-ai": "1.107.0",
+    "pydantic-graph": "1.107.0",
+    "httpx": "0.28.1",
+    "snakemake": "9.23.1",
+    "numpy": "2.4.6",
+    "matplotlib": "3.11.0"
+  },
+  "tools": {
+    "uv": "uv 0.12.1 (Homebrew 2026-07-31 aarch64-apple-darwin)",
+    "snakemake": "9.23.1"
+  },
+  "uv_lock": {
+    "path": "/Users/timo/code/andamentum/uv.lock",
+    "sha256": "da35607d5702faa6f7fbab8ace694a119cc71b11023e99ad87ac50a7bb627b84"
+  },
+  "ollama": {
+    "version": {
+      "version": "0.32.5"
+    },
+    "pinned_models": {
+      "gemma4:26b-nvfp4": {
+        "name": "gemma4:26b-nvfp4",
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "size_bytes": 17551093868,
+        "quantization_level": "nvfp4",
+        "parameter_size": "",
+        "family": "",
+        "modified_at": "2026-07-22T19:45:08.043171009+08:00"
+      },
+      "embeddinggemma:latest": {
+        "name": "embeddinggemma:latest",
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "size_bytes": 621875917,
+        "quantization_level": "BF16",
+        "parameter_size": "307.58M",
+        "family": "gemma3",
+        "modified_at": "2025-11-22T14:16:56.633555691+08:00"
+      }
+    }
+  },
+  "ollama_ps_at_start": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26067311220,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T17:20:51.995358+08:00",
+        "size_vram": 26067311220,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T17:20:49.870716+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "environment_allowlisted": {
+    "DOCUMENT_STORE_DIR": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs",
+    "OLLAMA_BASE_URL": "http://localhost:11434/v1",
+    "TZ": null,
+    "LANG": "en_US.UTF-8"
+  },
+  "config": {
+    "models": {
+      "llm": "ollama:gemma4:26b-nvfp4",
+      "embedding": "embeddinggemma:latest",
+      "ollama_base_url": "http://localhost:11434/v1",
+      "ollama_root_url": "http://localhost:11434"
+    },
+    "corpus": [
+      {
+        "arxiv_id": "1706.03762v7",
+        "short": "attention",
+        "title": "Attention Is All You Need"
+      },
+      {
+        "arxiv_id": "1810.04805v2",
+        "short": "bert",
+        "title": "BERT"
+      },
+      {
+        "arxiv_id": "1512.03385v1",
+        "short": "resnet",
+        "title": "Deep Residual Learning"
+      },
+      {
+        "arxiv_id": "1412.6980v9",
+        "short": "adam",
+        "title": "Adam"
+      }
+    ],
+    "small_paper": "1412.6980v9",
+    "download": {
+      "base_url": "https://arxiv.org/pdf",
+      "user_agent": "andamentum-experiment/1.0 (deferred-ingestion validation; contact: repo owner)",
+      "polite_delay_seconds": 3.0,
+      "retries": 2,
+      "timeout_seconds": 120.0
+    },
+    "databases": {
+      "main": "dfr_main",
+      "now": "dfr_now",
+      "kill": "dfr_kill",
+      "pause": "dfr_pause",
+      "fail": "dfr_fail",
+      "empty": "dfr_empty"
+    },
+    "lineages": {
+      "main_documents": 4,
+      "now_control_documents": 1,
+      "kill_sources": 3,
+      "pause_markdown_chars": 6000,
+      "pause_markdown_documents": 4,
+      "fail_bad_sources": 4
+    },
+    "timeouts": {
+      "conversion_seconds": 300.0,
+      "kill_gate_seconds": 600.0,
+      "cli_pause_exit_seconds": 900.0,
+      "drain_worker_seconds": 1800.0
+    },
+    "polling": {
+      "interval_seconds": 0.25
+    }
+  }
+}

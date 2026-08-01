@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
+/* ── Document wrapper ───────────────────────────────────────────────── */
+
+.typeset-document {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.55;
+    color: #212529;
+    max-width: 100%;
+    padding: 0;
+}
+
+/* ── Heading block ──────────────────────────────────────────────────── */
+
+.typeset-heading {
+    margin-bottom: 1.5em;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #0d6efd;
+}
+
+.typeset-heading h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 20pt;
+    font-weight: 700;
+    color: #0a58ca;
+    margin: 0 0 6px;
+    line-height: 1.25;
+}
+
+.typeset-subtitle {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12pt;
+    color: #495057;
+    margin: 0 0 4px;
+    font-weight: 400;
+}
+
+.typeset-meta {
+    font-size: 9pt;
+    color: #6c757d;
+    margin: 4px 0 0;
+}
+
+/* ── Prose (markdown body) ──────────────────────────────────────────── */
+
+.typeset-prose {
+    margin: 0 0 1.5em;
+}
+
+.typeset-prose h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14pt;
+    font-weight: 600;
+    color: #0d6efd;
+    border-bottom: 1.5px solid #dee2e6;
+    padding-bottom: 4px;
+    margin-top: 1.8em;
+    margin-bottom: 0.5em;
+    page-break-after: avoid;
+}
+
+.typeset-prose h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11.5pt;
+    font-weight: 600;
+    color: #495057;
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    page-break-after: avoid;
+}
+
+.typeset-prose p {
+    margin: 0.5em 0;
+    orphans: 3;
+    widows: 3;
+}
+
+.typeset-prose ul,
+.typeset-prose ol {
+    margin: 0.4em 0;
+    padding-left: 1.6em;
+}
+
+.typeset-prose li {
+    margin-bottom: 0.15em;
+}
+
+.typeset-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8em 0;
+    font-size: 8.5pt;
+    page-break-inside: auto;
+}
+
+.typeset-prose thead {
+    display: table-header-group;
+}
+
+.typeset-prose th {
+    background-color: #0d6efd;
+    color: white;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 8.5pt;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #0b5ed7;
+}
+
+.typeset-prose td {
+    padding: 5px 8px;
+    border: 1px solid #dee2e6;
+    vertical-align: top;
+}
+
+.typeset-prose tr {
+    page-break-inside: avoid;
+}
+
+.typeset-prose tbody tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+.typeset-prose code {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+    font-size: 8pt;
+    background-color: #f1f3f5;
+    color: #d63384;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 0.5px solid #dee2e6;
+}
+
+.typeset-prose pre {
+    background-color: #282c34;
+    color: #abb2bf;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 8pt;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 0.8em 0;
+    page-break-inside: avoid;
+}
+
+.typeset-prose pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    font-size: inherit;
+}
+
+.typeset-prose blockquote {
+    border-left: 4px solid #0d6efd;
+    margin: 0.8em 0;
+    padding: 0.4em 1em;
+    background-color: #f8f9fa;
+    color: #495057;
+}
+
+.typeset-prose a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.typeset-prose a:hover {
+    text-decoration: underline;
+}
+
+.typeset-prose strong {
+    font-weight: 600;
+}
+
+.typeset-prose em {
+    font-style: italic;
+}
+
+.typeset-prose hr {
+    border: none;
+    border-top: 1.5px solid #dee2e6;
+    margin: 1.5em 0;
+}
+
+.typeset-prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Callout ────────────────────────────────────────────────────────── */
+
+.typeset-callout {
+    margin: 1em 0;
+    padding: 12px 16px;
+    background: #e7f1ff;
+    border-left: 4px solid #0d6efd;
+    border-radius: 0 6px 6px 0;
+    font-size: 9pt;
+    line-height: 1.55;
+    color: #212529;
+}
+
+.typeset-callout.tone-info {
+    background: #e7f1ff;
+    border-left-color: #0d6efd;
+}
+
+.typeset-callout.tone-warning {
+    background: #fff8e1;
+    border-left-color: #ffc107;
+}
+
+.typeset-callout.tone-success {
+    background: #e8f5e9;
+    border-left-color: #28a745;
+}
+
+.typeset-callout.tone-note {
+    background: #f8f9fa;
+    border-left-color: #6c757d;
+}
+
+.typeset-callout.tone-quote {
+    background: #f8f9fa;
+    border-left-color: #adb5bd;
+    font-style: italic;
+    color: #495057;
+}
+
+/* ── Items ──────────────────────────────────────────────────────────── */
+
+.typeset-items {
+    margin: 0.8em 0;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    font-size: 9pt;
+    line-height: 1.55;
+}
+
+.typeset-item {
+    margin-bottom: 8px;
+}
+
+.typeset-item:last-child {
+    margin-bottom: 0;
+}
+
+/* variant-pairs: label above, value below */
+.typeset-items.variant-pairs .typeset-item-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 8.5pt;
+    color: #0d6efd;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+
+.typeset-items.variant-pairs .typeset-item-body {
+    color: #212529;
+}
+
+/* variant-right: body left, label right */
+.item-right {
+    display: flex;
+    align-items: baseline;
+}
+
+.item-right .typeset-item-body {
+    flex: 1;
+    color: #212529;
+}
+
+.item-right .typeset-item-label {
+    width: 100px;
+    text-align: right;
+    flex-shrink: 0;
+    color: #6c757d;
+    font-size: 8.5pt;
+}
+
+/* variant-left: label left, body right */
+.item-left {
+    display: flex;
+    align-items: baseline;
+}
+
+.item-left .typeset-item-label {
+    width: 80px;
+    flex-shrink: 0;
+    font-size: 8.5pt;
+    color: #6c757d;
+}
+
+.item-left .typeset-item-body {
+    flex: 1;
+    color: #212529;
+}
+
+/* ── Aside (content mode) ───────────────────────────────────────────── */
+
+.typeset-aside {
+    margin: 0.8em 0;
+    padding: 10px 14px;
+    background: #f8f9fa;
+    border-left: 3px solid #0d6efd;
+    border-radius: 0 4px 4px 0;
+    font-size: 9pt;
+    line-height: 1.5;
+    color: #495057;
+}
+
+/* ── Sidebar (groups / grid mode) ───────────────────────────────────── */
+
+.typeset-sidebar {
+    margin-top: 2em;
+    padding-top: 12px;
+    border-top: 1.5px solid #dee2e6;
+    font-size: 8.5pt;
+    line-height: 1.45;
+    color: #6c757d;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+}
+
+.typeset-sidebar-group {
+    margin-bottom: 0;
+}
+
+.typeset-sidebar-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #0d6efd;
+    margin: 0 0 4px;
+}
+
+.typeset-sidebar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 8.5pt;
+}
+
+.typeset-sidebar-label {
+    color: #6c757d;
+}
+
+.typeset-sidebar-value {
+    font-weight: 500;
+    color: #212529;
+}
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+
+.typeset-card {
+    margin: 10px 0;
+    padding: 12px 16px;
+    border: 1px solid #cfe2ff;
+    border-left: 4px solid #0d6efd;
+    border-radius: 0 6px 6px 0;
+    background: #fff;
+}
+
+.typeset-card:last-child {
+    margin-bottom: 0;
+}
+
+.typeset-card-body {
+    line-height: 1.55;
+    color: #212529;
+}
+
+.typeset-badge {
+    display: inline-block;
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #e7f1ff;
+    color: #0d6efd;
+}
+
+.typeset-refs {
+    font-size: 8pt;
+    color: #6c757d;
+}
+
+.typeset-refs a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.typeset-refs a:hover {
+    text-decoration: underline;
+}
+
+.typeset-card-source {
+    font-size: 8pt;
+    color: #6c757d;
+    word-break: break-all;
+    margin-top: 4px;
+}
+
+.typeset-card-source a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.typeset-card-details {
+    margin-top: 6px;
+}
+
+.typeset-card-details summary {
+    font-size: 8.5pt;
+    color: #6c757d;
+    cursor: pointer;
+}
+
+.typeset-card-details summary:hover {
+    color: #0d6efd;
+}
+
+.typeset-card-details[open] summary {
+    margin-bottom: 6px;
+}
+
+/* ── Reference ──────────────────────────────────────────────────────── */
+
+.typeset-reference {
+    display: flex;
+    margin: 8px 0;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 9pt;
+    line-height: 1.5;
+}
+
+.typeset-reference:last-child {
+    margin-bottom: 0;
+}
+
+.typeset-ref-number {
+    width: 28px;
+    flex-shrink: 0;
+    font-size: 8.5pt;
+    font-weight: 600;
+    color: #0d6efd;
+    text-align: right;
+    padding-right: 8px;
+}
+
+.typeset-ref-content {
+    flex: 1;
+}
+
+.typeset-ref-body {
+    color: #212529;
+    font-size: 9pt;
+    line-height: 1.5;
+}
+
+.typeset-ref-source {
+    font-size: 8pt;
+    color: #6c757d;
+    margin-top: 2px;
+    word-break: break-all;
+}
+
+.typeset-ref-source a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.typeset-ref-source a:hover {
+    text-decoration: underline;
+}
+
+/* ── Reference group ────────────────────────────────────────────────── */
+
+.typeset-reference-group {
+    margin: 12px 0;
+}
+
+.typeset-ref-group-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    color: #0d6efd;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Print ──────────────────────────────────────────────────────────── */
+
+@page {
+    size: A4;
+    margin: 22mm 20mm;
+}
+
+@media print {
+    .typeset-document { font-size: 9.5pt; }
+    h1, h2, h3 { page-break-after: avoid; }
+    .typeset-reference,
+    .typeset-card,
+    .typeset-item { page-break-inside: avoid; }
+    p { orphans: 3; widows: 3; }
+}
+
+</style>
+</head>
+<body>
+<article class="typeset-document">
+<section class="typeset-prose">
+<h1 id="deferred-ingestion-on-the-real-path">Deferred ingestion on the real path</h1>
+<p>A pre-registered, ledger-instrumented validation of the <code>document_store</code> drain
+against real arXiv PDFs and a local Ollama.</p>
+<ul>
+<li><strong>run_id</strong>: <code>2026-08-01T09:18:21.148823+00:00-b5c34a3</code></li>
+<li><strong>git</strong>: <code>b5c34a3</code> on <code>exp/docstore-deferred-validation</code> (working tree DIRTY)</li>
+<li><strong>host</strong>: macOS-26.6-arm64-arm-64bit</li>
+</ul>
+<h2 id="models-pinned-by-digest-not-by-tag">Models (pinned by digest, not by tag)</h2>
+<table>
+<thead>
+<tr>
+<th>role</th>
+<th>tag</th>
+<th>digest</th>
+<th>quantisation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>—</td>
+<td><code>gemma4:26b-nvfp4</code></td>
+<td><code>c8656f50f0a6d864cffd</code></td>
+<td>nvfp4</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>embeddinggemma:latest</code></td>
+<td><code>85462619ee721b466c59</code></td>
+<td>BF16</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scoreboard">Scoreboard</h2>
+<p>28 PASS · 0 FAIL · 0 INCONCLUSIVE · 0 NOT MEASURED</p>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>claim</th>
+<th>metric</th>
+<th>threshold</th>
+<th>measured</th>
+<th>verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>H-G</code></td>
+<td>enrichment gate</td>
+<td><code>gate_topics_count</code></td>
+<td><code>&gt;= 1</code></td>
+<td>3</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a1</code></td>
+<td>a</td>
+<td><code>defer_ollama_requests</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a2</code></td>
+<td>a</td>
+<td><code>defer_state_violations</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a3</code></td>
+<td>a</td>
+<td><code>defer_median_seconds</code></td>
+<td><code>&lt; 1.0</code></td>
+<td>0.0093</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a3</code></td>
+<td>a</td>
+<td><code>defer_now_ratio</code></td>
+<td><code>&lt; 0.02</code></td>
+<td>2.464e-05</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a4</code></td>
+<td>a</td>
+<td><code>defer_fts_misses</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-a5</code></td>
+<td>a</td>
+<td><code>source_fts_hits</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-b</code></td>
+<td>b</td>
+<td><code>drain3_enriched</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-b</code></td>
+<td>b</td>
+<td><code>drain3_ollama_requests</code></td>
+<td><code>&lt;= 2</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-b</code></td>
+<td>b</td>
+<td><code>fingerprint_moved</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c1</code></td>
+<td>c</td>
+<td><code>ledger_entries</code></td>
+<td><code>== 3</code></td>
+<td>3</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c1</code></td>
+<td>c</td>
+<td><code>ledger_duplicates</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c1</code></td>
+<td>c</td>
+<td><code>resume_converted</code></td>
+<td><code>== 2</code></td>
+<td>2</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c2</code></td>
+<td>c</td>
+<td><code>markdown_sha_stable</code></td>
+<td><code>== 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c3</code></td>
+<td>c</td>
+<td><code>sqlite_ok</code></td>
+<td><code>== 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-c4</code></td>
+<td>c</td>
+<td><code>—</code></td>
+<td>observation</td>
+<td>0</td>
+<td><strong>OBSERVATION</strong></td>
+</tr>
+<tr>
+<td><code>H-d1</code></td>
+<td>d</td>
+<td><code>pause_midstage_documents</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-d1</code></td>
+<td>d</td>
+<td><code>pause_discarded_seconds</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-d2</code></td>
+<td>d</td>
+<td><code>max_seconds_overrun_documents</code></td>
+<td><code>&lt;= 1</code></td>
+<td>0.5481</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-d3</code></td>
+<td>d</td>
+<td><code>first_processed_is_source</code></td>
+<td><code>== 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-d4</code></td>
+<td>d</td>
+<td><code>kill_repeated_stages</code></td>
+<td><code>&lt;= 1</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-e1</code></td>
+<td>e</td>
+<td><code>post_chunk_recall_at_3</code></td>
+<td><code>&gt;= 1.0</code></td>
+<td>1</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-e1</code></td>
+<td>e</td>
+<td><code>pre_chunk_recall_at_3</code></td>
+<td><code>== 0.0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-e2</code></td>
+<td>e</td>
+<td><code>enrichment_structure_violations</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-f1</code></td>
+<td>f</td>
+<td><code>failed_count</code></td>
+<td><code>== 4</code></td>
+<td>4</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-f1</code></td>
+<td>f</td>
+<td><code>errors_without_type_name</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-f2</code></td>
+<td>f</td>
+<td><code>retry_wrong_stage</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-f2</code></td>
+<td>f</td>
+<td><code>stage_test_converter_calls</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td><code>H-x</code></td>
+<td>cross-cutting</td>
+<td><code>report_db_mismatches</code></td>
+<td><code>== 0</code></td>
+<td>0</td>
+<td><strong>PASS</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="cross-cutting-observations">Cross-cutting observations</h2>
+<table>
+<thead>
+<tr>
+<th>observation</th>
+<th>value</th>
+<th>why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>max concurrent Ollama requests in flight</td>
+<td>8</td>
+<td><code>_run_phase2</code> fans out under <code>Semaphore(_INGEST_CONCURRENCY=5)</code>; this is what the library actually does, reported not changed</td>
+</tr>
+<tr>
+<td>doc-embedding skip rate</td>
+<td>0</td>
+<td><code>_embed_doc_level</code> swallows an oversized-input failure with an INFO log, so one of the four RRF signals can go dark without an error</td>
+</tr>
+<tr>
+<td>preflight tax (seconds / requests)</td>
+<td>1.847 / 2</td>
+<td>what a cron-driven drain pays on every wake-up</td>
+</tr>
+<tr>
+<td>checkpoint savings</td>
+<td>14.98 s</td>
+<td>conversion seconds not repeated after the hard kill</td>
+</tr>
+<tr>
+<td>concurrency speedup</td>
+<td>1.067</td>
+<td>~1.0 means the semaphore is decoration against an Ollama that serialises same-model calls</td>
+</tr>
+<tr>
+<td>report-vs-database mismatches (H-x)</td>
+<td>0</td>
+<td>the ProcessReport is what a cron job logs; disagreement makes every operational claim unsafe</td>
+</tr>
+<tr>
+<td>two-transaction window observed (H-c4)</td>
+<td>no</td>
+<td><code>_convert_document</code> commits markdown then flips status separately</td>
+</tr>
+<tr>
+<td>SIGTERM to exit</td>
+<td>67.57 s</td>
+<td>size a launchd/cron shutdown grace period with this</td>
+</tr>
+</tbody>
+</table>
+<h2 id="noise-band">Noise band</h2>
+<p>Relative spread of per-call LLM latency: 1.413 over 37 samples. Any wall-clock ratio inside that band is reported INCONCLUSIVE, never rounded up to PASS.</p>
+<h2 id="what-is-not-reproducible-here">What is NOT reproducible here</h2>
+<ul>
+<li>LLM-generated metadata CONTENT (nondeterministic even at temperature 0)</li>
+<li>wall-clock timings (machine- and load-dependent; ratios are published instead)</li>
+<li>Docling markdown bytes across docling versions or machines</li>
+</ul>
+<p>Exactly three things are claimed deterministic:</p>
+<ul>
+<li>queue state transitions</li>
+<li>conversion bytes within a fixed docling version, within one run</li>
+<li>chunk boundaries for a fixed input and chunker configuration</li>
+</ul>
+<h2 id="figures">Figures</h2>
+<p><img alt="stage timeline" src="figures/fig1_stage_timeline.png" />
+<img alt="retrieval recall" src="figures/fig2_retrieval_recall_pre_vs_post.png" />
+<img alt="stop cost" src="figures/fig3_stop_cost_by_mode.png" />
+<img alt="enrichment attribution" src="figures/fig4_enrichment_attribution.png" /></p>
+<h2 id="provenance-and-integrity">Provenance and integrity</h2>
+<ul>
+<li><code>results/provenance.json</code> — git, versions, model digests, allowlisted env</li>
+<li><code>data/REGISTRY.json</code> — per-paper sha256 + URL provenance</li>
+<li><code>results/validation.json</code> — schema + referential integrity (exits 1 on violation)</li>
+<li><code>results/MANIFEST.json</code> — sha256 of every artefact with its producing rule</li>
+</ul>
+</section>
+</article>
+</body>
+</html>

@@ -1,0 +1,2 @@
+{"ts_start": 1785581495.4453912, "ts_end": 1785581495.586474, "method": "POST", "host": "localhost:11434", "path": "/api/embed", "in_flight_at_start": 1, "status": 200, "error_type": null}
+{"ts_start": 1785581496.6216042, "ts_end": 1785581497.96334, "method": "POST", "host": "localhost:11434", "path": "/v1/chat/completions", "in_flight_at_start": 1, "status": 200, "error_type": null}

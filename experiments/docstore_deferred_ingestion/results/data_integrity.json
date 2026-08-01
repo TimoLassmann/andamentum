@@ -1,0 +1,52 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.data_integrity/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T09:18:33.479700+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "verdict": "PASS",
+  "registry_version": 1,
+  "n_checked": 4,
+  "n_failed": 0,
+  "checks": [
+    {
+      "arxiv_id": "1706.03762v7",
+      "ok": true,
+      "reason": "",
+      "expected_sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "actual_sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "expected_bytes": 2215244,
+      "actual_bytes": 2215244
+    },
+    {
+      "arxiv_id": "1810.04805v2",
+      "ok": true,
+      "reason": "",
+      "expected_sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+      "actual_sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+      "expected_bytes": 775166,
+      "actual_bytes": 775166
+    },
+    {
+      "arxiv_id": "1512.03385v1",
+      "ok": true,
+      "reason": "",
+      "expected_sha256": "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a",
+      "actual_sha256": "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a",
+      "expected_bytes": 819383,
+      "actual_bytes": 819383
+    },
+    {
+      "arxiv_id": "1412.6980v9",
+      "ok": true,
+      "reason": "",
+      "expected_sha256": "eab9c73ae2ceda884b94830bda99312254bac4806f6c9f045cbab90721ecda31",
+      "actual_sha256": "eab9c73ae2ceda884b94830bda99312254bac4806f6c9f045cbab90721ecda31",
+      "expected_bytes": 584641,
+      "actual_bytes": 584641
+    }
+  ]
+}

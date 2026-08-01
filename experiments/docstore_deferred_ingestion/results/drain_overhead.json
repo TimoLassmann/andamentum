@@ -1,0 +1,257 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.drain_overhead/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T10:51:42.544822+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "database": "dfr_empty",
+  "n_processes": 3,
+  "fresh_process_rationale": "_stores and _preflight_done are module-level per-PROCESS caches; a repeat inside one process would measure zero",
+  "runs": [
+    {
+      "elapsed_seconds": 2.6044183330086526,
+      "queue": {
+        "pending_source": 0,
+        "pending_enrich": 0,
+        "complete": 0,
+        "failed": 0
+      },
+      "report": {
+        "documents_converted": 0,
+        "documents_enriched": 0,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": false,
+        "remaining": 0,
+        "failures": []
+      },
+      "http": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_0_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.141082763671875,
+          "median": 1.34173583984375,
+          "max": 1.34173583984375,
+          "sum": 1.482818603515625
+        }
+      },
+      "ollama_requests": 2,
+      "index": 0,
+      "ledger": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_0_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.141082763671875,
+          "median": 1.34173583984375,
+          "max": 1.34173583984375,
+          "sum": 1.482818603515625
+        }
+      }
+    },
+    {
+      "elapsed_seconds": 1.8468520420137793,
+      "queue": {
+        "pending_source": 0,
+        "pending_enrich": 0,
+        "complete": 0,
+        "failed": 0
+      },
+      "report": {
+        "documents_converted": 0,
+        "documents_enriched": 0,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": false,
+        "remaining": 0,
+        "failures": []
+      },
+      "http": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_1_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.12804079055786133,
+          "median": 0.9980189800262451,
+          "max": 0.9980189800262451,
+          "sum": 1.1260597705841064
+        }
+      },
+      "ollama_requests": 2,
+      "index": 1,
+      "ledger": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_1_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.12804079055786133,
+          "median": 0.9980189800262451,
+          "max": 0.9980189800262451,
+          "sum": 1.1260597705841064
+        }
+      }
+    },
+    {
+      "elapsed_seconds": 1.6202084999822546,
+      "queue": {
+        "pending_source": 0,
+        "pending_enrich": 0,
+        "complete": 0,
+        "failed": 0
+      },
+      "report": {
+        "documents_converted": 0,
+        "documents_enriched": 0,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": false,
+        "remaining": 0,
+        "failures": []
+      },
+      "http": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_2_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.1241002082824707,
+          "median": 0.7713449001312256,
+          "max": 0.7713449001312256,
+          "sum": 0.8954451084136963
+        }
+      },
+      "ollama_requests": 2,
+      "index": 2,
+      "ledger": {
+        "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/overhead_2_http.jsonl",
+        "requests_total": 2,
+        "requests_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "max_in_flight": 1,
+        "max_in_flight_by_path": {
+          "/api/embed": 1,
+          "/v1/chat/completions": 1
+        },
+        "latency_seconds": {
+          "n": 2,
+          "min": 0.1241002082824707,
+          "median": 0.7713449001312256,
+          "max": 0.7713449001312256,
+          "sum": 0.8954451084136963
+        }
+      }
+    }
+  ],
+  "median_seconds": 1.8468520420137793,
+  "mean_seconds": 2.023826291668229,
+  "min_seconds": 1.6202084999822546,
+  "max_seconds": 2.6044183330086526,
+  "median_ollama_requests": 2,
+  "ollama_ps": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 25818913396,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T18:56:42.317851+08:00",
+        "size_vram": 25818913396,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T18:56:40.877438+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "preflight_tax/requests",
+      "passed": true,
+      "measured": 2,
+      "expected": "<= 2 (1 embed + 1 chat)",
+      "detail": "the fixed per-wake-up cost a cron-driven drain pays"
+    },
+    {
+      "hypothesis": "preflight_tax_seconds",
+      "passed": null,
+      "measured": 1.8468520420137793,
+      "expected": null,
+      "detail": "if this is large relative to one document's processing time, frequent small drains are a bad operational strategy"
+    }
+  ]
+}

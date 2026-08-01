@@ -1,0 +1,147 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.snapshot/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T09:57:25.012383+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "label": "drain2_unrestricted_pre",
+  "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+  "logical_fingerprint": "ad2a29819de16e9fabcaeb889a07cb1bed56f94ca417e49e743267051da359b2",
+  "status_counts": {
+    "pending_source": 0,
+    "pending_enrich": 3,
+    "complete": 2,
+    "failed": 0
+  },
+  "n_documents": 5,
+  "documents": [
+    {
+      "doc_uuid": "30844c07-5a32-4036-9609-c397940f5f6e",
+      "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+      "ingest_status": "complete",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T09:37:01.535602+00:00",
+      "source_file_path": null,
+      "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "markdown_chars": 48959,
+      "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "n_chunks": 37,
+      "n_chunk_embeddings": 37,
+      "has_doc_embedding": true,
+      "metadata_keys": [
+        "created_at",
+        "experiment_arm",
+        "people",
+        "projects",
+        "source",
+        "title"
+      ],
+      "llm_metadata_populated": true,
+      "created_date": "2026-08-01T17:19:28.793900",
+      "updated_date": "2026-08-01T17:30:22.146075"
+    },
+    {
+      "doc_uuid": "a2c3ed3b-935c-4743-9f2d-30b8205cf11b",
+      "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "ingest_status": "pending_enrich",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T09:19:28.807680+00:00",
+      "source_file_path": null,
+      "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+      "markdown_chars": 70241,
+      "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T17:19:28.803346",
+      "updated_date": "2026-08-01T17:19:28.803346"
+    },
+    {
+      "doc_uuid": "c9136387-b61e-46e0-9c6d-ed51e8c5ff9c",
+      "dc_title": "Deep Residual Learning for Image Recognition",
+      "ingest_status": "pending_enrich",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T09:19:28.818521+00:00",
+      "source_file_path": null,
+      "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+      "markdown_chars": 64381,
+      "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T17:19:28.814621",
+      "updated_date": "2026-08-01T17:19:28.814621"
+    },
+    {
+      "doc_uuid": "dd2c3456-c2b4-4fcf-a704-2f0cfe5723e0",
+      "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "ingest_status": "complete",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T09:30:14.048192+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+      "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "n_chunks": 25,
+      "n_chunk_embeddings": 25,
+      "has_doc_embedding": true,
+      "metadata_keys": [
+        "created_at",
+        "experiment_arm",
+        "people",
+        "projects"
+      ],
+      "llm_metadata_populated": true,
+      "created_date": "2026-08-01T09:19:28.839010+00:00",
+      "updated_date": "2026-08-01T17:26:09.374498"
+    },
+    {
+      "doc_uuid": "e1c3e89b-3b9f-41fe-abcb-8c73277e3a8d",
+      "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "ingest_status": "pending_enrich",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T09:19:28.828233+00:00",
+      "source_file_path": null,
+      "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T17:19:28.824840",
+      "updated_date": "2026-08-01T17:19:28.824840"
+    }
+  ],
+  "file_advisory": {
+    "advisory_only": true,
+    "file_bytes": 7585792,
+    "file_sha256": "e9c30f7d282ea9ba861a9c118b118554f0c3fa8aa741b4081980fc88cf38356e",
+    "page_count": 1852,
+    "journal_mode": "wal",
+    "sidecars": {
+      "-wal": 0,
+      "-shm": 32768
+    }
+  }
+}
