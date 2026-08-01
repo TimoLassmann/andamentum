@@ -1,0 +1,35 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.figures_status/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:40:27.695223+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "n_figures": 4,
+  "n_failed": 1,
+  "figures": [
+    {
+      "figure": "fig1_stage_timeline.png",
+      "ok": true,
+      "error": null
+    },
+    {
+      "figure": "fig2_retrieval_recall_pre_vs_post.png",
+      "ok": true,
+      "error": null
+    },
+    {
+      "figure": "fig3_stop_cost_by_mode.png",
+      "ok": false,
+      "error": "ValueError: claim_d_pause.json has no measured post_commit_seconds for arm1_max_docs \u2014 refusing to draw a bar the harness did not measure"
+    },
+    {
+      "figure": "fig4_enrichment_attribution.png",
+      "ok": true,
+      "error": null
+    }
+  ],
+  "consumed_by": "build_report, which prints a visible 'FIGURE COULD NOT BE DRAWN' line for any entry with ok=false rather than embedding a placeholder PNG as though it were a result"
+}

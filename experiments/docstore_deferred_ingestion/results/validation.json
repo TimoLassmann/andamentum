@@ -1,0 +1,51 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.validation/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T10:53:41.327566+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T09:18:21.148823+00:00-b5c34a3",
+    "file": "results/provenance.json",
+    "sha256": "67bdcd182f7f7137a5e4d65265790739d0f070c18d9e79ee3fbf147d55c90a1f"
+  },
+  "verdict": "PASS",
+  "n_artefacts_checked": 21,
+  "artefacts_checked": [
+    "results/preregistration.json",
+    "results/provenance.json",
+    "data/REGISTRY.json",
+    "results/data_integrity.json",
+    "results/conversion_baseline.json",
+    "results/gate_llm.json",
+    "results/claim_a_defer.json",
+    "results/claim_e_pre.json",
+    "results/claim_b_drain.json",
+    "results/claim_e_post.json",
+    "results/micro_stages.json",
+    "results/claim_c_kill.json",
+    "results/claim_c_resume.json",
+    "results/claim_d_pause.json",
+    "results/claim_f_fail.json",
+    "results/drain_overhead.json",
+    "results/claims.json",
+    "results/events.jsonl",
+    "results/timings.csv",
+    "results/per_document.csv",
+    "results/MANIFEST.json"
+  ],
+  "n_violations": 0,
+  "violations": [],
+  "referential": {
+    "registry_arxiv_ids": [
+      "1412.6980v9",
+      "1512.03385v1",
+      "1706.03762v7",
+      "1810.04805v2"
+    ],
+    "referenced_arxiv_ids": [
+      "1412.6980v9",
+      "1706.03762v7"
+    ],
+    "n_doc_ids_in_fingerprints": 22,
+    "n_doc_ids_referenced": 22
+  }
+}

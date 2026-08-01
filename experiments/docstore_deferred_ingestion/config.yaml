@@ -1,0 +1,75 @@
+# Configuration for the deferred-ingestion validation experiment.
+#
+# Everything a re-runner might want to change lives here. Model ids and arXiv
+# ids are PINNED — the point of the experiment is that the same command on the
+# same machine measures the same documents through the same models.
+
+models:
+  # WITH the ollama: prefix — this is a pydantic-ai model id.
+  llm: "ollama:gemma4:26b-nvfp4"
+  # WITHOUT the prefix — EmbeddingService talks to /api/embed directly.
+  embedding: "embeddinggemma:latest"
+  # Base URL asserted by rule gate_llm and re-checked at import in _common.py.
+  ollama_base_url: "http://localhost:11434/v1"
+  ollama_root_url: "http://localhost:11434"
+
+# Four papers, version-pinned. GPT-3 (2005.14165) is DELIBERATELY EXCLUDED:
+# ~75 pages -> ~30 chunks -> ~6 min of enrichment, and it buys nothing for any
+# hypothesis here. See README "Scope decisions".
+corpus:
+  - arxiv_id: "1706.03762v7"
+    short: "attention"
+    title: "Attention Is All You Need"
+  - arxiv_id: "1810.04805v2"
+    short: "bert"
+    title: "BERT"
+  - arxiv_id: "1512.03385v1"
+    short: "resnet"
+    title: "Deep Residual Learning"
+  - arxiv_id: "1412.6980v9"
+    short: "adam"
+    title: "Adam"
+
+# The smallest paper, used wherever one cheap PDF is enough.
+small_paper: "1412.6980v9"
+
+download:
+  base_url: "https://arxiv.org/pdf"
+  user_agent: "andamentum-experiment/1.0 (deferred-ingestion validation; contact: repo owner)"
+  polite_delay_seconds: 3.0
+  retries: 2
+  timeout_seconds: 120.0
+
+databases:
+  # Every name MUST start with dfr_ — lifecycle.EPHEMERAL_PREFIXES silently
+  # redirects ask_/test_/tmp/varfolders names into <DOCUMENT_STORE_DIR>/.ephemeral/.
+  main: "dfr_main"
+  now: "dfr_now"
+  kill: "dfr_kill"
+  pause: "dfr_pause"
+  # Arm 5 needs an exactly-ordered queue (truncated / FULL / truncated) so the
+  # document in flight when the SIGTERM lands is deterministically full-size.
+  # Sharing dfr_pause would make that order depend on what arms 1-4 left behind.
+  pause_full: "dfr_pause_full"
+  fail: "dfr_fail"
+  empty: "dfr_empty"
+  cli: "dfr_cli"
+
+# Per-lineage document counts — the scope control that keeps the run under ~1 h.
+lineages:
+  main_documents: 4          # all four papers, full markdown, full enrichment
+  now_control_documents: 1   # ONE process="now" control, not a parallel corpus
+  kill_sources: 3            # three PDFs in the kill lineage, not five
+  pause_markdown_chars: 6000 # pause-lineage docs are truncated (~2 chunks each)
+  pause_markdown_documents: 4
+  fail_bad_sources: 4
+
+timeouts:
+  conversion_seconds: 300.0     # per PDF, RAISES on overrun
+  kill_gate_seconds: 600.0      # supervisor gives up and FAILS LOUD
+  cli_pause_exit_seconds: 900.0 # SIGTERM -> exit budget for the CLI arm
+  drain_worker_seconds: 1800.0
+
+polling:
+  interval_seconds: 0.25        # >= 250 ms so the read-only poller cannot
+                                # contend meaningfully on the write lock
