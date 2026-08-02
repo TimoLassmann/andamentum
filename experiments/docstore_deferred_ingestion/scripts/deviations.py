@@ -409,6 +409,52 @@ DEVIATIONS: list[dict[str, Any]] = [
             "not reproducible from its own recorded commit."
         ),
     ),
+    deviation(
+        when="edition 2, AFTER all measurement rules had completed",
+        what=(
+            "The Snakefile gained a `report:` workflow description and `report(...)` "
+            "annotations on 24 outputs; `captions/*.rst` (31 files) were written; "
+            "`provenance.HARNESS_GLOBS` and `manifest.TREES` were extended to cover "
+            "them. No rule body, threshold, metric or measurement changed, and "
+            "`snakemake -n` after the edit reported 'Nothing to be done', so no "
+            "measurement was re-executed."
+        ),
+        why=(
+            "The measured artefacts were self-describing only to a reader who already "
+            "knew the layout. `snakemake --report` bundles the DAG, every rule's "
+            "docstring and code, the runtime statistics and every annotated artefact "
+            "with prose saying WHAT it is and WHY it was measured that way — but only "
+            "for outputs carrying a report() annotation, of which there were none."
+        ),
+        affects=["no hypothesis; presentation only"],
+        direction=(
+            "No verdict can move: analyze.py did not re-run and claims.json is "
+            "byte-unchanged. The cost is that provenance.json's harness_sha256 (run "
+            "START) now differs from MANIFEST.json's (run END) by these files, on top "
+            "of the mid-run harness edits already recorded above."
+        ),
+    ),
+    deviation(
+        when="edition 2, AFTER all measurement rules had completed",
+        what=(
+            "`manifest.py`'s harness file set changed from a hand-written "
+            "`startswith(('scripts/', 'Snakefile'))` to `provenance.HARNESS_GLOBS`, "
+            "the single definition provenance already used."
+        ),
+        why=(
+            "The hand-written list silently excluded `config.yaml`, so MANIFEST's "
+            "digest covered 35 files while provenance's covered 36. The two could "
+            "therefore NEVER be equal — while `harness_note` invited the reader to "
+            "cross-check them against each other. A check that always disagrees is "
+            "worse than no check: it reads as evidence of tampering. The note now "
+            "states plainly what a difference means and what equality would mean."
+        ),
+        affects=["no hypothesis; integrity machinery only"],
+        direction=(
+            "No verdict moves. It makes a previously meaningless cross-check "
+            "meaningful, and the recorded digest changes value as a consequence."
+        ),
+    ),
 ]
 
 

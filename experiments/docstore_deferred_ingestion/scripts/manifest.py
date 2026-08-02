@@ -37,6 +37,7 @@ TREES = {
     "bench": "snakemake benchmark:",
     "scripts": "harness (hand-written; hashed so the apparatus is pinned too)",
     "tests": "harness (offline unit tests for the instruments)",
+    "captions": "harness (the prose `snakemake --report` puts beside each artefact)",
 }
 
 #: Never hashed into the manifest: databases are large, machine-local, and
@@ -44,7 +45,15 @@ TREES = {
 SKIP_DIRS = {"dbs", "pdfs", "__pycache__", ".snakemake"}
 
 #: Files at the experiment root, hashed by name.
-ROOT_FILES = ("report.md", "report.html", "Snakefile", "config.yaml", "README.md", ".gitignore")
+ROOT_FILES = (
+    "report.md",
+    "report.html",
+    "Snakefile",
+    "config.yaml",
+    "README.md",
+    "FINDINGS.md",
+    ".gitignore",
+)
 
 
 def _spec_for(relative: str) -> dict[str, Any]:
@@ -62,6 +71,19 @@ def _spec_for(relative: str) -> dict[str, Any]:
         if fnmatch.fnmatch(relative, pattern):
             return glob_spec
     return {}
+
+
+def _is_harness(relative: str) -> bool:
+    """Does this path belong to the measuring apparatus?
+
+    Defined by ``provenance.HARNESS_GLOBS`` so the two digests cannot drift
+    apart through a second, hand-maintained list.
+    """
+    import fnmatch
+
+    from .provenance import HARNESS_GLOBS
+
+    return any(fnmatch.fnmatch(relative, pattern) for pattern in HARNESS_GLOBS)
 
 
 def describe(path: Path) -> dict[str, Any]:
@@ -140,7 +162,14 @@ def main() -> int:
         if path.exists():
             artefacts.append(describe(path))
 
-    harness = [a for a in artefacts if a["path"].startswith(("scripts/", "Snakefile"))]
+    # The harness set is taken from provenance.HARNESS_GLOBS rather than
+    # re-listed here. It used to be `startswith(("scripts/", "Snakefile"))`,
+    # which silently excluded `config.yaml` — so this digest covered 35 files
+    # while provenance's covered 36, the two could never be equal, and
+    # `harness_note` nevertheless invited the reader to cross-check them. A
+    # check that always disagrees reads as tampering. ONE definition, two
+    # independent computations over it.
+    harness = [a for a in artefacts if _is_harness(a["path"])]
     payload = {
         "run_id": C.run_id(),
         "n_artefacts": len(artefacts),
@@ -149,9 +178,13 @@ def main() -> int:
             "\n".join(f"{a['path']}:{a['sha256']}" for a in sorted(harness, key=lambda a: a["path"]))
         ),
         "harness_note": (
-            "one digest over the Snakefile and every harness script. Cross-check it "
-            "against provenance.json's git.harness_sha256 — they are computed "
-            "independently over the same file set"
+            "one digest over provenance.HARNESS_GLOBS — the Snakefile, config.yaml, "
+            "every scripts/*.py and every captions/*.rst. Computed independently of "
+            "provenance.json's harness.harness_sha256 over the SAME file set, so the "
+            "two are comparable. They are NOT expected to be equal: provenance stamps "
+            "the apparatus at run START and this file stamps it at the END, so a "
+            "difference means the harness changed mid-run and results/deviations.json "
+            "names which files. Equality means it did not."
         ),
         "n_unschemad": len([a for a in artefacts if a["schema"] is None]),
         "skipped": sorted(SKIP_DIRS),

@@ -1,13 +1,13 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.deviations/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T14:43:14.871648+00:00",
+  "written_at": "2026-08-01T14:56:18.485655+00:00",
   "provenance_ref": {
     "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
     "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
-  "n_deviations": 17,
+  "n_deviations": 19,
   "policy": "Every change to a hypothesis, metric, threshold or scoring rule made after a measurement was observed appears here, with the direction it could have moved a verdict. Written by hand at the moment of the change; a generated log would only record the deviations someone remembered to generate.",
   "deviations": [
     {
@@ -168,6 +168,24 @@
         "claim (e) probes"
       ],
       "could_have_moved_the_verdict": "Edition 1's published claim (e) numbers are correct; the run was simply not reproducible from its own recorded commit."
+    },
+    {
+      "when": "edition 2, AFTER all measurement rules had completed",
+      "what": "The Snakefile gained a `report:` workflow description and `report(...)` annotations on 24 outputs; `captions/*.rst` (31 files) were written; `provenance.HARNESS_GLOBS` and `manifest.TREES` were extended to cover them. No rule body, threshold, metric or measurement changed, and `snakemake -n` after the edit reported 'Nothing to be done', so no measurement was re-executed.",
+      "why": "The measured artefacts were self-describing only to a reader who already knew the layout. `snakemake --report` bundles the DAG, every rule's docstring and code, the runtime statistics and every annotated artefact with prose saying WHAT it is and WHY it was measured that way \u2014 but only for outputs carrying a report() annotation, of which there were none.",
+      "affects": [
+        "no hypothesis; presentation only"
+      ],
+      "could_have_moved_the_verdict": "No verdict can move: analyze.py did not re-run and claims.json is byte-unchanged. The cost is that provenance.json's harness_sha256 (run START) now differs from MANIFEST.json's (run END) by these files, on top of the mid-run harness edits already recorded above."
+    },
+    {
+      "when": "edition 2, AFTER all measurement rules had completed",
+      "what": "`manifest.py`'s harness file set changed from a hand-written `startswith(('scripts/', 'Snakefile'))` to `provenance.HARNESS_GLOBS`, the single definition provenance already used.",
+      "why": "The hand-written list silently excluded `config.yaml`, so MANIFEST's digest covered 35 files while provenance's covered 36. The two could therefore NEVER be equal \u2014 while `harness_note` invited the reader to cross-check them against each other. A check that always disagrees is worse than no check: it reads as evidence of tampering. The note now states plainly what a difference means and what equality would mean.",
+      "affects": [
+        "no hypothesis; integrity machinery only"
+      ],
+      "could_have_moved_the_verdict": "No verdict moves. It makes a previously meaningless cross-check meaningful, and the recorded digest changes value as a consequence."
     }
   ]
 }

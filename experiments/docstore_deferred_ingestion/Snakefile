@@ -155,6 +155,32 @@
 #
 # Nothing else may use Ollama for the duration. Every rule caches its output, so
 # a partial run resumes rather than restarting.
+#
+#
+# THE SELF-DESCRIBING HTML REPORT
+# ===============================
+# After a run, one further command bundles the DAG, every rule's docstring and
+# code, the runtime statistics and every annotated artefact — each with a prose
+# caption saying WHAT it is and WHY it was measured that way — into one file:
+#
+#     uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile \
+#         --report experiments/docstore_deferred_ingestion/report_snakemake.html \
+#         --cores 1
+#
+# NOT `--report .../report.html`. `report.html` is a DECLARED OUTPUT of `rule
+# report` (the typeset rendering of report.md) and is hashed into MANIFEST.json;
+# pointing the reporter at it destroys a workflow output and makes
+# `manifest --verify` report a permanent discrepancy on it. The reporter gets its
+# own filename.
+#
+# The report is NOT part of `rule all`: it is ~4 MB, it is exactly re-derivable
+# from committed evidence by the command above, and its memory/IO columns are
+# literally 0 on this macOS host. It is gitignored for the same reason
+# data/markdown/ is.
+#
+# The prose lives in captions/*.rst — one per annotated artefact, plus
+# captions/workflow.rst for the workflow description. They are hashed into
+# MANIFEST.json like every other piece of the apparatus.
 
 
 import os
@@ -193,6 +219,16 @@ FIGURES = [
     f"{FIGS}/fig4_enrichment_attribution.png",
 ]
 
+# The workflow description shown at the top of `snakemake --report`: what was
+# tested, why, the six claims, the gate, and what the run does NOT establish.
+report: "captions/workflow.rst"
+
+# `report(...)` captions are resolved relative to the Snakefile, so this is the
+# prefix every annotation below shares. FIGURES stay bare strings above because
+# other rules consume that list as plain inputs; the annotation is applied at
+# the point of production, in `rule figures`.
+CAP = "captions"
+
 
 rule all:
     """Default target: the report, the manifest, and everything they depend on."""
@@ -213,7 +249,12 @@ rule deviations:
     input:
         PROV,
     output:
-        f"{RESULTS}/deviations.json",
+        report(
+            f"{RESULTS}/deviations.json",
+            caption=f"{CAP}/deviations.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "deviations.json", "what": "post-hoc amendment trail"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -235,7 +276,12 @@ rule prereg:
     input:
         PROV,
     output:
-        PREREG,
+        report(
+            PREREG,
+            caption=f"{CAP}/prereg.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "preregistration.json", "what": "thresholds + scoring rules"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -251,7 +297,12 @@ rule provenance:
     experiment that silently runs against a model it did not intend has no
     measurement at all."""
     output:
-        PROV,
+        report(
+            PROV,
+            caption=f"{CAP}/provenance.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "provenance.json", "what": "run_id, git, model digests"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -266,7 +317,12 @@ rule schemas:
         PROV,
     output:
         f"{RESULTS}/SCHEMAS.json",
-        f"{RESULTS}/SCHEMAS.md",
+        report(
+            f"{RESULTS}/SCHEMAS.md",
+            caption=f"{CAP}/schemas.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "SCHEMAS.md", "what": "field / type / units / meaning"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -290,7 +346,12 @@ rule fetch_pdfs:
         PROV,
     output:
         PDFS,
-        f"{DATA}/REGISTRY.json",
+        report(
+            f"{DATA}/REGISTRY.json",
+            caption=f"{CAP}/registry.rst",
+            category="5 · Inputs and gates",
+            labels={"artefact": "REGISTRY.json", "what": "4 arXiv PDFs: URL + sha256 + ETag"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -308,7 +369,12 @@ rule verify_registry:
         f"{DATA}/REGISTRY.json",
         PDFS,
     output:
-        f"{RESULTS}/data_integrity.json",
+        report(
+            f"{RESULTS}/data_integrity.json",
+            caption=f"{CAP}/data_integrity.rst",
+            category="5 · Inputs and gates",
+            labels={"artefact": "data_integrity.json", "what": "sha256 re-check, exits 1 on drift"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -327,7 +393,12 @@ rule convert_reference:
         f"{RESULTS}/data_integrity.json",
     output:
         MARKDOWN,
-        f"{RESULTS}/conversion_baseline.json",
+        report(
+            f"{RESULTS}/conversion_baseline.json",
+            caption=f"{CAP}/conversion_baseline.rst",
+            category="5 · Inputs and gates",
+            labels={"artefact": "conversion_baseline.json", "what": "per-PDF harvest seconds, cold vs warm"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -350,7 +421,12 @@ rule gate_llm:
         f"{RESULTS}/data_integrity.json",
         PREREG,
     output:
-        GATE,
+        report(
+            GATE,
+            caption=f"{CAP}/gate.rst",
+            category="5 · Inputs and gates",
+            labels={"artefact": "gate_llm.json", "what": "BLOCKING: proves the LLM really enriches"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -373,7 +449,13 @@ rule claim_a_defer:
         MARKDOWN,
         f"{RESULTS}/conversion_baseline.json",
     output:
-        f"{RESULTS}/claim_a_defer.json",
+        report(
+            f"{RESULTS}/claim_a_defer.json",
+            caption=f"{CAP}/claim_a.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (a) — defer is LLM-free and fast",
+            labels={"artefact": "claim_a_defer.json", "hypotheses": "H-a1 … H-a5"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -390,7 +472,13 @@ rule claim_e_pre:
         GATE,
         f"{RESULTS}/claim_a_defer.json",
     output:
-        f"{RESULTS}/claim_e_pre.json",
+        report(
+            f"{RESULTS}/claim_e_pre.json",
+            caption=f"{CAP}/claim_e_pre.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (e) — the drain creates searchability",
+            labels={"artefact": "claim_e_pre.json", "hypotheses": "H-e control arm"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -407,7 +495,13 @@ rule claim_b_drain:
         GATE,
         f"{RESULTS}/claim_e_pre.json",
     output:
-        f"{RESULTS}/claim_b_drain.json",
+        report(
+            f"{RESULTS}/claim_b_drain.json",
+            caption=f"{CAP}/claim_b.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (b) — a drain is resumable and idempotent",
+            labels={"artefact": "claim_b_drain.json", "hypotheses": "H-b"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -424,7 +518,13 @@ rule claim_e_post:
         GATE,
         f"{RESULTS}/claim_b_drain.json",
     output:
-        f"{RESULTS}/claim_e_post.json",
+        report(
+            f"{RESULTS}/claim_e_post.json",
+            caption=f"{CAP}/claim_e_post.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (e) — the drain creates searchability",
+            labels={"artefact": "claim_e_post.json", "hypotheses": "H-e1, H-e2"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -444,7 +544,13 @@ rule micro_stages:
         GATE,
         f"{RESULTS}/claim_e_post.json",
     output:
-        f"{RESULTS}/micro_stages.json",
+        report(
+            f"{RESULTS}/micro_stages.json",
+            caption=f"{CAP}/micro_stages.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="cross-cutting — cost attribution and concurrency",
+            labels={"artefact": "micro_stages.json", "hypotheses": "H-m1"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -473,7 +579,13 @@ rule claim_c_kill:
         f"{RESULTS}/micro_stages.json",   # RESOURCE EDGE (Ollama serialisation)
         PDFS,
     output:
-        f"{RESULTS}/claim_c_kill.json",
+        report(
+            f"{RESULTS}/claim_c_kill.json",
+            caption=f"{CAP}/claim_c_kill.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (c) — conversion survives a hard kill",
+            labels={"artefact": "claim_c_kill.json", "hypotheses": "the SIGKILL itself"},
+        ),
         f"{LEDGERS}/kill_convert.jsonl",
     threads: 1
     resources:
@@ -500,7 +612,13 @@ rule cli_smoke:
         f"{RESULTS}/conversion_baseline.json",
         PDFS,
     output:
-        f"{RESULTS}/cli_smoke.json",
+        report(
+            f"{RESULTS}/cli_smoke.json",
+            caption=f"{CAP}/cli_smoke.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="cross-cutting — the CLI surface",
+            labels={"artefact": "cli_smoke.json", "hypotheses": "every subcommand, exit codes + stdout"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -531,7 +649,13 @@ rule claim_c_resume:
         f"{LEDGERS}/kill_convert.jsonl",
         f"{RESULTS}/conversion_baseline.json",
     output:
-        f"{RESULTS}/claim_c_resume.json",
+        report(
+            f"{RESULTS}/claim_c_resume.json",
+            caption=f"{CAP}/claim_c_resume.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (c) — conversion survives a hard kill",
+            labels={"artefact": "claim_c_resume.json", "hypotheses": "H-c1, H-c2, H-c3, H-d4"},
+        ),
         f"{LEDGERS}/kill_convert.final.jsonl",   # verbatim copy of the end state
     threads: 1
     resources:
@@ -558,7 +682,13 @@ rule claim_d_pause:
         f"{RESULTS}/conversion_baseline.json",
         PDFS,
     output:
-        f"{RESULTS}/claim_d_pause.json",
+        report(
+            f"{RESULTS}/claim_d_pause.json",
+            caption=f"{CAP}/claim_d.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (d) — a pause stops between documents",
+            labels={"artefact": "claim_d_pause.json", "hypotheses": "H-d1, H-d2, H-d3, H-d5"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -587,7 +717,13 @@ rule claim_f_fail:
         f"{RESULTS}/claim_d_pause.json",   # RESOURCE EDGE
         PDFS,
     output:
-        f"{RESULTS}/claim_f_fail.json",
+        report(
+            f"{RESULTS}/claim_f_fail.json",
+            caption=f"{CAP}/claim_f.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="claim (f) — failures are recorded and retried",
+            labels={"artefact": "claim_f_fail.json", "hypotheses": "H-f1, H-f2"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -614,7 +750,13 @@ rule drain_overhead:
         GATE,
         f"{RESULTS}/claim_f_fail.json",   # RESOURCE EDGE
     output:
-        f"{RESULTS}/drain_overhead.json",
+        report(
+            f"{RESULTS}/drain_overhead.json",
+            caption=f"{CAP}/drain_overhead.rst",
+            category="3 · Evidence, claim by claim",
+            subcategory="cross-cutting — cost attribution and concurrency",
+            labels={"artefact": "drain_overhead.json", "hypotheses": "the per-wake-up preflight tax"},
+        ),
     threads: 1
     resources:
         ollama=1,
@@ -636,7 +778,12 @@ rule merge_events:
         f"{RESULTS}/drain_overhead.json",
     output:
         f"{RESULTS}/events.jsonl",
-        f"{RESULTS}/events.csv",
+        report(
+            f"{RESULTS}/events.csv",
+            caption=f"{CAP}/events.rst",
+            category="6 · Timelines and roll-ups",
+            labels={"artefact": "events.csv", "what": "every queue transition, flat"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -666,9 +813,24 @@ rule analyze:
         f"{RESULTS}/claim_f_fail.json",
         f"{RESULTS}/drain_overhead.json",
     output:
-        f"{RESULTS}/claims.json",
-        f"{RESULTS}/timings.csv",
-        f"{RESULTS}/per_document.csv",
+        report(
+            f"{RESULTS}/claims.json",
+            caption=f"{CAP}/scoreboard.rst",
+            category="1 · The scoreboard",
+            labels={"artefact": "claims.json", "what": "one row per pre-registered threshold"},
+        ),
+        report(
+            f"{RESULTS}/timings.csv",
+            caption=f"{CAP}/timings.rst",
+            category="6 · Timelines and roll-ups",
+            labels={"artefact": "timings.csv", "what": "cost per rule"},
+        ),
+        report(
+            f"{RESULTS}/per_document.csv",
+            caption=f"{CAP}/per_document.rst",
+            category="6 · Timelines and roll-ups",
+            labels={"artefact": "per_document.csv", "what": "post-drain structure per document"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -684,7 +846,30 @@ rule figures:
         f"{RESULTS}/claims.json",
         f"{RESULTS}/timings.csv",
     output:
-        FIGURES,
+        report(
+            FIGURES[0],
+            caption=f"{CAP}/fig1.rst",
+            category="2 · Figures",
+            labels={"figure": "1", "what": "process wall time per rule"},
+        ),
+        report(
+            FIGURES[1],
+            caption=f"{CAP}/fig2.rst",
+            category="2 · Figures",
+            labels={"figure": "2", "what": "retrieval recall@1, before vs after the drain"},
+        ),
+        report(
+            FIGURES[2],
+            caption=f"{CAP}/fig3.rst",
+            category="2 · Figures",
+            labels={"figure": "3", "what": "discarded work per stop mechanism"},
+        ),
+        report(
+            FIGURES[3],
+            caption=f"{CAP}/fig4.rst",
+            category="2 · Figures",
+            labels={"figure": "4", "what": "sequential cost attribution for one document"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -699,7 +884,12 @@ rule report:
         f"{RESULTS}/claims.json",
         FIGURES,
     output:
-        f"{EXP}/report.md",
+        report(
+            f"{EXP}/report.md",
+            caption=f"{CAP}/report_md.rst",
+            category="1 · The scoreboard",
+            labels={"artefact": "report.md", "what": "the narrative report"},
+        ),
         f"{EXP}/report.html",
     threads: 1
     retries: 0
@@ -719,7 +909,12 @@ rule validate_results:
         f"{EXP}/report.md",
         FIGURES,
     output:
-        f"{RESULTS}/validation.json",
+        report(
+            f"{RESULTS}/validation.json",
+            caption=f"{CAP}/validation.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "validation.json", "what": "schema + referential integrity"},
+        ),
     threads: 1
     retries: 0
     benchmark:
@@ -735,7 +930,12 @@ rule manifest:
         f"{EXP}/report.md",
         FIGURES,
     output:
-        f"{RESULTS}/MANIFEST.json",
+        report(
+            f"{RESULTS}/MANIFEST.json",
+            caption=f"{CAP}/manifest.rst",
+            category="4 · Pre-registration and provenance",
+            labels={"artefact": "MANIFEST.json", "what": "sha256 of every artefact AND of the apparatus"},
+        ),
     threads: 1
     retries: 0
     benchmark:

@@ -63,7 +63,11 @@ def _run(cmd: list[str], *, timeout: float = 20.0) -> str:
 WORKING_TREE_PATCH = C.RESULTS / "working_tree.patch"
 
 #: Files whose sha256 identifies the measuring apparatus itself.
-HARNESS_GLOBS = ("Snakefile", "config.yaml", "scripts/*.py")
+#: ``captions/*.rst`` is in here because those files are not decoration: they are
+#: the prose the Snakemake HTML report puts in front of a reader beside each
+#: number. Text that explains a result is part of the apparatus that publishes
+#: it, and it should be identifiable by the same one digest.
+HARNESS_GLOBS = ("Snakefile", "config.yaml", "scripts/*.py", "captions/*.rst")
 
 
 def git_facts() -> dict[str, Any]:
