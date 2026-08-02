@@ -1,7 +1,7 @@
 """The durable ingestion queue — status transitions on the ``documents`` table.
 
 Ingestion has two expensive stages: converting a source to markdown, and
-enriching markdown (chunk + embed + LLM metadata). Either can be deferred and
+enriching markdown (chunk + embed). Either can be deferred and
 drained later. The queue that makes that possible is not a separate table — it
 is three columns on ``documents``, because the unit of work *is* a document:
 

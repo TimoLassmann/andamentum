@@ -345,7 +345,7 @@ async def ingest(
     (this immediacy is specific to ``ingest``; a source queued by
     :func:`ingest_source` holds no markdown yet, so it is not searchable at all
     until the drain converts it)
-    (no chunks/embeddings) and carries no LLM metadata until the drain runs.
+    (no chunks/embeddings) until the drain runs.
 
     Args:
         database: Database name (e.g., "brain")

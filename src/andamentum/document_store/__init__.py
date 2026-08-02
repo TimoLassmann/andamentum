@@ -1,14 +1,14 @@
 """andamentum.document_store — Personal knowledge base with 4-signal search.
 
 A storage and search library for a personal "second brain." Stores documents
-with automatic chunking, embedding, and LLM metadata extraction. Searches
+with automatic chunking and embedding — no LLM. Searches
 using 4-signal Reciprocal Rank Fusion (FTS5 keyword, chunk embeddings,
 doc embeddings, DHP temporal clustering).
 
 Public API (11 functions — all you need):
 
     from andamentum.document_store import (
-        ingest,            # Store content with auto-chunking and metadata extraction
+        ingest,            # Store content with auto-chunking + embedding (no LLM)
         search,            # Natural language search with LLM query planning
         find_by_metadata,  # Structured query by metadata fields (exact or set-membership)
         describe_metadata, # Discover the metadata schema (fields + value distributions)
@@ -33,13 +33,14 @@ Quick start:
 
 Architecture:
 - Named databases: ~/.local/share/document-store/{name}.db (override with DOCUMENT_STORE_DIR env var)
-- SQLite + sqlite-vec + FTS5 (no external services except Ollama for embeddings/LLM)
+- SQLite + sqlite-vec + FTS5 (no external services except Ollama for embeddings)
 - Two-phase ingest: document registered immediately (FTS5 searchable),
   chunks + embeddings stored in background (repairable if interrupted)
 
 Requires:
 - Ollama running locally with embeddinggemma:latest (for embeddings)
-- pydantic-ai for metadata extraction and query planning (installed as part of andamentum)
+- pydantic-ai for query planning in search() (installed as part of andamentum).
+  Ingest needs no LLM; the store does not author metadata.
 """
 
 # === Functions you can wrap as agent tools ===
