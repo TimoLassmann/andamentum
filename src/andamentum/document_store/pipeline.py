@@ -66,7 +66,6 @@ async def ingest_source(
     title: str | None = None,
     metadata: dict | None = None,
     *,
-    model: str | None = None,
     embedding_model: str | None = None,
     process: ProcessMode = "defer",
 ) -> str:
@@ -81,7 +80,6 @@ async def ingest_source(
         title,
         metadata,
         convert_fn=harvest_convert_fn(),
-        model=model,
         embedding_model=embedding_model,
         process=process,
     )
@@ -90,9 +88,9 @@ async def ingest_source(
 async def drain(database: str, **kwargs) -> ProcessReport:
     """Run :func:`document_store.process_pending` with harvest wired in.
 
-    Accepts every keyword :func:`process_pending` does (``model``,
-    ``embedding_model``, ``should_continue``, ``on_progress``, ``max_docs``,
-    ``max_seconds``); ``convert_fn`` defaults to harvest but can be overridden.
+    Accepts every keyword :func:`process_pending` does (``embedding_model``,
+    ``should_continue``, ``on_progress``, ``max_docs``, ``max_seconds``);
+    ``convert_fn`` defaults to harvest but can be overridden.
     """
     kwargs.setdefault("convert_fn", harvest_convert_fn())
     return await _core_process_pending(database, **kwargs)

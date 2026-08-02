@@ -110,7 +110,6 @@ class TestReembedDocument:
             db,
             "The original note is about marine biology and coral reefs.",
             title="Note",
-            model=model,
             embedding_model=embedding_model,
         )
 
@@ -120,9 +119,7 @@ class TestReembedDocument:
             new_content="The note now discusses orbital mechanics and satellites.",
         )
 
-        ok = await reembed_document(
-            db, doc_id, model=model, embedding_model=embedding_model
-        )
+        ok = await reembed_document(db, doc_id, embedding_model=embedding_model)
         assert ok is True
 
         results = await search(
@@ -136,9 +133,6 @@ class TestReembedDocument:
         from andamentum.document_store import reembed_document
 
         ok = await reembed_document(
-            db,
-            "missing-doc-id",
-            model="ollama:gpt-oss:20b",
-            embedding_model="embeddinggemma:latest",
+            db, "missing-doc-id", embedding_model="embeddinggemma:latest"
         )
         assert ok is False

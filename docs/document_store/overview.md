@@ -8,7 +8,7 @@ The core async functions that form the public surface:
 
 | Function | Purpose |
 |----------|---------|
-| `ingest(database, content)` | Store content with auto-chunking, embedding, and metadata extraction |
+| `ingest(database, content)` | Store content with auto-chunking and embedding (no LLM) |
 | `search(database, query)` | Natural language search with LLM query planning |
 | `find_by_metadata(database, filters)` | Structured query by metadata fields — exact match or set-membership |
 | `describe_metadata(database)` | Discover the metadata schema — fields present + value distributions |
@@ -87,7 +87,19 @@ An LLM decomposes the query into a search plan (semantic query + optional metada
 
 Two-phase design:
 - **Phase 1** (atomic): document stored in SQLite, FTS5 keyword-searchable immediately
-- **Phase 2** (repairable): content chunked, each chunk embedded, LLM extracts metadata; if interrupted, `repair()` re-runs it
+- **Phase 2** (repairable): content chunked and each chunk embedded; if interrupted, `repair()` re-runs it
+
+**Ingest never calls an LLM.** The store does not invent a metadata vocabulary —
+that belongs to whoever uses it. Pass your own fields with `metadata=`, or set
+them later with `update_metadata()`, and query them deterministically with
+`find_by_metadata()`. If you want an LLM-generated title, call
+`extract_document_metadata()` yourself and pass the result as `title=`.
+
+> Per-chunk LLM tagging (`topics`, `people`, `has_decision`, `has_action_item`)
+> was removed. Nothing read those fields, and producing them cost ~93% of ingest
+> wall-time — one LLM call per chunk. Measured on one arXiv paper: **283 s → 3.5 s
+> (81×)**, with retrieval unchanged. Only `search()` still uses an LLM, for query
+> planning.
 
 ## Deferred ingestion — capture now, enrich later
 

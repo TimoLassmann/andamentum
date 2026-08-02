@@ -94,16 +94,21 @@ class DocumentLLMFields(BaseModel):
 
 
 class ChunkMetadataFields(BaseModel):
-    """Structured metadata for a chunk.
+    """Structured metadata for a chunk. Entirely deterministic.
 
-    Deterministic fields (filled by chunking pipeline):
-        parent_doc_id, section_path, chunk_index
+    The store does not invent a metadata vocabulary. Chunk metadata records only
+    what chunking itself knows: which document the chunk came from, where in the
+    heading hierarchy it sits, and its position.
 
-    LLM-extracted:
-        topics, people, has_decision, has_action_item
+    There used to be LLM-extracted fields here (``topics``, ``people``,
+    ``has_decision``, ``has_action_item``). They were removed: nothing in the
+    codebase — or in any consumer — ever read them, they cost ~93% of ingest
+    wall-time (one LLM call per chunk), and having the store author its own tags
+    alongside consumer-written ones made metadata ownership ambiguous.
+    Consumers define their own vocabulary and write it via ``ingest(metadata=…)``
+    or ``update_metadata()``.
     """
 
-    # Deterministic
     parent_doc_id: str = Field(
         default="",
         description="Foreign key to the parent document",
@@ -115,50 +120,4 @@ class ChunkMetadataFields(BaseModel):
     chunk_index: int = Field(
         default=0,
         description="Position within the document (0-based)",
-    )
-
-    # LLM-extracted
-    topics: list[str] = Field(
-        default_factory=list,
-        description="2-3 specific topic tags for this chunk",
-    )
-    people: list[str] = Field(
-        default_factory=list,
-        description="People mentioned in this chunk",
-    )
-    has_decision: bool = Field(
-        default=False,
-        description="Whether this chunk contains a decision or commitment",
-    )
-    has_action_item: bool = Field(
-        default=False,
-        description="Whether this chunk contains a to-do or next step",
-    )
-
-
-class ChunkLLMFields(BaseModel):
-    """LLM-extracted fields for a chunk.
-
-    Used as output_type for PydanticAI agent. Field descriptions are passed
-    directly to the LLM as a tool definition schema.
-
-    Binary yes/no questions (has_decision, has_action_item) are more reliable
-    for local models than multi-way classification.
-    """
-
-    topics: list[str] = Field(
-        default_factory=list,
-        description='2-3 specific topic tags. Be specific — prefer "MAP-Elites selection" over "optimization". Empty array if content is too generic.',
-    )
-    people: list[str] = Field(
-        default_factory=list,
-        description="People mentioned in this chunk. Empty array if none.",
-    )
-    has_decision: bool = Field(
-        default=False,
-        description="Does this chunk contain a decision, commitment, or resolution? true/false.",
-    )
-    has_action_item: bool = Field(
-        default=False,
-        description="Does this chunk contain a to-do, next step, or action item? true/false.",
     )

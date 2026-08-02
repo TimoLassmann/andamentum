@@ -6,11 +6,15 @@ plus one optional metadata filter on a closed-set field.
 Filterable fields (closed-set only — LLM knows all valid values):
   source: manual, slack, claude_code, zotero, voice
   created_at: date filtering (after/before)
-  has_decision: boolean (chunks containing decisions)
-  has_action_item: boolean (chunks containing to-dos)
 
 Open-ended fields (people, projects, topics, methods) are NOT filterable —
 semantic search handles them. The LLM can't know what values exist in the database.
+
+``has_decision`` / ``has_action_item`` used to be filterable. They were removed
+along with the per-chunk LLM tagging that populated them: nothing read the tags,
+and a filter over a field nothing writes can only ever match zero rows.
+Consumers that want such flags write their own metadata and query it with
+``find_by_metadata`` — deterministically, no LLM.
 
 Requires: pydantic-ai (installed as part of andamentum).
 """
@@ -29,11 +33,9 @@ logger = logging.getLogger(__name__)
 FilterField = Literal[
     "source",  # 5 values: manual, slack, claude_code, zotero, voice
     "created_at",  # date filtering (after/before)
-    "has_decision",  # boolean: chunks containing decisions
-    "has_action_item",  # boolean: chunks containing action items
 ]
 
-FilterOperator = Literal["equals", "is_true", "after", "before"]
+FilterOperator = Literal["equals", "after", "before"]
 
 _OUTPUT_RETRIES = 5
 _RETRIES = 3
@@ -51,8 +53,6 @@ class MetadataFilter(BaseModel):
             "Metadata field to filter on. "
             "source: manual, slack, claude_code, zotero, voice. "
             "created_at: document creation date. "
-            "has_decision: chunks containing a decision. "
-            "has_action_item: chunks containing a to-do. "
             "Do NOT filter on people, projects, or topics — semantic search handles those."
         ),
     )
@@ -60,14 +60,13 @@ class MetadataFilter(BaseModel):
         description=(
             "How to compare. "
             "equals: exact match (for source). "
-            "is_true: boolean flag is set (for has_decision, has_action_item). "
             "after: date >= value (for created_at). "
             "before: date <= value (for created_at)."
         ),
     )
     value: str = Field(
         default="",
-        description="Value to match. For equals: the exact string. For dates: YYYY-MM-DD. For is_true: leave empty.",
+        description="Value to match. For equals: the exact string. For dates: YYYY-MM-DD.",
     )
 
 
@@ -108,15 +107,14 @@ Given a natural language query, produce a search plan with:
 - A semantic query (what to search for in content)
 - Optionally ONE metadata filter on a closed-set field
 
-Filterable fields: source, created_at, has_decision, has_action_item.
+Filterable fields: source, created_at.
 Do NOT filter on people, projects, methods, or topics — semantic search handles those.
 
 Today's date is {today}.
 
 Examples:
 - "What have I captured about MAP-Elites?" → semantic_query="MAP-Elites", filter=None
-- "What decisions did I make about GROVE?" → semantic_query="decisions about GROVE", filter={{field: "has_decision", operator: "is_true", value: ""}}
-- "Show me all my action items" → semantic_query="", filter={{field: "has_action_item", operator: "is_true", value: ""}}, needs_semantic_search=False
+- "What decisions did I make about GROVE?" → semantic_query="decisions about GROVE", filter=None
 - "What has Sarah said about the grant?" → semantic_query="Sarah grant", filter=None
 - "Meeting notes from last month" → semantic_query="meeting notes", filter={{field: "created_at", operator: "after", value: "{last_month}"}}
 - "What did I capture from Slack this week?" → semantic_query="", filter={{field: "source", operator: "equals", value: "slack"}}, needs_semantic_search=False
@@ -165,19 +163,6 @@ def _build_planner_agent(model: str):  # type: ignore[no-untyped-def]
             if f.field == "source" and f.operator != "equals":
                 issues.append(
                     f"'{f.field}' only supports 'equals' operator, got: '{f.operator}'"
-                )
-
-            if (
-                f.field in ("has_decision", "has_action_item")
-                and f.operator != "is_true"
-            ):
-                issues.append(
-                    f"'{f.field}' only supports 'is_true' operator, got: '{f.operator}'"
-                )
-
-            if f.operator == "is_true" and f.value:
-                issues.append(
-                    f"'is_true' operator should have empty value, got: '{f.value}'"
                 )
 
         if not output.needs_semantic_search and output.filter is None:
