@@ -1,0 +1,411 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claim_c_kill/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T12:43:40.823604+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "database": "dfr_kill",
+  "queued": [
+    {
+      "arxiv_id": "1706.03762v7",
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+      "doc_id": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f"
+    },
+    {
+      "arxiv_id": "1810.04805v2",
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+      "doc_id": "6543a46d-d2eb-43c0-ab7d-b3207f067f7f"
+    },
+    {
+      "arxiv_id": "1512.03385v1",
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+      "doc_id": "03ccb9ac-7c62-4677-8f4c-df44834fd3e0"
+    }
+  ],
+  "target_doc_id": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+  "target_arxiv_id": "1706.03762v7",
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T20:46:20.196946+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      },
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26201131636,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T20:46:19.443916+08:00",
+        "size_vram": 26201131636,
+        "context_length": 131072
+      }
+    ]
+  },
+  "snapshot_before": {
+    "label": "claim_c_before",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
+    "logical_fingerprint": "4ffcf9d18b42017687df836b2e052da62f540a82adcac6a78418bc8eb23191e3",
+    "status_counts": {
+      "pending_source": 3,
+      "pending_enrich": 0,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 3,
+    "documents": [
+      {
+        "doc_uuid": "03ccb9ac-7c62-4677-8f4c-df44834fd3e0",
+        "dc_title": "1512.03385v1.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:21.920078+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.920078+00:00",
+        "updated_date": "2026-08-01T12:43:21.920078+00:00"
+      },
+      {
+        "doc_uuid": "6543a46d-d2eb-43c0-ab7d-b3207f067f7f",
+        "dc_title": "1810.04805v2.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:21.918815+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.918815+00:00",
+        "updated_date": "2026-08-01T12:43:21.918815+00:00"
+      },
+      {
+        "doc_uuid": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+        "dc_title": "1706.03762v7.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:21.917337+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.917337+00:00",
+        "updated_date": "2026-08-01T12:43:21.917337+00:00"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 180224,
+      "file_sha256": "44e262e0eec09ca7b13d5650c58addda8c6d5169c5f6a5ad72d0fc0e302941cc",
+      "page_count": 44,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "gate": {
+    "n_polls": 73,
+    "ledger_entries_at_gate": 1,
+    "finished_conversions_at_gate": 1,
+    "target_row": {
+      "doc_uuid": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+      "ingest_status": "pending_enrich",
+      "markdown_chars": 48959,
+      "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c"
+    }
+  },
+  "pre_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+  "kill": {
+    "signal": "SIGKILL",
+    "why_not_sigterm": "SIGTERM exercises the CLI's cooperative handler, which is claim (d) arm 4. A cooperative stop structurally cannot leave a converted-but-unenriched document, so only a hard kill tests the checkpoint",
+    "killed_at": 1785588220.751122,
+    "worker_returncode": -9,
+    "worker_log": "logs/kill_run1.log"
+  },
+  "discarded_enrichment_seconds": 0.18727993965148926,
+  "discarded_enrichment_basis": {
+    "killed_at": 1785588220.751122,
+    "last_conversion_ts_end": 1785588220.563842,
+    "last_conversion_source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+    "meaning": "wall-clock between the conversion committing and the SIGKILL: the enrichment work the resume must redo. Upper bound \u2014 it also contains the pending_source -> pending_enrich status flip and the supervisor's poll latency"
+  },
+  "snapshot_post_kill": {
+    "label": "claim_c_post_kill",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_kill.db",
+    "logical_fingerprint": "c4518bdb1f095bc418ced5d4af1b8616b60590f67bbc599aa0b8a3e725390bfd",
+    "status_counts": {
+      "pending_source": 2,
+      "pending_enrich": 1,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 3,
+    "documents": [
+      {
+        "doc_uuid": "03ccb9ac-7c62-4677-8f4c-df44834fd3e0",
+        "dc_title": "1512.03385v1.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:21.920078+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1512.03385v1.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.920078+00:00",
+        "updated_date": "2026-08-01T12:43:21.920078+00:00"
+      },
+      {
+        "doc_uuid": "6543a46d-d2eb-43c0-ab7d-b3207f067f7f",
+        "dc_title": "1810.04805v2.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:21.918815+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1810.04805v2.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.918815+00:00",
+        "updated_date": "2026-08-01T12:43:21.918815+00:00"
+      },
+      {
+        "doc_uuid": "eed939dd-9657-4daa-a75d-bfe6ef8a5b0f",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T12:43:40.574030+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "arxiv_id"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T12:43:21.917337+00:00",
+        "updated_date": "2026-08-01T20:43:40.569671"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 356352,
+      "file_sha256": "fea45c09fb8b1e09e547b94eabee206f5a37abca2b82cbcb8c20d8ad80663cc3",
+      "page_count": 87,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "sqlite_integrity": {
+    "integrity_check": [
+      "ok"
+    ],
+    "quick_check": [
+      "ok"
+    ],
+    "integrity_ok": true,
+    "quick_ok": true,
+    "sidecar_files": [
+      {
+        "file": "dfr_kill.db-wal",
+        "bytes": 0
+      },
+      {
+        "file": "dfr_kill.db-shm",
+        "bytes": 32768
+      }
+    ]
+  },
+  "post_kill_markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+  "post_kill_target_status": "pending_enrich",
+  "ledger_entries_after_kill": 1,
+  "ledger_after_kill": [
+    {
+      "ts_start": 1785588204.850097,
+      "ts_end": 1785588220.563842,
+      "seconds": 15.713669374992605,
+      "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1706.03762v7.pdf",
+      "pid": 3652,
+      "chars": 48959,
+      "sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "error_type": null,
+      "error_message": null
+    }
+  ],
+  "hc4_window": {
+    "observed": false,
+    "n_observations": 0,
+    "observations": [],
+    "poll_interval_seconds": 0.25,
+    "n_polls": 73,
+    "interpretation": "observing the window is a reportable finding (such a document WOULD be re-converted); observing none bounds the two-transaction window below the poll interval"
+  },
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 25813650036,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T20:48:24.827319+08:00",
+        "size_vram": 25813650036,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T20:48:22.375941+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-c/gate",
+      "passed": true,
+      "measured": "pending_enrich",
+      "expected": "pending_enrich (or complete if enrichment beat the kill)",
+      "detail": "the kill must land AFTER the conversion checkpoint, or H-c1 is vacuous"
+    },
+    {
+      "hypothesis": "H-c/markdown_durable",
+      "passed": true,
+      "measured": 48959,
+      "expected": "> 0",
+      "detail": "the converted markdown must have survived the hard kill on disk"
+    },
+    {
+      "hypothesis": "H-c3/integrity",
+      "passed": true,
+      "measured": {
+        "integrity_check": [
+          "ok"
+        ],
+        "quick_check": [
+          "ok"
+        ]
+      },
+      "expected": "both 'ok'",
+      "detail": "if a hard kill can wedge the database, resumability is theoretical. A failure here is a genuine negative result and must NOT be worked around by deleting a -wal file"
+    },
+    {
+      "hypothesis": "H-c4",
+      "passed": null,
+      "measured": false,
+      "expected": null,
+      "detail": "0 observations of non-empty markdown while the row still read pending_source, across 73 polls at 0.25s"
+    },
+    {
+      "hypothesis": "discarded_enrichment_seconds",
+      "passed": null,
+      "measured": 0.18727993965148926,
+      "expected": null,
+      "detail": "killed_at minus the converter ledger's last ts_end \u2014 the enrichment seconds this hard kill threw away, measured on THIS lineage"
+    },
+    {
+      "hypothesis": "sidecar_files_after_kill",
+      "passed": null,
+      "measured": [
+        {
+          "file": "dfr_kill.db-wal",
+          "bytes": 0
+        },
+        {
+          "file": "dfr_kill.db-shm",
+          "bytes": 32768
+        }
+      ],
+      "expected": null,
+      "detail": "-wal/-shm files present after the kill; the resume must not delete them"
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.snapshot/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T14:33:28.723382+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "label": "f_drain3_fixed_pre",
+  "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_fail.db",
+  "logical_fingerprint": "9560cd3db525ac4569f9fdcf9b45be7fc17dab5154c70f6c87d26d25ada1d0ee",
+  "status_counts": {
+    "pending_source": 4,
+    "pending_enrich": 0,
+    "complete": 1,
+    "failed": 0
+  },
+  "n_documents": 5,
+  "documents": [
+    {
+      "doc_uuid": "112dfd4b-1f43-4a03-bd00-9ab250a953ba",
+      "dc_title": "garbage.pdf",
+      "ingest_status": "pending_source",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T14:29:02.405429+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/garbage.pdf",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T14:24:03.884354+00:00",
+      "updated_date": "2026-08-01T14:24:03.884354+00:00"
+    },
+    {
+      "doc_uuid": "17bbe38c-9876-481f-9514-e99be16253d6",
+      "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "ingest_status": "complete",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T14:28:58.307612+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+      "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "n_chunks": 25,
+      "n_chunk_embeddings": 25,
+      "has_doc_embedding": true,
+      "metadata_keys": [
+        "arm",
+        "created_at",
+        "people",
+        "projects"
+      ],
+      "llm_metadata_populated": true,
+      "created_date": "2026-08-01T14:24:03.881585+00:00",
+      "updated_date": "2026-08-01T22:24:27.688126"
+    },
+    {
+      "doc_uuid": "1c6a9cd1-5396-4245-9583-169241ec871e",
+      "dc_title": "does_not_exist.pdf",
+      "ingest_status": "pending_source",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T14:29:02.403914+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/does_not_exist.pdf",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T14:24:03.883084+00:00",
+      "updated_date": "2026-08-01T14:24:03.883084+00:00"
+    },
+    {
+      "doc_uuid": "470a90cd-6aab-448e-af02-5e86e41007f5",
+      "dc_title": "whitespace_only.md",
+      "ingest_status": "pending_source",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T14:29:02.408070+00:00",
+      "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/bad_sources/whitespace_only.md",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T14:24:06.897138+00:00",
+      "updated_date": "2026-08-01T14:24:06.897138+00:00"
+    },
+    {
+      "doc_uuid": "965f06c6-78a0-45a8-bcce-7340c336ecca",
+      "dc_title": "0000.00000",
+      "ingest_status": "pending_source",
+      "ingest_error": null,
+      "ingest_updated_at": "2026-08-01T14:29:02.406760+00:00",
+      "source_file_path": "https://arxiv.org/pdf/0000.00000",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markdown_chars": 0,
+      "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "n_chunks": 0,
+      "n_chunk_embeddings": 0,
+      "has_doc_embedding": false,
+      "metadata_keys": [
+        "arm",
+        "mode"
+      ],
+      "llm_metadata_populated": false,
+      "created_date": "2026-08-01T14:24:03.885799+00:00",
+      "updated_date": "2026-08-01T14:24:03.885799+00:00"
+    }
+  ],
+  "file_advisory": {
+    "advisory_only": true,
+    "file_bytes": 6844416,
+    "file_sha256": "34c77185776b3c3b007a4a3c1fe11a6666c3d77f9c7fe7578b06762e520b8a7b",
+    "page_count": 1671,
+    "journal_mode": "wal",
+    "sidecars": {
+      "-wal": 0,
+      "-shm": 32768
+    }
+  }
+}

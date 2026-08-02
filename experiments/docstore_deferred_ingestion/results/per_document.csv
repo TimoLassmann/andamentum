@@ -1,0 +1,6 @@
+doc_uuid,dc_title,markdown_chars,n_chunks,n_chunk_embeddings,has_doc_embedding,llm_metadata_populated
+283f45f2-6b46-44b3-a40a-e8b60558c7d1,ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION,38978,25,25,True,True
+4d333fb8-fa32-4679-8a91-234b1d235fbe,BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding,70241,43,43,True,True
+73df050b-5cc6-404e-a552-5bddb4c350d9,ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION,38978,25,25,True,True
+abb2799c-df94-454f-a21a-ea1253514f5c,Deep Residual Learning for Image Recognition,64381,39,39,True,True
+b3a127b5-bb88-44b1-959b-ff8b898d49d1,"Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",48959,37,37,True,True

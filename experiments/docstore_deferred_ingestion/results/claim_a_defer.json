@@ -1,0 +1,580 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claim_a/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:48:47.848071+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "database_main": "dfr_main",
+  "database_now": "dfr_now",
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 17570757236,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T19:46:58.019487+08:00",
+        "size_vram": 17570757236,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T19:46:58.748175+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "accounting_decision": "the arm-2 pending_source document is KEPT in dfr_main and accounted for explicitly (source_probe_doc_id); lineage MAIN therefore drains 5 documents, 4 markdown + 1 source",
+  "defer_http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/a_defer_http.jsonl",
+    "requests_total": 0,
+    "requests_by_path": {},
+    "max_in_flight": 0,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
+    "max_in_flight_by_path": {},
+    "latency_seconds": {
+      "n": 0,
+      "min": null,
+      "median": null,
+      "max": null,
+      "sum": 0.0
+    },
+    "latency_seconds_by_path": {}
+  },
+  "defer_ollama_requests": 0,
+  "defer_state_violations": [],
+  "defer_fts_misses": [],
+  "source_probe": {
+    "doc_id": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+    "arxiv_id": "1412.6980v9",
+    "probe_token": "stochastic",
+    "self_hits": 0,
+    "total_hits_in_db": 4,
+    "note": "other documents may legitimately match the token; only hits on the queued source row falsify H-a5"
+  },
+  "source_probe_doc_id": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+  "defer_records": [
+    {
+      "arxiv_id": "1706.03762v7",
+      "short": "attention",
+      "doc_id": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+      "seconds": 0.017340874997898936,
+      "markdown_chars": 48959,
+      "expected_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+      "probe_token": "acknowledgements",
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "stored_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+      "fts_hit": true,
+      "fts_n_hits": 2
+    },
+    {
+      "arxiv_id": "1810.04805v2",
+      "short": "bert",
+      "doc_id": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+      "seconds": 0.00943816700601019,
+      "markdown_chars": 70241,
+      "expected_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "probe_token": "representationlearning",
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "stored_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "fts_hit": true,
+      "fts_n_hits": 1
+    },
+    {
+      "arxiv_id": "1512.03385v1",
+      "short": "resnet",
+      "doc_id": "abb2799c-df94-454f-a21a-ea1253514f5c",
+      "seconds": 0.00900637501035817,
+      "markdown_chars": 64381,
+      "expected_title": "Deep Residual Learning for Image Recognition",
+      "probe_token": "fullyconvolutional",
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "stored_title": "Deep Residual Learning for Image Recognition",
+      "fts_hit": true,
+      "fts_n_hits": 1
+    },
+    {
+      "arxiv_id": "1412.6980v9",
+      "short": "adam",
+      "doc_id": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+      "seconds": 0.007241167011670768,
+      "markdown_chars": 38978,
+      "expected_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "probe_token": "acknowledgments",
+      "metadata_keys": [
+        "experiment_arm",
+        "source",
+        "title"
+      ],
+      "stored_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+      "fts_hit": true,
+      "fts_n_hits": 2
+    }
+  ],
+  "defer_seconds": [
+    0.017340874997898936,
+    0.00943816700601019,
+    0.00900637501035817,
+    0.007241167011670768
+  ],
+  "defer_median_seconds": 0.00922227100818418,
+  "now_control": {
+    "doc_id": "2af5b1b1-6ca6-4b06-8ed9-d02454553b3c",
+    "arxiv_id": "1706.03762v7",
+    "seconds": 352.79283383398433,
+    "http": {
+      "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/a_now_http.jsonl",
+      "requests_total": 55,
+      "requests_by_path": {
+        "/api/embed": 3,
+        "/v1/chat/completions": 39,
+        "/api/embeddings": 13
+      },
+      "max_in_flight": 8,
+      "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
+      "max_in_flight_by_path": {
+        "/api/embed": 2,
+        "/v1/chat/completions": 5,
+        "/api/embeddings": 8
+      },
+      "latency_seconds": {
+        "n": 55,
+        "min": 0.08895111083984375,
+        "median": 34.78443789482117,
+        "max": 75.56985282897949,
+        "sum": 1555.6291885375977
+      },
+      "latency_seconds_by_path": {
+        "/api/embed": {
+          "n": 3,
+          "min": 0.12949490547180176,
+          "median": 1.0122740268707275,
+          "max": 1.2130560874938965,
+          "sum": 2.354825019836426
+        },
+        "/v1/chat/completions": {
+          "n": 39,
+          "min": 0.7970550060272217,
+          "median": 39.10701394081116,
+          "max": 75.56985282897949,
+          "sum": 1551.195297241211
+        },
+        "/api/embeddings": {
+          "n": 13,
+          "min": 0.08895111083984375,
+          "median": 0.16982388496398926,
+          "max": 0.2254939079284668,
+          "sum": 2.079066276550293
+        }
+      }
+    },
+    "ollama_requests": 55
+  },
+  "defer_now_ratio": 4.915313842814372e-05,
+  "defer_now_ratio_basis": {
+    "arxiv_id": "1706.03762v7",
+    "doc_id": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+    "defer_seconds": 0.017340874997898936,
+    "now_seconds": 352.79283383398433,
+    "why": "same document, same content, both sides \u2014 not a median over four"
+  },
+  "snapshot_after_defer": {
+    "label": "claim_a_after_defer",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+    "logical_fingerprint": "ed7277763c62d72b74d9612ad980b90c05b28be04280475b1e445bde5710fdf6",
+    "status_counts": {
+      "pending_source": 0,
+      "pending_enrich": 4,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 4,
+    "documents": [
+      {
+        "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+        "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+        "source_file_path": null,
+        "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "markdown_chars": 70241,
+        "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.994035",
+        "updated_date": "2026-08-01T19:42:54.994035"
+      },
+      {
+        "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+        "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+        "source_file_path": null,
+        "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "markdown_chars": 38978,
+        "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.015248",
+        "updated_date": "2026-08-01T19:42:55.015248"
+      },
+      {
+        "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+        "dc_title": "Deep Residual Learning for Image Recognition",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+        "source_file_path": null,
+        "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "markdown_chars": 64381,
+        "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.004904",
+        "updated_date": "2026-08-01T19:42:55.004904"
+      },
+      {
+        "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.988575+00:00",
+        "source_file_path": null,
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.984722",
+        "updated_date": "2026-08-01T19:42:54.984722"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 872448,
+      "file_sha256": "e04530ec9a88a07b6e4800795ac441298bb9420bcd1a684ca5b2370f238ead50",
+      "page_count": 213,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "snapshot_after_all": {
+    "label": "claim_a_post",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+    "logical_fingerprint": "f3a997de6f47837208482bfb5ba5a9fad37612b874d83a445f184fd0ed3a9a69",
+    "status_counts": {
+      "pending_source": 1,
+      "pending_enrich": 4,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 5,
+    "documents": [
+      {
+        "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+        "dc_title": "1412.6980v9.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.028989+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T11:42:55.028989+00:00",
+        "updated_date": "2026-08-01T11:42:55.028989+00:00"
+      },
+      {
+        "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+        "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+        "source_file_path": null,
+        "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "markdown_chars": 70241,
+        "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.994035",
+        "updated_date": "2026-08-01T19:42:54.994035"
+      },
+      {
+        "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+        "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+        "source_file_path": null,
+        "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "markdown_chars": 38978,
+        "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.015248",
+        "updated_date": "2026-08-01T19:42:55.015248"
+      },
+      {
+        "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+        "dc_title": "Deep Residual Learning for Image Recognition",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+        "source_file_path": null,
+        "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "markdown_chars": 64381,
+        "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.004904",
+        "updated_date": "2026-08-01T19:42:55.004904"
+      },
+      {
+        "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.988575+00:00",
+        "source_file_path": null,
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.984722",
+        "updated_date": "2026-08-01T19:42:54.984722"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 872448,
+      "file_sha256": "3c06d5061fc069a192b687eec228d4fd4fa6c7e82df627185b4e76343c9cd8ba",
+      "page_count": 213,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "snapshot_now_control": {
+    "label": "claim_a_now_control",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_now.db",
+    "logical_fingerprint": "ad60fdc82c2f2d08623c74d87434fe9f53ae1814bb5a5044120228d7fa67c148",
+    "status_counts": {
+      "pending_source": 0,
+      "pending_enrich": 0,
+      "complete": 1,
+      "failed": 0
+    },
+    "n_documents": 1,
+    "documents": [
+      {
+        "doc_uuid": "2af5b1b1-6ca6-4b06-8ed9-d02454553b3c",
+        "dc_title": "Attention Is All You Need",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:48:47.822307+00:00",
+        "source_file_path": null,
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 37,
+        "n_chunk_embeddings": 37,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "created_at",
+          "people",
+          "projects",
+          "source",
+          "source_file",
+          "title"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T19:43:07.730580",
+        "updated_date": "2026-08-01T19:43:07.730580"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 6840320,
+      "file_sha256": "754573ad69a6d4da7b4ab20102efd8cf8260aecbdb5615c4fe849314b6e88e6a",
+      "page_count": 1670,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26176019060,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T19:53:47.731882+08:00",
+        "size_vram": 26176019060,
+        "context_length": 131072
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-a1",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "the defer branch of ingest() returns before _preflight is ever called, so any request at all is a defect"
+    },
+    {
+      "hypothesis": "H-a2",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-a4",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-a5",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "register_pending_source writes markdown_content='' \u2014 the 'searchable immediately' property does not transfer to the source path"
+    },
+    {
+      "hypothesis": "H-a3/median",
+      "passed": true,
+      "measured": 0.00922227100818418,
+      "expected": "< 1.0 s",
+      "detail": "absolute seconds are not portable; the ratio below is the transferable claim"
+    },
+    {
+      "hypothesis": "H-a3/ratio",
+      "passed": true,
+      "measured": 4.915313842814372e-05,
+      "expected": "< 0.02",
+      "detail": "same document (1706.03762v7): t_defer 0.0173s vs t_now 352.8s"
+    }
+  ]
+}

@@ -1,0 +1,755 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claims/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T14:38:57.806088+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "measured_metrics": {
+    "gate_topics_count": 3,
+    "defer_ollama_requests": 0,
+    "defer_state_violations": 0,
+    "defer_median_seconds": 0.00922227100818418,
+    "defer_now_ratio": 4.915313842814372e-05,
+    "defer_fts_misses": 0,
+    "source_fts_hits": 0,
+    "drain3_enriched": 0,
+    "drain3_ollama_requests": 0,
+    "fingerprint_moved": 0,
+    "ledger_entries": 3,
+    "ledger_duplicates": 0,
+    "resume_converted": 2,
+    "markdown_sha_stable": 1,
+    "sqlite_ok": 1,
+    "pause_midstage_documents": 0,
+    "pause_discarded_document_fraction": 1.5683144579729806e-05,
+    "pause_discarded_seconds": 0.0032886250119190663,
+    "should_continue_stopped_early": 1,
+    "should_continue_remaining": 1,
+    "max_seconds_overrun_documents": 0.8091090511525355,
+    "first_processed_is_source": 1,
+    "documents_pending_enrich_at_resume": 1,
+    "kill_repeated_enrichment_over_conversion": 0.011918281795436936,
+    "post_chunk_recall_at_1": 1.0,
+    "post_chunk_recall_at_3": 1.0,
+    "post_chunk_mrr": 1.0,
+    "pre_chunk_recall_at_3": 0.0,
+    "pre_unified_recall_at_3": 0.25,
+    "post_unified_recall_at_3": 1.0,
+    "enrichment_structure_violations": 0,
+    "failed_count": 4,
+    "errors_without_type_name": 0,
+    "retry_wrong_stage": 0,
+    "stage_test_converter_calls_good_doc": 0,
+    "stage_test_converter_calls_total": 3,
+    "concurrency_speedup": 1.0516307750294789,
+    "report_db_mismatches": 0,
+    "hc4_window_observed": 0
+  },
+  "noise_band": {
+    "chat_path_fragment": "/chat/completions",
+    "n_samples": 512,
+    "ledger_sources": [
+      "a_now_http.jsonl:39",
+      "b_http.jsonl:177",
+      "c1_http.jsonl:1",
+      "c2_http.jsonl:123",
+      "d_final_http.jsonl:7",
+      "d_http.jsonl:51",
+      "e_post_http.jsonl:2",
+      "f_http.jsonl:81",
+      "gate_http.jsonl:1",
+      "micro_http.jsonl:27",
+      "overhead_0_http.jsonl:1",
+      "overhead_1_http.jsonl:1",
+      "overhead_2_http.jsonl:1"
+    ],
+    "in_pipeline_replicate_spread": null,
+    "in_pipeline_replicate_seconds": [
+      287.11753537500044
+    ],
+    "source": "raw per-request latencies on /v1/chat/completions across every ledger in the run \u2014 one endpoint, one distribution. The replicate spread beside it comes from the SAME content enriched twice inside claim_b, and is the band concurrency_speedup is judged against.",
+    "mean_seconds": 43.70259011304006,
+    "stdev_seconds": 21.511885239484286,
+    "min_seconds": 0.5810577869415283,
+    "max_seconds": 113.6409010887146,
+    "relative_spread": 0.4922336452791966,
+    "usable": true
+  },
+  "cross_cutting": {
+    "max_concurrent_ollama_in_flight": 8,
+    "max_in_flight_by_path": {
+      "/v1/chat/completions": 5,
+      "/api/embed": 2,
+      "/api/embeddings": 8,
+      "/robots.txt": 1,
+      "/pdf/0000.00000": 1
+    },
+    "max_in_flight_top_endpoint": "/api/embeddings",
+    "max_in_flight_top_peak": 8,
+    "max_in_flight_note": "The deepest fan-out is on /api/embeddings at 8 concurrent requests, counted by a per-endpoint in-flight counter. The global figure beside it is the whole-process depth over all endpoints at once and is an upper bound on any single one. Two distinct fan-outs exist and must not be conflated: core.embeddings.make_embedder gathers /api/embeddings under Semaphore(8) inside the chunker's embedding_fn, and _run_phase2 gathers chunk-metadata extraction on /v1/chat/completions under Semaphore(_INGEST_CONCURRENCY=5). Both are PRE-EXISTING library behaviour, reported not changed \u2014 and both contradict this project's one-inference-at-a-time rule.",
+    "doc_embedding_skip_rate": 0.0,
+    "preflight_tax_seconds": 1.8080386250221636,
+    "preflight_tax_seconds_range": [
+      1.4238382909970824,
+      1.8080386250221636,
+      2.1570381250057835
+    ],
+    "preflight_tax_cold_seconds": 2.1570381250057835,
+    "preflight_tax_requests": 2,
+    "report_db_mismatches": 0,
+    "checkpoint_savings_seconds": 15.713669374992605,
+    "checkpoint_savings_basis": {
+      "source": "the kill lineage's own converter-ledger entry for this document",
+      "in_drain_conversion_seconds": 15.713669374992605,
+      "in_drain_was_first_in_its_process": true,
+      "includes_docling_initialisation": true,
+      "standalone_first_call_seconds": 16.229221792018507,
+      "docling_warm_conversion_seconds": 11.529142625018721,
+      "docling_init_seconds": 4.700079166999785,
+      "marginal_saving_note": "The resume process converts two more PDFs regardless, so it pays Docling initialisation either way. The MARGINAL saving is therefore the warm conversion cost, not the first-call cost \u2014 both are recorded so the distinction is on the artefact's face rather than in a reader's head."
+    },
+    "docling_init_seconds": 4.700079166999785,
+    "repeated_enrichment_seconds": 0.18727993965148926,
+    "concurrency_speedup": 1.0516307750294789,
+    "concurrency_speedup_replicate_spread": null,
+    "hc4_window_observed": false,
+    "sigterm_to_exit_seconds": 274.20968895801343,
+    "sigterm_to_exit_seconds_truncated": 61.22776537502068,
+    "sigterm_in_flight_document": {
+      "doc_uuid": "8bb1c1d3-447b-4635-b521-265b763e1d81",
+      "dc_title": "fullsize_target 1412.6980v9",
+      "markdown_chars": 39009,
+      "n_chunks": 26,
+      "n_documents_committed_during_arm": 2
+    },
+    "sigterm_seconds_per_chunk": 10.546526498385132,
+    "retrieval_power": {
+      "n_probes": 8,
+      "n_candidate_documents": 5,
+      "chance_recall_at_1": 0.2,
+      "chance_recall_at_3": 0.6,
+      "limitation": "the probes discriminate between 4 topically disjoint papers with no hard negatives, so this measures 'the index is not empty and not scrambled', NOT 'retrieval quality is high'. Read recall@1 and MRR against the chance baselines above, not recall@3 against 1.0."
+    }
+  },
+  "artefacts_present": [
+    "a",
+    "b",
+    "c_kill",
+    "c_resume",
+    "d",
+    "e_post",
+    "e_pre",
+    "f",
+    "gate",
+    "micro",
+    "overhead"
+  ],
+  "artefacts_missing": [],
+  "rows": [
+    {
+      "id": "H-G",
+      "claim": "enrichment gate",
+      "metric": "gate_topics_count",
+      "threshold": {
+        "metric": "gate_topics_count",
+        "op": ">=",
+        "value": 1
+      },
+      "measured": 3,
+      "falsifier": "the gate call returns empty metadata with the variable set",
+      "statement": "With OLLAMA_BASE_URL exported, one extract_chunk_metadata call on a fixed ~4.3k-char string returns a non-empty topics list.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-a1",
+      "claim": "a",
+      "metric": "defer_ollama_requests",
+      "threshold": {
+        "metric": "defer_ollama_requests",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": ">= 1 request to the Ollama host during the defer arm",
+      "statement": "Across the whole ingest(process='defer') arm the in-process httpx ledger records ZERO requests to 127.0.0.1:11434 / localhost:11434.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-a2",
+      "claim": "a",
+      "metric": "defer_state_violations",
+      "threshold": {
+        "metric": "defer_state_violations",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any extra metadata key, or any chunk/embedding row",
+      "statement": "Every deferred doc has 0 chunks, 0 chunk embeddings, no doc-embedding row, ingest_status='pending_enrich', and a metadata key set exactly {source, title} union the caller's own keys.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-a3",
+      "claim": "a",
+      "metric": "defer_median_seconds",
+      "threshold": {
+        "metric": "defer_median_seconds",
+        "op": "<",
+        "value": 1.0
+      },
+      "measured": 0.00922227100818418,
+      "falsifier": "median >= 1.0 s, or ratio >= 0.02",
+      "statement": "Median per-document ingest(process='defer') wall time < 1.0 s on a ~50k-char paper, and t_defer / t_now < 0.02 against the process='now' control.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-a3",
+      "claim": "a",
+      "metric": "defer_now_ratio",
+      "threshold": {
+        "metric": "defer_now_ratio",
+        "op": "<",
+        "value": 0.02
+      },
+      "measured": 4.915313842814372e-05,
+      "falsifier": "median >= 1.0 s, or ratio >= 0.02",
+      "statement": "Median per-document ingest(process='defer') wall time < 1.0 s on a ~50k-char paper, and t_defer / t_now < 0.02 against the process='now' control.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "chat_latency_relative_spread",
+      "band_reference": 0.02,
+      "band_relative_spread": 0.4922336452791966,
+      "separation_log_ratio": 6.008546853899265
+    },
+    {
+      "id": "H-a4",
+      "claim": "a",
+      "metric": "defer_fts_misses",
+      "threshold": {
+        "metric": "defer_fts_misses",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any miss on either the FTS probe or the title",
+      "statement": "Every deferred document is FTS5-retrievable by a rare token from its own body BEFORE any drain runs, and its stored title equals the first non-empty line of the content stripped of heading marks.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-a5",
+      "claim": "a",
+      "metric": "source_fts_hits",
+      "threshold": {
+        "metric": "source_fts_hits",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "the probe returns > 0 hits",
+      "statement": "After pipeline.ingest_source(..., process='defer') returns, an FTS5 probe for a term unambiguously present in the PDF body returns 0 hits.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-b",
+      "claim": "b",
+      "metric": "drain3_enriched",
+      "threshold": {
+        "metric": "drain3_enriched",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "remaining>0, failed>0, a moved fingerprint, or >2 requests in drain #3",
+      "statement": "Draining a 4-document markdown queue as max_docs=2 then unrestricted yields exactly 4 completions, pending==0, failed==0; and a THIRD drain returns documents_enriched==0, leaves the logical fingerprint byte-identical, and costs at most 2 Ollama requests (the per-process preflight: 1 embed + 1 chat).",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-b",
+      "claim": "b",
+      "metric": "drain3_ollama_requests",
+      "threshold": {
+        "metric": "drain3_ollama_requests",
+        "op": "<=",
+        "value": 2
+      },
+      "measured": 0,
+      "falsifier": "remaining>0, failed>0, a moved fingerprint, or >2 requests in drain #3",
+      "statement": "Draining a 4-document markdown queue as max_docs=2 then unrestricted yields exactly 4 completions, pending==0, failed==0; and a THIRD drain returns documents_enriched==0, leaves the logical fingerprint byte-identical, and costs at most 2 Ollama requests (the per-process preflight: 1 embed + 1 chat).",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-b",
+      "claim": "b",
+      "metric": "fingerprint_moved",
+      "threshold": {
+        "metric": "fingerprint_moved",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "remaining>0, failed>0, a moved fingerprint, or >2 requests in drain #3",
+      "statement": "Draining a 4-document markdown queue as max_docs=2 then unrestricted yields exactly 4 completions, pending==0, failed==0; and a THIRD drain returns documents_enriched==0, leaves the logical fingerprint byte-identical, and costs at most 2 Ollama requests (the per-process preflight: 1 embed + 1 chat).",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c1",
+      "claim": "c",
+      "metric": "ledger_entries",
+      "threshold": {
+        "metric": "ledger_entries",
+        "op": "==",
+        "value": 3
+      },
+      "measured": 3,
+      "falsifier": "any duplicate ledger entry, or a converted count of 3",
+      "statement": "After a SIGKILL delivered once document #1's conversion has committed AND its row reads pending_enrich, a fresh-process resume drain leaves EXACTLY 3 converter-ledger entries for 3 sources, no duplicate source string, and documents_converted==2 in the resume run.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c1",
+      "claim": "c",
+      "metric": "ledger_duplicates",
+      "threshold": {
+        "metric": "ledger_duplicates",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any duplicate ledger entry, or a converted count of 3",
+      "statement": "After a SIGKILL delivered once document #1's conversion has committed AND its row reads pending_enrich, a fresh-process resume drain leaves EXACTLY 3 converter-ledger entries for 3 sources, no duplicate source string, and documents_converted==2 in the resume run.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c1",
+      "claim": "c",
+      "metric": "resume_converted",
+      "threshold": {
+        "metric": "resume_converted",
+        "op": "==",
+        "value": 2
+      },
+      "measured": 2,
+      "falsifier": "any duplicate ledger entry, or a converted count of 3",
+      "statement": "After a SIGKILL delivered once document #1's conversion has committed AND its row reads pending_enrich, a fresh-process resume drain leaves EXACTLY 3 converter-ledger entries for 3 sources, no duplicate source string, and documents_converted==2 in the resume run.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c2",
+      "claim": "c",
+      "metric": "markdown_sha_stable",
+      "threshold": {
+        "metric": "markdown_sha_stable",
+        "op": "==",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "any difference between the two hashes",
+      "statement": "sha256 of document #1's markdown_content read immediately after the SIGKILL is byte-identical to the sha256 read after the resume drain completes.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c3",
+      "claim": "c",
+      "metric": "sqlite_ok",
+      "threshold": {
+        "metric": "sqlite_ok",
+        "op": "==",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "corruption, a wedged lock, or a resume needing intervention",
+      "statement": "After the SIGKILL, PRAGMA integrity_check and quick_check both return 'ok', and the resume drain opens the database through the library's normal path with no manual repair and no deletion of any -wal/-shm file.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-c4",
+      "claim": "c",
+      "metric": null,
+      "threshold": null,
+      "measured": 0,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "The supervisor records whether it EVER observes a row with non-empty markdown_content while ingest_status is still pending_source.",
+      "note": "observation only \u2014 no pre-registered threshold"
+    },
+    {
+      "id": "H-d1",
+      "claim": "d",
+      "metric": "pause_midstage_documents",
+      "threshold": {
+        "metric": "pause_midstage_documents",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any document left failed or partially enriched by a pause, or post-commit wall-clock amounting to a substantial fraction of a document",
+      "statement": "Pauses via max_docs, max_seconds, should_continue and SIGTERM to the real CLI (on both a truncated and a full-size in-flight document) all stop BETWEEN documents: on EACH ARM'S OWN post-drain snapshot no row is 'failed' and no non-complete row carries chunk or chunk-embedding rows; and the wall-clock each library arm spends after its last commit is under half of that same drain's longest single-document cost.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d1",
+      "claim": "d",
+      "metric": "pause_discarded_document_fraction",
+      "threshold": {
+        "metric": "pause_discarded_document_fraction",
+        "op": "<",
+        "value": 0.5
+      },
+      "measured": 1.5683144579729806e-05,
+      "falsifier": "any document left failed or partially enriched by a pause, or post-commit wall-clock amounting to a substantial fraction of a document",
+      "statement": "Pauses via max_docs, max_seconds, should_continue and SIGTERM to the real CLI (on both a truncated and a full-size in-flight document) all stop BETWEEN documents: on EACH ARM'S OWN post-drain snapshot no row is 'failed' and no non-complete row carries chunk or chunk-embedding rows; and the wall-clock each library arm spends after its last commit is under half of that same drain's longest single-document cost.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d5",
+      "claim": "d",
+      "metric": "should_continue_stopped_early",
+      "threshold": {
+        "metric": "should_continue_stopped_early",
+        "op": "==",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "stopped_early=False, or remaining==0 \u2014 an exhausted queue, not a pause",
+      "statement": "The should_continue arm genuinely PAUSES rather than exhausting its queue: the drain reports stopped_early=True with work still queued after processing exactly one document.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d5",
+      "claim": "d",
+      "metric": "should_continue_remaining",
+      "threshold": {
+        "metric": "should_continue_remaining",
+        "op": ">=",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "stopped_early=False, or remaining==0 \u2014 an exhausted queue, not a pause",
+      "statement": "The should_continue arm genuinely PAUSES rather than exhausting its queue: the drain reports stopped_early=True with work still queued after processing exactly one document.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d2",
+      "claim": "d",
+      "metric": "max_seconds_overrun_documents",
+      "threshold": {
+        "metric": "max_seconds_overrun_documents",
+        "op": "<=",
+        "value": 1
+      },
+      "measured": 0.8091090511525355,
+      "falsifier": "an overrun exceeding one document's cost, or a stop mid-document",
+      "statement": "Elapsed wall-clock of a drain with max_seconds=T satisfies T <= elapsed <= T + (longest single-document processing time in that drain).",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d3",
+      "claim": "d",
+      "metric": "first_processed_is_source",
+      "threshold": {
+        "metric": "first_processed_is_source",
+        "op": "==",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "the first processed item is pending_enrich",
+      "statement": "In a mixed queue of 1 source + 4 markdown documents, a max_docs=1 drain processes the SOURCE.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d4",
+      "claim": "d",
+      "metric": "documents_pending_enrich_at_resume",
+      "threshold": {
+        "metric": "documents_pending_enrich_at_resume",
+        "op": "==",
+        "value": 1
+      },
+      "measured": 1,
+      "falsifier": "more or fewer than one document mid-stage at resume, or repeated enrichment costing more than the conversion the checkpoint preserved",
+      "statement": "After the SIGKILL the only work repeated on resume is the enrichment of the single in-flight document: EXACTLY one row is pending_enrich when the resume starts, and the repeated enrichment seconds (killed_at minus the converter ledger's last ts_end) are strictly less than that document's measured in-drain conversion time.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-d4",
+      "claim": "d",
+      "metric": "kill_repeated_enrichment_over_conversion",
+      "threshold": {
+        "metric": "kill_repeated_enrichment_over_conversion",
+        "op": "<",
+        "value": 1.0
+      },
+      "measured": 0.011918281795436936,
+      "falsifier": "more or fewer than one document mid-stage at resume, or repeated enrichment costing more than the conversion the checkpoint preserved",
+      "statement": "After the SIGKILL the only work repeated on resume is the enrichment of the single in-flight document: EXACTLY one row is pending_enrich when the resume starts, and the repeated enrichment seconds (killed_at minus the converter ledger's last ts_end) are strictly less than that document's measured in-drain conversion time.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-e1",
+      "claim": "e",
+      "metric": "post_chunk_recall_at_1",
+      "threshold": {
+        "metric": "post_chunk_recall_at_1",
+        "op": ">=",
+        "value": 1.0
+      },
+      "measured": 1.0,
+      "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
+      "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-e1",
+      "claim": "e",
+      "metric": "pre_unified_recall_at_3",
+      "threshold": {
+        "metric": "pre_unified_recall_at_3",
+        "op": "<",
+        "value": 0.5
+      },
+      "measured": 0.25,
+      "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
+      "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-e1",
+      "claim": "e",
+      "metric": "post_unified_recall_at_3",
+      "threshold": {
+        "metric": "post_unified_recall_at_3",
+        "op": ">=",
+        "value": 1.0
+      },
+      "measured": 1.0,
+      "falsifier": "post-drain recall@1 < 1.0, or a unified stack that did not rise",
+      "statement": "On 8 paraphrase probes, chunk-embedding retrieval achieves recall@1 == 1.0 AFTER the drain (chance level 1/N over an N-document pool); and the full 4-signal RRF stack, which scores ABOVE zero before the drain because the keyword index already exists, rises to recall@3 == 1.0 after it.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-e2",
+      "claim": "e",
+      "metric": "enrichment_structure_violations",
+      "threshold": {
+        "metric": "enrichment_structure_violations",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any completed document with zero chunks, a chunk/embedding count mismatch, or empty LLM metadata",
+      "statement": "Every completed document has chunks > 0, exactly one chunk-embedding row per chunk, and a non-empty LLM-extracted metadata key set.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-f1",
+      "claim": "f",
+      "metric": "failed_count",
+      "threshold": {
+        "metric": "failed_count",
+        "op": "==",
+        "value": 4
+      },
+      "measured": 4,
+      "falsifier": "a swallowed failure, an aborted drain, or an error string with no type name",
+      "statement": "A queue of 1 good PDF plus 4 genuinely broken sources ends with complete==1, failed==4, a non-empty ingest_error naming the exception TYPE on every failed row, and 4 corresponding strings in ProcessReport.failures.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-f1",
+      "claim": "f",
+      "metric": "errors_without_type_name",
+      "threshold": {
+        "metric": "errors_without_type_name",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "a swallowed failure, an aborted drain, or an error string with no type name",
+      "statement": "A queue of 1 good PDF plus 4 genuinely broken sources ends with complete==1, failed==4, a non-empty ingest_error naming the exception TYPE on every failed row, and 4 corresponding strings in ProcessReport.failures.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-f2",
+      "claim": "f",
+      "metric": "retry_wrong_stage",
+      "threshold": {
+        "metric": "retry_wrong_stage",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "a wrong-stage requeue, or any re-invocation of the converter on the MARKDOWN-BEARING document",
+      "statement": "retry_failed() returns 4 and sends all four back to pending_source; a document force-marked failed while its markdown is present is requeued to pending_enrich, and the following drain does NOT invoke the converter.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-f2",
+      "claim": "f",
+      "metric": "stage_test_converter_calls_good_doc",
+      "threshold": {
+        "metric": "stage_test_converter_calls_good_doc",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "a wrong-stage requeue, or any re-invocation of the converter on the MARKDOWN-BEARING document",
+      "statement": "retry_failed() returns 4 and sends all four back to pending_source; a document force-marked failed while its markdown is present is requeued to pending_enrich, and the following drain does NOT invoke the converter.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-x",
+      "claim": "cross-cutting",
+      "metric": "report_db_mismatches",
+      "threshold": {
+        "metric": "report_db_mismatches",
+        "op": "==",
+        "value": 0
+      },
+      "measured": 0,
+      "falsifier": "any mismatch",
+      "statement": "For every drain \u2014 including the resume drain that runs in its own subprocess \u2014 all six ProcessReport fields reconcile against the database and the converter ledger: documents_converted against error-free ledger entries, documents_enriched / documents_failed against the complete / failed deltas, remaining against post-drain pending rows, documents_skipped against 0 when a converter was supplied and against the pre-drain pending_source count when it was not, and stopped_early against the implication that at least one document is still queued.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "not a registered ratio metric"
+    },
+    {
+      "id": "H-m1",
+      "claim": "cross-cutting",
+      "metric": "concurrency_speedup",
+      "threshold": {
+        "metric": "concurrency_speedup",
+        "op": "<=",
+        "value": 1.3
+      },
+      "measured": 1.0516307750294789,
+      "falsifier": "a speedup above 1.3, which would mean the fan-out is doing real work",
+      "statement": "Enriching one document strictly sequentially costs no more than 1.3x its in-pipeline cost under the shipped Semaphore(_INGEST_CONCURRENCY=5) fan-out \u2014 i.e. the fan-out buys little against an Ollama that serialises same-model calls. The ratio is attributed by doc_uuid, never by title, and is reported INCONCLUSIVE when it sits within the measured replicate spread of 1.0.",
+      "note": "",
+      "verdict": "PASS",
+      "band_source": "in_pipeline_replicate_spread"
+    },
+    {
+      "id": "OBS/stage_test_converter_calls_total",
+      "claim": "observation",
+      "metric": "stage_test_converter_calls_total",
+      "threshold": null,
+      "measured": 3,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "ALL conversions in the stage-test drain, including the three still-broken sources that hold no markdown and are therefore correctly re-converted. H-f2 scores stage_test_converter_calls_good_doc; this is the unscoped companion, reported so the two values are never confused.",
+      "note": "measured and reported; no pre-registered threshold"
+    },
+    {
+      "id": "OBS/pause_discarded_seconds",
+      "claim": "observation",
+      "metric": "pause_discarded_seconds",
+      "threshold": null,
+      "measured": 0.0032886250119190663,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "raw wall-clock the library pause arms spent after their last commit, summed. Scored as a fraction of one document under H-d1.",
+      "note": "measured and reported; no pre-registered threshold"
+    },
+    {
+      "id": "OBS/pre_chunk_recall_at_3",
+      "claim": "observation",
+      "metric": "pre_chunk_recall_at_3",
+      "threshold": null,
+      "measured": 0.0,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "0 by definition \u2014 H-a2 asserts deferred documents have zero chunks. Demoted from a scored control to a sanity note.",
+      "note": "measured and reported; no pre-registered threshold"
+    },
+    {
+      "id": "OBS/post_chunk_recall_at_3",
+      "claim": "observation",
+      "metric": "post_chunk_recall_at_3",
+      "threshold": null,
+      "measured": 1.0,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "reported beside recall@1; chance level is 3/N.",
+      "note": "measured and reported; no pre-registered threshold"
+    },
+    {
+      "id": "OBS/post_chunk_mrr",
+      "claim": "observation",
+      "metric": "post_chunk_mrr",
+      "threshold": null,
+      "measured": 1.0,
+      "verdict": "OBSERVATION",
+      "falsifier": null,
+      "statement": "mean reciprocal rank over the same 8 probes.",
+      "note": "measured and reported; no pre-registered threshold"
+    }
+  ],
+  "n_pass": 33,
+  "n_fail": 0,
+  "n_inconclusive": 0,
+  "n_not_measured": 0,
+  "n_observation": 6
+}

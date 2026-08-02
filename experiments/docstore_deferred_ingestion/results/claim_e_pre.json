@@ -1,0 +1,674 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claim_e_pre/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:48:49.937375+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "database": "dfr_main",
+  "phase": "pre_drain",
+  "doc_id_by_short": {
+    "attention": [
+      "b3a127b5-bb88-44b1-959b-ff8b898d49d1"
+    ],
+    "bert": [
+      "4d333fb8-fa32-4679-8a91-234b1d235fbe"
+    ],
+    "resnet": [
+      "abb2799c-df94-454f-a21a-ea1253514f5c"
+    ],
+    "adam": [
+      "73df050b-5cc6-404e-a552-5bddb4c350d9",
+      "283f45f2-6b46-44b3-a40a-e8b60558c7d1"
+    ]
+  },
+  "probes": {
+    "per_probe": [
+      {
+        "query": "the architecture that replaced recurrent processing of sequences with a purely alignment-based mechanism",
+        "expect_short": "attention",
+        "expect_doc_ids": [
+          "b3a127b5-bb88-44b1-959b-ff8b898d49d1"
+        ],
+        "rationale": "no 'transformer', no 'attention is all you need'",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "parallelising sequence-to-sequence translation by removing the step-by-step dependency between positions",
+        "expect_short": "attention",
+        "expect_doc_ids": [
+          "b3a127b5-bb88-44b1-959b-ff8b898d49d1"
+        ],
+        "rationale": "describes the motivation without naming the model",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "pre-training a language encoder by hiding random words and asking the model to guess them",
+        "expect_short": "bert",
+        "expect_doc_ids": [
+          "4d333fb8-fa32-4679-8a91-234b1d235fbe"
+        ],
+        "rationale": "describes masked language modelling without the acronym",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "using left and right context jointly in every layer instead of reading text in one direction",
+        "expect_short": "bert",
+        "expect_doc_ids": [
+          "4d333fb8-fa32-4679-8a91-234b1d235fbe"
+        ],
+        "rationale": "describes bidirectionality without naming the model",
+        "signals": {
+          "fts5": {
+            "rank": 1,
+            "recall_at_1": 1.0,
+            "recall_at_3": 1.0,
+            "reciprocal_rank": 1.0,
+            "n_returned": 1
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": 1,
+            "recall_at_1": 1.0,
+            "recall_at_3": 1.0,
+            "reciprocal_rank": 1.0,
+            "n_returned": 1
+          }
+        }
+      },
+      {
+        "query": "making very deep vision networks trainable by letting layers learn a correction to the identity mapping",
+        "expect_short": "resnet",
+        "expect_doc_ids": [
+          "abb2799c-df94-454f-a21a-ea1253514f5c"
+        ],
+        "rationale": "describes skip connections without 'residual network'",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "why accuracy got worse when researchers stacked more layers, and the shortcut that fixed it for image classification",
+        "expect_short": "resnet",
+        "expect_doc_ids": [
+          "abb2799c-df94-454f-a21a-ea1253514f5c"
+        ],
+        "rationale": "describes the degradation problem obliquely",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "a first-order optimiser that keeps running averages of both the gradient and its square to scale each parameter's step",
+        "expect_short": "adam",
+        "expect_doc_ids": [
+          "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+          "73df050b-5cc6-404e-a552-5bddb4c350d9"
+        ],
+        "rationale": "describes the update rule without the optimiser's name",
+        "signals": {
+          "fts5": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          }
+        }
+      },
+      {
+        "query": "correcting the initialisation bias of exponential moving averages when adapting learning rates per weight",
+        "expect_short": "adam",
+        "expect_doc_ids": [
+          "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+          "73df050b-5cc6-404e-a552-5bddb4c350d9"
+        ],
+        "rationale": "describes bias correction without the optimiser's name",
+        "signals": {
+          "fts5": {
+            "rank": 1,
+            "recall_at_1": 1.0,
+            "recall_at_3": 1.0,
+            "reciprocal_rank": 1.0,
+            "n_returned": 1
+          },
+          "chunk_embeddings": {
+            "rank": null,
+            "recall_at_1": 0.0,
+            "recall_at_3": 0.0,
+            "reciprocal_rank": 0.0,
+            "n_returned": 0
+          },
+          "unified_rrf": {
+            "rank": 1,
+            "recall_at_1": 1.0,
+            "recall_at_3": 1.0,
+            "reciprocal_rank": 1.0,
+            "n_returned": 1
+          }
+        }
+      }
+    ],
+    "aggregate": {
+      "fts5": {
+        "n_probes": 8,
+        "recall_at_1": 0.25,
+        "recall_at_3": 0.25,
+        "mrr": 0.25
+      },
+      "chunk_embeddings": {
+        "n_probes": 8,
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "mrr": 0.0
+      },
+      "unified_rrf": {
+        "n_probes": 8,
+        "recall_at_1": 0.25,
+        "recall_at_3": 0.25,
+        "mrr": 0.25
+      }
+    },
+    "power": {
+      "n_probes": 8,
+      "n_candidate_documents": 5,
+      "chance_recall_at_1": 0.2,
+      "chance_recall_at_3": 0.6,
+      "limitation": "the probes discriminate between 4 topically disjoint papers with no hard negatives, so this measures 'the index is not empty and not scrambled', NOT 'retrieval quality is high'. Read recall@1 and MRR against the chance baselines above, not recall@3 against 1.0."
+    }
+  },
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/e_pre_http.jsonl",
+    "requests_total": 8,
+    "requests_by_path": {
+      "/api/embed": 8
+    },
+    "max_in_flight": 1,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
+    "max_in_flight_by_path": {
+      "/api/embed": 1
+    },
+    "latency_seconds": {
+      "n": 8,
+      "min": 0.10542678833007812,
+      "median": 0.10833477973937988,
+      "max": 0.6849379539489746,
+      "sum": 1.4468598365783691
+    },
+    "latency_seconds_by_path": {
+      "/api/embed": {
+        "n": 8,
+        "min": 0.10542678833007812,
+        "median": 0.10833477973937988,
+        "max": 0.6849379539489746,
+        "sum": 1.4468598365783691
+      }
+    }
+  },
+  "snapshot_before": {
+    "label": "claim_e_pre_before",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+    "logical_fingerprint": "f3a997de6f47837208482bfb5ba5a9fad37612b874d83a445f184fd0ed3a9a69",
+    "status_counts": {
+      "pending_source": 1,
+      "pending_enrich": 4,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 5,
+    "documents": [
+      {
+        "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+        "dc_title": "1412.6980v9.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.028989+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T11:42:55.028989+00:00",
+        "updated_date": "2026-08-01T11:42:55.028989+00:00"
+      },
+      {
+        "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+        "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+        "source_file_path": null,
+        "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "markdown_chars": 70241,
+        "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.994035",
+        "updated_date": "2026-08-01T19:42:54.994035"
+      },
+      {
+        "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+        "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+        "source_file_path": null,
+        "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "markdown_chars": 38978,
+        "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.015248",
+        "updated_date": "2026-08-01T19:42:55.015248"
+      },
+      {
+        "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+        "dc_title": "Deep Residual Learning for Image Recognition",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+        "source_file_path": null,
+        "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "markdown_chars": 64381,
+        "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.004904",
+        "updated_date": "2026-08-01T19:42:55.004904"
+      },
+      {
+        "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.988575+00:00",
+        "source_file_path": null,
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.984722",
+        "updated_date": "2026-08-01T19:42:54.984722"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 872448,
+      "file_sha256": "3c06d5061fc069a192b687eec228d4fd4fa6c7e82df627185b4e76343c9cd8ba",
+      "page_count": 213,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "snapshot_after": {
+    "label": "claim_e_pre_after",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+    "logical_fingerprint": "f3a997de6f47837208482bfb5ba5a9fad37612b874d83a445f184fd0ed3a9a69",
+    "status_counts": {
+      "pending_source": 1,
+      "pending_enrich": 4,
+      "complete": 0,
+      "failed": 0
+    },
+    "n_documents": 5,
+    "documents": [
+      {
+        "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+        "dc_title": "1412.6980v9.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.028989+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T11:42:55.028989+00:00",
+        "updated_date": "2026-08-01T11:42:55.028989+00:00"
+      },
+      {
+        "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+        "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+        "source_file_path": null,
+        "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "markdown_chars": 70241,
+        "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.994035",
+        "updated_date": "2026-08-01T19:42:54.994035"
+      },
+      {
+        "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+        "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+        "source_file_path": null,
+        "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "markdown_chars": 38978,
+        "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.015248",
+        "updated_date": "2026-08-01T19:42:55.015248"
+      },
+      {
+        "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+        "dc_title": "Deep Residual Learning for Image Recognition",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+        "source_file_path": null,
+        "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "markdown_chars": 64381,
+        "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:55.004904",
+        "updated_date": "2026-08-01T19:42:55.004904"
+      },
+      {
+        "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+        "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T11:42:54.988575+00:00",
+        "source_file_path": null,
+        "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "markdown_chars": 48959,
+        "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "experiment_arm",
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T19:42:54.984722",
+        "updated_date": "2026-08-01T19:42:54.984722"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 872448,
+      "file_sha256": "3c06d5061fc069a192b687eec228d4fd4fa6c7e82df627185b4e76343c9cd8ba",
+      "page_count": 213,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "pre_chunk_recall_at_3": 0.0,
+  "pre_chunk_recall_at_1": 0.0,
+  "pre_unified_recall_at_3": 0.25,
+  "pre_fts5_recall_at_3": 0.25,
+  "retrieval_power": {
+    "n_probes": 8,
+    "n_candidate_documents": 5,
+    "chance_recall_at_1": 0.2,
+    "chance_recall_at_3": 0.6,
+    "limitation": "the probes discriminate between 4 topically disjoint papers with no hard negatives, so this measures 'the index is not empty and not scrambled', NOT 'retrieval quality is high'. Read recall@1 and MRR against the chance baselines above, not recall@3 against 1.0."
+  },
+  "fingerprint_moved": false,
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "pre_chunk_recall_at_3",
+      "passed": null,
+      "measured": 0.0,
+      "expected": null,
+      "detail": "SANITY NOTE, not evidence: the chunk table is empty (H-a2), so this is 0 by definition. The scored control is pre_unified_recall_at_3"
+    },
+    {
+      "hypothesis": "H-e1/pre_chunk_table_empty",
+      "passed": true,
+      "measured": 0.0,
+      "expected": 0.0,
+      "detail": "there are no chunks yet, so the chunk-embedding signal must be empty"
+    },
+    {
+      "hypothesis": "tripwire/auto_repair",
+      "passed": true,
+      "measured": {
+        "pending_source": 1,
+        "pending_enrich": 4,
+        "complete": 0,
+        "failed": 0
+      },
+      "expected": {
+        "pending_source": 1,
+        "pending_enrich": 4,
+        "complete": 0,
+        "failed": 0
+      },
+      "detail": "search()'s preflight runs with auto_repair=True; if it drained the deliberate backlog it would destroy claim (b)'s setup before it ran"
+    },
+    {
+      "hypothesis": "pre_drain_signal_recall",
+      "passed": null,
+      "measured": {
+        "fts5": {
+          "n_probes": 8,
+          "recall_at_1": 0.25,
+          "recall_at_3": 0.25,
+          "mrr": 0.25
+        },
+        "chunk_embeddings": {
+          "n_probes": 8,
+          "recall_at_1": 0.0,
+          "recall_at_3": 0.0,
+          "mrr": 0.0
+        },
+        "unified_rrf": {
+          "n_probes": 8,
+          "recall_at_1": 0.25,
+          "recall_at_3": 0.25,
+          "mrr": 0.25
+        }
+      },
+      "expected": null,
+      "detail": "FTS5 may legitimately score above zero here \u2014 the keyword index exists"
+    }
+  ]
+}

@@ -335,6 +335,9 @@ async def ingest(
     call at all, using the deterministic first-line title — and the document is
     marked ``pending_enrich`` for :func:`process_pending` to finish later. The
     document is keyword-searchable immediately but not semantically searchable
+    (this immediacy is specific to ``ingest``; a source queued by
+    :func:`ingest_source` holds no markdown yet, so it is not searchable at all
+    until the drain converts it)
     (no chunks/embeddings) and carries no LLM metadata until the drain runs.
 
     Args:
@@ -544,15 +547,28 @@ async def _run_phase2(
             return chunk_meta
 
         async def _embed_doc_level() -> None:
-            """Doc-level embedding — skip gracefully if too large for the model."""
+            """Doc-level embedding — optional, but never silently absent.
+
+            Over-large content legitimately has no document-level embedding (the
+            model's input budget is finite), and `repair()` deliberately does not
+            treat its absence as incomplete. But this used to swallow *every*
+            exception at INFO and blame content size, so an unreachable embedding
+            backend would take one of the four RRF search signals dark with no
+            warning anywhere. Log at WARNING and name the real cause instead.
+            """
             try:
                 doc_emb = await embed_svc.embed_text(
                     content, text_type="document", title=title
                 )
                 await store.store_doc_embedding(doc_id, doc_emb)
-            except Exception:
-                logger.info(
-                    f"Doc-level embedding skipped for '{title}' (content too large for embedding model)"
+            except Exception as e:
+                logger.warning(
+                    f"Doc-level embedding FAILED for '{title}' "
+                    f"({type(e).__name__}: {e}). This document will not be "
+                    "retrievable via the doc-level semantic signal; the other "
+                    "three search signals are unaffected. If the content simply "
+                    "exceeds the embedding model's input budget this is expected; "
+                    "any other cause is a real fault worth fixing."
                 )
 
         chunk_embeddings, chunk_metas, _ = await asyncio.gather(

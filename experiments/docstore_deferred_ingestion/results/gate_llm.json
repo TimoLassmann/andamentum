@@ -1,0 +1,135 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.gate_llm/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:41:58.773596+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "cli_binary": "/Users/timo/code/andamentum/.venv/bin/andamentum-docstore",
+  "gate_text_chars": 2985,
+  "gate_text_sha256": "d0422f81608d9b9d0089f9356e139209a5aa30bf037f61c565944feea754da64",
+  "resolved_ollama_base_url": "http://localhost:11434/v1",
+  "llm_model": "ollama:gemma4:26b-nvfp4",
+  "embedding_model": "embeddinggemma:latest",
+  "ollama_ps_before": {
+    "models": []
+  },
+  "extract_chunk_metadata_seconds": 21.83382604198414,
+  "embed_batch_seconds": 0.6948903330194298,
+  "embedding_dimensions": 768,
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/gate_http.jsonl",
+    "requests_total": 2,
+    "requests_by_path": {
+      "/v1/chat/completions": 1,
+      "/api/embed": 1
+    },
+    "max_in_flight": 1,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
+    "max_in_flight_by_path": {
+      "/v1/chat/completions": 1,
+      "/api/embed": 1
+    },
+    "latency_seconds": {
+      "n": 2,
+      "min": 0.6938478946685791,
+      "median": 21.185884714126587,
+      "max": 21.185884714126587,
+      "sum": 21.879732608795166
+    },
+    "latency_seconds_by_path": {
+      "/v1/chat/completions": {
+        "n": 1,
+        "min": 21.185884714126587,
+        "median": 21.185884714126587,
+        "max": 21.185884714126587,
+        "sum": 21.185884714126587
+      },
+      "/api/embed": {
+        "n": 1,
+        "min": 0.6938478946685791,
+        "median": 0.6938478946685791,
+        "max": 0.6938478946685791,
+        "sum": 0.6938478946685791
+      }
+    }
+  },
+  "topics": [
+    "deferred ingestion architecture",
+    "capture and enrichment stages",
+    "document processing pipelines"
+  ],
+  "topics_count": 3,
+  "people": [],
+  "has_decision": false,
+  "has_action_item": false,
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 17570757236,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T19:46:58.019487+08:00",
+        "size_vram": 17570757236,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T19:46:58.748175+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-G",
+      "passed": true,
+      "measured": 3,
+      "expected": ">= 1 topic",
+      "detail": "Empty topics here means extraction.py caught a provider error and returned defaults. Every downstream enrichment measurement would be of a degraded path."
+    },
+    {
+      "hypothesis": "H-G/embedding",
+      "passed": true,
+      "measured": 768,
+      "expected": "> 0 dimensions",
+      "detail": "the embedding backend must actually return a vector"
+    },
+    {
+      "hypothesis": "gate_latency_seconds",
+      "passed": null,
+      "measured": {
+        "extract_chunk_metadata": 21.83382604198414,
+        "embed_batch": 0.6948903330194298
+      },
+      "expected": null,
+      "detail": "a sub-second extract_chunk_metadata is itself the signature of the swallowed-provider-error failure mode"
+    }
+  ]
+}

@@ -1,0 +1,353 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.cli_smoke/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T13:12:01.572270+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "database": "dfr_cli",
+  "fixtures": {
+    "markdown": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/cli_smoke/note.md",
+    "markdown_chars": 6018,
+    "good_pdf": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+    "broken_pdf": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/cli_smoke/broken.pdf"
+  },
+  "status_parsed": {
+    "pending_source": 2,
+    "pending_enrich": 1,
+    "complete": 0,
+    "failed": 0,
+    "total pending": 3
+  },
+  "status_database_counts": {
+    "pending_source": 2,
+    "pending_enrich": 1,
+    "complete": 0,
+    "failed": 0
+  },
+  "failed_before_retry": 1,
+  "snapshot_after_retry": {
+    "label": "cli_smoke_after_retry",
+    "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_cli.db",
+    "logical_fingerprint": "b2b092a90625d5e59b2e2232fdbfe855113dff8e768fbcbc2f16a16dd4290563",
+    "status_counts": {
+      "pending_source": 1,
+      "pending_enrich": 1,
+      "complete": 1,
+      "failed": 0
+    },
+    "n_documents": 3,
+    "documents": [
+      {
+        "doc_uuid": "02d2605d-6d29-447e-b656-d8c6a6058376",
+        "dc_title": "CLI smoke note",
+        "ingest_status": "pending_enrich",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T13:07:19.906925+00:00",
+        "source_file_path": null,
+        "file_hash": "6981899c2ec97156bad269e9c95ba7eab36fa80991023e30071ffa9a62562415",
+        "markdown_chars": 6018,
+        "markdown_sha256": "6981899c2ec97156bad269e9c95ba7eab36fa80991023e30071ffa9a62562415",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [
+          "source",
+          "title"
+        ],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T21:07:19.904312",
+        "updated_date": "2026-08-01T21:07:19.904312"
+      },
+      {
+        "doc_uuid": "8bdfda41-6c1b-4aff-8215-f63a88d8a147",
+        "dc_title": "broken.pdf",
+        "ingest_status": "pending_source",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T13:12:01.534474+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/cli_smoke/broken.pdf",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "markdown_chars": 0,
+        "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "n_chunks": 0,
+        "n_chunk_embeddings": 0,
+        "has_doc_embedding": false,
+        "metadata_keys": [],
+        "llm_metadata_populated": false,
+        "created_date": "2026-08-01T13:07:20.447792+00:00",
+        "updated_date": "2026-08-01T13:07:20.447792+00:00"
+      },
+      {
+        "doc_uuid": "b8a4f062-bc0d-4dc5-9a4a-a6157170ab3e",
+        "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+        "ingest_status": "complete",
+        "ingest_error": null,
+        "ingest_updated_at": "2026-08-01T13:11:54.987047+00:00",
+        "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+        "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "markdown_chars": 38978,
+        "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+        "n_chunks": 25,
+        "n_chunk_embeddings": 25,
+        "has_doc_embedding": true,
+        "metadata_keys": [
+          "created_at",
+          "people",
+          "projects"
+        ],
+        "llm_metadata_populated": true,
+        "created_date": "2026-08-01T13:07:20.173848+00:00",
+        "updated_date": "2026-08-01T21:07:47.388214"
+      }
+    ],
+    "file_advisory": {
+      "advisory_only": true,
+      "file_bytes": 6873088,
+      "file_sha256": "99b4db897c4af72ce55771ff76777b35c6a2942a52beea70af9752c04b883689",
+      "page_count": 1678,
+      "journal_mode": "wal",
+      "sidecars": {
+        "-wal": 0,
+        "-shm": 32768
+      }
+    }
+  },
+  "invocations": [
+    {
+      "argv": [
+        "andamentum-docstore",
+        "ingest",
+        "dfr_cli",
+        "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/cli_smoke/note.md",
+        "--defer"
+      ],
+      "returncode": 0,
+      "stdout": "queued: 02d2605d-6d29-447e-b656-d8c6a6058376\n",
+      "stderr_tail": "",
+      "step": "ingest --defer"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "ingest-source",
+        "dfr_cli",
+        "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf"
+      ],
+      "returncode": 0,
+      "stdout": "queued: b8a4f062-bc0d-4dc5-9a4a-a6157170ab3e\n",
+      "stderr_tail": "",
+      "step": "ingest-source"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "ingest-source",
+        "dfr_cli",
+        "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/cli_smoke/broken.pdf"
+      ],
+      "returncode": 0,
+      "stdout": "queued: 8bdfda41-6c1b-4aff-8215-f63a88d8a147\n",
+      "stderr_tail": "",
+      "step": "ingest-source (broken)"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "status",
+        "dfr_cli"
+      ],
+      "returncode": 0,
+      "stdout": "database        : dfr_cli\npending_source  : 2\npending_enrich  : 1\ncomplete        : 0\nfailed          : 0\ntotal pending   : 3\n",
+      "stderr_tail": "",
+      "step": "status"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "process-pending",
+        "dfr_cli",
+        "--model",
+        "ollama:gemma4:26b-nvfp4",
+        "--embedding-model",
+        "embeddinggemma:latest",
+        "--max-docs",
+        "1"
+      ],
+      "returncode": 0,
+      "stdout": "[1/3] ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION\n\nconverted : 1\nenriched  : 1\nfailed    : 0\nremaining : 2\n\nPaused before the queue was empty \u2014 re-run to resume.\n",
+      "stderr_tail": "\u001b[32m[INFO] 2026-08-01 21:07:27,819 [RapidOCR] base.py:22: Using engine_name: torch\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,820 [RapidOCR] device_config.py:57: Using CPU device\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,829 [RapidOCR] download_file.py:60: File exists and is valid: /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_PP-OCRv4_det_mobile.pth\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,829 [RapidOCR] main.py:50: Using /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_PP-OCRv4_det_mobile.pth\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,921 [RapidOCR] base.py:22: Using engine_name: torch\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,921 [RapidOCR] device_config.py:57: Using CPU device\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,922 [RapidOCR] download_file.py:60: File exists and is valid: /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ptocr_mobile_v2.0_cls_mobile.pth\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,922 [RapidOCR] main.py:50: Using /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ptocr_mobile_v2.0_cls_mobile.pth\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,950 [RapidOCR] base.py:22: Using engine_name: torch\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,950 [RapidOCR] device_config.py:57: Using CPU device\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,964 [RapidOCR] download_file.py:60: File exists and is valid: /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_PP-OCRv4_rec_mobile.pth\u001b[0m\n\u001b[32m[INFO] 2026-08-01 21:07:27,964 [RapidOCR] main.py:50: Using /Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/rapidocr/models/ch_PP-OCRv4_rec_mobile.pth\u001b[0m\n\nLoading weights:   0%|          | 0/770 [00:00<?, ?it/s]\nLoading weights:  40%|\u2588\u2588\u2588\u2588      | 308/770 [00:00<00:00, 3077.87it/s]\nLoading weights: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 770/770 [00:00<00:00, 3937.85it/s]\n",
+      "step": "process-pending --max-docs 1"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "process-pending",
+        "dfr_cli",
+        "--model",
+        "ollama:gemma4:26b-nvfp4",
+        "--embedding-model",
+        "embeddinggemma:latest",
+        "--max-seconds",
+        "1"
+      ],
+      "returncode": 0,
+      "stdout": "[1/2] broken.pdf\n\nconverted : 0\nenriched  : 0\nfailed    : 1\nremaining : 1\n\nPaused before the queue was empty \u2014 re-run to resume.\n",
+      "stderr_tail": "An unexpected error occurred while opening the document document.pdf\nTraceback (most recent call last):\n  File \"/Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/docling/datamodel/document.py\", line 181, in __init__\n    self._init_doc(backend, path_or_stream)\n  File \"/Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/docling/datamodel/document.py\", line 256, in _init_doc\n    self._backend = backend(self, path_or_stream=path_or_stream)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/docling/backend/docling_parse_backend.py\", line 266, in __init__\n    self._pdoc = pdfium.PdfDocument(self.path_or_stream, password=password)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/pypdfium2/_helpers/document.py\", line 76, in __init__\n    self.raw, to_hold, to_close = _open_pdf(self._input, self._password, self._autoclose)\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/timo/code/andamentum/.venv/lib/python3.12/site-packages/pypdfium2/_helpers/document.py\", line 584, in _open_pdf\n    raise PdfiumError(f\"Failed to load document (PDFium: {pdfium_i.ErrorToStr.get(err_code)}).\", err_code=err_code)\npypdfium2._helpers.misc.PdfiumError: Failed to load document (PDFium: Data format error).\nFailed to process 'broken.pdf' (8bdfda41-6c1b-4aff-8215-f63a88d8a147): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.\n  ! Failed to process 'broken.pdf' (8bdfda41-6c1b-4aff-8215-f63a88d8a147): ExtractionError: docling conversion failed: Input document document.pdf is not valid.  attempted: docling\n  diagnostics:\n    docling: ConversionError: Input document document.pdf is not valid.\n",
+      "step": "process-pending --max-seconds 1"
+    },
+    {
+      "argv": [
+        "andamentum-docstore",
+        "retry-failed",
+        "dfr_cli"
+      ],
+      "returncode": 0,
+      "stdout": "requeued 1 failed document(s)\n",
+      "stderr_tail": "",
+      "step": "retry-failed"
+    }
+  ],
+  "n_invocations": 7,
+  "subcommands_exercised": [
+    "ingest",
+    "ingest-source",
+    "process-pending",
+    "retry-failed",
+    "status"
+  ],
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "CLI/ingest_defer_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/ingest_defer_output",
+      "passed": true,
+      "measured": "queued: 02d2605d-6d29-447e-b656-d8c6a6058376",
+      "expected": "'queued: <doc_id>'",
+      "detail": "the word distinguishes a deferred capture from an immediate ingest"
+    },
+    {
+      "hypothesis": "CLI/ingest_source_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/ingest_source_broken_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "queueing a source never converts it, so a broken file queues cleanly"
+    },
+    {
+      "hypothesis": "CLI/status_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/status_matches_database",
+      "passed": true,
+      "measured": {
+        "pending_source": 2,
+        "pending_enrich": 1,
+        "complete": 0,
+        "failed": 0,
+        "total pending": 3
+      },
+      "expected": {
+        "pending_source": 2,
+        "pending_enrich": 1,
+        "complete": 0,
+        "failed": 0
+      },
+      "detail": "what the operator is shown must be what the database holds"
+    },
+    {
+      "hypothesis": "CLI/status_total_pending",
+      "passed": true,
+      "measured": 3,
+      "expected": 3,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/process_pending_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/process_pending_paused_message",
+      "passed": true,
+      "measured": "[1/3] ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION\n\nconverted : 1\nenriched  : 1\nfailed    : 0\nremaining : 2\n\nPaused before the queue was empty \u2014 re-run to resume.\n",
+      "expected": "the pause line, because --max-docs 1 leaves 2 documents queued",
+      "detail": "--max-docs is a cooperative stop and must be reported as one"
+    },
+    {
+      "hypothesis": "CLI/process_pending_reports_converted",
+      "passed": true,
+      "measured": true,
+      "expected": true,
+      "detail": "the report block a cron job's log actually captures"
+    },
+    {
+      "hypothesis": "CLI/process_pending_reports_enriched",
+      "passed": true,
+      "measured": true,
+      "expected": true,
+      "detail": "the report block a cron job's log actually captures"
+    },
+    {
+      "hypothesis": "CLI/process_pending_reports_failed",
+      "passed": true,
+      "measured": true,
+      "expected": true,
+      "detail": "the report block a cron job's log actually captures"
+    },
+    {
+      "hypothesis": "CLI/process_pending_reports_remaining",
+      "passed": true,
+      "measured": true,
+      "expected": true,
+      "detail": "the report block a cron job's log actually captures"
+    },
+    {
+      "hypothesis": "CLI/max_seconds_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "the budget is checked BEFORE each document, so a 1-second budget still processes exactly one and exits normally"
+    },
+    {
+      "hypothesis": "CLI/retry_failed_exit",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/retry_failed_output",
+      "passed": true,
+      "measured": "requeued 1 failed document(s)",
+      "expected": "'requeued N failed document(s)'",
+      "detail": ""
+    },
+    {
+      "hypothesis": "CLI/retry_failed_cleared",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "every failed row goes back to a pending stage"
+    }
+  ]
+}

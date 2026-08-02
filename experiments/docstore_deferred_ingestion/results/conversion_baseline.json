@@ -1,0 +1,71 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.conversion_baseline/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T11:42:54.150387+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "docling_version": "2.102.2",
+  "n_converted": 4,
+  "docling_warm_conversion_seconds": 11.529142625018721,
+  "docling_cold_conversion_seconds": 16.229221792018507,
+  "docling_init_seconds": 4.700079166999785,
+  "warm_cold_arxiv_id": "1706.03762v7",
+  "warm_cold_note": "the SAME PDF converted twice in the same process. The difference is one-time Docling/RapidOCR initialisation, which every first conversion in a process pays and no subsequent one does",
+  "conversion_seconds": {
+    "values": [
+      3.8860497919959016,
+      10.130073208012618,
+      13.241560166003183,
+      16.229221792018507
+    ],
+    "min": 3.8860497919959016,
+    "median": 13.241560166003183,
+    "max": 16.229221792018507,
+    "mean": 10.871726239507552
+  },
+  "conversions": [
+    {
+      "arxiv_id": "1706.03762v7",
+      "short": "attention",
+      "pdf_path": "data/pdfs/1706.03762v7.pdf",
+      "pdf_bytes": 2215244,
+      "markdown_path": "data/markdown/1706.03762v7.md",
+      "markdown_chars": 48959,
+      "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+      "conversion_seconds": 16.229221792018507
+    },
+    {
+      "arxiv_id": "1810.04805v2",
+      "short": "bert",
+      "pdf_path": "data/pdfs/1810.04805v2.pdf",
+      "pdf_bytes": 775166,
+      "markdown_path": "data/markdown/1810.04805v2.md",
+      "markdown_chars": 70241,
+      "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+      "conversion_seconds": 13.241560166003183
+    },
+    {
+      "arxiv_id": "1512.03385v1",
+      "short": "resnet",
+      "pdf_path": "data/pdfs/1512.03385v1.pdf",
+      "pdf_bytes": 819383,
+      "markdown_path": "data/markdown/1512.03385v1.md",
+      "markdown_chars": 64381,
+      "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+      "conversion_seconds": 10.130073208012618
+    },
+    {
+      "arxiv_id": "1412.6980v9",
+      "short": "adam",
+      "pdf_path": "data/pdfs/1412.6980v9.pdf",
+      "pdf_bytes": 584641,
+      "markdown_path": "data/markdown/1412.6980v9.md",
+      "markdown_chars": 38978,
+      "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+      "conversion_seconds": 3.8860497919959016
+    }
+  ]
+}

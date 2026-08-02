@@ -4,8 +4,10 @@ The deferred-ingestion queue lives in the database; this CLI is how you fill and
 drain it from a shell, a cron entry or a launchd timer. The store owns a
 *drainable queue*, not a scheduler — the clock stays with the caller.
 
-    # capture: fast, no LLM, keyword-searchable immediately
+    # capture markdown: fast, no LLM, keyword-searchable immediately
     andamentum-docstore ingest brain notes.md --defer
+    # capture a source: only a reference is stored — NOT searchable until the
+    # drain converts it (there is no text to index yet)
     andamentum-docstore ingest-source brain ~/papers/big.pdf
 
     # inspect

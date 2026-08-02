@@ -1,0 +1,1479 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.claim_b/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T12:20:07.593775+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "database": "dfr_main",
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T19:53:49.908879+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      },
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26176019060,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T19:53:47.731882+08:00",
+        "size_vram": 26176019060,
+        "context_length": 131072
+      }
+    ]
+  },
+  "queue_before": {
+    "pending_source": 1,
+    "pending_enrich": 4,
+    "complete": 0,
+    "failed": 0
+  },
+  "http": {
+    "ledger_file": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/results/ledgers/b_http.jsonl",
+    "requests_total": 370,
+    "requests_by_path": {
+      "/api/embed": 11,
+      "/v1/chat/completions": 177,
+      "/api/embeddings": 182
+    },
+    "max_in_flight": 8,
+    "max_in_flight_note": "max_in_flight is the GLOBAL process depth (an upper bound on any one endpoint); max_in_flight_by_path is counted per endpoint",
+    "max_in_flight_by_path": {
+      "/api/embed": 2,
+      "/v1/chat/completions": 5,
+      "/api/embeddings": 8
+    },
+    "latency_seconds": {
+      "n": 370,
+      "min": 0.07854509353637695,
+      "median": 0.9985952377319336,
+      "max": 94.04218196868896,
+      "sum": 8436.1127307415
+    },
+    "latency_seconds_by_path": {
+      "/api/embed": {
+        "n": 11,
+        "min": 0.12608790397644043,
+        "median": 1.1554298400878906,
+        "max": 1.6511468887329102,
+        "sum": 12.588422060012817
+      },
+      "/v1/chat/completions": {
+        "n": 177,
+        "min": 0.9985952377319336,
+        "median": 46.921058177948,
+        "max": 94.04218196868896,
+        "sum": 8387.689540624619
+      },
+      "/api/embeddings": {
+        "n": 182,
+        "min": 0.07854509353637695,
+        "median": 0.11850810050964355,
+        "max": 0.7620551586151123,
+        "sum": 35.83476805686951
+      }
+    }
+  },
+  "drains": [
+    {
+      "label": "drain1_max_docs_2",
+      "database": "dfr_main",
+      "elapsed_seconds": 671.6564472499886,
+      "post_commit_seconds": 0.00025312500656582415,
+      "report": {
+        "documents_converted": 1,
+        "documents_enriched": 2,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": true,
+        "remaining": 3,
+        "failures": []
+      },
+      "progress": [
+        {
+          "done": 1,
+          "total": 5,
+          "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+          "monotonic_s": 302.9807643329841,
+          "settled_doc_uuids": [
+            "283f45f2-6b46-44b3-a40a-e8b60558c7d1"
+          ],
+          "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+          "settled_status": "complete",
+          "markdown_chars": 38978,
+          "status_counts_at_instant": {
+            "pending_source": 0,
+            "pending_enrich": 4,
+            "complete": 1,
+            "failed": 0
+          }
+        },
+        {
+          "done": 2,
+          "total": 5,
+          "title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+          "monotonic_s": 671.656194124982,
+          "settled_doc_uuids": [
+            "b3a127b5-bb88-44b1-959b-ff8b898d49d1"
+          ],
+          "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+          "settled_status": "complete",
+          "markdown_chars": 48959,
+          "status_counts_at_instant": {
+            "pending_source": 0,
+            "pending_enrich": 3,
+            "complete": 2,
+            "failed": 0
+          }
+        }
+      ],
+      "snapshot_pre": {
+        "label": "drain1_max_docs_2_pre",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "f3a997de6f47837208482bfb5ba5a9fad37612b874d83a445f184fd0ed3a9a69",
+        "status_counts": {
+          "pending_source": 1,
+          "pending_enrich": 4,
+          "complete": 0,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "1412.6980v9.pdf",
+            "ingest_status": "pending_source",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.028989+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "markdown_chars": 0,
+            "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T11:42:55.028989+00:00"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T19:42:54.994035"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T19:42:55.015248"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T19:42:55.004904"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:54.988575+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:42:54.984722"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 872448,
+          "file_sha256": "1b92b94a082909ff4c305a644e3236a3fdd7e0289d9975965a200ec36a452c92",
+          "page_count": 213,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "snapshot_post": {
+        "label": "drain1_max_docs_2_post",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "da26c55b4d4d812379b7ce95351d94acd3f35cdf6e6b58ab61927cefccc107bf",
+        "status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 3,
+          "complete": 2,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:53:53.314135+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T19:49:07.375536"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T19:42:54.994035"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T19:42:55.015248"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T19:42:55.004904"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:00:01.993023+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 37,
+            "n_chunk_embeddings": 37,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:54:01.785114"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 7581696,
+          "file_sha256": "970cbe2058f24a067a67f012f99c89daa551908049718fe8bac710a89a394ca8",
+          "page_count": 1851,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "fingerprint_pre": "f3a997de6f47837208482bfb5ba5a9fad37612b874d83a445f184fd0ed3a9a69",
+      "fingerprint_post": "da26c55b4d4d812379b7ce95351d94acd3f35cdf6e6b58ab61927cefccc107bf",
+      "fingerprint_moved": true,
+      "converter_ledger_delta": [
+        {
+          "ts_start": 1785584932.165236,
+          "ts_end": 1785584939.700926,
+          "seconds": 7.535638166998979,
+          "source": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+          "pid": 405,
+          "chars": 38978,
+          "sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+          "error_type": null,
+          "error_message": null
+        }
+      ],
+      "converter_calls": 1,
+      "http_delta_requests": 95,
+      "http_delta_ollama_requests": 95,
+      "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
+        "checks": [
+          {
+            "field": "documents_enriched",
+            "report": 2,
+            "database": 2,
+            "source": "delta in complete count",
+            "agrees": true
+          },
+          {
+            "field": "documents_failed",
+            "report": 0,
+            "database": 0,
+            "source": "delta in failed count",
+            "agrees": true
+          },
+          {
+            "field": "remaining",
+            "report": 3,
+            "database": 3,
+            "source": "post-drain pending_source + pending_enrich",
+            "agrees": true
+          },
+          {
+            "field": "documents_converted",
+            "report": 1,
+            "database": 1,
+            "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": true,
+            "database": 3,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
+            "agrees": true
+          }
+        ],
+        "n_mismatches": 0,
+        "mismatches": [],
+        "pre_status_counts": {
+          "pending_source": 1,
+          "pending_enrich": 4,
+          "complete": 0,
+          "failed": 0
+        },
+        "post_status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 3,
+          "complete": 2,
+          "failed": 0
+        }
+      },
+      "params": {
+        "max_docs": 2,
+        "max_seconds": null,
+        "should_continue": false,
+        "convert_fn": true
+      }
+    },
+    {
+      "label": "drain2_unrestricted",
+      "database": "dfr_main",
+      "elapsed_seconds": 1205.420984166005,
+      "post_commit_seconds": -0.009842208994086832,
+      "report": {
+        "documents_converted": 0,
+        "documents_enriched": 3,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": false,
+        "remaining": 0,
+        "failures": []
+      },
+      "progress": [
+        {
+          "done": 1,
+          "total": 3,
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "monotonic_s": 498.09120441699633,
+          "settled_doc_uuids": [
+            "4d333fb8-fa32-4679-8a91-234b1d235fbe"
+          ],
+          "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+          "settled_status": "complete",
+          "markdown_chars": 70241,
+          "status_counts_at_instant": {
+            "pending_source": 0,
+            "pending_enrich": 2,
+            "complete": 3,
+            "failed": 0
+          }
+        },
+        {
+          "done": 2,
+          "total": 3,
+          "title": "Deep Residual Learning for Image Recognition",
+          "monotonic_s": 918.3132909999986,
+          "settled_doc_uuids": [
+            "abb2799c-df94-454f-a21a-ea1253514f5c"
+          ],
+          "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+          "settled_status": "complete",
+          "markdown_chars": 64381,
+          "status_counts_at_instant": {
+            "pending_source": 0,
+            "pending_enrich": 1,
+            "complete": 4,
+            "failed": 0
+          }
+        },
+        {
+          "done": 3,
+          "total": 3,
+          "title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+          "monotonic_s": 1205.430826374999,
+          "settled_doc_uuids": [
+            "73df050b-5cc6-404e-a552-5bddb4c350d9"
+          ],
+          "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+          "settled_status": "complete",
+          "markdown_chars": 38978,
+          "status_counts_at_instant": {
+            "pending_source": 0,
+            "pending_enrich": 0,
+            "complete": 5,
+            "failed": 0
+          }
+        }
+      ],
+      "snapshot_pre": {
+        "label": "drain2_unrestricted_pre",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "da26c55b4d4d812379b7ce95351d94acd3f35cdf6e6b58ab61927cefccc107bf",
+        "status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 3,
+          "complete": 2,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:53:53.314135+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T19:49:07.375536"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:54.998073+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T19:42:54.994035"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.018613+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T19:42:55.015248"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "pending_enrich",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:42:55.008987+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 0,
+            "n_chunk_embeddings": 0,
+            "has_doc_embedding": false,
+            "metadata_keys": [
+              "experiment_arm",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": false,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T19:42:55.004904"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:00:01.993023+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 37,
+            "n_chunk_embeddings": 37,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:54:01.785114"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 7581696,
+          "file_sha256": "970cbe2058f24a067a67f012f99c89daa551908049718fe8bac710a89a394ca8",
+          "page_count": 1851,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "snapshot_post": {
+        "label": "drain2_unrestricted_post",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+        "status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:53:53.314135+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T19:49:07.375536"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:08:20.128536+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 43,
+            "n_chunk_embeddings": 43,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T20:00:08.540034"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:20:07.469984+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T20:15:33.833835"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:15:20.348685+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 39,
+            "n_chunk_embeddings": 39,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T20:08:45.287156"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:00:01.993023+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 37,
+            "n_chunk_embeddings": 37,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:54:01.785114"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 8409088,
+          "file_sha256": "437d083c1f544ef51d4baeecd112e66da5242ed9044086aaacd487ceaa2ef3fd",
+          "page_count": 2053,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "fingerprint_pre": "da26c55b4d4d812379b7ce95351d94acd3f35cdf6e6b58ab61927cefccc107bf",
+      "fingerprint_post": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+      "fingerprint_moved": true,
+      "converter_ledger_delta": [],
+      "converter_calls": 0,
+      "http_delta_requests": 275,
+      "http_delta_ollama_requests": 275,
+      "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
+        "checks": [
+          {
+            "field": "documents_enriched",
+            "report": 3,
+            "database": 3,
+            "source": "delta in complete count",
+            "agrees": true
+          },
+          {
+            "field": "documents_failed",
+            "report": 0,
+            "database": 0,
+            "source": "delta in failed count",
+            "agrees": true
+          },
+          {
+            "field": "remaining",
+            "report": 0,
+            "database": 0,
+            "source": "post-drain pending_source + pending_enrich",
+            "agrees": true
+          },
+          {
+            "field": "documents_converted",
+            "report": 0,
+            "database": 0,
+            "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
+            "agrees": true
+          }
+        ],
+        "n_mismatches": 0,
+        "mismatches": [],
+        "pre_status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 3,
+          "complete": 2,
+          "failed": 0
+        },
+        "post_status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        }
+      },
+      "params": {
+        "max_docs": null,
+        "max_seconds": null,
+        "should_continue": false,
+        "convert_fn": true
+      }
+    },
+    {
+      "label": "drain3_noop",
+      "database": "dfr_main",
+      "elapsed_seconds": 0.0019147499988321215,
+      "post_commit_seconds": null,
+      "report": {
+        "documents_converted": 0,
+        "documents_enriched": 0,
+        "documents_failed": 0,
+        "documents_skipped": 0,
+        "stopped_early": false,
+        "remaining": 0,
+        "failures": []
+      },
+      "progress": [],
+      "snapshot_pre": {
+        "label": "drain3_noop_pre",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+        "status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:53:53.314135+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T19:49:07.375536"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:08:20.128536+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 43,
+            "n_chunk_embeddings": 43,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T20:00:08.540034"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:20:07.469984+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T20:15:33.833835"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:15:20.348685+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 39,
+            "n_chunk_embeddings": 39,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T20:08:45.287156"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:00:01.993023+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 37,
+            "n_chunk_embeddings": 37,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:54:01.785114"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 8409088,
+          "file_sha256": "437d083c1f544ef51d4baeecd112e66da5242ed9044086aaacd487ceaa2ef3fd",
+          "page_count": 2053,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "snapshot_post": {
+        "label": "drain3_noop_post",
+        "db_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/dbs/dfr_main.db",
+        "logical_fingerprint": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+        "status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        },
+        "n_documents": 5,
+        "documents": [
+          {
+            "doc_uuid": "283f45f2-6b46-44b3-a40a-e8b60558c7d1",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T11:53:53.314135+00:00",
+            "source_file_path": "/Users/timo/code/andamentum/experiments/docstore_deferred_ingestion/data/pdfs/1412.6980v9.pdf",
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T11:42:55.028989+00:00",
+            "updated_date": "2026-08-01T19:49:07.375536"
+          },
+          {
+            "doc_uuid": "4d333fb8-fa32-4679-8a91-234b1d235fbe",
+            "dc_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:08:20.128536+00:00",
+            "source_file_path": null,
+            "file_hash": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "markdown_chars": 70241,
+            "markdown_sha256": "8d5b66dfd4dfc6714be1a2eb2bd7c177ba592f1bed5d4fe7db8f649ad607015f",
+            "n_chunks": 43,
+            "n_chunk_embeddings": 43,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.994035",
+            "updated_date": "2026-08-01T20:00:08.540034"
+          },
+          {
+            "doc_uuid": "73df050b-5cc6-404e-a552-5bddb4c350d9",
+            "dc_title": "ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:20:07.469984+00:00",
+            "source_file_path": null,
+            "file_hash": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "markdown_chars": 38978,
+            "markdown_sha256": "930449433ff0711978dc0d95244329a3a692c30deb20f051b2b4b7309d669bd3",
+            "n_chunks": 25,
+            "n_chunk_embeddings": 25,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.015248",
+            "updated_date": "2026-08-01T20:15:33.833835"
+          },
+          {
+            "doc_uuid": "abb2799c-df94-454f-a21a-ea1253514f5c",
+            "dc_title": "Deep Residual Learning for Image Recognition",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:15:20.348685+00:00",
+            "source_file_path": null,
+            "file_hash": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "markdown_chars": 64381,
+            "markdown_sha256": "5df88e05be8df15f8fde9430cf3c6d2bd8333b556e17fdb680e277aef9c38c64",
+            "n_chunks": 39,
+            "n_chunk_embeddings": 39,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:55.004904",
+            "updated_date": "2026-08-01T20:08:45.287156"
+          },
+          {
+            "doc_uuid": "b3a127b5-bb88-44b1-959b-ff8b898d49d1",
+            "dc_title": "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works.",
+            "ingest_status": "complete",
+            "ingest_error": null,
+            "ingest_updated_at": "2026-08-01T12:00:01.993023+00:00",
+            "source_file_path": null,
+            "file_hash": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "markdown_chars": 48959,
+            "markdown_sha256": "ad22e4e8c9f87f5e3e5ab001fa409fb4cbe695478839139d9ef9b5131546556c",
+            "n_chunks": 37,
+            "n_chunk_embeddings": 37,
+            "has_doc_embedding": true,
+            "metadata_keys": [
+              "created_at",
+              "experiment_arm",
+              "people",
+              "projects",
+              "source",
+              "title"
+            ],
+            "llm_metadata_populated": true,
+            "created_date": "2026-08-01T19:42:54.984722",
+            "updated_date": "2026-08-01T19:54:01.785114"
+          }
+        ],
+        "file_advisory": {
+          "advisory_only": true,
+          "file_bytes": 8409088,
+          "file_sha256": "437d083c1f544ef51d4baeecd112e66da5242ed9044086aaacd487ceaa2ef3fd",
+          "page_count": 2053,
+          "journal_mode": "wal",
+          "sidecars": {
+            "-wal": 0,
+            "-shm": 32768
+          }
+        }
+      },
+      "fingerprint_pre": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+      "fingerprint_post": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+      "fingerprint_moved": false,
+      "converter_ledger_delta": [],
+      "converter_calls": 0,
+      "http_delta_requests": 0,
+      "http_delta_ollama_requests": 0,
+      "reconciliation": {
+        "fields_checked": [
+          "documents_enriched",
+          "documents_failed",
+          "remaining",
+          "documents_converted",
+          "documents_skipped",
+          "stopped_early"
+        ],
+        "checks": [
+          {
+            "field": "documents_enriched",
+            "report": 0,
+            "database": 0,
+            "source": "delta in complete count",
+            "agrees": true
+          },
+          {
+            "field": "documents_failed",
+            "report": 0,
+            "database": 0,
+            "source": "delta in failed count",
+            "agrees": true
+          },
+          {
+            "field": "remaining",
+            "report": 0,
+            "database": 0,
+            "source": "post-drain pending_source + pending_enrich",
+            "agrees": true
+          },
+          {
+            "field": "documents_converted",
+            "report": 0,
+            "database": 0,
+            "source": "error-free converter-ledger entries appended by this drain",
+            "agrees": true
+          },
+          {
+            "field": "documents_skipped",
+            "report": 0,
+            "database": 0,
+            "source": "0 when a convert_fn was supplied; otherwise every pre-drain pending_source row, all of which remain queued",
+            "agrees": true
+          },
+          {
+            "field": "stopped_early",
+            "report": false,
+            "database": 0,
+            "source": "stopped_early implies >= 1 document still queued (implication only)",
+            "agrees": true
+          }
+        ],
+        "n_mismatches": 0,
+        "mismatches": [],
+        "pre_status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        },
+        "post_status_counts": {
+          "pending_source": 0,
+          "pending_enrich": 0,
+          "complete": 5,
+          "failed": 0
+        }
+      },
+      "params": {
+        "max_docs": null,
+        "max_seconds": null,
+        "should_continue": false,
+        "convert_fn": true
+      }
+    }
+  ],
+  "ollama_ps_after": {
+    "models": [
+      {
+        "name": "gemma4:26b-nvfp4",
+        "model": "gemma4:26b-nvfp4",
+        "size": 26183850612,
+        "digest": "c8656f50f0a6d864cffd9471002949b027ce4173640c52720f04141c3d73232a",
+        "details": {
+          "parent_model": "",
+          "format": "safetensors",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": "nvfp4"
+        },
+        "expires_at": "2026-08-01T20:25:07.154433+08:00",
+        "size_vram": 26183850612,
+        "context_length": 131072
+      },
+      {
+        "name": "embeddinggemma:latest",
+        "model": "embeddinggemma:latest",
+        "size": 673028505,
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        },
+        "expires_at": "2026-08-01T20:20:36.101822+08:00",
+        "size_vram": 673028505,
+        "context_length": 2048
+      }
+    ]
+  },
+  "queue_after": {
+    "pending_source": 0,
+    "pending_enrich": 0,
+    "complete": 5,
+    "failed": 0,
+    "pending": 0
+  },
+  "drain3_enriched": 0,
+  "drain3_ollama_requests": 0,
+  "drain3_fingerprint_moved": false,
+  "report_db_mismatches": 0,
+  "verdict": "PASS",
+  "checks": [
+    {
+      "hypothesis": "H-b/partial",
+      "passed": true,
+      "measured": true,
+      "expected": true,
+      "detail": "max_docs=2 must report a deliberate early stop"
+    },
+    {
+      "hypothesis": "H-b/max_docs_honoured",
+      "passed": true,
+      "measured": 2,
+      "expected": "<= 2",
+      "detail": "max_docs is checked at the TOP of each iteration"
+    },
+    {
+      "hypothesis": "H-b/all_completed",
+      "passed": true,
+      "measured": 5,
+      "expected": 5,
+      "detail": "4 markdown documents + the 1 queued source from claim (a) arm 2"
+    },
+    {
+      "hypothesis": "H-b/queue_empty",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-b/no_failures",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-b/noop_enriched",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": ""
+    },
+    {
+      "hypothesis": "H-b/noop_fingerprint",
+      "passed": true,
+      "measured": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+      "expected": "800e574b46e6b6a7855da610235cf42ec45b882d694ccf118100f64582e75f50",
+      "detail": "a no-op drain must not move the logical fingerprint by one bit"
+    },
+    {
+      "hypothesis": "H-b/noop_requests",
+      "passed": true,
+      "measured": 0,
+      "expected": "<= 2 (the per-process preflight: 1 embed + 1 chat)",
+      "detail": "this process already ran preflight in drain #1, so 0 is expected here; the bound covers the fresh-process case"
+    },
+    {
+      "hypothesis": "H-x/claim_b",
+      "passed": true,
+      "measured": 0,
+      "expected": 0,
+      "detail": "ProcessReport must agree field-by-field with the database and the ledger"
+    },
+    {
+      "hypothesis": "converter_calls_total",
+      "passed": null,
+      "measured": 1,
+      "expected": null,
+      "detail": "exactly one conversion is expected: the arm-2 source probe"
+    }
+  ]
+}
