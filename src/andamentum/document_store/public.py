@@ -17,8 +17,9 @@ Deferred ingestion — capture now, enrich later:
     pending_status(database)            queue depth, model-free
     retry_failed(database)              requeue documents that failed
 
-The expensive stages (source→markdown conversion, and chunk/embed/LLM metadata)
-can both be deferred. Each stage transition commits as it completes, so a drain
+The expensive stages (source→markdown conversion, and chunk/embed) can both be
+deferred. Note that ingest itself never calls an LLM — the store does not author
+metadata; consumers own that vocabulary. Each stage transition commits as it completes, so a drain
 can be paused or killed and resumed by simply calling process_pending again —
 losing at most the single in-flight document's work. Conversion is injected via
 ``convert_fn`` so this module never imports ``andamentum.harvest``; see
@@ -52,7 +53,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -65,7 +65,6 @@ from andamentum.core.embeddings import make_ollama_embedder
 from . import queue as _queue
 from .api import DocumentStore
 from .chunker_adapter import units_to_chunks
-from .extraction import extract_chunk_metadata, extract_document_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +94,6 @@ ConvertFn = Callable[[str], Awaitable[str]]
 _stores: dict[str, DocumentStore] = {}
 _preflight_done: set[str] = set()
 
-#: Max chunks processed concurrently during phase-2 ingest. Each unit of work
-#: is one embedding call + one LLM metadata-extraction call; bounding it keeps
-#: the embedding/LLM backend from being flooded while still collapsing the
-#: previously-serial per-chunk round-trips into a handful of waves.
-_INGEST_CONCURRENCY = 5
-
-
 async def _get_store(database: str) -> DocumentStore:
     """Get or create an initialized DocumentStore."""
     if database not in _stores:
@@ -113,14 +105,15 @@ async def _get_store(database: str) -> DocumentStore:
 
 async def _preflight(
     database: str,
-    model: str,
     embedding_model: str,
+    model: str | None = None,
     *,
     auto_repair: bool = True,
 ) -> None:
-    """Test that embedding service and LLM are reachable. Raises on failure.
+    """Test that the embedding service (and LLM, if used) is reachable.
 
-    Called once per (database, model, embedding_model) combination.
+    ``model`` is optional because most of the store needs no LLM: ingest and the
+    drain only embed. Only :func:`search` passes one, for query planning.
 
     ``auto_repair`` runs the crash-recovery sweep on first access. It is
     disabled by :func:`process_pending`, which is itself the drain — running the
@@ -142,6 +135,13 @@ async def _preflight(
     finally:
         await embed_svc.close()
 
+    if model is None:
+        # Nothing else to check — this caller does no LLM work.
+        _preflight_done.add(cache_key)
+        if auto_repair:
+            await _auto_repair(database, embedding_model)
+        return
+
     try:
         from pydantic_ai import Agent
 
@@ -160,10 +160,14 @@ async def _preflight(
     )
 
     # Run repair on first access — fix any incomplete ingestions from previous crashes
-    if not auto_repair:
-        return
+    if auto_repair:
+        await _auto_repair(database, embedding_model)
+
+
+async def _auto_repair(database: str, embedding_model: str) -> None:
+    """Crash-recovery sweep run once per database on first access."""
     store = await _get_store(database)
-    report = await _repair_incomplete(store, model, embedding_model)
+    report = await _repair_incomplete(store, embedding_model)
     if report.documents_repaired > 0:
         logger.info(
             f"Auto-repair: fixed {report.documents_repaired} incomplete documents in '{database}'"
@@ -294,21 +298,20 @@ def _fallback_title(content: str) -> str:
     )
 
 
-def _require_models(
-    process: ProcessMode, model: str | None, embedding_model: str | None
-) -> None:
-    """Validate the model arguments against the chosen mode.
+def _require_models(process: ProcessMode, embedding_model: str | None) -> None:
+    """Validate the embedding argument against the chosen mode.
 
-    ``process="now"`` does LLM + embedding work inline and needs both;
-    ``process="defer"`` does neither, so demanding them would make a raw capture
-    pay for a round-trip it never uses. Fail loud rather than silently
-    downgrading a "now" request to a deferred one.
+    ``process="now"`` chunks and embeds inline and needs an embedding model;
+    ``process="defer"`` does neither. Fail loud rather than silently downgrading
+    a "now" request to a deferred one.
+
+    There is no ``model`` to validate: ingest does not call an LLM.
     """
-    if process == "now" and (model is None or embedding_model is None):
+    if process == "now" and embedding_model is None:
         raise ValueError(
-            "process='now' runs metadata extraction and embedding inline, so it "
-            "requires both model= and embedding_model=. Pass them, or use "
-            "process='defer' to queue the work for process_pending()."
+            "process='now' chunks and embeds inline, so it requires "
+            "embedding_model=. Pass it, or use process='defer' to queue the "
+            "work for process_pending()."
         )
 
 
@@ -319,16 +322,20 @@ async def ingest(
     source: str = "manual",
     metadata: dict | None = None,
     *,
-    model: str | None = None,
     embedding_model: str | None = None,
     process: ProcessMode = "now",
 ) -> str:
-    """Add content to the knowledge base. Returns doc_id.
+    """Add content to the knowledge base. Returns doc_id. **Never calls an LLM.**
+
+    The store persists, chunks and embeds your text. It does not invent metadata:
+    the vocabulary is yours, supplied via ``metadata=`` here or ``update_metadata()``
+    later. If you want an LLM-generated title, call
+    :func:`extract_document_metadata` yourself and pass ``title=``.
 
     Two-phase design:
     - Phase 1 (atomic): Register document in DB. FTS5 indexes immediately.
       The document is keyword-searchable the moment this returns.
-    - Phase 2 (can fail): Chunk, embed, extract metadata, store chunks.
+    - Phase 2 (can fail): Chunk, embed, store chunks.
       If this fails, repair() can re-run it later.
 
     With ``process="defer"`` phase 1 shrinks to *register + FTS only* — no LLM
@@ -343,34 +350,38 @@ async def ingest(
     Args:
         database: Database name (e.g., "brain")
         content: Text content (markdown or plain text)
-        title: Optional title. If None, LLM generates one (or the first line is
-            used when deferring).
+        title: Optional title. If None, the first non-empty line is used.
         source: Where content came from (manual, slack, claude_code, zotero, voice)
-        metadata: Optional dict merged with LLM-extracted metadata. Caller values win.
-        model: LLM model for metadata extraction. Required when process="now".
+        metadata: Optional dict stored as the document's metadata. Caller owns it.
         embedding_model: Embedding model. Required when process="now".
-        process: "now" runs enrichment inline; "defer" queues it.
+        process: "now" chunks and embeds inline; "defer" queues that work.
 
     Returns:
         Document ID (UUID string)
 
     Raises:
-        ValueError: If process="now" and model/embedding_model are missing.
-        RuntimeError: If embedding service or LLM model is unavailable.
+        ValueError: If process="now" and embedding_model is missing.
+        RuntimeError: If the embedding service is unavailable.
     """
-    _require_models(process, model, embedding_model)
+    _require_models(process, embedding_model)
     store = await _get_store(database)
 
+    doc_meta_dict: dict = {
+        "source": source,
+        "title": title or _fallback_title(content),
+    }
+    if metadata:
+        doc_meta_dict.update(metadata)
+
+    # --- Phase 1: Register document (atomic, FTS5 immediate) ---
+    doc_id = await store.register_document(
+        title=doc_meta_dict["title"],
+        content=content,
+        metadata=doc_meta_dict,
+    )
+
     if process == "defer":
-        # No LLM, no embeddings — just persist and index for keyword search.
-        doc_meta_dict: dict = {"source": source, "title": title or _fallback_title(content)}
-        if metadata:
-            doc_meta_dict.update(metadata)
-        doc_id = await store.register_document(
-            title=doc_meta_dict["title"],
-            content=content,
-            metadata=doc_meta_dict,
-        )
+        # Nothing expensive: persisted and keyword-searchable, chunking deferred.
         await _queue.set_ingest_status(
             str(store.db_path), doc_id, _queue.PENDING_ENRICH
         )
@@ -379,34 +390,16 @@ async def ingest(
         )
         return doc_id
 
-    assert model is not None and embedding_model is not None  # _require_models
-    await _preflight(database, model, embedding_model)
-
-    # --- Phase 1: Register document (atomic, FTS5 immediate) ---
-    doc_meta = await extract_document_metadata(content, model=model)
-    doc_meta.source = source
-    if title:
-        doc_meta.title = title
-    elif not doc_meta.title:
-        doc_meta.title = _fallback_title(content)
-
-    doc_meta_dict = doc_meta.model_dump(
-        mode="json"
-    )  # datetime → ISO string for JSON storage
-    if metadata:
-        doc_meta_dict.update(metadata)
-
-    doc_id = await store.register_document(
-        title=doc_meta.title,
-        content=content,
-        metadata=doc_meta_dict,
-    )
+    assert embedding_model is not None  # _require_models
+    await _preflight(database, embedding_model)
 
     # --- Phase 2: Chunk, embed, store (can be repaired if interrupted) ---
-    await _run_phase2(store, doc_id, content, doc_meta.title, model, embedding_model)
+    await _run_phase2(
+        store, doc_id, content, doc_meta_dict["title"], embedding_model
+    )
     await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.COMPLETE)
 
-    logger.info(f"Ingested '{doc_meta.title}' into {database}: doc_id={doc_id}")
+    logger.info(f"Ingested '{doc_meta_dict['title']}' into {database}: doc_id={doc_id}")
     return doc_id
 
 
@@ -417,7 +410,6 @@ async def ingest_source(
     metadata: dict | None = None,
     *,
     convert_fn: ConvertFn | None = None,
-    model: str | None = None,
     embedding_model: str | None = None,
     process: ProcessMode = "defer",
 ) -> str:
@@ -443,7 +435,6 @@ async def ingest_source(
         metadata: Optional metadata dict.
         convert_fn: Async ``(source) -> markdown``. Required for process="now";
             for "defer" it may be supplied later to :func:`process_pending`.
-        model: LLM model. Required when process="now".
         embedding_model: Embedding model. Required when process="now".
         process: "now" converts + enriches inline; "defer" queues both.
 
@@ -451,9 +442,9 @@ async def ingest_source(
         Document ID (UUID string).
 
     Raises:
-        ValueError: If process="now" without convert_fn/model/embedding_model.
+        ValueError: If process="now" without convert_fn/embedding_model.
     """
-    _require_models(process, model, embedding_model)
+    _require_models(process, embedding_model)
     if process == "now" and convert_fn is None:
         raise ValueError(
             "process='now' must convert the source inline, so it requires "
@@ -470,14 +461,14 @@ async def ingest_source(
         logger.info(f"Queued source '{source}' in {database}: doc_id={doc_id}")
         return doc_id
 
-    assert convert_fn is not None and model is not None and embedding_model is not None
-    await _preflight(database, model, embedding_model)
+    assert convert_fn is not None and embedding_model is not None
+    await _preflight(database, embedding_model)
     await _convert_document(store, doc_id, source, convert_fn)
     doc = await store.read(doc_id)
     if doc is None:  # pragma: no cover — just written above
         raise RuntimeError(f"Document {doc_id} vanished during ingest_source")
     await _enrich_document(
-        store, doc_id, doc.content, doc.metadata.title, model, embedding_model
+        store, doc_id, doc.content, doc.metadata.title, embedding_model
     )
     return doc_id
 
@@ -487,27 +478,32 @@ async def _run_phase2(
     doc_id: str,
     content: str,
     title: str,
-    model: str,
     embedding_model: str,
 ) -> None:
-    """Phase 2 of ingestion: chunk, embed, extract metadata, store.
+    """Phase 2 of ingestion: chunk, embed, store. **No LLM.**
 
     Separated so repair() can re-run this for incomplete documents.
     Idempotent: deletes existing chunks before re-storing.
 
     Chunking uses ``andamentum.chunker.extract_units`` with
-    ``target_max_chars=4000`` — paragraph-of-paragraphs sizing tuned for the
-    chunk-level metadata extractor's ``topics`` / ``has_decision`` /
-    ``has_action_item`` fields, which were validated on ~2k char chunks.
+    ``target_max_chars=4000`` — a paragraph-of-paragraphs sizing that suits
+    embedding quality.
+
+    This used to make one LLM call per chunk to tag it with topics / people /
+    has_decision / has_action_item. That was ~93% of ingest wall-time (measured:
+    263 s of a 283 s document) and nothing — in this codebase or in any consumer
+    — ever read the result. It is gone. Chunk metadata is now purely
+    deterministic, and the metadata vocabulary belongs to consumers, who write
+    it through ``ingest(metadata=...)`` / ``update_metadata()``.
     """
     from .chunker_adapter import Chunk
     from .embeddings import EmbeddingService
+    from .metadata_models import ChunkMetadataFields
 
     # Delete any existing chunks (idempotent for repair)
     await store.delete_chunks(doc_id)
 
-    # Stage-2 semantic split (when needed) re-uses the same Ollama embedder
-    # the chunk-level loop uses below.
+    # Stage-2 semantic split (when needed) uses the embedding model.
     embedder = make_ollama_embedder(model=embedding_model)
     chunking = await extract_units(
         content,
@@ -527,24 +523,22 @@ async def _run_phase2(
             )
         ]
 
-    # Phase-2 work runs concurrently instead of one chunk at a time:
-    #   * all chunk embeddings in a single batched /api/embed call,
-    #   * per-chunk LLM metadata extraction, bounded by _INGEST_CONCURRENCY,
-    #   * the doc-level embedding,
-    # then ordered writes. Previously each chunk was embedded, extracted, and
-    # written serially — the per-chunk LLM extraction dominated ingest latency.
+    # Chunk embeddings go out as ONE batched /api/embed call; the doc-level
+    # embedding is a second call. There is no longer a fan-out here: the
+    # _INGEST_CONCURRENCY semaphore existed solely to overlap the per-chunk LLM
+    # calls, and measurement put its benefit at 1.05x anyway, because Ollama
+    # serialises same-model requests. Removing it also settles the project's
+    # one-inference-at-a-time rule, which that fan-out quietly broke.
     embed_svc = EmbeddingService(model=embedding_model)
     try:
-        sem = asyncio.Semaphore(_INGEST_CONCURRENCY)
 
-        async def _extract(chunk):  # type: ignore[no-untyped-def]
-            """Extract chunk metadata (no DB writes), bounded by the semaphore."""
-            async with sem:
-                chunk_meta = await extract_chunk_metadata(chunk.text, model=model)
-            chunk_meta.parent_doc_id = doc_id
-            chunk_meta.section_path = chunk.section_path
-            chunk_meta.chunk_index = chunk.chunk_index
-            return chunk_meta
+        def _chunk_meta(chunk) -> ChunkMetadataFields:  # type: ignore[no-untyped-def]
+            """Deterministic chunk metadata — position and provenance only."""
+            return ChunkMetadataFields(
+                parent_doc_id=doc_id,
+                section_path=chunk.section_path,
+                chunk_index=chunk.chunk_index,
+            )
 
         async def _embed_doc_level() -> None:
             """Doc-level embedding — optional, but never silently absent.
@@ -571,11 +565,11 @@ async def _run_phase2(
                     "any other cause is a real fault worth fixing."
                 )
 
-        chunk_embeddings, chunk_metas, _ = await asyncio.gather(
-            embed_svc.embed_batch([c.text for c in chunks], text_type="document"),
-            asyncio.gather(*(_extract(c) for c in chunks)),
-            _embed_doc_level(),
+        chunk_embeddings = await embed_svc.embed_batch(
+            [c.text for c in chunks], text_type="document"
         )
+        await _embed_doc_level()
+        chunk_metas = [_chunk_meta(c) for c in chunks]
 
         # Ordered, sequential writes (sync sqlite — single writer).
         for chunk, chunk_emb, chunk_meta in zip(chunks, chunk_embeddings, chunk_metas):
@@ -627,31 +621,20 @@ async def _enrich_document(
     doc_id: str,
     content: str,
     title: str,
-    model: str,
     embedding_model: str,
 ) -> None:
-    """Stage 2: doc-level LLM metadata + phase 2, then mark complete.
+    """Stage 2: chunk + embed, then mark complete. **No LLM.**
 
-    This is the work ``process="defer"`` skipped: the doc-level extraction that
-    normally happens in phase 1, plus chunking/embedding/chunk metadata.
+    This is the work ``process="defer"`` skipped. It used to also run a
+    doc-level LLM extraction; the store no longer authors metadata at all.
     """
-    doc_meta = await extract_document_metadata(content, model=model)
-    extracted = doc_meta.model_dump(mode="json", exclude_none=True)
-    # The caller's own metadata (and any title they chose) was written at queue
-    # time and stays authoritative — LLM output fills gaps, it doesn't overwrite.
-    extracted.pop("source", None)
-    extracted.pop("title", None)
-    if extracted:
-        await store.update(doc_id, metadata=extracted, merge_metadata=True)
-
-    await _run_phase2(store, doc_id, content, title, model, embedding_model)
+    await _run_phase2(store, doc_id, content, title, embedding_model)
     await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.COMPLETE)
 
 
 async def process_pending(
     database: str,
     *,
-    model: str,
     embedding_model: str,
     convert_fn: ConvertFn | None = None,
     should_continue: Callable[[], bool] | None = None,
@@ -671,7 +654,6 @@ async def process_pending(
 
     Args:
         database: Database name.
-        model: LLM model for metadata extraction.
         embedding_model: Embedding model.
         convert_fn: Async ``(source) -> markdown`` for ``pending_source`` items.
             If None, those items are counted as skipped and left queued — a
@@ -687,12 +669,12 @@ async def process_pending(
         ProcessReport with per-stage counts and whether it stopped early.
 
     Raises:
-        RuntimeError: If the embedding service or LLM is unavailable.
+        RuntimeError: If the embedding service is unavailable.
     """
     store = await _get_store(database)
     # auto_repair=False: this *is* the drain. Letting preflight's crash-recovery
     # sweep run first would duplicate the work and ignore the pause controls.
-    await _preflight(database, model, embedding_model, auto_repair=False)
+    await _preflight(database, embedding_model, auto_repair=False)
 
     db_path = str(store.db_path)
     report = ProcessReport()
@@ -732,9 +714,7 @@ async def process_pending(
             if not content.strip():
                 raise ValueError("No content to enrich")
 
-            await _enrich_document(
-                store, doc_id, content, title, model, embedding_model
-            )
+            await _enrich_document(store, doc_id, content, title, embedding_model)
             report.documents_enriched += 1
         except Exception as e:
             # Never swallow: record the reason on the row and in the report, so
@@ -809,7 +789,6 @@ async def retry_failed(database: str) -> int:
 async def repair(
     database: str,
     *,
-    model: str,
     embedding_model: str,
 ) -> RepairReport:
     """Scan database for incomplete ingestions and re-run phase 2.
@@ -832,29 +811,27 @@ async def repair(
 
     Args:
         database: Database name
-        model: LLM model for metadata extraction
         embedding_model: Embedding model
 
     Returns:
         RepairReport with counts and any failures
 
     Raises:
-        RuntimeError: If embedding service or LLM is unavailable.
+        RuntimeError: If the embedding service is unavailable.
     """
     store = await _get_store(database)
-    await _preflight(database, model, embedding_model)
+    await _preflight(database, embedding_model)
 
-    return await _repair_incomplete(store, model, embedding_model)
+    return await _repair_incomplete(store, embedding_model)
 
 
 async def reembed_document(
     database: str,
     doc_id: str,
     *,
-    model: str,
     embedding_model: str,
 ) -> bool:
-    """Re-run phase 2 (chunk + embed + chunk-metadata) for a single document.
+    """Re-run phase 2 (chunk + embed) for a single document.
 
     Use this after a document's content has been edited in place (e.g. via
     ``DocumentStore.update(new_content=...)``, which is cheap and only refreshes
@@ -866,31 +843,29 @@ async def reembed_document(
     Args:
         database: Database name
         doc_id: Document UUID to re-index
-        model: LLM model for chunk metadata extraction
         embedding_model: Embedding model
 
     Returns:
         True if the document was found and re-indexed, False if not found.
 
     Raises:
-        RuntimeError: If embedding service or LLM is unavailable.
+        RuntimeError: If the embedding service is unavailable.
     """
     store = await _get_store(database)
-    await _preflight(database, model, embedding_model)
+    await _preflight(database, embedding_model)
 
     doc = await store.read(doc_id)
     if doc is None:
         return False
 
     await _run_phase2(
-        store, doc_id, doc.content, doc.metadata.title, model, embedding_model
+        store, doc_id, doc.content, doc.metadata.title, embedding_model
     )
     return True
 
 
 async def _repair_incomplete(
     store: DocumentStore,
-    model: str,
     embedding_model: str,
 ) -> RepairReport:
     """Internal: scan for incomplete documents and re-run phase 2.
@@ -931,7 +906,7 @@ async def _repair_incomplete(
 
         try:
             await _run_phase2(
-                store, doc_uuid, content, title or "Untitled", model, embedding_model
+                store, doc_uuid, content, title or "Untitled", embedding_model
             )
             report.documents_repaired += 1
             logger.info(f"Repaired '{title}' ({doc_uuid})")

@@ -48,7 +48,7 @@ Requires:
 # The 10 module-level functions below (ingest/search/etc.) are an alternative
 # higher-level API that doesn't require holding a DocumentStore instance.
 from .api import DocumentStore
-from .extraction import extract_chunk_metadata, extract_document_metadata
+from .extraction import extract_document_metadata
 from .lifecycle import (
     database_exists,
     delete_database,
@@ -78,7 +78,6 @@ from .search import search_multi_database, search_unified
 
 # === Result/data types (returned by the above; not tools themselves) ===
 from .metadata_models import (
-    ChunkLLMFields,
     ChunkMetadataFields,
     DocumentLLMFields,
     DocumentMetadataFields,
@@ -114,7 +113,6 @@ __all__ = [
     "delete",
     "delete_database",
     "describe_metadata",
-    "extract_chunk_metadata",
     "extract_document_metadata",
     "find_by_metadata",
     "find_duplicates",
@@ -136,7 +134,6 @@ __all__ = [
     "search_unified",
     "update_metadata",
     # Data types
-    "ChunkLLMFields",
     "ChunkMetadataFields",
     "ConvertFn",
     "Document",

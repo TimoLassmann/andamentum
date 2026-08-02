@@ -15,7 +15,6 @@ drain it from a shell, a cron entry or a launchd timer. The store owns a
 
     # drain (e.g. from cron at 02:00), self-capping before morning
     andamentum-docstore process-pending brain \
-        --model ollama:gemma4:26b-nvfp4 \
         --embedding-model embeddinggemma:latest \
         --max-seconds 21600
 
@@ -77,7 +76,6 @@ async def _cmd_ingest(args: argparse.Namespace) -> int:
         args.database,
         content,
         title=args.title,
-        model=args.model,
         embedding_model=args.embedding_model,
         process="defer" if args.defer else "now",
     )
@@ -91,7 +89,6 @@ async def _cmd_ingest_source(args: argparse.Namespace) -> int:
         args.source,
         title=args.title,
         convert_fn=harvest_convert_fn() if not args.defer else None,
-        model=args.model,
         embedding_model=args.embedding_model,
         process="defer" if args.defer else "now",
     )
@@ -118,7 +115,6 @@ async def _cmd_process_pending(args: argparse.Namespace) -> int:
 
     report = await _process_pending(
         args.database,
-        model=args.model,
         embedding_model=args.embedding_model,
         convert_fn=harvest_convert_fn(),
         should_continue=should_continue,
@@ -150,7 +146,7 @@ async def _cmd_retry_failed(args: argparse.Namespace) -> int:
 
 
 def _add_model_args(p: argparse.ArgumentParser, *, required: bool) -> None:
-    p.add_argument("--model", required=required, help="LLM for metadata extraction")
+    """Embedding model only — the store never calls an LLM to ingest."""
     p.add_argument(
         "--embedding-model",
         required=required,

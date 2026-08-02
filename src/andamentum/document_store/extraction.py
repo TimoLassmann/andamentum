@@ -12,8 +12,15 @@ Self-correction for local models:
   prompt so the model produces raw JSON instead of tool calls
 
 Document extraction: title, projects, people.
-Chunk extraction: topics (2-3 tags), people, has_decision (bool), has_action_item (bool).
-  Boolean questions are much more reliable for local models than multi-way classification.
+
+This is an OPT-IN utility, not part of ingest. ``ingest()`` never calls an LLM:
+the store persists, chunks and embeds text, and leaves the metadata vocabulary
+entirely to its consumers. Call this yourself if you want a generated title, and
+pass the result to ``ingest(title=..., metadata=...)``.
+
+(Chunk-level extraction — topics / people / has_decision / has_action_item —
+was removed. Nothing read those fields, and they cost ~93% of ingest wall-time
+at one LLM call per chunk.)
 
 Requires: pydantic-ai (installed as part of andamentum).
 """
@@ -24,8 +31,6 @@ import logging
 from typing import Any, Callable, TypeVar
 
 from .metadata_models import (
-    ChunkLLMFields,
-    ChunkMetadataFields,
     DocumentLLMFields,
     DocumentMetadataFields,
 )
@@ -40,15 +45,6 @@ _DOC_SYSTEM_PROMPT = (
     "Extract structured metadata from the document provided. "
     "Only extract what is explicitly stated. Be specific with project names and people. "
     "The title must be a one-line summary of max 10 words."
-)
-
-_CHUNK_SYSTEM_PROMPT = (
-    "You are a metadata extraction agent for a personal knowledge base. "
-    "Extract structured metadata from the text chunk provided. "
-    "Only extract what is explicitly stated. "
-    'Be specific with topics — prefer "MAP-Elites selection" over "optimization". '
-    "For has_decision: true only if the text contains an explicit decision or commitment. "
-    "For has_action_item: true only if the text contains an explicit to-do or next step."
 )
 
 _OUTPUT_RETRIES = 5
@@ -80,36 +76,6 @@ def _build_doc_agent(model: str):  # type: ignore[no-untyped-def]
         if not output.title:
             issues.append(
                 "Title is empty — provide a one-line summary of the document."
-            )
-
-        if issues:
-            raise ModelRetry("\n".join(issues))
-
-        return output
-
-    return agent
-
-
-def _build_chunk_agent(model: str):  # type: ignore[no-untyped-def]
-    """Build a PydanticAI agent for chunk metadata extraction."""
-    from pydantic_ai import Agent, ModelRetry, RunContext
-
-    agent = Agent(
-        model,
-        system_prompt=_CHUNK_SYSTEM_PROMPT,
-        output_type=ChunkLLMFields,
-        retries={"tools": _RETRIES, "output": _OUTPUT_RETRIES},
-    )
-
-    @agent.output_validator
-    async def validate_chunk_output(
-        ctx: RunContext[None], output: ChunkLLMFields
-    ) -> ChunkLLMFields:
-        issues: list[str] = []
-
-        if len(output.topics) > 5:
-            issues.append(
-                f"Too many topics ({len(output.topics)}) — provide 2-3 specific tags."
             )
 
         if issues:
@@ -179,9 +145,9 @@ async def _extract_with_fallback(
 ) -> OutT:
     """Run a structured-output extraction with the standard local-model fallback.
 
-    Shared by :func:`extract_document_metadata` and :func:`extract_chunk_metadata`
-    — the two differ only in prompt, output type, input, and the LLM→public-model
-    projection. The control flow is identical:
+    Used by :func:`extract_document_metadata`. Kept as a separate helper because
+    the control flow (retry-with-prompted-output, then defaults) is worth stating
+    once, independently of any one extractor:
 
     1. Run the primary (tool-based) agent and project its output.
     2. If the model ignores tool definitions entirely (``UnexpectedModelBehavior``),
@@ -280,40 +246,3 @@ async def extract_document_metadata(
         label="Document",
     )
 
-
-async def extract_chunk_metadata(
-    chunk_text: str,
-    model: str | None = None,
-) -> ChunkMetadataFields:
-    """Extract LLM fields for a chunk using PydanticAI structured output.
-
-    Extracts: topics (2-3 tags), people, has_decision (bool), has_action_item (bool).
-    Boolean questions are more reliable for local models than multi-way classification.
-    Deterministic fields (parent_doc_id, section_path, chunk_index) are left at defaults.
-
-    Args:
-        chunk_text: The chunk text to extract metadata from.
-        model: PydanticAI model string. If None, returns model with defaults only.
-
-    Returns:
-        ChunkMetadataFields with LLM-extracted fields filled where possible.
-        On failure after all retries, returns model with all defaults.
-    """
-    if model is None:
-        return ChunkMetadataFields()
-
-    return await _extract_with_fallback(
-        model=model,
-        input_text=chunk_text,
-        build_agent=_build_chunk_agent,
-        system_prompt=_CHUNK_SYSTEM_PROMPT,
-        llm_output_type=ChunkLLMFields,
-        project=lambda f: ChunkMetadataFields(
-            topics=f.topics,
-            people=f.people,
-            has_decision=f.has_decision,
-            has_action_item=f.has_action_item,
-        ),
-        default_factory=ChunkMetadataFields,
-        label="Chunk",
-    )

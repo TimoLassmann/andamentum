@@ -665,7 +665,11 @@ async def find_doc_uuids_by_filters(
     Supports closed-set fields only:
       source (equals) → documents.metadata JSON
       created_at (after/before) → documents.created_date column
-      has_decision, has_action_item (is_true) → chunks.metadata JSON booleans
+
+    (has_decision / has_action_item used to filter chunks.metadata. They were
+    removed with the per-chunk LLM tagging that populated them — a filter over a
+    field nothing writes can only match zero rows. Consumers write their own
+    metadata and query it via find_by_metadata.)
 
     Args:
         db_path: Path to SQLite database
@@ -679,8 +683,6 @@ async def find_doc_uuids_by_filters(
 
     doc_conditions: list[str] = []
     doc_params: list[str] = []
-    chunk_conditions: list[str] = []
-    chunk_params: list[str] = []
 
     for f in filters:
         field = f["field"]
@@ -697,41 +699,17 @@ async def find_doc_uuids_by_filters(
         elif field == "source":
             doc_conditions.append(f"json_extract(metadata, '$.{field}') = ?")
             doc_params.append(value)
-        elif field in ("has_decision", "has_action_item"):
-            # Boolean flags in chunk metadata: json_extract returns 1/0 for true/false
-            chunk_conditions.append(f"json_extract(c.metadata, '$.{field}') = 1")
 
-    result_uuids: set[str] = set()
-    got_doc = False
-    got_chunk = False
-
-    async with get_async_connection(db_path) as db:
-        if doc_conditions:
-            where = " AND ".join(doc_conditions)
-            async with db.execute(
-                f"SELECT doc_uuid FROM documents WHERE {where}", doc_params
-            ) as cursor:
-                rows = await cursor.fetchall()
-                result_uuids = {row[0] for row in rows}
-                got_doc = True
-
-        if chunk_conditions:
-            where = " AND ".join(chunk_conditions)
-            query = f"""
-                SELECT DISTINCT d.doc_uuid
-                FROM chunks c JOIN documents d ON c.document_id = d.id
-                WHERE {where}
-            """
-            async with db.execute(query, chunk_params) as cursor:
-                rows = await cursor.fetchall()
-                chunk_uuids = {row[0] for row in rows}
-                result_uuids = (result_uuids & chunk_uuids) if got_doc else chunk_uuids
-                got_chunk = True
-
-    if not got_doc and not got_chunk:
+    if not doc_conditions:
         return set()
 
-    return result_uuids
+    async with get_async_connection(db_path) as db:
+        where = " AND ".join(doc_conditions)
+        async with db.execute(
+            f"SELECT doc_uuid FROM documents WHERE {where}", doc_params
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0] for row in rows}
 
 
 # ---------------------------------------------------------------------------

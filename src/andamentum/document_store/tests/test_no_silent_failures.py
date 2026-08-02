@@ -25,7 +25,6 @@ import pytest
 from andamentum.document_store.extraction import (
     ExtractionUnavailable,
     _reraise_if_infrastructure,
-    extract_chunk_metadata,
     extract_document_metadata,
 )
 
@@ -38,17 +37,12 @@ class TestInfrastructureErrorsRaise:
         # when OLLAMA_BASE_URL is unset — before any request is made.
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         with pytest.raises(ExtractionUnavailable, match="cannot reach the model"):
-            await extract_chunk_metadata("some text", model="ollama:does-not-matter")
-
-    async def test_missing_ollama_base_url_raises_for_documents_too(self, monkeypatch):
-        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
-        with pytest.raises(ExtractionUnavailable):
-            await extract_document_metadata("some text", model="ollama:does-not-matter")
+            await extract_document_metadata("some text", model="ollama:nope")
 
     async def test_error_message_names_the_cause_and_the_fix(self, monkeypatch):
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         with pytest.raises(ExtractionUnavailable) as exc:
-            await extract_chunk_metadata("x", model="ollama:m")
+            await extract_document_metadata("x", model="ollama:m")
         msg = str(exc.value)
         assert "NOT degraded into empty metadata" in msg
         assert "OLLAMA_BASE_URL" in msg
@@ -64,7 +58,7 @@ class TestInfrastructureErrorsRaise:
             ConnectionError("down"),
         ):
             with pytest.raises(ExtractionUnavailable):
-                _reraise_if_infrastructure(err, label="Chunk", model="m")
+                _reraise_if_infrastructure(err, label="Document", model="m")
 
     def test_model_quality_errors_are_NOT_infrastructure(self):
         """A model producing unusable output is the case the fallback exists for."""
@@ -73,9 +67,9 @@ class TestInfrastructureErrorsRaise:
         # Returns normally => caller proceeds to the prompted-output retry /
         # default-value fallback rather than raising.
         _reraise_if_infrastructure(
-            UnexpectedModelBehavior("ignored the tool schema"), label="Chunk", model="m"
+            UnexpectedModelBehavior("ignored the tool schema"), label="Document", model="m"
         )
-        _reraise_if_infrastructure(ValueError("bad field"), label="Chunk", model="m")
+        _reraise_if_infrastructure(ValueError("bad field"), label="Document", model="m")
 
 
 class TestDegradedSignalsAreVisible:
@@ -107,7 +101,6 @@ class TestDegradedSignalsAreVisible:
         from andamentum.document_store import embeddings as embeddings_mod
         from andamentum.document_store import public
         from andamentum.document_store.api import DocumentStore
-        from andamentum.document_store.metadata_models import ChunkMetadataFields
 
         store = DocumentStore(database_name="warnprobe", db_dir=str(tmp_path))
         await store.initialize()
@@ -133,16 +126,11 @@ class TestDegradedSignalsAreVisible:
         )
         monkeypatch.setattr(public, "make_ollama_embedder", lambda **k: None)
 
-        async def _fake_chunk_meta(text, model=None):
-            return ChunkMetadataFields()
-
-        monkeypatch.setattr(public, "extract_chunk_metadata", _fake_chunk_meta)
-
         with caplog.at_level(
             logging.WARNING, logger="andamentum.document_store.public"
         ):
             await public._run_phase2(
-                store, doc_id, "body text here", "t", "model", "embed-model"
+                store, doc_id, "body text here", "t", "embed-model"
             )
 
         assert any(

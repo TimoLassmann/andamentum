@@ -37,29 +37,22 @@ def _stub_enrichment(monkeypatch, *, fail_on: set[str] | None = None) -> list[st
     seen: list[str] = []
     fail_on = fail_on or set()
 
-    async def _fake_phase2(store, doc_id, content, title, model, embedding_model):
+    async def _fake_phase2(store, doc_id, content, title, embedding_model):
         if title in fail_on:
             raise RuntimeError(f"boom on {title}")
         seen.append(title)
         # A real phase 2 writes chunks; write one so _is_incomplete() is happy.
         await store.store_chunk(doc_id, content, [0.0] * 768, chunk_index=0)
 
-    async def _fake_doc_meta(content, model=None, max_content_chars=3000):
-        from andamentum.document_store.metadata_models import DocumentMetadataFields
-
-        return DocumentMetadataFields()
-
     monkeypatch.setattr(public, "_run_phase2", _fake_phase2)
-    monkeypatch.setattr(public, "extract_document_metadata", _fake_doc_meta)
     return seen
 
 
 class TestDeferMarksWorkWithoutDoingIt:
-    async def test_defer_queues_and_skips_llm(self, db, monkeypatch):
+    async def test_defer_queues_and_does_no_work(self, db, monkeypatch):
         async def _explode(*_a, **_kw):
-            raise AssertionError("defer must not call the LLM")
+            raise AssertionError("defer must not chunk or embed")
 
-        monkeypatch.setattr(public, "extract_document_metadata", _explode)
         monkeypatch.setattr(public, "_run_phase2", _explode)
 
         doc_id = await public.ingest("testq", "# Title\n\nbody", process="defer")
@@ -82,8 +75,8 @@ class TestDeferMarksWorkWithoutDoingIt:
         doc = await db.read(doc_id)
         assert doc is not None and doc.metadata.title == "My Heading"
 
-    async def test_now_requires_models(self, db):
-        with pytest.raises(ValueError, match="requires both model"):
+    async def test_now_requires_an_embedding_model(self, db):
+        with pytest.raises(ValueError, match="requires embedding_model"):
             await public.ingest("testq", "x", process="now")
 
 
@@ -94,7 +87,7 @@ class TestDrain:
             await public.ingest("testq", f"doc number {i}", process="defer")
 
         report = await public.process_pending(
-            "testq", model="m", embedding_model="e"
+            "testq", embedding_model="e"
         )
 
         assert report.documents_enriched == 3
@@ -107,9 +100,9 @@ class TestDrain:
     async def test_drain_is_idempotent(self, db, monkeypatch):
         _stub_enrichment(monkeypatch)
         await public.ingest("testq", "only doc", process="defer")
-        await public.process_pending("testq", model="m", embedding_model="e")
+        await public.process_pending("testq", embedding_model="e")
 
-        again = await public.process_pending("testq", model="m", embedding_model="e")
+        again = await public.process_pending("testq", embedding_model="e")
         assert again.documents_enriched == 0
         assert again.remaining == 0
 
@@ -123,13 +116,13 @@ class TestPauseAndResume:
             await public.ingest("testq", f"doc {i}", process="defer")
 
         first = await public.process_pending(
-            "testq", model="m", embedding_model="e", max_docs=2
+            "testq", embedding_model="e", max_docs=2
         )
         assert first.documents_enriched == 2
         assert first.stopped_early is True
         assert first.remaining == 3
 
-        second = await public.process_pending("testq", model="m", embedding_model="e")
+        second = await public.process_pending("testq", embedding_model="e")
         assert second.documents_enriched == 3
         assert second.remaining == 0
 
@@ -145,7 +138,7 @@ class TestPauseAndResume:
             return calls["n"] <= 2  # allow two documents, then pause
 
         report = await public.process_pending(
-            "testq", model="m", embedding_model="e", should_continue=should_continue
+            "testq", embedding_model="e", should_continue=should_continue
         )
         assert report.documents_enriched == 2
         assert report.stopped_early is True
@@ -159,7 +152,6 @@ class TestPauseAndResume:
         seen: list[tuple[int, int]] = []
         await public.process_pending(
             "testq",
-            model="m",
             embedding_model="e",
             on_progress=lambda done, total, title: seen.append((done, total)),
         )
@@ -172,7 +164,7 @@ class TestFailureHandling:
         await public.ingest("testq", "bad doc", process="defer")
         await public.ingest("testq", "good doc", process="defer")
 
-        report = await public.process_pending("testq", model="m", embedding_model="e")
+        report = await public.process_pending("testq", embedding_model="e")
 
         assert report.documents_failed == 1
         assert report.documents_enriched == 1
@@ -183,7 +175,7 @@ class TestFailureHandling:
     async def test_retry_failed_requeues(self, db, monkeypatch):
         _stub_enrichment(monkeypatch, fail_on={"bad doc"})
         await public.ingest("testq", "bad doc", process="defer")
-        await public.process_pending("testq", model="m", embedding_model="e")
+        await public.process_pending("testq", embedding_model="e")
 
         assert await public.retry_failed("testq") == 1
         counts = await q.count_by_status(str(db.db_path))
@@ -193,12 +185,12 @@ class TestFailureHandling:
         """A hard failure must not advance status — the doc stays drainable."""
         _stub_enrichment(monkeypatch, fail_on={"doc a"})
         await public.ingest("testq", "doc a", process="defer")
-        await public.process_pending("testq", model="m", embedding_model="e")
+        await public.process_pending("testq", embedding_model="e")
 
         # Now "fix" the transient problem and retry: it completes, no data lost.
         _stub_enrichment(monkeypatch)
         await public.retry_failed("testq")
-        report = await public.process_pending("testq", model="m", embedding_model="e")
+        report = await public.process_pending("testq", embedding_model="e")
         assert report.documents_enriched == 1
         assert report.remaining == 0
 
@@ -223,7 +215,7 @@ class TestSourceConversionStage:
             return "# Converted\n\nreal content"
 
         report = await public.process_pending(
-            "testq", model="m", embedding_model="e", convert_fn=convert
+            "testq", embedding_model="e", convert_fn=convert
         )
 
         assert calls == ["/tmp/paper.pdf"]
@@ -244,7 +236,7 @@ class TestSourceConversionStage:
             return "# Converted\n\nreal content"
 
         await public.process_pending(
-            "testq", model="m", embedding_model="e", convert_fn=convert
+            "testq", embedding_model="e", convert_fn=convert
         )
         assert calls == ["/tmp/paper.pdf"]  # converted once
 
@@ -252,7 +244,7 @@ class TestSourceConversionStage:
         _stub_enrichment(monkeypatch)
         await public.retry_failed("testq")
         report = await public.process_pending(
-            "testq", model="m", embedding_model="e", convert_fn=convert
+            "testq", embedding_model="e", convert_fn=convert
         )
         assert calls == ["/tmp/paper.pdf"]  # still once — checkpoint honoured
         assert report.documents_converted == 0
@@ -264,7 +256,7 @@ class TestSourceConversionStage:
         _stub_enrichment(monkeypatch)
         await public.ingest_source("testq", "/tmp/paper.pdf")
 
-        report = await public.process_pending("testq", model="m", embedding_model="e")
+        report = await public.process_pending("testq", embedding_model="e")
 
         assert report.documents_skipped == 1
         assert report.documents_failed == 0
@@ -288,7 +280,7 @@ class TestAutoRepairDoesNotEatTheQueue:
         for i in range(3):
             await public.ingest("testq", f"doc {i}", process="defer")
 
-        report = await public.repair("testq", model="m", embedding_model="e")
+        report = await public.repair("testq", embedding_model="e")
 
         assert report.documents_repaired == 0
         assert report.documents_scanned == 0
