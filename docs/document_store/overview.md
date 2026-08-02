@@ -149,10 +149,21 @@ await drain("research", model=..., embedding_model=...)
 > every in-flight document. For resumable bulk work, enqueue sources and let
 > `process_pending` convert them.
 
-A deferred document is keyword-searchable immediately but **not** semantically
-searchable, and carries no LLM metadata, until the drain runs. `repair()`
-deliberately ignores `pending_*` documents, so an interactive `search()` never
-turns into a synchronous drain of the backlog.
+**What is searchable, and when** — the two entry points differ, and the
+distinction matters:
+
+| queued via | keyword (FTS5) | semantic | LLM metadata |
+|---|---|---|---|
+| `ingest(..., process="defer")` | **immediately** | after drain | after drain |
+| `ingest_source(...)` | **only after conversion** | after drain | after drain |
+
+`ingest_source` records a *reference* and writes `markdown_content=''`, so there
+is no text to index until `process_pending` converts it — a queued source
+returns zero FTS hits (measured, not assumed: see the validation experiment's
+`H-a5`). Only `ingest` gives you the immediate keyword-searchability property.
+
+`repair()` deliberately ignores `pending_*` documents, so an interactive
+`search()` never turns into a synchronous drain of the backlog.
 
 ### CLI
 
