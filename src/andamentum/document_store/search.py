@@ -279,7 +279,14 @@ def _search_doc_embeddings(
 async def _run_fts5_signal(
     db_path: str, query: str, limit: int
 ) -> Optional[tuple[str, list[UnifiedSearchResult]]]:
-    """Signal 1: FTS5 keyword search."""
+    """Signal 1: FTS5 keyword search.
+
+    A failure here does not abort the search — the other signals still answer —
+    but it is logged at WARNING, not DEBUG. This signal failing silently is
+    exactly how a malformed MATCH query (``fts5: syntax error``) hid for so long:
+    keyword ranking vanished from the fusion and the caller saw only slightly
+    worse results, with the cause invisible at default log level.
+    """
     try:
         fts5_results = await search_fts5(db_path, query, limit * 2)
         if fts5_results:
@@ -292,7 +299,10 @@ async def _run_fts5_signal(
                 ],
             )
     except Exception as e:
-        logger.debug(f"FTS5 search failed: {type(e).__name__}: {e}")
+        logger.warning(
+            f"FTS5 keyword signal FAILED and is missing from this search's "
+            f"fusion — results are degraded: {type(e).__name__}: {e}"
+        )
     return None
 
 
@@ -381,7 +391,10 @@ async def _run_doc_embedding_search(
                 ],
             )
     except Exception as e:
-        logger.debug(f"Document-level semantic search failed: {type(e).__name__}: {e}")
+        logger.warning(
+            f"Document-level semantic signal FAILED and is missing from this "
+            f"search's fusion — results are degraded: {type(e).__name__}: {e}"
+        )
     return None
 
 
@@ -412,7 +425,13 @@ async def _run_cluster_search(
                 ],
             )
     except Exception as e:
-        logger.debug(f"Cluster-boosted search skipped: {type(e).__name__}: {e}")
+        # A database with no clusters yet is NOT an error — _search_via_clusters
+        # returns an empty list for that. Reaching here means something actually
+        # broke, so it is a degraded search, not a skip.
+        logger.warning(
+            f"DHP cluster signal FAILED and is missing from this search's "
+            f"fusion — results are degraded: {type(e).__name__}: {e}"
+        )
     return None
 
 

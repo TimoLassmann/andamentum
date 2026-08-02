@@ -120,6 +120,52 @@ def _build_chunk_agent(model: str):  # type: ignore[no-untyped-def]
     return agent
 
 
+class ExtractionUnavailable(RuntimeError):
+    """The extraction backend is unusable — configuration, transport, or provider.
+
+    Distinct from "the model produced poor output", which is absorbed by the
+    default-value fallback. This one means no model was reached at all, so a
+    caller that continued would persist empty metadata and call it success.
+    """
+
+
+def _reraise_if_infrastructure(error: Exception, *, label: str, model: str) -> None:
+    """Re-raise ``error`` as :class:`ExtractionUnavailable` if it is not the
+    model's fault. Returns normally when the error is a model-quality problem.
+
+    Three families count as infrastructure:
+      * ``UserError``      — misconfiguration, e.g. OLLAMA_BASE_URL unset. Raised
+                             at agent *construction*, before any request.
+      * ``ModelAPIError`` / ``ModelHTTPError`` — provider reachable-but-refusing:
+                             model not pulled (404), auth, rate limit, 5xx.
+      * transport errors   — connection refused, DNS, timeout (httpx / OSError).
+    """
+    from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UserError
+
+    import httpx
+
+    infrastructure = (
+        UserError,
+        ModelAPIError,
+        ModelHTTPError,
+        httpx.TransportError,
+        ConnectionError,
+    )
+    if not isinstance(error, infrastructure):
+        return
+
+    raise ExtractionUnavailable(
+        f"{label} metadata extraction cannot reach the model '{model}': "
+        f"{type(error).__name__}: {error}\n"
+        "This is a configuration/connectivity failure, not a model-quality one, "
+        "so it is NOT degraded into empty metadata — continuing would write "
+        "documents with no LLM fields and report them as fully ingested. "
+        "For Ollama, ensure the server is running, the model is pulled, and "
+        "OLLAMA_BASE_URL is set (it needs the /v1 suffix, e.g. "
+        "http://localhost:11434/v1)."
+    ) from error
+
+
 async def _extract_with_fallback(
     *,
     model: str,
@@ -140,7 +186,17 @@ async def _extract_with_fallback(
     1. Run the primary (tool-based) agent and project its output.
     2. If the model ignores tool definitions entirely (``UnexpectedModelBehavior``),
        retry once with :class:`PromptedOutput` (schema injected into the prompt).
-    3. On any other failure — or a failed prompted retry — log and return defaults.
+    3. On any other *model-quality* failure — or a failed prompted retry — log and
+       return defaults.
+
+    **Infrastructure failures are NOT degraded into defaults.** A misconfigured
+    provider, an unreachable Ollama, or a model that is not pulled raises
+    ``ExtractionUnavailable``. The fallback exists to absorb a small model
+    producing unusable *output*, not to make a broken setup look like a
+    successful ingest: silently returning empty metadata means every document
+    ingested during the outage is written with no LLM fields and reported as
+    complete, with nothing but a log line to say so. Failing loudly is the
+    project's rule — a crash beats a silently wrong knowledge base.
 
     ``ImportError`` (pydantic-ai missing) is re-raised as a clear ``RuntimeError``.
     """
@@ -154,6 +210,8 @@ async def _extract_with_fallback(
         )
     except Exception as first_error:
         from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+        _reraise_if_infrastructure(first_error, label=label, model=model)
 
         if not isinstance(first_error, UnexpectedModelBehavior):
             logger.warning(f"{label} metadata extraction failed: {first_error}")
@@ -175,6 +233,9 @@ async def _extract_with_fallback(
             result = await prompted_agent.run(input_text)
             return project(result.output)
         except Exception as e:
+            # Same rule on the retry path: an unreachable backend is not a
+            # degraded result, it is a broken one.
+            _reraise_if_infrastructure(e, label=label, model=model)
             logger.warning(
                 f"{label} metadata extraction failed after prompted retry: {e}"
             )
