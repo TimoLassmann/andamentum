@@ -1,18 +1,18 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.manifest/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T14:43:48.797764+00:00",
+  "written_at": "2026-08-01T15:04:40.846659+00:00",
   "provenance_ref": {
     "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
     "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
   },
   "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
-  "n_artefacts": 163,
-  "n_harness_files": 35,
-  "harness_sha256": "9e9cd0c56ce731a68339ac0ba9addf85bb8764607cab2feece599a416124e2c7",
-  "harness_note": "one digest over the Snakefile and every harness script. Cross-check it against provenance.json's git.harness_sha256 \u2014 they are computed independently over the same file set",
-  "n_unschemad": 90,
+  "n_artefacts": 194,
+  "n_harness_files": 67,
+  "harness_sha256": "0738a3bc301f1fb2cd701d6a95dfbc6fccbf1f53a936bb198be15de521e7d674",
+  "harness_note": "one digest over provenance.HARNESS_GLOBS \u2014 the Snakefile, config.yaml, every scripts/*.py and every captions/*.rst. Computed independently of provenance.json's harness.harness_sha256 over the SAME file set, so the two are comparable. They are NOT expected to be equal: provenance stamps the apparatus at run START and this file stamps it at the END, so a difference means the harness changed mid-run and results/deviations.json names which files. Equality means it did not.",
+  "n_unschemad": 121,
   "skipped": [
     ".snakemake",
     "__pycache__",
@@ -126,8 +126,8 @@
     },
     {
       "path": "results/deviations.json",
-      "bytes": 17499,
-      "sha256": "238fa6d961262c6523ee4fcf5efe06d83be90b144f4e26f3de1dfea7ac5b1cb9",
+      "bytes": 19690,
+      "sha256": "a91582e2444a140c1c15812fe4535010dd5a56959d7b08bd7fc3c1976e05de16",
       "producing_rule": "deviations",
       "schema": "andamentum.experiment.docstore_deferred.deviations/1"
     },
@@ -533,7 +533,7 @@
     {
       "path": "results/validation.json",
       "bytes": 2953,
-      "sha256": "20c050924b14e141a94583411274108d791b3793c4a0c5cdbf816b1b990f73f9",
+      "sha256": "95fcbcd9c1190a00e27eed7c7427b9d88484346c5bb45288be1af2900eb22aa3",
       "producing_rule": "validate_results",
       "schema": "andamentum.experiment.docstore_deferred.validation/1"
     },
@@ -980,8 +980,8 @@
     },
     {
       "path": "scripts/deviations.py",
-      "bytes": 21991,
-      "sha256": "7d8c15c9d1706754d815ffdd7c5212075092c00900fa93a90ff80cccc82ace44",
+      "bytes": 24560,
+      "sha256": "c92b6e9e094c4fc0b56d5596568c96de89b39ab5a763cc741431d9526c17941a",
       "producing_rule": null,
       "schema": null
     },
@@ -1050,8 +1050,8 @@
     },
     {
       "path": "scripts/manifest.py",
-      "bytes": 7555,
-      "sha256": "08326fcd60a180d141e3a7e859d0b0dd1be859278abdad89867740079693d411",
+      "bytes": 8891,
+      "sha256": "b84076f4be5eaa76f88bec293b08a6d1fae4005516dc51435296252e6eb36202",
       "producing_rule": null,
       "schema": null
     },
@@ -1078,8 +1078,8 @@
     },
     {
       "path": "scripts/provenance.py",
-      "bytes": 11516,
-      "sha256": "8aaf296dc3ec968916e09d51316886f4cc02cc6e73e53a464dd88f21b0ea29f6",
+      "bytes": 11833,
+      "sha256": "885279fcc36aa9bcc07ec367a6e74baa91929022f86d7e4e65461a108691aa49",
       "producing_rule": null,
       "schema": null
     },
@@ -1126,6 +1126,223 @@
       "schema": null
     },
     {
+      "path": "captions/claim_a.rst",
+      "bytes": 1110,
+      "sha256": "7e32e6ffea5b8ea788cfb2ced9fbb155cdec00ce61a5bd82e9a9b03956bc73ea",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_b.rst",
+      "bytes": 736,
+      "sha256": "86d8141a6afa2888e17653b2c220eb2e1d6b10b76960e368877a3e94342ec0de",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_c_kill.rst",
+      "bytes": 1040,
+      "sha256": "90430c8703ff33c79af86b3544936bfa38d43ec3735d6dc228d1464af6df7b2e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_c_resume.rst",
+      "bytes": 1279,
+      "sha256": "b8309e86dc8c3a5011b25fa6d7d221a77bef92d1ca33bd20ed015226f6d19118",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_d.rst",
+      "bytes": 1385,
+      "sha256": "d82aaf17a8c48a94ac6a306286968547dc4b856aea4461cc56666d805b3a89b6",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_e_post.rst",
+      "bytes": 809,
+      "sha256": "94c6533d0a3211327ece2b9f296aca98c62c567d2dceb91828b5ff855bd228cf",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_e_pre.rst",
+      "bytes": 740,
+      "sha256": "5993d83aa933c9cf6804567607e78bc4cb4bee0629d10099c65338590388ec85",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/claim_f.rst",
+      "bytes": 1144,
+      "sha256": "caf0fd6d98bd982ee2675c92b7ce34b049c8c2502955193aef434a588f5ee70e",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/cli_smoke.rst",
+      "bytes": 591,
+      "sha256": "6606caa7a7f813b7233947cb753cbf5bea2c1eff8db7dc2eaa6d7f49105a86b9",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/conversion_baseline.rst",
+      "bytes": 520,
+      "sha256": "51d6f2cf84d37d4b5de45ad9317c08cce5955611a492172d1765623255a7e8ad",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/data_integrity.rst",
+      "bytes": 247,
+      "sha256": "05c87f7e58a7ca17bb744b67db887d00a7457674e2285904aab601eaf5f411bf",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/deviations.rst",
+      "bytes": 414,
+      "sha256": "e6b5e27be65f80d052f00e563680ac80405d9f12c98e691a408e7b35968b1421",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/drain_overhead.rst",
+      "bytes": 616,
+      "sha256": "36470515fcf0000ab8a7839613bd6f05bf01969adc5b4c870358f3c7ceaf3c1b",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/events.rst",
+      "bytes": 363,
+      "sha256": "b6dd9b59c77a2ca4449495a9696f3922ecb704d4659085b7a3c7a3e2232e88b4",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/fig1.rst",
+      "bytes": 645,
+      "sha256": "b8c13f0d3bd8f778c5024623e48f5f9614a2c8affb9be3cb9943a1da35b37b0a",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/fig2.rst",
+      "bytes": 760,
+      "sha256": "f4f2ade2b7298f5b3467c2cd9eff15fafeece1227a7cb2e694b0bb23ff40b261",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/fig3.rst",
+      "bytes": 891,
+      "sha256": "3c5d027fb9a3fc8d32b96ed231f7dafd165b5e508ebabe1bedbd866dc6d2c0ed",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/fig4.rst",
+      "bytes": 725,
+      "sha256": "2da1625d7baf721b411dbe33ed081ce42b87a2a35f5d0955ac001089050fb821",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/gate.rst",
+      "bytes": 760,
+      "sha256": "aea6af7998690c451f11b84e505f237edbaac36c9eb91b1180387f9b8004a979",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/manifest.rst",
+      "bytes": 645,
+      "sha256": "59193ec8c7c5d4a29f3ce1a08a1e159f6072369c654845935fc176a5d59b2745",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/micro_stages.rst",
+      "bytes": 1250,
+      "sha256": "ada9bb53ec780c4896f77d0f86a6dbd01b2dfe4ba5b4772da1c005c99a2a5d95",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/per_document.rst",
+      "bytes": 332,
+      "sha256": "6e4e627746cf6e80d2d2c393a90fd9345fbb2ba177b57fa76280cbe45c639d99",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/prereg.rst",
+      "bytes": 568,
+      "sha256": "0c0fdda2e0f7682e7f7be115aeb299b57d06fe0a4875b28ad47f40ebe9b708ca",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/provenance.rst",
+      "bytes": 959,
+      "sha256": "b13e06b243edbaaf318e92153d869acc731ba157ebee4d5fe7d3307129832415",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/registry.rst",
+      "bytes": 563,
+      "sha256": "9ff890aaebd3bd602181e06ee4a891da24d6f06d5f440474891e5483835bffff",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/report_md.rst",
+      "bytes": 440,
+      "sha256": "db6bf3cc78d9c0366c0d53b4ab1dfe706ceb2b7e030189ec983a38caacd2f95c",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/schemas.rst",
+      "bytes": 397,
+      "sha256": "117a796134e84f9e0910d417e2241a353f6be96825ba83d217f705a8ab329a4f",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/scoreboard.rst",
+      "bytes": 815,
+      "sha256": "31c6891ebb3e0757d0bb98858d29b4e5f7b78d727cb51e5f2a2c4f15a3bbb71c",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/timings.rst",
+      "bytes": 403,
+      "sha256": "fa0e4c09a31b012d600340a1fd47ba3858431180689471e84d5c9427cc0da79d",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/validation.rst",
+      "bytes": 514,
+      "sha256": "60b2f5c2772e1f7f96cb9d4806c9bf48dc040976f78806cd331c81f65544dbd2",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
+      "path": "captions/workflow.rst",
+      "bytes": 6560,
+      "sha256": "bd3d050f951ec85a0a18380bfca943b885ab322af13b02e459b3dd8f4f5022cf",
+      "producing_rule": null,
+      "schema": null
+    },
+    {
       "path": "report.md",
       "bytes": 11614,
       "sha256": "89548fc3dc488bc97c7060282c05858548bb7c2827ad2d9d5bc5e61d178d4ef4",
@@ -1141,8 +1358,8 @@
     },
     {
       "path": "Snakefile",
-      "bytes": 27611,
-      "sha256": "84d20e6103ef06955e4ece099f4b77af8386cb60284aa010288a409a7fbb9b29",
+      "bytes": 36753,
+      "sha256": "6265548c8e26ad10febec0254cfd81e95a012eaea201757c03340f4e01e8a283",
       "producing_rule": null,
       "schema": null
     },
@@ -1155,8 +1372,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 23994,
-      "sha256": "020cadfa264ba8bca5a572dec539d8916c216b8f14ad9134f63fb45183fefd3b",
+      "bytes": 34769,
+      "sha256": "acb1568e5c0fa2cf7543bd4479916fb2ba636902ed2c8a94b0dd3d8625ca4687",
       "producing_rule": null,
       "schema": null
     },

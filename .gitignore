@@ -61,3 +61,6 @@ benchmarks/*/results/
 
 # Scratch directory — local exploratory code dumps, never published.
 /scratch/
+
+# Snakemake working dir (experiments run from the repo root)
+/.snakemake/

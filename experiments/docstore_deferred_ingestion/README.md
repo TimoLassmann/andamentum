@@ -23,6 +23,38 @@ This experiment differs on exactly **four axes** and only those:
 4. **byte-level identity** of the checkpointed markdown, which a stub-call counter
    structurally cannot reach.
 
+## What it found
+
+**All six claims held on the real path. 33 PASS · 0 FAIL · 0 INCONCLUSIVE ·
+0 NOT MEASURED · 6 OBSERVATION** (`results/claims.json`). Integrity:
+`results/validation.json` **PASS**, 0 violations over 46 named artefacts plus 7
+glob classes; `manifest --verify` reports **0 discrepancies** over 194 artefacts.
+
+Every number below is read from a results file; none is typed in.
+
+| claim | headline | from |
+|---|---|---|
+| **a** — defer is LLM-free and fast | **0** Ollama requests; median **0.0092 s** per document; defer/`process="now"` on the **same document** = **4.9e-05** (0.017 s against 352.8 s) | `claim_a_defer.json` |
+| **b** — a drain is resumable | `max_docs=2` honoured, the unrestricted drain finishes the rest, and the **third drain enriches 0, makes 0 Ollama requests and moves the logical fingerprint 0 bits** | `claim_b_drain.json` |
+| **c** — conversion is checkpointed | across a real **SIGKILL**: **3** ledger entries for 3 sources, **0** duplicates, resume converted **2 not 3**, markdown sha256 **byte-identical** throughout, `integrity_check` + `quick_check` both `ok` | `claim_c_kill.json`, `claim_c_resume.json` |
+| **d** — a pause stops between documents | 5 arms, **0** mid-stage documents on every arm's own snapshot, **3.3 ms** total post-commit work = **1.6e-05** of that drain's longest document (72.4 s) | `claim_d_pause.json` |
+| **e** — the drain creates searchability | chunk-embedding **recall@1 0 → 1.0** (chance 0.2), unified RRF recall@3 **0.25 → 1.0**, **0** enrichment-structure violations | `claim_e_pre.json`, `claim_e_post.json` |
+| **f** — failures are recorded and retried | 4 real failure modes, **4** failed, **0** untyped errors (`FetchError`, `ExtractionError`), **0** wrong-stage requeues, **0** re-conversions of the markdown-bearing document | `claim_f_fail.json` |
+
+Operationally useful numbers that fell out:
+
+| number | value | why you would want it |
+|---|---|---|
+| preflight tax per drain wake-up | **1.42 / 1.81 / 2.16 s** (3 fresh processes) | what a cron- or launchd-driven drain pays before doing any work |
+| SIGTERM to exit, full-size document in flight | **274.2 s** (26 chunks) | size a shutdown grace period with this, **not** with the 61.2 s truncated figure |
+| conversion preserved by the checkpoint | **15.71 s** (includes 4.70 s one-time Docling init; marginal warm cost 11.53 s) | what a hard kill would otherwise have thrown away |
+| enrichment discarded by the SIGKILL | **0.187 s** | the work the resume redoes — 1.2% of the conversion it kept |
+| library fan-out actually observed | **8** concurrent on `/api/embeddings`, **5** on `/v1/chat/completions` | pre-existing behaviour, measured not changed; see FINDINGS.md |
+
+**One genuine bug in shipped code** was found and fixed as a consequence
+(`document_store/fts_query.py`, commit `9784c07`). `FINDINGS.md` is the critical
+plain-language write-up.
+
 ## The one thing that nearly invalidated everything
 
 `OLLAMA_BASE_URL` is not optional. Measured on this machine during design:
@@ -94,6 +126,10 @@ uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile clean --co
 
 # then the run command above, then:
 uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile archive --cores 1
+
+# and the self-describing HTML report (see below):
+uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile \
+    --report experiments/docstore_deferred_ingestion/report_snakemake.html --cores 1
 ```
 
 To re-run only the analysis chain against existing measurements, delete
@@ -120,9 +156,42 @@ uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile clean_dbs 
 # offline harness tests (no Ollama, no network, no store)
 uv run pytest experiments/docstore_deferred_ingestion/tests -q
 
-# re-check every recorded sha256 against what is on disk
+# re-check every recorded sha256 against what is on disk.
+# The env prefix is NOT optional: scripts/_common.py raises at import unless the
+# store is isolated, and that guard fires before argparse ever sees --verify.
+DOCUMENT_STORE_DIR=$PWD/experiments/docstore_deferred_ingestion/dbs \
+OLLAMA_BASE_URL=http://localhost:11434/v1 \
 uv run python -m experiments.docstore_deferred_ingestion.scripts.manifest --verify
 ```
+
+## The self-describing HTML report
+
+```bash
+uv run snakemake -s experiments/docstore_deferred_ingestion/Snakefile \
+    --report experiments/docstore_deferred_ingestion/report_snakemake.html --cores 1
+```
+
+~4.3 MB, one file, no external assets. It carries the workflow description
+(`captions/workflow.rst` — what was tested, why, the six claims, the gate, and
+what the run does **not** establish), the job DAG, the runtime statistics, and
+**30 annotated artefacts** each with a prose caption saying what it is and why
+it was measured that way (`captions/*.rst`, one per artefact).
+
+Three things worth knowing before you run it:
+
+- **Not `--report report.html`.** `report.html` is a declared output of `rule
+  report` (the typeset rendering of `report.md`) and is hashed into
+  `MANIFEST.json`. Pointing the reporter at that path destroys a workflow output
+  and makes `manifest --verify` report a permanent discrepancy on it. The
+  reporter gets its own filename.
+- **Rule docstrings do not appear in it.** Snakemake's HTML reporter shows each
+  rule's I/O and its resolved shell command, not its docstring. The docstrings
+  in the `Snakefile` are still the primary explanation of each rule *in the
+  Snakefile*; the `captions/*.rst` files are what reaches a reader of the HTML.
+- **It is neither in `rule all` nor in git.** It is ~4.3 MB, its memory and IO
+  columns are literally 0 on this macOS host, and it is exactly re-derivable
+  from committed evidence by the command above — the same rule `data/markdown/`
+  is held to.
 
 Expected wall-clock: **~1.2 hours**. Nothing else may use Ollama for the duration.
 Every rule caches its output, so a partial run resumes rather than restarting.
@@ -168,8 +237,14 @@ Stated so it can be checked rather than asserted.
   artefact **including** the glob-keyed ledgers, snapshots and event logs.
 - **Reproducible** — pinned models by **digest** not tag, `uv.lock` sha256, a
   provenance manifest, a one-command re-run, `results/working_tree.patch` whenever
-  the tree is dirty, and a `harness_sha256` over the Snakefile plus every
-  `scripts/*.py` so the measuring apparatus is identified by one value.
+  the tree is dirty, and a `harness_sha256` over the Snakefile, `config.yaml`,
+  every `scripts/*.py` and every `captions/*.rst`, so the measuring apparatus is
+  identified by one value. That digest is computed **twice by independent code**
+  over one shared definition (`provenance.HARNESS_GLOBS`): `provenance.json`
+  stamps the apparatus at run **start**, `MANIFEST.json` at run **end**. They are
+  not expected to be equal — a difference means the harness changed mid-run, and
+  `results/deviations.json` names which files. On this run they differ, and every
+  such change is itemised there.
 
 ## Hypotheses
 
@@ -177,30 +252,41 @@ Every one is registered with its numeric threshold and its falsifier in
 `results/preregistration.json` **before** any measurement exists. `analyze.py`
 may only compare against that file; it may not invent a threshold.
 
-| id | claim | statement (abridged) | falsified by |
-|---|---|---|---|
-| **H-G** | gate | one `extract_chunk_metadata` call returns a non-empty `topics` list | empty metadata with `OLLAMA_BASE_URL` set |
-| **H-a1** | a | the defer arm makes **zero** requests to the Ollama host (transport ledger) | ≥ 1 request |
-| **H-a2** | a | every deferred doc: 0 chunks, 0 chunk embeddings, no doc embedding, `pending_enrich`, metadata keys exactly `{source, title}` ∪ caller's | any extra key or any chunk/embedding row |
-| **H-a3** | a | median defer < 1.0 s, and `t_defer / t_now` < 0.02 | median ≥ 1.0 s, or ratio ≥ 0.02 |
-| **H-a4** | a | every deferred doc is FTS5-retrievable by a rare token from its own body **before** any drain; title = first non-empty line | any miss |
-| **H-a5** | a | after `ingest_source(process="defer")` an FTS5 probe returns **0** hits | > 0 hits |
-| **H-b** | b | `max_docs=2` → unrestricted → a third drain that enriches 0, moves the fingerprint 0 bits, and costs ≤ 2 Ollama requests | remaining > 0, failed > 0, moved fingerprint, or > 2 requests |
-| **H-c1** | c | after SIGKILL + fresh-process resume: exactly 3 ledger entries for 3 sources, no duplicate source, `documents_converted == 2` | any duplicate, or a converted count of 3 |
-| **H-c2** | c | doc #1's markdown sha256 is byte-identical before and after the resume | any difference |
-| **H-c3** | c | `PRAGMA integrity_check` / `quick_check` both `ok`; the resume opens the DB normally, no repair, no `-wal` deletion | corruption, a wedged lock, or manual intervention |
-| **H-c4** | c | *(observation)* was the two-transaction window ever observed? | — |
-| **H-d1** | d | five pauses (`max_docs`, `max_seconds`, `should_continue`, SIGTERM truncated, SIGTERM full-size) leave nothing mid-stage **on each arm's own snapshot**, and post-commit wall-clock is < ½ of one document | a failed or partially-enriched row, or a large post-commit remainder |
-| **H-d2** | d | `T ≤ elapsed ≤ T + longest single-document time` | an overrun exceeding one document |
-| **H-d3** | d | in a mixed queue, a `max_docs=1` drain processes the **source** | the first item processed is `pending_enrich` |
-| **H-d4** | d | exactly one row is `pending_enrich` at resume, and the repeated enrichment costs **less than** the conversion the checkpoint preserved | 0 or ≥2 rows mid-stage, or repeated work exceeding the conversion |
-| **H-d5** | d | the `should_continue` arm reports `stopped_early=True` with work still queued | `stopped_early=False`, or `remaining==0` — an exhausted queue, not a pause |
-| **H-e1** | e | chunk-embedding **recall@1** == 1.0 after the drain (chance 1/N), and the unified RRF stack **rises** from a non-zero pre-drain score | post-drain recall@1 < 1.0, or a unified stack that did not rise |
-| **H-e2** | e | every completed doc: chunks > 0, one chunk-embedding per chunk, non-empty LLM metadata | zero chunks, a count mismatch, or empty LLM metadata |
-| **H-f1** | f | 1 good + 4 broken → complete 1, failed 4, every `ingest_error` names the exception **type**, 4 strings in `ProcessReport.failures` | a swallowed failure, an aborted drain, or an untyped error |
-| **H-f2** | f | `retry_failed()` routes by markdown presence, without re-invoking the converter **on the markdown-bearing document** | a wrong-stage requeue, or a re-conversion of that document |
-| **H-m1** | all | strictly-sequential enrichment costs ≤ 1.3× the in-pipeline cost — the `Semaphore(5)` fan-out buys little | a speedup above 1.3 |
-| **H-x** | all | all **six** `ProcessReport` fields reconcile with the database and the ledger, for every drain including the subprocess resume | any mismatch |
+**Outcome: 21 of 21 scored hypotheses SUPPORTED, 0 NOT SUPPORTED.** H-c4 was
+registered as an observation with no threshold and therefore has no verdict to
+give — see the limitations section for why its null result bounds nothing.
+
+| id | claim | statement (abridged) | falsified by | verdict (measured) |
+|---|---|---|---|---|
+| **H-G** | gate | one `extract_chunk_metadata` call returns a non-empty `topics` list | empty metadata with `OLLAMA_BASE_URL` set | **SUPPORTED** (3 topics) |
+| **H-a1** | a | the defer arm makes **zero** requests to the Ollama host (transport ledger) | ≥ 1 request | **SUPPORTED** (0) |
+| **H-a2** | a | every deferred doc: 0 chunks, 0 chunk embeddings, no doc embedding, `pending_enrich`, metadata keys exactly `{source, title}` ∪ caller's | any extra key or any chunk/embedding row | **SUPPORTED** (0 violations) |
+| **H-a3** | a | median defer < 1.0 s, and `t_defer / t_now` < 0.02 | median ≥ 1.0 s, or ratio ≥ 0.02 | **SUPPORTED** (0.0092 s; 4.9e-05) |
+| **H-a4** | a | every deferred doc is FTS5-retrievable by a rare token from its own body **before** any drain; title = first non-empty line | any miss | **SUPPORTED** (0 misses) |
+| **H-a5** | a | after `ingest_source(process="defer")` an FTS5 probe returns **0** hits | > 0 hits | **SUPPORTED** (0 hits) |
+| **H-b** | b | `max_docs=2` → unrestricted → a third drain that enriches 0, moves the fingerprint 0 bits, and costs ≤ 2 Ollama requests | remaining > 0, failed > 0, moved fingerprint, or > 2 requests | **SUPPORTED** (0 / 0 / 0) |
+| **H-c1** | c | after SIGKILL + fresh-process resume: exactly 3 ledger entries for 3 sources, no duplicate source, `documents_converted == 2` | any duplicate, or a converted count of 3 | **SUPPORTED** (3 / 0 / 2) |
+| **H-c2** | c | doc #1's markdown sha256 is byte-identical before and after the resume | any difference | **SUPPORTED** (identical) |
+| **H-c3** | c | `PRAGMA integrity_check` / `quick_check` both `ok`; the resume opens the DB normally, no repair, no `-wal` deletion | corruption, a wedged lock, or manual intervention | **SUPPORTED** (both `ok`) |
+| **H-c4** | c | *(observation)* was the two-transaction window ever observed? | — | *observation only* (not observed; bounds nothing) |
+| **H-d1** | d | five pauses (`max_docs`, `max_seconds`, `should_continue`, SIGTERM truncated, SIGTERM full-size) leave nothing mid-stage **on each arm's own snapshot**, and post-commit wall-clock is < ½ of one document | a failed or partially-enriched row, or a large post-commit remainder | **SUPPORTED** (0; 1.6e-05) |
+| **H-d2** | d | `T ≤ elapsed ≤ T + longest single-document time` | an overrun exceeding one document | **SUPPORTED** (0.81 documents) |
+| **H-d3** | d | in a mixed queue, a `max_docs=1` drain processes the **source** | the first item processed is `pending_enrich` | **SUPPORTED** |
+| **H-d4** | d | exactly one row is `pending_enrich` at resume, and the repeated enrichment costs **less than** the conversion the checkpoint preserved | 0 or ≥2 rows mid-stage, or repeated work exceeding the conversion | **SUPPORTED** (1 row; ratio 0.012) |
+| **H-d5** | d | the `should_continue` arm reports `stopped_early=True` with work still queued | `stopped_early=False`, or `remaining==0` — an exhausted queue, not a pause | **SUPPORTED** (`True`; remaining 1) |
+| **H-e1** | e | chunk-embedding **recall@1** == 1.0 after the drain (chance 1/N), and the unified RRF stack **rises** from a non-zero pre-drain score | post-drain recall@1 < 1.0, or a unified stack that did not rise | **SUPPORTED** (1.0; 0.25 → 1.0) |
+| **H-e2** | e | every completed doc: chunks > 0, one chunk-embedding per chunk, non-empty LLM metadata | zero chunks, a count mismatch, or empty LLM metadata | **SUPPORTED** (0 violations) |
+| **H-f1** | f | 1 good + 4 broken → complete 1, failed 4, every `ingest_error` names the exception **type**, 4 strings in `ProcessReport.failures` | a swallowed failure, an aborted drain, or an untyped error | **SUPPORTED** (4 failed; 0 untyped) |
+| **H-f2** | f | `retry_failed()` routes by markdown presence, without re-invoking the converter **on the markdown-bearing document** | a wrong-stage requeue, or a re-conversion of that document | **SUPPORTED** (0; 0) |
+| **H-m1** | all | strictly-sequential enrichment costs ≤ 1.3× the in-pipeline cost — the `Semaphore(5)` fan-out buys little | a speedup above 1.3 | **SUPPORTED** (1.052, n=1) |
+| **H-x** | all | all **six** `ProcessReport` fields reconcile with the database and the ledger, for every drain including the subprocess resume | any mismatch | **SUPPORTED** (0 mismatches) |
+
+Two verdicts deserve their qualifier read as well as their tick. **H-f2** is a
+*narrower* hypothesis than the one first registered — the wording was changed
+after the original metric failed, and `results/deviations.json` records that
+with the direction it cut. **H-m1** passes on a single observation with no
+variance estimate, so it is consistent with the fan-out buying nothing and is
+not evidence of a 5% gain.
 
 ### Two things the hypothesis table cannot say for itself
 
@@ -267,7 +353,65 @@ corpus** — the point is a sound validation of specific claims, not a benchmark
 | **truncated** markdown (~6000 chars) in the pause lineage — but **one full-size SIGTERM arm** | pause semantics do not depend on document size, and the `max_seconds` overrun bound is expressed *relative to* the longest document in that same drain. The one number an operator acts on — SIGTERM-to-exit, which sizes a shutdown grace period — does not transfer from a 2-chunk truncation to a 37-chunk paper, so arm 5 measures it on an untruncated document and arm 4's figure is published only as contrast |
 | variance from **one endpoint's** raw per-request latencies plus **one true replicate** | pooling embedding calls (tens of ms) with chat calls (tens of s) measures workload heterogeneity, not run-to-run variance. The replicate is free: the same content is enriched twice inside claim (b), which is what `concurrency_speedup` is judged against |
 | `micro_stages` on **one** paper | it uniquely produces the sequential baseline needed to interpret `Semaphore(5)` against a serialising Ollama |
-| `snakemake --report` HTML **demoted** out of `all` | ~3 MB per run, its memory/IO columns are literally 0 on macOS, and `report.md` + `MANIFEST.json` + `provenance.json` + `SCHEMAS.md` already carry the FAIR load |
+| `snakemake --report` HTML **generated, but out of `all` and out of git** | ~4.3 MB per run, its memory/IO columns are literally 0 on macOS, and it is exactly re-derivable from committed evidence by one command. The *explanatory* content it carries — `captions/*.rst` — **is** committed and **is** hashed into the manifest |
+
+## LIMITATIONS — what this experiment does NOT establish
+
+Read this before quoting any number above. Everything here is a real boundary,
+not a ritual caveat.
+
+**Scale.** Four papers, eight documents, six databases, about 1.2 hours. Nothing
+here speaks to a store with 10⁴–10⁶ documents, to sqlite behaviour under a large
+FTS5 index or a large vector table, to concurrent writers, or to weeks of
+uptime. The claims validated are *correctness* claims at small n, not capacity
+claims.
+
+**Concurrency and multi-process safety are untested.** Every drain in this run
+was the only writer. Two `process_pending` calls racing on one database, a drain
+racing an `ingest`, or two hosts sharing a store on a network filesystem are all
+unexamined. The kill lineage tests durability against *one* interrupted writer.
+
+**Every timing is n=1.** One kill, one resume, one pause per mechanism, one drain
+sequence. The count- and state-based hypotheses (H-a1, H-a2, H-b, H-c1, H-c2,
+H-c3, H-f1, H-x) are discrete facts that need no n. The derived timings carry no
+uncertainty at all except `concurrency_speedup`, which has one replicate and no
+variance estimate — and even that replicate is refused for the arm where
+attributing it would repeat the very error the analysis corrects.
+
+**Retrieval quality is not measured.** Four topically disjoint famous papers, no
+hard negatives, a five-document candidate pool, eight paraphrase probes. Chance
+recall@1 is 0.2. Claim (e) establishes that the index is neither empty nor
+scrambled and that the *drain* is what creates it. It does not establish that
+retrieval is good, and it would not detect a moderate regression in ranking
+quality.
+
+**Only four failure modes were exercised.** A missing file, a corrupt PDF, a
+real 404, an empty document. Not tested: a full disk, a killed *enrichment*
+mid-transaction (the kill lands during conversion by construction), an Ollama
+that hangs rather than errors, a model that returns malformed JSON repeatedly,
+an oversized document that exceeds the embedding budget at *chunk* level, a
+source URL that redirects, or a converter that returns non-UTF-8.
+
+**Two library behaviours are reported, not validated.** The 8-way
+`/api/embeddings` fan-out and the 5-way `/v1/chat/completions` fan-out are
+pre-existing and were deliberately left alone; this experiment measured them and
+says so. Likewise `_embed_doc_level` swallowing an oversized-input failure: the
+skip rate was **0.0** on this corpus, which is a fact about these four papers,
+not a demonstration that the path is safe.
+
+**The pause arms are mostly truncated documents.** Four of five pause arms run
+on ~6000-char markdown. Pause *semantics* do not depend on document size, but
+the one operationally load-bearing figure — SIGTERM-to-exit — does, which is why
+arm 5 exists and why the truncated 61.2 s figure is published as contrast only.
+
+**H-c4 bounds nothing.** The two commits inside `_convert_document` are
+microseconds apart and the poller samples every 0.25 s, so a null observation is
+what a non-existent window and a sub-millisecond window both look like. It is
+recorded as an observation precisely because it supports no inference either way.
+
+**This is one host, one run.** macOS on Apple silicon, one Ollama, one docling
+version. Cross-platform behaviour — particularly signal delivery and process
+groups, which bit this harness twice — is unexamined on Linux.
 
 ## What is NOT reproducible here
 
@@ -315,7 +459,10 @@ host. They are used for wall-clock cross-checking only; in-script
 | `Snakefile` | the DAG, the ENV prefix, and the RESOURCE edges that serialise Ollama |
 | `config.yaml` | pinned model ids, versioned arXiv ids, per-lineage document counts, timeouts |
 | `README.md` | this file |
+| `FINDINGS.md` | the critical, plain-language write-up for the repo owner: does the feature work, what broke, what was fixed in `src/`, what is still risky |
 | `report.md` / `report.html` | the rendered findings (produced by `rule report`) |
+| `captions/*.rst` | the prose `snakemake --report` puts beside each artefact, plus `captions/workflow.rst`, the workflow description. Hashed into `MANIFEST.json` like every other piece of the apparatus |
+| `report_snakemake.html` | the self-describing HTML report — generated on demand, **gitignored**, ~4.3 MB |
 
 ### Harness (`scripts/`)
 
@@ -354,7 +501,7 @@ host. They are used for wall-clock cross-checking only; in-script
 | `results/claim_*.json` | per-claim evidence, each with an explicit `verdict` |
 | `results/claims.json` | the scoreboard: one row per threshold |
 | `results/validation.json` | schema + referential integrity (exits 1 on violation) |
-| `results/MANIFEST.json` | sha256 + producing rule + schema per artefact — **including the Snakefile and every `scripts/*.py`**, so the apparatus is pinned too. `--verify` re-checks it |
+| `results/MANIFEST.json` | sha256 + producing rule + schema per artefact — **including the Snakefile, `config.yaml`, every `scripts/*.py` and every `captions/*.rst`**, so the apparatus is pinned too. `--verify` re-checks it |
 | `results/SCHEMAS.md` | field / type / units / meaning for every artefact |
 | `results/ledgers/*.jsonl` | converter and HTTP ledgers |
 | `results/snapshots/*.json` | pre/post database snapshots per drain |

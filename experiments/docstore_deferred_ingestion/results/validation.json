@@ -1,7 +1,7 @@
 {
   "schema": "andamentum.experiment.docstore_deferred.validation/1",
   "schema_version": "andamentum.experiment.docstore_deferred/1",
-  "written_at": "2026-08-01T14:43:14.959029+00:00",
+  "written_at": "2026-08-01T14:56:18.575942+00:00",
   "provenance_ref": {
     "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
     "file": "results/provenance.json",
