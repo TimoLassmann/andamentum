@@ -1,0 +1,35 @@
+{
+  "schema": "andamentum.experiment.docstore_deferred.figures_status/1",
+  "schema_version": "andamentum.experiment.docstore_deferred/1",
+  "written_at": "2026-08-01T14:38:58.725962+00:00",
+  "provenance_ref": {
+    "run_id": "2026-08-01T11:41:20.809973+00:00-2ad69e5",
+    "file": "results/provenance.json",
+    "sha256": "ababc0cbd584a9a3773c97293bad62fe4fd013fa4cac4acd7b85992625dc9561"
+  },
+  "n_figures": 4,
+  "n_failed": 0,
+  "figures": [
+    {
+      "figure": "fig1_stage_timeline.png",
+      "ok": true,
+      "error": null
+    },
+    {
+      "figure": "fig2_retrieval_recall_pre_vs_post.png",
+      "ok": true,
+      "error": null
+    },
+    {
+      "figure": "fig3_stop_cost_by_mode.png",
+      "ok": true,
+      "error": null
+    },
+    {
+      "figure": "fig4_enrichment_attribution.png",
+      "ok": true,
+      "error": null
+    }
+  ],
+  "consumed_by": "build_report, which prints a visible 'FIGURE COULD NOT BE DRAWN' line for any entry with ok=false rather than embedding a placeholder PNG as though it were a result"
+}

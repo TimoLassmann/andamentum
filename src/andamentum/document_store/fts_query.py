@@ -35,8 +35,11 @@ def prepare_fts_query(query: str) -> str:
 
     - Clean prose (all-alphanumeric barewords) is returned unchanged, so keyword
       ranking on ordinary queries is identical to before.
-    - Deliberate FTS5 power-queries (containing ``"``, ``*``, or a boolean
-      operator) are returned unchanged — the caller opted into FTS5 syntax.
+    - Deliberate FTS5 power-queries (containing ``"``, ``*``, or an **uppercase**
+      boolean operator) are returned unchanged — the caller opted into FTS5
+      syntax. Uppercase is the test because FTS5 only honours ``AND``/``OR``/
+      ``NOT``/``NEAR`` in upper case; lowercase ``and`` is a search term, and
+      treating it as an operator would leave ordinary prose unescaped.
     - Otherwise each whitespace token that is not a plain alphanumeric bareword
       is wrapped as a phrase (``"c.1234G>A"``). This is both syntax-safe and
       makes punctuated identifiers match as atomic ordered token sequences.
@@ -60,7 +63,13 @@ def prepare_fts_query(query: str) -> str:
     # Respect deliberate FTS5 syntax — don't second-guess a power-user query.
     if '"' in stripped or "*" in stripped:
         return stripped
-    padded = f" {stripped.upper()} "
+    # FTS5's boolean keywords are CASE-SENSITIVE — only an uppercase AND/OR/NOT/
+    # NEAR is an operator; lowercase "and" is an ordinary search term. Matching
+    # case-insensitively here would classify ordinary prose ("...random words and
+    # asking the model...") as a deliberate power-query and return it unescaped,
+    # so a hyphenated word in that same query would reach FTS5 raw and be parsed
+    # as a column filter -> OperationalError("no such column: training").
+    padded = f" {stripped} "
     if any(op in padded for op in _BOOL_OPERATORS):
         return stripped
 
