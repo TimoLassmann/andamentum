@@ -1,5 +1,32 @@
 # Deferred ingestion on the real path
 
+> ## ⚠️ FROZEN RECORD — does not run against current `main`
+>
+> These results were measured against commit **`2ad69e5`**, before the store
+> stopped authoring metadata (`refactor(document_store)!: the store no longer
+> authors metadata — ingest is LLM-free`). Since then:
+>
+> * `ingest()`, `process_pending()`, `repair()` and `reembed_document()` no
+>   longer accept `model=`, so **these scripts raise `TypeError` as written**;
+> * per-chunk LLM tagging is gone, so ingest of the paper measured here went
+>   **283 s → 3.5 s**. Every enrichment timing below is therefore historical.
+>
+> The scripts are deliberately **not** retro-fitted to the new API: their
+> recorded numbers were produced by the code as it stood at `2ad69e5`, and
+> editing them without re-running would make the harness describe a run that
+> never happened. `results/provenance.json` pins the commit, model digests and
+> data checksums; `manifest --verify` still validates the archive.
+>
+> **What still holds** (state- and count-based, independent of timing): the
+> queue transitions, resumability, the conversion checkpoint across SIGKILL,
+> pause semantics, failure recording, and the `H-a5` finding that
+> `ingest_source` is *not* immediately keyword-searchable.
+>
+> **What is now obsolete**: `H-a1`/`H-a3` (defer is LLM-free / much faster than
+> `now`) are trivially true — *all* ingest is now LLM-free — so the defer
+> feature's value has narrowed to bulk imports and to checkpointing slow source
+> conversion, which remains the dominant cost.
+
 A pre-registered, ledger-instrumented validation of `andamentum.document_store`'s
 deferred-ingestion queue, driven through the **real public API** against **real
 arXiv PDFs** and a **local Ollama**.

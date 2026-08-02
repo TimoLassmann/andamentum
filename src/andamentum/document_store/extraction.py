@@ -1,4 +1,4 @@
-"""LLM-based metadata extraction using PydanticAI structured output.
+"""Optional LLM metadata extraction using PydanticAI structured output.
 
 Uses PydanticAI agents with output_type to extract typed metadata.
 The Pydantic model's field descriptions are passed directly to the LLM
@@ -37,7 +37,7 @@ from .metadata_models import (
 
 logger = logging.getLogger(__name__)
 
-#: Return type of an extraction (DocumentMetadataFields / ChunkMetadataFields).
+#: Return type of an extraction (currently always DocumentMetadataFields).
 OutT = TypeVar("OutT")
 
 _DOC_SYSTEM_PROMPT = (

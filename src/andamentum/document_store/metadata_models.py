@@ -1,23 +1,20 @@
 """Pydantic metadata models for documents and chunks.
 
-Two levels of metadata, designed around real query patterns:
+Two levels of metadata:
 
-Document-level: where it came from, who/what it mentions.
-Chunk-level: topic tags, who's mentioned, and two boolean flags (decision, action item)
-  that map to the two structured queries users actually run.
+Document-level: where it came from, and an optional title/projects/people that a
+  caller may fill via ``extraction.extract_document_metadata`` — ingest does not.
+Chunk-level: purely deterministic — which document, where in the heading
+  hierarchy, and which position.
 
-Every field has a default. Models are valid with zero LLM extraction.
-Deterministic fields are filled by the ingestion pipeline; LLM-extracted
-fields are filled optionally via extraction.py.
+Every field has a default, so both models are valid with no extraction at all —
+which is the normal case: ``ingest()`` never calls an LLM.
 
-The store imposes no document-type taxonomy — consumers classify documents
-with their own fields in the schema-less metadata dict.
+The store imposes no taxonomy. Consumers classify documents with their own
+fields in the schema-less metadata dict and query them with ``find_by_metadata``.
 
-Filterable fields (closed-set, used by query planner):
-  source, created_at (date), has_decision (bool), has_action_item (bool)
-
-Non-filterable fields (handled by semantic search):
-  projects, people, topics, methods — open-ended, LLM can't know valid values
+Filterable fields (closed-set, used by the query planner):
+  source, created_at (date)
 """
 
 from __future__ import annotations
@@ -33,11 +30,16 @@ from pydantic import BaseModel, Field
 class DocumentMetadataFields(BaseModel):
     """Structured metadata for a document.
 
-    Deterministic fields (filled by ingestion pipeline):
+    Deterministic fields (filled by the ingestion pipeline):
         source, source_file, created_at
 
-    LLM-extracted:
+    Optionally LLM-extracted — NOT filled by ``ingest()``:
         title, projects, people
+
+    ``ingest()`` sets ``title`` from the caller's ``title=`` or the first
+    non-empty line, and leaves ``projects``/``people`` empty. They are populated
+    only if a caller runs :func:`extraction.extract_document_metadata` itself and
+    passes the result in.
     """
 
     # Deterministic
