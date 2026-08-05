@@ -103,6 +103,12 @@ andamentum-whetstone draft.docx \
 
 **Explicit model argument, no hidden defaults.** Every public function that calls an LLM takes `model=` as a keyword-only argument. There is no shared config module, no silent fallback, no ambient default. When adding new LLM-calling code, match this pattern — don't reach for a global config.
 
+**Confusable parameters are keyword-only.** Any parameter that is one of two or more same-typed, semantically confusable values — model names, identifiers, paths, source/target pairs — goes behind `*`. This applies to **private helpers**, not just the public API. The reason is that transposing two `str` parameters is invisible to pyright: the values simply swap and the failure surfaces far from the call site. Behind a `*` the same mistake is a `reportCallIssue` error at every call site, checked without needing a test to exercise that path.
+
+This is not a blanket rule — genuinely positional signatures (`cosine_similarity(a, b)`, `_pct(numerator, denominator)`) stay as they are. It applies where the confusable values are *passed onward* rather than consumed locally, so a swap produces wrong behaviour instead of an immediate error. Retrofit opportunistically when touching a file; don't sweep the repo.
+
+Worked example — `document_store/public.py:_preflight` took `(database, embedding_model, model=None, *, auto_repair=True)`. A caller passing `(database, model, embedding_model)` handed the embedding service an LLM id, breaking every `search()` call, and neither pyright nor the test suite could see it. The `*` now sits directly after `database`.
+
 **Core module** (`andamentum.core`) — shared infrastructure for model resolution, agent execution, embeddings (`core.embeddings`), and SSRF-safe URL fetching (`core.url_safety`). All sub-modules import from core instead of maintaining independent implementations. When adding LLM-calling code, use `core.agents.AgentRunner` or `core.agents.run_agent_with_fallback()` — they provide model resolution (ollama, bedrock, passthrough) and PromptedOutput fallback for free.
 
 **Layering:**
