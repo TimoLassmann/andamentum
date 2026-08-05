@@ -105,12 +105,17 @@ async def _get_store(database: str) -> DocumentStore:
 
 async def _preflight(
     database: str,
+    *,
     embedding_model: str,
     model: str | None = None,
-    *,
     auto_repair: bool = True,
 ) -> None:
     """Test that the embedding service (and LLM, if used) is reachable.
+
+    ``embedding_model`` and ``model`` are keyword-only on purpose: both are
+    plain ``str`` model ids, so passing them positionally lets a transposition
+    slip past the type checker and hand the embedding service an LLM id. See
+    the keyword-only rule in CLAUDE.md.
 
     ``model`` is optional because most of the store needs no LLM: ingest and the
     drain only embed. Only :func:`search` passes one, for query planning.
@@ -391,7 +396,7 @@ async def ingest(
         return doc_id
 
     assert embedding_model is not None  # _require_models
-    await _preflight(database, embedding_model)
+    await _preflight(database, embedding_model=embedding_model)
 
     # --- Phase 2: Chunk, embed, store (can be repaired if interrupted) ---
     await _run_phase2(
@@ -462,7 +467,7 @@ async def ingest_source(
         return doc_id
 
     assert convert_fn is not None and embedding_model is not None
-    await _preflight(database, embedding_model)
+    await _preflight(database, embedding_model=embedding_model)
     await _convert_document(store, doc_id, source, convert_fn)
     doc = await store.read(doc_id)
     if doc is None:  # pragma: no cover — just written above
@@ -674,7 +679,7 @@ async def process_pending(
     store = await _get_store(database)
     # auto_repair=False: this *is* the drain. Letting preflight's crash-recovery
     # sweep run first would duplicate the work and ignore the pause controls.
-    await _preflight(database, embedding_model, auto_repair=False)
+    await _preflight(database, embedding_model=embedding_model, auto_repair=False)
 
     db_path = str(store.db_path)
     report = ProcessReport()
@@ -820,7 +825,7 @@ async def repair(
         RuntimeError: If the embedding service is unavailable.
     """
     store = await _get_store(database)
-    await _preflight(database, embedding_model)
+    await _preflight(database, embedding_model=embedding_model)
 
     return await _repair_incomplete(store, embedding_model)
 
@@ -852,7 +857,7 @@ async def reembed_document(
         RuntimeError: If the embedding service is unavailable.
     """
     store = await _get_store(database)
-    await _preflight(database, embedding_model)
+    await _preflight(database, embedding_model=embedding_model)
 
     doc = await store.read(doc_id)
     if doc is None:
@@ -998,7 +1003,7 @@ async def search(
         RuntimeError: If LLM or embedding service is unavailable.
     """
     store = await _get_store(database)
-    await _preflight(database, model, embedding_model)
+    await _preflight(database, embedding_model=embedding_model, model=model)
 
     # 1. Query planning — LLM decomposes into semantic query + optional filter
     from .query_planner import plan_search
