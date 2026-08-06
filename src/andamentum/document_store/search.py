@@ -24,6 +24,7 @@ import aiosqlite
 
 from .chunks_search import RRF_K, SearchConfig
 from .database import get_async_connection
+from .fts import extract_snippet
 from .fts_query import prepare_fts_query
 from .embeddings import EmbeddingService
 from .hybrid_search import multi_strategy_search
@@ -177,7 +178,14 @@ def _get_production_search_config() -> SearchConfig:
 async def search_fts5(
     db_path: str, query: str, limit: int = 10
 ) -> list[tuple[str, float]]:
-    """Search all documents using FTS5.
+    """Search fully-indexed documents using FTS5.
+
+    Restricted to ``ingest_status='complete'`` so the RRF fusion below compares
+    like with like. A document still in the deferred queue can only ever appear
+    in this one signal — it has no chunks, no doc embedding and no cluster — so
+    letting it into the fusion would have it scored as if three signals had
+    *rejected* it rather than never having seen it. Those documents are
+    retrieved separately by :func:`search_pending_keyword`.
 
     Args:
         db_path: Path to SQLite database
@@ -197,6 +205,7 @@ async def search_fts5(
             FROM documents_fts fts
             JOIN documents d ON fts.rowid = d.id
             WHERE documents_fts MATCH ? AND d.deleted_at IS NULL
+              AND d.ingest_status = 'complete'
             ORDER BY rank
             LIMIT ?
             """,
@@ -274,6 +283,137 @@ def _search_doc_embeddings(
     except Exception as e:
         logger.debug(f"Document-level embedding search failed: {type(e).__name__}: {e}")
         return []
+
+
+#: Fraction of a result page reserved for keyword matches in documents whose
+#: enrichment is still queued — one slot in five, at least one. The reservation
+#: is only spent when such matches exist, so a database with an empty queue
+#: returns exactly what it returned before this tail existed.
+PENDING_TAIL_DIVISOR = 5
+
+
+def _pending_quota(limit: int) -> int:
+    """Slots reserved at the tail of a page for not-yet-enriched documents."""
+    return max(1, limit // PENDING_TAIL_DIVISOR)
+
+
+async def search_pending_keyword(
+    db_path: str, query: str, limit: int = 2
+) -> list[tuple[str, str, str]]:
+    """Keyword-match documents that are still in the deferred ingestion queue.
+
+    The counterpart to :func:`search_fts5`: that one sees only ``complete``
+    documents, this one sees only the rest. Together they cover the corpus
+    exactly once.
+
+    ``markdown_content != ''`` is the load-bearing predicate, and it is a
+    *content* test rather than a status test on purpose. A ``pending_source``
+    row is a queue entry that happens to live in the ``documents`` table: its
+    only indexed text is a title derived from the filename, so on a
+    title-shaped query BM25 ranks it top while it has nothing to show — a
+    contentless hit dressed as a real one. Testing content rather than status
+    drops those, keeps ``pending_enrich`` documents (which hold real markdown),
+    and also drops a ``failed`` conversion that left the row empty while
+    keeping a ``failed`` enrichment that did not.
+
+    Returns:
+        List of (doc_uuid, ingest_status, markdown_content) tuples, best match
+        first. The status is returned so the caller can label the result with
+        the store's own vocabulary rather than inventing a parallel one.
+    """
+    match_query = prepare_fts_query(query)
+    async with get_async_connection(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT d.doc_uuid, d.ingest_status, d.markdown_content
+            FROM documents_fts fts
+            JOIN documents d ON fts.rowid = d.id
+            WHERE documents_fts MATCH ? AND d.deleted_at IS NULL
+              AND d.ingest_status != 'complete'
+              AND d.markdown_content != ''
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (match_query, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return [
+        (row["doc_uuid"], row["ingest_status"], row["markdown_content"] or "")
+        for row in rows
+    ]
+
+
+async def _run_pending_tail(
+    db_path: str,
+    query: str,
+    limit: int,
+    doc_uuids: Optional[set[str]],
+) -> list[UnifiedSearchResult]:
+    """Build the labelled tail of not-yet-enriched keyword matches.
+
+    Failure here is logged and yields an empty tail rather than aborting the
+    search: the fused results are the answer, this is the addendum.
+    """
+    try:
+        rows = await search_pending_keyword(db_path, query, _pending_quota(limit))
+    except Exception as e:
+        logger.warning(
+            f"Pending-document keyword tail FAILED — documents awaiting "
+            f"enrichment are missing from this search: {type(e).__name__}: {e}"
+        )
+        return []
+
+    results: list[UnifiedSearchResult] = []
+    for doc_uuid, status, content in rows:
+        if doc_uuids is not None and doc_uuid not in doc_uuids:
+            continue
+        results.append(
+            UnifiedSearchResult(
+                doc_id=doc_uuid,
+                score=0.0,  # assigned by _append_pending_tail, below the fused floor
+                # The store's own queue vocabulary, carried through
+                # UnifiedSearchResult.tier -> SearchResult.match_type. No new
+                # field, and no second name for a state that already has one.
+                tier=status,
+                # Bounded here so the caller never falls back to the full
+                # markdown: these documents have no chunks, so the fallback in
+                # public.search() would return an entire converted PDF as the
+                # "snippet".
+                snippet=extract_snippet(content, query, max_length=500),
+                metadata=SearchResultMetadata(match_type=status),
+            )
+        )
+    return results
+
+
+def _append_pending_tail(
+    fused: list[UnifiedSearchResult],
+    tail: list[UnifiedSearchResult],
+    limit: int,
+) -> list[UnifiedSearchResult]:
+    """Append ``tail`` below ``fused``, honouring ``limit``.
+
+    Tail scores are pushed strictly below the lowest fused score so the page
+    stays sorted by score. Appending without doing that would leave a caller
+    who re-sorts by score — a reasonable thing to do — interleaving keyword-only
+    matches among fully-indexed ones, which is precisely what this design
+    avoids. RRF scores and normalized BM25 scores are not comparable
+    quantities; the ordering is the claim, not the magnitude.
+    """
+    if not tail:
+        return fused[:limit]
+
+    kept_tail = tail[: _pending_quota(limit)]
+    head = fused[: max(0, limit - len(kept_tail))]
+
+    floor = min((r.score for r in head), default=0.0)
+    for rank, result in enumerate(kept_tail):
+        # Strictly decreasing, strictly below the floor, never negative.
+        result.score = floor * (0.9 ** (rank + 1)) if floor > 0 else 0.0
+
+    return head + kept_tail
 
 
 async def _run_fts5_signal(
@@ -445,11 +585,20 @@ async def search_unified(
 ) -> list[UnifiedSearchResult]:
     """Unified search across all documents with RRF fusion.
 
-    Runs four signals and fuses them with Reciprocal Rank Fusion (RRF, k=60):
+    Runs four signals over fully-indexed documents and fuses them with
+    Reciprocal Rank Fusion (RRF, k=60):
     1. FTS5 keyword search
     2. Chunk-level semantic search (hybrid BM25 + embeddings)
     3. Document-level semantic search (doc_embeddings vec0)
     4. DHP temporal cluster scoring
+
+    Documents still awaiting enrichment are deliberately *not* fused: they can
+    only ever appear in signal 1, so summing reciprocal ranks across four
+    signals reads their missing index as three rejections and buries them. They
+    are retrieved separately and appended as a labelled tail below the fused
+    results, within ``limit`` — see :func:`_append_pending_tail`. A database
+    with an empty ingestion queue is unaffected: the tail is empty and the page
+    is exactly the fused list, ranked exactly as before.
 
     Args:
         db_path: Path to SQLite database
@@ -490,16 +639,21 @@ async def search_unified(
         if result is not None:
             all_results.append(result)
 
+    # Keyword matches among documents still in the deferred queue. Fetched
+    # after the signals rather than alongside them: it is one indexed FTS
+    # lookup, and keeping it out of the gather keeps that gather homogeneous.
+    pending_tail = await _run_pending_tail(db_path, query, limit, doc_uuids)
+
     # No results from any signal
     if not all_results:
-        return []
+        return _append_pending_tail([], pending_tail, limit)
 
     # If only one signal, return directly (with optional doc_uuids filter)
     if len(all_results) == 1:
         _, results = all_results[0]
         if doc_uuids is not None:
             results = [r for r in results if r.doc_id in doc_uuids]
-        return results[:limit]
+        return _append_pending_tail(results, pending_tail, limit)
 
     # RRF fusion across all signals (k=60, industry standard)
     doc_lookup: dict[str, UnifiedSearchResult] = {}
@@ -536,7 +690,7 @@ async def search_unified(
             )
         )
 
-    return final_results
+    return _append_pending_tail(final_results, pending_tail, limit)
 
 
 def _tier_priority(tier: str) -> int:

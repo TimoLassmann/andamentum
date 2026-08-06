@@ -989,6 +989,19 @@ async def search(
     Parses the query into a search plan (semantic query + optional metadata filter)
     using the LLM, then executes against the database.
 
+    Documents still in the deferred ingestion queue are handled separately from
+    the four-signal fusion, so that partial indexing never reads as low
+    relevance and never masquerades as a complete result:
+
+    - ``pending_enrich`` (real markdown, chunking not yet run) — matched on
+      keywords and appended below the fused results, within ``limit``. Its
+      ``match_type`` is the ingestion status itself and ``warning`` says what
+      is missing and how to finish it.
+    - ``pending_source`` (a queued path/URL, no markdown yet) — never returned.
+      Its only indexed text is a title derived from the filename, so it can
+      only ever produce a contentless hit; :func:`pending_status` is where
+      queued sources are visible.
+
     Args:
         database: Database name (e.g., "brain")
         query: Natural language query
@@ -1112,11 +1125,43 @@ async def search(
                 score=r.score,
                 metadata=doc_metadata,
                 match_type=r.tier,
-                warning=warning,
+                warning=_result_warning(r.tier, warning),
             )
         )
 
     return results
+
+
+def _result_warning(tier: str, base: str) -> str:
+    """Compose the per-result warning, flagging not-yet-enriched documents.
+
+    ``tier`` carries the ingestion status verbatim for tail results (see
+    :func:`search.search_pending_keyword`), so the check is a membership test
+    against the queue's own vocabulary — there is no second set of names to
+    keep in step with it.
+    """
+    if tier not in _NOT_ENRICHED_TIERS:
+        return base
+    note = _NOT_ENRICHED_TIERS[tier]
+    return f"{base} {note}".strip() if base else note
+
+
+#: Tier values that are really ingestion statuses, mapped to the caveat a
+#: caller needs. These results matched on keywords alone: no chunk embeddings,
+#: no document embedding, no temporal cluster. Ranking them against fully
+#: indexed documents would be comparing different amounts of evidence, so they
+#: are appended below rather than fused — and said so, rather than left to look
+#: like an ordinary low-scoring hit.
+_NOT_ENRICHED_TIERS: dict[str, str] = {
+    _queue.PENDING_ENRICH: (
+        "This document is still queued for enrichment, so it was matched on "
+        "keywords only — run process_pending() to make it fully searchable."
+    ),
+    _queue.FAILED: (
+        "This document's enrichment failed, so it was matched on keywords "
+        "only — see its ingest_error, then run retry_failed()."
+    ),
+}
 
 
 # ---------------------------------------------------------------------------

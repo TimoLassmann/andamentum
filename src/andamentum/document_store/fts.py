@@ -12,10 +12,17 @@ from .fts_query import prepare_fts_query
 def fts_search(
     query: str, limit: int = 10, db_path: Optional[Path] = None
 ) -> List[SearchResult]:
-    """Full-text search using SQLite FTS5.
+    """Full-text search over fully-indexed documents using SQLite FTS5.
 
     Fast keyword search on document titles and content using Porter stemming.
     Returns results ordered by FTS5 BM25 relevance ranking.
+
+    Restricted to ``ingest_status='complete'``, matching
+    :func:`search.search_fts5`. This is the keyword fallback inside
+    :func:`hybrid_search.multi_strategy_search`, so without the predicate a
+    queued document would re-enter the fusion here after being excluded from
+    the dedicated keyword signal. Documents still in the deferred queue are
+    retrieved by :func:`search.search_pending_keyword` instead.
 
     Args:
         query: Search query (supports FTS5 syntax: "phrase", AND, OR, NOT, *)
@@ -60,6 +67,7 @@ def fts_search(
             FROM documents_fts fts
             JOIN documents d ON fts.rowid = d.id
             WHERE documents_fts MATCH ? AND d.deleted_at IS NULL
+              AND d.ingest_status = 'complete'
             ORDER BY fts.rank
             LIMIT ?
         """,
@@ -83,7 +91,7 @@ def fts_search(
             ) = row
 
             # Extract snippet around first match
-            snippet = _extract_snippet(markdown_content or "", query, max_length=500)
+            snippet = extract_snippet(markdown_content or "", query, max_length=500)
 
             # Convert rank (negative value) to positive similarity score (0-1)
             # FTS5 rank is negative, more negative = better match
@@ -111,7 +119,7 @@ def fts_search(
         return results
 
 
-def _extract_snippet(content: str, query: str, max_length: int = 500) -> str:
+def extract_snippet(content: str, query: str, max_length: int = 500) -> str:
     """Extract snippet around first occurrence of query terms.
 
     Args:
