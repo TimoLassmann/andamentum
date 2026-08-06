@@ -64,11 +64,24 @@ class TestDeferMarksWorkWithoutDoingIt:
         assert doc is not None and doc.content == "# Title\n\nbody"
 
     async def test_deferred_doc_is_keyword_searchable_immediately(self, db):
-        await public.ingest("testq", "unmistakableword here", process="defer")
-        from andamentum.document_store.search import search_fts5
+        """Findable the moment ingest returns, before any enrichment runs.
 
-        hits = await search_fts5(str(db.db_path), "unmistakableword", 10)
+        Asserted through ``search_unified`` — the path a caller actually takes.
+        It used to assert through ``search_fts5``, which no longer sees queued
+        documents: they are retrieved separately and appended as a labelled
+        tail, because a document with no chunks cannot compete in a fusion that
+        sums reciprocal ranks across four signals. The property under test is
+        unchanged; only the function that delivers it moved.
+        """
+        await public.ingest("testq", "unmistakableword here", process="defer")
+        from andamentum.document_store.search import search_unified
+
+        hits = await search_unified(
+            db_path=str(db.db_path), query="unmistakableword", limit=10
+        )
+
         assert len(hits) == 1
+        assert hits[0].tier == q.PENDING_ENRICH
 
     async def test_defer_uses_deterministic_first_line_title(self, db):
         doc_id = await public.ingest("testq", "## My Heading\n\nrest", process="defer")
