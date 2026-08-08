@@ -75,7 +75,36 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
         )
     """)
 
-    # Indexes
+    # Column migrations MUST run before the indexes below. On a pre-existing
+    # database the CREATE TABLE above is a no-op, so any column added after the
+    # original schema was written is missing until these ALTERs run — and
+    # CREATE INDEX on a missing column raises "no such column".
+    cursor.execute("PRAGMA table_info(documents)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    # Migration: add deleted_at column to existing databases.
+    # Migration: deferred-ingestion queue columns. Existing rows predate the
+    # queue and are, by definition, already fully ingested — 'complete'.
+    for column, ddl in (
+        (
+            "deleted_at",
+            "ALTER TABLE documents ADD COLUMN deleted_at TEXT DEFAULT NULL",
+        ),
+        (
+            "ingest_status",
+            "ALTER TABLE documents ADD COLUMN ingest_status TEXT NOT NULL "
+            "DEFAULT 'complete'",
+        ),
+        ("ingest_error", "ALTER TABLE documents ADD COLUMN ingest_error TEXT"),
+        (
+            "ingest_updated_at",
+            "ALTER TABLE documents ADD COLUMN ingest_updated_at TEXT",
+        ),
+    ):
+        if column not in existing_columns:
+            cursor.execute(ddl)
+
+    # Indexes — after the migrations above, so every indexed column exists.
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(file_path)"
     )
@@ -91,26 +120,7 @@ def init_documents_table(cursor: sqlite3.Cursor) -> None:
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_cluster ON documents(cluster_id)"
     )
-
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_ingest_status "
         "ON documents(ingest_status)"
     )
-
-    # Migration: add deleted_at column to existing databases
-    try:
-        cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT DEFAULT NULL")
-    except Exception:
-        pass  # Column already exists
-
-    # Migration: deferred-ingestion queue columns. Existing rows predate the
-    # queue and are, by definition, already fully ingested — 'complete'.
-    for ddl in (
-        "ALTER TABLE documents ADD COLUMN ingest_status TEXT NOT NULL DEFAULT 'complete'",
-        "ALTER TABLE documents ADD COLUMN ingest_error TEXT",
-        "ALTER TABLE documents ADD COLUMN ingest_updated_at TEXT",
-    ):
-        try:
-            cursor.execute(ddl)
-        except Exception:
-            pass  # Column already exists
