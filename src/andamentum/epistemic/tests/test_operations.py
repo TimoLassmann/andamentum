@@ -594,9 +594,16 @@ class TestExtractRequiresGatherer:
 
 
 class TestScrutiny:
-    async def test_scrutiny_pass(self, repo, fake_runner):
+    async def test_scrutiny_pass(self, repo, fake_runner, stub_llm_judge):
         # Scrutiny weight is now deterministic: two high-quality supporting
         # judgments produce enough dominant-direction mass to pass.
+        #
+        # This fixture's dominant mass is 1.44 against a strong cut of 1.50 —
+        # inside SCRUTINY_BORDERLINE_BAND, so the reading now takes ONE
+        # independent second opinion (stubbed here; the suite never reaches a
+        # live model). The opinion cannot change the verdict, which is what
+        # the assertion below still checks.
+        stub_llm_judge((90, 5, 5))
         obj = Objective(
             entity_id="obj-1", objective_id="obj-1", description="Q", phase="planned"
         )
@@ -621,7 +628,9 @@ class TestScrutiny:
         )
         await repo.save(c)
 
-        ops = create_operations(repo, fake_runner, embedding_model="test-model")
+        ops = create_operations(
+            repo, fake_runner, embedding_model="test-model", judge_model="test:judge"
+        )
         work = OperationInput(
             entity_id="c-1", entity_type="claim", operation="scrutinise_claim"
         )

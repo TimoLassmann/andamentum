@@ -514,6 +514,14 @@ def _evidence_line(
         if flags:
             flag_str = f" *({', '.join(flags)})*"
 
+    # Speaks ONLY on a recorded dissent, so an item with no confirmation —
+    # every item in every pre-existing fixture — renders byte-identically to
+    # before. A confirmation that AGREED is deliberately silent too: the
+    # useful signal is the disagreement, and annotating agreement would add
+    # noise to every line the budget happened to reach.
+    if ev.direction_dissent is True:
+        flag_str += " *(an independent judge disagreed with this direction)*"
+
     if judgement_text:
         return (
             f"{head} — {judgement_text}{flag_str}"

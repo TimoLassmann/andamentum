@@ -26,10 +26,10 @@ total function of the direction: no terminal-state override, no second
 comparison, so the objective headline and the per-claim badges in one
 document cannot say different things about the same number.
 
-Leaf module by construction: it imports ``pydantic``, ``..thresholds``
-and ``.cap_evaluation`` and nothing else, so ``entities/snapshot.py``
-and ``graph/state.py`` can type their fields against it without an
-import cycle.
+Leaf module by construction: it imports ``pydantic``, ``..thresholds``,
+``.cap_evaluation`` and ``.judge_opinion`` and nothing else, so
+``entities/snapshot.py`` and ``graph/state.py`` can type their fields
+against it without an import cycle.
 
 Architecture: Layer 1 (framework-agnostic, pure data + pure functions)
 """
@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field, computed_field
 
 from ..thresholds import POSTERIOR_DIRECTIONAL_BREAKPOINT
 from .cap_evaluation import CapEvaluation
+from .judge_opinion import JudgeOpinion
 
 # ── The closed display vocabulary ────────────────────────────────────
 #
@@ -254,6 +255,52 @@ class EvidenceRef(BaseModel):
     )
     quality_score: Optional[float] = None
 
+    # ── How reliable was the judgment behind this contribution? ──────
+    #
+    # TWO NAMES, NEVER ONE BARE ``doubt``. An Evidence carries two
+    # different doubts — how unsure the direction judge was, and how
+    # unsure the quality second opinion was — and a single unnamed
+    # field would invite conflating them.
+    #
+    # ``None`` means NOT MEASURED, never 0.0. Adversarial
+    # counter-evidence is permanently distribution-less by
+    # construction, so coercing absence to zero would read as
+    # certainty the system never established.
+    judgment_distribution: Optional[list[float]] = Field(
+        default=None,
+        description=(
+            "The direction judge's verbalized belief vector "
+            "[supports, contradicts, no_bearing] for this item, or None "
+            "when none was captured."
+        ),
+    )
+    judgment_doubt: Optional[float] = Field(
+        default=None,
+        description=(
+            "Normalized entropy of ``judgment_distribution`` — how unsure "
+            "the DIRECTION judge was. None when not measured."
+        ),
+    )
+    quality_doubt: Optional[float] = Field(
+        default=None,
+        description=(
+            "Normalized entropy of the llm_judge quality second opinion — "
+            "how unsure THAT judge was that the source has substance. None "
+            "on the (overwhelming) majority of items, where no near-zero "
+            "quality score ever triggered the gate."
+        ),
+    )
+    direction_opinion: Optional[JudgeOpinion] = Field(
+        default=None,
+        description=(
+            "An independent judge's confirmation of this item's direction, "
+            "when one was run (one-hot, directional, inside the per-claim "
+            "budget). Carries its own doubt and an explicit ``dissents`` "
+            "flag. None when no confirmation ran — which is not the same as "
+            "a confirmation that agreed."
+        ),
+    )
+
 
 class ClaimVerdict(BaseModel):
     """One claim's contribution to the objective-level verdict."""
@@ -294,6 +341,48 @@ class ClaimVerdict(BaseModel):
             "here is what keeps the aggregate complete."
         ),
     )
+
+    # ── How reliable was the reading behind this claim's verdict? ────
+    #
+    # A doubt signal the verdict object cannot express is a signal no
+    # consumer can read. These four carry the scrutiny-time measurements
+    # onto the run-level object, where the renderers and any machine
+    # reader can reach them without going back to the Claim entity.
+    scrutiny_verdict: Optional[str] = Field(
+        default=None,
+        description=(
+            "The claim's scrutiny verdict ('pass' / 'fail' / "
+            "'needs_resolution'). Carried because without it the doubt "
+            "below is un-interpretable: doubt ABOUT WHAT READING."
+        ),
+    )
+    scrutiny_doubt: Optional[float] = Field(
+        default=None,
+        description=(
+            "Directional-mass-weighted mean entropy of the evidence "
+            "judgments that produced ``scrutiny_verdict``. None when "
+            "unmeasured — never 0.0."
+        ),
+    )
+    scrutiny_opinion: Optional[JudgeOpinion] = Field(
+        default=None,
+        description=(
+            "An independent judge's read on whether the evidence establishes "
+            "the claim, taken only when the deterministic weight was "
+            "borderline. None otherwise."
+        ),
+    )
+    judgment_dissent_count: int = Field(
+        default=0,
+        description=(
+            "How many of this claim's load-bearing evidence directions an "
+            "independent judge contradicted, in the pass that produced the "
+            "current verdict. 0 means 'none dissented' OR 'none were "
+            "confirmed' — the confirmations that ran are visible on the "
+            "evidence refs' ``direction_opinion``."
+        ),
+    )
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def direction(self) -> str:
@@ -366,6 +455,31 @@ class VerdictProvenance(BaseModel):
         ),
     )
     n_orphan: int = 0
+    n_high_doubt_claims: int = Field(
+        default=0,
+        description=(
+            "Active claims whose scrutiny doubt was MEASURED at or above "
+            "``JUDGMENT_DOUBT_ESCALATION_THRESHOLD``."
+        ),
+    )
+    n_doubt_unmeasured_claims: int = Field(
+        default=0,
+        description=(
+            "Active claims carrying no measured scrutiny doubt at all. Its "
+            "companion above is meaningless without it: a bare "
+            "``n_high_doubt_claims == 0`` reads as 'all measured, all sure', "
+            "when it may mean 'nothing was measured'."
+        ),
+    )
+    judgment_doubt_escalated: bool = Field(
+        default=False,
+        description=(
+            "The run spent its one judgment-doubt escalation "
+            "(``CheckSynthesisDemand`` Gate 0). Lives on graph state, not the "
+            "DB, so ``build_verdict`` receives it as a parameter — the same "
+            "shape and the same reason as ``retrieval_failed``."
+        ),
+    )
     combination_explanation: str = ""
     suspended_judgment: bool = Field(
         default=False,

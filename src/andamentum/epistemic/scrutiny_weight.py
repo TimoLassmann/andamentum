@@ -47,6 +47,7 @@ from typing import Iterable, Protocol
 
 from .judgment_signal import distribution_entropy, support_contradict_split
 from .thresholds import (
+    SCRUTINY_BORDERLINE_BAND,
     SCRUTINY_CONFLICT_MINORITY_FRACTION,
     SCRUTINY_DEFAULT_QUALITY,
     SCRUTINY_STRONG_MASS_THRESHOLD,
@@ -111,6 +112,56 @@ def _item_masses(e: _EvidenceLike) -> tuple[float, float]:
     )
     factor = corroboration_weight * quality_eff
     return factor * p_supports, factor * p_contradicts
+
+
+def item_directional_mass(e: _EvidenceLike) -> float:
+    """How much this one item moved the directional verdict, in mass units.
+
+    The sum of the item's supporting and contradicting mass — exactly the
+    weight ``compute_evidence_weight`` already gives it when accumulating
+    doubt. Public because the direction-confirmation selector
+    (``direction_opinion.select_confirmation_candidates``) ranks candidates
+    by it: one definition of "how load-bearing was this item", two
+    consumers, rather than a re-implementation that can drift.
+    """
+    s, c = _item_masses(e)
+    return s + c
+
+
+def is_borderline(weight: EvidenceWeight) -> bool:
+    """Would this reading's LABEL flip under a small perturbation of the masses?
+
+    Pure, free, and evaluated BEFORE any model call — it is what makes the
+    scrutiny second opinion cost 0 on the common case. The label
+    ``compute_evidence_weight`` produces is a step function of three
+    cutoffs; a reading sitting within ``SCRUTINY_BORDERLINE_BAND`` (relative)
+    of any of them is one whose label is an artefact of where the cutoff
+    happens to sit rather than of the evidence, and is therefore worth one
+    independent second opinion.
+
+    Deliberately does NOT consider ``weight.doubt``: Gate 0 already escalates
+    on high measured doubt, so paying a model call there would be pure
+    duplication. This predicate asks a different question — is the
+    DETERMINISTIC READING itself a coin flip.
+
+    A reading with no directional mass at all is not borderline: there is no
+    body of evidence to put to a judge.
+    """
+    total_directional = weight.supporting_mass + weight.contradicting_mass
+    if total_directional <= 0.0:
+        return False
+
+    dominant = max(weight.supporting_mass, weight.contradicting_mass)
+    minority = min(weight.supporting_mass, weight.contradicting_mass)
+
+    def _near(value: float, cutoff: float) -> bool:
+        return abs(value - cutoff) <= SCRUTINY_BORDERLINE_BAND * cutoff
+
+    return (
+        _near(dominant, SCRUTINY_WEAK_MASS_THRESHOLD)
+        or _near(dominant, SCRUTINY_STRONG_MASS_THRESHOLD)
+        or _near(minority / total_directional, SCRUTINY_CONFLICT_MINORITY_FRACTION)
+    )
 
 
 def compute_evidence_weight(
@@ -191,4 +242,6 @@ __all__ = [
     "EvidenceWeight",
     "EvidenceWeightLabel",
     "compute_evidence_weight",
+    "is_borderline",
+    "item_directional_mass",
 ]

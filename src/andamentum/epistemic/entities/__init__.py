@@ -10,6 +10,7 @@ Architecture: Layer 1 (framework-agnostic)
 
 from .base import EpistemicEntity
 from .cap_evaluation import CapEvaluation
+from .judge_opinion import JudgeOpinion
 from .objective import Objective
 from .evidence import Evidence
 from .claim import Claim, ClaimStage
@@ -39,6 +40,7 @@ __all__ = [
     "Claim",
     "ClaimStage",
     "CapEvaluation",
+    "JudgeOpinion",
     "Uncertainty",
     "UncertaintyType",
     "UncertaintyScope",

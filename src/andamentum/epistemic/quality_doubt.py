@@ -29,16 +29,35 @@ four criteria would be a 4x cost blowup here AND would silently replace the
 deliberate 0.35 / 0.25 / 0.25 / 0.15 blend the agent scorer applies, with an
 equal-weight mean nobody chose.
 
-WHY llm_judge HERE AND NOWHERE ELSE IN epistemic. This is the only site where
-epistemic uses ``llm_judge``'s elicitation layer, and the reason is that the
-judgment has no domain invariant to lose: "does this text contain checkable
-substance" is exactly the generic meets/partial/fails question llm_judge's
-schema expresses. The other high-leverage judgment site, ``judge_evidence``,
-is NOT converted: it forces a four-step scope analysis and enforces
-``in_scope`` ↔ argmax over ``{supports, contradicts, no_bearing}`` via a
-retry-triggering cross-field validator, none of which the generic three-label
-score schema can express. Replacing it would be a regression dressed as an
-upgrade.
+WHERE llm_judge IS USED IN epistemic — THREE SITES, ONE SHAPE. This module
+was the first; there are now three, and all three are the same shape (FAST
+path, exactly one ``Criterion``, gated so they fire only on judgments that
+are already borderline or entropy-blind, and suspend-only — none of them can
+change a verdict):
+
+1. **this module** — the near-zero-quality TMS destroy gate (per evidence
+   item, tail path only);
+2. ``direction_opinion`` — an independent CONFIRMATION of a one-hot,
+   directional evidence judgment, during scrutiny (bounded per pass and per
+   claim);
+3. ``scrutiny_opinion`` — an independent read on a BORDERLINE deterministic
+   evidence weight, per claim.
+
+CONVERSION vs. CONFIRMATION — the distinction that keeps the argument below
+true. ``judge_evidence`` is STILL NOT CONVERTED, for exactly the original
+reasons: it forces a four-step scope analysis and enforces ``in_scope`` ↔
+argmax over ``{supports, contradicts, no_bearing}`` via a retry-triggering
+cross-field validator, none of which the generic three-label score schema can
+express. Replacing it would be a regression dressed as an upgrade. What site
+(2) adds is a layer ABOVE it: the primary judge has already committed to a
+direction, and "does this text genuinely support [/contradict] the claim" IS
+a meets/partial/fails question. The scope analysis is not re-done and not
+lost — it is the proposition being confirmed. Site (3) is the same move at
+the claim level, on a question ("is this enough, on-scope evidence to
+establish the claim") that is natively a quality axis.
+
+What all three share, and what a fourth site would have to share, is that the
+judgment being put to llm_judge has NO DOMAIN INVARIANT TO LOSE.
 
 This module mutates nothing and raises rather than degrading: a judge failure
 propagates to ``_execute_op``, which records it as a loud quarantine.

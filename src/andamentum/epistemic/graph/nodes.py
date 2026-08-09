@@ -2364,7 +2364,9 @@ class CombineClaimVerdicts(Node):
     ``build_verdict`` directly as a function, not via ``_run_op``.
     """
 
-    reads = frozenset({"objective_id", "retrieval_failed"})
+    reads = frozenset(
+        {"objective_id", "retrieval_failed", "judgment_doubt_escalated"}
+    )
     writes = frozenset({"verdict"})
     operations = frozenset()
     post_invariants = ()
@@ -2381,6 +2383,10 @@ class CombineClaimVerdicts(Node):
             deps.repo,
             objective_id=state.objective_id,
             retrieval_failed=state.retrieval_failed,
+            # Gate 0 runs AFTER this node, but this node re-runs on every
+            # completion check, so the final persisted verdict carries the
+            # true value.
+            judgment_doubt_escalated=state.judgment_doubt_escalated,
         )
 
         if deps.verbose:
@@ -2813,28 +2819,54 @@ class CheckSynthesisDemand(Node):
 
         The pipeline makes many sampled LLM judgments per claim and then feeds
         them to threshold-based gates, so small judgment noise becomes
-        categorical output flips. ``Claim.scrutiny_doubt`` is the measured
-        version of that noise: the directional-mass-weighted mean entropy of
-        the evidence judgments that produced the scrutiny verdict. This gate
-        turns a high value into the system's existing "do more work" primitive
-        — a ``Demand`` routed through the lazy-escalation loop (P7) — rather
-        than into a new mechanism.
+        categorical output flips. This gate turns the measured version of that
+        noise into the system's existing "do more work" primitive — a
+        ``Demand`` routed through the lazy-escalation loop (P7) — rather than
+        into a new mechanism.
 
-        Three conditions, all necessary:
+        ONE GATE, THREE INPUTS. A claim escalates when ANY of:
+
+        * ``scrutiny_doubt`` — the directional-mass-weighted mean entropy of
+          the evidence judgments that produced the verdict, at or above
+          ``JUDGMENT_DOUBT_ESCALATION_THRESHOLD``. The judges hedged.
+        * ``judgment_dissent_count > 0`` — an INDEPENDENT judge contradicted
+          the direction the primary judge committed to on at least one
+          load-bearing item. This cannot travel on ``scrutiny_doubt``: a
+          confident dissent has entropy near zero, so folding it into an
+          entropy-shaped number would report "no doubt" about exactly the item
+          most likely to be wrong. It is a separate signal because it measures
+          a separate thing.
+        * ``scrutiny_opinion`` dissenting or itself doubtful — the
+          claim-level independent read on a borderline deterministic weight.
+
+        The three cover disjoint blind spots: the first is silent on the
+        53-82% of small-model judgments that come back one-hot, which is
+        exactly where the second speaks; the third speaks about the reading
+        rather than the judgments.
+
+        Two further conditions, both necessary:
 
         1. The escalation has not already fired this run
            (``state.judgment_doubt_escalated``). Doubt buys ONE extra round,
            not a budget: it is a suspicion-raiser, and without this bound a
            persistently-unsure claim would spend its whole scrutiny-resolve
-           budget on noise.
+           budget on noise. This one flag is also why widening the predicate
+           cannot widen the cost: however many signals fire, the whole
+           mechanism spends at most one extra scrutiny round per run.
         2. At least one claim is ``_loopback_eligible`` — the same predicate
            ``_maybe_loop_back`` uses, so the escalation can never route to
            ``SynthesizeInsufficient``.
-        3. That claim carries a MEASURED doubt at or above
-           ``JUDGMENT_DOUBT_ESCALATION_THRESHOLD``. ``None`` never escalates:
-           an unmeasured claim (no eligible item carried a verbalized
-           distribution) is not a doubtful one, and treating it as such would
-           escalate on every pre-Tier-0 and adversarial-only claim.
+
+        ``None`` and ``0`` never escalate: an unmeasured claim (no eligible
+        item carried a verbalized distribution, no confirmation ran, the
+        reading was not borderline) is not a doubtful one, and treating it as
+        such would escalate on every pre-Tier-0 and adversarial-only claim.
+
+        Note the deliberate asymmetry against ``quality_doubt``'s gate: there
+        only a CONFIDENT "fails" acts, because the action is destruction. Here
+        both a confident dissent and a doubtful agreement escalate, because
+        the action is one bounded extra round of inquiry — cheap, and never
+        destructive.
 
         Pure and LLM-free. It reads persisted state only, which is why it is
         deliberately independent of the run's verdict object — it asks about
@@ -2845,29 +2877,54 @@ class CheckSynthesisDemand(Node):
         if state.judgment_doubt_escalated:
             return None
 
-        doubtful = [
-            c
-            for c in active_claims
-            if _loopback_eligible(c, state)
-            and getattr(c, "scrutiny_doubt", None) is not None
-            and c.scrutiny_doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
-        ]
+        def _reasons(c: Any) -> list[str]:
+            """Which signal(s) fired on this claim — named, so the demand's
+            justification stays actionable rather than saying 'doubt'."""
+            found: list[str] = []
+            doubt = getattr(c, "scrutiny_doubt", None)
+            if doubt is not None and doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD:
+                found.append(f"aggregate judgment doubt {doubt:.2f}")
+            dissent_count = getattr(c, "judgment_dissent_count", 0) or 0
+            if dissent_count > 0:
+                found.append(
+                    f"{dissent_count} evidence direction(s) contradicted by an "
+                    f"independent judge"
+                )
+            opinion = getattr(c, "scrutiny_opinion", None)
+            if opinion is not None and opinion.dissents:
+                found.append(
+                    f"an independent judge read the evidence as "
+                    f"'{opinion.overall}' against a '{opinion.reference}' weight"
+                )
+            elif opinion is not None and opinion.needs_review:
+                found.append(
+                    f"the independent read of the evidence was itself unsure "
+                    f"(doubt {opinion.doubt:.2f})"
+                )
+            return found
+
+        doubtful: list[tuple[Any, list[str]]] = []
+        for c in active_claims:
+            if not _loopback_eligible(c, state):
+                continue
+            reasons = _reasons(c)
+            if reasons:
+                doubtful.append((c, reasons))
         if not doubtful:
             return None
 
         detail = "; ".join(
-            f"{c.statement[:80]} (doubt {c.scrutiny_doubt:.2f})" for c in doubtful[:3]
+            f"{c.statement[:80]} ({', '.join(reasons)})" for c, reasons in doubtful[:3]
         )
         more = f" and {len(doubtful) - 3} more" if len(doubtful) > 3 else ""
         return Demand.needs(
             justification=(
                 f"{len(doubtful)} claim(s) hold a verdict whose underlying "
-                f"evidence judgments were internally unsure "
-                f"(aggregate judgment doubt at or above "
-                f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f}): {detail}{more}. "
+                f"evidence judgments did not survive scrutiny of their own "
+                f"reliability: {detail}{more}. "
                 f"The direction of these verdicts rests on judgments that "
-                f"barely committed, so one more round of inquiry may change "
-                f"the headline."
+                f"barely committed, or that an independent judge disagreed "
+                f"with, so one more round of inquiry may change the headline."
             ),
             target_hint=(
                 "Gather evidence that would let a judge commit — clearer, "

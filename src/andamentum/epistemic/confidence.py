@@ -54,6 +54,7 @@ from .repository import EpistemicRepository
 # them from ``confidence`` keep working.
 from .thresholds import (
     CYCLE_CAP_CONFIDENCE_PENALTY,
+    JUDGMENT_DOUBT_ESCALATION_THRESHOLD,
     RETRIEVAL_FAILED_CONFIDENCE_PENALTY,
 )
 
@@ -153,6 +154,10 @@ def _evidence_refs_for_claim(
     provably the items that produced its number. An item whose
     distribution nets neither direction (all no_bearing mass, or an exact
     tie) is counted rather than dropped.
+
+    The reliability fields are pure copies off the Evidence entity already
+    in scope — no model call, no extra query. ``None`` propagates as
+    ``None``: not measured is not the same as measured-and-certain.
     """
     supporting: list[EvidenceRef] = []
     refuting: list[EvidenceRef] = []
@@ -169,6 +174,10 @@ def _evidence_refs_for_claim(
                     stance="supports",
                     mass=s,
                     quality_score=getattr(e, "quality_score", None),
+                    judgment_distribution=getattr(e, "judgment_distribution", None),
+                    judgment_doubt=getattr(e, "judgment_entropy", None),
+                    quality_doubt=getattr(e, "quality_doubt", None),
+                    direction_opinion=getattr(e, "direction_opinion", None),
                 )
             )
         elif c > s:
@@ -179,6 +188,10 @@ def _evidence_refs_for_claim(
                     stance="contradicts",
                     mass=c,
                     quality_score=getattr(e, "quality_score", None),
+                    judgment_distribution=getattr(e, "judgment_distribution", None),
+                    judgment_doubt=getattr(e, "judgment_entropy", None),
+                    quality_doubt=getattr(e, "quality_doubt", None),
+                    direction_opinion=getattr(e, "direction_opinion", None),
                 )
             )
         else:
@@ -802,6 +815,7 @@ async def build_verdict(
     *,
     objective_id: str,
     retrieval_failed: bool = False,
+    judgment_doubt_escalated: bool = False,
 ) -> EpistemicVerdict:
     """Assemble the run's single ``EpistemicVerdict`` from the live DB.
 
@@ -820,7 +834,8 @@ async def build_verdict(
     parameter: capturing it here and persisting the result is what fixes
     the live-vs-offline ``terminal_state`` divergence (the offline report
     used to re-run ``compute_posterior`` without it and always said
-    "completed").
+    "completed"). ``judgment_doubt_escalated`` is the same shape for the
+    same reason — Gate 0's one-shot flag is graph state, not a DB field.
     """
     from .graph.combination import _claim_posterior, order_claims_for_combination
 
@@ -865,6 +880,13 @@ async def build_verdict(
                 refuting_evidence=refuting,
                 n_no_bearing=n_no_bearing,
                 cap_evaluation=getattr(c, "cap_evaluation", None),
+                # Pure copies of the scrutiny-time reliability measurements.
+                scrutiny_verdict=getattr(c, "scrutiny_verdict", None),
+                scrutiny_doubt=getattr(c, "scrutiny_doubt", None),
+                scrutiny_opinion=getattr(c, "scrutiny_opinion", None),
+                judgment_dissent_count=int(
+                    getattr(c, "judgment_dissent_count", 0) or 0
+                ),
             )
         )
 
@@ -917,6 +939,19 @@ async def build_verdict(
         n_adjudicated=n_adjudicated,
         n_no_verdict=n_no_verdict,
         n_orphan=n_orphan,
+        # Counted separately, deliberately: a bare "0 high-doubt claims"
+        # would read as "all measured, all sure" on a run where nothing was
+        # measured at all.
+        n_high_doubt_claims=sum(
+            1
+            for c in active
+            if getattr(c, "scrutiny_doubt", None) is not None
+            and c.scrutiny_doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+        ),
+        n_doubt_unmeasured_claims=sum(
+            1 for c in active if getattr(c, "scrutiny_doubt", None) is None
+        ),
+        judgment_doubt_escalated=judgment_doubt_escalated,
         combination_explanation=explanation,
     )
 

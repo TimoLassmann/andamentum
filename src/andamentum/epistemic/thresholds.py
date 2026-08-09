@@ -416,6 +416,72 @@ on the minority mass so a rounding wobble never reads as conflict. Read by:
 ``scrutiny_weight.compute_evidence_weight``."""
 
 
+# ── Second-opinion budgets (llm_judge, bounded by construction) ────
+#
+# Two sites layer an INDEPENDENT judge above a judgment the system has
+# already made (see ``direction_opinion`` and ``scrutiny_opinion``). Both
+# fire inside ``ScrutiniseClaimOperation.execute``, per claim, strictly
+# sequentially, and neither can ever change a verdict. The three constants
+# below are what make their cost a STRUCTURAL bound rather than a budget
+# counter someone can forget to decrement.
+#
+# Note the deliberate kind difference: the first two are COUNTS (how many
+# extra model calls a claim may buy) and the third is a RELATIVE DISTANCE
+# IN MASS UNITS (how close to a cutoff counts as "could have gone either
+# way"). None of them is a doubt cutoff — ``JUDGMENT_DOUBT_ESCALATION_
+# THRESHOLD`` remains the only one of those, so the doubt scale stays
+# single-source.
+
+JUDGMENT_CONFIRMATION_MAX_PER_PASS: int = 3
+"""Maximum per-evidence direction confirmations one scrutiny pass may run.
+
+Theoretical basis: a cost bound in the same family as
+``ScrutiniseClaimOperation.MAX_ISSUES`` (5) and the reproducibility sweep's
+``max_checks`` (4), deliberately SMALLER than both because it fires on every
+scrutiny pass rather than only at the decisive-posterior gate. Candidates
+are ranked by the directional mass they contributed, so the budget is spent
+on the items that actually moved the verdict.
+
+Read by: ``operations.scrutiny.ScrutiniseClaimOperation._confirm_load_bearing_judgments``.
+Benchmark-pending, like the ``SCRUTINY_*`` family."""
+
+JUDGMENT_CONFIRMATION_MAX_PER_CLAIM: int = 4
+"""HARD lifetime ceiling on direction confirmations for one claim in one run.
+
+A claim may be scrutinised up to ``1 + PEIRCE_CYCLE_CAP`` times, so the
+per-pass cap alone would permit 12. This is the flat bound that replaces
+that product. It is counted over ``claim.evidence_ids`` — every item the
+claim has ever linked, not just the currently-eligible subset — so evidence
+churn between passes cannot reopen the budget.
+
+Combined with the ``≤ 1`` per-claim-per-pass scrutiny second opinion over
+``≤ 4`` passes, a claim can add at most **8** model calls per run, whatever
+the size of its evidence pool.
+
+Read by: ``operations.scrutiny.ScrutiniseClaimOperation._confirm_load_bearing_judgments``.
+Benchmark-pending."""
+
+SCRUTINY_BORDERLINE_BAND: float = 0.20
+"""Relative distance from a weight cutoff inside which the deterministic
+reading counts as BORDERLINE, and is worth one independent second opinion.
+
+Theoretical basis: the label ``compute_evidence_weight`` produces is a step
+function of three cutoffs (``SCRUTINY_WEAK_MASS_THRESHOLD``,
+``SCRUTINY_STRONG_MASS_THRESHOLD``, ``SCRUTINY_CONFLICT_MINORITY_FRACTION``).
+A reading that would flip under a ±20 % relative perturbation of the masses
+is one whose label is an artefact of where the cutoff happens to sit, not of
+the evidence; a clearly-strong or clearly-thin reading is not, and pays
+nothing. 20 % is a fifth of the cutoff — small enough that the common case
+never fires, large enough to catch a genuine coin flip.
+
+THIS IS NOT A DOUBT CUTOFF. It is a relative distance in MASS units, a
+different quantity from normalized entropy, so it does not fork the scale
+``JUDGMENT_DOUBT_ESCALATION_THRESHOLD`` owns.
+
+Read by: ``scrutiny_weight.is_borderline`` (the only reader).
+Benchmark-pending, like the four ``SCRUTINY_*`` constants above."""
+
+
 # ── Promotion-gate judgment confidence floor (Tier 1.5) ────────────
 #
 # Stage promotion counts discrete supporting *sources*
@@ -459,5 +525,8 @@ __all__ = [
     "SCRUTINY_STRONG_MASS_THRESHOLD",
     "SCRUTINY_WEAK_MASS_THRESHOLD",
     "SCRUTINY_CONFLICT_MINORITY_FRACTION",
+    "JUDGMENT_CONFIRMATION_MAX_PER_PASS",
+    "JUDGMENT_CONFIRMATION_MAX_PER_CLAIM",
+    "SCRUTINY_BORDERLINE_BAND",
     "GATE_MIN_JUDGMENT_CONFIDENCE",
 ]

@@ -30,6 +30,13 @@ class EvidenceSummary:
     support_judgment: Optional[str] = None
     judgment_reasoning: Optional[str] = None
     quality_score: Optional[float] = None
+    #: Normalized entropy of the direction judge's own belief distribution.
+    #: None when not measured (adversarial / pre-Tier-0 items).
+    judgment_doubt: Optional[float] = None
+    #: True when an INDEPENDENT judge contradicted this item's direction;
+    #: False when it confirmed it; None when no confirmation ran. Three
+    #: states, deliberately — "not checked" is not "checked and agreed".
+    direction_dissent: Optional[bool] = None
 
 
 @dataclass
@@ -124,6 +131,10 @@ class ClaimSummary:
     uncertainty_ids: list[str] = field(default_factory=list)
     adversarial_balance: Optional[float] = None
     scrutiny_verdict: Optional[str] = None
+    #: Directional-mass-weighted mean entropy of the evidence judgments
+    #: behind ``scrutiny_verdict``. None when unmeasured, never 0.0 — so a
+    #: reader can tell "the judges were sure" from "nothing was measured".
+    scrutiny_doubt: Optional[float] = None
     verification_summary: str = ""
     evidence_refs_display: list[int] = field(default_factory=list)
     investigation_rounds: list[InvestigationRound] = field(default_factory=list)

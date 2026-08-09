@@ -117,6 +117,14 @@ def test_escalation_threshold_is_the_llm_judge_needs_review_threshold() -> None:
     )
 
 
+def _import_lines(module) -> list[str]:
+    return [
+        line
+        for line in inspect.getsource(module).splitlines()
+        if line.lstrip().startswith(("import ", "from "))
+    ]
+
+
 def test_leaf_modules_do_not_import_llm_judge() -> None:
     """The no-import-at-the-leaf decision, pinned.
 
@@ -128,20 +136,67 @@ def test_leaf_modules_do_not_import_llm_judge() -> None:
     well-meaning "just import it instead of duplicating" refactor would
     drag an agent framework into a pydantic entity.
 
+    The scan covers the ENTITY LAYER too, and the pure aggregator beside
+    it. ``JudgeOpinion`` stores a vector llm_judge produced and derives its
+    doubt from ``judgment_signal``; ``Evidence`` / ``Claim`` /
+    ``EpistemicVerdict`` embed it; ``scrutiny_weight`` reads persisted
+    judge-derived fields. Every one of them is one convenience import away
+    from dragging pydantic-ai into a pydantic entity — and each would still
+    pass its own unit tests afterwards.
+
     PINS: that refactor fails loudly here instead of landing silently.
     """
-    for module in (judgment_signal, thresholds):
-        source = inspect.getsource(module)
-        code_lines = [
-            line
-            for line in source.splitlines()
-            if line.lstrip().startswith(("import ", "from "))
-        ]
-        offenders = [line for line in code_lines if "llm_judge" in line]
+    from andamentum.epistemic import scrutiny_weight
+    from andamentum.epistemic.entities import claim, evidence, judge_opinion, verdict
+
+    leaves = (
+        judgment_signal,
+        thresholds,
+        judge_opinion,
+        evidence,
+        claim,
+        verdict,
+        scrutiny_weight,
+    )
+    for module in leaves:
+        offenders = [line for line in _import_lines(module) if "llm_judge" in line]
         assert not offenders, (
-            f"{module.__name__} imports llm_judge: {offenders}. These two "
+            f"{module.__name__} imports llm_judge: {offenders}. These "
             "modules are deliberately kept import-free of it — see this "
             "test's docstring and the module docstring of judgment_signal."
+        )
+
+
+def test_leaf_modules_do_not_import_the_second_opinion_drivers() -> None:
+    """The two llm_judge DRIVERS must stay out of the leaves too.
+
+    ``direction_opinion`` and ``scrutiny_opinion`` import ``llm_judge``
+    transitively, so a leaf importing either of them re-opens the exact
+    hazard the test above closes — but by a name that does not contain the
+    string ``llm_judge``, so the scan above would not catch it.
+    """
+    from andamentum.epistemic import scrutiny_weight
+    from andamentum.epistemic.entities import claim, evidence, judge_opinion, verdict
+
+    drivers = ("direction_opinion", "scrutiny_opinion")
+    for module in (
+        judgment_signal,
+        thresholds,
+        judge_opinion,
+        evidence,
+        claim,
+        verdict,
+        scrutiny_weight,
+    ):
+        offenders = [
+            line
+            for line in _import_lines(module)
+            if any(d in line for d in drivers)
+        ]
+        assert not offenders, (
+            f"{module.__name__} imports an llm_judge driver: {offenders}. "
+            "Those modules pull in pydantic-ai transitively; the leaves must "
+            "read the persisted JudgeOpinion instead."
         )
 
 

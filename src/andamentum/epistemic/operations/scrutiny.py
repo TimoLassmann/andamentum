@@ -16,6 +16,7 @@ from .claims import LLM_PANEL_CAP, select_top_k_evidence, top_n_representatives
 from ..entities import (
     Claim,
     Evidence,
+    JudgeOpinion,
     Uncertainty,
     UncertaintyType,
 )
@@ -33,6 +34,25 @@ class ScrutiniseClaimOperation(BaseOperation):
        content-reading channel: methodological objections become named issues).
     3. Deterministic combination — blocking issues downgrade the weight, then
        the verdict follows from it.
+
+    Two INDEPENDENT-JUDGE second opinions layer on top, neither of which can
+    change the verdict (both are ``llm_judge`` FAST, one criterion, one call):
+
+    * ``_confirm_load_bearing_judgments`` (before the weight is computed) —
+      up to ``JUDGMENT_CONFIRMATION_MAX_PER_PASS`` per-item confirmations of
+      ONE-HOT directional judgments, whose own entropy is uninformative and
+      which the doubt aggregate is therefore structurally blind to. Records
+      ``Evidence.direction_opinion`` and counts dissents into
+      ``Claim.judgment_dissent_count``.
+    * ``_second_opinion_if_borderline`` (after the issue gather) — at most
+      one claim-level read, and only when the deterministic weight sits
+      within ``SCRUTINY_BORDERLINE_BAND`` of a cutoff. Records
+      ``Claim.scrutiny_opinion``.
+
+    Both are strictly sequential and strictly outside ``_execute_split``'s
+    ``asyncio.gather``, because ``llm_judge`` does not share
+    ``core.AgentRunner``'s semaphore. Together they add at most 8 model calls
+    per claim per run, independent of evidence-pool size.
 
     Updates scrutiny_verdict to "pass", "fail", or "needs_resolution", and
     records ``scrutiny_doubt`` beside it — the mass-weighted mean entropy of
@@ -292,6 +312,155 @@ class ScrutiniseClaimOperation(BaseOperation):
 
         return verdict
 
+    async def _confirm_load_bearing_judgments(
+        self, claim: Claim, eligible: list[Evidence]
+    ) -> int:
+        """Ask an independent judge to confirm up to N one-hot directions.
+
+        THE BLIND SPOT THIS COVERS. ``Claim.scrutiny_doubt`` is a mean of
+        judgment ENTROPIES, and a one-hot judgment has none — so on the
+        53-82% of small-model judgments that come back one-hot
+        (``thresholds.JUDGMENT_ONE_HOT_THRESHOLD``), the doubt machinery is
+        structurally silent. A second, independent elicitation is the only
+        thing that can speak there. See ``direction_opinion``'s module
+        docstring for the full argument.
+
+        Called from ``execute`` BETWEEN the eligible gather and the single
+        ``compute_evidence_weight`` call, so the confirmations and the
+        verdict come from one reading — the same ordering constraint the
+        weight/doubt pair already carries.
+
+        STRICTLY SEQUENTIAL, and deliberately outside ``_execute_split``'s
+        ``asyncio.gather``: ``llm_judge`` does not share
+        ``core.AgentRunner``'s semaphore (sized 1 for Ollama), so a call
+        inside that gather would fire concurrent local-model inferences.
+
+        Returns the number of confirmations that DISSENTED from the primary
+        judge's direction — written by the caller onto
+        ``claim.judgment_dissent_count``.
+
+        Raises:
+            RuntimeError: when candidates exist, an ``agent_runner`` is
+                configured, and no ``judge_model`` was wired. Data-dependent
+                and fail-loud, matching ``ExtractEvidenceOperation.
+                _confirm_or_retain_low_quality`` — a construction-time
+                assertion would make a judge model mandatory for the many
+                callers that never elicit one.
+            Whatever ``judge_score`` raises — propagated, so ``_execute_op``
+                records a loud quarantine rather than an unconfirmed verdict.
+        """
+        if self.agent_runner is None:
+            # Offline construction: the deterministic reading still happens,
+            # there is simply no independent judge to ask.
+            return 0
+
+        from ..direction_opinion import confirm_direction, select_confirmation_candidates
+        from ..thresholds import (
+            JUDGMENT_CONFIRMATION_MAX_PER_CLAIM,
+            JUDGMENT_CONFIRMATION_MAX_PER_PASS,
+        )
+
+        # The per-claim ceiling is counted over EVERY evidence id the claim
+        # has ever linked, not just the currently-eligible subset, so
+        # evidence churn between passes cannot reopen the budget. This is
+        # the same traversal ``_compute_input_fingerprint`` already performs
+        # — no extra LLM cost, and no new query shape.
+        already_confirmed = 0
+        for eid in claim.evidence_ids:
+            ev = await self.repo.get("evidence", eid)
+            if isinstance(ev, Evidence) and ev.direction_opinion is not None:
+                already_confirmed += 1
+
+        candidates = select_confirmation_candidates(
+            eligible,
+            per_pass_limit=JUDGMENT_CONFIRMATION_MAX_PER_PASS,
+            remaining_budget=JUDGMENT_CONFIRMATION_MAX_PER_CLAIM - already_confirmed,
+        )
+        if not candidates:
+            return 0
+
+        if not self.judge_model:
+            raise RuntimeError(
+                f"[_confirm_load_bearing_judgments] no judge_model wired for "
+                f"claim {claim.entity_id}: {len(candidates)} one-hot directional "
+                "judgment(s) are eligible for an independent confirmation. An "
+                "agent_runner is configured but judge_model is None — thread "
+                "EpistemicDeps.judge_model through create_operations / _make_op "
+                "rather than letting the confirmation silently not run."
+            )
+
+        dissents = 0
+        for ev in candidates:  # strictly sequential — never asyncio.gather
+            opinion = await confirm_direction(
+                content=ev.extracted_content,
+                source_ref=ev.source_ref,
+                claim_statement=claim.statement,
+                claim_scope=claim.scope,
+                stance=ev.support_judgment or "",
+                model=self.judge_model,
+            )
+            ev.direction_opinion = opinion
+            await self.repo.save(ev)
+            if opinion.dissents:
+                dissents += 1
+        return dissents
+
+    async def _second_opinion_if_borderline(
+        self,
+        claim: Claim,
+        weight: EvidenceWeight,
+        evidence_summaries: list[str],
+    ) -> JudgeOpinion | None:
+        """One independent read on the claim-level question, when the
+        deterministic reading was a coin flip — else ``None``.
+
+        ``is_borderline`` is pure and free, and is evaluated BEFORE any model
+        call, so a clearly-strong or clearly-thin reading costs nothing.
+
+        Called from ``execute`` STRICTLY AFTER ``_execute_split`` has been
+        awaited: ``llm_judge`` does not share ``core.AgentRunner``'s
+        semaphore, so this must never sit inside that gather. It reuses the
+        already-computed ``evidence_summaries`` — no second selection pass,
+        no second embedding call.
+
+        The opinion NEVER changes ``scrutiny_verdict``. See
+        ``scrutiny_opinion``'s module docstring for why that is load-bearing
+        rather than cautious.
+
+        Raises:
+            RuntimeError: when the reading is borderline, an ``agent_runner``
+                is configured and no ``judge_model`` was wired — the same
+                data-dependent fail-loud shape as
+                ``_confirm_load_bearing_judgments``.
+            Whatever ``judge_score`` raises — propagated.
+        """
+        from ..scrutiny_opinion import second_opinion_on_reading
+        from ..scrutiny_weight import is_borderline
+
+        if not is_borderline(weight):
+            return None
+
+        if not self.judge_model:
+            raise RuntimeError(
+                f"[_second_opinion_if_borderline] no judge_model wired for "
+                f"claim {claim.entity_id}: the deterministic evidence weight "
+                f"({weight.label}, supporting={weight.supporting_mass:.2f}, "
+                f"contradicting={weight.contradicting_mass:.2f}) sits inside "
+                "the borderline band, so an independent second opinion is "
+                "warranted. An agent_runner is configured but judge_model is "
+                "None — thread EpistemicDeps.judge_model through "
+                "create_operations / _make_op rather than letting the second "
+                "opinion silently not run."
+            )
+
+        return await second_opinion_on_reading(
+            evidence_body="\n\n".join(evidence_summaries),
+            claim_statement=claim.statement,
+            claim_scope=claim.scope,
+            weight_label=weight.label,
+            model=self.judge_model,
+        )
+
     async def execute(self, work: OperationInput) -> OperationResult:
         claim = await self.repo.get("claim", work.entity_id)
 
@@ -352,14 +521,24 @@ class ScrutiniseClaimOperation(BaseOperation):
                 )
 
         eligible = await self._gather_eligible_evidence(claim)
+        # Independent confirmation of the entropy-blind directions, BEFORE
+        # the weight is computed, so the confirmations and the verdict come
+        # from one reading. Bounded, sequential, and never verdict-changing.
+        n_dissent = await self._confirm_load_bearing_judgments(claim, eligible)
         # ONE reading of the evidence, shared by both branches. The weight
         # carries both the direction of the mass and the doubt of the
         # judgments that produced it, so recomputing it anywhere else would
         # risk persisting a doubt that belongs to a different reading.
         weight = compute_evidence_weight(eligible)
+        opinion = None
         if self.agent_runner:
             evidence_summaries = await self._gather_evidence_summaries(claim, eligible)
             verdict = await self._execute_split(claim, weight, evidence_summaries)
+            # AFTER the gather has been awaited — llm_judge does not share
+            # core.AgentRunner's semaphore, so it must never run inside it.
+            opinion = await self._second_opinion_if_borderline(
+                claim, weight, evidence_summaries
+            )
         else:
             # No agent runner: the evidence weight is still deterministic; only
             # the LLM issue-identification channel is unavailable, so the verdict
@@ -368,8 +547,12 @@ class ScrutiniseClaimOperation(BaseOperation):
         claim.scrutiny_verdict = verdict
         # A MEASUREMENT recorded alongside the verdict, not a routing signal
         # (P1/P3): this operation writes it and returns; the graph decides
-        # whether anything follows from it.
+        # whether anything follows from it. Same for the two independent-judge
+        # records below — they are written unconditionally each pass, by this
+        # one writer, so they can never describe a stale reading.
         claim.scrutiny_doubt = weight.doubt
+        claim.scrutiny_opinion = opinion
+        claim.judgment_dissent_count = n_dissent
 
         # Stamp the fingerprint of the inputs we just scrutinised so a
         # subsequent call with identical inputs short-circuits.
@@ -384,11 +567,22 @@ class ScrutiniseClaimOperation(BaseOperation):
             if weight.doubt is not None
             else ", judgment doubt: unmeasured"
         )
+        confirm_note = (
+            f", {n_dissent} direction(s) dissented from by an independent judge"
+            if n_dissent
+            else ""
+        )
+        opinion_note = (
+            f", second opinion on a borderline reading: {opinion.overall}"
+            f" (doubt {opinion.doubt:.2f}{', dissents' if opinion.dissents else ''})"
+            if opinion is not None
+            else ""
+        )
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
             message=(
                 f"[{claim.statement[:60]}] verdict: {claim.scrutiny_verdict}"
-                f"{doubt_note}{deferred_note}"
+                f"{doubt_note}{confirm_note}{opinion_note}{deferred_note}"
             ),
         )

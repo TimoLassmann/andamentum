@@ -104,6 +104,49 @@ def _routing_label(activation: "TrackActivation") -> str:
     return "SKIP"
 
 
+def _scrutiny_reliability_note(claim: object) -> str | None:
+    """One sentence on how reliable the judgments behind the scrutiny
+    verdict were — or ``None`` when there is nothing to say.
+
+    ``None`` in the overwhelmingly common case, which is what keeps every
+    currently-rendered gate-trace row byte-identical. It speaks only when a
+    measurement actually raised a suspicion: doubt at or above the
+    escalation threshold, an independent judge contradicting an evidence
+    direction, or an independent judge contradicting the reading itself.
+
+    This is the READ SITE that stops the doubt plumbing from repeating
+    ``CapEvaluation.doubt``'s fate — a field that reaches the verdict object
+    and is read by zero renderers. ``GateTraceEntry.note`` already exists and
+    already flows into ``audit_report._build_gate_trace_json``, so a machine
+    reader gets it too, with no new component and no new section.
+    """
+    from .thresholds import JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+
+    parts: list[str] = []
+    doubt = getattr(claim, "scrutiny_doubt", None)
+    if doubt is not None and doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD:
+        parts.append(
+            f"the evidence judgments behind this verdict were internally "
+            f"unsure (judgment doubt {doubt:.2f}, at or above "
+            f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f})"
+        )
+    dissent_count = getattr(claim, "judgment_dissent_count", 0) or 0
+    if dissent_count:
+        parts.append(
+            f"an independent judge disagreed with {dissent_count} evidence "
+            f"direction(s)"
+        )
+    opinion = getattr(claim, "scrutiny_opinion", None)
+    if opinion is not None and opinion.dissents:
+        parts.append(
+            f"an independent judge read the evidence as '{opinion.overall}' "
+            f"against a '{opinion.reference}' weight"
+        )
+    if not parts:
+        return None
+    return "; ".join(parts).capitalize() + "."
+
+
 def _build_gate_trace(
     claim: object,
     question_type: str | None,
@@ -162,6 +205,7 @@ def _build_gate_trace(
                 required="pass",
                 observed=str(sv),
                 status=status,
+                note=_scrutiny_reliability_note(claim),
             )
         )
 
@@ -567,6 +611,12 @@ class ReportGenerator:
                     support_judgment=ev.support_judgment,
                     judgment_reasoning=ev.judgment_reasoning,
                     quality_score=ev.quality_score,
+                    judgment_doubt=ev.judgment_entropy,
+                    direction_dissent=(
+                        ev.direction_opinion.dissents
+                        if ev.direction_opinion is not None
+                        else None
+                    ),
                 )
             )
 
@@ -876,8 +926,16 @@ class ReportGenerator:
         # by different code and an index assumption would silently
         # mislabel every badge if either ordering changed.
         labels_by_claim = {cv.claim_id: cv.label for cv in (verdict_object.claims if verdict_object else [])}
+        # Same rule for the scrutiny doubt: matched by claim_id, never by
+        # index. ``None`` stays ``None`` — an unmeasured claim must not
+        # render as a certain one.
+        doubt_by_claim = {
+            cv.claim_id: cv.scrutiny_doubt
+            for cv in (verdict_object.claims if verdict_object else [])
+        }
         for summary in claim_summaries:
             summary.verdict_label = labels_by_claim.get(summary.claim_id, "")
+            summary.scrutiny_doubt = doubt_by_claim.get(summary.claim_id)
 
         # In verify mode (single claim) the objective-level posterior
         # directly describes the claim's verdict. Backfill it onto the

@@ -198,6 +198,42 @@ async def test_missing_judge_model_raises_instead_of_silently_invalidating(
     assert ev.invalidated is False
 
 
+def _executable_source(text: str) -> str:
+    """Source with comments and string literals stripped.
+
+    A module that merely NAMES the quality signal in a docstring — as three
+    modules now do, explaining why they are shaped the way they are — is not
+    a module that READS it. Scanning raw text conflates the two, and the
+    conflation is not harmless in either direction: it fails on prose, and
+    it would pass a module that reads the signal inside an f-string.
+    """
+    import io
+    import tokenize
+
+    kept: list[str] = []
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type in (tokenize.COMMENT, tokenize.STRING):
+            continue
+        kept.append(tok.string)
+    return "\n".join(kept)
+
+
+#: Modules allowed to name the quality second-opinion signal in executable
+#: code, and what each is allowed to do with it.
+_QUALITY_SIGNAL_PRODUCERS_AND_GATE = {
+    "entities/evidence.py",  # the field + its derived properties
+    "operations/evidence.py",  # the one gate
+    "quality_doubt.py",  # the module that produces it
+}
+#: Modules that CARRY the signal onto the run's verdict object so a consumer
+#: can read it. They may copy it; they may not branch on it — which the
+#: companion test below enforces separately.
+_QUALITY_SIGNAL_CARRIERS = {
+    "entities/verdict.py",  # EvidenceRef.quality_doubt — the field
+    "confidence.py",  # the pure copy that fills it
+}
+
+
 def test_quality_doubt_is_read_by_nothing_but_the_invalidation_gate() -> None:
     """PARTIAL-INSTRUMENTATION GUARD, asserted rather than documented.
 
@@ -207,26 +243,75 @@ def test_quality_doubt_is_read_by_nothing_but_the_invalidation_gate() -> None:
     therefore penalise exactly the instrumented subset and nothing else — a
     systematic bias that looks like a quality improvement.
 
-    PINS: the only non-entity, non-test reader stays ``operations/evidence.py``.
+    PINS: the only non-entity, non-test reader stays
+    ``operations/evidence.py``, and the only other modules that may name it
+    at all are the two that carry it onto the verdict object for a reader.
     """
     from pathlib import Path
 
     src = Path(__file__).resolve().parent.parent
-    allowed = {
-        "entities/evidence.py",  # the field + its derived properties
-        "operations/evidence.py",  # the one gate
-        "quality_doubt.py",  # the module that produces it
-    }
+    allowed = _QUALITY_SIGNAL_PRODUCERS_AND_GATE | _QUALITY_SIGNAL_CARRIERS
     offenders: list[str] = []
     for py in sorted(src.rglob("*.py")):
         rel = py.relative_to(src).as_posix()
         if rel.startswith("tests/") or rel in allowed:
             continue
-        text = py.read_text()
-        if "quality_doubt" in text or "quality_distribution" in text:
+        if "quality_doubt" in _executable_source(py.read_text()):
+            offenders.append(rel)
+        elif "quality_distribution" in _executable_source(py.read_text()):
             offenders.append(rel)
     assert not offenders, (
         "These modules read the quality second-opinion signal, which only "
         "Path-2 evidence ever carries. Wiring it into a broader gate "
         "silently penalises the instrumented subset: " + ", ".join(offenders)
+    )
+
+
+def test_the_verdict_object_carries_quality_doubt_but_never_branches_on_it() -> None:
+    """THE NEW EXEMPTION, BOUNDED.
+
+    ``EvidenceRef.quality_doubt`` exists so a consumer of the run's verdict
+    object can SEE how sure the quality judge was. That is a data-visibility
+    change, and it must not become a decision: the moment ``confidence`` or
+    ``entities/verdict`` compares this partially-instrumented signal against
+    anything, the systematic bias the test above exists to prevent is back —
+    just one indirection further away, on the object every renderer reads.
+
+    PINS: the carriers may only COPY the signal. A comparison, a boolean
+    condition, or a threshold read on it fails here.
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent
+    # Every AST node kind that turns a value into a DECISION.
+    deciding = (ast.Compare, ast.BoolOp, ast.UnaryOp, ast.If, ast.IfExp, ast.While)
+    offenders: list[str] = []
+    for rel in sorted(_QUALITY_SIGNAL_CARRIERS):
+        source = (src / rel).read_text()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, deciding):
+                continue
+            # ``test`` / operand subtrees only — an ``if`` BODY that merely
+            # assigns the field is fine; it is the CONDITION that must be
+            # free of it.
+            subtrees = (
+                [node.test]
+                if isinstance(node, (ast.If, ast.IfExp, ast.While))
+                else [node]
+            )
+            for sub in subtrees:
+                names = {
+                    n.attr if isinstance(n, ast.Attribute) else n.id
+                    for n in ast.walk(sub)
+                    if isinstance(n, (ast.Attribute, ast.Name))
+                }
+                if "quality_doubt" in names or "quality_distribution" in names:
+                    offenders.append(f"{rel}:{node.lineno}")
+    assert not offenders, (
+        "A carrier module BRANCHES on the quality second-opinion signal, "
+        "which only Path-2 evidence carries — that is the systematic bias "
+        "the companion test exists to prevent, one indirection further "
+        "away: " + ", ".join(sorted(set(offenders)))
     )

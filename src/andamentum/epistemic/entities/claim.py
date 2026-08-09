@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from .base import EpistemicEntity
 from .cap_evaluation import CapEvaluation
 from .intent_record import IntentRecord
+from .judge_opinion import JudgeOpinion
 from .prediction import Prediction
 
 
@@ -169,13 +170,50 @@ class Claim(EpistemicEntity):
             "unmeasured — no eligible item carried a verbalized distribution, "
             "or scrutiny has not run. "
             "This is DATA, not an instruction (P3): no stage reads it to decide "
-            "what to do to this claim. The single reader is "
+            "what to do to this claim. Two readers: "
             "CheckSynthesisDemand's aggregate-doubt gate, which uses it to buy "
             "the objective one extra round of inquiry — a suspicion-raiser, "
-            "never a verdict. "
+            "never a verdict — and confidence.build_verdict, which copies it "
+            "onto ClaimVerdict so the run's verdict object can express the "
+            "doubt behind each claim's reading. Neither DECIDES on it. "
             "record_demotion deliberately does not clear it: a demotion nulls "
             "scrutiny_verdict, which forces a fresh scrutiny pass, and that "
             "pass overwrites this field alongside the new verdict."
+        ),
+    )
+    scrutiny_opinion: Optional[JudgeOpinion] = Field(
+        default=None,
+        description=(
+            "An INDEPENDENT judge's read on whether the gathered evidence "
+            "establishes this claim, taken ONLY when the deterministic "
+            "reading was BORDERLINE (scrutiny_weight.is_borderline) — see "
+            "``scrutiny_opinion.second_opinion_on_reading``. Written by the "
+            "same single writer, in the same pass, as scrutiny_verdict and "
+            "scrutiny_doubt, so all three describe one reading. "
+            "It NEVER changed the verdict: a dissenting or doubtful opinion "
+            "only feeds CheckSynthesisDemand's Gate 0, which can buy one more "
+            "bounded round of inquiry. None when the reading was not "
+            "borderline, when no agent runner was configured, or when "
+            "scrutiny has not run. "
+            "record_demotion deliberately does not clear it, for the same "
+            "reason scrutiny_doubt gives."
+        ),
+    )
+    judgment_dissent_count: int = Field(
+        default=0,
+        description=(
+            "How many of this claim's eligible, one-hot, DIRECTIONAL evidence "
+            "judgments had their direction dissented from by an independent "
+            "judge, in the scrutiny pass that produced the current verdict "
+            "(see ``direction_opinion``). Written unconditionally on every "
+            "pass by the same single writer as scrutiny_verdict, so it can "
+            "never go stale. "
+            "It exists because the per-item signal cannot travel on "
+            "scrutiny_doubt: a CONFIDENT dissent has entropy near zero, so "
+            "folding it into an entropy-shaped number would report 'no doubt' "
+            "about exactly the item most likely to be wrong. Read by "
+            "CheckSynthesisDemand's Gate 0 and copied onto ClaimVerdict; "
+            "nothing decides a verdict on it."
         ),
     )
 
@@ -505,6 +543,10 @@ class Claim(EpistemicEntity):
             "cap_evaluation": (
                 self.cap_evaluation.model_dump() if self.cap_evaluation else None
             ),
+            "scrutiny_opinion": (
+                self.scrutiny_opinion.model_dump() if self.scrutiny_opinion else None
+            ),
+            "judgment_dissent_count": self.judgment_dissent_count,
             "persistent_concerns": self.persistent_concerns,
             "sub_investigation_id": self.sub_investigation_id,
             "integrated_assessment": self.integrated_assessment,
@@ -579,6 +621,12 @@ class Claim(EpistemicEntity):
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
             scrutiny_doubt=metadata.get("scrutiny_doubt"),
+            scrutiny_opinion=(
+                JudgeOpinion(**opinion_meta)
+                if (opinion_meta := metadata.get("scrutiny_opinion"))
+                else None
+            ),
+            judgment_dissent_count=metadata.get("judgment_dissent_count", 0),
             adversarial_checked=metadata.get("adversarial_checked", False),
             convergence_checked=metadata.get("convergence_checked", False),
             convergence_verdict=metadata.get("convergence_verdict"),
