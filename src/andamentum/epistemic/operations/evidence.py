@@ -219,7 +219,22 @@ class ExtractEvidenceOperation(BaseOperation):
     async def _score_evidence(
         self, evidence: Evidence, gathered: GatheredEvidence | None = None
     ) -> None:
-        """Score evidence quality. Three paths: OpenAlex -> agent assessment -> gatherer-supplied score. Raises if none can produce a score."""
+        """Score evidence quality. Three paths: OpenAlex -> agent assessment ->
+        gatherer-supplied score. Raises if none can produce a score.
+
+        Path 2's near-zero TMS invalidation is GATED by a second opinion. The
+        agent score is one sampled point value over four free-floating
+        numbers; below 0.10 it used to destroy the evidence outright, so a
+        single unlucky draw erased real signal and nothing downstream could
+        tell erasure from absence. The evidence is now invalidated only when
+        ``llm_judge`` independently and CONFIDENTLY agrees the text is
+        substanceless (``overall == 'fails'`` and ``not needs_review`` — the
+        label decides, and ``needs_review`` already folds in the doubt
+        threshold, so no new numeric cut is introduced here). When the judge
+        disagrees or is unsure, the evidence survives WITH its low
+        ``quality_score`` intact, so it stays heavily down-weighted
+        everywhere. Attenuation, not destruction.
+        """
         import logging
 
         _log = logging.getLogger(__name__)
@@ -328,16 +343,17 @@ class ExtractEvidenceOperation(BaseOperation):
             # TMS trigger: agent-assessed evidence scoring near zero is unreliable.
             # 0.10 threshold means all four quality dimensions averaged near zero.
             # Only applies to agent assessments — not defaults or fallbacks.
+            #
+            # The threshold no longer decides on its own: it decides only that
+            # the question is worth a second opinion (P7 lazy escalation — the
+            # judge fires at the categorical cliff, never on the happy path).
             if evidence.quality_score < 0.10:
-                evidence.invalidated = True
-                evidence.invalidation_reason = (
-                    f"Agent quality assessment scored {evidence.quality_score:.3f} "
-                    f"(credibility={result.source_credibility:.2f}): {result.justification}"
-                )
-                _log.warning(
-                    "[_score_evidence] TMS: invalidated %s — quality %.3f below threshold",
-                    evidence.entity_id,
-                    evidence.quality_score,
+                await self._confirm_or_retain_low_quality(
+                    evidence,
+                    content=content,
+                    claim_statement=claim_context,
+                    agent_justification=result.justification,
+                    credibility=result.source_credibility,
                 )
 
             return
@@ -359,4 +375,134 @@ class ExtractEvidenceOperation(BaseOperation):
             f"_score_evidence requires a quality_scorer, an agent_runner, or a "
             f"gatherer-supplied quality_score on the GatheredEvidence. None were "
             f"available. This indicates a wiring bug in graph construction."
+        )
+
+    async def _confirm_or_retain_low_quality(
+        self,
+        evidence: Evidence,
+        *,
+        content: str,
+        claim_statement: str,
+        agent_justification: str,
+        credibility: float,
+    ) -> None:
+        """Destroy the evidence only if a second opinion confidently agrees.
+
+        The three same-typed strings (``content``, ``claim_statement``,
+        ``agent_justification``) are keyword-only: transposing any pair would
+        judge the wrong text against the wrong context, silently.
+
+        WHY THE WIRING CHECK STAYS HERE, AND NOT AT CONSTRUCTION. The raise
+        below is data-dependent: it fires on the first near-zero-quality item,
+        which on a gathering path is deep inside a persistence loop whose
+        enclosing node quarantines on any exception. That made a construction
+        gap cost a whole gather rather than one item — and it did, until
+        ``judge_model`` was threaded into the two ``_make_op``-bypassing node
+        constructions and into ``op.derive(...)`` in
+        ``dispatch_and_persist_for_text``. The considered alternative was to
+        assert the invariant once at construction (``agent_runner`` set implies
+        ``judge_model`` set). It is NOT taken, for two reasons:
+
+        * it asserts a dependency the operation may genuinely not need — an
+          item scored through Path 1 (OpenAlex) or Path 3 (gatherer) never
+          reaches this gate, and ``create_operations`` builds every operation
+          from one dependency set, so the assertion would make a judge model
+          mandatory for callers that will never elicit one;
+        * the data-dependence is what actually needed removing, and it was
+          removed a different way. A construction gap is now structurally
+          impossible rather than merely unlikely: ``BaseOperation.derive``
+          copies the full dependency set instead of enumerating it, and
+          ``test_structural_wiring::TestInlineOperationConstructionsMatchMakeOp``
+          pins the two inline node constructions equal to ``_make_op``. What
+          remains reachable is a hand-built operation in a caller that then
+          drives real low-quality evidence — for which "you built this
+          yourself and forgot a dependency" is the honest message.
+
+        The raise also matches the pre-existing contract of that loop: the
+        no-scorer raise below has always aborted a gather the same way.
+
+        Raises:
+            RuntimeError: when no ``judge_model`` was wired. An operation
+                constructed with an ``agent_runner`` but no judge model cannot
+                run the gate, and quietly resuming the old unconditional
+                destroy would hide the wiring bug behind lost evidence. Same
+                fail-loud shape as the no-scorer raise above.
+            Whatever ``judge_score`` raises — propagated, so ``_execute_op``
+                records it as a loud quarantine rather than swallowing it into
+                an invalidation or a pass.
+        """
+        import logging
+
+        from ..quality_doubt import confirm_low_quality
+
+        _log = logging.getLogger(__name__)
+
+        if not content:
+            # Nothing to second-opinion. An empty body is not a judgment call,
+            # and paying a model call to judge nothing is pure cost.
+            evidence.invalidated = True
+            evidence.invalidation_reason = (
+                f"Agent quality assessment scored {evidence.quality_score:.3f} "
+                f"(credibility={credibility:.2f}) and the extracted content is "
+                f"empty — nothing to re-examine: {agent_justification}"
+            )
+            _log.warning(
+                "[_score_evidence] TMS: invalidated %s — empty content at "
+                "quality %.3f",
+                evidence.entity_id,
+                evidence.quality_score,
+            )
+            return
+
+        if not self.judge_model:
+            raise RuntimeError(
+                f"[_score_evidence] no judge_model wired for {evidence.entity_id}: "
+                f"the near-zero quality gate requires an llm_judge model id so a "
+                f"single sampled point value cannot destroy evidence on its own. "
+                f"An agent_runner is configured but judge_model is None — thread "
+                f"it through EpistemicDeps.judge_model / create_operations("
+                f"judge_model=...). This indicates a wiring bug in graph "
+                f"construction."
+            )
+
+        opinion = await confirm_low_quality(
+            content=content,
+            source_ref=evidence.source_ref,
+            claim_statement=claim_statement,
+            agent_score=evidence.quality_score if evidence.quality_score else 0.0,
+            model=self.judge_model,
+        )
+        evidence.quality_distribution = opinion.distribution
+
+        # The LABEL decides; the scalar is for ranking. ``needs_review`` already
+        # folds in ``doubt >= NEEDS_REVIEW_DOUBT_THRESHOLD``, so a doubtful
+        # 'fails' retains the evidence without this module inventing a second
+        # doubt cutoff of its own.
+        if opinion.overall == "fails" and not opinion.needs_review:
+            evidence.invalidated = True
+            evidence.invalidation_reason = (
+                f"Agent quality assessment scored {evidence.quality_score:.3f} "
+                f"(credibility={credibility:.2f}): {agent_justification} — "
+                f"confirmed by an independent judge (overall=fails, "
+                f"doubt={opinion.doubt:.2f}): {opinion.summary}"
+            )
+            _log.warning(
+                "[_score_evidence] TMS: invalidated %s — quality %.3f, second "
+                "opinion confidently agreed (doubt=%.2f)",
+                evidence.entity_id,
+                evidence.quality_score,
+                opinion.doubt,
+            )
+            return
+
+        _log.warning(
+            "[_score_evidence] TMS: RETAINED %s at quality %.3f — second opinion "
+            "was overall=%s (doubt=%.2f, needs_review=%s). The low score stands "
+            "and still down-weights this item everywhere; it is attenuated, not "
+            "destroyed.",
+            evidence.entity_id,
+            evidence.quality_score,
+            opinion.overall,
+            opinion.doubt,
+            opinion.needs_review,
         )

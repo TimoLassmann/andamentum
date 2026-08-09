@@ -82,6 +82,24 @@ class CapEvaluation(BaseModel):
             "applied exactly once, downstream, in the posterior paths."
         ),
     )
+    doubt: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How internally-unsure the per-evidence judgments behind this "
+            "reading were: ``EvidenceWeight.doubt``, the directional-mass-"
+            "weighted mean normalised Shannon entropy of the verbalized "
+            "judgment distributions. None when no distribution-carrying item "
+            "contributed directional mass — i.e. the doubt was not measured, "
+            "which is deliberately distinct from 'measured as 0.0'. "
+            "Recorded because this is the one site that mints a verdict "
+            "with no LLM deliberation at all, so the uncertainty of the "
+            "judgments it is standing on is the only uncertainty it has. "
+            "It is a MEASUREMENT (P3), read by no scheduler: a capped claim "
+            "is not loop-back eligible, so this value never escalates."
+        ),
+    )
     wrote_live_verdict: bool = Field(
         default=False,
         description=(

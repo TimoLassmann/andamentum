@@ -345,6 +345,10 @@ async def run_epistemic_graph(
         evidence_gatherer=evidence_gatherer,
         quality_scorer=quality_scorer,
         embedding_model=embedding_model,
+        # The run's LLM is also the second-opinion judge. One model per run,
+        # no separate flag, no ambient default — the judge is not a different
+        # capability tier, it is the same model asked a bounded question.
+        judge_model=model,
         provider=provider,
         verbose=verbose,
         progress_callback=progress_callback,

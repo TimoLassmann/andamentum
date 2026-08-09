@@ -293,6 +293,7 @@ A capped claim:
 - **Receives a deterministic terminal verdict at the cap instead.** `ConcludeAtCycleCapOperation` (no LLM) re-reads the claim's eligible representative evidence through the same `compute_evidence_weight` engine scrutiny uses. When that reading is `strong` or `moderate` it writes `integrated_assessment` / `integrated_confidence` / `integrated_reasoning`; when it is `conflicting` or `weak` it writes no verdict. Either way the reading is recorded as a typed `Claim.cap_evaluation`, so a capped claim with no verdict is the positive record that the *evidence* did not decide — rather than a scheduling side effect wearing the word "insufficient". The verdict a reader sees is rendered from the run's `EpistemicVerdict` (§10), which carries the `CapEvaluation` on its `ClaimVerdict` entry, so no renderer has to reach back to the entity to explain it.
 - The cap-derived confidence is `purity × mass_adequacy`, ceilinged at `MECHANICAL_VERDICT_MAX_CONFIDENCE = 0.9`. `purity` is the normalised directional margin `(dominant − minority) / (dominant + minority)`; `mass_adequacy` is `min(1, dominant / SCRUTINY_STRONG_MASS_THRESHOLD)`. The second factor exists because purity alone is 1.0 for *any* one-sided pool regardless of size, so a single unopposed source would report the system's maximum mechanical confidence — more than a 5-vs-1 pool. No new constant: the saturation point is the mass the system already calls "strong".
 - Contributes to the aggregated posterior with reduced weight (`CYCLE_CAP_CONFIDENCE_PENALTY = 0.7` as a pull-toward-neutral on the counting fallback path; multiplicative on confidence in the integration path). With the cap-time verdict this is now a reachable path rather than a vacuous one. The two ceilings compose: a cap-derived single-claim posterior sits at most `0.9 × 0.7 / 2 = 0.315` from neutral, so it can never read as decisive.
+- Carries the doubt of the judgments it stands on. `compute_evidence_weight` also reports `EvidenceWeight.doubt` (§ Gate 0), and the cap records it as `CapEvaluation.doubt`. This is the one site that mints a verdict with no LLM deliberation at all, so the uncertainty of the per-evidence judgments underneath is the only uncertainty it has; discarding it would contradict the premise that a judgment carries its doubt. `None` when no distribution-carrying item contributed directional mass — unmeasured, deliberately distinct from "measured as 0.0". It is a measurement only: a capped claim is not loop-back eligible, so it never escalates, and it is deliberately not written to `Claim.scrutiny_doubt`, which has exactly one writer.
 - Owns only the verdict it wrote. `CapEvaluation.wrote_live_verdict` records whether *this* cap firing authored the live `integrated_assessment`; combined with a `stage == HYPOTHESIS` check (the cap never promotes), it is what lets a repeated firing revise or clear its own verdict while leaving an IBE- or `PromoteAsRefuted`-certified one untouched.
 - Does **not** change stage, and is **never demoted**. `AbandonOrDemote` skips cycle-capped claims in its demote branch: `record_demotion` resets the whole Peirce-cycling state — which the cap exists to stop — and nulls `integrated_assessment`, which for a capped claim is the terminal verdict. The reachable sequence it closes is cap → `AbandonOrDemote` refute/soft-promotes to SUPPORTED → the next `Scrutinize` visit routes the failed-scrutiny SUPPORTED claim back → demotion erases the verdict.
 - Surfaces in the synthesis report under "limitations" with its capped status named.
@@ -429,6 +430,7 @@ Evidence gathering runs through a single per-provider dispatch agent (`epistemic
 
 `CheckSynthesisDemand` runs cheap deterministic gates first, and a Demand-emitting LLM agent only when the gates are inconclusive:
 
+0. **Gate 0: aggregate judgment doubt** — were the evidence judgments behind a claim's verdict internally unsure?
 1. **Gate 1: open-research check** — is the question entirely unresolved?
 2. **Gate 2: no-combined-verdict check** — does the combiner have nothing to combine?
 3. **Gate 3: stranded-claims check** — are there non-terminal claims with eligible cycle budget remaining?
@@ -436,6 +438,32 @@ Evidence gathering runs through a single per-provider dispatch agent (`epistemic
 5. **LLM judgment (fallback)** — emit a `Demand`; if `needs_more=True`, route eligible claims back to `Scrutinize`; otherwise proceed to `Synthesize`.
 
 The termination guarantee is the per-sub-claim cap (`scrutiny_resolve_cycles[claim_id] < PEIRCE_CYCLE_CAP`), not a global give-up budget. The loop terminates as soon as no claim can make progress, even if the satisfaction LLM keeps saying `needs_more`.
+
+### Gate 0 — doubt drives escalation
+
+The pipeline makes many sampled LLM judgments per claim and feeds them to threshold-based gates, so small judgment noise becomes categorical output flips. Gate 0 is the one gate that asks about the **quality of the inputs** rather than about the conclusion.
+
+- `scrutiny_weight.compute_evidence_weight` now reports `doubt` alongside the directional masses: the **directional-mass-weighted mean normalised entropy** of the judgments that produced them. Each item weighs by exactly the factor with which it moved the verdict. Items with no captured `judgment_distribution` (adversarial counter-evidence, pre-Tier-0 data) contribute mass but **not** doubt — absence of a measured confidence is not evidence of low confidence, the same exemption `GATE_MIN_JUDGMENT_CONFIDENCE` already encodes. When nothing was measured the value is `None`, never `0.0`; only `None` can never escalate.
+- `ScrutiniseClaimOperation` persists it as `Claim.scrutiny_doubt` — a measurement recorded beside the verdict, not a scheduling signal (P3). The operation writes and returns; the graph decides whether anything follows.
+- Gate 0 fires when the escalation has not already fired this run (`state.judgment_doubt_escalated`) **and** at least one *loop-back-eligible* claim carries a measured doubt at or above `JUDGMENT_DOUBT_ESCALATION_THRESHOLD`. On firing it emits a `Demand` and routes through the existing `_maybe_loop_back`.
+
+Three properties fall out of that construction rather than out of convention:
+
+- **It cannot manufacture a false "insufficient".** `_maybe_loop_back` routes to `SynthesizeInsufficient` precisely when its eligible set is empty; Gate 0 and `_maybe_loop_back` consult the same module-level `_loopback_eligible` predicate, so the gate only fires when that set is non-empty.
+- **It terminates.** The escalation fires at most once per objective, and the loop it triggers is the existing one, already capped per claim by `SCRUTINY_RESOLVE_CYCLE_CAP`. Doubt buys exactly one extra round of inquiry — it is a suspicion-raiser, never a decision.
+- **It is inert on unmeasured claims**, so no pre-existing behaviour changes.
+
+Gate 0 runs **before Gate 1**, and the ordering is load-bearing: Gate 1 short-circuits to satisfied whenever there is no combination rule — every verify-mode and open-research run, i.e. exactly the runs this signal exists for. Placed after it, Gate 0 would be dead code on that whole arm. Running first also means it pre-empts the expensive reproducibility tripwire in Gate 4.
+
+### Quality second opinion — a point value must not destroy evidence
+
+The same principle applied one layer down. `ExtractEvidenceOperation._score_evidence` Path 2 blends four agent-produced floats into one quality score and, below `0.10`, used to invalidate the evidence outright — a categorical cliff driven by a single sample.
+
+That destroy is now gated by `quality_doubt.confirm_low_quality`, one `llm_judge.judge_score` call (FAST path: single judge, temperature 0, reproducible; **one** criterion, so **one** model call). The evidence is invalidated only when the second opinion returns `overall == "fails"` **and** `needs_review` is False — the label decides, and `needs_review` already folds in llm_judge's own doubt threshold, so no new numeric cut is introduced. When the judge disagrees or is unsure, the evidence survives with its low `quality_score` intact and stays heavily down-weighted everywhere: attenuation, not destruction. The distribution is stored on `Evidence.quality_distribution`, whose presence *is* the marker that a second opinion ran. A missing `judge_model` raises rather than resuming the old unconditional destroy, and a judge failure propagates to `_execute_op` as a loud quarantine.
+
+This is the only place `epistemic` uses `llm_judge`'s elicitation layer. `epistemic_judge_evidence` is deliberately **not** converted: it forces a four-step scope analysis and enforces `in_scope` ↔ argmax over `{supports, contradicts, no_bearing}` via a retry-triggering cross-field validator, none of which llm_judge's generic `meets/partial/fails` schema can express.
+
+**The gate must be reachable from every construction path.** `judge_model` flows from `run_epistemic_graph` → `EpistemicDeps` → `_make_op`. Two graph nodes bypass `_make_op` because their operation takes a `providers` kwarg it cannot supply (`PlanEvidence._run_dispatch`, `ResolveUncertainties._run_investigate`), and `dispatch_and_persist_for_text` builds its own `ExtractEvidenceOperation` helper. All three are the *primary* evidence-gathering path, and all three must carry the same dependency set as `_make_op` — the helper now uses `BaseOperation.derive`, which copies the set rather than enumerating it, and `test_structural_wiring::TestInlineOperationConstructionsMatchMakeOp` pins the two node constructions equal to `_make_op` so the next dependency added cannot skip them. The wiring raise deliberately stays at the point of use rather than at operation construction: an item scored via Path 1 or Path 3 never reaches the gate, so asserting the dependency at construction would make a judge model mandatory for callers that never elicit one. See the decision recorded in `_confirm_or_retain_low_quality`'s docstring.
 
 ---
 
@@ -460,8 +488,10 @@ four gates, the artefact's `> **Verdict:**` line
 the CLI, the offline report, and the HTML audit report. `verdict_label` in
 `entities/verdict.py` is the ONLY place in the package that compares a
 posterior against `POSTERIOR_DIRECTIONAL_BREAKPOINT`; `display_label` maps
-the resulting *direction* onto the five-label display vocabulary and never
-re-thresholds. A source scan pins both properties.
+the resulting *direction* onto the six-label display vocabulary and never
+re-thresholds — it is a total function of the direction, with no terminal-state
+override (see §10, *Display labels*). A source scan pins both properties, and
+also pins that `audit_report` neither calls the mapping nor spells a label.
 
 Reachability mirrors the artefact duality: 1-hop live via
 `PipelineResult.verdict`, auditable freeze via
@@ -497,11 +527,31 @@ A doubly-provisional verdict gets `0.7 × 0.7 = 0.49` of its full distance from 
 
 | Posterior | Label |
 |---|---|
-| ≥ 0.66 (`POSTERIOR_DIRECTIONAL_BREAKPOINT`) | **supports** |
-| ≤ 0.34 (1 − breakpoint) | **contradicts** |
-| 0.34 < p < 0.66 | **insufficient** |
+| > 0.66 (`POSTERIOR_DIRECTIONAL_BREAKPOINT`) | **supports** |
+| < 0.34 (1 − breakpoint) | **contradicts** |
+| 0.34 ≤ p ≤ 0.66 | **insufficient** |
+
+Both comparisons are **strict** — a posterior of exactly 0.66 or exactly 0.34 is `insufficient`. `entities.verdict.verdict_label` is the sole implementation; the audit report's legend prints the same strict band.
 
 The directional breakpoint is wider than 0.5 to keep the label calibrated with the underlying evidence strength. `POSTERIOR_DECISIVE_THRESHOLD = 0.85` is a separate, stricter threshold used only by `CheckSynthesisDemand` Gate 4 to decide whether more inquiry could change the headline.
+
+### Display labels
+
+`verdict_label` produces a *direction*; `entities.verdict.display_label` maps that direction — and nothing else — onto the closed display vocabulary. It is a total function of the direction: no second threshold comparison, and (since 2026-08-09) no terminal-state override, so the objective headline and the per-claim badges in one document cannot disagree.
+
+| Direction | Display label |
+|---|---|
+| `supports` | **Confirmed** (or *Confirmed with refinement*) |
+| `contradicts` | **Refuted** |
+| `insufficient` | **Inconclusive** |
+| `no_verdict` (claim level: never adjudicated) | **Insufficient evidence** |
+| `no_data` / `union` (objective level: no scalar verdict by construction) | **No single verdict** |
+
+`no_data` is a question type `compute_posterior` declines to score; `union` is a UNION decomposition whose rule declares the sub-investigations are facets rather than a value to combine. Neither means "the evidence did not decide" — the claims may all be adjudicated — so both render as *No single verdict* with the per-claim results as the answer.
+
+`retrieval_failed` no longer suppresses the direction in the label. `CheckCompletion` routes `retrieval_failed` + at least one adjudicated claim to the *directional* terminal by design, so the caveat is reported as a caveat: `render_verdict_line` appends "retrieval failed" to the same line and the audit report renders the terminal state explicitly.
+
+The fallibilism terminal is the one exception, and it is a routing fact rather than a second derivation: `SynthesizeInsufficientReportOperation` renders through `render_insufficient_verdict_line`, which pins the label to *Insufficient evidence* because reaching that terminal is the system declaring it has no directional answer. Every provenance clause on the line still comes from the same object.
 
 ---
 
@@ -596,6 +646,9 @@ Every decision-relevant numeric threshold lives in `epistemic/thresholds.py`. Ea
 | Constant | Value | Read by |
 |---|---|---|
 | `JUDGMENT_ONE_HOT_THRESHOLD` | 0.95 | `judgment_signal.distribution_is_one_hot` — top-class mass at or above this marks the judgment's entropy as uninformative (the small-model degeneracy mode identified in the local-model calibration study) |
+| `JUDGMENT_DOUBT_ESCALATION_THRESHOLD` | 0.5 | `graph.nodes.CheckSynthesisDemand._judgment_doubt_demand` (sole reader) — aggregate judgment doubt at or above this buys the objective one extra round of inquiry. Deliberately **identical** to `llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD`: one doubt scale, one cutoff, pinned equal by `tests/test_doubt_scale_single_source.py` rather than by an import |
+
+`epistemic.judgment_signal` and `llm_judge.signals` are one definition of doubt implemented twice, kept in step by a drift test. The import is not available in the other direction: `import andamentum.llm_judge.signals` executes the package `__init__` → `panel` → `elicit` → `pydantic_ai`, and `judgment_signal` is imported by `entities/evidence.py`, a pure-stdlib leaf. `argmax_verdict` is the one primitive deliberately *not* converged — `llm_judge.signals.argmax_label` uses a tie tolerance, epistemic uses exact `max`, and the near-tie behaviour feeds the `in_scope` validator and the promotion gates.
 
 The constants are deliberately few. Adding a new threshold requires the same justification (theoretical basis plus the sites that read it) as the existing set. Bare numeric literals in decision logic across the rest of `epistemic/` are an architectural smell.
 

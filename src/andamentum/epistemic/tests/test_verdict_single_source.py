@@ -7,6 +7,7 @@ catch the accumulation itself rather than one instance of its symptom.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import andamentum.epistemic.audit_report as audit_report
@@ -24,6 +25,26 @@ def _package_sources() -> list[Path]:
         for p in _SRC.rglob("*.py")
         if "tests" not in p.parts and "__pycache__" not in p.parts
     ]
+
+
+def _docstring_nodes(tree: ast.AST) -> set[ast.AST]:
+    """The Constant nodes that are docstrings, so prose may name the
+    thing it forbids without tripping the scan."""
+    out: set[ast.AST] = set()
+    for node in ast.walk(tree):
+        if not isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            continue
+        body = getattr(node, "body", [])
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            out.add(body[0].value)
+    return out
 
 
 def test_only_the_verdict_module_reads_the_directional_breakpoint() -> None:
@@ -95,8 +116,50 @@ def test_report_generator_does_not_parse_the_verdict_out_of_prose() -> None:
 def test_audit_report_has_no_independent_verdict_derivation() -> None:
     """The renderer reads the object's labels instead of re-deriving
     them, so the Q&A headline and the per-claim badges in one document
-    can no longer disagree."""
+    can no longer disagree.
+
+    Deleting the old function is necessary but not sufficient — the same
+    derivation could be reintroduced under any name. So the source is
+    scanned too: the renderer may not call the mapping functions, and it
+    may not spell any display label except the ``VERDICT_INSUFFICIENT``
+    it imports as a null-handling default in ``_claim_badge``.
+    """
     assert not hasattr(audit_report, "_normalised_verdict")
+
+    tree = ast.parse(Path(audit_report.__file__).read_text())
+
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert not called & {"verdict_label", "display_label"}, (
+        "audit_report calls the posterior→label mapping — it must read "
+        "the labels the verdict object already decided"
+    )
+
+    labels = {
+        "Confirmed",
+        "Confirmed with refinement",
+        "Refuted",
+        "Inconclusive",
+        "No single verdict",
+        "Insufficient evidence",
+    }
+    spelled = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value in labels
+        and node not in _docstring_nodes(tree)
+    }
+    assert not spelled, (
+        f"audit_report spells display labels {sorted(spelled)} as string "
+        "literals — the vocabulary is owned by entities/verdict.py, which "
+        "audit_report imports (VERDICT_INSUFFICIENT) for its one "
+        "null-handling default."
+    )
 
 
 def test_snapshot_carries_a_typed_verdict_not_an_untyped_blob() -> None:

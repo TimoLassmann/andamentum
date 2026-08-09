@@ -24,6 +24,7 @@ from .deps import EpistemicDeps
 from .result import EpistemicResult
 from ..thresholds import (
     ADVERSARIAL_SURVIVED_THRESHOLD,
+    JUDGMENT_DOUBT_ESCALATION_THRESHOLD,
     PEIRCE_CYCLE_CAP,
     POSTERIOR_DECISIVE_THRESHOLD,
 )
@@ -52,6 +53,29 @@ logger = logging.getLogger(__name__)
 # canonical value defined in ``epistemic.thresholds``. See that
 # module for the philosophical basis.
 SCRUTINY_RESOLVE_CYCLE_CAP = PEIRCE_CYCLE_CAP
+
+
+def _loopback_eligible(claim: Any, state: EpistemicGraphState) -> bool:
+    """Could another round of inquiry on this claim plausibly change anything?
+
+    True when the claim is neither cycle-capped nor already at
+    ``SCRUTINY_RESOLVE_CYCLE_CAP``. (Abandonment is the caller's filter —
+    both call sites work from an already-active claim list.)
+
+    ONE predicate, two readers: ``CheckSynthesisDemand._maybe_loop_back``
+    (which claims to add to the rescrutiny set) and
+    ``CheckSynthesisDemand._judgment_doubt_demand`` (whether high judgment
+    doubt is worth escalating on at all). They MUST agree: the doubt gate
+    routes through ``_maybe_loop_back``, and a doubt gate that fired on a
+    claim the loop-back considers ineligible would hand ``_maybe_loop_back``
+    an empty eligible set — the exact shape that routes to
+    ``SynthesizeInsufficient``. Sharing the predicate makes that
+    structurally impossible rather than conventionally avoided.
+    """
+    if getattr(claim, "cycle_capped", False):
+        return False
+    cycles = state.scrutiny_resolve_cycles.get(claim.entity_id, 0)
+    return cycles < SCRUTINY_RESOLVE_CYCLE_CAP
 
 
 async def _mark_cycle_capped(
@@ -173,6 +197,7 @@ def _make_op(op_class: type, deps: EpistemicDeps) -> Any:
         evidence_gatherer=deps.evidence_gatherer,
         quality_scorer=deps.quality_scorer,
         embedding_model=deps.embedding_model,
+        judge_model=deps.judge_model,
     )
 
 
@@ -654,6 +679,11 @@ class PlanEvidence(Node):
         deps. Kept inline (rather than through ``_run_op``) because the
         operation takes a non-standard ``providers`` kwarg that
         ``_make_op`` doesn't know about.
+
+        Because it bypasses ``_make_op``, this construction must pass
+        every dependency ``_make_op`` passes — anything omitted here is
+        silently absent on the live graph path only.
+        ``test_structural_wiring`` pins the two lists equal.
         """
         from ..operations.base import OperationInput, OperationResult
         from ..operations.dispatch_gather import DispatchGatherOperation
@@ -664,6 +694,7 @@ class PlanEvidence(Node):
             evidence_gatherer=deps.evidence_gatherer,
             quality_scorer=deps.quality_scorer,
             embedding_model=deps.embedding_model,
+            judge_model=deps.judge_model,
             providers=deps.providers,
         )
         work = OperationInput(
@@ -1015,6 +1046,11 @@ class Investigate(Node):
         operation takes a non-standard ``providers`` kwarg that
         ``_make_op`` doesn't know about — same pattern as PlanEvidence
         uses for DispatchGatherOperation.
+
+        Because it bypasses ``_make_op``, this construction must pass
+        every dependency ``_make_op`` passes — anything omitted here is
+        silently absent on the live graph path only.
+        ``test_structural_wiring`` pins the two lists equal.
         """
         from ..operations.base import OperationInput, OperationResult
         from ..operations.investigation import InvestigateClaimOperation
@@ -1025,6 +1061,7 @@ class Investigate(Node):
             evidence_gatherer=deps.evidence_gatherer,
             quality_scorer=deps.quality_scorer,
             embedding_model=deps.embedding_model,
+            judge_model=deps.judge_model,
             providers=deps.providers,
         )
         work = OperationInput(
@@ -2496,6 +2533,15 @@ class CheckSynthesisDemand(Node):
     Deterministic gates run first as cheap pre-filters; the LLM call
     only fires when the deterministic checks don't already determine
     satisfaction.
+
+    Gate 0 (aggregate judgment doubt) runs before all of them. It is the
+    only gate that asks about the QUALITY OF THE INPUTS rather than about
+    the conclusion: when the evidence judgments behind a claim's verdict
+    were internally unsure, it buys the objective one — and only one —
+    extra round of inquiry. It fires at most once per run
+    (``state.judgment_doubt_escalated``) and only over
+    loop-back-eligible claims, so it can never route to the insufficient
+    terminal.
     """
 
     reads = frozenset(
@@ -2504,9 +2550,10 @@ class CheckSynthesisDemand(Node):
             "verdict",
             "claims_needing_rescrutiny",
             "scrutiny_resolve_cycles",
+            "judgment_doubt_escalated",
         }
     )
-    writes = frozenset({"claims_needing_rescrutiny"})
+    writes = frozenset({"claims_needing_rescrutiny", "judgment_doubt_escalated"})
     operations = frozenset()  # uses agent_runner directly, not _run_op
     post_invariants = ()
 
@@ -2522,6 +2569,26 @@ class CheckSynthesisDemand(Node):
         objective = await deps.repo.get("objective", state.objective_id)
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         active_claims = [c for c in all_claims if not c.abandoned]
+
+        # ── Gate 0: aggregate judgment doubt ─────────────────────────
+        # Deterministic, zero-LLM, and FIRST. Placement is load-bearing,
+        # not stylistic: Gate 1 below short-circuits to "satisfied" for
+        # every run without a combination rule — i.e. every verify-mode
+        # and open-research run, exactly the runs this signal exists
+        # for. A doubt gate placed after it would be dead code on the
+        # whole SciFact arm. Running first also means it pre-empts the
+        # expensive reproducibility tripwire in Gate 4, consistent with
+        # this node's "deterministic gates first as cheap pre-filters"
+        # contract.
+        doubt_demand = self._judgment_doubt_demand(active_claims, state)
+        if doubt_demand is not None:
+            state.judgment_doubt_escalated = True
+            self._log_demand(doubt_demand, deps, state.objective_id)
+            # Structurally always Scrutinize(): the gate fires only when
+            # the loop-back-eligible set is non-empty (both consult
+            # ``_loopback_eligible``), so this can never manufacture a
+            # false "insufficient".
+            return self._maybe_loop_back(doubt_demand, active_claims, state)
 
         # ── Compute the demand ──────────────────────────────────────
         # Every path below produces a ``demand`` variable. The single
@@ -2583,6 +2650,15 @@ class CheckSynthesisDemand(Node):
         # Gate 3: stranded claims present (the load-bearing invariant
         # caught by no_stranded_claims). Defensive — this should never
         # happen at synthesis if upstream routing is correct.
+        #
+        # ``prov.n_no_verdict`` is scoped to the COMBINATION SCOPE, not
+        # to every active claim, precisely so this gate keeps the
+        # pre-verdict-object routing: it counts the decomposition-matched
+        # claims the combiner would have dropped, exactly as
+        # ``combine_claim_verdicts(ordered, ...).n_no_verdict`` did. See
+        # ``confidence.build_verdict`` for why widening it here would be
+        # an unbenchmarked routing/LLM-cost change of the same kind Gate 1
+        # above declines to make.
         elif prov.n_no_verdict > 0:
             demand = Demand.needs(
                 justification=(
@@ -2727,6 +2803,79 @@ class CheckSynthesisDemand(Node):
 
         return self._maybe_loop_back(demand, active_claims, state)
 
+    @staticmethod
+    def _judgment_doubt_demand(
+        active_claims: list[Any],
+        state: EpistemicGraphState,
+    ) -> Any:
+        """A ``Demand`` when the judgments behind a claim's verdict were
+        internally unsure enough to warrant one more round — else ``None``.
+
+        The pipeline makes many sampled LLM judgments per claim and then feeds
+        them to threshold-based gates, so small judgment noise becomes
+        categorical output flips. ``Claim.scrutiny_doubt`` is the measured
+        version of that noise: the directional-mass-weighted mean entropy of
+        the evidence judgments that produced the scrutiny verdict. This gate
+        turns a high value into the system's existing "do more work" primitive
+        — a ``Demand`` routed through the lazy-escalation loop (P7) — rather
+        than into a new mechanism.
+
+        Three conditions, all necessary:
+
+        1. The escalation has not already fired this run
+           (``state.judgment_doubt_escalated``). Doubt buys ONE extra round,
+           not a budget: it is a suspicion-raiser, and without this bound a
+           persistently-unsure claim would spend its whole scrutiny-resolve
+           budget on noise.
+        2. At least one claim is ``_loopback_eligible`` — the same predicate
+           ``_maybe_loop_back`` uses, so the escalation can never route to
+           ``SynthesizeInsufficient``.
+        3. That claim carries a MEASURED doubt at or above
+           ``JUDGMENT_DOUBT_ESCALATION_THRESHOLD``. ``None`` never escalates:
+           an unmeasured claim (no eligible item carried a verbalized
+           distribution) is not a doubtful one, and treating it as such would
+           escalate on every pre-Tier-0 and adversarial-only claim.
+
+        Pure and LLM-free. It reads persisted state only, which is why it is
+        deliberately independent of the run's verdict object — it asks about
+        the quality of the inputs, not about the conclusion drawn from them.
+        """
+        from ..demand import Demand
+
+        if state.judgment_doubt_escalated:
+            return None
+
+        doubtful = [
+            c
+            for c in active_claims
+            if _loopback_eligible(c, state)
+            and getattr(c, "scrutiny_doubt", None) is not None
+            and c.scrutiny_doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+        ]
+        if not doubtful:
+            return None
+
+        detail = "; ".join(
+            f"{c.statement[:80]} (doubt {c.scrutiny_doubt:.2f})" for c in doubtful[:3]
+        )
+        more = f" and {len(doubtful) - 3} more" if len(doubtful) > 3 else ""
+        return Demand.needs(
+            justification=(
+                f"{len(doubtful)} claim(s) hold a verdict whose underlying "
+                f"evidence judgments were internally unsure "
+                f"(aggregate judgment doubt at or above "
+                f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f}): {detail}{more}. "
+                f"The direction of these verdicts rests on judgments that "
+                f"barely committed, so one more round of inquiry may change "
+                f"the headline."
+            ),
+            target_hint=(
+                "Gather evidence that would let a judge commit — clearer, "
+                "more directly on-point sources for the claims named above, "
+                "rather than more of the same."
+            ),
+        )
+
     def _maybe_loop_back(
         self,
         demand: Any,
@@ -2738,7 +2887,8 @@ class CheckSynthesisDemand(Node):
 
         We loop back when there's at least one claim that's
         non-abandoned, non-cycle-capped, and hasn't hit the per-claim
-        ``SCRUTINY_RESOLVE_CYCLE_CAP``. Those are the claims for which
+        ``SCRUTINY_RESOLVE_CYCLE_CAP`` — the shared module-level
+        ``_loopback_eligible`` predicate. Those are the claims for which
         another round of inquiry could plausibly change the outcome.
 
         When NO claim can make progress (all eligible claims are
@@ -2755,14 +2905,9 @@ class CheckSynthesisDemand(Node):
         side: claims that are at cap don't get re-added to rescrutiny,
         so we always reach a terminal state.
         """
-        eligible_claim_ids: list[str] = []
-        for c in active_claims:
-            if getattr(c, "cycle_capped", False):
-                continue
-            cycles = state.scrutiny_resolve_cycles.get(c.entity_id, 0)
-            if cycles >= SCRUTINY_RESOLVE_CYCLE_CAP:
-                continue
-            eligible_claim_ids.append(c.entity_id)
+        eligible_claim_ids = [
+            c.entity_id for c in active_claims if _loopback_eligible(c, state)
+        ]
 
         if not eligible_claim_ids:
             # All non-abandoned claims are either cycle-capped or at
@@ -2985,7 +3130,9 @@ class SynthesizeInsufficient(Node):
             "verdict",
         }
     )
-    writes = frozenset()
+    # Stamps provenance.suspended_judgment onto the verdict — the terminal the
+    # graph chose, which no renderer can re-derive from the counts (P2/P6).
+    writes = frozenset({"verdict"})
     operations = frozenset()  # populated below
     post_invariants = (no_stranded_claims, capped_claims_carry_a_cap_evaluation)
 
@@ -3000,6 +3147,16 @@ class SynthesizeInsufficient(Node):
         state = ctx.state
         deps = ctx.deps
         oid = state.objective_id
+
+        # Stamp the chosen terminal onto the verdict BEFORE the freeze, so the
+        # snapshot and every renderer agree. The terminal is the one piece of
+        # provenance a renderer cannot re-derive — a suspended run and a
+        # genuinely inconclusive one carry identical counts — and P2 makes this
+        # the graph's call, not an operation's. Without it, audit_report and the
+        # CLI headlined "Inconclusive — posterior 0.500" above a body reading
+        # "No posterior — no IBE-certified verdict."
+        if state.verdict is not None:
+            state.verdict.provenance.suspended_judgment = True
 
         await _run_op(
             FreezeSnapshotOperation,

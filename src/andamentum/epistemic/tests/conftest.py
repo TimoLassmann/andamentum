@@ -427,3 +427,58 @@ def partially_failing_runner():
         return PartiallyFailingRunner(fail_on=fail_on, fallback_runner=fallback)
 
     return _factory
+
+
+class _StubbedJudge:
+    """Recorder for a monkeypatched ``llm_judge`` elicitation."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+
+@pytest.fixture
+def stub_llm_judge(monkeypatch):
+    """Monkeypatch ``llm_judge``'s single model-call seam, offline.
+
+    Returns a factory: call it with a ``(meets, partial, fails)`` belief
+    triple (or an exception instance to raise) and it installs the stub,
+    returning a recorder whose ``.calls`` holds one dict per elicitation —
+    ``model``, ``temperature``, ``criterion``, ``output``, ``context``.
+
+    The patch is applied to ``andamentum.llm_judge.elicit`` — the MODULE
+    object — because ``panel`` calls it as ``elicit.elicit_criterion_score``,
+    so patching a name imported into ``panel`` would not be seen. This fixture
+    lives in the shared conftest so no epistemic test can accidentally reach a
+    live model on the second-opinion path.
+    """
+    from andamentum.llm_judge import elicit as _elicit
+
+    def _install(
+        triple: tuple[int, int, int] = (5, 5, 90),
+        *,
+        reasoning: str = "stub judgment",
+        raises: BaseException | None = None,
+    ) -> _StubbedJudge:
+        recorder = _StubbedJudge()
+
+        async def _fake(output, criterion, context, *, model, temperature):
+            recorder.calls.append(
+                {
+                    "model": model,
+                    "temperature": temperature,
+                    "criterion": criterion.name,
+                    "output": output,
+                    "context": context,
+                }
+            )
+            if raises is not None:
+                raise raises
+            meets, partial, fails = triple
+            return SimpleNamespace(
+                reasoning=reasoning, meets=meets, partial=partial, fails=fails
+            )
+
+        monkeypatch.setattr(_elicit, "elicit_criterion_score", _fake)
+        return recorder
+
+    return _install

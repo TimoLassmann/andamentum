@@ -333,6 +333,22 @@ class ConcludeAtCycleCapOperation(BaseOperation):
     ``MECHANICAL_VERDICT_MAX_CONFIDENCE`` ceiling — one ceiling, two
     documented derivations.
 
+    THE DOUBT IS RECORDED, NOT DISCARDED. ``compute_evidence_weight``
+    also reports ``EvidenceWeight.doubt`` — the directional-mass-weighted
+    mean entropy of the verbalized judgment distributions behind the
+    mass. This is the one site in the pipeline that mints a verdict with
+    no LLM deliberation whatsoever, so the uncertainty of the judgments
+    it stands on is the only uncertainty it has; discarding it here would
+    contradict the premise that a judgment carries its doubt. It is
+    persisted on ``CapEvaluation.doubt`` (and therefore reaches
+    ``ClaimVerdict.cap_evaluation`` and every renderer) as a
+    MEASUREMENT only. It is deliberately NOT written to
+    ``Claim.scrutiny_doubt`` — that field has exactly one writer,
+    ``ScrutiniseClaimOperation``, and a second writer would make its
+    provenance ambiguous — and it deliberately does NOT escalate: a
+    capped claim is not ``_loopback_eligible``, which is the whole point
+    of the cap.
+
     WHAT IT DELIBERATELY DOES NOT DO:
 
     * It does not change ``claim.stage``. A capped claim is one whose
@@ -410,6 +426,7 @@ class ConcludeAtCycleCapOperation(BaseOperation):
             n_evidence=len(evidence),
             verdict=verdict,
             confidence=confidence,
+            doubt=weight.doubt,
             wrote_live_verdict=wrote_verdict,
         )
 

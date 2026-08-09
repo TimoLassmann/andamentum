@@ -19,9 +19,12 @@ synthesis prose, the CLI, the offline report and the HTML audit report.
 ``verdict_label`` here is the ONLY place in the package that compares a
 posterior against ``POSTERIOR_DIRECTIONAL_BREAKPOINT``
 (``tests/test_verdict_single_source.py`` pins that by source scan).
-``display_label`` maps a *direction* onto the five-label user-facing
+``display_label`` maps a *direction* onto the six-label user-facing
 vocabulary and never re-thresholds — that is what removes the old
-``>`` (combiner) vs ``>=`` (renderer) boundary disagreement.
+``>`` (combiner) vs ``>=`` (renderer) boundary disagreement. It is a
+total function of the direction: no terminal-state override, no second
+comparison, so the objective headline and the per-claim badges in one
+document cannot say different things about the same number.
 
 Leaf module by construction: it imports ``pydantic``, ``..thresholds``
 and ``.cap_evaluation`` and nothing else, so ``entities/snapshot.py``
@@ -42,7 +45,7 @@ from .cap_evaluation import CapEvaluation
 
 # ── The closed display vocabulary ────────────────────────────────────
 #
-# Five labels, chosen so their lowercased form does NOT match the
+# Six labels, chosen so their lowercased form does NOT match the
 # ``[data-value="supported"]`` / ``[data-value="contradicts"]`` CSS
 # rules in typeset — badges render neutral and the WORD does the
 # signalling. Moved here from ``audit_report`` so the renderer reads
@@ -52,6 +55,17 @@ VERDICT_CONFIRMED_REFINED = "Confirmed with refinement"
 VERDICT_REFUTED = "Refuted"
 VERDICT_INCONCLUSIVE = "Inconclusive"
 VERDICT_INSUFFICIENT = "Insufficient evidence"
+# The sixth, added 2026-08-09. Some runs have no SCALAR objective verdict
+# by construction — an open-research question type that
+# ``compute_posterior`` declines to score, or a UNION decomposition whose
+# rule declares the sub-investigations are facets rather than a value to
+# combine. Both used to collapse onto "Insufficient evidence", which is a
+# different (and false) statement: it says the evidence did not decide,
+# while the per-claim badges in the same document said "Confirmed". That
+# is the headline-vs-badge disagreement this module exists to remove, and
+# on the open-research arm it was a regression — the previous headline at
+# least answered the question.
+VERDICT_PER_CLAIM = "No single verdict"
 
 # The directional band, named once. The renderer imports THESE to print
 # its legend rather than importing the threshold itself — so the source
@@ -81,31 +95,54 @@ def verdict_label(p: float) -> str:
     return "insufficient"
 
 
-def display_label(
-    direction: str,
-    terminal_state: str = "completed",
-    *,
-    has_supports_refined: bool = False,
-) -> str:
-    """Map a *direction* onto the five-label display vocabulary.
+def display_label(direction: str, *, has_supports_refined: bool = False) -> str:
+    """Map a *direction* onto the six-label display vocabulary.
 
-    Never re-thresholds — it consumes the direction ``verdict_label``
-    already decided. The one extra rule it applies is the terminal-state
-    override, preserved verbatim from the renderer it replaces: an
-    inquiry that did not complete (``retrieval_failed`` /
-    ``oscillation_detected``) reports "Insufficient evidence" whatever
-    the number says, because in that state the posterior is not a
-    directional answer.
+    A TOTAL FUNCTION OF THE DIRECTION, and nothing else. It never
+    re-thresholds (it consumes the direction ``verdict_label`` already
+    decided), and — since 2026-08-09 — it no longer applies a
+    terminal-state override.
+
+    Why the override went. It was lifted verbatim from the HTML renderer
+    this function replaces, where it only ever coloured a report. Moving
+    it here put it on the artefact's code-owned ``> **Verdict:**`` line,
+    i.e. on the string the benchmark harness writes to ``synthesis.md``
+    — and there it contradicted the router. ``CheckCompletion``
+    deliberately sends ``retrieval_failed`` + at least one adjudicated
+    claim to the DIRECTIONAL terminal ("retrieval_failed is annotated in
+    prose but does not suppress it"), so that run's posterior,
+    ``artefact_type``, prose and routing all say directional while the
+    headline alone said "Insufficient evidence".
+
+    The terminal state is still reported — as a CAVEAT rather than as a
+    verdict: ``render_verdict_line`` appends "retrieval failed" to the
+    same line, and ``audit_report._confidence_body`` renders the state
+    explicitly. For ``oscillation_detected`` the override was redundant
+    anyway: ``compute_posterior`` forces the posterior to 0.5 in that
+    state, so the direction is already "insufficient".
+
+    Directions and their labels:
+
+    * ``supports`` / ``contradicts`` — Confirmed (or Confirmed with
+      refinement) / Refuted.
+    * ``insufficient`` — a scalar verdict exists and sits inside the
+      neutral band: Inconclusive.
+    * ``no_verdict`` (claim level) — this claim was never adjudicated:
+      Insufficient evidence.
+    * ``no_data`` / ``union`` (objective level) — there is no single
+      scalar verdict BY CONSTRUCTION, and the per-claim results are the
+      answer: "No single verdict".
     """
-    if terminal_state != "completed":
-        return VERDICT_INSUFFICIENT
     if direction == "supports":
         return VERDICT_CONFIRMED_REFINED if has_supports_refined else VERDICT_CONFIRMED
     if direction == "contradicts":
         return VERDICT_REFUTED
     if direction == "insufficient":
         return VERDICT_INCONCLUSIVE
-    # "no_data" / "union" — there is no scalar verdict to display.
+    if direction in ("no_data", "union"):
+        return VERDICT_PER_CLAIM
+    # "no_verdict", plus anything a future direction adds: the honest
+    # default is that nothing was adjudicated here.
     return VERDICT_INSUFFICIENT
 
 
@@ -257,21 +294,20 @@ class ClaimVerdict(BaseModel):
             "here is what keeps the aggregate complete."
         ),
     )
-    terminal_state: str = Field(
-        default="completed",
-        description=(
-            "The objective-level terminal state, carried per claim so the "
-            "badge label and the headline label cannot disagree about "
-            "whether the inquiry completed."
-        ),
-    )
-
     @computed_field  # type: ignore[prop-decorator]
     @property
     def direction(self) -> str:
-        """'supports' | 'contradicts' | 'insufficient' | 'no_data'."""
+        """'supports' | 'contradicts' | 'insufficient' | 'no_verdict'.
+
+        ``no_verdict`` — not ``no_data`` — because at the CLAIM level a
+        missing posterior means this claim was never adjudicated, which
+        reads as "Insufficient evidence". At the OBJECTIVE level the same
+        absence means something different (the question admits no scalar
+        verdict at all), so the two levels use different words and
+        ``display_label`` can map each correctly without a mode flag.
+        """
         if self.posterior is None:
-            return "no_data"
+            return "no_verdict"
         return verdict_label(self.posterior)
 
     @computed_field  # type: ignore[prop-decorator]
@@ -280,7 +316,6 @@ class ClaimVerdict(BaseModel):
         """Display label for this claim's badge."""
         return display_label(
             self.direction,
-            self.terminal_state,
             has_supports_refined=self.integrated_assessment == "supports_refined",
         )
 
@@ -319,10 +354,39 @@ class VerdictProvenance(BaseModel):
     )
     n_no_verdict: int = Field(
         default=0,
-        description="Active claims with no integration verdict (n_active - n_adjudicated).",
+        description=(
+            "Claims in the COMBINATION SCOPE with no integration verdict — "
+            "the decomposition-matched, non-abandoned subset when the "
+            "objective has a decomposition, otherwise every active claim. "
+            "Deliberately a narrower scope than ``n_adjudicated`` (which is "
+            "over all active claims): this is what CheckSynthesisDemand's "
+            "stranded-claims gate routes on, and widening it to include "
+            "orphan claims would change routing and LLM cost on decomposed "
+            "runs. Orphans are surfaced by ``n_orphan`` instead."
+        ),
     )
     n_orphan: int = 0
     combination_explanation: str = ""
+    suspended_judgment: bool = Field(
+        default=False,
+        description=(
+            "The run was routed to the FALLIBILISM TERMINAL — "
+            "``SynthesizeInsufficient`` — so the system is declining to give a "
+            "directional answer, and every surface must say so.\n\n"
+            "This lives on the object because the terminal is the one piece of "
+            "provenance a renderer cannot re-derive from the counts: a run with "
+            "posterior 0.5 and one adjudicated claim looks identical to a "
+            "suspended one. Without it, each caller had to know out-of-band "
+            "which of the two renderers to use — ``operations/synthesis.py`` "
+            "knew (it IS the insufficient operation) while ``audit_report.py`` "
+            "and ``cli_handlers.py`` did not, and both rendered "
+            "'Inconclusive — posterior 0.500' as the headline of a document "
+            "whose body said 'No posterior — no IBE-certified verdict.' A "
+            "self-contradicting artefact is precisely what the one-verdict-"
+            "object change exists to make impossible, so the flag is on the "
+            "object and ``render_verdict_line`` dispatches on it."
+        ),
+    )
 
 
 class EpistemicVerdict(BaseModel):
@@ -366,7 +430,16 @@ class EpistemicVerdict(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def direction(self) -> str:
-        """'supports' | 'contradicts' | 'insufficient' | 'no_data' | 'union'."""
+        """'supports' | 'contradicts' | 'insufficient' | 'no_data' | 'union'.
+
+        ``no_data`` and ``union`` are the two states in which the run has
+        NO scalar objective verdict by construction — ``compute_posterior``
+        declines to score this question type, or the decomposition's UNION
+        rule declares the sub-investigations are facets rather than a value
+        to combine. They are not "the evidence did not decide"; the claims
+        may all be adjudicated. ``display_label`` maps both to
+        "No single verdict".
+        """
         if self.posterior_report is None:
             return "no_data"
         if (self.provenance.combination_rule or "").upper() == "UNION":
@@ -382,11 +455,39 @@ class EpistemicVerdict(BaseModel):
             for c in self.claims
             if not c.abandoned
         )
-        return display_label(
-            self.direction,
-            self.terminal_state,
-            has_supports_refined=has_refined,
-        )
+        return display_label(self.direction, has_supports_refined=has_refined)
+
+
+def _verdict_detail_parts(verdict: EpistemicVerdict) -> list[str]:
+    """The provenance clauses that follow the label on a verdict line.
+
+    Shared by both renderers so the two terminals cannot drift in the
+    detail they report — only in the label they are entitled to print.
+    """
+    parts: list[str] = []
+    direction = verdict.direction
+    p = verdict.posterior
+    if direction == "union":
+        # The UNION rule declines a scalar by construction. ``compute_posterior``
+        # still falls through to its confidence-weighted average and produces
+        # a number, but printing it beside "No single verdict" is precisely
+        # the self-contradictory line this module exists to prevent.
+        parts.append("see per-claim results")
+    elif direction == "no_data":
+        parts.append("see per-claim results")
+    elif p is not None:
+        parts.append(f"posterior {p:.3f}")
+    prov = verdict.provenance
+    noun = "claim" if prov.n_active_claims == 1 else "claims"
+    parts.append(f"{prov.n_adjudicated} of {prov.n_active_claims} {noun} adjudicated")
+    if prov.n_cycle_capped:
+        parts.append(f"{prov.n_cycle_capped} cycle-capped")
+    if prov.retrieval_failed:
+        # A CAVEAT, not a verdict. ``display_label`` deliberately no
+        # longer suppresses the direction for a non-completed terminal
+        # state — see its docstring.
+        parts.append("retrieval failed")
+    return parts
 
 
 def render_verdict_line(verdict: Optional[EpistemicVerdict]) -> str:
@@ -399,15 +500,40 @@ def render_verdict_line(verdict: Optional[EpistemicVerdict]) -> str:
     """
     if verdict is None:
         return VERDICT_INSUFFICIENT
-    parts = [verdict.label]
-    p = verdict.posterior
-    if p is not None:
-        parts.append(f"posterior {p:.3f}")
-    prov = verdict.provenance
-    noun = "claim" if prov.n_active_claims == 1 else "claims"
-    parts.append(f"{prov.n_adjudicated} of {prov.n_active_claims} {noun} adjudicated")
-    if prov.n_cycle_capped:
-        parts.append(f"{prov.n_cycle_capped} cycle-capped")
-    if prov.retrieval_failed:
-        parts.append("retrieval failed")
-    return f"{parts[0]} — " + " · ".join(parts[1:]) if len(parts) > 1 else parts[0]
+    # The object knows which terminal the graph chose, so every caller gets
+    # the right headline without having to know. Previously this dispatch
+    # lived in the caller and only ONE of the three callers performed it.
+    if verdict.provenance.suspended_judgment:
+        return render_insufficient_verdict_line(verdict)
+    parts = _verdict_detail_parts(verdict)
+    return f"{verdict.label} — " + " · ".join(parts) if parts else verdict.label
+
+
+def render_insufficient_verdict_line(verdict: Optional[EpistemicVerdict]) -> str:
+    """The verdict line for the FALLIBILISM TERMINAL specifically.
+
+    ``SynthesizeInsufficientReportOperation`` is the system declaring, in
+    a typed way (``Artefact.artefact_type == "insufficient"``, a document
+    titled "Insufficient Evidence"), that it is not giving a directional
+    answer. Its headline must say the same thing.
+
+    Without this, a run routed to that terminal by
+    ``CheckSynthesisDemand._maybe_loop_back`` — every claim cycle-capped
+    and every ``integrated_assessment`` equal to "insufficient" — rendered
+    ``Inconclusive — posterior 0.500 · 1 of 1 claim adjudicated`` inside a
+    document whose body says the investigation reached no integration
+    verdict. That is a fresh instance of the disagreeing-headline class,
+    manufactured by the renderer.
+
+    This is NOT a second verdict derivation: the label is fixed by the
+    terminal the graph chose, and every provenance clause still comes
+    from the same object through ``_verdict_detail_parts``. The routing
+    guarantees the direction is never ``supports``/``contradicts`` here —
+    ``CheckCompletion`` sends adjudicated runs to the directional
+    terminal, and the loop-back guard only falls through when no active
+    claim carries a directional verdict.
+    """
+    if verdict is None:
+        return VERDICT_INSUFFICIENT
+    parts = _verdict_detail_parts(verdict)
+    return f"{VERDICT_INSUFFICIENT} — " + " · ".join(parts) if parts else VERDICT_INSUFFICIENT

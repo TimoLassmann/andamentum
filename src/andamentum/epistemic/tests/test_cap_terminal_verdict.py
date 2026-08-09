@@ -882,6 +882,7 @@ def _cap_claim_for_persistence() -> Claim:
             n_evidence=4,
             verdict="contradicts",
             confidence=0.5,
+            doubt=0.37,
             wrote_live_verdict=True,
         ),
     )
@@ -995,6 +996,87 @@ async def test_the_cap_reads_the_same_evidence_as_scrutiny(
     assert reloaded.cap_evaluation.contradicting_mass == pytest.approx(
         expected.contradicting_mass
     )
+
+
+# ── The cap records the doubt of the judgments it stands on ──────────
+
+
+async def test_cap_evaluation_records_the_doubt_of_its_judgments(
+    tmp_path: Path,
+) -> None:
+    """The cap is the ONE site that mints a verdict with no LLM
+    deliberation, so the doubt of the judgments it stands on is the only
+    uncertainty it has. ``compute_evidence_weight`` reports it; discarding
+    it here would contradict the premise that a judgment carries its
+    doubt. PINS that ``CapEvaluation.doubt`` is the aggregator's number,
+    not a re-derivation.
+    """
+    _obj, claim, repo = await _setup(
+        tmp_path, "cap_doubt", n_supporting=1, n_contradicting=3
+    )
+    state = _state_at_cap(claim)
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    reloaded = await repo.get("claim", claim.entity_id)
+    expected = compute_evidence_weight(
+        await gates.eligible_representative_evidence(reloaded, repo)
+    )
+    assert reloaded.cap_evaluation is not None
+    assert expected.doubt is not None
+    assert reloaded.cap_evaluation.doubt == pytest.approx(expected.doubt)
+    # One-hot judgments: the reading is directional AND the judgments
+    # behind it were individually certain.
+    assert reloaded.cap_evaluation.doubt == pytest.approx(0.0, abs=1e-9)
+
+
+async def test_cap_evaluation_doubt_is_none_when_nothing_was_measured(
+    tmp_path: Path,
+) -> None:
+    """Unmeasured is not zero. Evidence judged before the verbalized-
+    distribution instrumentation carries a hard ``support_judgment`` and
+    no distribution: it contributes MASS but no doubt, so the cap records
+    ``doubt=None`` rather than the maximally-certain-looking 0.0.
+    """
+    _obj, claim, repo = await _setup(
+        tmp_path, "cap_doubt_none", n_supporting=1, n_contradicting=3
+    )
+    for ev_id in claim.evidence_ids:
+        ev = await repo.get("evidence", ev_id)
+        ev.judgment_distribution = None
+        await repo.save(ev)
+
+    state = _state_at_cap(claim)
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    reloaded = await repo.get("claim", claim.entity_id)
+    assert reloaded.cap_evaluation is not None
+    assert reloaded.cap_evaluation.doubt is None
+    # The mass is still there — the exemption is about doubt only.
+    assert reloaded.cap_evaluation.contradicting_mass > 0.0
+    assert reloaded.cap_evaluation.verdict == "contradicts"
+
+
+async def test_the_cap_does_not_write_the_scrutiny_doubt_field(
+    tmp_path: Path,
+) -> None:
+    """``Claim.scrutiny_doubt`` has exactly one writer,
+    ``ScrutiniseClaimOperation``. A second writer would make its
+    provenance ambiguous — is this the doubt behind the scrutiny verdict,
+    or behind the cap reading? The cap's own measurement lives on its own
+    record instead."""
+    _obj, claim, repo = await _setup(
+        tmp_path, "cap_doubt_owner", n_supporting=1, n_contradicting=3
+    )
+    state = _state_at_cap(claim)
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    reloaded = await repo.get("claim", claim.entity_id)
+    assert reloaded.cap_evaluation is not None
+    assert reloaded.cap_evaluation.doubt is not None
+    assert reloaded.scrutiny_doubt is None
 
 
 async def test_conclude_at_cycle_cap_makes_no_llm_call(tmp_path: Path) -> None:

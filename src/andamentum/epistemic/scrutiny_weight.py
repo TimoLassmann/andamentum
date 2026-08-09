@@ -12,6 +12,14 @@ Every input it needs already exists as structured data, so it is computed here:
 - **quality score** scales mass (bibliometric when available, a neutral prior
   otherwise — absence of a citation score is not evidence of low quality).
 
+The same pass also reports the **doubt** of the judgments that produced the
+verdict — the directional-mass-weighted mean of each item's normalized
+judgment entropy. The weight therefore answers two questions at once: which
+way does the mass point, and how internally unsure were the judgments that
+pointed it that way. Doubt never changes the label; it is a suspicion-raiser
+routed through the lazy-escalation ``Demand`` loop (see
+``thresholds.JUDGMENT_DOUBT_ESCALATION_THRESHOLD``).
+
 The verdict is then a function of the resulting supporting / contradicting mass:
 
 - **conflicting** — substantial mass on *both* directions (genuine disagreement);
@@ -37,7 +45,7 @@ from dataclasses import dataclass
 from math import log
 from typing import Iterable, Protocol
 
-from .judgment_signal import support_contradict_split
+from .judgment_signal import distribution_entropy, support_contradict_split
 from .thresholds import (
     SCRUTINY_CONFLICT_MINORITY_FRACTION,
     SCRUTINY_DEFAULT_QUALITY,
@@ -68,6 +76,17 @@ class EvidenceWeight:
     label: EvidenceWeightLabel
     supporting_mass: float
     contradicting_mass: float
+    #: Directional-mass-weighted mean normalized entropy of the judgments that
+    #: produced the masses above, in [0, 1] — a MEASUREMENT of how internally
+    #: unsure those judgments were, not an instruction to any stage.
+    #:
+    #: ``None``, never 0.0, when no distribution-carrying item contributed
+    #: directional mass. That distinction is load-bearing: 0.0 means "measured,
+    #: and the judgments were certain", while ``None`` means "not measured".
+    #: Coercing the latter to 0.0 would read as certainty the system never
+    #: established; coercing it to 1.0 would escalate on every pre-Tier-0 and
+    #: adversarial item. Only ``None`` can never escalate.
+    doubt: float | None = None
 
     def justification(self) -> str:
         return (
@@ -103,13 +122,37 @@ def compute_evidence_weight(
     reasons over (extracted, not invalidated, not corroborative/deferred). The
     result's ``label`` feeds the existing deterministic combination in
     ``ScrutiniseClaimOperation`` (blocking-issue downgrade, then verdict map).
+
+    ``doubt`` is accumulated in the SAME pass, weighted by each item's own
+    directional mass (``s + c``) — that is, by exactly the factor with which
+    the item moved the verdict. An item that barely shifted the balance barely
+    shifts its doubt. Items with no captured ``judgment_distribution``
+    (adversarial counter-evidence, pre-Tier-0 data) contribute mass but NOT
+    doubt: absence of a measured confidence is not evidence of low confidence,
+    the same exemption ``GATE_MIN_JUDGMENT_CONFIDENCE`` already encodes.
     """
     supporting = 0.0
     contradicting = 0.0
+    # Doubt accumulator, weighted by each item's own directional mass.
+    doubt_weight = 0.0
+    doubt_weighted_sum = 0.0
     for e in evidence_items:
         s, c = _item_masses(e)
         supporting += s
         contradicting += c
+
+        dist = getattr(e, "judgment_distribution", None)
+        if dist is None:
+            continue
+        item_directional = s + c
+        if item_directional <= 0.0:
+            # A no_bearing judgment moved neither direction, so it has no
+            # say in how sure the DIRECTIONAL verdict's judgments were.
+            continue
+        doubt_weight += item_directional
+        doubt_weighted_sum += item_directional * distribution_entropy(dist)
+
+    doubt = doubt_weighted_sum / doubt_weight if doubt_weight > 0.0 else None
 
     total_directional = supporting + contradicting
     dominant = max(supporting, contradicting)
@@ -140,6 +183,7 @@ def compute_evidence_weight(
         label=label,
         supporting_mass=supporting,
         contradicting_mass=contradicting,
+        doubt=doubt,
     )
 
 

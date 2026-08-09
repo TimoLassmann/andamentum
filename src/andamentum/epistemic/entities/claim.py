@@ -159,6 +159,25 @@ class Claim(EpistemicEntity):
             "fresh Uncertainty entities."
         ),
     )
+    scrutiny_doubt: Optional[float] = Field(
+        default=None,
+        description=(
+            "MEASUREMENT accompanying scrutiny_verdict: the directional-mass-"
+            "weighted mean normalized entropy of the evidence judgments that "
+            "produced it (see scrutiny_weight.compute_evidence_weight), in "
+            "[0, 1]. Higher = the judges were internally less sure. None when "
+            "unmeasured — no eligible item carried a verbalized distribution, "
+            "or scrutiny has not run. "
+            "This is DATA, not an instruction (P3): no stage reads it to decide "
+            "what to do to this claim. The single reader is "
+            "CheckSynthesisDemand's aggregate-doubt gate, which uses it to buy "
+            "the objective one extra round of inquiry — a suspicion-raiser, "
+            "never a verdict. "
+            "record_demotion deliberately does not clear it: a demotion nulls "
+            "scrutiny_verdict, which forces a fresh scrutiny pass, and that "
+            "pass overwrites this field alongside the new verdict."
+        ),
+    )
 
     # Adversarial balance (computed by adversarial_balance.py)
     adversarial_balance: Optional[float] = Field(
@@ -503,6 +522,10 @@ class Claim(EpistemicEntity):
             meta["confidence_score"] = self.confidence_score
         if self.adversarial_balance is not None:
             meta["adversarial_balance"] = self.adversarial_balance
+        if self.scrutiny_doubt is not None:
+            # Written only when measured, so "absent" and "measured as 0.0"
+            # stay distinguishable on the round-trip too.
+            meta["scrutiny_doubt"] = self.scrutiny_doubt
         return meta
 
     @property
@@ -555,6 +578,7 @@ class Claim(EpistemicEntity):
             sub_investigation_id=metadata.get("sub_investigation_id"),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
+            scrutiny_doubt=metadata.get("scrutiny_doubt"),
             adversarial_checked=metadata.get("adversarial_checked", False),
             convergence_checked=metadata.get("convergence_checked", False),
             convergence_verdict=metadata.get("convergence_verdict"),

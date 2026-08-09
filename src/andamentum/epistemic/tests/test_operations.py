@@ -1637,3 +1637,180 @@ class TestEvidenceRelevanceFiltering:
 
         with pytest.raises(RuntimeError, match="Screening failed"):
             await op.execute(work)
+
+
+class TestScrutinyPersistsJudgmentDoubt:
+    """``ScrutiniseClaimOperation`` records the aggregator's doubt beside the
+    verdict — it does not re-derive one of its own."""
+
+    async def _seed(self, repo, *, distributions: list[list[float] | None]):
+        obj = Objective(description="q", phase="planned")
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+
+        claim = Claim(objective_id=obj.entity_id, statement="c", scope="x")
+        evidence_ids: list[str] = []
+        for i, dist in enumerate(distributions):
+            ev = Evidence(
+                objective_id=obj.entity_id,
+                source_type="openalex",
+                source_ref=f"doi:10.1234/{i}",
+                extracted_content="Content with a finding.",
+                extracted=True,
+                quality_score=0.8,
+                cluster_status="representative",
+                judgment_distribution=dist,
+                support_judgment="supports",
+            )
+            await repo.save(ev)
+            evidence_ids.append(ev.entity_id)
+        claim.evidence_ids = evidence_ids
+        claim.evidence_count = len(evidence_ids)
+        await repo.save(claim)
+        return claim
+
+    @pytest.mark.asyncio
+    async def test_scrutinise_persists_scrutiny_doubt_from_the_one_aggregator(
+        self, repo
+    ):
+        """PINS: the operation persists ``compute_evidence_weight(...).doubt``,
+        not a number it computed itself. A second derivation would diverge
+        from the verdict's own reading and fail here."""
+        from ..gates import eligible_representative_evidence
+        from ..operations.scrutiny import ScrutiniseClaimOperation
+        from ..scrutiny_weight import compute_evidence_weight
+
+        claim = await self._seed(repo, distributions=[[0.34, 0.33, 0.33]] * 2)
+        op = ScrutiniseClaimOperation(repo, None, embedding_model="test-model")
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="scrutinise_claim",
+            )
+        )
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        expected = compute_evidence_weight(
+            await eligible_representative_evidence(reloaded, repo)
+        ).doubt
+        assert expected is not None
+        assert reloaded.scrutiny_doubt == pytest.approx(expected)
+
+    @pytest.mark.asyncio
+    async def test_scrutiny_doubt_is_none_when_nothing_was_measured(self, repo):
+        """Evidence with no captured distribution yields an unmeasured doubt,
+        which the routing layer can never escalate on."""
+        from ..operations.scrutiny import ScrutiniseClaimOperation
+
+        claim = await self._seed(repo, distributions=[None, None])
+        op = ScrutiniseClaimOperation(repo, None, embedding_model="test-model")
+        await op.execute(
+            OperationInput(
+                entity_id=claim.entity_id,
+                entity_type="claim",
+                operation="scrutinise_claim",
+            )
+        )
+
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.scrutiny_verdict is not None
+        assert reloaded.scrutiny_doubt is None
+
+    @pytest.mark.asyncio
+    async def test_scrutinise_computes_the_evidence_weight_exactly_once(self, repo):
+        """PINS: the refactor removed the duplicate computation (both the
+        no-runner branch and ``_execute_split`` used to recompute it). Two
+        readings could persist a doubt belonging to a different one."""
+        from ..operations import scrutiny as scrutiny_module
+        from ..operations.scrutiny import ScrutiniseClaimOperation
+
+        claim = await self._seed(repo, distributions=[[0.9, 0.05, 0.05]])
+        real = scrutiny_module.compute_evidence_weight
+        calls: list[int] = []
+
+        def counting(items):
+            calls.append(1)
+            return real(items)
+
+        with patch.object(scrutiny_module, "compute_evidence_weight", counting):
+            op = ScrutiniseClaimOperation(repo, None, embedding_model="test-model")
+            await op.execute(
+                OperationInput(
+                    entity_id=claim.entity_id,
+                    entity_type="claim",
+                    operation="scrutinise_claim",
+                )
+            )
+
+        assert len(calls) == 1
+
+
+class TestDeriveCopiesEveryDependency:
+    """``BaseOperation.derive`` must carry the FULL dependency set.
+
+    Operations that delegate part of their work to another operation's
+    helpers (``dispatch_and_persist_for_text`` reuses
+    ``ExtractEvidenceOperation``'s fill/score methods) build that helper
+    from the parent. Hand-listing the fields there is what dropped
+    ``judge_model``, which made the near-zero-quality second-opinion gate
+    raise on the primary evidence-gathering path. ``derive`` exists so
+    the list cannot be hand-written; this pins that it stays complete.
+    """
+
+    def test_derive_copies_every_constructor_dependency(self, repo) -> None:
+        import inspect
+
+        from ..operations.base import BaseOperation
+
+        # Opaque sentinels: ``derive`` must copy them by identity, and
+        # nothing in this test calls through them.
+        runner: Any = object()
+        validator: Any = object()
+        gatherer: Any = object()
+        scorer: Any = object()
+
+        parent = ExtractEvidenceOperation(
+            repo,
+            runner,
+            validator,
+            gatherer,
+            scorer,
+            "embed-model",
+            judge_model="judge-model",
+        )
+        child = parent.derive(ExtractEvidenceOperation)
+
+        # Every parameter __init__ accepts (other than self) must have been
+        # carried across. Deriving the list from the signature is the point:
+        # a NEW dependency added to BaseOperation fails this test until
+        # ``derive`` propagates it.
+        params = [
+            p.name
+            for p in inspect.signature(BaseOperation.__init__).parameters.values()
+            if p.name != "self"
+        ]
+        assert params, "BaseOperation.__init__ takes no parameters?"
+        dropped = [
+            name
+            for name in params
+            if getattr(child, name, None) is not getattr(parent, name, None)
+        ]
+        assert not dropped, (
+            "BaseOperation.derive did not copy these dependencies, so a "
+            "derived helper behaves differently from the same operation "
+            "reached through _make_op: " + ", ".join(dropped)
+        )
+
+    def test_derive_is_what_dispatch_uses_for_its_extract_helper(self) -> None:
+        """PINS the call site: a future edit that goes back to a
+        hand-listed constructor there re-opens the gap."""
+        import inspect
+
+        from ..operations import dispatch_gather
+
+        source = inspect.getsource(dispatch_gather.dispatch_and_persist_for_text)
+        assert "op.derive(ExtractEvidenceOperation)" in source, (
+            "dispatch_and_persist_for_text must build its extract helper via "
+            "op.derive(...), not by enumerating dependencies by hand"
+        )

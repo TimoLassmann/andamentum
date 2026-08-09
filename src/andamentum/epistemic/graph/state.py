@@ -112,6 +112,14 @@ class EpistemicGraphState:
     # in the wild on smoke_v12).
     scrutiny_resolve_cycles: dict[str, int] = field(default_factory=dict)
 
+    # Set by CheckSynthesisDemand's aggregate-judgment-doubt gate once it has
+    # bought this objective its one extra round of inquiry. THIS IS THE BOUND
+    # THAT MAKES THE DOUBT LOOP-BACK TERMINATE: doubt is a suspicion-raiser,
+    # so it buys exactly one more round, never a budget. The loop it triggers
+    # is the existing Scrutinize ↔ ResolveUncertainties one, already capped
+    # per-claim by SCRUTINY_RESOLVE_CYCLE_CAP.
+    judgment_doubt_escalated: bool = False
+
     # Claims needing TMS revalidation after evidence changes.
     # Populated by graph nodes, consumed by _run_tms_sweep.
     claims_needing_tms: set[str] = field(default_factory=set)

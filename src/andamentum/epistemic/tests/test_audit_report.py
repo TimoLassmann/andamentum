@@ -137,7 +137,6 @@ def _make_verdict(
                 integrated_assessment=c.integrated_assessment,
                 integrated_confidence=c.integrated_confidence,
                 posterior=posterior,
-                terminal_state=terminal_state,
             )
             for c in claims
         ],
@@ -304,13 +303,42 @@ class TestNormalisedVerdict:
         data = _make_report_data(posterior=0.50)
         assert _label_of(data) == "Inconclusive"
 
-    def test_terminal_not_completed_is_insufficient(self):
-        data = _make_report_data(posterior=0.92, terminal_state="oscillation_detected")
-        assert _label_of(data) == "Insufficient evidence"
+    def test_terminal_state_does_not_override_the_direction(self):
+        """BEHAVIOUR CHANGE (2026-08-09). The label is a total function of
+        the direction; a non-completed terminal state is reported as a
+        CAVEAT, not as a different verdict.
 
-    def test_no_posterior_is_insufficient(self):
+        The override came from this module, where it only coloured a
+        report. Once the same mapping drove the artefact's code-owned
+        ``> **Verdict:**`` line it contradicted the router:
+        ``CheckCompletion`` deliberately sends ``retrieval_failed`` plus
+        an adjudicated claim to the DIRECTIONAL terminal, so posterior,
+        artefact_type, prose and routing all said directional while the
+        headline alone said "Insufficient evidence".
+        """
+        data = _make_report_data(posterior=0.92, terminal_state="oscillation_detected")
+        assert _label_of(data) == "Confirmed"
+
+    def test_retrieval_failure_is_reported_as_a_caveat_on_the_same_line(self):
+        """The caveat is not lost — it moves onto the rendered line."""
+        from andamentum.epistemic.entities.verdict import render_verdict_line
+
+        data = _make_report_data(posterior=0.92, terminal_state="retrieval_failed")
+        assert data.verdict_object is not None
+        data.verdict_object.provenance.retrieval_failed = True
+        line = render_verdict_line(data.verdict_object)
+        assert line.startswith("Confirmed")
+        assert "retrieval failed" in line
+
+    def test_no_posterior_is_no_single_verdict(self):
+        """BEHAVIOUR CHANGE (2026-08-09). An objective with no scalar
+        posterior — a question type ``compute_posterior`` declines to
+        score — is not "the evidence did not decide". Its claims may all
+        be adjudicated, and collapsing it onto "Insufficient evidence"
+        printed that headline beside "Confirmed" per-claim badges in the
+        same document."""
         data = _make_report_data(posterior=None)
-        assert _label_of(data) == "Insufficient evidence"
+        assert _label_of(data) == "No single verdict"
 
     def test_vocabulary_avoids_css_color_collisions(self):
         """The five verdict labels must not lowercase to any of the
@@ -372,6 +400,48 @@ class TestQAPanel:
             e for e in items_atoms[0]["entries"] if e["label"] == "What did we find?"
         )
         assert "Refuted" in find["body"]
+
+    def test_headline_and_badges_agree_when_there_is_no_scalar_posterior(self):
+        """THE DEFECT THIS REPAIR CLOSES, at the rendered-document level.
+
+        An objective with no scalar posterior (a question type
+        ``compute_posterior`` declines to score) can still have fully
+        adjudicated claims. The headline used to read "Insufficient
+        evidence" while the per-claim badges in the SAME document read
+        "Confirmed" — the disagreement ``entities/verdict.py`` exists to
+        remove, with its polarity merely flipped.
+
+        Parametrising posteriors (as ``test_direction_and_label_never_
+        disagree`` does) structurally cannot reach this: it needs an
+        objective with no number and a claim with one.
+        """
+        claim = ClaimSummary(
+            claim_id="c1",
+            statement="Contextual input drives remapping.",
+            scope="g",
+            assumptions=[],
+            stage="supported",
+            integrated_assessment="supports",
+            integrated_confidence=0.8,
+        )
+        data = _make_report_data(claims=[claim], posterior=None)
+        assert data.verdict_object is not None
+        # The objective has no scalar verdict; the claim does.
+        data.verdict_object.claims[0].posterior = 0.9
+        claim.verdict_label = data.verdict_object.claims[0].label
+        assert claim.verdict_label == "Confirmed"
+
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        find = next(
+            e for e in items_atoms[0]["entries"] if e["label"] == "What did we find?"
+        )
+        assert "Insufficient evidence" not in find["body"], (
+            "the headline must not contradict a Confirmed badge in the "
+            "same document"
+        )
+        assert "No single verdict" in find["body"]
+        assert _atom_content_contains(atoms, "Confirmed")
 
     def test_confidence_body_uses_directional_phrasing_with_legend(self):
         """The posterior is read directionally so a non-Bayesian reader

@@ -936,9 +936,13 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
     "we suspended judgment" from a directional verdict by reading a
     typed field rather than parsing prose. The verdict line is rendered
     from the same ``EpistemicVerdict`` object the directional terminal
-    renders, through the same ``render_verdict_line`` — one shape at both
-    terminals — so it is code-owned rather than prompt-owned. Peirce's
-    fallibilism encoded in the system's topology.
+    renders, with the same provenance clauses, through
+    ``render_insufficient_verdict_line`` — which pins the LABEL to
+    "Insufficient evidence" because reaching this terminal IS the system
+    declaring it has no directional answer. See that function's docstring
+    for the case that made the shared renderer print "Inconclusive" inside
+    a document titled "Insufficient Evidence". Peirce's fallibilism
+    encoded in the system's topology.
     """
 
     entity_type = "snapshot"
@@ -1080,7 +1084,7 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
         counts plus the gate's diagnosis so the artefact reads as a
         coherent "system suspended judgment, here's why" — not a
         directional verdict invented from no data."""
-        from ..entities.verdict import render_verdict_line
+        from ..entities.verdict import render_insufficient_verdict_line
 
         n_claims = quality_signals.get("claims_total", 0)
         n_abandoned = quality_signals.get("claims_abandoned", 0)
@@ -1106,14 +1110,29 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
                 f"{prov.n_active_claims}"
             )
         sections.append("")
-        sections.append(f"> **Verdict:** {render_verdict_line(verdict)}")
+        sections.append(f"> **Verdict:** {render_insufficient_verdict_line(verdict)}")
         sections.append("")
-        sections.append(
-            "The investigation completed without reaching an integration "
-            "verdict. The system suspends judgment on this question rather "
-            "than producing a directional answer the evidence does not "
-            "support."
-        )
+        if verdict.provenance.n_adjudicated:
+            # Reachable via ``CheckSynthesisDemand._maybe_loop_back``:
+            # every claim cycle-capped and every integrated_assessment
+            # equal to "insufficient". Claims WERE adjudicated; none of
+            # them directionally. Saying "without reaching an integration
+            # verdict" here would contradict the header line two rows up.
+            sections.append(
+                f"The investigation adjudicated "
+                f"{verdict.provenance.n_adjudicated} of "
+                f"{verdict.provenance.n_active_claims} claim(s), but none of "
+                "them directionally. The system suspends judgment on this "
+                "question rather than producing a directional answer the "
+                "evidence does not support."
+            )
+        else:
+            sections.append(
+                "The investigation completed without reaching an integration "
+                "verdict. The system suspends judgment on this question rather "
+                "than producing a directional answer the evidence does not "
+                "support."
+            )
         sections.append("")
 
         sections.append("## What the system attempted")

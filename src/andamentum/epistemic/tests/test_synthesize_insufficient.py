@@ -151,11 +151,11 @@ async def test_verdict_is_rendered_from_the_object_no_llm(repo) -> None:
     )
     await op.execute(work)
 
-    from ..entities.verdict import render_verdict_line
+    from ..entities.verdict import render_insufficient_verdict_line
 
     snapshot = await repo.get("snapshot", snap_id)
     artefact = (await repo.query("artefact", objective_id="obj-insuf"))[0]
-    expected = render_verdict_line(snapshot.verdict)
+    expected = render_insufficient_verdict_line(snapshot.verdict)
     assert expected.startswith("Insufficient evidence")
     assert f"> **Verdict:** {expected}" in artefact.content
     assert "Verdict:" in artefact.content

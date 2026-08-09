@@ -205,6 +205,15 @@ def _confidence_body(data: ReportData) -> str:
         return "No posterior — no IBE-certified verdict."
     if ts != "completed":
         return f"No posterior — inquiry terminated: {ts}."
+    if v.direction in ("no_data", "union"):
+        # No scalar objective verdict BY CONSTRUCTION (question type not
+        # posterior-eligible, or a UNION decomposition). Reporting the
+        # fall-through number as "the probability the claim is true"
+        # would contradict the headline directly above.
+        return (
+            "No single objective posterior — the per-claim verdicts below "
+            "are the result."
+        )
     p = v.posterior
     if p is None:
         return "No posterior computed."

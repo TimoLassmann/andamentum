@@ -146,7 +146,10 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 3-path chain (no fallback)": "3929dcd70fbe2f0d",
+    # Updated 2026-08-09: Path 2's near-zero TMS invalidation is now gated by
+    # an ``llm_judge`` second opinion (``_confirm_or_retain_low_quality``) so a
+    # single sampled point value can no longer destroy evidence on its own.
+    "Evidence scoring 3-path chain (no fallback)": "21f2d7018905750b",
     "Scrutiny evidence loading loop": "cd12fd7cdd66ac9d",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     # 2026-08-09: the loop returns (title, answer) — the writer no longer

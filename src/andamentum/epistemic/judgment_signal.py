@@ -24,12 +24,27 @@ internals beyond the threshold constant. Both the agent output schema
 (``agents/output_models.py``) and the ``Evidence`` entity import from here so
 the maths lives in exactly one place.
 
+ONE DEFINITION OF DOUBT, TWO IMPLEMENTATIONS (deliberate).
+``andamentum.llm_judge.signals`` holds the same three primitives —
+``normalize_three`` / ``max_mass`` / ``normalized_entropy`` are
+character-for-character equivalent to ``normalize_distribution`` /
+``distribution_confidence`` / ``distribution_entropy`` here, and
+``thresholds.JUDGMENT_DOUBT_ESCALATION_THRESHOLD`` is deliberately equal to
+``llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD``. The two are kept in step by
+a DRIFT TEST (``tests/test_doubt_scale_single_source.py``), NOT by an import.
+The import is not available: ``import andamentum.llm_judge.signals`` executes
+the package ``__init__`` → ``panel`` → ``elicit`` → ``andamentum.core`` →
+``pydantic_ai``, and this module is imported by ``entities/evidence.py``, a
+documented pure-stdlib leaf. Converging by import would drag an agent framework
+into a pydantic entity. If you are here to "just import it", read the drift test
+first — it exists to make that refactor fail loudly rather than silently.
+
 Architecture: Layer 1 (framework-agnostic, pure functions).
 """
 
 from __future__ import annotations
 
-from math import log
+from math import isfinite, log
 
 from .thresholds import JUDGMENT_ONE_HOT_THRESHOLD
 
@@ -48,11 +63,21 @@ def normalize_distribution(
     normalise by the actual sum rather than assuming exactly 100.
 
     Raises:
-        ValueError: if any value is negative or the total is not positive
-            (a degenerate output the caller should reject / retry, not paper
-            over with a uniform guess).
+        ValueError: if any value is non-finite or negative, or the total is
+            not positive (a degenerate output the caller should reject /
+            retry, not paper over with a uniform guess).
     """
     vals = [float(supports), float(contradicts), float(no_bearing)]
+    # The finiteness check must come FIRST and be its own test. NaN defeats
+    # every comparison it appears in (`nan < 0` and `nan <= 0` are both
+    # False), so it slips through the ordering guard below and propagates: a
+    # NaN distribution makes ``distribution_entropy`` return 0.0 — reading
+    # downstream as MAXIMALLY CERTAIN. A judge is allowed to fail; it is not
+    # allowed to be confidently meaningless. Same guard, same wording as
+    # ``llm_judge.signals.normalize_three`` (see the module docstring's
+    # co-definition rule).
+    if not all(isfinite(v) for v in vals):
+        raise ValueError(f"belief points must be finite, got {vals}")
     if any(v < 0 for v in vals):
         raise ValueError(f"belief points must be non-negative, got {vals}")
     total = sum(vals)
@@ -63,7 +88,18 @@ def normalize_distribution(
 
 def argmax_verdict(distribution: list[float]) -> str:
     """The verdict = the highest-mass class. Ties resolve by ``JUDGMENT_CLASSES``
-    order (supports > contradicts > no_bearing), so the result is deterministic."""
+    order (supports > contradicts > no_bearing), so the result is deterministic.
+
+    Deliberately NOT converged onto ``llm_judge.signals.argmax_label``, unlike
+    the three doubt primitives above. That function detects ties within
+    ``isclose(abs_tol=1e-9)``; this one uses exact ``max``. On a near-tie such
+    as ``[0.4999999999999999, 0.5, 0.0]`` the two disagree ("contradicts" vs
+    the tie-break's answer). The verdict tie-break here is load-bearing — it
+    feeds ``EvidenceJudgmentOutput``'s ``in_scope`` cross-field validator,
+    ``gates.count_supporting_sources`` and the counting posterior — so changing
+    its near-tie behaviour is a routing change, not a cleanup. The doubt scale
+    is shared; the categorical tie-break is not.
+    """
     best_i = max(range(len(distribution)), key=lambda i: distribution[i])
     return JUDGMENT_CLASSES[best_i]
 

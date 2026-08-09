@@ -41,6 +41,7 @@ class _StubDeps:
     evidence_gatherer: Any = None
     quality_scorer: Any = None
     embedding_model: Any = None
+    judge_model: Any = None
     progress_callback: Any = None
 
 
@@ -768,4 +769,53 @@ async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
     )
     assert "deferred" not in result.message, (
         f"deferred clusters should be retired. Got:\n{result.message}"
+    )
+
+
+# ── Evidence-quality second opinion ──────────────────────────────────
+
+
+async def test_score_evidence_propagates_second_opinion_failure(
+    repo, stub_llm_judge
+) -> None:
+    """A failed second opinion must PROPAGATE, not resolve into a decision.
+
+    Swallowing it either way is a silent wrong answer: swallow-to-invalidate
+    destroys evidence on an infrastructure error, swallow-to-pass keeps
+    evidence the gate never actually checked. The exception reaches
+    ``_execute_op``, which records it as a loud quarantine.
+
+    PINS: the standing no-swallow contract at the new call site.
+    """
+    from andamentum.epistemic.entities import Evidence
+    from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+
+    stub_llm_judge(raises=RuntimeError("judge transport died"))
+    ev = Evidence(
+        objective_id="obj-1",
+        source_type="web_search",
+        source_ref="https://example.org/x",
+        extracted_content="Some real text about a trial.",
+    )
+    op = ExtractEvidenceOperation(
+        repo,
+        FakeAgentRunner(
+            overrides={
+                "epistemic_assess_evidence_quality": {
+                    "source_credibility": 0.02,
+                    "relevance": 0.02,
+                    "specificity": 0.02,
+                    "recency_appropriate": 0.02,
+                    "justification": "looks empty",
+                }
+            }
+        ),
+        judge_model="test:judge",
+    )
+
+    with pytest.raises(RuntimeError, match="judge transport died"):
+        await op._score_evidence(ev)
+    assert ev.invalidated is False, (
+        "a transport failure must not be resolved into a destroy"
     )

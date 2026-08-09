@@ -93,10 +93,20 @@ def order_claims_for_combination(
     One implementation, two callers (``confidence.build_verdict`` and
     ``confidence.compute_posterior``'s rule-aware branch) — the two
     used to carry separate copies of this loop.
+
+    With NO decomposition (verify mode, open research) both numbers are
+    zero: orphan-ness is defined relative to a decomposition, so with
+    none every claim would count as an orphan and the run would persist
+    ``n_orphan == len(claims)`` plus the flatly false explanation
+    "sub_investigation_id not in the current decomposition" — a statement
+    about a decomposition that does not exist. Returning ``(([], 0))``
+    keeps the caller's existing fall-back (``if not ordered``) intact.
     """
     sub_ids_in_order = [
         s.id for s in (decomposition.sub_investigations if decomposition else [])
     ]
+    if not sub_ids_in_order:
+        return [], 0
     claims_by_sub = {
         c.sub_investigation_id: c for c in claims if c.sub_investigation_id is not None
     }

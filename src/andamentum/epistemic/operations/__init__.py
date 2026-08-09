@@ -192,6 +192,8 @@ def create_operations(
     model: Optional[str] = None,
     providers: Optional[ProviderRegistry] = None,
     embedding_model: Optional[str] = None,
+    *,
+    judge_model: Optional[str] = None,
 ) -> dict[str, BaseOperation]:
     """Create all operation instances.
 
@@ -208,6 +210,10 @@ def create_operations(
         providers: Optional dict of named evidence providers (e.g., from
             ``andamentum.epistemic.providers.get_biomedical_providers()``).
         embedding_model: Embedding model for similarity/clustering operations.
+        judge_model: Model id for ``llm_judge`` second opinions. Keyword-only
+            — three same-typed model ids (``model``, ``embedding_model``,
+            ``judge_model``) sit on this signature, and the ``*`` is what makes
+            a transposition a pyright error rather than a silent swap.
 
     Returns:
         Dict mapping operation name to instance
@@ -225,6 +231,7 @@ def create_operations(
             evidence_gatherer=evidence_gatherer,
             quality_scorer=quality_scorer,
             embedding_model=embedding_model,
+            judge_model=judge_model,
         )
         for name, cls in OPERATION_CLASSES.items()
     }

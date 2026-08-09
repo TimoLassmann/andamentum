@@ -844,7 +844,6 @@ async def build_verdict(
     claim_order = ordered + [c for c in claims if c.entity_id not in ordered_ids]
 
     suspended = set(posterior_report.suspended_claim_ids if posterior_report else [])
-    terminal_state = posterior_report.terminal_state if posterior_report else "completed"
 
     claim_verdicts: list[ClaimVerdict] = []
     for c in claim_order:
@@ -866,12 +865,41 @@ async def build_verdict(
                 refuting_evidence=refuting,
                 n_no_bearing=n_no_bearing,
                 cap_evaluation=getattr(c, "cap_evaluation", None),
-                terminal_state=terminal_state,
             )
         )
 
     active = [c for c in claims if not c.abandoned]
     n_adjudicated = sum(1 for c in active if c.integrated_assessment is not None)
+
+    # ── The two counts have DIFFERENT scopes, deliberately ──────────
+    #
+    # ``n_adjudicated`` is over ALL active claims: it is the system's
+    # canonical "did we adjudicate?" signal, and it must stay the same
+    # set ``compute_posterior``'s no-certified-verdict gate and
+    # ``CheckCompletion`` read, or the writer and the aggregator stop
+    # flipping together.
+    #
+    # ``n_no_verdict`` is over the COMBINATION SCOPE — the claims that
+    # actually feed the combined posterior. On a decomposed run that is
+    # the decomposition-matched subset, which is exactly what the old
+    # ``combine_claim_verdicts(ordered, ...).n_no_verdict`` counted and
+    # what ``CheckSynthesisDemand``'s Gate 3 has always routed on.
+    # Widening it to every active claim would newly expose ORPHAN claims
+    # (sub-investigation removed by a reflection round) to that gate,
+    # adding loop-backs and LLM cost on decomposed runs — an unbenchmarked
+    # routing change, which is the same thing this change declined to do
+    # at Gate 1. Orphans are surfaced by ``n_orphan`` instead.
+    #
+    # With no decomposition the combination scope is simply the active
+    # claims (Gate 1 short-circuits before Gate 3 there, so the value is
+    # routing-inert; it stays meaningful for readers).
+    combination_scope = (
+        [c for c in ordered if not c.abandoned] if decomposition is not None else active
+    )
+    n_no_verdict = sum(
+        1 for c in combination_scope if c.integrated_assessment is None
+    )
+
     explanation = posterior_report.explanation if posterior_report else ""
     if n_orphan:
         explanation = (
@@ -887,7 +915,7 @@ async def build_verdict(
         n_abandoned=sum(1 for c in claims if c.abandoned),
         n_cycle_capped=sum(1 for c in active if getattr(c, "cycle_capped", False)),
         n_adjudicated=n_adjudicated,
-        n_no_verdict=len(active) - n_adjudicated,
+        n_no_verdict=n_no_verdict,
         n_orphan=n_orphan,
         combination_explanation=explanation,
     )

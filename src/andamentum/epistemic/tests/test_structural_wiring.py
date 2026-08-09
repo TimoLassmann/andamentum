@@ -17,14 +17,26 @@ allowlist below with a justification.
 
 If you delete an operation: also delete it from ``OPERATION_CLASSES``
 in ``operations/__init__.py``. That keeps this test honest.
+
+A third guard lives here for a closely-related shape: an operation that
+IS wired, but wired with a dependency missing. Two graph nodes construct
+their operation inline rather than through ``_make_op`` (they need a
+``providers`` kwarg ``_make_op`` doesn't know about), so a dependency
+added to ``_make_op`` and forgotten there is absent on the live graph
+path and present everywhere else — invisible to every unit test that
+builds the operation by hand. That is exactly how ``judge_model`` came
+to be missing from the primary evidence-gathering path.
 """
 
 from __future__ import annotations
 
+import ast
+import inspect
 from pathlib import Path
 
 from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.operations import OPERATION_CLASSES
+from andamentum.epistemic.operations.base import BaseOperation
 
 
 GRAPH_NODES = Path(__file__).parent.parent / "graph" / "nodes.py"
@@ -145,4 +157,129 @@ class TestEveryStateFieldHasReader:
             "them in a node decision, delete them, or add them to "
             "STATE_FIELDS_INTENTIONALLY_UNREAD with a justification:"
             "\n  - " + "\n  - ".join(unread)
+        )
+
+
+# Constructor keywords that are legitimately specific to one inline
+# construction and therefore excluded from the parity comparison. Each
+# entry needs a justification.
+INLINE_CONSTRUCTION_EXTRA_KWARGS: dict[str, str] = {
+    # The reason these two constructions bypass _make_op at all: the
+    # dispatch operations take a provider registry that _make_op has no
+    # way to supply.
+    "providers": "provider registry — the reason _make_op is bypassed",
+}
+
+
+def _base_operation_positional_names() -> list[str]:
+    """``BaseOperation.__init__``'s positional parameters, in order."""
+    params = list(inspect.signature(BaseOperation.__init__).parameters.values())
+    return [
+        p.name
+        for p in params
+        if p.name != "self" and p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    ]
+
+
+def _dependency_names(call: ast.Call) -> set[str]:
+    """The BaseOperation dependencies a construction call supplies.
+
+    Positional arguments are resolved against ``BaseOperation.__init__``'s
+    parameter order so that ``Op(repo, runner, embedding_model=...)`` and
+    ``Op(repo=..., agent_runner=..., embedding_model=...)`` compare equal.
+    """
+    positional = _base_operation_positional_names()
+    names = {positional[i] for i in range(len(call.args)) if i < len(positional)}
+    for kw in call.keywords:
+        if kw.arg is None:  # **kwargs splat — cannot compare statically
+            continue
+        if kw.arg in INLINE_CONSTRUCTION_EXTRA_KWARGS:
+            continue
+        names.add(kw.arg)
+    return names
+
+
+def _operation_construction_calls(tree: ast.AST) -> dict[str, ast.Call]:
+    """Every ``SomethingOperation(...)`` call in the tree, by class name."""
+    found: dict[str, ast.Call] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id.endswith("Operation"):
+            found[func.id] = node
+    return found
+
+
+class TestInlineOperationConstructionsMatchMakeOp:
+    """The two ``_make_op``-bypassing constructions must pass the same
+    dependency set ``_make_op`` passes.
+
+    ``PlanEvidence._run_dispatch`` and ``ResolveUncertainties``'
+    ``_run_investigate`` build their operation by hand because it takes a
+    ``providers`` kwarg. Everything else about the dependency set must be
+    identical, or the operation behaves differently on the live graph
+    path than the same operation reached through ``_make_op`` — and no
+    unit test that constructs the operation directly can see the
+    difference. This test compares the two argument sets structurally, so
+    the NEXT dependency added to ``_make_op`` cannot silently skip them.
+    """
+
+    def _tree(self) -> ast.AST:
+        return ast.parse(GRAPH_NODES.read_text())
+
+    def _make_op_dependencies(self, tree: ast.AST) -> set[str]:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_make_op":
+                calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+                assert calls, "_make_op no longer constructs anything"
+                return _dependency_names(calls[0])
+        raise AssertionError("_make_op not found in graph/nodes.py")
+
+    def test_make_op_passes_every_base_operation_dependency(self) -> None:
+        """Guards the reference set itself: if ``_make_op`` stops passing
+        a ``BaseOperation`` dependency, comparing against it would pin the
+        gap rather than catch it."""
+        tree = self._tree()
+        supplied = self._make_op_dependencies(tree)
+        expected = set(_base_operation_positional_names()) | {"judge_model"}
+        # ``validator`` is deliberately not threaded from deps — every
+        # operation builds its own DefaultValidator and nothing in the
+        # graph supplies one.
+        expected.discard("validator")
+        assert supplied == expected, (
+            "_make_op no longer passes every BaseOperation dependency. "
+            f"Missing: {sorted(expected - supplied)}. Extra: "
+            f"{sorted(supplied - expected)}. Add the new dependency here "
+            "AND to the inline constructions in _run_dispatch / "
+            "_run_investigate."
+        )
+
+    def test_inline_constructions_pass_the_same_dependencies(self) -> None:
+        tree = self._tree()
+        reference = self._make_op_dependencies(tree)
+        calls = _operation_construction_calls(tree)
+
+        drifted: list[str] = []
+        for class_name in ("DispatchGatherOperation", "InvestigateClaimOperation"):
+            call = calls.get(class_name)
+            assert call is not None, (
+                f"{class_name} is no longer constructed inline in "
+                "graph/nodes.py — if it now goes through _make_op, drop it "
+                "from this test."
+            )
+            supplied = _dependency_names(call)
+            if supplied != reference:
+                drifted.append(
+                    f"{class_name}: missing {sorted(reference - supplied)}, "
+                    f"extra {sorted(supplied - reference)}"
+                )
+
+        assert not drifted, (
+            "These inline operation constructions in graph/nodes.py do not "
+            "pass the same dependency set as _make_op. A dependency missing "
+            "here is missing ONLY on the live graph path — every unit test "
+            "that builds the operation directly still passes. This is how "
+            "judge_model came to be absent from the primary evidence-"
+            "gathering path:\n  - " + "\n  - ".join(drifted)
         )

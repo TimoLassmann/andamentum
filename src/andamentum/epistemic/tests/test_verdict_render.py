@@ -204,3 +204,75 @@ async def test_insufficient_terminal_renders_the_same_object_type(repo) -> None:
     assert line[len("> **Verdict:** ") :].startswith("Insufficient evidence")
     assert artefact.artefact_type == "insufficient"
     assert runner.calls == [], "the insufficient terminal must make no LLM call"
+
+
+async def test_insufficient_terminal_with_a_posterior_still_says_insufficient(
+    repo,
+) -> None:
+    """The insufficient terminal's headline must agree with the document
+    it heads.
+
+    Reachable shape, not a hypothetical: ``CheckSynthesisDemand.
+    _maybe_loop_back`` falls through to ``SynthesizeInsufficient`` when
+    every claim is cycle-capped and every ``integrated_assessment`` is
+    "insufficient" — the fixture ``test_phase4_synthesis_loop_back``
+    already uses. Those claims ARE adjudicated, so the posterior is 0.5,
+    the direction is "insufficient" and the shared renderer printed
+    ``Inconclusive — posterior 0.500 · 1 of 1 claim adjudicated`` inside
+    a document titled "Insufficient Evidence" whose body claimed the
+    investigation reached no integration verdict.
+
+    The earlier version of ``test_insufficient_terminal_renders_the_same
+    _object_type`` used ``posterior_report=None``, where the label is
+    trivially "Insufficient evidence" — it structurally could not catch
+    this.
+    """
+    obj = Objective(
+        entity_id="obj-insuf-posterior",
+        objective_id="obj-insuf-posterior",
+        description="x",
+    )
+    await repo.save(obj)
+    verdict = make_verdict(
+        "obj-insuf-posterior",
+        posterior=0.5,
+        n_active=1,
+        n_adjudicated=1,
+        claim_ids=("c1",),
+    )
+    verdict.provenance.n_cycle_capped = 1
+    assert verdict.label == "Inconclusive", (
+        "fixture guard: the OBJECT's own label is directionless-but-not-"
+        "insufficient; the terminal is what pins the headline"
+    )
+
+    snap = Snapshot(
+        entity_id="snap-insuf-posterior",
+        objective_id="obj-insuf-posterior",
+        snapshot_type="final",
+        verdict=verdict,
+    )
+    await repo.save(snap)
+
+    await SynthesizeInsufficientReportOperation(repo=repo).execute(
+        OperationInput(
+            entity_id=snap.entity_id,
+            entity_type="snapshot",
+            operation="synthesize_insufficient",
+        )
+    )
+    artefact = (await repo.query("artefact", objective_id="obj-insuf-posterior"))[0]
+    line = next(
+        ln for ln in artefact.content.splitlines() if ln.startswith("> **Verdict:**")
+    )
+    assert line[len("> **Verdict:** ") :].startswith("Insufficient evidence")
+    assert "Inconclusive" not in line
+    # The provenance clauses still come from the same object.
+    assert "1 of 1 claim adjudicated" in line
+    assert "1 cycle-capped" in line
+    assert artefact.artefact_type == "insufficient"
+    # ...and the body must not contradict the count on the line above it.
+    assert "without reaching an integration verdict" not in artefact.content
+    assert "adjudicated 1 of 1 claim(s), but none of them directionally" in (
+        artefact.content
+    )

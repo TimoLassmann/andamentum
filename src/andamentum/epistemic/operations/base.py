@@ -323,6 +323,8 @@ class BaseOperation(ABC):
         evidence_gatherer: Optional[EvidenceGatherer] = None,
         quality_scorer: Optional[QualityScorer] = None,
         embedding_model: Optional[str] = None,
+        *,
+        judge_model: Optional[str] = None,
     ):
         """Initialize operation.
 
@@ -333,6 +335,14 @@ class BaseOperation(ABC):
             evidence_gatherer: Optional evidence gathering protocol
             quality_scorer: Optional quality scoring protocol
             embedding_model: Embedding model for similarity/clustering operations.
+            judge_model: Model id used for ``llm_judge`` second opinions
+                (currently only the evidence-quality invalidation gate in
+                ``ExtractEvidenceOperation._score_evidence``). KEYWORD-ONLY:
+                this is the third same-typed model id on this constructor, and
+                a positional transposition with ``embedding_model`` would be
+                invisible to pyright and surface far from the call site.
+                Absence at a site that needs it is a WIRING BUG — that site
+                raises rather than degrading to the old behaviour.
         """
         self.repo = repo
         self.agent_runner = agent_runner
@@ -340,7 +350,41 @@ class BaseOperation(ABC):
         self.evidence_gatherer = evidence_gatherer
         self.quality_scorer = quality_scorer
         self.embedding_model = embedding_model
+        self.judge_model = judge_model
         self._agent_calls: list[dict[str, Any]] = []
+
+    def derive(self, op_class: type["BaseOperation"]) -> Any:
+        """Build a sibling operation carrying THIS operation's full deps.
+
+        Several operations delegate part of their work to another
+        operation's helpers (``dispatch_and_persist_for_text`` reuses
+        ``ExtractEvidenceOperation``'s fill/score methods, for example).
+        Those helpers must see the same dependency set as their parent —
+        a helper missing one dependency behaves differently from the same
+        operation reached through ``_make_op``, and the difference is
+        invisible until the one code path that needs it runs.
+
+        This method exists so such a construction can never enumerate the
+        dependency list by hand. Every field ``__init__`` accepts is
+        copied here, so a NEW dependency added to ``BaseOperation`` is
+        propagated to every derived helper by construction rather than by
+        someone remembering. ``tests/test_operations.py::TestDeriveCopies
+        EveryDependency`` pins that property.
+
+        Args:
+            op_class: The ``BaseOperation`` subclass to construct. Only
+                subclasses that take no extra required constructor
+                arguments can be derived this way.
+        """
+        return op_class(
+            self.repo,
+            self.agent_runner,
+            self.validator,
+            self.evidence_gatherer,
+            self.quality_scorer,
+            self.embedding_model,
+            judge_model=self.judge_model,
+        )
 
     @abstractmethod
     async def execute(self, work: OperationInput) -> OperationResult:

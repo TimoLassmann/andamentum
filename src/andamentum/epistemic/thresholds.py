@@ -233,7 +233,7 @@ mechanically-derived verdict can never, on its own, read as decisive."""
 #
 # Two distinct decisions read the aggregated posterior:
 #
-#   * **Verdict labelling** (combiner, _verdict_label): map a
+#   * **Verdict labelling** (entities.verdict.verdict_label): map a
 #     posterior to "supports" / "contradicts" / "insufficient". The
 #     directional breakpoint is wider than 0.5 to keep the label
 #     calibrated with the underlying evidence strength.
@@ -248,7 +248,12 @@ mechanically-derived verdict can never, on its own, read as decisive."""
 POSTERIOR_DIRECTIONAL_BREAKPOINT: float = 0.66
 """Posteriors above this map to "supports"; below ``1 -
 POSTERIOR_DIRECTIONAL_BREAKPOINT`` map to "contradicts"; otherwise
-"insufficient". Read by: graph/combination._verdict_label."""
+"insufficient". Read by: entities/verdict.py::verdict_label — the SOLE
+reader in the package, pinned by a source scan in
+tests/test_verdict_single_source.py. (It was graph/combination._verdict_label
+until 2026-08-09; that symbol no longer exists — combination.py imports
+the shared function.) The comparison is strict on both sides: exactly
+0.66 and exactly 0.34 map to "insufficient"."""
 
 POSTERIOR_DECISIVE_THRESHOLD: float = 0.85
 """Posteriors at or above this (or at or below ``1 - threshold``)
@@ -315,6 +320,43 @@ JUDGMENT_ONE_HOT_THRESHOLD: float = 0.95
 distribution is effectively one-hot — its entropy is uninformative.
 Read by: ``judgment_signal.distribution_is_one_hot`` and
 ``Evidence.judgment_one_hot``."""
+
+
+# ── Aggregate judgment doubt (escalation, not a decision) ──────────
+#
+# The scrutiny verdict is a deterministic reading of quality- and
+# corroboration-weighted directional mass. Each contributing judgment
+# also carries a verbalized distribution, whose normalized Shannon
+# entropy is the system's doubt signal. ``scrutiny_weight`` aggregates
+# those into one claim-level number (the directional-mass-weighted mean
+# entropy of the judgments that produced the verdict), persisted as
+# ``Claim.scrutiny_doubt``.
+#
+# High doubt does NOT change any verdict. It buys one extra round of
+# inquiry — the lazy-escalation (P7) response to "the judgments behind
+# this verdict were internally unsure".
+
+JUDGMENT_DOUBT_ESCALATION_THRESHOLD: float = 0.5
+"""At or above this aggregate judgment doubt, a claim's evidence
+judgments are unsure enough to warrant one more round of inquiry.
+
+Theoretical basis: normalized Shannon entropy of a verbalized belief
+distribution, in [0, 1] — 0 = one-hot, 1 = uniform. It is a
+SUSPICION-RAISER ONLY: high doubt is a reason to escalate; low doubt
+never proves a verdict correct. 0.5 is the midpoint of that scale — a
+judgment carrying at least half the entropy of a uniform guess.
+
+Read by: ``graph.nodes.CheckSynthesisDemand._judgment_doubt_demand``
+(the only reader).
+
+Deliberately IDENTICAL to
+``andamentum.llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD``. Both
+modules measure the same quantity on the same scale, so epistemic does
+not get its own cutoff. The two are pinned equal by a drift test
+(``tests/test_doubt_scale_single_source.py``) rather than by an import —
+see ``judgment_signal``'s module docstring for why importing
+``llm_judge`` from a leaf is not available here. Tuning one without the
+other fails that test."""
 
 
 # ── Scrutiny evidence weight (deterministic; replaces an LLM call) ──
@@ -412,6 +454,7 @@ __all__ = [
     "CONVERGENCE_INTRA_DIVERSITY_THRESHOLD",
     "CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW",
     "JUDGMENT_ONE_HOT_THRESHOLD",
+    "JUDGMENT_DOUBT_ESCALATION_THRESHOLD",
     "SCRUTINY_DEFAULT_QUALITY",
     "SCRUTINY_STRONG_MASS_THRESHOLD",
     "SCRUTINY_WEAK_MASS_THRESHOLD",

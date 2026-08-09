@@ -19,7 +19,7 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
-from ..scrutiny_weight import compute_evidence_weight
+from ..scrutiny_weight import EvidenceWeight, compute_evidence_weight
 
 
 class ScrutiniseClaimOperation(BaseOperation):
@@ -34,8 +34,11 @@ class ScrutiniseClaimOperation(BaseOperation):
     3. Deterministic combination — blocking issues downgrade the weight, then
        the verdict follows from it.
 
-    Updates scrutiny_verdict to "pass", "fail", or "needs_resolution".
-    May create Uncertainty entities for issues found.
+    Updates scrutiny_verdict to "pass", "fail", or "needs_resolution", and
+    records ``scrutiny_doubt`` beside it — the mass-weighted mean entropy of
+    the judgments that produced the weight. The verdict says which way; the
+    doubt says how sure the judges were. May create Uncertainty entities for
+    issues found.
     """
 
     entity_type = "claim"
@@ -196,13 +199,15 @@ class ScrutiniseClaimOperation(BaseOperation):
     async def _execute_split(
         self,
         claim: Claim,
-        eligible_evidence: list[Evidence],
+        weight: EvidenceWeight,
         evidence_summaries: list[str],
     ) -> str:
-        """Deterministic evidence weight + per-evidence issue identification.
+        """Per-evidence issue identification, combined with a precomputed weight.
 
-        The evidence weight is computed deterministically from
-        ``eligible_evidence`` (no LLM). Per-evidence issue identification then
+        ``weight`` is the deterministic evidence weight over the eligible
+        representative set, computed ONCE by ``execute`` (both branches share
+        it — this method used to recompute it, and the no-runner branch
+        computed it a second time). Per-evidence issue identification then
         checks each representative independently against the claim (Kahneman
         independence), plus one contradiction call over all of them; all run in
         parallel — no shared context, no anchoring. Blocking issues downgrade
@@ -214,10 +219,6 @@ class ScrutiniseClaimOperation(BaseOperation):
         Returns the computed verdict string.
         """
         import asyncio
-
-        # Deterministic evidence weight over the full eligible representative
-        # set (replaces the retired epistemic_assess_evidence LLM categorical).
-        weight = compute_evidence_weight(eligible_evidence)
 
         # Identify issues — one call per evidence item + one contradiction call.
         # Each per-evidence call sees only ONE evidence item (independent judgment).
@@ -351,15 +352,24 @@ class ScrutiniseClaimOperation(BaseOperation):
                 )
 
         eligible = await self._gather_eligible_evidence(claim)
+        # ONE reading of the evidence, shared by both branches. The weight
+        # carries both the direction of the mass and the doubt of the
+        # judgments that produced it, so recomputing it anywhere else would
+        # risk persisting a doubt that belongs to a different reading.
+        weight = compute_evidence_weight(eligible)
         if self.agent_runner:
             evidence_summaries = await self._gather_evidence_summaries(claim, eligible)
-            verdict = await self._execute_split(claim, eligible, evidence_summaries)
+            verdict = await self._execute_split(claim, weight, evidence_summaries)
         else:
             # No agent runner: the evidence weight is still deterministic; only
             # the LLM issue-identification channel is unavailable, so the verdict
             # follows from the weight alone.
-            verdict = self._verdict_from_weight(compute_evidence_weight(eligible).label)
+            verdict = self._verdict_from_weight(weight.label)
         claim.scrutiny_verdict = verdict
+        # A MEASUREMENT recorded alongside the verdict, not a routing signal
+        # (P1/P3): this operation writes it and returns; the graph decides
+        # whether anything follows from it.
+        claim.scrutiny_doubt = weight.doubt
 
         # Stamp the fingerprint of the inputs we just scrutinised so a
         # subsequent call with identical inputs short-circuits.
@@ -369,8 +379,16 @@ class ScrutiniseClaimOperation(BaseOperation):
         deferred_note = (
             f" ({_deferred} evidence clusters deferred)" if _deferred > 0 else ""
         )
+        doubt_note = (
+            f", judgment doubt: {weight.doubt:.2f}"
+            if weight.doubt is not None
+            else ", judgment doubt: unmeasured"
+        )
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"[{claim.statement[:60]}] verdict: {claim.scrutiny_verdict}{deferred_note}",
+            message=(
+                f"[{claim.statement[:60]}] verdict: {claim.scrutiny_verdict}"
+                f"{doubt_note}{deferred_note}"
+            ),
         )
