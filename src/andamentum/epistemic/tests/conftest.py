@@ -4,7 +4,58 @@ import pytest
 from types import SimpleNamespace
 from typing import Any
 
+from andamentum.epistemic.entities.verdict import (
+    ClaimVerdict,
+    EpistemicVerdict,
+    PosteriorReport,
+    VerdictProvenance,
+)
 from andamentum.epistemic.repository import EpistemicRepository
+
+
+def make_verdict(
+    objective_id: str = "obj-1",
+    *,
+    posterior: float | None = None,
+    n_active: int = 1,
+    n_adjudicated: int = 1,
+    claim_ids: tuple[str, ...] = (),
+) -> EpistemicVerdict:
+    """A minimal ``EpistemicVerdict`` for tests that build a Snapshot directly.
+
+    Both synthesis operations RENDER the run's verdict and raise when it
+    is absent (a missing verdict at synthesis is a routing bug —
+    ``FreezeSnapshotOperation`` stamps it from graph state). Tests that
+    construct a Snapshot by hand therefore have to stamp one too; this
+    factory keeps that one line rather than eight.
+    """
+    report = (
+        PosteriorReport(
+            posterior=posterior,
+            log_odds=0,
+            supporting_count=0.0,
+            contradicting_count=0.0,
+            counting_posterior=posterior,
+            objective_id=objective_id,
+            question_type="verificatory",
+            explanation="test fixture",
+        )
+        if posterior is not None
+        else None
+    )
+    return EpistemicVerdict(
+        objective_id=objective_id,
+        posterior_report=report,
+        claims=[
+            ClaimVerdict(claim_id=cid, posterior=posterior) for cid in claim_ids
+        ],
+        provenance=VerdictProvenance(
+            n_claims_total=n_active,
+            n_active_claims=n_active,
+            n_adjudicated=n_adjudicated,
+            n_no_verdict=max(0, n_active - n_adjudicated),
+        ),
+    )
 
 
 def _to_namespace(obj: Any) -> Any:
@@ -174,9 +225,11 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
         "can_resolve": True,
         "remaining_concerns": [],
     },
+    # No "verdict" key: WriteAnswerOutput has no such field. The
+    # machine-readable headline is rendered from the run's
+    # EpistemicVerdict, not authored by the model.
     "epistemic_write_answer": {
         "title": "Research Summary",
-        "verdict": "The evidence does not support this claim.",
         "answer": "Spaced repetition is effective for long-term retention.",
     },
     "epistemic_validate_answer": {

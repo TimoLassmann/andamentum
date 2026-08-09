@@ -15,6 +15,7 @@ from typing import Any, Mapping, Optional, Protocol, TYPE_CHECKING
 from ..adapters import ADAPTERS
 
 if TYPE_CHECKING:
+    from ..entities.verdict import EpistemicVerdict
     from ..repository import EpistemicRepository
     from .identifier_extraction import Identifiers
 
@@ -46,6 +47,13 @@ class OperationInput:
     metadata: dict[str, Any] = field(
         default_factory=dict
     )  # TODO(theme-5): per-operation TypedDicts when feasible
+    # The run's decision record, threaded from graph state by ``_run_op``.
+    # A TYPED channel deliberately separate from ``metadata`` (which is
+    # ``dict[str, Any]``, the untyped boundary CLAUDE.md forbids for
+    # cross-cutting data). Only FreezeSnapshotOperation consumes it — it
+    # stamps the verdict onto the Snapshot at construction time, since
+    # snapshots are frozen.
+    verdict: Optional["EpistemicVerdict"] = None
 
 
 # Backward compatibility alias

@@ -15,6 +15,7 @@ from typing import Optional
 
 from andamentum.document_store import DocumentStore
 from .entities import ClaimStage
+from .entities.verdict import EpistemicVerdict
 from .gates import STAGE_GATES
 from .primitives import UncertaintyType
 from .report_data import (
@@ -483,52 +484,29 @@ class ReportGenerator:
         artefacts = await self.repo.get_artefacts_for_objective(obj_id)
         artefact = artefacts[-1] if artefacts else None
 
+        # The artefact contributes the PROSE only. The verdict is read
+        # off the persisted verdict object below — the previous
+        # "> **Verdict:**" scrape (plus its "first sentence that ends in
+        # a period" fallback) was one of the five independent verdict
+        # derivations this design collapses. Demoting it to a fallback
+        # would preserve exactly the disagreement it caused.
         direct_answer = ""
-        verdict = ""
         artefact_trace: dict[str, list[str]] = {}
         if artefact:
             content = artefact.content
-            # Extract verdict if present (stored as "> **Verdict:** ..." line)
-            for line in content.split("\n"):
-                stripped = line.strip()
-                if stripped.startswith("> **Verdict:**"):
-                    verdict = stripped[len("> **Verdict:**") :].strip()
-                    break
-
-            # Extract content, removing the header and verdict if present
+            # Strip the "# Title" header and the machine-owned verdict
+            # line so ``direct_answer`` is the writer's prose alone.
             if content.startswith("# "):
                 lines = content.split("\n", 2)
                 if len(lines) > 2:
                     content = lines[2]
-            # Remove verdict line from the answer body
-            if verdict:
-                content_lines = content.split("\n")
-                content_lines = [
-                    ln
-                    for ln in content_lines
-                    if not ln.strip().startswith("> **Verdict:**")
-                ]
-                content = "\n".join(content_lines)
+            content = "\n".join(
+                ln
+                for ln in content.split("\n")
+                if not ln.strip().startswith("> **Verdict:**")
+            )
             direct_answer = content.strip()
             artefact_trace = artefact.trace or {}
-
-        # Fallback: if no verdict was stored, extract first substantive
-        # sentence from the answer (skip headers, blockquotes, blank lines)
-        if not verdict and direct_answer:
-            for line in direct_answer.split("\n"):
-                line = line.strip()
-                if not line or line.startswith("#") or line.startswith(">"):
-                    continue
-                # Found a substantive line — take the first sentence
-                for sep in [". ", ".\n"]:
-                    if sep in line:
-                        verdict = line[: line.index(sep) + 1]
-                        break
-                else:
-                    if line.endswith("."):
-                        verdict = line
-                if verdict:
-                    break
 
         # Get all claims - NO FILTERING, get everything
         all_claims = await self.repo.get_claims_for_objective(obj_id)
@@ -726,12 +704,8 @@ class ReportGenerator:
                     integrated_assessment=claim.integrated_assessment,
                     integrated_confidence=claim.integrated_confidence,
                     gate_trace=gate_trace,
-                    # verdict_label is computed at render time by
-                    # ``audit_report._normalised_verdict`` since it
-                    # blends posterior + integrated_assessment + terminal
-                    # state, all of which the renderer already has. Left
-                    # empty here so the source of truth stays in one
-                    # place rather than diverging.
+                    # Backfilled below from the run's verdict object,
+                    # once it has been loaded off the snapshot.
                     verdict_label="",
                 )
             )
@@ -873,29 +847,37 @@ class ReportGenerator:
             resolved_count,
         )
 
-        # Compute confidence scores.
-        # Note: this call does NOT thread retrieval_failed — that flag lives
-        # on the graph state and is not persisted on the Objective. So an
-        # offline report regenerated from a stored DB will always show
-        # terminal_state="completed" even if the original run failed
-        # retrieval. The retrieval_failed signal is only surfaced in the
-        # live CLI path (via PipelineResult.retrieval_failed).
+        # Read the run's persisted decision record. This is a READER, not
+        # a second computation: the previous implementation re-ran
+        # ``compute_posterior`` here, which could not thread
+        # ``retrieval_failed`` (it lives on graph state), so an offline
+        # report always claimed terminal_state="completed" even when the
+        # live run had reported a retrieval failure. It also swallowed
+        # every exception into a silent None.
+        snapshot_id_for_verdict = getattr(objective, "snapshot_id", None)
+        verdict_object: EpistemicVerdict | None = None
+        if snapshot_id_for_verdict:
+            snapshot = await self.repo.get("snapshot", snapshot_id_for_verdict)
+            verdict_object = getattr(snapshot, "verdict", None)
+
         confidence_scores: ConfidenceScores | None = None
-        try:
-            from .confidence import compute_posterior
-
-            po = await compute_posterior(self.repo, obj_id)
-
+        if verdict_object is not None and verdict_object.posterior_report is not None:
+            po = verdict_object.posterior_report
             confidence_scores = ConfidenceScores(
-                posterior=po.posterior if po else None,
-                posterior_supporting=po.supporting_count if po else 0,
-                posterior_contradicting=po.contradicting_count if po else 0,
-                posterior_question_type=po.question_type if po else None,
-                terminal_state=po.terminal_state if po else "completed",
+                posterior=po.posterior,
+                posterior_supporting=po.supporting_count,
+                posterior_contradicting=po.contradicting_count,
+                posterior_question_type=po.question_type,
+                terminal_state=po.terminal_state,
             )
-        except Exception as e:
-            logger.warning(f"Failed to compute confidence scores: {e}")
-            confidence_scores = None
+
+        # Copy each claim's adjudicated label off the verdict object.
+        # Matched by claim_id, never by index — the two lists are built
+        # by different code and an index assumption would silently
+        # mislabel every badge if either ordering changed.
+        labels_by_claim = {cv.claim_id: cv.label for cv in (verdict_object.claims if verdict_object else [])}
+        for summary in claim_summaries:
+            summary.verdict_label = labels_by_claim.get(summary.claim_id, "")
 
         # In verify mode (single claim) the objective-level posterior
         # directly describes the claim's verdict. Backfill it onto the
@@ -943,7 +925,7 @@ class ReportGenerator:
             model_used=model_name,
             database_name=self.database_name,
             question_type=objective.question_type,
-            verdict=verdict,
+            verdict_object=verdict_object,
             direct_answer=direct_answer,
             artefact_trace=artefact_trace,
             investigation_narrative=investigation_narrative,

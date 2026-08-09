@@ -178,7 +178,7 @@ async def _get_synthesis_from_artefact(
         objective_id: Objective ID to query
 
     Returns:
-        Synthesis dict with the full artefact content and extracted confidence
+        Synthesis dict with the full artefact content.
     """
     artefact_docs = await store.find_by_metadata(
         {
@@ -204,19 +204,13 @@ async def _get_synthesis_from_artefact(
         except (json.JSONDecodeError, TypeError):
             content = full_doc.content
 
-    # Extract confidence from the header line: > **Confidence:** HIGH | ...
-    confidence = "medium"
-    import re
-
-    match = re.search(
-        r"\*\*Confidence:\*\*\s+(HIGH|MEDIUM|LOW|NONE)", content, re.IGNORECASE
-    )
-    if match:
-        confidence = match.group(1).lower()
-
+    # The "> **Confidence:** HIGH | ..." header this used to scrape has
+    # not been emitted by either synthesis operation for some time, so
+    # the regex always fell through and reported "medium" regardless of
+    # the run. Deleted rather than repaired: confidence is carried by the
+    # verdict object (``AskResult.verdict``), not re-parsed out of prose.
     return {
         "summary": content,
-        "confidence": confidence,
     }
 
 
@@ -1098,7 +1092,7 @@ async def handle_ask(
             verbose,
             trace,
             None,
-            posterior=getattr(run_result, "posterior", None),
+            verdict=getattr(run_result, "verdict", None),
         )
 
         # Generate HTML report if output path specified
@@ -1156,6 +1150,7 @@ async def handle_ask(
             stats=typed_stats,
             kept=keep,
             artefact_content=synthesis.get("summary") if synthesis else None,
+            verdict=getattr(run_result, "verdict", None),
         )
 
     except Exception as e:
@@ -1187,13 +1182,14 @@ def _print_ask_results(
     verbose: bool = False,
     trace_mode: TraceMode = "timeline",
     reasoning_trace: Optional[ReasoningTrace] = None,
-    posterior: Optional[Any] = None,
+    *,
+    verdict: Optional[Any] = None,
 ) -> None:
     """Print results from an ask query in a nice format.
 
     Display priority:
     1. ANSWER - The synthesized findings (always shown prominently)
-    2. Posterior confidence score
+    2. The run's verdict (label + posterior + provenance)
     3. Open questions (if any)
     4. Detailed claims table (verbose or trace mode)
     5. Execution stats (verbose only)
@@ -1238,13 +1234,17 @@ def _print_ask_results(
                 )
             )
 
-    # === SCORE: Posterior confidence ===
-    if posterior:
-        po = posterior
-        console.print(
-            f"[bold]Posterior confidence:[/bold] {po.posterior:.2%}"
-            f"  [dim]({po.supporting_count} supporting, {po.contradicting_count} contradicting)[/dim]"
-        )
+    # === SCORE: the run's verdict, rendered from the one object ===
+    if verdict:
+        from .entities.verdict import render_verdict_line
+
+        console.print(f"[bold]Verdict:[/bold] {render_verdict_line(verdict)}")
+        po = verdict.posterior_report
+        if po is not None:
+            console.print(
+                f"  [dim]({po.supporting_count} supporting, "
+                f"{po.contradicting_count} contradicting)[/dim]"
+            )
 
         # Show errors if any (HONEST FAILURE REPORTING)
         errors = stats.get("errors", [])

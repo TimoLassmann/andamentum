@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from .entities.verdict import EpistemicVerdict
+
 
 @dataclass
 class EvidenceSummary:
@@ -130,10 +132,12 @@ class ClaimSummary:
     integrated_confidence: Optional[float] = None
     # Per-claim audit data added for v2 report: the verdict label that
     # the renderer puts on the badge (closed vocabulary; see
-    # ``audit_report._normalised_verdict``), and the gate trace that
+    # ``entities.verdict.display_label``), and the gate trace that
     # externalises every deterministic check the claim was subjected
-    # to. Both are populated by ``report_generator`` from claim entity
-    # state; the renderer never recomputes them.
+    # to. Both are populated by ``report_generator``; ``verdict_label``
+    # is copied off the run's ``ClaimVerdict`` — the renderer never
+    # derives it, which is what stops the badges and the headline
+    # disagreeing inside one document.
     verdict_label: str = ""
     gate_trace: list[GateTraceEntry] = field(default_factory=list)
 
@@ -181,7 +185,13 @@ class InvestigationStats:
 
 @dataclass
 class ConfidenceScores:
-    """Answer-level confidence scores for report rendering."""
+    """Answer-level confidence scores for report rendering.
+
+    A projection of ``ReportData.verdict_object.posterior_report`` — not
+    a second computation. The offline report used to re-run
+    ``compute_posterior`` to fill this in, which is where the documented
+    live-vs-offline ``terminal_state`` divergence came from.
+    """
 
     posterior: Optional[float] = None
     posterior_supporting: float = 0.0
@@ -202,7 +212,11 @@ class ReportData:
     direct_answer: str
 
     question_type: Optional[str] = None
-    verdict: str = ""
+    # The run's persisted decision record, loaded from
+    # objective.snapshot_id → snapshot.verdict. The renderer reads its
+    # labels; it does not re-derive a verdict from the posterior and it
+    # no longer scrapes one out of the artefact prose.
+    verdict_object: Optional["EpistemicVerdict"] = None
     artefact_trace: dict[str, list[str]] = field(default_factory=dict)
     investigation_narrative: str = ""
     evidence_index_map: dict[str, int] = field(default_factory=dict)

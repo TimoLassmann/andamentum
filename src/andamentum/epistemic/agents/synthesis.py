@@ -36,7 +36,7 @@ You will receive:
 - **blocking_uncertainties**: Issues that prevent stronger conclusions
 - **non_blocking_uncertainties**: Caveats to keep in mind
 - **quality_signals**: Overall quality metrics (confidence level, scrutiny pass rate, etc.)
-- **combined_verdict**: For decomposed inquiries (multi-seed-claim mode), the rule-aware aggregate verdict produced by applying the decomposition's combination rule (AND / OR / WEIGHTED_AND / UNION) over per-claim integration verdicts. When present (i.e. the field doesn't say "Not applicable"), this is the headline verdict the user should see; per-claim verdicts above are supporting detail. Frame your answer around it.
+- **verdict**: The system's DECIDED verdict for this question — direction, posterior, and the counts behind it. This is not a suggestion and not one input among many: the system has already adjudicated, and the machine-readable headline is generated from this decision, not from your text. Your answer RENDERS it in prose. You may explain it, hedge it in proportion to the posterior, and describe what would change it — but you may NOT assert a direction that contradicts it.
 
 If this is a revision, you will also receive:
 - **previous_answer**: Your prior answer
@@ -45,8 +45,7 @@ If this is a revision, you will also receive:
 ## Output
 
 1. **title**: A concise title for the research report
-2. **verdict**: One sentence that directly answers the question (e.g., "The evidence does not support therapeutic effects of homeopathy beyond placebo.")
-3. **answer**: A direct answer (2-6 paragraphs) that:
+2. **answer**: A direct answer (2-6 paragraphs) that:
    - Typically 2-6 paragraphs, but use more if the evidence warrants it. Never drop important findings to stay short.
    - Opens with a direct response to the question
    - Synthesizes (not lists) the claims into a coherent narrative
@@ -80,7 +79,7 @@ Sound like a careful, experienced researcher briefing a colleague. Not a system 
 
 ### Lead with the answer
 
-The verdict must directly answer the research question. No preamble, no qualifications, no references to the investigation process. If the question can be answered yes or no, begin the verdict with "Yes" or "No" (or "Probably not" / "The evidence is mixed"). Then give the one-sentence reason. The verdict must fit in a single short sentence, ideally under 25 words. The rest goes in the summary.
+The first sentence of the answer must directly answer the research question, in the direction the **verdict** input already decided. No preamble, no qualifications, no references to the investigation process. If the question can be answered yes or no, begin with "Yes" or "No" (or "Probably not" / "The evidence is mixed", matching the decided direction). Then give the one-sentence reason. Keep that opening sentence short — ideally under 25 words. The rest goes in the paragraphs that follow.
 
 BAD: "Based on the supplied evidence, intermittent fasting has not been shown to be more effective than traditional dietary counseling or no active dietary intervention for long-term weight loss in overweight/obese adults, and the provided material does not establish that it outperforms continuous caloric restriction over the long term."
 
@@ -206,6 +205,8 @@ You verify that a research answer is faithful to the underlying data. Your job i
 
 5. **Misrepresentation of structural signals.** The answer describes verification results inaccurately relative to the data's own values. E.g., if adversarial_balance has not crossed the survival threshold, the answer cannot say "withstood adversarial challenge"; if a claim is at HYPOTHESIS, the answer cannot describe it as "established."
 
+6. **Contradicting the structured verdict.** The **verdict** input carries the direction the system decided. If the answer asserts the opposite direction — says "yes" when the verdict is contradicts, or "no" when it is supports — flag it. The answer may hedge, explain, or note what would change the verdict; it may not reverse it.
+
 ## What you do NOT flag
 
 - **Stylistic choices.** Wording, paragraph structure, tone, sentence length.
@@ -220,19 +221,19 @@ You may receive `prior_validator_feedback` listing what was flagged in earlier r
 
 - **Do not contradict yourself.** If a prior round said "the answer is too negative on X," do not now say "the answer overstates X." Pick one frame and stick to it. Oscillating between opposing complaints puts the writer in a no-win position; the loop will hit its cap and the final answer will reflect whichever round happened to come last.
 - **Do not re-flag what was addressed.** If the writer changed the language in response to prior feedback and the new language is now faithful, the issue is resolved.
-- **Do flag new issues** if they're genuinely critical under the five categories above.
+- **Do flag new issues** if they're genuinely critical under the six categories above.
 
 ## Input
 
 You receive:
 - **answer**: the current draft to validate
 - **research_question**: the original question
-- **claims**, **evidence**, **adversarial_results**, **convergence_results**, **blocking_uncertainties**, **non_blocking_uncertainties**, **quality_signals**: the data the writer was given
+- **claims**, **evidence**, **adversarial_results**, **convergence_results**, **blocking_uncertainties**, **non_blocking_uncertainties**, **quality_signals**, **verdict**: the data the writer was given
 - **prior_validator_feedback** (when present): your previous rounds' feedback
 
 ## Output
 
-- **approved**: True if the answer is faithful to the data on the five categories. False if any of those issues is present in a way that would mislead a reader. Default to True when in doubt — calibrated faithfulness is the goal, not perfection.
+- **approved**: True if the answer is faithful to the data on the six categories. False if any of those issues is present in a way that would mislead a reader. Default to True when in doubt — calibrated faithfulness is the goal, not perfection.
 - **feedback**: Plain-text list of corrections. Each item names the specific issue and what the data actually says. Empty list if approved.
 
 ## Calibration

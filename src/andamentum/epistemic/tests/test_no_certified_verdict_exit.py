@@ -40,6 +40,7 @@ from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     CheckCompletion,
     CheckSynthesisDemand,
+    CombineClaimVerdicts,
     SynthesizeInsufficient,
 )
 from andamentum.epistemic.graph.state import EpistemicGraphState
@@ -50,6 +51,21 @@ class _FakeRunContext:
     def __init__(self, state: EpistemicGraphState, deps: EpistemicDeps) -> None:
         self.state = state
         self.deps = deps
+
+
+async def _run_check_completion(state: EpistemicGraphState, deps: EpistemicDeps):
+    """Drive the real two-node sequence CheckCompletion sits at the end of.
+
+    BEHAVIOUR CHANGE (2026-08-09): CheckCompletion is a pure reader over
+    ``state.verdict`` and raises when it is absent — reaching it without
+    one is a routing bug. ``CombineClaimVerdicts`` is its sole
+    predecessor, so seeding via that node is strictly MORE faithful than
+    the previous direct call: the routing decision is now exercised
+    against a verdict built from the same claim table.
+    """
+    ctx = _FakeRunContext(state, deps)
+    await CombineClaimVerdicts().run(ctx)  # type: ignore[arg-type]
+    return await CheckCompletion().run(ctx)  # type: ignore[arg-type]
 
 
 async def _setup(
@@ -89,8 +105,7 @@ async def test_routes_to_synthesize_insufficient_when_no_ia(
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -118,8 +133,7 @@ async def test_routes_to_check_synthesis_demand_when_any_ia_exists(
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, CheckSynthesisDemand)
     # Reason field should NOT be set on this path.
@@ -155,8 +169,7 @@ async def test_mixed_some_ia_some_not_routes_to_csd(tmp_path: Path) -> None:
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, CheckSynthesisDemand), (
         "Mixed case (any IA exists) should still route to CSD; the "
@@ -187,8 +200,7 @@ async def test_retrieval_failed_takes_precedence_over_no_ia(
         retrieval_failed=True,
     )
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -214,8 +226,7 @@ async def test_all_abandoned_still_routes_correctly(tmp_path: Path) -> None:
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -231,8 +242,7 @@ async def test_no_claims_still_routes_correctly(tmp_path: Path) -> None:
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -277,8 +287,7 @@ async def test_retrieval_failed_with_ia_set_routes_to_writer(
         retrieval_failed=True,
     )
     deps = EpistemicDeps(repo=repo, agent_runner=None)
-    ctx = _FakeRunContext(state, deps)
-    next_node = await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     # IA wins: route to writer despite retrieval_failed=True.
     assert isinstance(next_node, CheckSynthesisDemand)

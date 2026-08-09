@@ -131,6 +131,7 @@ async def _emit_artifacts(
     visits: list[dict[str, Any]],
     repo: Any,
     objective_id: str,
+    verdict: Any = None,
 ) -> None:
     """Write run.jsonl, diff.json, timing.txt to output_dir.
 
@@ -150,7 +151,6 @@ async def _emit_artifacts(
     evidence = await repo.query("evidence")
     obj = next((o for o in objs if o.objective_id == objective_id), None)
     decomp = obj.decomposition if obj is not None else None
-    cv = decomp.combined_verdict if decomp is not None else None
     diff = {
         "objective_id": objective_id,
         "claims": len(claims),
@@ -161,8 +161,11 @@ async def _emit_artifacts(
             if (e.extracted_content or "") and len(e.extracted_content) > 200
         ),
         "decomposition_present": decomp is not None,
-        "combined_verdict": cv.verdict if cv is not None else None,
-        "combined_posterior": cv.posterior if cv is not None else None,
+        # Sourced from the run's verdict object, so verify-mode runs
+        # populate these too (the previous decomposition-only lookup left
+        # them null for the whole SciFact arm).
+        "combined_verdict": verdict.direction if verdict is not None else None,
+        "combined_posterior": verdict.posterior if verdict is not None else None,
         "claims_terminal": sum(1 for c in claims if c.cycle_capped or c.abandoned),
         "claims_with_integrated_assessment": sum(
             1 for c in claims if c.integrated_assessment is not None
@@ -409,7 +412,9 @@ async def run_epistemic_graph(
                     break
             result = run.output
         if output_dir is not None:
-            await _emit_artifacts(output_dir, visits, repo, objective_id)
+            await _emit_artifacts(
+                output_dir, visits, repo, objective_id, state.verdict
+            )
         if stop_after is not None:
             await _check_stage_invariant(stop_after, state, repo)
 
@@ -422,15 +427,14 @@ async def run_epistemic_graph(
             assert stop_after is not None
             logger.info(f"Graph stopped after {stop_after.__name__}")
 
-    # Compute posterior confidence only on a complete graph traversal.
-    posterior_report = None
-    if result is not None and result.successful > 0:
-        from ..confidence import compute_posterior
-
-        posterior_report = await compute_posterior(
-            repo, objective_id, retrieval_failed=result.retrieval_failed
-        )
-
+    # The posterior is computed INSIDE the graph now, by
+    # CombineClaimVerdicts, and persisted on the frozen Snapshot. The
+    # previous post-End ``compute_posterior`` call was a second,
+    # independent computation whose retrieval_failed input and claim
+    # state could differ from the one the writer had rendered — one of
+    # the three-answers-that-disagree paths. PipelineResult exposes the
+    # embedded report so the CLI, the artefact, the HTML report and the
+    # benchmark harness all read literally the same object.
     from ..operations_runner import PipelineResult
 
     if result is None:
@@ -442,7 +446,10 @@ async def run_epistemic_graph(
             failed=0,
             status=f"stopped_after:{stop_after.__name__}",
             errors=[],
-            posterior=None,
+            posterior=(
+                state.verdict.posterior_report if state.verdict is not None else None
+            ),
+            verdict=state.verdict,
             quarantined=[],
             retrieval_failed=False,
         )
@@ -453,7 +460,10 @@ async def run_epistemic_graph(
         failed=result.failed,
         status=result.status,
         errors=result.errors,
-        posterior=posterior_report,
+        posterior=(
+            state.verdict.posterior_report if state.verdict is not None else None
+        ),
+        verdict=state.verdict,
         quarantined=result.quarantined,
         retrieval_failed=result.retrieval_failed,
     )

@@ -75,7 +75,7 @@ Every persistent thing the system reasons over is one of seven entity types. The
 |---|---|---|
 | **Objective** | The research question and what's been done about it. | `question`, `question_type`, `decomposition`, `artefact_id`, `snapshot_id`, `claim_to_verify` |
 | **Evidence** | A piece of source content extracted from a provider. | `source_type`, `source_ref`, `extracted_content`, `quality_score`, `support_judgment`, `judgment_distribution` (verbalized 3-way belief distribution behind the verdict; `judgment_confidence` / `judgment_entropy` / `judgment_one_hot` are computed from it), `invalidated` |
-| **Claim** | A scoped proposition under investigation. | `statement`, `scope`, `stage`, `scrutiny_verdict`, `integrated_assessment`, `integrated_confidence`, `adversarial_balance`, `convergence_verdict`, `cycle_capped`, `integration_candidates` |
+| **Claim** | A scoped proposition under investigation. | `statement`, `scope`, `stage`, `scrutiny_verdict`, `integrated_assessment`, `integrated_confidence`, `adversarial_balance`, `convergence_verdict`, `cycle_capped`, `cap_evaluation`, `integration_candidates` |
 | **Uncertainty** | An identified doubt, gap, or open question about a claim. | `description`, `uncertainty_type`, `blocking`, `resolved`, `resolution` |
 | **Decision** | The "what would change my mind?" record at ACTIONABLE stage. | `criteria`, `actionable_threshold`, `what_would_change_mind` |
 | **Snapshot** | An immutable freeze of the objective's state at synthesis time. | `artefact_id`, `frozen_at`, `claim_ids`, `evidence_ids` |
@@ -113,7 +113,7 @@ Investigate              → ExtractNewEvidence
 ExtractNewEvidence       → Scrutinize
 AbandonOrDemote          → PromoteToSupported | Scrutinize
 ResolveUncertainties     → EnumerateCandidates | PromoteToSupported | ResolveUncertainties | Scrutinize
-PromoteToSupported       → CheckCompletion | ClusterEvidence
+PromoteToSupported       → ClusterEvidence | CombineClaimVerdicts
 ClusterEvidence          → RunVerification
 RunVerification          → EnumerateCandidates | ResolveUncertainties
 EnumerateCandidates      → ScoreLoveliness
@@ -121,7 +121,7 @@ ScoreLoveliness          → ScoreLikeliness
 ScoreLikeliness          → SelectBestExplanation
 SelectBestExplanation    → PromoteSupported
 PromoteSupported         → CombineClaimVerdicts
-CombineClaimVerdicts     → CheckCompletion
+CombineClaimVerdicts     → CheckCompletion   (its SOLE predecessor)
 CheckCompletion          → CheckSynthesisDemand | SynthesizeInsufficient
 CheckSynthesisDemand     → Scrutinize | Synthesize | SynthesizeInsufficient
 Synthesize               → (terminal)
@@ -163,7 +163,7 @@ SynthesizeInsufficient   → (terminal)
 - **Scrutinize**
   - reads: `claims_needing_rescrutiny`, `investigation_counts`, `objective_id`, `scrutiny_resolve_cycles`
   - writes: `claims_needing_rescrutiny`, `scrutiny_resolve_cycles`
-  - ops: `ScrutiniseClaim`
+  - ops: `ScrutiniseClaim`, `ConcludeAtCycleCap`
 - **Investigate**
   - reads: `investigation_counts`, `objective_id`
   - writes: `claims_needing_rescrutiny`, `claims_needing_tms`, `investigation_counts`
@@ -175,7 +175,7 @@ SynthesizeInsufficient   → (terminal)
 - **ResolveUncertainties**
   - reads: `claims_needing_rescrutiny`, `objective_id`, `scrutiny_resolve_cycles`
   - writes: `claims_needing_rescrutiny`, `scrutiny_resolve_cycles`
-  - ops: `DeduplicateConcerns`, `ResolveUncertainty`
+  - ops: `DeduplicateConcerns`, `ResolveUncertainty`, `ConcludeAtCycleCap`
 - **PromoteToSupported**
   - reads: `objective_id`, `verification_done`
   - writes: `terminal_claims`
@@ -212,14 +212,17 @@ SynthesizeInsufficient   → (terminal)
 #### Combination & demand
 
 - **CombineClaimVerdicts**
-  - reads: `objective_id`
-  - ops: (deterministic — combiner in `graph/combination.py`)
+  - reads: `objective_id`, `retrieval_failed`
+  - writes: `verdict` — the run's single `EpistemicVerdict`, and its SOLE writer
+  - ops: (deterministic — `confidence.build_verdict`, which wraps
+    `compute_posterior` and the combiner in `graph/combination.py`)
 - **CheckCompletion**
-  - reads: `errors`, `failed`, `objective_id`, `operations_log`, `quarantined`, `retrieval_failed`, `successful`
+  - reads: `errors`, `failed`, `objective_id`, `operations_log`, `quarantined`, `retrieval_failed`, `successful`, `verdict`
   - writes: `synthesis_insufficient_reason`
-  - ops: (deterministic gates)
+  - ops: (deterministic gates; a pure reader over `state.verdict.provenance` —
+    raises when the verdict is absent, since that means a routing bug)
 - **CheckSynthesisDemand**
-  - reads: `claims_needing_rescrutiny`, `objective_id`, `scrutiny_resolve_cycles`
+  - reads: `claims_needing_rescrutiny`, `objective_id`, `scrutiny_resolve_cycles`, `verdict`
   - writes: `claims_needing_rescrutiny`
   - ops: (deterministic gates plus Demand LLM agent)
 
@@ -227,7 +230,9 @@ SynthesizeInsufficient   → (terminal)
 
 - **Synthesize**
   - reads: same as `CheckCompletion`
-  - ops: `FreezeSnapshot`, `SynthesizeReport` (writer ⇄ validator loop)
+  - ops: `FreezeSnapshot` (stamps `state.verdict` onto the Snapshot via the
+    typed `OperationInput.verdict` channel), `SynthesizeReport`
+    (writer ⇄ validator loop over the prose only)
 - **SynthesizeInsufficient**
   - reads: same as `Synthesize` plus `synthesis_insufficient_reason`
   - ops: `FreezeSnapshot`, `SynthesizeInsufficientReport`
@@ -284,11 +289,15 @@ A capped claim:
 
 - Has `cycle_capped=True` set on the entity.
 - Skips further scrutiny rounds; the demand loop in `CheckSynthesisDemand` will not add it back.
-- Is excluded from IBE certification.
-- Contributes to the aggregated posterior with reduced weight (`CYCLE_CAP_CONFIDENCE_PENALTY = 0.7` as a pull-toward-neutral on the counting fallback path; multiplicative on confidence in the integration path).
+- Is excluded from the **IBE chain** — on LLM-cost grounds, not because its verdict would be discarded. Four abductive-deliberation calls are not warranted for a claim whose inquiry did not converge.
+- **Receives a deterministic terminal verdict at the cap instead.** `ConcludeAtCycleCapOperation` (no LLM) re-reads the claim's eligible representative evidence through the same `compute_evidence_weight` engine scrutiny uses. When that reading is `strong` or `moderate` it writes `integrated_assessment` / `integrated_confidence` / `integrated_reasoning`; when it is `conflicting` or `weak` it writes no verdict. Either way the reading is recorded as a typed `Claim.cap_evaluation`, so a capped claim with no verdict is the positive record that the *evidence* did not decide — rather than a scheduling side effect wearing the word "insufficient". The verdict a reader sees is rendered from the run's `EpistemicVerdict` (§10), which carries the `CapEvaluation` on its `ClaimVerdict` entry, so no renderer has to reach back to the entity to explain it.
+- The cap-derived confidence is `purity × mass_adequacy`, ceilinged at `MECHANICAL_VERDICT_MAX_CONFIDENCE = 0.9`. `purity` is the normalised directional margin `(dominant − minority) / (dominant + minority)`; `mass_adequacy` is `min(1, dominant / SCRUTINY_STRONG_MASS_THRESHOLD)`. The second factor exists because purity alone is 1.0 for *any* one-sided pool regardless of size, so a single unopposed source would report the system's maximum mechanical confidence — more than a 5-vs-1 pool. No new constant: the saturation point is the mass the system already calls "strong".
+- Contributes to the aggregated posterior with reduced weight (`CYCLE_CAP_CONFIDENCE_PENALTY = 0.7` as a pull-toward-neutral on the counting fallback path; multiplicative on confidence in the integration path). With the cap-time verdict this is now a reachable path rather than a vacuous one. The two ceilings compose: a cap-derived single-claim posterior sits at most `0.9 × 0.7 / 2 = 0.315` from neutral, so it can never read as decisive.
+- Owns only the verdict it wrote. `CapEvaluation.wrote_live_verdict` records whether *this* cap firing authored the live `integrated_assessment`; combined with a `stage == HYPOTHESIS` check (the cap never promotes), it is what lets a repeated firing revise or clear its own verdict while leaving an IBE- or `PromoteAsRefuted`-certified one untouched.
+- Does **not** change stage, and is **never demoted**. `AbandonOrDemote` skips cycle-capped claims in its demote branch: `record_demotion` resets the whole Peirce-cycling state — which the cap exists to stop — and nulls `integrated_assessment`, which for a capped claim is the terminal verdict. The reachable sequence it closes is cap → `AbandonOrDemote` refute/soft-promotes to SUPPORTED → the next `Scrutinize` visit routes the failed-scrutiny SUPPORTED claim back → demotion erases the verdict.
 - Surfaces in the synthesis report under "limitations" with its capped status named.
 
-Cycle-capping is the system's signal that an inquiry has reached its bounded limit. The architecture trades occasional honest suspension on a hard claim for never confidently ratifying a claim that repeatedly failed scrutiny.
+Cycle-capping is the system's signal that an inquiry has reached its bounded limit. The architecture trades occasional honest suspension on a hard claim for never confidently ratifying a claim that repeatedly failed scrutiny. What it must *not* trade away is signal it already has: a cap stops further LLM work, it does not zero out the evidence already gathered.
 
 ---
 
@@ -432,7 +441,35 @@ The termination guarantee is the per-sub-claim cap (`scrutiny_resolve_cycles[cla
 
 ## 10. Confidence scoring
 
-The aggregated posterior is computed by `compute_posterior` in `confidence.py`. It is **abductive-primary**: the IBE chain is the system's certifier of directional verdicts, and the posterior honours the chain's per-claim verdict rather than re-deriving direction from per-item counts. (An earlier design blended a sigmoid-of-counts with the integration verdict via a tunable mixing constant; that blend was removed — the constant couldn't be justified against held-out data.)
+### The verdict object — one decision, rendered everywhere
+
+`EpistemicVerdict` (`entities/verdict.py`) is the run's single decision
+record. `CombineClaimVerdicts` — the sole predecessor of `CheckCompletion` —
+builds it from the live database on every pass via `confidence.build_verdict`,
+writes it to `EpistemicGraphState.verdict`, and both terminals stamp it onto
+the frozen `Snapshot`. It stores the minimum (the `PosteriorReport`, the
+per-claim `ClaimVerdict` entries with their `EvidenceRef`s, and a
+`VerdictProvenance` of counts) and DERIVES `posterior` / `confidence` /
+`direction` / `label` as computed fields, so a second number cannot drift
+from the first.
+
+Everything downstream RENDERS it rather than re-deciding: `CheckCompletion`'s
+routing and all four insufficient-reason strings, `CheckSynthesisDemand`'s
+four gates, the artefact's `> **Verdict:**` line
+(`render_verdict_line`, code-owned — the writer agent has no verdict field),
+the CLI, the offline report, and the HTML audit report. `verdict_label` in
+`entities/verdict.py` is the ONLY place in the package that compares a
+posterior against `POSTERIOR_DIRECTIONAL_BREAKPOINT`; `display_label` maps
+the resulting *direction* onto the five-label display vocabulary and never
+re-thresholds. A source scan pins both properties.
+
+Reachability mirrors the artefact duality: 1-hop live via
+`PipelineResult.verdict`, auditable freeze via
+`objective.snapshot_id → snapshot.verdict`. The posterior is computed
+**inside** the graph — there is no post-run recomputation, which is what
+removes the live-vs-offline `terminal_state` divergence.
+
+The aggregated posterior itself is computed by `compute_posterior` in `confidence.py`. It is **abductive-primary**: the IBE chain is the system's certifier of directional verdicts, and the posterior honours the chain's per-claim verdict rather than re-deriving direction from per-item counts. (An earlier design blended a sigmoid-of-counts with the integration verdict via a tunable mixing constant; that blend was removed — the constant couldn't be justified against held-out data.)
 
 - **Integration path (the headline)** — each integrated claim maps its verdict to a probability: `supports` at confidence *c* → `0.5 + c/2`, `contradicts` → `0.5 − c/2`, `insufficient` → `0.5`. Decomposed runs aggregate rule-aware via `combine_claim_verdicts` (AND → min, OR → max, WEIGHTED_AND → weighted mean), so the headline agrees with `CombineClaimVerdicts`; open-research and seed-claim runs use a confidence-weighted average.
 - **No-certified-verdict gate** — when active claims exist but none reached IBE certification, the posterior is forced to 0.5 with `terminal_state="oscillation_detected"` (or `retrieval_failed` when that's the more specific diagnostic), mirroring `CheckCompletion`'s routing to `SynthesizeInsufficient` under the same condition. Counting on uncertified evidence is structurally unsafe: its direction can flip run-to-run with no change in epistemic state.
@@ -452,6 +489,7 @@ When a process flag fires (the inquiry didn't converge cleanly), the verdict it 
 |---|---|---|---|
 | `cycle_capped=True` on any contributing claim | `CYCLE_CAP_CONFIDENCE_PENALTY` | 0.7 | Multiplier on confidence (integration path) or pull-toward-neutral on posterior (counting path) |
 | `state.retrieval_failed=True` | `RETRIEVAL_FAILED_CONFIDENCE_PENALTY` | 0.7 | Same shape, same value. Stacks multiplicatively |
+| Verdict derived mechanically, without the IBE chain | `MECHANICAL_VERDICT_MAX_CONFIDENCE` | 0.9 | Hard ceiling on `integrated_confidence`. Read by `PromoteAsRefutedOperation` (integer counts) and `ConcludeAtCycleCapOperation` (weighted directional mass) |
 
 A doubly-provisional verdict gets `0.7 × 0.7 = 0.49` of its full distance from 0.5.
 
@@ -542,7 +580,7 @@ Every decision-relevant numeric threshold lives in `epistemic/thresholds.py`. Ea
 
 | Constant | Value | Read by |
 |---|---|---|
-| `POSTERIOR_DIRECTIONAL_BREAKPOINT` | 0.66 | `combination._verdict_label` |
+| `POSTERIOR_DIRECTIONAL_BREAKPOINT` | 0.66 | `entities.verdict.verdict_label` — the ONLY read in the package; every other consumer maps the resulting direction |
 | `POSTERIOR_DECISIVE_THRESHOLD` | 0.85 | `CheckSynthesisDemand` Gate 4 |
 
 ### Convergence (Reichenbach / Mill)
@@ -570,13 +608,14 @@ Top-level layout under `src/andamentum/epistemic/`:
 | Path | Role |
 |---|---|
 | `thresholds.py` | Single source of truth for every decision-relevant numeric threshold. |
-| `entities/` | The seven primitives plus `Prediction` and decomposition types. Pure pydantic data classes. |
+| `entities/` | The seven primitives plus `Prediction`, decomposition types, `CapEvaluation` and `verdict.py`. Pure pydantic data classes. |
+| `entities/verdict.py` | `EpistemicVerdict` / `ClaimVerdict` / `EvidenceRef` / `VerdictProvenance` / `PosteriorReport`, plus `verdict_label` (the one threshold read), `display_label` and `render_verdict_line`. Leaf module: pydantic + `thresholds` only. |
 | `operations/` | 37 operation classes (`BaseOperation` subclasses) across 17 modules. Pure transforms. |
 | `graph/` | The 23-node DAG. `nodes.py` · `state.py` · `topology.py` · `base.py` · `stages.py` (named stage runners with enforced exit invariants). |
 | `gates.py` | Stage promotion gates. `STAGE_GATES` dict plus `validate_promotion` (routing-aware). |
 | `providers/` | 11 evidence providers (10 domain APIs plus `web_search`) plus `CONTRIBUTING.md`. Each returns `list[GatheredEvidence]`; never raises. |
 | `convergence_detector.py` | Reichenbach common-cause cluster analysis. |
-| `confidence.py` | Posterior aggregation; abductive-primary with a diagnostic counting posterior (see section 10). |
+| `confidence.py` | Posterior aggregation (abductive-primary, diagnostic counting posterior — see section 10) plus `build_verdict`, which assembles the run's `EpistemicVerdict` from the live DB. |
 | `judgment_signal.py` | Pure math for the verbalized judgment distribution: normalisation, argmax verdict, confidence, entropy, one-hot detection. Leaf module, no epistemic deps. |
 | `demand.py` | The `Demand` Pydantic model used everywhere lazy-escalation happens. |
 | `repository.py` | `EpistemicRepository` wraps a `DocumentStore` (from `andamentum.document_store`). |

@@ -72,20 +72,17 @@ class ScrutiniseClaimOperation(BaseOperation):
 
         This is the set the deterministic evidence-weight is computed over
         (and the candidate pool the LLM issue-finder's representatives are
-        drawn from). It mirrors the counting posterior's eligibility filter,
-        so weight and posterior see the same evidence.
+        drawn from).
+
+        Delegates to ``gates.eligible_representative_evidence`` — the one
+        definition of this filter, shared with the cycle-cap terminal
+        verdict so the two provably read the same evidence rather than two
+        near-copies. See that function for the deliberate divergence from
+        ``confidence._claim_directional_masses``.
         """
-        candidates: list[Evidence] = []
-        for eid in claim.evidence_ids:
-            ev = await self.repo.get("evidence", eid)
-            if not isinstance(ev, Evidence) or not ev.extracted_content:
-                continue
-            if ev.invalidated:
-                continue
-            if ev.cluster_status in ("corroborative", "deferred"):
-                continue
-            candidates.append(ev)
-        return candidates
+        from ..gates import eligible_representative_evidence
+
+        return await eligible_representative_evidence(claim, self.repo)
 
     async def _gather_evidence_summaries(
         self, claim: Claim, candidates: list[Evidence]

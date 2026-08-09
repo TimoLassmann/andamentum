@@ -38,6 +38,7 @@ from ..operations import (
 from andamentum.document_store import DocumentStore
 from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
+from .conftest import make_verdict
 
 import sys
 import pathlib
@@ -695,6 +696,9 @@ class TestWriterValidatorLoop:
             evidence_ids=[ev.entity_id],
             uncertainty_ids=[],
             snapshot_type="final",
+            verdict=make_verdict(
+                obj.entity_id, posterior=0.8, claim_ids=(claim.entity_id,)
+            ),
         )
         await repo.save(snapshot)
 

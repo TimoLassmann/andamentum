@@ -21,6 +21,7 @@ from ..operations import (
     ProposeClaimsOperation,
 )
 from ..operations.base import OperationInput
+from .conftest import make_verdict
 
 
 class FakeEvidenceGatherer:
@@ -988,7 +989,12 @@ class TestSynthesizeReport:
             phase="claims_done",
         )
         await repo.save(obj)
-        snap = Snapshot(entity_id="snap-1", objective_id="obj-1", snapshot_type="final")
+        snap = Snapshot(
+            entity_id="snap-1",
+            objective_id="obj-1",
+            snapshot_type="final",
+            verdict=make_verdict("obj-1", posterior=0.8),
+        )
         await repo.save(snap)
 
         ops = create_operations(repo, fake_runner, embedding_model="test-model")

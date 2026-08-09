@@ -63,71 +63,19 @@ class SubInvestigation(BaseModel):
     )
 
 
-class CombinedVerdictData(BaseModel):
-    """Serialized form of the rule-aware combined verdict that
-    ``CombineClaimVerdicts`` writes back onto the decomposition.
-
-    Mirrors the runtime ``CombinedVerdict`` dataclass (in
-    ``graph/combination.py``) but is the persistent form that travels
-    through FreezeSnapshot → Synthesize. Kept as a separate model from
-    the runtime dataclass to keep the data layer (entities/) decoupled
-    from the graph layer (graph/combination.py).
-    """
-
-    posterior: Optional[float] = Field(
-        default=None,
-        description=(
-            "Combined scalar posterior in [0, 1], or None for UNION rule "
-            "where there's no scalar verdict by design."
-        ),
-    )
-    verdict: str = Field(
-        description=(
-            "Combined verdict label: 'supports' | 'contradicts' | "
-            "'insufficient' | 'no_data' | 'union'."
-        )
-    )
-    combination_rule: str = Field(
-        description="The rule applied: AND | OR | WEIGHTED_AND | UNION."
-    )
-    claim_posteriors: list[Optional[float]] = Field(
-        default_factory=list,
-        description=(
-            "Per-claim posterior, one entry per claim in decomposition "
-            "order. None for claims that contributed no posterior "
-            "(abandoned, cycle-capped, no integration verdict)."
-        ),
-    )
-    n_capped: int = Field(default=0, description="Cycle-capped claim count.")
-    n_no_verdict: int = Field(
-        default=0,
-        description=(
-            "Claims with no integration verdict (the recurring-bug "
-            "diagnostic — should be 0 for healthy runs)."
-        ),
-    )
-    n_abandoned: int = Field(default=0, description="Abandoned claim count.")
-    n_orphan: int = Field(
-        default=0,
-        description=(
-            "Claims whose sub_investigation_id had no matching entry "
-            "in the current decomposition (e.g. removed by reflection)."
-        ),
-    )
-    explanation: str = Field(
-        default="",
-        description="Human-readable diagnostic of the combination math.",
-    )
-
-
 class Decomposition(BaseModel):
     """Top-down decomposition of a research question into
-    sub-investigations, plus optional combined-verdict state.
+    sub-investigations.
 
     Stored on ``Objective.decomposition`` after
-    ``DecomposeQuestionOperation`` runs. After ``CombineClaimVerdicts``
-    aggregates per-claim verdicts, ``combined_verdict`` is populated
-    in-place; ``FreezeSnapshot`` then promotes it onto the Snapshot.
+    ``DecomposeQuestionOperation`` runs. It carries the question's
+    structure only — the aggregate outcome lives on
+    ``EpistemicGraphState.verdict`` / ``Snapshot.verdict`` as a typed
+    ``EpistemicVerdict``, built fresh from the live DB on every pass
+    through ``CombineClaimVerdicts``. (The previous
+    ``combined_verdict: CombinedVerdictData`` field made the aggregate
+    reachable only for decomposed runs, so verify-mode and
+    open-research runs produced no structured verdict at all.)
 
     A good decomposition has 2-5 sub-investigations that are:
     - Load-bearing (each one's outcome materially affects the answer)
@@ -165,16 +113,6 @@ class Decomposition(BaseModel):
             "question's load-bearing structure."
         ),
     )
-    combined_verdict: Optional[CombinedVerdictData] = Field(
-        default=None,
-        description=(
-            "The rule-aware aggregate over per-claim posteriors, populated "
-            "by CombineClaimVerdicts (graph node) after the IBE chain "
-            "produces per-claim integration verdicts. None until that node "
-            "runs."
-        ),
-    )
-
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Decomposition | None":
         """Round-trip helper: build from a dict (e.g. legacy metadata).

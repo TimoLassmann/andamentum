@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
+from andamentum.epistemic.entities.verdict import EpistemicVerdict
 from andamentum.epistemic.graph.nodes import _evaluate_retrieval_health
 from andamentum.epistemic.graph.state import EpistemicGraphState
 from andamentum.epistemic.report_data import (
@@ -379,6 +380,40 @@ class TestConfidenceScoresTerminalState:
         assert cs.terminal_state == "retrieval_failed"
 
 
+def _posterior_report(terminal_state: str) -> PosteriorReport:
+    """A PosteriorReport carrying ``terminal_state``.
+
+    ``model_construct`` for states outside the current Literal: the
+    defensive renderer branch exists precisely for a terminal_state that
+    a future confidence.py adds without a matching renderer case, and a
+    validated constructor cannot express that state.
+    """
+    if terminal_state in ("completed", "retrieval_failed", "oscillation_detected"):
+        return PosteriorReport(
+            posterior=0.5,
+            log_odds=0,
+            supporting_count=0.0,
+            contradicting_count=0.0,
+            counting_posterior=0.5,
+            objective_id="obj-test",
+            question_type="predictive",
+            explanation="test",
+            terminal_state=terminal_state,  # type: ignore[arg-type]
+        )
+    return PosteriorReport.model_construct(
+        None,
+        posterior=0.5,
+        log_odds=0,
+        supporting_count=0.0,
+        contradicting_count=0.0,
+        counting_posterior=0.5,
+        objective_id="obj-test",
+        question_type="predictive",
+        explanation="test",
+        terminal_state=terminal_state,
+    )
+
+
 def _make_report_data(terminal_state: str = "completed") -> ReportData:
     from datetime import datetime
 
@@ -390,7 +425,12 @@ def _make_report_data(terminal_state: str = "completed") -> ReportData:
         database_name="test_db",
         direct_answer="Answer text.",
         question_type="predictive",
-        verdict="Test verdict",
+        # The renderer reads terminal_state off the verdict object now,
+        # not off ConfidenceScores (which is itself a projection of it).
+        verdict_object=EpistemicVerdict(
+            objective_id="obj-test",
+            posterior_report=_posterior_report(terminal_state),
+        ),
         stats=InvestigationStats(total_claims=0, total_evidence=0),
         confidence_scores=ConfidenceScores(
             posterior=0.5,

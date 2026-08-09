@@ -16,7 +16,7 @@ import from the submodule directly::
 # are classes — wrap their methods (or subclass them and wrap subclass methods).
 # To run a full pipeline, use `from andamentum.epistemic.runner import
 # DefaultAgentRunner` (lazy-imported to keep pydantic-ai off the critical path).
-from .confidence import compute_posterior
+from .confidence import build_verdict, compute_posterior
 from .gates import (
     can_demote,
     check_degeneracy,
@@ -38,6 +38,13 @@ from .repository import EpistemicRepository
 # === Result/data types (entities, configs, return values; not tools themselves) ===
 from .agents import AGENT_REGISTRY, AgentDefinition
 from .confidence import PosteriorReport
+from .entities.verdict import (
+    ClaimVerdict,
+    EpistemicVerdict,
+    EvidenceRef,
+    VerdictProvenance,
+    render_verdict_line,
+)
 from .entities import (
     BLOCKING_TYPES,
     ENTITY_CLASSES,
@@ -105,6 +112,12 @@ __all__ = [
     "OperationResult",
     "PipelineResult",
     "PosteriorReport",
+    "EpistemicVerdict",
+    "ClaimVerdict",
+    "VerdictProvenance",
+    "EvidenceRef",
+    "build_verdict",
+    "render_verdict_line",
     "PreflightResult",
     "QuarantineRecord",
     "STAGE_GATES",

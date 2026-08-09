@@ -35,7 +35,6 @@ from andamentum.document_store import DocumentStore
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import (
-    CombinedVerdictData,
     Decomposition,
     SubInvestigation,
 )
@@ -43,6 +42,7 @@ from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     SCRUTINY_RESOLVE_CYCLE_CAP,
     CheckSynthesisDemand,
+    CombineClaimVerdicts,
     Scrutinize,
     SynthesizeInsufficient,
 )
@@ -55,6 +55,20 @@ class _FakeRunContext:
     def __init__(self, state, deps):
         self.state = state
         self.deps = deps
+
+
+async def _seed_verdict(state, repo) -> None:
+    """Run the real sole predecessor so ``state.verdict`` is present.
+
+    Replaces the hand-written ``CombinedVerdictData`` fixtures: the
+    gates now read the run's ``EpistemicVerdict``, and building it from
+    the claim table keeps the fixture and the numbers under test
+    consistent. The all-'insufficient' shape below is preserved
+    deliberately — it is what makes the directional-only guard in
+    ``_maybe_loop_back`` correct.
+    """
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    await CombineClaimVerdicts().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
 
 async def _setup_unsatisfying_run(
@@ -84,13 +98,6 @@ async def _setup_unsatisfying_run(
                 for i in range(n_claims)
             ],
             combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,  # ambiguous — triggers LLM
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[0.5] * n_claims,
-                n_no_verdict=0,
-            ),
         ),
     )
     obj.objective_id = obj.entity_id
@@ -115,6 +122,10 @@ async def _setup_unsatisfying_run(
         if i in at_cap:
             state.scrutiny_resolve_cycles[c.entity_id] = SCRUTINY_RESOLVE_CYCLE_CAP
 
+    # Every claim carries integrated_assessment="insufficient" at 0.5, so
+    # the aggregate posterior is 0.5 — ambiguous, which is what routes the
+    # node to the LLM-judgment path these tests override.
+    await _seed_verdict(state, repo)
     return obj, claims, state, repo
 
 
@@ -223,9 +234,9 @@ async def test_needs_more_with_all_claims_abandoned_routes_insufficient(
     if all claims are abandoned, the eligible list is empty and the
     node routes to SynthesizeInsufficient — the structurally correct
     "no-data" terminal."""
-    # We can't use _setup_unsatisfying_run directly because it builds
-    # the objective with a combined_verdict assuming claims contribute.
-    # Build a minimal abandoned-only state inline.
+    # We can't use _setup_unsatisfying_run directly: it builds active
+    # claims that carry integration verdicts. Build a minimal
+    # abandoned-only state inline.
     store = DocumentStore.for_database("phase4_abandoned", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
@@ -237,14 +248,6 @@ async def test_needs_more_with_all_claims_abandoned_routes_insufficient(
                 SubInvestigation(id="A", seed_claim="a", rationale="r")
             ],
             combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[None],
-                n_no_verdict=0,
-                n_abandoned=1,
-            ),
         ),
     )
     obj.objective_id = obj.entity_id
@@ -261,6 +264,7 @@ async def test_needs_more_with_all_claims_abandoned_routes_insufficient(
     await repo.save(c)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     runner = FakeAgentRunner(
         overrides={
             "epistemic_check_synthesis_demand": {
@@ -326,33 +330,39 @@ async def test_stranded_claims_gate_loops_back_when_eligible(
         description="x",
         decomposition=Decomposition(
             sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
+                SubInvestigation(id="A", seed_claim="a", rationale="r"),
+                SubInvestigation(id="B", seed_claim="b", rationale="r"),
             ],
             combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[None],
-                n_no_verdict=1,  # stranded! deterministic gate fires
-            ),
         ),
     )
     obj.objective_id = obj.entity_id
     await repo.save(obj)
 
-    # An eligible claim so loop-back has somewhere to go.
+    # One adjudicated claim so the no-data gate doesn't fire first, and
+    # one stranded claim so ``n_no_verdict > 0`` is the gate that does.
+    adjudicated = Claim(
+        objective_id=obj.entity_id,
+        statement="adjudicated claim",
+        scope="x",
+        stage=ClaimStage.SUPPORTED,
+        integrated_assessment="insufficient",
+        integrated_confidence=0.5,
+        sub_investigation_id="A",
+    )
+    await repo.save(adjudicated)
     c = Claim(
         objective_id=obj.entity_id,
         statement="eligible claim",
         scope="x",
         stage=ClaimStage.SUPPORTED,
         integrated_assessment=None,  # stranded
-        sub_investigation_id="A",
+        sub_investigation_id="B",
     )
     await repo.save(c)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
 
     next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]

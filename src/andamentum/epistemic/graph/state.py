@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
+from ..entities.verdict import EpistemicVerdict
 from ..thresholds import IBE_AGREEMENT_K_DEFAULT
 from .quarantine import OperationLogEntry, QuarantineRecord
 
@@ -122,6 +123,20 @@ class EpistemicGraphState:
     # suspended judgment. None on every other path — Synthesize doesn't
     # read it.
     synthesis_insufficient_reason: str | None = None
+
+    # ── The run's decision record ────────────────────────────────
+    # The single typed verdict, rebuilt from the live DB by
+    # ``CombineClaimVerdicts`` (its SOLE writer) on every pass. Read by
+    # ``CheckCompletion`` (routing + all four insufficient-reason
+    # strings), ``CheckSynthesisDemand`` (all four gates), and both
+    # terminals (which thread it into FreezeSnapshotOperation so it is
+    # persisted on the Snapshot).
+    #
+    # CombineClaimVerdicts is the sole predecessor of CheckCompletion, so
+    # this is never stale and never absent by the time a terminal decision
+    # is made; CheckCompletion raises if it is None rather than proceeding
+    # on a routing bug.
+    verdict: EpistemicVerdict | None = None
 
     # ── Operation trace ─────────────────────────────────────────
     # Lightweight log for the progress callback and final stats

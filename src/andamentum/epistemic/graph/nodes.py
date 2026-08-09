@@ -17,8 +17,9 @@ from typing import Any, Union
 from pydantic_graph import Decision, End, Graph, GraphBuilder, GraphRunContext
 
 from .base import Node
-from .invariants import no_stranded_claims
+from .invariants import capped_claims_carry_a_cap_evaluation, no_stranded_claims
 from .state import EpistemicGraphState
+from ..entities.verdict import EpistemicVerdict
 from .deps import EpistemicDeps
 from .result import EpistemicResult
 from ..thresholds import (
@@ -53,52 +54,83 @@ logger = logging.getLogger(__name__)
 SCRUTINY_RESOLVE_CYCLE_CAP = PEIRCE_CYCLE_CAP
 
 
-async def _mark_cycle_capped(deps: "EpistemicDeps", claim_id: str, source: str) -> None:
-    """Mark a claim as cycle-capped and snapshot its current blocking
-    uncertainties as forensic evidence.
+async def _mark_cycle_capped(
+    deps: "EpistemicDeps",
+    state: EpistemicGraphState,
+    *,
+    claim_id: str,
+    source: str,
+) -> None:
+    """Mark a claim as cycle-capped, snapshot its blocking uncertainties,
+    and record the terminal verdict its evidence actually supports.
 
-    Idempotent: ``Claim.cycle_capped`` is set True (no-op if already
-    True) and ``persistent_concerns`` is captured *only on first cap
-    firing* — the first-firing snapshot is the diagnostic input for
-    deciding follow-up architecture (cluster-dedup vs reformulation).
-    Subsequent cap firings on the same claim leave the snapshot alone.
+    The mark-and-snapshot half is idempotent: ``Claim.cycle_capped`` is
+    set True (no-op if already True) and ``persistent_concerns`` is
+    captured *only on first cap firing* — the first-firing snapshot is
+    the diagnostic input for deciding follow-up architecture
+    (cluster-dedup vs reformulation). Subsequent cap firings on the same
+    claim leave the snapshot alone.
+
+    The conclude half runs on **every** firing:
+    ``ConcludeAtCycleCapOperation`` re-reads the claim's eligible
+    evidence deterministically (no LLM) and revises its own record. That
+    is what stops a capped claim from reporting a false "insufficient"
+    when the evidence it already gathered was decisive — a cap stops
+    further LLM work; it must not zero out signal already acquired.
 
     The cap fires from two sites — ResolveUncertainties (primary
     loop-breaker, blocks the rescrutiny add) and Scrutinize (defense
     in depth, discards a stale rescrutiny flag). Both call this
-    helper so the consequence is uniform.
+    helper so the consequence is uniform, which is also what makes the
+    ``capped_claims_carry_a_cap_evaluation`` invariant checkable.
+
+    ``claim_id`` and ``source`` are keyword-only: two same-typed strings
+    side by side are exactly the transposition the repo's
+    confusable-parameter rule exists to catch.
     """
     from ..entities import Claim, Uncertainty
+    from ..operations.stage_management import ConcludeAtCycleCapOperation
 
     claim = await deps.repo.get("claim", claim_id)
     if not isinstance(claim, Claim):
         return
-    if claim.cycle_capped:
-        # Already marked on a prior cap firing — keep first-firing snapshot.
-        return
-    claim.cycle_capped = True
-    # Snapshot the currently-blocking uncertainties on this claim, if any.
-    # Used post-hoc to decide whether the cycle was driven by persistent
-    # concern variants (→ cluster-dedup is the right follow-up) or by
-    # genuinely orthogonal concerns (→ claim reformulation is the right
-    # follow-up). Empty snapshot is fine — it just means there were no
-    # active blocking uncertainties at cap-firing time, which is itself
-    # a diagnostic observation.
-    snapshot: list[str] = []
-    for uid in claim.uncertainty_ids:
-        try:
-            unc = await deps.repo.get("uncertainty", uid)
-        except Exception:
-            continue
-        if isinstance(unc, Uncertainty) and unc.is_blocking and unc.resolution is None:
-            snapshot.append(unc.entity_id)
-    claim.persistent_concerns = snapshot
-    await deps.repo.save(claim)
-    logger.info(
-        "Claim %s cycle-capped via %s (snapshot=%d concerns)",
-        claim_id[:12],
-        source,
-        len(snapshot),
+    if not claim.cycle_capped:
+        claim.cycle_capped = True
+        # Snapshot the currently-blocking uncertainties on this claim, if any.
+        # Used post-hoc to decide whether the cycle was driven by persistent
+        # concern variants (→ cluster-dedup is the right follow-up) or by
+        # genuinely orthogonal concerns (→ claim reformulation is the right
+        # follow-up). Empty snapshot is fine — it just means there were no
+        # active blocking uncertainties at cap-firing time, which is itself
+        # a diagnostic observation.
+        snapshot: list[str] = []
+        for uid in claim.uncertainty_ids:
+            try:
+                unc = await deps.repo.get("uncertainty", uid)
+            except Exception:
+                continue
+            if (
+                isinstance(unc, Uncertainty)
+                and unc.is_blocking
+                and unc.resolution is None
+            ):
+                snapshot.append(unc.entity_id)
+        claim.persistent_concerns = snapshot
+        await deps.repo.save(claim)
+        logger.info(
+            "Claim %s cycle-capped via %s (snapshot=%d concerns)",
+            claim_id[:12],
+            source,
+            len(snapshot),
+        )
+
+    await _run_op(
+        ConcludeAtCycleCapOperation,
+        deps,
+        state,
+        claim_id,
+        "claim",
+        "conclude_at_cycle_cap",
     )
 
 
@@ -149,6 +181,8 @@ def _op_input(
     entity_type: str,
     operation: str,
     metadata: dict[str, Any] | None = None,
+    *,
+    verdict: "EpistemicVerdict | None" = None,
 ) -> Any:
     """Create an OperationInput for operation execution."""
     from ..operations.base import OperationInput
@@ -158,6 +192,7 @@ def _op_input(
         entity_type=entity_type,
         operation=operation,
         metadata=metadata or {},
+        verdict=verdict,
     )
 
 
@@ -186,6 +221,8 @@ async def _execute_op(
     entity_type: str,
     operation: str,
     metadata: dict[str, Any] | None = None,
+    *,
+    verdict: "EpistemicVerdict | None" = None,
 ) -> _OpOutcome:
     """Execute one operation and return its outcome — no State writes.
 
@@ -198,7 +235,7 @@ async def _execute_op(
     from ..operations.base import OperationResult
 
     op = _make_op(op_class, deps)
-    work = _op_input(entity_id, entity_type, operation, metadata)
+    work = _op_input(entity_id, entity_type, operation, metadata, verdict=verdict)
     try:
         result = await op.execute(work)
     except Exception as e:
@@ -284,6 +321,8 @@ async def _run_op(
     entity_type: str,
     operation: str,
     metadata: dict[str, Any] | None = None,
+    *,
+    verdict: "EpistemicVerdict | None" = None,
 ) -> Any:
     """Execute one operation and commit its outcome to State — sequential.
 
@@ -297,7 +336,7 @@ async def _run_op(
     call state.is_quarantined(entity_id) before scheduling further work.
     """
     outcome = await _execute_op(
-        op_class, deps, entity_id, entity_type, operation, metadata
+        op_class, deps, entity_id, entity_type, operation, metadata, verdict=verdict
     )
     return await _commit_op(deps, state, outcome)
 
@@ -855,7 +894,10 @@ class Scrutinize(Node):
                         claim.scrutiny_verdict,
                     )
                     await _mark_cycle_capped(
-                        deps, claim.entity_id, "Scrutinize-defense-in-depth"
+                        deps,
+                        state,
+                        claim_id=claim.entity_id,
+                        source="Scrutinize-defense-in-depth",
                     )
                     state.claims_needing_rescrutiny.discard(claim.entity_id)
                     continue
@@ -1260,6 +1302,39 @@ class AbandonOrDemote(Node):
                     )
                     state.terminal_claims.add(claim.entity_id)
                 elif claim.stage != ClaimStage.HYPOTHESIS:
+                    if claim.cycle_capped:
+                        # NEVER demote a cycle-capped claim. Two independent
+                        # reasons, either alone sufficient:
+                        #
+                        # 1. Demotion IS Peirce cycling — record_demotion
+                        #    resets scrutiny_verdict and every track flag so
+                        #    the claim re-enters the loop. That is precisely
+                        #    what the cap exists to stop.
+                        # 2. record_demotion also nulls
+                        #    integrated_assessment / _confidence /
+                        #    _reasoning. For a capped claim those hold the
+                        #    terminal verdict ConcludeAtCycleCapOperation
+                        #    derived from the evidence, so demotion restores
+                        #    the false "insufficient" that verdict exists to
+                        #    remove — and leaves cap_evaluation behind, so
+                        #    the record and the verdict then disagree.
+                        #
+                        # The reachable sequence is: cap fires at HYPOTHESIS
+                        # → this node refute- or soft-promotes the claim to
+                        # SUPPORTED (neither path filters cycle_capped) →
+                        # the next Scrutinize visit sees a SUPPORTED claim
+                        # with scrutiny_verdict="fail" and routes back here.
+                        # Skipping is safe: the claim is left terminal,
+                        # PromoteToSupported already filters capped claims,
+                        # and nothing re-scrutinises it, so there is no loop.
+                        logger.warning(
+                            "Claim %s is cycle-capped at %s; skipping demotion "
+                            "so its cap-derived verdict is not erased",
+                            claim.entity_id[:12],
+                            claim.stage.value,
+                        )
+                        state.terminal_claims.add(claim.entity_id)
+                        continue
                     # Demote SUPPORTED+ claims
                     await _run_op(
                         DemoteClaimOperation,
@@ -1307,7 +1382,7 @@ class PromoteToSupported(Node):
     This is a routing hub that checks actual claim state:
     1. HYPOTHESIS with pass → promote to SUPPORTED, set routing defaults
     2. SUPPORTED without verification done → route to ClusterEvidence
-    3. Everything at PROVISIONAL+ or abandoned → CheckCompletion
+    3. Everything at PROVISIONAL+ or abandoned → CombineClaimVerdicts
 
     This correctly handles re-entry after uncertainty resolution:
     a claim at SUPPORTED that was re-scrutinized goes through
@@ -1315,19 +1390,29 @@ class PromoteToSupported(Node):
 
     Phase 2 of the Move-3 plan: this is the second of the two
     recurring-bug routing hubs. Its successor set
-    (Union["ClusterEvidence", "CheckCompletion"]) intentionally
-    INCLUDES CheckCompletion — that's the legitimate idempotent
-    terminal when no SUPPORTED claim needs verification.
+    (Union["ClusterEvidence", "CombineClaimVerdicts"]) intentionally
+    INCLUDES the terminal-bound branch — that's the legitimate
+    idempotent exit when no SUPPORTED claim needs verification.
     PromoteToSupported is the dispatcher that AbandonOrDemote
     delegates residual routing to; this node is allowed to
     terminate where the upstream node is not.
 
+    The no-work exit routes to ``CombineClaimVerdicts``, not straight to
+    ``CheckCompletion``. That single retargeted edge makes
+    CombineClaimVerdicts the SOLE predecessor of CheckCompletion, so the
+    run's verdict object is rebuilt from the live DB immediately before
+    every terminal decision — including after a
+    ``CheckSynthesisDemand → Scrutinize`` loop-back, where the old edge
+    would have left CheckCompletion reading a stale verdict or none at
+    all. ``tests/test_verdict_routing.py`` asserts the domination
+    property over ``topology()``.
+
     post_invariants is empty: this node is mid-flight when it
     routes to ClusterEvidence (claims may legitimately be in the
-    "stranded" state about to enter IBE); when it routes to
-    CheckCompletion, no_stranded_claims would be the right
-    invariant to enforce — but that's the post-condition for
-    CheckCompletion → Synthesize, not for this node directly.
+    "stranded" state about to enter IBE); on the other branch
+    no_stranded_claims would be the right invariant to enforce — but
+    that's the post-condition for CheckCompletion → Synthesize, not for
+    this node directly.
     """
 
     reads = frozenset({"objective_id", "verification_done"})
@@ -1337,7 +1422,7 @@ class PromoteToSupported(Node):
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["ClusterEvidence", "CheckCompletion"]:
+    ) -> Union["ClusterEvidence", "CombineClaimVerdicts"]:
         from ..operations.stage_management import PromoteClaimOperation
         from ..operations.belief_maintenance import SetRoutingDefaultsOperation
         from ..entities.claim import ClaimStage
@@ -1354,11 +1439,12 @@ class PromoteToSupported(Node):
             if claim.cycle_capped:
                 # Inquiry didn't converge — don't promote this claim, and
                 # mark it terminal so CheckCompletion sees no pending work.
-                # The claim stays at HYPOTHESIS; compute_posterior will
-                # surface the oscillation via terminal_state, and the
-                # IBE chain (which only runs on SUPPORTED claims) won't
-                # fabricate a verdict. This is the principled completion
-                # of the runtime cycle cap.
+                # The claim stays at HYPOTHESIS. It is NOT verdict-less:
+                # ConcludeAtCycleCapOperation already read its evidence
+                # deterministically at the cap and wrote the verdict that
+                # reading supports (or recorded, in cap_evaluation, that the
+                # reading was not directional). What is skipped here is the
+                # LLM-priced IBE chain, not the verdict.
                 state.terminal_claims.add(claim.entity_id)
                 continue
             if (
@@ -1387,12 +1473,13 @@ class PromoteToSupported(Node):
         # Re-read after promotions.
         #
         # Cycle-capped claims are excluded: cycle-capped means the
-        # inquiry loop didn't converge cleanly, so any verification
-        # work would feed an IBE chain whose verdict will be discarded
-        # by combine_claim_verdicts (which excludes cycle-capped
-        # claims from aggregation). Save the LLM cost AND keep
-        # cycle-cap's "this claim's inquiry didn't converge"
-        # semantics consistent.
+        # inquiry loop didn't converge cleanly, so spending verification
+        # plus four IBE calls on the claim is not warranted. The reason
+        # is LLM COST, not correctness — combine_claim_verdicts has
+        # included capped-with-verdict claims (at a confidence penalty)
+        # since 2026-05-04, and the claim receives a deterministic
+        # terminal verdict at the cap instead
+        # (ConcludeAtCycleCapOperation).
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         needs_verification = any(
             not c.abandoned
@@ -1405,8 +1492,10 @@ class PromoteToSupported(Node):
         if needs_verification:
             return ClusterEvidence()
 
-        # All claims are at PROVISIONAL+ or abandoned or verified
-        return CheckCompletion()
+        # All claims are at PROVISIONAL+ or abandoned or verified.
+        # Route through CombineClaimVerdicts so the verdict object is
+        # rebuilt before CheckCompletion decides anything.
+        return CombineClaimVerdicts()
 
 
 @dataclass
@@ -1651,8 +1740,9 @@ class RunVerification(Node):
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
         # Exclude cycle_capped — same rationale as PromoteToSupported's
         # needs_verification filter: cycle-capped means inquiry didn't
-        # converge, so don't pull verification or IBE work that the
-        # combiner will discard anyway.
+        # converge, so don't spend verification or IBE calls on it. The
+        # combiner does NOT discard their verdict; the cap writes one
+        # deterministically instead.
         active_supported = [
             c
             for c in all_claims
@@ -1816,7 +1906,10 @@ class ResolveUncertainties(Node):
                                 SCRUTINY_RESOLVE_CYCLE_CAP,
                             )
                             await _mark_cycle_capped(
-                                deps, cid, "ResolveUncertainties-primary"
+                                deps,
+                                state,
+                                claim_id=cid,
+                                source="ResolveUncertainties-primary",
                             )
                             continue
                         state.claims_needing_rescrutiny.add(cid)
@@ -1892,10 +1985,11 @@ class EnumerateCandidates(Node):
         # own ``integration_candidates`` field — no cross-claim
         # interference. The AgentRunner's global semaphore bounds
         # in-flight LLM calls (1 for Ollama, 8 for cloud).
-        # Cycle-capped claims excluded: combine_claim_verdicts will
-        # discard their verdict regardless, so don't spend LLM calls
-        # on the IBE chain for them. Keeps cycle-cap's "inquiry didn't
-        # converge" semantics consistent across the pipeline.
+        # Cycle-capped claims excluded on LLM-cost grounds: their
+        # inquiry didn't converge, so the four-call IBE chain isn't
+        # warranted. Their verdict is NOT discarded — the cap writes a
+        # deterministic one (ConcludeAtCycleCapOperation) and the
+        # combiner includes it at a confidence penalty.
         eligible_ids = [
             c.entity_id
             for c in all_claims
@@ -2205,132 +2299,63 @@ class PromoteSupported(Node):
 
 @dataclass
 class CombineClaimVerdicts(Node):
-    """Apply the decomposition's combination_rule over per-claim integration
-    verdicts and stash the result on the parent Objective for Synthesize.
+    """Build the run's single ``EpistemicVerdict`` from the live database.
 
-    Phase 4 of the multi-seed-claim refactor. The combination logic was
-    previously in ``decomposed_runner.combine_sub_verdicts`` (operating
-    on per-child PipelineResults). Under multi-seed-claim it operates on
-    the Objective's claims directly, since "child" sub-investigations
-    are now Claim entities on a single Objective.
+    THE ONE PLACE the system decides. ``confidence.build_verdict`` calls
+    ``compute_posterior`` for the number (so the rule-aware branch, the
+    confidence-weighted branch, the counting fallback, the
+    no-certified-verdict gate, the concordance tripwire and both
+    penalties stay exactly where they are), then assembles the per-claim
+    entries and evidence refs from the same helpers that produced it.
+    Everything downstream — CheckCompletion's routing and reason text,
+    CheckSynthesisDemand's four gates, the synthesis prose, the CLI, the
+    offline report, the HTML audit report — RENDERS this object rather
+    than re-deciding.
 
-    Behaviour:
+    It runs for EVERY run shape, not just decomposed ones. The previous
+    node no-op'd without a decomposition, which meant verify-mode and
+    open-research runs — the entire SciFact arm — produced no structured
+    verdict at all and the writer agent's prose was the only verdict
+    that existed.
 
-    * If the Objective has no decomposition (open-research run), this
-      node is a no-op — nothing to combine. Synthesize handles the
-      multi-claim narrative without a rule-aware verdict.
-    * If decomposition is set, combine via
-      ``combine_claim_verdicts(claims, rule, weights)``. Stash the
-      ``CombinedVerdict`` (serialized) on the parent Objective for
-      Synthesize to read later via the snapshot.
+    It is also the SOLE predecessor of ``CheckCompletion`` (see
+    ``PromoteToSupported``'s retargeted no-work exit), so the object is
+    never stale and never absent when a terminal decision is made. Safe
+    to re-enter: it rebuilds from the DB rather than accumulating.
 
-    The combined verdict is stored on Objective.decomposition (under
-    a new "combined_verdict" key) so it travels through FreezeSnapshot
-    → SynthesizeReport without needing a separate field.
-
-    Pure / deterministic — no LLM call. Safe to re-enter.
-
-    Phase 5 of the Move-3 plan. Empty operations: this node uses
-    ``combine_claim_verdicts`` directly as a function, not via _run_op.
+    Pure / deterministic — no LLM call. Empty operations: it calls
+    ``build_verdict`` directly as a function, not via ``_run_op``.
     """
 
-    reads = frozenset({"objective_id"})
-    writes = frozenset()
+    reads = frozenset({"objective_id", "retrieval_failed"})
+    writes = frozenset({"verdict"})
     operations = frozenset()
     post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> "CheckCompletion":
-        from .combination import (
-            combine_claim_verdicts,
-            extract_weights_from_decomposition,
-            resolve_combination_rule,
-        )
-        from ..entities.objective import Objective
+        from ..confidence import build_verdict
 
         state = ctx.state
         deps = ctx.deps
 
-        objective = await deps.repo.get("objective", state.objective_id)
-        if not isinstance(objective, Objective) or not objective.decomposition:
-            # Open-research run with no decomposition. Nothing to combine.
-            return CheckCompletion()
-
-        # Pull claims in decomposition order so the weight alignment is
-        # correct. Multi-seed-claim sets sub_investigation_id on each
-        # Claim; we sort by the order in decomposition.sub_investigations.
-        # Phase 6 of the Move-3 plan: typed Decomposition access.
-        sub_ids_in_order = [s.id for s in objective.decomposition.sub_investigations]
-        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        claims_by_sub: dict[str, Any] = {
-            c.sub_investigation_id: c
-            for c in all_claims
-            if c.sub_investigation_id is not None
-        }
-        ordered_claims = [
-            claims_by_sub[sid] for sid in sub_ids_in_order if sid in claims_by_sub
-        ]
-        # Orphan diagnostic: claims that exist but have no matching sub-id
-        # in the current decomposition (sub-investigation removed by a
-        # later reflection round, or claim minted without sub_investigation_id).
-        # Without this surfacing, the combiner would silently exclude them.
-        n_orphan = sum(
-            1
-            for c in all_claims
-            if c.sub_investigation_id is None
-            or c.sub_investigation_id not in sub_ids_in_order
+        state.verdict = await build_verdict(
+            deps.repo,
+            objective_id=state.objective_id,
+            retrieval_failed=state.retrieval_failed,
         )
-        if not ordered_claims:
-            if n_orphan and deps.verbose:
-                logger.warning(
-                    "CombineClaimVerdicts: no claims matched decomposition "
-                    "(%d orphans dropped); skipping",
-                    n_orphan,
-                )
-            return CheckCompletion()
-
-        rule = resolve_combination_rule(objective) or "AND"
-        weights = extract_weights_from_decomposition(
-            objective.decomposition, ordered_claims
-        )
-        combined = combine_claim_verdicts(ordered_claims, rule, weights=weights)
-
-        # Append orphan count to the combiner's explanation if any were
-        # dropped. The combiner's own diagnostic only sees the claims it
-        # was given; orphans are excluded one level above.
-        explanation = combined.explanation
-        if n_orphan:
-            explanation = (
-                f"{explanation} ({n_orphan} orphan claim(s) dropped — "
-                "sub_investigation_id not in current decomposition)"
-            )
-
-        # Stash the CombinedVerdict on the Decomposition so the
-        # snapshot freeze step picks it up. Phase 6 of the Move-3 plan:
-        # typed CombinedVerdictData replaces the previous dict shape.
-        from ..entities.decomposition import CombinedVerdictData
-
-        objective.decomposition.combined_verdict = CombinedVerdictData(
-            posterior=combined.posterior,
-            verdict=combined.verdict,
-            combination_rule=combined.combination_rule,
-            claim_posteriors=combined.claim_posteriors,
-            n_capped=combined.n_capped,
-            n_no_verdict=combined.n_no_verdict,
-            n_abandoned=combined.n_abandoned,
-            n_orphan=n_orphan,
-            explanation=explanation,
-        )
-        await deps.repo.save(objective)
 
         if deps.verbose:
+            prov = state.verdict.provenance
             logger.info(
-                "Combined verdict: %s (posterior=%s, rule=%s, orphans=%d)",
-                combined.verdict,
-                combined.posterior,
-                combined.combination_rule,
-                n_orphan,
+                "Verdict: %s (posterior=%s, rule=%s, adjudicated=%d/%d, orphans=%d)",
+                state.verdict.direction,
+                state.verdict.posterior,
+                prov.combination_rule,
+                prov.n_adjudicated,
+                prov.n_active_claims,
+                prov.n_orphan,
             )
 
         return CheckCompletion()
@@ -2350,6 +2375,7 @@ class CheckCompletion(Node):
         {
             "retrieval_failed",
             "objective_id",
+            "verdict",
             "successful",
             "failed",
             "errors",
@@ -2359,57 +2385,56 @@ class CheckCompletion(Node):
     )
     writes = frozenset({"synthesis_insufficient_reason"})
     operations = frozenset()
-    post_invariants = (no_stranded_claims,)
+    post_invariants = (no_stranded_claims, capped_claims_carry_a_cap_evaluation)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
     ) -> Union["CheckSynthesisDemand", "SynthesizeInsufficient"]:
         state = ctx.state
-        deps = ctx.deps
 
         # Single canonical certifier (Phase A — 2026-05-06). The IBE
         # chain (EnumerateCandidates → ScoreLoveliness → ScoreLikeliness
         # → SelectBestExplanation) is the system's certifier of
         # directional verdicts. ``integrated_assessment is not None`` on
         # any active claim is the system's binary answer to "did we
-        # adjudicate?". Every router that decides whether the writer
-        # should produce a directional report — and every aggregator
-        # that decides whether the posterior should commit — must
-        # consult this same canonical signal. Process flags (notably
-        # ``retrieval_failed``) describe inquiry health, not adjudication
-        # state, and become reasons WHY no IA was reached when applicable
-        # rather than routing overrides that bypass the IBE check.
+        # adjudicate?" — counted once, on the verdict object, as
+        # ``provenance.n_adjudicated``.
+        #
+        # This node used to query the claims itself and the posterior
+        # aggregator applied the same condition independently, the two
+        # kept in sync by convention (commit 761a5d9). They are now
+        # literally the same object: ``build_verdict`` calls
+        # ``compute_posterior``, whose no-certified-verdict gate fires on
+        # exactly ``n_adjudicated == 0``. Writer-aggregator coherence is
+        # structural rather than maintained.
         #
         # Routing rule:
-        #   * any active claim has IA → CheckSynthesisDemand (the writer
-        #     produces a directional report; the posterior aggregator
-        #     commits via IA; retrieval_failed is annotated in prose if
-        #     applicable but does not suppress the verdict).
-        #   * no active claim has IA → SynthesizeInsufficient with one
-        #     of four reason variants: retrieval_failed > no_claims >
+        #   * n_adjudicated > 0 → CheckSynthesisDemand (the writer
+        #     renders the directional verdict; retrieval_failed is
+        #     annotated in prose but does not suppress it).
+        #   * n_adjudicated == 0 → SynthesizeInsufficient with one of
+        #     four reason variants: retrieval_failed > no_claims >
         #     all_abandoned > no_certified_verdict. The reason text
         #     describes WHY the system could not adjudicate; the
         #     terminal artefact is structurally identical regardless.
-        #
-        # This closes the writer-aggregator coherence gap on the
-        # retrieval_failed-with-IA-set case (case 957 rep 5: writer said
-        # "Insufficient" while aggregator emitted directional posterior
-        # 0.773). After this fix both consumers agree: IA is set →
-        # directional output; IA is not set → suspend.
+        if state.verdict is None:
+            raise RuntimeError(
+                "CheckCompletion reached with no verdict on graph state. "
+                "CombineClaimVerdicts is its sole predecessor and must run "
+                "first — reaching here without a verdict is a routing bug, "
+                "not a state to route around."
+            )
 
-        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        non_abandoned = [c for c in all_claims if not c.abandoned]
-        any_certified = bool(non_abandoned) and any(
-            c.integrated_assessment is not None for c in non_abandoned
-        )
+        prov = state.verdict.provenance
 
-        if any_certified:
-            # IBE certified at least one active claim. The system has
-            # an answer to report — even if retrieval health flagged.
+        if prov.n_adjudicated > 0:
+            # IBE (or the deterministic cycle-cap reading) certified at
+            # least one active claim. The system has an answer to report.
             return CheckSynthesisDemand()
 
-        # No certified claim. Pick the most informative reason text.
-        if state.retrieval_failed:
+        # No certified claim. Pick the most informative reason text,
+        # every number sourced from the same provenance the aggregator used.
+        if prov.retrieval_failed:
             state.synthesis_insufficient_reason = (
                 "Retrieval failed: evidence extraction returned empty "
                 "content for several consecutive attempts. The system "
@@ -2421,21 +2446,20 @@ class CheckCompletion(Node):
                 "every newly-found item was a duplicate of evidence "
                 "already invalidated upstream."
             )
-        elif non_abandoned:
+        elif prov.n_active_claims:
             state.synthesis_insufficient_reason = (
-                f"None of the {len(non_abandoned)} non-abandoned claim(s) "
+                f"None of the {prov.n_active_claims} non-abandoned claim(s) "
                 "reached IBE certification (integrated_assessment is None "
-                "on every active claim). Most likely cause: every active "
-                "claim is cycle-capped at HYPOTHESIS, so "
-                "PromoteToSupported skipped them and the IBE chain "
-                "never ran. Without IBE-certified verdicts, neither "
-                "the writer nor the posterior aggregator should "
-                "produce a directional verdict — synthesis suspends "
-                "judgment."
+                f"on every active claim; {prov.n_cycle_capped} of them are "
+                "cycle-capped, and for those the deterministic cap reading "
+                "was not directional either — conflicting evidence, or too "
+                "little of it). Without a certified verdict, neither the "
+                "writer nor the posterior aggregator should produce a "
+                "directional verdict — synthesis suspends judgment."
             )
-        elif all_claims:
+        elif prov.n_claims_total:
             state.synthesis_insufficient_reason = (
-                f"All {len(all_claims)} candidate claim(s) were abandoned "
+                f"All {prov.n_claims_total} candidate claim(s) were abandoned "
                 "during scrutiny. The system did not find any "
                 "actionable evidence for any sub-investigation, so no "
                 "directional verdict is supportable."
@@ -2475,7 +2499,12 @@ class CheckSynthesisDemand(Node):
     """
 
     reads = frozenset(
-        {"objective_id", "claims_needing_rescrutiny", "scrutiny_resolve_cycles"}
+        {
+            "objective_id",
+            "verdict",
+            "claims_needing_rescrutiny",
+            "scrutiny_resolve_cycles",
+        }
     )
     writes = frozenset({"claims_needing_rescrutiny"})
     operations = frozenset()  # uses agent_runner directly, not _run_op
@@ -2499,31 +2528,50 @@ class CheckSynthesisDemand(Node):
         # loop-back decision at the end of this method consumes it.
         # This keeps Phase 4's "needs_more → loop back" logic in one
         # place rather than scattered across each gate.
+        #
+        # All four gates read ``state.verdict`` — the same object
+        # CheckCompletion routed on and the writer will render. They used
+        # to read ``objective.decomposition.combined_verdict``, a
+        # decomposed-runs-only field, which is why the gates below could
+        # never see a verify-mode run's numbers.
+        verdict = state.verdict
+        prov = verdict.provenance if verdict is not None else None
 
         demand: Any = None  # set by exactly one branch below
 
-        # Gate 1: no decomposition at all (open-research mode). The
-        # combined-verdict satisfaction check doesn't apply; the
-        # writer agent will frame the answer over the per-claim
-        # narrative without a rule-aware verdict. Treat as satisfied
-        # for this layer.
-        if not isinstance(objective, Objective) or objective.decomposition is None:
+        # Gate 1: no combination rule (verify mode / open research). The
+        # rule-aware satisfaction check doesn't apply; the writer agent
+        # frames the answer over the per-claim narrative. Treat as
+        # satisfied for this layer.
+        #
+        # DELIBERATELY PRESERVED, not widened. The old condition was
+        # "objective.decomposition is None"; ``combination_rule is None``
+        # is its exact analogue on the verdict object (a decomposition
+        # without a rule already fell through to ``or "AND"`` downstream).
+        # Opening Gates 2-4 to verify mode would activate the decisive
+        # gate, the reproducibility tripwire and the demand LLM across the
+        # whole SciFact arm — a routing and LLM-cost change that needs a
+        # benchmark this task forbids. Flagged, not made.
+        if (
+            verdict is None
+            or prov is None
+            or not isinstance(objective, Objective)
+            or prov.combination_rule is None
+        ):
             demand = Demand.satisfied(
                 justification=(
-                    "Open-research mode (no decomposition) — synthesis "
-                    "demand check does not apply. Synthesis writer will "
-                    "frame the answer over per-claim verdicts directly."
+                    "Open-research / verify mode (no combination rule) — "
+                    "synthesis demand check does not apply. Synthesis writer "
+                    "will frame the answer over per-claim verdicts directly."
                 )
             )
             self._log_demand(demand, deps, state.objective_id)
             return Synthesize()
 
-        combined = objective.decomposition.combined_verdict
-
-        # Gate 2: combine_claim_verdicts didn't produce a verdict (no
-        # claims aggregated; usually means orphan claims or a fully-
-        # abandoned set).
-        if combined is None:
+        # Gate 2: nothing was aggregated (every claim abandoned, or none
+        # carried an integration verdict), so the headline answer is the
+        # no-data fallback.
+        if prov.n_adjudicated == 0 or verdict.posterior is None:
             demand = Demand.needs(
                 justification=(
                     "No combined verdict produced (every claim was "
@@ -2535,10 +2583,10 @@ class CheckSynthesisDemand(Node):
         # Gate 3: stranded claims present (the load-bearing invariant
         # caught by no_stranded_claims). Defensive — this should never
         # happen at synthesis if upstream routing is correct.
-        elif combined.n_no_verdict > 0:
+        elif prov.n_no_verdict > 0:
             demand = Demand.needs(
                 justification=(
-                    f"{combined.n_no_verdict} claim(s) reached synthesis "
+                    f"{prov.n_no_verdict} claim(s) reached synthesis "
                     "without an integration verdict — IBE was bypassed "
                     "for them. The combined posterior excludes their "
                     "evidence, so the headline answer is incomplete."
@@ -2552,13 +2600,14 @@ class CheckSynthesisDemand(Node):
         # Gate 4: decisive posterior (above POSTERIOR_DECISIVE_THRESHOLD,
         # or symmetrically below ``1 - threshold``). See
         # epistemic.thresholds for the asymmetric-stakes motivation.
-        elif combined.posterior is not None and (
-            combined.posterior >= POSTERIOR_DECISIVE_THRESHOLD
-            or combined.posterior <= 1.0 - POSTERIOR_DECISIVE_THRESHOLD
+        elif (
+            verdict.posterior >= POSTERIOR_DECISIVE_THRESHOLD
+            or verdict.posterior <= 1.0 - POSTERIOR_DECISIVE_THRESHOLD
         ):
+            posterior = verdict.posterior
             direction = (
                 "supports"
-                if combined.posterior >= POSTERIOR_DECISIVE_THRESHOLD
+                if posterior >= POSTERIOR_DECISIVE_THRESHOLD
                 else "contradicts"
             )
             # Reproducibility tripwire (P7, demand-gated): a decisive verdict is
@@ -2579,7 +2628,7 @@ class CheckSynthesisDemand(Node):
             if repro is not None and repro.flip_found:
                 demand = Demand.needs(
                     justification=(
-                        f"Combined posterior {combined.posterior:.3f} ({direction}) "
+                        f"Combined posterior {posterior:.3f} ({direction}) "
                         "looked decisive, but a reproducibility check found a "
                         "confident evidence judgment that flips under paraphrase. "
                         + repro.detail
@@ -2592,10 +2641,10 @@ class CheckSynthesisDemand(Node):
             else:
                 demand = Demand.satisfied(
                     justification=(
-                        f"Combined posterior {combined.posterior:.3f} ({direction}) "
+                        f"Combined posterior {posterior:.3f} ({direction}) "
                         f"is decisive; the verdict direction is clear from the "
-                        f"per-claim verdicts ({combined.combination_rule} over "
-                        f"{len([p for p in combined.claim_posteriors if p is not None])} "
+                        f"per-claim verdicts ({prov.combination_rule} over "
+                        f"{prov.n_adjudicated} "
                         "aggregated claims). No further investigation likely "
                         "to change the headline."
                         + (
@@ -2624,7 +2673,7 @@ class CheckSynthesisDemand(Node):
             # job is judgment, not re-reading every detail.
             claim_summaries: list[str] = []
             for c in active_claims:
-                verdict = c.integrated_assessment or "no-verdict"
+                claim_verdict = c.integrated_assessment or "no-verdict"
                 confidence = (
                     f"{c.integrated_confidence:.2f}"
                     if c.integrated_confidence is not None
@@ -2632,7 +2681,7 @@ class CheckSynthesisDemand(Node):
                 )
                 claim_summaries.append(
                     f"  [{c.sub_investigation_id or '-'}] "
-                    f"verdict={verdict} (conf={confidence}): {c.statement[:120]}"
+                    f"verdict={claim_verdict} (conf={confidence}): {c.statement[:120]}"
                 )
 
             try:
@@ -2641,16 +2690,16 @@ class CheckSynthesisDemand(Node):
                     research_question=(
                         objective.clarified_question or objective.description
                     ),
-                    combined_verdict_label=combined.verdict,
+                    combined_verdict_label=verdict.direction,
                     combined_posterior=(
-                        f"{combined.posterior:.3f}"
-                        if combined.posterior is not None
+                        f"{verdict.posterior:.3f}"
+                        if verdict.posterior is not None
                         else "n/a (UNION rule or no aggregated claims)"
                     ),
-                    combination_rule=combined.combination_rule,
+                    combination_rule=prov.combination_rule,
                     claim_count=len(active_claims),
                     claims_summary="\n".join(claim_summaries) or "(none)",
-                    combiner_explanation=combined.explanation,
+                    combiner_explanation=prov.combination_explanation,
                 )
             except Exception as e:
                 # Agent failed — log and treat as satisfied (don't block
@@ -2717,9 +2766,45 @@ class CheckSynthesisDemand(Node):
 
         if not eligible_claim_ids:
             # All non-abandoned claims are either cycle-capped or at
-            # cap. No re-investigation can make progress. Route to
-            # the structurally-explicit "insufficient" terminal
-            # rather than asking the writer to invent a verdict.
+            # cap. No re-investigation can make progress.
+            #
+            # The second false-insufficient door. If any active claim
+            # already carries a DIRECTIONAL verdict — which a capped
+            # claim now can, via ConcludeAtCycleCapOperation — routing
+            # to SynthesizeInsufficient would discard a conclusion the
+            # evidence supports and CheckCompletion just certified. The
+            # honest terminal in that case is Synthesize: the writer
+            # renders the verdict the system holds, however hedged.
+            #
+            # DIRECTIONAL, not merely non-None: a claim whose verdict is
+            # "insufficient" is faithfully rendered by the insufficient
+            # terminal, and that is exactly the shape of the existing
+            # all-capped fixture in test_phase4_synthesis_loop_back.py.
+            #
+            # Read off the verdict object rather than the claim entities,
+            # so this gate and the headline the writer renders agree by
+            # construction.
+            directional = [
+                c
+                for c in (state.verdict.claims if state.verdict else [])
+                if not c.abandoned
+                and c.integrated_assessment in ("supports", "contradicts")
+            ]
+            if directional:
+                logger.warning(
+                    "[synthesis_demand] obj=%s needs_more=True and no claim "
+                    "can progress, but %d active claim(s) carry a directional "
+                    "verdict; synthesising it rather than suspending. "
+                    "justification: %s",
+                    state.objective_id[:12] if state.objective_id else "????????????",
+                    len(directional),
+                    demand.justification,
+                )
+                return Synthesize()
+
+            # No directional verdict anywhere. Route to the
+            # structurally-explicit "insufficient" terminal rather than
+            # asking the writer to invent a verdict.
             logger.warning(
                 "[synthesis_demand] obj=%s needs_more=True but all "
                 "non-abandoned claims have hit per-claim cap; "
@@ -2792,6 +2877,7 @@ class Synthesize(Node):
     reads = frozenset(
         {
             "objective_id",
+            "verdict",
             "successful",
             "failed",
             "errors",
@@ -2802,7 +2888,7 @@ class Synthesize(Node):
     )
     writes = frozenset()
     operations = frozenset()  # populated below
-    post_invariants = (no_stranded_claims,)
+    post_invariants = (no_stranded_claims, capped_claims_carry_a_cap_evaluation)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2816,7 +2902,8 @@ class Synthesize(Node):
         deps = ctx.deps
         oid = state.objective_id
 
-        # Freeze snapshot
+        # Freeze snapshot — the verdict travels on the typed channel so
+        # the frozen Snapshot carries the decision the writer will render.
         await _run_op(
             FreezeSnapshotOperation,
             deps,
@@ -2824,6 +2911,7 @@ class Synthesize(Node):
             oid,
             "objective",
             "freeze_snapshot",
+            verdict=state.verdict,
         )
 
         # Get the snapshot ID from the objective
@@ -2894,11 +2982,12 @@ class SynthesizeInsufficient(Node):
             "quarantined",
             "retrieval_failed",
             "synthesis_insufficient_reason",
+            "verdict",
         }
     )
     writes = frozenset()
     operations = frozenset()  # populated below
-    post_invariants = (no_stranded_claims,)
+    post_invariants = (no_stranded_claims, capped_claims_carry_a_cap_evaluation)
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
@@ -2919,6 +3008,7 @@ class SynthesizeInsufficient(Node):
             oid,
             "objective",
             "freeze_snapshot",
+            verdict=state.verdict,
         )
 
         obj = await deps.repo.get("objective", oid)
@@ -3077,6 +3167,7 @@ from ..operations.scrutiny import (  # noqa: E402
     ScrutiniseClaimOperation,
 )
 from ..operations.stage_management import (  # noqa: E402
+    ConcludeAtCycleCapOperation,
     DemoteClaimOperation,
     PromoteAsRefutedOperation,
     PromoteClaimOperation,
@@ -3105,14 +3196,22 @@ PromoteToSupported.operations = frozenset(
 )
 
 
-Scrutinize.operations = frozenset({ScrutiniseClaimOperation})
+# Both cap-firing sites dispatch ConcludeAtCycleCapOperation via the
+# shared ``_mark_cycle_capped`` funnel, so both declare it.
+Scrutinize.operations = frozenset(
+    {ScrutiniseClaimOperation, ConcludeAtCycleCapOperation}
+)
 
 
 Investigate.operations = frozenset({InvestigateClaimOperation})
 
 
 ResolveUncertainties.operations = frozenset(
-    {ResolveUncertaintyOperation, DeduplicateConcernsOperation}
+    {
+        ResolveUncertaintyOperation,
+        DeduplicateConcernsOperation,
+        ConcludeAtCycleCapOperation,
+    }
 )
 
 

@@ -32,11 +32,11 @@ from .primitives import (
 class WriteAnswerResult:
     """Result from write_answer agent.
 
-    Manifest fields: title, verdict, answer.
+    Manifest fields: title, answer. No ``verdict`` — the headline is
+    rendered from the run's EpistemicVerdict, not authored by the model.
     """
 
     title: str = "Research Summary"
-    verdict: str = ""
     answer: str = ""
 
 
@@ -324,7 +324,6 @@ def adapt_write_answer(raw: Any) -> WriteAnswerResult:
     """Adapt epistemic_write_answer output."""
     return WriteAnswerResult(
         title=raw.title,
-        verdict=getattr(raw, "verdict", ""),
         answer=raw.answer,
     )
 

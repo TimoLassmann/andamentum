@@ -13,6 +13,7 @@ from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from .confidence import PosteriorReport
+from .entities.verdict import EpistemicVerdict
 from .graph.quarantine import QuarantineRecord
 
 # Type for progress callback: (operation_type, workitem_id, success, message, outputs) -> None
@@ -44,7 +45,14 @@ class PipelineResult(BaseModel):
     failed: int
     status: str
     errors: list[str] = Field(default_factory=list)
+    # The PosteriorReport embedded in ``verdict`` — kept as its own field
+    # because it is the established public shape (the benchmark harness
+    # reads ``result.posterior.posterior`` and dumps the model). Same
+    # object, two access paths; never a second computation.
     posterior: Optional[PosteriorReport] = None
+    # The run's single decision record. 1-hop live route to the verdict;
+    # the auditable freeze is objective.snapshot_id → snapshot.verdict.
+    verdict: Optional[EpistemicVerdict] = None
     quarantined: list[QuarantineRecord] = Field(default_factory=list)
     retrieval_failed: bool = False
 

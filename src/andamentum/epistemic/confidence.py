@@ -39,8 +39,13 @@ import logging
 import math
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
+from .entities.verdict import (
+    ClaimVerdict,
+    EpistemicVerdict,
+    EvidenceRef,
+    PosteriorReport,
+    VerdictProvenance,
+)
 from .judgment_signal import support_contradict_split
 from .repository import EpistemicRepository
 
@@ -53,6 +58,43 @@ from .thresholds import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ``PosteriorReport`` moved to ``entities/verdict.py`` so ``EpistemicVerdict``
+# can embed it without the entity layer importing the repository. Re-exported
+# here because ``from .confidence import PosteriorReport`` is the established
+# import path (``__init__.py``, ``operations_runner.py``, the benchmark
+# harness) and the wire shape of ``model_dump`` must not change.
+__all__ = [
+    "POSTERIOR_ELIGIBLE",
+    "PosteriorReport",
+    "build_verdict",
+    "compute_posterior",
+    "ibe_contradicted_by_independent_signals",
+]
+
+
+def _counts_toward_claim(claim, e) -> bool:
+    """Is this evidence item eligible to inform ``claim``'s counting mass?
+
+    THE IN-MEMORY FILTER: the item is linked to the claim, not
+    invalidated, and not a cluster follower (corroborative / deferred
+    items are represented by their cluster head). One definition, read
+    by the objective-level counting loops, ``_claim_directional_masses``
+    and ``_evidence_refs_for_claim`` — so the refs a reader follows are
+    exactly the items the posterior counted.
+
+    DELIBERATELY DIFFERENT from ``gates.eligible_representative_evidence``
+    (the repo-fetching filter scrutiny and the cycle cap share), which
+    additionally requires ``extracted_content``. Routing this predicate
+    through that one would silently change the counting posterior on an
+    unbenchmarked path; the divergence is intentional and stated on both
+    sides.
+    """
+    return (
+        e.entity_id in claim.evidence_ids
+        and not e.invalidated
+        and e.cluster_status not in ("corroborative", "deferred")
+    )
 
 
 def _evidence_counting_vote(e) -> tuple[float, float]:
@@ -94,15 +136,54 @@ def _claim_directional_masses(claim, evidence) -> tuple[float, float]:
     supporting = 0.0
     contradicting = 0.0
     for e in evidence:
-        if (
-            e.entity_id in claim.evidence_ids
-            and not e.invalidated
-            and e.cluster_status not in ("corroborative", "deferred")
-        ):
+        if _counts_toward_claim(claim, e):
             s, c = _evidence_counting_vote(e)
             supporting += s
             contradicting += c
     return supporting, contradicting
+
+
+def _evidence_refs_for_claim(
+    claim, evidence
+) -> tuple[list[EvidenceRef], list[EvidenceRef], int]:
+    """The (supporting, refuting, n_no_bearing) breakdown behind a claim's mass.
+
+    Same eligibility filter and same weighting as
+    ``_claim_directional_masses``, so the refs on a ``ClaimVerdict`` are
+    provably the items that produced its number. An item whose
+    distribution nets neither direction (all no_bearing mass, or an exact
+    tie) is counted rather than dropped.
+    """
+    supporting: list[EvidenceRef] = []
+    refuting: list[EvidenceRef] = []
+    n_no_bearing = 0
+    for e in evidence:
+        if not _counts_toward_claim(claim, e):
+            continue
+        s, c = _evidence_counting_vote(e)
+        if s > c:
+            supporting.append(
+                EvidenceRef(
+                    evidence_id=e.entity_id,
+                    source_ref=getattr(e, "source_ref", "") or "",
+                    stance="supports",
+                    mass=s,
+                    quality_score=getattr(e, "quality_score", None),
+                )
+            )
+        elif c > s:
+            refuting.append(
+                EvidenceRef(
+                    evidence_id=e.entity_id,
+                    source_ref=getattr(e, "source_ref", "") or "",
+                    stance="contradicts",
+                    mass=c,
+                    quality_score=getattr(e, "quality_score", None),
+                )
+            )
+        else:
+            n_no_bearing += 1
+    return supporting, refuting, n_no_bearing
 
 
 def ibe_contradicted_by_independent_signals(
@@ -156,76 +237,6 @@ def ibe_contradicted_by_independent_signals(
 # (A better, B better, equivalent), not two. The posterior's binary
 # P(Y) framing is misleading when the answer is "no difference."
 POSTERIOR_ELIGIBLE: set[str] = {"verificatory", "predictive"}
-
-
-class PosteriorReport(BaseModel):
-    """Posterior probability P(Y) for a yes/no-style research objective.
-
-    Primary signal is the abduction agent's verdict (mode="abductive").
-    Counting is reported as a diagnostic field and only drives the
-    posterior when integration didn't run (mode="counting_fallback").
-    Only meaningful for verificatory and predictive questions; other
-    question types return None from compute_posterior().
-    """
-
-    posterior: float = Field(description="P(Y) in [0.0, 1.0]")
-    log_odds: int = Field(description="Effective log-odds from posterior")
-    supporting_count: float = Field(
-        description=(
-            "Diagnostic: total weighted supporting evidence across active "
-            "claims. Each representative contributes "
-            "``1 + log(corroboration_count)``. Drives the posterior only "
-            "in counting_fallback mode (when no claim received an "
-            "integration verdict)."
-        )
-    )
-    contradicting_count: float = Field(
-        description=(
-            "Diagnostic: total weighted contradicting evidence across "
-            "active claims. Same weighting as supporting_count."
-        )
-    )
-    counting_posterior: float = Field(
-        description=(
-            "Diagnostic: P(Y) implied by counting alone "
-            "(sigmoid(supporting - contradicting)). For comparison with "
-            "the abduction-driven posterior; not used when the abduction "
-            "verdict is available."
-        )
-    )
-    integration_verdict: str | None = Field(
-        default=None,
-        description="Integration assessment: 'supports', 'contradicts', 'insufficient', or None",
-    )
-    integration_confidence: float | None = Field(
-        default=None,
-        description="Integration confidence 0.0-1.0, or None if not run",
-    )
-    mode: str = Field(
-        default="abductive",
-        description=(
-            "'abductive' when the posterior follows the integration "
-            "verdict; 'counting_fallback' when no claim received an "
-            "integration verdict and the posterior is the sigmoid of "
-            "weighted counts."
-        ),
-    )
-    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
-        Field(
-            default="completed",
-            description=(
-                "How the investigation terminated. 'completed' for normal runs; "
-                "'retrieval_failed' when evidence extraction kept returning empty "
-                "content, meaning the posterior is based on insufficient data; "
-                "'oscillation_detected' when one or more claims hit the "
-                "scrutinise/resolve cycle cap before converging — the posterior "
-                "is 0.5 (genuinely uncertain) and the inquiry did not fix belief."
-            ),
-        )
-    )
-    objective_id: str
-    question_type: str
-    explanation: str
 
 
 async def compute_posterior(
@@ -327,6 +338,20 @@ async def compute_posterior(
     #   3. capped + no IA, balanced → terminal_state="oscillation_detected"
     #      via the no-signal terminal at the end of this function.
     #
+    # Branch 2 was dead code as written: the no-certified-verdict gate
+    # below returns before the counting path can surface anything for a
+    # capped claim with no IA. As of 2026-08-09 it is satisfied UPSTREAM
+    # instead — ConcludeAtCycleCapOperation reads the same one-sided
+    # evidence at cap-firing time and writes an integrated_assessment, so
+    # such a claim arrives here in branch 1.
+    #
+    # The gate itself is DELIBERATELY LEFT INTACT. It is the same
+    # condition as CheckCompletion's ``any_certified`` (commit 761a5d9),
+    # and keeping them identical is what makes the writer and the
+    # aggregator flip together by construction rather than by a
+    # maintained convention. Moving the fix upstream preserves that
+    # property with zero logic change in this file.
+    #
     # The previous all-capped → 0.5 short-circuit conflated "inquiry
     # didn't converge" with "verdict is unstable" — distinct epistemic
     # situations. See
@@ -369,14 +394,9 @@ async def compute_posterior(
         diag_supporting = 0.0
         diag_contradicting = 0.0
         for claim in active_claims:
-            claim_evidence = [
-                e
-                for e in evidence
-                if e.entity_id in claim.evidence_ids
-                and not e.invalidated
-                and e.cluster_status not in ("corroborative", "deferred")
-            ]
-            for e in claim_evidence:
+            for e in evidence:
+                if not _counts_toward_claim(claim, e):
+                    continue
                 s, c = _evidence_counting_vote(e)
                 diag_supporting += s
                 diag_contradicting += c
@@ -429,6 +449,7 @@ async def compute_posterior(
                 "alone is not the system's verdict."
             ),
             terminal_state=ts,
+            suspended_claim_ids=[],
         )
 
     # 3. Diagnostic: weighted counts across active claims. These are reported
@@ -437,14 +458,9 @@ async def compute_posterior(
     supporting = 0.0
     contradicting = 0.0
     for claim in active_claims:
-        claim_evidence = [
-            e
-            for e in evidence
-            if e.entity_id in claim.evidence_ids
-            and not e.invalidated
-            and e.cluster_status not in ("corroborative", "deferred")
-        ]
-        for e in claim_evidence:
+        for e in evidence:
+            if not _counts_toward_claim(claim, e):
+                continue
             s, c = _evidence_counting_vote(e)
             supporting += s
             contradicting += c
@@ -506,20 +522,13 @@ async def compute_posterior(
             extract_weights_from_decomposition,
         )
 
+        from .graph.combination import order_claims_for_combination
+
         # Order claims by sub_investigation_id per the decomposition so
-        # weights align — same alignment CombineClaimVerdicts uses.
-        # Phase 6 of the Move-3 plan: typed Decomposition access.
-        sub_ids_in_order = [
-            s.id for s in (decomposition.sub_investigations if decomposition else [])
-        ]
-        claims_by_sub = {
-            c.sub_investigation_id: c
-            for c in integrated_claims
-            if c.sub_investigation_id is not None
-        }
-        ordered = [
-            claims_by_sub[sid] for sid in sub_ids_in_order if sid in claims_by_sub
-        ]
+        # weights align — the shared helper build_verdict also uses.
+        ordered, _n_orphan = order_claims_for_combination(
+            integrated_claims, decomposition
+        )
         # Fall back to the integrated_claims list if no sub_investigation_id
         # alignment is possible (e.g. ProposeClaims path that happened to
         # have a combination_rule from a prior decomposition).
@@ -784,4 +793,108 @@ async def compute_posterior(
         question_type=question_type,
         explanation=explanation,
         terminal_state=terminal_state,
+        suspended_claim_ids=sorted(suspended_ids),
+    )
+
+
+async def build_verdict(
+    repo: EpistemicRepository,
+    *,
+    objective_id: str,
+    retrieval_failed: bool = False,
+) -> EpistemicVerdict:
+    """Assemble the run's single ``EpistemicVerdict`` from the live DB.
+
+    Lives next to ``compute_posterior`` because it IS the objective-level
+    aggregate: it calls that function for the number and its provenance
+    (so the rule-aware branch, the confidence-weighted branch, the
+    counting fallback, the no-certified-verdict gate, the concordance
+    tripwire and both penalties stay exactly where they are), then
+    assembles the per-claim entries and evidence refs from the same
+    helpers the posterior itself used.
+
+    Deterministic given a database — no LLM call — so the whole object
+    is verifiable offline.
+
+    ``retrieval_failed`` lives only on graph state, which is why it is a
+    parameter: capturing it here and persisting the result is what fixes
+    the live-vs-offline ``terminal_state`` divergence (the offline report
+    used to re-run ``compute_posterior`` without it and always said
+    "completed").
+    """
+    from .graph.combination import _claim_posterior, order_claims_for_combination
+
+    posterior_report = await compute_posterior(
+        repo, objective_id, retrieval_failed=retrieval_failed
+    )
+    objective = await repo.get_objective(objective_id)
+    claims = await repo.get_claims_for_objective(objective_id)
+    evidence = await repo.get_evidence_for_objective(objective_id)
+
+    decomposition = getattr(objective, "decomposition", None)
+    from .graph.combination import resolve_combination_rule
+
+    combination_rule = resolve_combination_rule(objective)
+    ordered, n_orphan = order_claims_for_combination(claims, decomposition)
+
+    # Decomposition order first, then anything the decomposition doesn't
+    # name — so a reader sees the sub-investigations in their declared
+    # order without any claim being dropped (CONSTITUTION rule 6).
+    ordered_ids = {c.entity_id for c in ordered}
+    claim_order = ordered + [c for c in claims if c.entity_id not in ordered_ids]
+
+    suspended = set(posterior_report.suspended_claim_ids if posterior_report else [])
+    terminal_state = posterior_report.terminal_state if posterior_report else "completed"
+
+    claim_verdicts: list[ClaimVerdict] = []
+    for c in claim_order:
+        is_suspended = c.entity_id in suspended
+        supporting, refuting, n_no_bearing = _evidence_refs_for_claim(c, evidence)
+        claim_verdicts.append(
+            ClaimVerdict(
+                claim_id=c.entity_id,
+                statement=c.statement,
+                sub_investigation_id=c.sub_investigation_id,
+                stage=c.stage.value if hasattr(c.stage, "value") else str(c.stage),
+                integrated_assessment=c.integrated_assessment,
+                integrated_confidence=c.integrated_confidence,
+                posterior=_claim_posterior(c, suspended=is_suspended),
+                cycle_capped=bool(getattr(c, "cycle_capped", False)),
+                abandoned=bool(c.abandoned),
+                suspended=is_suspended,
+                supporting_evidence=supporting,
+                refuting_evidence=refuting,
+                n_no_bearing=n_no_bearing,
+                cap_evaluation=getattr(c, "cap_evaluation", None),
+                terminal_state=terminal_state,
+            )
+        )
+
+    active = [c for c in claims if not c.abandoned]
+    n_adjudicated = sum(1 for c in active if c.integrated_assessment is not None)
+    explanation = posterior_report.explanation if posterior_report else ""
+    if n_orphan:
+        explanation = (
+            f"{explanation} ({n_orphan} orphan claim(s) — sub_investigation_id "
+            "not in the current decomposition)"
+        ).strip()
+
+    provenance = VerdictProvenance(
+        retrieval_failed=retrieval_failed,
+        combination_rule=combination_rule,
+        n_claims_total=len(claims),
+        n_active_claims=len(active),
+        n_abandoned=sum(1 for c in claims if c.abandoned),
+        n_cycle_capped=sum(1 for c in active if getattr(c, "cycle_capped", False)),
+        n_adjudicated=n_adjudicated,
+        n_no_verdict=len(active) - n_adjudicated,
+        n_orphan=n_orphan,
+        combination_explanation=explanation,
+    )
+
+    return EpistemicVerdict(
+        objective_id=objective_id,
+        posterior_report=posterior_report,
+        claims=claim_verdicts,
+        provenance=provenance,
     )

@@ -195,6 +195,39 @@ CYCLE_CAP_CONFIDENCE_PENALTY (the two stack multiplicatively when
 both apply: a doubly-provisional verdict gets 0.7 × 0.7 = 0.49 on
 distance from 0.5)."""
 
+# A verdict may also be derived *mechanically* — directly from the
+# directional balance of the evidence, without the IBE chain's holistic
+# deliberation (loveliness / likeliness / contrastive selection). Such a
+# verdict is real signal and must be surfaced, but it must not claim more
+# certainty than the deliberated path, so it carries a hard ceiling.
+
+MECHANICAL_VERDICT_MAX_CONFIDENCE: float = 0.9
+"""Ceiling on ``integrated_confidence`` for a verdict derived from the
+evidence balance alone, without the IBE chain.
+
+Theoretical basis: the IBE chain is the system's certifier — it weighs
+competing explanations against each other before committing. A verdict
+read straight off the directional balance skips that deliberation, so it
+is capped below full confidence regardless of how lopsided the balance is.
+0.9 is the value ``PromoteAsRefutedOperation`` has always applied for
+exactly this reason; naming it keeps one ceiling rather than two bare
+literals.
+
+Read by: ``operations.stage_management.PromoteAsRefutedOperation`` and
+``operations.stage_management.ConcludeAtCycleCapOperation``.
+
+It is a CEILING, not a target. The cap reaches it only when the evidence
+is both one-sided AND carries at least ``SCRUTINY_STRONG_MASS_THRESHOLD``
+of dominant mass; a thin one-sided pool is discounted below it by the
+mass-adequacy factor (see that operation's docstring).
+
+Load-bearing side effect at the cap: a cycle-capped claim's confidence is
+additionally multiplied by ``CYCLE_CAP_CONFIDENCE_PENALTY`` downstream, so
+the furthest a cap-derived single-claim posterior can sit from neutral is
+``0.9 × 0.7 / 2 = 0.315``. That keeps it strictly inside
+``[1 - POSTERIOR_DECISIVE_THRESHOLD, POSTERIOR_DECISIVE_THRESHOLD]`` — a
+mechanically-derived verdict can never, on its own, read as decisive."""
+
 
 # ── Posterior breakpoints ──────────────────────────────────────────
 #
@@ -319,7 +352,12 @@ SCRUTINY_STRONG_MASS_THRESHOLD: float = 1.5
 """At or above this dominant-direction mass, the evidence weight is
 ``strong``. ~1.5 corresponds to a well-corroborated high-quality line or
 two independent moderate ones. Read by:
-``scrutiny_weight.compute_evidence_weight``."""
+``scrutiny_weight.compute_evidence_weight`` and
+``operations.stage_management.ConcludeAtCycleCapOperation``, where it is
+the saturation point of the cap verdict's mass-adequacy factor — below
+it, a cap-derived confidence is discounted proportionally, so a single
+unopposed source cannot report the same certainty as a well-corroborated
+one-sided pool."""
 
 SCRUTINY_WEAK_MASS_THRESHOLD: float = 0.4
 """Below this dominant-direction mass, the evidence is too thin to
@@ -367,6 +405,7 @@ __all__ = [
     "IBE_AGREEMENT_K_DEFAULT",
     "CYCLE_CAP_CONFIDENCE_PENALTY",
     "RETRIEVAL_FAILED_CONFIDENCE_PENALTY",
+    "MECHANICAL_VERDICT_MAX_CONFIDENCE",
     "POSTERIOR_DIRECTIONAL_BREAKPOINT",
     "POSTERIOR_DECISIVE_THRESHOLD",
     "CONVERGENCE_STRONG_THRESHOLD",

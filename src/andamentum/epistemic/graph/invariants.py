@@ -86,3 +86,47 @@ def no_stranded_claims(
         "calibrated verdict; instead they reached a terminal in a "
         "state that makes the posterior fall back to no-data 0.5."
     )
+
+
+def capped_claims_carry_a_cap_evaluation(
+    state: "EpistemicGraphState", claims: "list[Claim]"
+) -> "str | None":
+    """Invariant: every cycle-capped claim carries a ``cap_evaluation``.
+
+    ``_mark_cycle_capped`` is the single funnel both cap-firing sites go
+    through, and it unconditionally dispatches
+    ``ConcludeAtCycleCapOperation``, which always writes the record. So a
+    capped claim reaching a terminal *without* one means some site set
+    ``cycle_capped=True`` while bypassing the funnel — exactly the
+    regression shape this guards.
+
+    This is a DIFFERENT guarantee from ``no_stranded_claims``. That one
+    asks "should this claim have entered the IBE chain and didn't?", and
+    correctly exempts capped claims — a capped claim is legitimately not
+    an IBE candidate. This one asks "did the system look at the evidence
+    before terminating this claim?", which applies precisely to the
+    capped set. Do not merge them, and do not tighten
+    ``stranded_claims``' capped exemption on the strength of this.
+
+    Note this is about presence of the *record*, not presence of a
+    verdict: ``cap_evaluation.verdict is None`` is a valid, informative
+    outcome (the evidence was read and did not decide).
+    """
+    del state  # signature matches the Invariant typedef; state is unused
+    missing = [
+        c
+        for c in claims
+        if getattr(c, "cycle_capped", False)
+        and getattr(c, "cap_evaluation", None) is None
+    ]
+    if not missing:
+        return None
+    ids = ", ".join(c.entity_id[:12] for c in missing)
+    return (
+        f"{len(missing)} cycle-capped claim(s) reached a terminal with no "
+        f"cap_evaluation record: {ids}. Every cap firing goes through "
+        "_mark_cycle_capped, which dispatches ConcludeAtCycleCapOperation "
+        "unconditionally — so this means a site set cycle_capped=True "
+        "while bypassing that funnel, and the claim's terminal outcome is "
+        "unaudited."
+    )

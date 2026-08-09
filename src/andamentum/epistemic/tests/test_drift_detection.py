@@ -149,7 +149,10 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     "Evidence scoring 3-path chain (no fallback)": "3929dcd70fbe2f0d",
     "Scrutiny evidence loading loop": "cd12fd7cdd66ac9d",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
-    "Writer-validator loop": "565af4046d169c0d",
+    # 2026-08-09: the loop returns (title, answer) — the writer no longer
+    # authors a verdict; the headline is rendered from the run's
+    # EpistemicVerdict. Error handling inside the loop is unchanged.
+    "Writer-validator loop": "ecf515424526f4f1",
     "Prediction generation per-aspect error handling": "fb5787ea93a0df4b",
     "Gate validate_promotion logic": "e87d8901f731e130",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",

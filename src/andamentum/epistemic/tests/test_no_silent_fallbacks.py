@@ -425,33 +425,32 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp_path):
-    """When compute_posterior raises, run_epistemic_graph must propagate —
-    a silent None posterior hides the headline result."""
-    from andamentum.epistemic.graph import run_epistemic_graph
-    from andamentum.epistemic.graph.result import EpistemicResult
+async def test_combine_claim_verdicts_propagates_posterior_failure(tmp_path, monkeypatch):
+    """When compute_posterior raises, the node that builds the run's
+    verdict must propagate — a silent None verdict hides the headline
+    result, and CheckCompletion would then raise a confusing
+    routing-bug error far from the real cause.
 
-    # Fake graph result with successful=1 so the posterior branch is reached.
-    fake_epistemic_result = EpistemicResult(
-        objective_id="obj-fake",
-        status="complete",
-        successful=1,
-        failed=0,
-    )
+    BEHAVIOUR CHANGE (2026-08-09): the posterior is computed INSIDE the
+    graph, by CombineClaimVerdicts via ``confidence.build_verdict``, and
+    persisted on the Snapshot. The previous post-End computation in
+    ``run_epistemic_graph`` is gone, so the no-swallow contract is
+    pinned at the new site.
+    """
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Objective
+    from andamentum.epistemic.graph.deps import EpistemicDeps
+    from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
+    from andamentum.epistemic.graph.state import EpistemicGraphState
+    from andamentum.epistemic.repository import EpistemicRepository
 
-    class _FakeGraph:
-        # pydantic-graph v2: ``Graph.run()`` returns the graph output
-        # directly rather than a result wrapper exposing ``.output``.
-        async def run(self, *args, **kwargs):
-            return fake_epistemic_result
+    store = DocumentStore.for_database("posterior_failure", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+    obj = Objective(description="Does X cause Y?", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
 
-    # Patch the graph object inside nodes so run_epistemic_graph uses our fake.
-    monkeypatch.setattr(
-        "andamentum.epistemic.graph.nodes.epistemic_graph",
-        _FakeGraph(),
-    )
-
-    # Patch compute_posterior to raise.
     async def _raising_posterior(*args, **kwargs):
         raise RuntimeError("posterior computation failed")
 
@@ -460,15 +459,15 @@ async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp
         _raising_posterior,
     )
 
+    class _Ctx:
+        def __init__(self, state, deps):
+            self.state = state
+            self.deps = deps
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
     with pytest.raises(RuntimeError, match="posterior computation failed"):
-        await run_epistemic_graph(
-            question="Does X cause Y?",
-            database_name="test_posterior_failure",
-            model="test:stub",
-            provider="none",
-            providers={},
-            db_dir=str(tmp_path),
-        )
+        await CombineClaimVerdicts().run(_Ctx(state, deps))  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

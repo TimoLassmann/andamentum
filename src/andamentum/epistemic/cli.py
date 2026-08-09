@@ -490,17 +490,24 @@ async def _inspect(args: argparse.Namespace) -> None:
                 f"  decomposition: {len(decomp.sub_investigations)} sub-investigations "
                 f"(rule={decomp.combination_rule})"
             )
-            cv = decomp.combined_verdict
-            if cv is not None:
-                post = f"{cv.posterior:.3f}" if cv.posterior is not None else "n/a"
-                print(
-                    f"  combined:      verdict={cv.verdict} posterior={post} "
-                    f"n_no_verdict={cv.n_no_verdict}"
-                )
-            else:
-                print("  combined:      <none>")
         else:
             print("  decomposition: <none>")
+
+        # The run's verdict lives on the frozen snapshot, not on the
+        # decomposition — so verify-mode runs (which have no
+        # decomposition at all) print one too.
+        snapshot = (
+            await repo.get("snapshot", obj.snapshot_id) if obj.snapshot_id else None
+        )
+        verdict = getattr(snapshot, "verdict", None) if snapshot else None
+        if verdict is not None:
+            post = f"{verdict.posterior:.3f}" if verdict.posterior is not None else "n/a"
+            print(
+                f"  verdict:       {verdict.direction} posterior={post} "
+                f"n_no_verdict={verdict.provenance.n_no_verdict}"
+            )
+        else:
+            print("  verdict:       <none>")
 
     print(f"\n{len(claims)} claims:")
     for c in sorted(claims, key=lambda x: x.sub_investigation_id or ""):

@@ -56,10 +56,15 @@ async def test_cycle_capped_supported_skipped_by_promote_to_supported(
 ) -> None:
     """When the only SUPPORTED claim is cycle-capped,
     PromoteToSupported must NOT route to ClusterEvidence (which would
-    eventually run verification + IBE on the claim, only for the
-    combiner to discard the result). It should treat the run as having
-    no work to do for SUPPORTED claims."""
-    from andamentum.epistemic.graph.nodes import CheckCompletion
+    spend verification plus four IBE calls on a claim whose inquiry
+    didn't converge). It should treat the run as having no work to do
+    for SUPPORTED claims.
+
+    BEHAVIOUR CHANGE (2026-08-09): the no-work exit is
+    ``CombineClaimVerdicts`` rather than ``CheckCompletion`` — the
+    verdict object is rebuilt before every terminal decision. The cap
+    semantics this test pins are unchanged."""
+    from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
 
     store = DocumentStore.for_database("cycle_capped_skip", db_dir=tmp_path)
     await store.initialize()
@@ -88,13 +93,14 @@ async def test_cycle_capped_supported_skipped_by_promote_to_supported(
     next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
     # Should NOT route to ClusterEvidence (which would launch IBE).
-    # Should route to CheckCompletion since no SUPPORTED-and-not-
+    # Should route to CombineClaimVerdicts since no SUPPORTED-and-not-
     # cycle-capped-and-not-verified claims exist.
-    assert isinstance(next_node, CheckCompletion), (
+    assert isinstance(next_node, CombineClaimVerdicts), (
         f"PromoteToSupported routed to {type(next_node).__name__} for "
-        "a cycle-capped SUPPORTED claim. Expected CheckCompletion — "
-        "cycle-capped claims should not enter verification or IBE "
-        "because combine_claim_verdicts will discard their verdict."
+        "a cycle-capped SUPPORTED claim. Expected CombineClaimVerdicts "
+        "— cycle-capped claims should not enter verification or IBE, "
+        "because the LLM-priced chain is not warranted on a claim whose "
+        "inquiry did not converge."
     )
 
 

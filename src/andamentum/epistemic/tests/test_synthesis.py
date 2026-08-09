@@ -19,6 +19,7 @@ from ..entities import (
 )
 from ..operations import create_operations, SynthesizeReportOperation
 from ..operations.base import OperationInput
+from .conftest import make_verdict
 
 
 class TestSynthesizeContentBody:
@@ -57,6 +58,7 @@ class TestSynthesizeContentBody:
             entity_id="snap-1",
             objective_id="obj-1",
             snapshot_type="final",
+            verdict=make_verdict("obj-1", posterior=0.8, claim_ids=("c-1",)),
             claim_ids=["c-1"],
             evidence_ids=["e-1"],
         )
@@ -113,6 +115,7 @@ class TestSynthesizeContentBody:
             entity_id="snap-2",
             objective_id="obj-2",
             snapshot_type="final",
+            verdict=make_verdict("obj-2", posterior=0.8, claim_ids=("c-2",)),
             claim_ids=["c-2"],
             evidence_ids=["e-2"],
         )
@@ -162,6 +165,7 @@ class TestSynthesizeContentBody:
             entity_id="snap-3",
             objective_id="obj-3",
             snapshot_type="final",
+            verdict=make_verdict("obj-3", posterior=0.8, claim_ids=("c-3",)),
             claim_ids=["c-3"],
             evidence_ids=["e-3"],
         )
@@ -221,6 +225,7 @@ class TestSynthesizeContentBody:
             entity_id="snap-4",
             objective_id="obj-4",
             snapshot_type="final",
+            verdict=make_verdict("obj-4", posterior=0.8, claim_ids=("c-4",)),
             claim_ids=["c-4"],
             evidence_ids=["e-4"],
         )
@@ -398,6 +403,7 @@ class TestTraceMapping:
             entity_id="snap-tr",
             objective_id="obj-tr",
             snapshot_type="final",
+            verdict=make_verdict("obj-tr", posterior=0.8, claim_ids=("c-tr",)),
             claim_ids=["c-tr"],
             evidence_ids=["e-tr-1", "e-tr-2"],
         )

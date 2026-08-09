@@ -4,8 +4,10 @@ of the K3 fix in the 2026-05-03 freeze sheet).
 The architectural contract these tests pin:
 
 * ``SynthesizeInsufficientReportOperation`` produces a deterministic
-  artefact stamped ``artefact_type="insufficient"``, with a fixed
-  verdict string ("Insufficient evidence to answer."). No LLM call.
+  artefact stamped ``artefact_type="insufficient"``, whose verdict line
+  is RENDERED from the snapshot's ``EpistemicVerdict`` through the same
+  ``render_verdict_line`` the directional terminal uses. No LLM call.
+  (Was a fixed string constant; one shape at both terminals now.)
 * The body surfaces structural counts (claims, evidence, abandoned,
   capped, no-verdict, blocking uncertainties) — the system's audit
   trail for *why* it suspended judgment.
@@ -29,6 +31,7 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
+from ..entities.verdict import EpistemicVerdict, VerdictProvenance
 from ..operations import SynthesizeInsufficientReportOperation
 from ..operations.base import OperationInput
 
@@ -86,6 +89,8 @@ async def _seed_no_verdict_db(repo) -> str:
     )
     await repo.save(u)
 
+    # Both terminals render the run's verdict object; FreezeSnapshot
+    # stamps it in production, so the fixture stamps it here.
     snap = Snapshot(
         entity_id="snap-insuf",
         objective_id="obj-insuf",
@@ -93,6 +98,17 @@ async def _seed_no_verdict_db(repo) -> str:
         claim_ids=["c-capped", "c-abandoned"],
         evidence_ids=["e-insuf-1"],
         uncertainty_ids=["u-insuf-1"],
+        verdict=EpistemicVerdict(
+            objective_id="obj-insuf",
+            provenance=VerdictProvenance(
+                n_claims_total=2,
+                n_active_claims=1,
+                n_abandoned=1,
+                n_cycle_capped=1,
+                n_adjudicated=0,
+                n_no_verdict=1,
+            ),
+        ),
     )
     await repo.save(snap)
     return snap.entity_id
@@ -121,10 +137,11 @@ async def test_artefact_is_typed_insufficient(repo) -> None:
     )
 
 
-async def test_verdict_is_fixed_string_no_llm(repo) -> None:
-    """The verdict is encoded in the operation, not produced by an LLM.
-    This is the Peircean fallibilism property: the system's "I don't
-    know" state is a structural property, not a prompt outcome."""
+async def test_verdict_is_rendered_from_the_object_no_llm(repo) -> None:
+    """The verdict is rendered from the structured object, not produced
+    by an LLM. This is the Peircean fallibilism property: the system's
+    "I don't know" state is a structural property, not a prompt
+    outcome."""
     snap_id = await _seed_no_verdict_db(repo)
     op = SynthesizeInsufficientReportOperation(repo=repo)
     work = OperationInput(
@@ -134,8 +151,13 @@ async def test_verdict_is_fixed_string_no_llm(repo) -> None:
     )
     await op.execute(work)
 
+    from ..entities.verdict import render_verdict_line
+
+    snapshot = await repo.get("snapshot", snap_id)
     artefact = (await repo.query("artefact", objective_id="obj-insuf"))[0]
-    assert "Insufficient evidence to answer." in artefact.content
+    expected = render_verdict_line(snapshot.verdict)
+    assert expected.startswith("Insufficient evidence")
+    assert f"> **Verdict:** {expected}" in artefact.content
     assert "Verdict:" in artefact.content
     # The body must NOT begin with a directional verdict.
     assert "**Verdict:** No." not in artefact.content
@@ -270,6 +292,16 @@ async def _setup_check_completion_state(repo, objective_id: str = "obj-cc"):
     return state, deps
 
 
+async def _run_check_completion(state, deps):
+    """CheckCompletion is a pure reader over ``state.verdict`` and its
+    sole predecessor is CombineClaimVerdicts — drive both."""
+    from andamentum.epistemic.graph.nodes import CheckCompletion, CombineClaimVerdicts
+
+    ctx = _FakeRunContext(state, deps)
+    await CombineClaimVerdicts().run(ctx)  # type: ignore[arg-type]
+    return await CheckCompletion().run(ctx)  # type: ignore[arg-type]
+
+
 class _FakeRunContext:
     def __init__(self, state, deps):
         self.state = state
@@ -282,14 +314,13 @@ async def test_check_completion_routes_retrieval_failed_to_insufficient(repo) ->
     the retrieval failure. The retrieval_failed BOOL is still
     available downstream via state."""
     from andamentum.epistemic.graph.nodes import (
-        CheckCompletion,
         SynthesizeInsufficient,
     )
 
     state, deps = await _setup_check_completion_state(repo)
     state.retrieval_failed = True
 
-    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient), (
         "retrieval_failed must route to SynthesizeInsufficient (Maximal "
@@ -309,14 +340,13 @@ async def test_check_completion_routes_no_claims_to_insufficient(repo) -> None:
     produced nothing investigable. Route through SynthesizeInsufficient
     so the user gets a structurally honest "no claims" artefact."""
     from andamentum.epistemic.graph.nodes import (
-        CheckCompletion,
         SynthesizeInsufficient,
     )
 
     state, deps = await _setup_check_completion_state(repo)
     # No claims saved.
 
-    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -330,7 +360,6 @@ async def test_check_completion_routes_all_abandoned_to_insufficient(repo) -> No
     a silent exit."""
     from andamentum.epistemic.entities import Claim, ClaimStage
     from andamentum.epistemic.graph.nodes import (
-        CheckCompletion,
         SynthesizeInsufficient,
     )
 
@@ -347,7 +376,7 @@ async def test_check_completion_routes_all_abandoned_to_insufficient(repo) -> No
         )
         await repo.save(c)
 
-    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, SynthesizeInsufficient)
     assert state.synthesis_insufficient_reason is not None
@@ -366,7 +395,6 @@ async def test_check_completion_routes_active_claims_to_synthesis_demand(
     Maximal B's extension only changes the bypass paths."""
     from andamentum.epistemic.entities import Claim, ClaimStage
     from andamentum.epistemic.graph.nodes import (
-        CheckCompletion,
         CheckSynthesisDemand,
     )
 
@@ -394,7 +422,7 @@ async def test_check_completion_routes_active_claims_to_synthesis_demand(
     )
     await repo.save(c)
 
-    next_node = await CheckCompletion().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    next_node = await _run_check_completion(state, deps)
 
     assert isinstance(next_node, CheckSynthesisDemand), (
         "When there are active claims with integrated_assessment, the "

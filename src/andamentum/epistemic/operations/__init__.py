@@ -60,6 +60,7 @@ from .scrutiny import ScrutiniseClaimOperation
 
 # ── Stage management ────────────────────────────────────────────────────
 from .stage_management import (
+    ConcludeAtCycleCapOperation,
     DemoteClaimOperation,
     PromoteAsRefutedOperation,
     PromoteClaimOperation,
@@ -160,6 +161,7 @@ OPERATION_CLASSES: dict[str, type[BaseOperation]] = {
     "set_routing_defaults": SetRoutingDefaultsOperation,
     # Stage management
     "promote_as_refuted": PromoteAsRefutedOperation,
+    "conclude_at_cycle_cap": ConcludeAtCycleCapOperation,
     "soft_promote": SoftPromoteOperation,
     "promote_claim": PromoteClaimOperation,
     "demote_claim": DemoteClaimOperation,
@@ -260,6 +262,7 @@ __all__ = [
     "ScrutiniseClaimOperation",
     "PromoteClaimOperation",
     "PromoteAsRefutedOperation",
+    "ConcludeAtCycleCapOperation",
     "SoftPromoteOperation",
     "DemoteClaimOperation",
     "AdversarialSearchOperation",

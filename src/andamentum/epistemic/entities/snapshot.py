@@ -14,6 +14,7 @@ from pydantic import Field, model_validator
 
 from .base import EpistemicEntity
 from .claim import ClaimStage
+from .verdict import EpistemicVerdict
 
 
 class Snapshot(EpistemicEntity):
@@ -63,20 +64,24 @@ class Snapshot(EpistemicEntity):
         default=True, description="Snapshots are immutable once created"
     )
 
-    # Multi-seed-claim Phase 4: stores the combined verdict from the
-    # CombineClaimVerdicts graph node, which applies the decomposition's
-    # combination_rule (AND/OR/WEIGHTED_AND/UNION) over per-claim
-    # integration verdicts. SynthesizeReportOperation reads this so the
-    # writer agent can present a rule-aware combined verdict alongside
-    # the per-claim narrative. None when no combination ran (open-research
-    # snapshots without decomposition).
-    combined_verdict: Optional[dict[str, Any]] = Field(
+    # The run's single decision record, stamped by FreezeSnapshotOperation
+    # from EpistemicGraphState.verdict before the snapshot is frozen. This
+    # is the auditable freeze half of the artefact duality: the live route
+    # is PipelineResult.verdict, the persisted route is
+    # objective.snapshot_id → snapshot.verdict. Both synthesis operations
+    # RENDER this object and raise when it is absent — a missing verdict
+    # at synthesis is a routing bug, not a reason to omit the headline.
+    #
+    # Replaces the previous ``combined_verdict: dict[str, Any]``, which was
+    # written only for decomposed runs and was an untyped boundary
+    # CLAUDE.md forbids. Round-trips through ``to_document``'s full-JSON
+    # path; it was never a metadata filter key.
+    verdict: Optional[EpistemicVerdict] = Field(
         default=None,
         description=(
-            "Serialized CombinedVerdict from CombineClaimVerdicts: "
-            "{posterior, verdict, combination_rule, claim_posteriors, "
-            "n_capped, n_no_verdict, n_abandoned, explanation}. None when "
-            "the snapshot wasn't decomposed."
+            "The typed EpistemicVerdict this snapshot froze. None for "
+            "snapshots written before the verdict object existed, or for "
+            "snapshots created outside the graph."
         ),
     )
 
@@ -97,8 +102,6 @@ class Snapshot(EpistemicEntity):
             "artefact_id": self.artefact_id,
             "frozen": self.frozen,
         }
-        if self.combined_verdict is not None:
-            meta["combined_verdict"] = self.combined_verdict
         return meta
 
     @classmethod
@@ -118,7 +121,6 @@ class Snapshot(EpistemicEntity):
             snapshot_type=metadata.get("snapshot_type", "checkpoint"),
             artefact_id=metadata.get("artefact_id"),
             frozen=metadata.get("frozen", True),
-            combined_verdict=metadata.get("combined_verdict"),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

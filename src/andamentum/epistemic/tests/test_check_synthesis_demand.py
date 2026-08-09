@@ -9,8 +9,14 @@ only pin:
   2. Their justification text is structured so future audits can
      reconstruct what the system thought.
 
-The tests below have no claims saved so the loop-back falls through
-to Synthesize; they don't probe the Phase 4 routing.
+BEHAVIOUR CHANGE (2026-08-09, the verdict-object collapse): the gates
+read ``state.verdict`` — the run's single ``EpistemicVerdict`` — instead
+of ``objective.decomposition.combined_verdict``. The fixtures therefore
+seed that state by running the real predecessor, ``CombineClaimVerdicts``,
+over a claim table that actually implies the numbers under test. The
+previous fixtures hand-wrote a combined verdict that the claim table did
+not support, so they could assert gate behaviour on states the pipeline
+could never produce.
 """
 
 from __future__ import annotations
@@ -22,13 +28,13 @@ from andamentum.document_store import DocumentStore
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import (
-    CombinedVerdictData,
     Decomposition,
     SubInvestigation,
 )
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     CheckSynthesisDemand,
+    CombineClaimVerdicts,
     Scrutinize,
     Synthesize,
     SynthesizeInsufficient,
@@ -55,7 +61,31 @@ class _FlippingRunner:
         raise AssertionError(f"unexpected agent {agent_name}")
 
 
-# ── Deterministic gate: open-research mode (no decomposition) ────────
+async def _seed_verdict(
+    state: EpistemicGraphState, repo: EpistemicRepository
+) -> None:
+    """Run the real sole predecessor so ``state.verdict`` is present.
+
+    CheckSynthesisDemand is only ever reached via CheckCompletion, which
+    is only ever reached from CombineClaimVerdicts. Driving that node
+    here means the gates are tested against a verdict the pipeline could
+    actually produce.
+    """
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+    await CombineClaimVerdicts().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+
+def _decomposition(*sub_ids: str) -> Decomposition:
+    return Decomposition(
+        sub_investigations=[
+            SubInvestigation(id=sid, seed_claim=sid.lower(), rationale="r")
+            for sid in sub_ids
+        ],
+        combination_rule="AND",
+    )
+
+
+# ── Deterministic gate: open-research mode (no combination rule) ─────
 
 
 async def test_no_decomposition_gates_to_satisfied(
@@ -84,6 +114,7 @@ async def test_no_decomposition_gates_to_satisfied(
     await repo.save(claim)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -97,34 +128,27 @@ async def test_no_decomposition_gates_to_satisfied(
     assert "needs_more=False" in demand_logs[0].getMessage()
 
 
-# ── Deterministic gate: no combined_verdict ──────────────────────────
+# ── Deterministic gate: nothing adjudicated ──────────────────────────
 
 
 async def test_no_combined_verdict_gates_to_needs_more(
     tmp_path: Path, fake_runner, caplog
 ) -> None:
-    """When decomposition is set but no combined_verdict was produced
-    (every claim was abandoned/cycle-capped/no-verdict), the headline
+    """When a combination rule is set but nothing was adjudicated
+    (every claim abandoned/cycle-capped/no-verdict), the headline
     is the no-data fallback. Should log needs_more=True via
     deterministic gate."""
     store = DocumentStore.for_database("no_cv", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
-            ],
-            combination_rule="AND",
-            # NO combined_verdict (None)
-        ),
-    )
+    obj = Objective(description="x", decomposition=_decomposition("A"))
     obj.objective_id = obj.entity_id
     await repo.save(obj)
+    # No claims at all → n_adjudicated == 0.
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -157,42 +181,54 @@ async def test_no_combined_verdict_gates_to_needs_more(
 async def test_stranded_claims_gates_to_needs_more(
     tmp_path: Path, fake_runner, caplog
 ) -> None:
-    """When the combined verdict reports n_no_verdict > 0, IBE was
-    bypassed for some claims — defensive deterministic check should
-    log needs_more=True."""
+    """When the verdict reports n_no_verdict > 0, IBE was bypassed for
+    some claims — defensive deterministic check should log
+    needs_more=True.
+
+    One adjudicated claim (so Gate 2 doesn't fire first) plus one
+    stranded claim. Both are cycle-capped, so no loop-back is possible
+    and the routing assertion below stays the same as before.
+    """
     store = DocumentStore.for_database("stranded", db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
-            ],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[0.5, None],
-                n_no_verdict=1,  # stranded!
-            ),
-        ),
-    )
+    obj = Objective(description="x", decomposition=_decomposition("A", "B"))
     obj.objective_id = obj.entity_id
     await repo.save(obj)
 
+    adjudicated = Claim(
+        objective_id=obj.entity_id,
+        statement="claim A",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        sub_investigation_id="A",
+        cycle_capped=True,
+        integrated_assessment="insufficient",
+        integrated_confidence=0.5,
+    )
+    stranded = Claim(
+        objective_id=obj.entity_id,
+        statement="claim B",
+        scope="x",
+        stage=ClaimStage.SUPPORTED,
+        sub_investigation_id="B",
+        cycle_capped=True,
+        integrated_assessment=None,
+    )
+    await repo.save(adjudicated)
+    await repo.save(stranded)
+
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
         next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
 
-    # No claims → no eligible loop-back → routes to insufficient
-    # terminal (Maximal B). Stranded-claim demands are needs_more,
-    # and with no claims to investigate further the graph suspends
-    # judgment rather than fabricating a verdict.
+    # Stranded-claim demands are needs_more, and with no claim able to
+    # make progress the graph suspends judgment rather than fabricating
+    # a verdict.
     assert isinstance(next_node, SynthesizeInsufficient)
     msgs = [
         r.getMessage() for r in caplog.records if "[synthesis_demand]" in r.getMessage()
@@ -207,36 +243,45 @@ async def test_stranded_claims_gates_to_needs_more(
 # ── Deterministic gate: decisive posterior ───────────────────────────
 
 
+async def _decisive_setup(
+    tmp_path: Path,
+    db_name: str,
+    *,
+    assessment: str,
+    confidence: float,
+) -> tuple[Objective, EpistemicRepository]:
+    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+
+    obj = Objective(description="x", decomposition=_decomposition("A"))
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim A",
+        scope="x",
+        stage=ClaimStage.SUPPORTED,
+        sub_investigation_id="A",
+        integrated_assessment=assessment,
+        integrated_confidence=confidence,
+    )
+    await repo.save(claim)
+    return obj, repo
+
+
 async def test_decisive_supports_posterior_gates_to_satisfied(
     tmp_path: Path, fake_runner, caplog
 ) -> None:
     """When posterior >= 0.85, the verdict direction is decisive.
     Deterministic gate skips the LLM."""
-    store = DocumentStore.for_database("decisive_supp", db_dir=tmp_path)
-    await store.initialize()
-    repo = EpistemicRepository(store)
-
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r"),
-                SubInvestigation(id="B", seed_claim="b", rationale="r"),
-            ],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.92,
-                verdict="supports",
-                combination_rule="AND",
-                claim_posteriors=[0.92, 0.95],
-                n_no_verdict=0,
-            ),
-        ),
+    obj, repo = await _decisive_setup(
+        tmp_path, "decisive_supp", assessment="supports", confidence=0.92
     )
-    obj.objective_id = obj.entity_id
-    await repo.save(obj)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -255,30 +300,12 @@ async def test_decisive_contradicts_posterior_gates_to_satisfied(
     tmp_path: Path, fake_runner, caplog
 ) -> None:
     """Mirror: posterior <= 0.15 is decisive contradicts."""
-    store = DocumentStore.for_database("decisive_con", db_dir=tmp_path)
-    await store.initialize()
-    repo = EpistemicRepository(store)
-
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
-            ],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.10,
-                verdict="contradicts",
-                combination_rule="AND",
-                claim_posteriors=[0.10],
-                n_no_verdict=0,
-            ),
-        ),
+    obj, repo = await _decisive_setup(
+        tmp_path, "decisive_con", assessment="contradicts", confidence=0.80
     )
-    obj.objective_id = obj.entity_id
-    await repo.save(obj)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -295,29 +322,14 @@ async def test_decisive_contradicts_posterior_gates_to_satisfied(
 # ── Reproducibility tripwire on the decisive gate (item 2a) ──────────
 
 
-async def test_decisive_posterior_reproducibility_flip_loops_back(
-    tmp_path: Path, caplog
-) -> None:
-    """A decisive posterior whose supporting judgment is one-hot but flips
-    under paraphrase must NOT finalize — it loops back to Scrutinize."""
-    store = DocumentStore.for_database("repro_flip", db_dir=tmp_path)
+async def _repro_setup(
+    tmp_path: Path, db_name: str
+) -> tuple[Objective, EpistemicRepository]:
+    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
     await store.initialize()
     repo = EpistemicRepository(store)
 
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.92,
-                verdict="supports",
-                combination_rule="AND",
-                claim_posteriors=[0.92],
-                n_no_verdict=0,
-            ),
-        ),
-    )
+    obj = Objective(description="x", decomposition=_decomposition("A"))
     obj.objective_id = obj.entity_id
     await repo.save(obj)
 
@@ -335,11 +347,24 @@ async def test_decisive_posterior_reproducibility_flip_loops_back(
         objective_id=obj.entity_id,
         statement="X causes Y",
         stage=ClaimStage.SUPPORTED,
+        sub_investigation_id="A",
         evidence_ids=["e1"],
+        integrated_assessment="supports",
+        integrated_confidence=0.92,
     )
     await repo.save(claim)
+    return obj, repo
+
+
+async def test_decisive_posterior_reproducibility_flip_loops_back(
+    tmp_path: Path, caplog
+) -> None:
+    """A decisive posterior whose supporting judgment is one-hot but flips
+    under paraphrase must NOT finalize — it loops back to Scrutinize."""
+    obj, repo = await _repro_setup(tmp_path, "repro_flip")
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=_FlippingRunner(), embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -364,46 +389,10 @@ async def test_decisive_posterior_reproducible_judgment_finalizes(
                 return type("J", (), {"verdict": "supports"})()
             raise AssertionError(f"unexpected agent {agent_name}")
 
-    store = DocumentStore.for_database("repro_hold", db_dir=tmp_path)
-    await store.initialize()
-    repo = EpistemicRepository(store)
-
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.92,
-                verdict="supports",
-                combination_rule="AND",
-                claim_posteriors=[0.92],
-                n_no_verdict=0,
-            ),
-        ),
-    )
-    obj.objective_id = obj.entity_id
-    await repo.save(obj)
-
-    ev = Evidence(
-        entity_id="e1",
-        objective_id=obj.entity_id,
-        extracted=True,
-        extracted_content="A confident finding",
-        support_judgment="supports",
-        judgment_distribution=[1.0, 0.0, 0.0],
-    )
-    await repo.save(ev)
-    claim = Claim(
-        entity_id="c1",
-        objective_id=obj.entity_id,
-        statement="X causes Y",
-        stage=ClaimStage.SUPPORTED,
-        evidence_ids=["e1"],
-    )
-    await repo.save(claim)
+    obj, repo = await _repro_setup(tmp_path, "repro_hold")
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=_HoldingRunner(), embedding_model="t")
 
     next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
@@ -419,30 +408,12 @@ async def test_no_agent_runner_falls_through_to_satisfied(
     """When deps.agent_runner is None and deterministic gates didn't
     decide, default to satisfied (don't block synthesis on missing
     LLM). Justification names the cause."""
-    store = DocumentStore.for_database("no_runner", db_dir=tmp_path)
-    await store.initialize()
-    repo = EpistemicRepository(store)
-
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
-            ],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[0.5],
-                n_no_verdict=0,
-            ),
-        ),
+    obj, repo = await _decisive_setup(
+        tmp_path, "no_runner", assessment="insufficient", confidence=0.5
     )
-    obj.objective_id = obj.entity_id
-    await repo.save(obj)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
 
     with caplog.at_level(logging.INFO, logger="andamentum.epistemic.graph.nodes"):
@@ -466,30 +437,12 @@ async def test_default_satisfied_path_returns_synthesize(
     fake_runner default), the node continues to Synthesize. This is
     the common case: the deterministic gates passed and the LLM
     confirmed the verdict is good enough."""
-    store = DocumentStore.for_database("phase_4_default", db_dir=tmp_path)
-    await store.initialize()
-    repo = EpistemicRepository(store)
-
-    obj = Objective(
-        description="x",
-        decomposition=Decomposition(
-            sub_investigations=[
-                SubInvestigation(id="A", seed_claim="a", rationale="r")
-            ],
-            combination_rule="AND",
-            combined_verdict=CombinedVerdictData(
-                posterior=0.5,  # ambiguous — triggers LLM judgment
-                verdict="insufficient",
-                combination_rule="AND",
-                claim_posteriors=[0.5],
-                n_no_verdict=0,
-            ),
-        ),
+    obj, repo = await _decisive_setup(
+        tmp_path, "phase_4_default", assessment="insufficient", confidence=0.5
     )
-    obj.objective_id = obj.entity_id
-    await repo.save(obj)
 
     state = EpistemicGraphState(objective_id=obj.entity_id)
+    await _seed_verdict(state, repo)
     deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
     next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]

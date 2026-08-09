@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
+from .cap_evaluation import CapEvaluation
 from .intent_record import IntentRecord
 from .prediction import Prediction
 
@@ -245,22 +246,47 @@ class Claim(EpistemicEntity):
     #
     # Set when the Scrutinise/Resolve cycle cap fires for this claim
     # (graph/nodes.py:SCRUTINY_RESOLVE_CYCLE_CAP). Cycle-capped claims
-    # are NOT promoted to SUPPORTED — the inquiry didn't converge, so
-    # forcing a verdict via the IBE chain would misrepresent the
-    # epistemic state. compute_posterior detects this flag on any
-    # active claim and emits terminal_state="oscillation_detected"
-    # with posterior=0.5, distinguishing "system reached a verdict"
-    # from "system gave up after bounded inquiry".
+    # are NOT promoted to SUPPORTED and do NOT enter the IBE chain —
+    # the inquiry didn't converge, so spending four more LLM calls on
+    # abductive deliberation is not warranted.
+    #
+    # They are NOT left verdict-less, though. At the moment the cap
+    # fires, ConcludeAtCycleCapOperation reads the evidence already
+    # gathered (deterministically, no LLM) and — when that reading is
+    # directional — writes integrated_assessment /
+    # integrated_confidence / integrated_reasoning plus the
+    # cap_evaluation provenance record below. "Insufficient" must be a
+    # conclusion ABOUT THE EVIDENCE, never a side effect of scheduling.
+    #
+    # Consequence: terminal_state="oscillation_detected" is reached only
+    # when the cap reading was NOT directional (conflicting, or too thin)
+    # and the counting signal is balanced — compute_posterior's
+    # all_capped_no_signal condition. A capped claim with a cap-derived
+    # verdict yields a directional posterior at reduced weight
+    # (CYCLE_CAP_CONFIDENCE_PENALTY, applied exactly once downstream).
     #
     # This is downstream of the runtime cap in graph state — the cap
-    # bounds work; this field communicates the consequence honestly.
+    # bounds work; these fields communicate the consequence honestly.
     cycle_capped: bool = Field(
         default=False,
         description=(
             "True if this claim hit the Scrutinise ↔ Resolve cycle cap. "
-            "Cycle-capped claims terminate at HYPOTHESIS without IBE; "
-            "compute_posterior surfaces them via "
-            "terminal_state='oscillation_detected'."
+            "Cycle-capped claims terminate at HYPOTHESIS without entering "
+            "the IBE chain, but receive a deterministic terminal verdict "
+            "at the cap when the evidence reading is directional (see "
+            "cap_evaluation). compute_posterior surfaces them via "
+            "terminal_state='oscillation_detected' only when the reading "
+            "was not directional and counting is balanced."
+        ),
+    )
+    cap_evaluation: Optional[CapEvaluation] = Field(
+        default=None,
+        description=(
+            "Snapshot of the deterministic evidence reading taken when the "
+            "cycle cap fired, written by ConcludeAtCycleCapOperation. Two "
+            "meanings: provenance for a non-IBE terminal verdict, and — when "
+            "its own verdict is None — the positive record that the evidence, "
+            "not the scheduler, is why this claim has no verdict."
         ),
     )
 
@@ -311,10 +337,25 @@ class Claim(EpistemicEntity):
     )
 
     # Abductive integration (Peirce + Kahneman).
-    # Written by IntegrateEvidenceOperation on the normal path; also written by
-    # PromoteAsRefutedOperation when a HYPOTHESIS claim is refute-promoted
-    # (contradicts + mechanical confidence, integration LLM skipped). Both
-    # writers target the same entity, so the shared write is P5-compatible.
+    #
+    # Three writers, all targeting this same entity (so the shared write
+    # stays P5-compatible):
+    #
+    #   1. The IBE chain's SelectBestExplanationOperation — the normal,
+    #      certifying path (EnumerateCandidates → ScoreLoveliness →
+    #      ScoreLikeliness → SelectBestExplanation).
+    #   2. PromoteAsRefutedOperation — a HYPOTHESIS claim whose evidence
+    #      overwhelmingly contradicts it; verdict derived mechanically from
+    #      integer support/contradict COUNTS, integration LLM skipped.
+    #   3. ConcludeAtCycleCapOperation — a cycle-capped claim; verdict
+    #      derived mechanically from the quality- and corroboration-weighted
+    #      directional MASS (the same reading scrutiny performs), and only
+    #      when it owns the verdict (see that operation's docstring). Never
+    #      overwrites a verdict certified by (1) or (2).
+    #
+    # Writers (2) and (3) share the MECHANICAL_VERDICT_MAX_CONFIDENCE
+    # ceiling but derive their number differently, deliberately — see
+    # ConcludeAtCycleCapOperation's docstring for why.
     integrated_assessment: Optional[str] = Field(
         default=None,
         description="Holistic evidence verdict: 'supports', 'contradicts', 'insufficient'",
@@ -442,10 +483,18 @@ class Claim(EpistemicEntity):
             ],
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
+            "cap_evaluation": (
+                self.cap_evaluation.model_dump() if self.cap_evaluation else None
+            ),
             "persistent_concerns": self.persistent_concerns,
             "sub_investigation_id": self.sub_investigation_id,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
+            # ``integrated_reasoning`` was absent here while ``_from_metadata``
+            # already read the key, so every save/load round-trip silently
+            # dropped the provenance prose all three integration writers
+            # produce. Fixed 2026-08-09.
+            "integrated_reasoning": self.integrated_reasoning,
             "integration_candidates": [
                 c.model_dump() for c in self.integration_candidates
             ],
@@ -497,6 +546,11 @@ class Claim(EpistemicEntity):
             ],
             abandoned=metadata.get("abandoned", False),
             cycle_capped=metadata.get("cycle_capped", False),
+            cap_evaluation=(
+                CapEvaluation(**cap_eval_meta)
+                if (cap_eval_meta := metadata.get("cap_evaluation"))
+                else None
+            ),
             persistent_concerns=metadata.get("persistent_concerns", []),
             sub_investigation_id=metadata.get("sub_investigation_id"),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
