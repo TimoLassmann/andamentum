@@ -439,12 +439,11 @@ async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp
         failed=0,
     )
 
-    class _FakeGraphRunResult:
-        output = fake_epistemic_result
-
     class _FakeGraph:
+        # pydantic-graph v2: ``Graph.run()`` returns the graph output
+        # directly rather than a result wrapper exposing ``.output``.
         async def run(self, *args, **kwargs):
-            return _FakeGraphRunResult()
+            return fake_epistemic_result
 
     # Patch the graph object inside nodes so run_epistemic_graph uses our fake.
     monkeypatch.setattr(

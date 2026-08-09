@@ -61,7 +61,7 @@ async def run_research(
 
     from .backends import HttpxSearchBackend
     from .graph import research_graph
-    from .nodes import PlanResearch, NodeDeps
+    from .nodes import NodeDeps
     from .reporter import NoopReporter
     from .runner import _resolve_model
     from .state import ResearchState
@@ -116,17 +116,15 @@ async def run_research(
     )
 
     try:
-        # Run the graph
-        result = await research_graph.run(
-            PlanResearch(),
+        # Run the graph. The entry node is constructed by the graph's own
+        # entry step, so no start node is passed here.
+        output = await research_graph.run(
             state=state,
             deps=deps,
         )
     finally:
         if owns_backend:
             await backend.close()
-
-    output = result.output
 
     # Source verification
     verification = verify_sources(

@@ -20,11 +20,23 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import sys
 from pathlib import Path
 
 from .schemas import CheckResult, VerificationReport
 from .spec import SystemSpec
+
+# pydantic-graph v2 registers its own plumbing alongside the declared nodes: the
+# synthetic ``__start__`` / ``__end__`` markers and one ``decision``/``decision_N``
+# per branch point. Stripping them keeps the assemble check an EXACT set match, so
+# a graph carrying an unexpected extra node still fails.
+_ENGINE_NODE_ID = re.compile(r"^(__\w+__|decision(_\d+)?)$")
+
+
+def declared_nodes(graph: object) -> set[str]:
+    """The node ids a generated graph declares, minus the engine's own."""
+    return {n for n in getattr(graph, "nodes", ()) if not _ENGINE_NODE_ID.match(n)}
 
 
 def _files_check(pkg: Path) -> CheckResult:
@@ -56,7 +68,7 @@ def _parse_check(pkg: Path) -> CheckResult:
     )
 
 
-def _assemble_check(dest: Path, name: str, expected_nodes: int) -> CheckResult:
+def _assemble_check(dest: Path, name: str, expected_nodes: list[str]) -> CheckResult:
     """Import the generated package and assert its Graph assembles with every node."""
     dest_str = str(dest)
     added = dest_str not in sys.path
@@ -69,12 +81,21 @@ def _assemble_check(dest: Path, name: str, expected_nodes: int) -> CheckResult:
         del sys.modules[k]
     try:
         graph_mod = importlib.import_module(f"{name}.graph")
-        n = len(graph_mod.graph.node_defs)
-        ok = n == expected_nodes
+        assembled = declared_nodes(graph_mod.graph)
+        expected = set(expected_nodes)
+        missing = sorted(expected - assembled)
+        unexpected = sorted(assembled - expected)
+        problems = []
+        if missing:
+            problems.append(f"missing: {missing}")
+        if unexpected:
+            problems.append(f"unexpected: {unexpected}")
         return CheckResult(
             name="assembles",
-            passed=ok,
-            detail=f"{n} nodes assembled (expected {expected_nodes})",
+            passed=not problems,
+            detail=f"{len(expected)} nodes assembled"
+            if not problems
+            else "; ".join(problems),
         )
     except Exception as e:  # noqa: BLE001 — any import/assembly failure is a verification failure
         return CheckResult(
@@ -109,7 +130,7 @@ def verify_package(spec: SystemSpec, dest: Path) -> VerificationReport:
     checks = [
         _files_check(pkg),
         _parse_check(pkg),
-        _assemble_check(dest, spec.name, len(spec.nodes)),
+        _assemble_check(dest, spec.name, [n.name for n in spec.nodes]),
         _recipe_check(pkg),
     ]
     passed = sum(1 for c in checks if c.passed)

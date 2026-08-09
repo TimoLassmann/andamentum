@@ -323,6 +323,13 @@ def _build_agent(
         deps_type=DocDeps,
         tools=[read_section, search_paper],
         retries={"tools": 2, "output": 3},
+        # Pinned, not inherited: pydantic-ai v2 moved the default from 'early' to
+        # 'graceful', which would run any still-pending read_section/search_paper
+        # call *after* the model has already produced its findings. This is the only
+        # tool-registering agent in the package, so it is the only place the new
+        # default could bite. Held at v1 behaviour so the v2 uplift stays
+        # behaviour-preserving; adopting 'graceful' is a separate, evaluated change.
+        end_strategy="early",
     )
 
 

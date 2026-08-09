@@ -64,7 +64,7 @@ def _build_doc_agent(model: str):  # type: ignore[no-untyped-def]
 
     @agent.output_validator
     async def validate_doc_output(
-        ctx: RunContext[None], output: DocumentLLMFields
+        ctx: RunContext[object], output: DocumentLLMFields
     ) -> DocumentLLMFields:
         issues: list[str] = []
 

@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Union
 
-from pydantic_graph import End, Graph, GraphRunContext
+from pydantic_graph import Decision, End, Graph, GraphBuilder, GraphRunContext
 
 from .base import Node
 from .invariants import no_stranded_claims
@@ -2968,33 +2968,83 @@ class SynthesizeInsufficient(Node):
 # GRAPH ASSEMBLY
 # ══════════════════════════════════════════════════════════════════════════════
 
-epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, EpistemicResult] = Graph(
-    nodes=[
-        PrepareObjective,
-        Decompose,
-        PlanEvidence,
-        ExtractEvidence,
-        CreateClaims,
-        Scrutinize,
-        Investigate,
-        ExtractNewEvidence,
-        AbandonOrDemote,
-        PromoteToSupported,
-        ClusterEvidence,
-        RunVerification,
-        ResolveUncertainties,
-        EnumerateCandidates,
-        ScoreLoveliness,
-        ScoreLikeliness,
-        SelectBestExplanation,
-        PromoteSupported,
-        CombineClaimVerdicts,
-        CheckCompletion,
-        CheckSynthesisDemand,
-        Synthesize,
-        SynthesizeInsufficient,
-    ],
-    name="epistemic_pipeline",
+# The node roster. Transitions between these are still declared solely
+# by each node's ``run()`` return annotation — ``GraphBuilder.node()``
+# reads the same annotation ``topology()`` reflects over, so there is
+# still exactly one source of truth for the edges.
+NODE_TYPES: tuple[type[Node], ...] = (
+    PrepareObjective,
+    Decompose,
+    PlanEvidence,
+    ExtractEvidence,
+    CreateClaims,
+    Scrutinize,
+    Investigate,
+    ExtractNewEvidence,
+    AbandonOrDemote,
+    PromoteToSupported,
+    ClusterEvidence,
+    RunVerification,
+    ResolveUncertainties,
+    EnumerateCandidates,
+    ScoreLoveliness,
+    ScoreLikeliness,
+    SelectBestExplanation,
+    PromoteSupported,
+    CombineClaimVerdicts,
+    CheckCompletion,
+    CheckSynthesisDemand,
+    Synthesize,
+    SynthesizeInsufficient,
+)
+
+
+def _build_epistemic_graph() -> Graph[
+    EpistemicGraphState, EpistemicDeps, Node, EpistemicResult
+]:
+    """Assemble the pipeline graph.
+
+    pydantic-graph v2 removed the ``Graph(nodes=[...])`` constructor —
+    a ``Graph`` is now a built artefact produced by ``GraphBuilder``.
+    The nodes themselves are unchanged ``BaseNode`` subclasses;
+    ``builder.node()`` integrates each one by reading its ``run()``
+    return annotation, which is where the topology has always lived.
+
+    v2 also fixes the entry point at build time rather than accepting
+    it per ``run()`` call. The stage runner needs a *caller-chosen*
+    entry (``run_epistemic_graph(start_at=...)`` resumes mid-pipeline
+    off the DB checkpoint), so the graph input is the entry node
+    instance and the start node routes to it through a decision with
+    one branch per node type. That preserves the v1 behaviour of
+    ``graph.run(SomeNode(), ...)`` exactly.
+    """
+    builder = GraphBuilder[EpistemicGraphState, EpistemicDeps, Node, EpistemicResult](
+        name="epistemic_pipeline",
+        state_type=EpistemicGraphState,
+        deps_type=EpistemicDeps,
+        input_type=Node,
+        output_type=EpistemicResult,
+    )
+
+    for node_type in NODE_TYPES:
+        builder.add(builder.node(node_type))
+
+    # ``HandledT`` widens one branch at a time, so the accumulator is
+    # annotated ``Any``; the branch list below is exhaustive over
+    # NODE_TYPES by construction.
+    entry: Decision[EpistemicGraphState, EpistemicDeps, Any] = builder.decision(
+        note="entry node supplied by the caller (start_at)",
+        node_id="entry",
+    )
+    for node_type in NODE_TYPES:
+        entry = entry.branch(builder.match_node(node_type))
+    builder.add(builder.edge_from(builder.start_node).to(entry))
+
+    return builder.build()
+
+
+epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, Node, EpistemicResult] = (
+    _build_epistemic_graph()
 )
 
 

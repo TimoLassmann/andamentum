@@ -26,13 +26,9 @@ CLEAN_MD = "# Methods\n\nWe trained a small transformer on synthetic data.\n"
 async def _captured_run(captured: dict):
     """Mock helper: capture the deps passed to the graph for assertion."""
 
-    async def _run(_node, *, state, deps):
+    async def _run(*, state, deps, inputs):
         captured["criteria"] = list(deps.criteria)
-
-        class _Wrapper:
-            output = type("Stub", (), {})()
-
-        return _Wrapper()
+        return type("Stub", (), {})()
 
     return _run
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pydantic_graph import BaseNode, End, Graph, GraphRunContext
+from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
 from ..schemas import Edit, ReviewResult
 from .consolidate import consolidate
@@ -269,26 +269,44 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
         )
 
 
+def _build_review_graph() -> Graph[V3State, V3Deps, Sectionize, ReviewResult]:
+    """Assemble the graph from the `BaseNode` classes above.
+
+    pydantic-graph v2 dropped `Graph(nodes=[...])`; the builder is now the
+    only construction path. The nodes stay `BaseNode` subclasses — `g.node`
+    reads each `run` return annotation and derives the edges, so the
+    topology is still declared by the return types, not here.
+    """
+    g = GraphBuilder[V3State, V3Deps, Sectionize, ReviewResult](
+        name="review_graph_v3",
+        state_type=V3State,
+        deps_type=V3Deps,
+        input_type=Sectionize,
+        output_type=ReviewResult,
+    )
+    g.add(
+        g.edge_from(g.start_node).to(Sectionize),
+        g.node(Sectionize),
+        g.node(ExtractClaims),
+        g.node(BuildModel),
+        g.node(ReviewCriteria),
+        g.node(VerifyFindings),
+        g.node(GapLoop),
+        g.node(Consolidate),
+        g.node(FlagNoveltyTargets),
+        g.node(RunNoveltySearches),
+        g.node(JudgeNovelty),
+        g.node(Gate),
+        g.node(Synthesise),
+        g.node(CritiqueRevise),
+        g.node(EditSections),
+        g.node(Finalize),
+    )
+    return g.build()
+
+
 # linear pipeline — topology test exempt
-review_graph_v3 = Graph(
-    nodes=[
-        Sectionize,
-        ExtractClaims,
-        BuildModel,
-        ReviewCriteria,
-        VerifyFindings,
-        GapLoop,
-        Consolidate,
-        FlagNoveltyTargets,
-        RunNoveltySearches,
-        JudgeNovelty,
-        Gate,
-        Synthesise,
-        CritiqueRevise,
-        EditSections,
-        Finalize,
-    ]
-)
+review_graph_v3 = _build_review_graph()
 
 
 async def run_review_v3(
@@ -393,8 +411,7 @@ async def run_review_v3(
         novelty_search_depth=novelty_search_depth,
     )
     state = V3State(source=markdown)
-    result = await review_graph_v3.run(Sectionize(), state=state, deps=deps)
-    return result.output
+    return await review_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
 
 
 _PATH_EXTENSIONS: frozenset[str] = frozenset(
