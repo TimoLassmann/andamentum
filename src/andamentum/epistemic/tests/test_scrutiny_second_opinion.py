@@ -444,3 +444,44 @@ async def test_an_absent_opinion_round_trips_as_none(repo) -> None:
     reloaded = await repo.get("claim", claim.entity_id)
     assert reloaded.scrutiny_opinion is None
     assert reloaded.judgment_dissent_count == 0
+
+
+# ── Anti-anchoring ───────────────────────────────────────────────────
+
+
+async def test_the_deterministic_label_is_withheld_from_the_judge(
+    repo, fake_runner, stub_llm_judge
+) -> None:
+    """THE INVARIANT THAT MAKES A DISSENT MEAN ANYTHING.
+
+    The whole point of this call is to get a reading that was NOT produced
+    by the machinery it is checking. Showing the judge the label it is being
+    compared against would anchor it, and every ``dissents`` this mechanism
+    records — and every Gate 0 escalation those drive — would be an artefact
+    of the prompt rather than a second opinion.
+
+    The leak is silent: injecting the label into the prompt changes no
+    assertion anywhere else in the suite. It is pinned here, on the recorded
+    prompt itself, because nothing downstream can detect it.
+    """
+    recorder = stub_llm_judge((60, 30, 10))
+    claim = await _seed(repo, quality=_BORDERLINE_QUALITY)
+
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+
+    assert len(recorder.calls) == 1
+    call = recorder.calls[0]
+    reloaded = await repo.get("claim", claim.entity_id)
+    assert reloaded.scrutiny_opinion is not None
+    # The label IS recorded on the result — that is where the dissent
+    # comparison is made, afterwards, in code.
+    assert reloaded.scrutiny_opinion.reference == "moderate"
+
+    prompt = f"{call['context']}\n{call['output']}".lower()
+    # Every label, not just the one this fixture produced: a leak that
+    # named the wrong label would be just as anchoring.
+    for label in ("strong", "moderate", "weak", "conflicting"):
+        assert label not in prompt, f"the judge was shown the label '{label}'"
+    # Guard on the guard: the fixture's own text must not contain any of
+    # those words, or the assertion above would pass for the wrong reason.
+    assert "X causes Y".lower() in prompt

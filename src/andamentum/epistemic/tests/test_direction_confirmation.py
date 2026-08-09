@@ -35,8 +35,6 @@ from andamentum.epistemic.thresholds import (
 )
 from andamentum.llm_judge import elicit as _elicit
 
-from .conftest import FakeAgentRunner
-
 #: One-hot (top mass ≥ JUDGMENT_ONE_HOT_THRESHOLD) and directional — the
 #: exact blind spot. ``quality=1.0`` keeps the resulting weight well clear of
 #: every borderline band, so SITE B stays silent and these tests isolate
@@ -433,24 +431,150 @@ async def test_a_hedged_opinion_is_not_a_dissent(
     assert reloaded.judgment_dissent_count == 0
 
 
-async def test_the_dissent_count_is_rewritten_every_pass_and_never_goes_stale(
+async def test_a_dissent_survives_a_later_pass_that_makes_no_new_calls(
     repo, fake_runner, stub_llm_judge
 ) -> None:
-    """Written unconditionally by the single writer, so a pass that finds no
-    dissent CLEARS a count left by an earlier one. A count that only ever
-    incremented would keep escalating a claim whose evidence has since been
-    replaced."""
+    """PINS THAT SITE A'S SIGNAL REACHES GATE 0 AT ALL.
+
+    An item is confirmed at most once ever, so a second pass makes no new
+    calls for it. If the count described only that pass's call log it would
+    write 0 over a real dissent — and because Gate 0 reads the field at
+    synthesis time, AFTER the last pass, any rescrutiny would silently erase
+    SITE A's entire contribution. The count therefore describes the claim's
+    standing evidence, not this pass's calls."""
     stub_llm_judge((2, 3, 95))
     claim = await _seed(repo, [{}])
     await _op(repo, runner=fake_runner).execute(_work(claim))
     assert (await repo.get("claim", claim.entity_id)).judgment_dissent_count == 1
 
     # A fresh pass over items that are all already confirmed: no new
-    # confirmations, so no dissents this pass.
+    # confirmations, and the dissenting item is still linked and still
+    # load-bearing, so the claim still carries its dissent.
     claim = await _rescrutinise(repo, claim)
     await _op(repo, runner=fake_runner).execute(_work(claim))
 
+    assert (await repo.get("claim", claim.entity_id)).judgment_dissent_count == 1
+
+
+async def test_the_dissent_count_never_goes_stale_when_evidence_is_unlinked(
+    repo, fake_runner, stub_llm_judge
+) -> None:
+    """The other half of the same rule: the count is rewritten unconditionally
+    from the claim's CURRENT evidence, so a dissent whose item has been
+    unlinked leaves the count on the very next pass. A count that only ever
+    incremented would keep escalating a claim whose evidence was replaced."""
+    stub_llm_judge((2, 3, 95))
+    claim = await _seed(repo, [{}])
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+    assert (await repo.get("claim", claim.entity_id)).judgment_dissent_count == 1
+
+    # The dissenting evidence is unlinked from the claim.
+    claim = await _rescrutinise(repo, claim)
+    claim.evidence_ids = []
+    await repo.save(claim)
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+
     assert (await repo.get("claim", claim.entity_id)).judgment_dissent_count == 0
+
+
+async def test_an_offline_pass_does_not_erase_a_standing_dissent(
+    repo, fake_runner, stub_llm_judge
+) -> None:
+    """THE SAME ERASURE, ONE BRANCH OVER.
+
+    A pass with no ``agent_runner`` can make no confirmations — but the
+    dissents already on the claim's books still stand, on evidence that is
+    still linked and still load-bearing. Returning 0 from the offline branch
+    had ``execute`` write over them, and because Gate 0 reads the field at
+    synthesis time, that silently deleted SITE A's whole contribution on any
+    run that mixed an offline pass in. The tally is a repository read with
+    no model call, so there is nothing the offline branch is entitled to
+    skip.
+    """
+    stub_llm_judge((2, 3, 95))
+    claim = await _seed(repo, [{}])
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+    assert (await repo.get("claim", claim.entity_id)).judgment_dissent_count == 1
+
+    claim = await _rescrutinise(repo, claim)
+    result = await _op(repo, runner=None, judge_model=None).execute(_work(claim))
+
+    assert result.success
+    reloaded = await repo.get("claim", claim.entity_id)
+    assert reloaded.judgment_dissent_count == 1
+    # And the evidence really does still carry the dissent it was counted
+    # from — so this is preservation, not a stale field nobody rewrote.
+    ev = await repo.get("evidence", reloaded.evidence_ids[0])
+    assert ev.direction_opinion is not None
+    assert ev.direction_opinion.dissents is True
+
+
+# ── The exact shape of the per-claim bound ───────────────────────────
+
+
+async def test_evidence_added_between_passes_cannot_reopen_the_budget(
+    repo, fake_runner, stub_llm_judge
+) -> None:
+    """The reachable churn case, pinned.
+
+    Investigation appends and extends ``claim.evidence_ids`` between passes.
+    A budget counted over the pass's own candidate list would hand every
+    growth spurt a fresh allowance; counting over the claim's linked ids
+    means the ceiling holds however much evidence arrives.
+    """
+    recorder = stub_llm_judge((90, 5, 5))
+    claim = await _seed(repo, [{} for _ in range(3)])
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+    assert len(recorder.calls) == JUDGMENT_CONFIRMATION_MAX_PER_PASS
+
+    # Three more passes, each bringing 5 brand-new eligible one-hot items.
+    for _ in range(3):
+        grown = await _seed(repo, [{} for _ in range(5)])
+        reloaded = await repo.get("claim", claim.entity_id)
+        reloaded.evidence_ids = [*reloaded.evidence_ids, *grown.evidence_ids]
+        reloaded.evidence_count = len(reloaded.evidence_ids)
+        await repo.save(reloaded)
+        claim = await _rescrutinise(repo, reloaded)
+        await _op(repo, runner=fake_runner).execute(_work(claim))
+
+    assert len(recorder.calls) == JUDGMENT_CONFIRMATION_MAX_PER_CLAIM == 4
+
+
+async def test_unlinking_a_confirmed_item_releases_its_budget_slot(
+    repo, fake_runner, stub_llm_judge
+) -> None:
+    """THE STATED LIMIT OF THE BOUND, asserted rather than assumed.
+
+    The budget is a read of the claim's PRESENT books, so an id removed from
+    ``claim.evidence_ids`` takes its confirmation with it and frees a slot.
+    That is unreachable today — nothing outside tests removes ids — but it
+    is the difference between "a hard bound" and "a bound under the
+    pipeline's current write patterns", and the docstring on
+    ``JUDGMENT_CONFIRMATION_MAX_PER_CLAIM`` says so because of this test.
+    A future caller that removes ids must revisit the ceiling.
+    """
+    recorder = stub_llm_judge((90, 5, 5))
+    claim = await _seed(repo, [{} for _ in range(6)])
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+    assert len(recorder.calls) == JUDGMENT_CONFIRMATION_MAX_PER_PASS
+
+    reloaded = await repo.get("claim", claim.entity_id)
+    keep: list[str] = []
+    for eid in reloaded.evidence_ids:
+        ev = await repo.get("evidence", eid)
+        if ev.direction_opinion is None:
+            keep.append(eid)
+    reloaded.evidence_ids = keep
+    reloaded.evidence_count = len(keep)
+    await repo.save(reloaded)
+
+    claim = await _rescrutinise(repo, reloaded)
+    await _op(repo, runner=fake_runner).execute(_work(claim))
+
+    # The three unlinked confirmations no longer occupy budget, so a full
+    # per-pass allowance is spent again — 6, not the 4 a lifetime ledger
+    # would have enforced.
+    assert len(recorder.calls) == 2 * JUDGMENT_CONFIRMATION_MAX_PER_PASS
 
 
 # ── Isolation, wiring, failure, concurrency, persistence ─────────────

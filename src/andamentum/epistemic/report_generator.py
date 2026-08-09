@@ -15,7 +15,7 @@ from typing import Optional
 
 from andamentum.document_store import DocumentStore
 from .entities import ClaimStage
-from .entities.verdict import EpistemicVerdict
+from .entities.verdict import EpistemicVerdict, EvidenceRef
 from .gates import STAGE_GATES
 from .primitives import UncertaintyType
 from .report_data import (
@@ -104,9 +104,14 @@ def _routing_label(activation: "TrackActivation") -> str:
     return "SKIP"
 
 
-def _scrutiny_reliability_note(claim: object) -> str | None:
+def _scrutiny_reliability_note(source: object) -> str | None:
     """One sentence on how reliable the judgments behind the scrutiny
     verdict were — or ``None`` when there is nothing to say.
+
+    ``source`` is the record the reliability is read OFF: normally the run's
+    ``ClaimVerdict``, which is where ``build_verdict`` froze these numbers;
+    the live ``Claim`` entity when no verdict object exists yet. The two
+    carry the same three field names deliberately, so this reads either.
 
     ``None`` in the overwhelmingly common case, which is what keeps every
     currently-rendered gate-trace row byte-identical. It speaks only when a
@@ -123,20 +128,20 @@ def _scrutiny_reliability_note(claim: object) -> str | None:
     from .thresholds import JUDGMENT_DOUBT_ESCALATION_THRESHOLD
 
     parts: list[str] = []
-    doubt = getattr(claim, "scrutiny_doubt", None)
+    doubt = getattr(source, "scrutiny_doubt", None)
     if doubt is not None and doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD:
         parts.append(
             f"the evidence judgments behind this verdict were internally "
             f"unsure (judgment doubt {doubt:.2f}, at or above "
             f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f})"
         )
-    dissent_count = getattr(claim, "judgment_dissent_count", 0) or 0
+    dissent_count = getattr(source, "judgment_dissent_count", 0) or 0
     if dissent_count:
         parts.append(
             f"an independent judge disagreed with {dissent_count} evidence "
             f"direction(s)"
         )
-    opinion = getattr(claim, "scrutiny_opinion", None)
+    opinion = getattr(source, "scrutiny_opinion", None)
     if opinion is not None and opinion.dissents:
         parts.append(
             f"an independent judge read the evidence as '{opinion.overall}' "
@@ -151,6 +156,8 @@ def _build_gate_trace(
     claim: object,
     question_type: str | None,
     posterior: float | None,
+    *,
+    reliability: object | None = None,
 ) -> list[GateTraceEntry]:
     """Build the per-claim gate trace from claim entity state.
 
@@ -158,6 +165,12 @@ def _build_gate_trace(
     are routed SKIP for this question type render as ``skipped``; gates
     with no recorded value render as ``skipped`` with a ``no value
     recorded`` note.
+
+    ``reliability`` is the record the scrutiny row's judgment-reliability
+    note is read off — the run's ``ClaimVerdict`` when one was persisted,
+    so the rendered note and the frozen decision cannot disagree. Keyword-
+    only, and defaulting to ``claim``, because it and ``claim`` are two
+    same-shaped objects whose transposition would be invisible to pyright.
 
     The trace is the renderer-facing answer to Schneider (2025)'s
     "black box" challenge: the reasoning steps are named, the
@@ -205,7 +218,9 @@ def _build_gate_trace(
                 required="pass",
                 observed=str(sv),
                 status=status,
-                note=_scrutiny_reliability_note(claim),
+                note=_scrutiny_reliability_note(
+                    claim if reliability is None else reliability
+                ),
             )
         )
 
@@ -574,6 +589,36 @@ class ReportGenerator:
         # Get ALL evidence - NO TRUNCATION
         all_evidence = await self.repo.get_evidence_for_objective(obj_id)
 
+        # ── The persisted verdict object ──
+        # Read ONCE, here, because three separate parts of this function
+        # need it: the confidence scores, each claim's adjudicated label and
+        # scrutiny doubt, and each evidence item's reliability annotation.
+        # It is the run's decision RECORD — the frozen thing the report is a
+        # rendering of — so wherever a field exists on it, the renderer reads
+        # it from there rather than re-reading the live entity, exactly as
+        # ``verdict_label`` already does. The entity is the fallback for
+        # reports extracted before a snapshot was ever written.
+        snapshot_id_for_verdict = getattr(objective, "snapshot_id", None)
+        verdict_object: EpistemicVerdict | None = None
+        if snapshot_id_for_verdict:
+            snapshot = await self.repo.get("snapshot", snapshot_id_for_verdict)
+            verdict_object = getattr(snapshot, "verdict", None)
+
+        verdict_claims = verdict_object.claims if verdict_object else []
+        # Matched by claim_id, never by index — the two lists are built by
+        # different code and an index assumption would silently mislabel
+        # every badge if either ordering changed.
+        verdict_claim_by_id = {cv.claim_id: cv for cv in verdict_claims}
+        # Same rule one level down: an EvidenceRef names the item it
+        # describes, so the map is keyed by that id. First occurrence wins —
+        # the same item can be cited by several claims, and the reliability
+        # fields are copies of one entity's own numbers, so every occurrence
+        # carries the same values.
+        verdict_ref_by_evidence: dict[str, EvidenceRef] = {}
+        for cv in verdict_claims:
+            for ref in [*cv.supporting_evidence, *cv.refuting_evidence]:
+                verdict_ref_by_evidence.setdefault(ref.evidence_id, ref)
+
         # ── Evidence filtering, dedup, and renumbering ──
         # Only include judged evidence (support_judgment is not None)
         judged_evidence = [ev for ev in all_evidence if ev.support_judgment is not None]
@@ -599,6 +644,19 @@ class ReportGenerator:
 
         evidence_summaries: list[EvidenceSummary] = []
         for ev in deduped_evidence:
+            # Reliability comes off the verdict object's EvidenceRef when the
+            # run produced one — that ref is provably one of the items that
+            # produced the claim's number, so annotating from it keeps the
+            # rendered line and the persisted decision in agreement. Falls
+            # back to the entity for reports extracted before any snapshot
+            # exists, and for items no claim cited.
+            ref_for_ev = verdict_ref_by_evidence.get(ev.evidence_id)
+            if ref_for_ev is not None:
+                judgment_doubt = ref_for_ev.judgment_doubt
+                direction_opinion = ref_for_ev.direction_opinion
+            else:
+                judgment_doubt = ev.judgment_entropy
+                direction_opinion = ev.direction_opinion
             evidence_summaries.append(
                 EvidenceSummary(
                     evidence_id=ev.evidence_id,
@@ -611,10 +669,10 @@ class ReportGenerator:
                     support_judgment=ev.support_judgment,
                     judgment_reasoning=ev.judgment_reasoning,
                     quality_score=ev.quality_score,
-                    judgment_doubt=ev.judgment_entropy,
+                    judgment_doubt=judgment_doubt,
                     direction_dissent=(
-                        ev.direction_opinion.dissents
-                        if ev.direction_opinion is not None
+                        direction_opinion.dissents
+                        if direction_opinion is not None
                         else None
                     ),
                 )
@@ -734,6 +792,7 @@ class ReportGenerator:
                     if claim.integrated_confidence is not None
                     else None
                 ),
+                reliability=verdict_claim_by_id.get(claim.claim_id),
             )
 
             claim_summaries.append(
@@ -897,19 +956,13 @@ class ReportGenerator:
             resolved_count,
         )
 
-        # Read the run's persisted decision record. This is a READER, not
-        # a second computation: the previous implementation re-ran
-        # ``compute_posterior`` here, which could not thread
-        # ``retrieval_failed`` (it lives on graph state), so an offline
-        # report always claimed terminal_state="completed" even when the
-        # live run had reported a retrieval failure. It also swallowed
-        # every exception into a silent None.
-        snapshot_id_for_verdict = getattr(objective, "snapshot_id", None)
-        verdict_object: EpistemicVerdict | None = None
-        if snapshot_id_for_verdict:
-            snapshot = await self.repo.get("snapshot", snapshot_id_for_verdict)
-            verdict_object = getattr(snapshot, "verdict", None)
-
+        # ``verdict_object`` — the run's persisted decision record — was read
+        # once, above. This is a READER, not a second computation: the
+        # previous implementation re-ran ``compute_posterior`` here, which
+        # could not thread ``retrieval_failed`` (it lives on graph state), so
+        # an offline report always claimed terminal_state="completed" even
+        # when the live run had reported a retrieval failure. It also
+        # swallowed every exception into a silent None.
         confidence_scores: ConfidenceScores | None = None
         if verdict_object is not None and verdict_object.posterior_report is not None:
             po = verdict_object.posterior_report
@@ -921,21 +974,16 @@ class ReportGenerator:
                 terminal_state=po.terminal_state,
             )
 
-        # Copy each claim's adjudicated label off the verdict object.
-        # Matched by claim_id, never by index — the two lists are built
-        # by different code and an index assumption would silently
-        # mislabel every badge if either ordering changed.
-        labels_by_claim = {cv.claim_id: cv.label for cv in (verdict_object.claims if verdict_object else [])}
-        # Same rule for the scrutiny doubt: matched by claim_id, never by
-        # index. ``None`` stays ``None`` — an unmeasured claim must not
-        # render as a certain one.
-        doubt_by_claim = {
-            cv.claim_id: cv.scrutiny_doubt
-            for cv in (verdict_object.claims if verdict_object else [])
-        }
+        # Copy each claim's adjudicated label and scrutiny doubt off the
+        # verdict object, matched by claim_id (see ``verdict_claim_by_id``).
+        # ``None`` stays ``None`` — an unmeasured claim must not render as a
+        # certain one.
         for summary in claim_summaries:
-            summary.verdict_label = labels_by_claim.get(summary.claim_id, "")
-            summary.scrutiny_doubt = doubt_by_claim.get(summary.claim_id)
+            cv_for_summary = verdict_claim_by_id.get(summary.claim_id)
+            summary.verdict_label = cv_for_summary.label if cv_for_summary else ""
+            summary.scrutiny_doubt = (
+                cv_for_summary.scrutiny_doubt if cv_for_summary else None
+            )
 
         # In verify mode (single claim) the objective-level posterior
         # directly describes the claim's verdict. Backfill it onto the
@@ -962,6 +1010,9 @@ class ReportGenerator:
                     source_claim,
                     objective.question_type,
                     confidence_scores.posterior,
+                    reliability=verdict_claim_by_id.get(
+                        claim_summaries[0].claim_id
+                    ),
                 )
 
         # Reproducibility metadata — stable across re-renders of the

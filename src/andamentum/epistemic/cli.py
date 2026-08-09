@@ -506,6 +506,25 @@ async def _inspect(args: argparse.Namespace) -> None:
                 f"  verdict:       {verdict.direction} posterior={post} "
                 f"n_no_verdict={verdict.provenance.n_no_verdict}"
             )
+            # Judgment reliability, printed only when a measurement
+            # actually raised something — so a run that measured nothing
+            # prints exactly what it printed before this line existed.
+            # ``n_doubt_unmeasured_claims`` travels with its companion so
+            # a ``0`` in the first can never read as "all sure".
+            prov = verdict.provenance
+            if (
+                prov.n_high_doubt_claims
+                or prov.n_doubt_unmeasured_claims
+                or prov.judgment_doubt_escalated
+            ):
+                print(
+                    f"  reliability:   n_high_doubt_claims="
+                    f"{prov.n_high_doubt_claims} "
+                    f"n_doubt_unmeasured_claims="
+                    f"{prov.n_doubt_unmeasured_claims} "
+                    f"judgment_doubt_escalated="
+                    f"{prov.judgment_doubt_escalated}"
+                )
         else:
             print("  verdict:       <none>")
 

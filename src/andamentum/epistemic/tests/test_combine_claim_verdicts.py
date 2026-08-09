@@ -324,6 +324,50 @@ class _FakeRunContext:
 
 
 class TestCombineClaimVerdictsNode:
+    async def test_the_node_threads_the_gate_zero_escalation_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """WIRING, not arithmetic.
+
+        ``judgment_doubt_escalated`` lives on graph state, never in the DB,
+        so ``build_verdict`` cannot read it — the node must pass it. Deleting
+        that keyword argument leaves every other test green and makes
+        ``VerdictProvenance.judgment_doubt_escalated`` permanently ``False``
+        on every real run: the run that spent its one extra scrutiny round
+        becomes indistinguishable from the run that never needed it. Exactly
+        the drift class ``test_structural_wiring`` exists to catch for
+        ``judge_model``, one field over.
+        """
+        store = DocumentStore.for_database("combine_escalated", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(description="parent", question_type="verificatory")
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+        c = _make_claim(verdict="supports", confidence=0.8)
+        c.objective_id = obj.entity_id
+        await repo.save(c)
+
+        # Default: nothing escalated, so the flag must be False.
+        quiet_state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+        await CombineClaimVerdicts().run(_FakeRunContext(quiet_state, deps))  # type: ignore[arg-type]
+        assert quiet_state.verdict is not None
+        assert quiet_state.verdict.provenance.judgment_doubt_escalated is False
+
+        # Gate 0 fired: the verdict object must say so.
+        loud_state = EpistemicGraphState(objective_id=obj.entity_id)
+        loud_state.judgment_doubt_escalated = True
+        await CombineClaimVerdicts().run(_FakeRunContext(loud_state, deps))  # type: ignore[arg-type]
+        assert loud_state.verdict is not None
+        assert loud_state.verdict.provenance.judgment_doubt_escalated is True
+
+    async def test_the_node_declares_the_state_it_reads(self) -> None:
+        """The contract (P6) must name the field, or ``topology()`` and every
+        reader of ``reads`` describe a node that silently consults state it
+        never declared."""
+        assert "judgment_doubt_escalated" in CombineClaimVerdicts.reads
+
     async def test_decomposition_free_run_still_builds_a_verdict(
         self, tmp_path: Path
     ) -> None:

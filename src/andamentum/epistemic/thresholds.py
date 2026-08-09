@@ -446,13 +446,23 @@ Read by: ``operations.scrutiny.ScrutiniseClaimOperation._confirm_load_bearing_ju
 Benchmark-pending, like the ``SCRUTINY_*`` family."""
 
 JUDGMENT_CONFIRMATION_MAX_PER_CLAIM: int = 4
-"""HARD lifetime ceiling on direction confirmations for one claim in one run.
+"""Ceiling on direction confirmations for one claim in one run.
 
 A claim may be scrutinised up to ``1 + PEIRCE_CYCLE_CAP`` times, so the
 per-pass cap alone would permit 12. This is the flat bound that replaces
-that product. It is counted over ``claim.evidence_ids`` — every item the
-claim has ever linked, not just the currently-eligible subset — so evidence
-churn between passes cannot reopen the budget.
+that product. It is counted over ``claim.evidence_ids`` — every id the claim
+CURRENTLY links, not just the currently-eligible subset — so evidence added
+between passes, or items that stopped being eligible, cannot reopen the
+budget.
+
+The one case that does reopen it, stated rather than hidden: an id
+*unlinked* from the claim releases its slot, because the tally is a read of
+the claim's present books, not a run-lifetime ledger. That is unreachable
+today — the only writers of ``claim.evidence_ids`` outside tests are
+``operations.verification``'s ``.append`` and ``operations.investigation``'s
+``.extend`` — and the growth case that *is* reachable is pinned by
+``test_direction_confirmation.py``. A future caller that removes ids must
+revisit this bound.
 
 Combined with the ``≤ 1`` per-claim-per-pass scrutiny second opinion over
 ``≤ 4`` passes, a claim can add at most **8** model calls per run, whatever

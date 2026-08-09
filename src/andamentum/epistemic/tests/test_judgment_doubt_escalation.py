@@ -18,6 +18,7 @@ from pathlib import Path
 from andamentum.document_store import DocumentStore
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
+from andamentum.epistemic.entities.judge_opinion import JudgeOpinion
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     SCRUTINY_RESOLVE_CYCLE_CAP,
@@ -41,6 +42,27 @@ class _FakeRunContext:
         self.deps = deps
 
 
+def _opinion(*, dissents: bool, distribution: list[float]) -> JudgeOpinion:
+    """A claim-level second opinion, as ``ScrutiniseClaimOperation`` records it.
+
+    ``dissents`` and the vector are set independently on purpose: the two
+    signals Gate 0 reads from an opinion are orthogonal. A CONFIDENT dissent
+    has near-zero entropy (so ``needs_review`` is False and only ``dissents``
+    can speak for it), and a doubtful AGREEMENT has high entropy (so only
+    ``needs_review`` can). Folding either into the other is the exact
+    scale-forking mistake the doubt-scale rule forbids.
+    """
+    return JudgeOpinion(
+        subject="does this body of evidence establish the claim as stated?",
+        reference="moderate",
+        distribution=distribution,
+        overall="fails" if dissents else "meets",
+        expected_score=0.5,
+        summary="",
+        dissents=dissents,
+    )
+
+
 async def _setup(
     tmp_path: Path,
     *,
@@ -49,15 +71,23 @@ async def _setup(
     at_cap: list[int] | None = None,
     with_decomposition: bool = True,
     name: str = "gate0",
+    dissent_counts: list[int] | None = None,
+    opinions: list[JudgeOpinion | None] | None = None,
 ) -> tuple[list[Claim], EpistemicGraphState, EpistemicRepository]:
     """One objective, one claim per entry in ``doubts``.
 
     Each claim carries ``integrated_assessment='supports'`` at a middling
     confidence, so the DOWNSTREAM gates would land in the ambiguous-LLM
     branch. Gate 0, if it fires, must pre-empt all of them.
+
+    ``dissent_counts`` and ``opinions`` seed Gate 0's two other inputs. Both
+    default to absent, so every pre-existing caller describes a claim on
+    which only ``scrutiny_doubt`` can speak.
     """
     cycle_capped = cycle_capped or []
     at_cap = at_cap or []
+    counts: list[int] = dissent_counts or [0] * len(doubts)
+    reads: list[JudgeOpinion | None] = opinions or [None] * len(doubts)
 
     store = DocumentStore.for_database(name, db_dir=tmp_path)
     await store.initialize()
@@ -96,6 +126,8 @@ async def _setup(
             cycle_capped=(i in cycle_capped),
             scrutiny_verdict="pass",
             scrutiny_doubt=doubt,
+            judgment_dissent_count=counts[i],
+            scrutiny_opinion=reads[i],
         )
         await repo.save(c)
         claims.append(c)
@@ -146,6 +178,144 @@ async def test_escalation_fires_at_most_once_per_objective(tmp_path: Path) -> No
         "the doubt gate must not fire twice — it is the bound that makes "
         "the loop-back terminate"
     )
+
+
+# ── The other two inputs ─────────────────────────────────────────────
+#
+# Gate 0 is ONE gate over THREE inputs, and each covers a blind spot the
+# others cannot see. Every test below sets ``scrutiny_doubt=None`` so the
+# ORIGINAL predicate provably cannot fire: if the new branch were dropped,
+# these fail rather than passing on the old signal's back.
+
+
+async def test_a_dissenting_evidence_confirmation_escalates_on_its_own(
+    tmp_path: Path,
+) -> None:
+    """SITE A's route to Gate 0, and the reason the gate needed widening.
+
+    ``scrutiny_doubt`` is a mean of judgment ENTROPIES, and a one-hot
+    judgment has none — so on the 53-82% of small-model judgments that come
+    back one-hot the aggregate is structurally silent. That is precisely
+    where an independent judge contradicting the primary direction speaks,
+    and a confident contradiction has near-zero entropy, so it cannot be
+    smuggled through an entropy-shaped number.
+    """
+    _claims, state, repo = await _setup(tmp_path, doubts=[None], dissent_counts=[1])
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, Scrutinize)
+    assert state.judgment_doubt_escalated is True
+
+
+async def test_a_confidently_dissenting_claim_opinion_escalates_on_its_own(
+    tmp_path: Path,
+) -> None:
+    """SITE B's route. The opinion is one-hot on 'fails', so its own
+    ``doubt`` is ~0 and ``needs_review`` is False — only ``dissents`` can
+    carry it. Pins that the gate reads the dissent flag and not merely the
+    opinion's entropy."""
+    opinion = _opinion(dissents=True, distribution=[0.01, 0.01, 0.98])
+    assert opinion.needs_review is False, (
+        "fixture must isolate the dissent flag from the entropy branch"
+    )
+
+    _claims, state, repo = await _setup(tmp_path, doubts=[None], opinions=[opinion])
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, Scrutinize)
+    assert state.judgment_doubt_escalated is True
+
+
+async def test_a_doubtful_but_agreeing_claim_opinion_escalates_on_its_own(
+    tmp_path: Path,
+) -> None:
+    """The complement of the test above: the judge AGREED, so ``dissents``
+    is False, but it barely committed. Only ``needs_review`` can carry
+    this one — the two opinion branches are genuinely independent."""
+    opinion = _opinion(dissents=False, distribution=[0.34, 0.33, 0.33])
+    assert opinion.dissents is False
+    assert opinion.needs_review is True, (
+        "fixture must isolate the entropy branch from the dissent flag"
+    )
+
+    _claims, state, repo = await _setup(tmp_path, doubts=[None], opinions=[opinion])
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert isinstance(next_node, Scrutinize)
+    assert state.judgment_doubt_escalated is True
+
+
+async def test_a_confident_agreeing_opinion_never_escalates(tmp_path: Path) -> None:
+    """The happy path stays free. An independent judge that confidently
+    AGREED is the one outcome that must buy nothing — otherwise every
+    borderline reading would pay for an extra round regardless of what the
+    second opinion said."""
+    opinion = _opinion(dissents=False, distribution=[0.98, 0.01, 0.01])
+    assert opinion.needs_review is False
+
+    _claims, state, repo = await _setup(tmp_path, doubts=[None], opinions=[opinion])
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert not isinstance(next_node, Scrutinize)
+    assert state.judgment_doubt_escalated is False
+
+
+async def test_the_three_inputs_together_still_spend_only_one_round(
+    tmp_path: Path,
+) -> None:
+    """COST BOUND UNDER THE WIDENED PREDICATE.
+
+    Three claims, each firing a DIFFERENT one of the three inputs. However
+    many signals fire, ``state.judgment_doubt_escalated`` still allows
+    exactly one extra scrutiny round per run — which is what keeps the
+    whole change's routing cost bounded regardless of how wide the
+    predicate got.
+    """
+    _claims, state, repo = await _setup(
+        tmp_path,
+        doubts=[0.8, None, None],
+        dissent_counts=[0, 2, 0],
+        opinions=[None, None, _opinion(dissents=True, distribution=[0.01, 0.01, 0.98])],
+    )
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    first = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert isinstance(first, Scrutinize)
+
+    second = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert not isinstance(second, Scrutinize)
+
+
+async def test_a_cycle_capped_claim_does_not_escalate_on_the_new_inputs_either(
+    tmp_path: Path,
+) -> None:
+    """The eligibility predicate is shared by all three inputs, not just the
+    original one. A capped claim is not loop-back eligible, so a dissent on
+    it must not route — otherwise the gate could hand ``_maybe_loop_back``
+    an empty eligible set, the exact shape that falls through to
+    ``SynthesizeInsufficient``."""
+    _claims, state, repo = await _setup(
+        tmp_path,
+        doubts=[None],
+        dissent_counts=[3],
+        opinions=[_opinion(dissents=True, distribution=[0.01, 0.01, 0.98])],
+        cycle_capped=[0],
+    )
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
+
+    next_node = await CheckSynthesisDemand().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert not isinstance(next_node, Scrutinize)
+    assert not isinstance(next_node, SynthesizeInsufficient)
+    assert state.judgment_doubt_escalated is False
 
 
 # ── Inertness ────────────────────────────────────────────────────────
@@ -255,8 +425,19 @@ async def test_gate_zero_fires_in_verify_mode_with_no_decomposition(
 
 async def test_gate_zero_makes_no_llm_call(tmp_path: Path) -> None:
     """The deterministic doubt gate is free, and pre-empts the expensive
-    reproducibility tripwire rather than running after it."""
-    _claims, state, repo = await _setup(tmp_path, doubts=[0.8])
+    reproducibility tripwire rather than running after it.
+
+    All three inputs are seeded: widening the predicate must not have turned
+    a free gate into an eliciting one. The two new signals are produced by
+    the scrutiny OPERATION and merely read here — the gate never asks a
+    judge anything itself.
+    """
+    _claims, state, repo = await _setup(
+        tmp_path,
+        doubts=[0.8],
+        dissent_counts=[1],
+        opinions=[_opinion(dissents=True, distribution=[0.01, 0.01, 0.98])],
+    )
     runner = FakeAgentRunner()
     deps = EpistemicDeps(repo=repo, agent_runner=runner)
 

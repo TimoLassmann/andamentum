@@ -945,8 +945,8 @@ async def build_verdict(
         n_high_doubt_claims=sum(
             1
             for c in active
-            if getattr(c, "scrutiny_doubt", None) is not None
-            and c.scrutiny_doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+            if (d := getattr(c, "scrutiny_doubt", None)) is not None
+            and d >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
         ),
         n_doubt_unmeasured_claims=sum(
             1 for c in active if getattr(c, "scrutiny_doubt", None) is None

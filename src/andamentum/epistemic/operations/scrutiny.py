@@ -335,9 +335,35 @@ class ScrutiniseClaimOperation(BaseOperation):
         ``core.AgentRunner``'s semaphore (sized 1 for Ollama), so a call
         inside that gather would fire concurrent local-model inferences.
 
-        Returns the number of confirmations that DISSENTED from the primary
-        judge's direction — written by the caller onto
-        ``claim.judgment_dissent_count``.
+        Returns how many of the claim's CURRENTLY-LINKED evidence items carry
+        a confirmation that dissented from the primary judge's direction —
+        written by the caller onto ``claim.judgment_dissent_count``.
+
+        COUNTED OVER THE CLAIM'S STANDING EVIDENCE, not over this pass's new
+        calls. Both properties the field needs follow from that, and only
+        from that:
+
+        * it never goes STALE — an item that has since been unlinked or
+          replaced leaves ``claim.evidence_ids``, so its dissent leaves the
+          count on the very next pass;
+        * it never goes DEAF — a dissent found in an earlier pass is still
+          counted while the item that carries it is still load-bearing.
+
+        Counting only this pass's new confirmations would satisfy the first
+        and violate the second, and the violation is silent and total: an
+        item is confirmed AT MOST ONCE EVER (the ``direction_opinion is
+        None`` guard), so a second pass makes no new calls for it and would
+        write 0 over a real dissent. Gate 0 reads this field at synthesis
+        time, after the last pass — so under a per-pass count SITE A's signal
+        would be erased by any rescrutiny, which is precisely the case
+        rescrutiny exists to handle.
+
+        COST OF THE TALLY: ``len(claim.evidence_ids)`` repository reads per
+        pass, zero tokens and zero model calls. It is a SECOND traversal of
+        the same ids in the same ``execute`` — the same walk *shape*
+        ``_compute_input_fingerprint`` performs, not shared work with it:
+        that method's short-circuit call returns before this code is
+        reached, and its end-of-pass call happens after the confirmations.
 
         Raises:
             RuntimeError: when candidates exist, an ``agent_runner`` is
@@ -349,10 +375,36 @@ class ScrutiniseClaimOperation(BaseOperation):
             Whatever ``judge_score`` raises — propagated, so ``_execute_op``
                 records a loud quarantine rather than an unconfirmed verdict.
         """
+        # One traversal, two tallies. Reads the repository only — no model
+        # call, no tokens — so it runs on EVERY construction, online or not.
+        #
+        # ``already_confirmed`` counts over EVERY evidence id the claim
+        # currently links, not just the eligible subset, so evidence ADDED
+        # between passes cannot reopen the per-claim budget. An id REMOVED
+        # from the claim does release its slot: the tally describes the
+        # claim's current books, not a run-lifetime ledger. Nothing in the
+        # pipeline removes ids today (``verification`` appends,
+        # ``investigation`` extends), and a bound test pins the growth case.
+        #
+        # ``standing_dissents`` carries forward the dissents already on the
+        # claim's books, so the returned count describes the claim's current
+        # state rather than this pass's call log. See the docstring.
+        already_confirmed = 0
+        standing_dissents = 0
+        for eid in claim.evidence_ids:
+            ev = await self.repo.get("evidence", eid)
+            if isinstance(ev, Evidence) and ev.direction_opinion is not None:
+                already_confirmed += 1
+                if ev.direction_opinion.dissents:
+                    standing_dissents += 1
+
         if self.agent_runner is None:
             # Offline construction: the deterministic reading still happens,
-            # there is simply no independent judge to ask.
-            return 0
+            # there is simply no independent judge to ask. The dissents
+            # already on the claim's books STILL STAND — returning 0 here
+            # would have ``execute`` write over a real dissent recorded by an
+            # earlier live pass, on evidence that still carries it.
+            return standing_dissents
 
         from ..direction_opinion import confirm_direction, select_confirmation_candidates
         from ..thresholds import (
@@ -360,24 +412,13 @@ class ScrutiniseClaimOperation(BaseOperation):
             JUDGMENT_CONFIRMATION_MAX_PER_PASS,
         )
 
-        # The per-claim ceiling is counted over EVERY evidence id the claim
-        # has ever linked, not just the currently-eligible subset, so
-        # evidence churn between passes cannot reopen the budget. This is
-        # the same traversal ``_compute_input_fingerprint`` already performs
-        # — no extra LLM cost, and no new query shape.
-        already_confirmed = 0
-        for eid in claim.evidence_ids:
-            ev = await self.repo.get("evidence", eid)
-            if isinstance(ev, Evidence) and ev.direction_opinion is not None:
-                already_confirmed += 1
-
         candidates = select_confirmation_candidates(
             eligible,
             per_pass_limit=JUDGMENT_CONFIRMATION_MAX_PER_PASS,
             remaining_budget=JUDGMENT_CONFIRMATION_MAX_PER_CLAIM - already_confirmed,
         )
         if not candidates:
-            return 0
+            return standing_dissents
 
         if not self.judge_model:
             raise RuntimeError(
@@ -389,7 +430,11 @@ class ScrutiniseClaimOperation(BaseOperation):
                 "rather than letting the confirmation silently not run."
             )
 
-        dissents = 0
+        # Seeded with the dissents already on the claim's books. The
+        # candidates are disjoint from those by construction (the selector
+        # keeps only ``direction_opinion is None`` items), so nothing is
+        # double-counted.
+        dissents = standing_dissents
         for ev in candidates:  # strictly sequential — never asyncio.gather
             opinion = await confirm_direction(
                 content=ev.extracted_content,
