@@ -58,19 +58,43 @@ def test_increments_outside_a_run_do_not_raise() -> None:
 
 
 def test_bump_from_result_uses_usage_requests_when_available() -> None:
-    """pydantic-ai exposes Usage.requests (incremented per request,
-    including tool-call expansions). bump_from_result must consult it."""
+    """pydantic-ai exposes RunUsage.requests (incremented per request,
+    including tool-call expansions). bump_from_result must consult it.
+
+    ``usage`` is a PROPERTY in pydantic-ai v2; this fake previously modelled
+    it as a method, which is why the suite stayed green while the real call
+    raised TypeError into a silent except-branch and every count degraded to
+    the +1 fallback. The fake now matches the real v2 shape."""
     c = start_run()
 
     class _Usage:
         requests = 4
 
     class _Result:
-        def usage(self) -> _Usage:
-            return _Usage()
+        usage = _Usage()
 
     bump_from_result(_Result())
     assert c.llm_calls == 4
+
+
+def test_bump_from_result_rejects_v1_style_callable_usage() -> None:
+    """Regression pin for the v2 uplift: a result exposing ``usage`` as a
+    callable (the v1 shape) must NOT be silently counted as 1. It has no
+    readable ``requests``, so the honest lower bound applies — but the point
+    is that this no longer masks a wrong-shaped API behind a bare except."""
+    c = start_run()
+
+    class _Usage:
+        requests = 4
+
+    class _ResultV1Style:
+        def usage(self) -> _Usage:
+            return _Usage()
+
+    bump_from_result(_ResultV1Style())
+    # The bound method has no `.requests`, so the fallback applies rather
+    # than the method being invoked behind our back.
+    assert c.llm_calls == 1
 
 
 def test_bump_from_result_falls_back_to_one_when_usage_missing() -> None:
