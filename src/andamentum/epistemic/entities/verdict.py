@@ -408,6 +408,30 @@ class ClaimVerdict(BaseModel):
             has_supports_refined=self.integrated_assessment == "supports_refined",
         )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verdict_doubt(self) -> Optional[float]:
+        """The doubt behind the reading that produced THIS claim's verdict.
+
+        Two different readings can produce a claim's verdict, and each
+        measures its own doubt. Normally it is scrutiny's, on
+        ``scrutiny_doubt``. But a cycle-capped claim's verdict came from
+        ``ConcludeAtCycleCapOperation``, which ran its own
+        ``compute_evidence_weight`` and recorded THAT reading's doubt on
+        ``cap_evaluation.doubt``.
+
+        Pairing the badge with ``scrutiny_doubt`` for a cap-decided claim
+        therefore shows the wrong reading's uncertainty next to the verdict —
+        the exact "two numbers describing different things, presented as one"
+        failure the single-verdict-object work exists to remove. The object
+        knows which reading decided it, so it answers here and no renderer
+        has to choose. ``None`` stays ``None``: unmeasured must never render
+        as certain.
+        """
+        if self.cycle_capped and self.cap_evaluation is not None:
+            return self.cap_evaluation.doubt
+        return self.scrutiny_doubt
+
 
 class VerdictProvenance(BaseModel):
     """How the verdict was reached — everything ``PosteriorReport`` does not carry.

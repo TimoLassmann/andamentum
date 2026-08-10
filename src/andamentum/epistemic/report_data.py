@@ -1,10 +1,17 @@
 """Schema for epistemic report rendering.
 
-Pure data module — no rendering, no I/O. Holds the dataclasses produced
-by ``report_generator.extract_report_data`` and consumed by
+Pure data module — no atom building, no I/O. Holds the dataclasses
+produced by ``report_generator.extract_report_data`` and consumed by
 ``audit_report.build_audit_report``. Decoupled from rendering so the
 data-extraction layer doesn't have to know what the renderer does with
 the data.
+
+It also owns the small display VOCABULARY the report surfaces share —
+``QUESTION_TYPE_LABELS`` and, since the doubt signal became visible, the
+doubt phrasing below. Vocabulary lives here for the same reason the
+verdict labels live in ``entities.verdict``: two renderers describing
+one measurement in two different sets of words is how a reader ends up
+with two different impressions of the same run.
 """
 
 from __future__ import annotations
@@ -14,6 +21,7 @@ from datetime import datetime
 from typing import Optional
 
 from .entities.verdict import EpistemicVerdict
+from .thresholds import JUDGMENT_DOUBT_ESCALATION_THRESHOLD
 
 
 @dataclass
@@ -33,6 +41,12 @@ class EvidenceSummary:
     #: Normalized entropy of the direction judge's own belief distribution.
     #: None when not measured (adversarial / pre-Tier-0 items).
     judgment_doubt: Optional[float] = None
+    # NOT here, deliberately: the quality second opinion's doubt. Only
+    # agent-scored evidence that hit the quality cliff ever has one, so
+    # rendering it would mark exactly that subset as suspect and leave
+    # the un-instrumented majority looking clean — the partial-
+    # instrumentation bias ``tests/test_quality_second_opinion.py``
+    # exists to prevent, moved off the gate and onto the reader.
     #: True when an INDEPENDENT judge contradicted this item's direction;
     #: False when it confirmed it; None when no confirmation ran. Three
     #: states, deliberately — "not checked" is not "checked and agreed".
@@ -131,10 +145,14 @@ class ClaimSummary:
     uncertainty_ids: list[str] = field(default_factory=list)
     adversarial_balance: Optional[float] = None
     scrutiny_verdict: Optional[str] = None
-    #: Directional-mass-weighted mean entropy of the evidence judgments
-    #: behind ``scrutiny_verdict``. None when unmeasured, never 0.0 — so a
-    #: reader can tell "the judges were sure" from "nothing was measured".
-    scrutiny_doubt: Optional[float] = None
+    #: Directional-mass-weighted mean entropy of the evidence judgments behind
+    #: the reading that produced this claim's verdict — scrutiny's normally,
+    #: the cap's for a cycle-capped claim (see ``ClaimVerdict.verdict_doubt``,
+    #: which decides). Named for the verdict rather than for scrutiny because
+    #: it is rendered beside the verdict badge and must describe the same
+    #: reading. None when unmeasured, never 0.0 — so a reader can tell "the
+    #: judges were sure" from "nothing was measured".
+    verdict_doubt: Optional[float] = None
     verification_summary: str = ""
     evidence_refs_display: list[int] = field(default_factory=list)
     investigation_rounds: list[InvestigationRound] = field(default_factory=list)
@@ -263,11 +281,105 @@ QUESTION_TYPE_LABELS: dict[str, str] = {
 }
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Judgment doubt — the shared phrasing for a measurement that is only
+# ever a suspicion-raiser
+# ──────────────────────────────────────────────────────────────────────
+#
+# Doubt is measured all over the pipeline (``EvidenceRef.judgment_doubt``
+# / ``quality_doubt``, ``ClaimVerdict.scrutiny_doubt``, the
+# ``VerdictProvenance`` counts) and every one of those numbers is on ONE
+# scale with ONE cutoff — ``JUDGMENT_DOUBT_ESCALATION_THRESHOLD``, kept
+# equal to ``llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD`` by
+# ``tests/test_doubt_scale_single_source.py``. The helpers below are the
+# render path's single read of that cutoff, so the HTML report and the
+# CLI cannot end up drawing the line in two different places or
+# describing it in two different sets of words.
+
+
+DOUBT_SUSPICION_CAVEAT = (
+    "Doubt is a suspicion-raiser, not a score: high doubt is a reason to "
+    "look closer, and low or unmeasured doubt is not evidence that the "
+    "reading is correct."
+)
+"""The honesty clause that must travel with any rendered doubt number.
+
+Normalized entropy over a judge's verbalized belief distribution says
+how unsure THAT judge sounded. It does not calibrate the judge, so a
+rendered 0.05 must never read as "verified" — see
+``thresholds.JUDGMENT_DOUBT_ESCALATION_THRESHOLD``.
+"""
+
+
+def doubt_is_suspicious(doubt: Optional[float]) -> bool:
+    """True only when doubt was MEASURED at or above the one cutoff.
+
+    ``None`` is not suspicious and it is not reassuring — it means
+    nothing was measured, which is why every renderer that calls this
+    also has to say something about the unmeasured case rather than
+    treating a ``False`` here as "fine".
+    """
+    return doubt is not None and doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+
+
+def format_doubt(doubt: Optional[float]) -> str:
+    """Render one doubt measurement for a table cell or an inline note.
+
+    ``None`` renders as ``not measured`` and never as ``0.00`` — the two
+    states are the ones a reader is most likely to conflate, and
+    conflating them turns "we never checked" into "the judge was sure".
+    """
+    if doubt is None:
+        return "not measured"
+    if doubt_is_suspicious(doubt):
+        return f"{doubt:.2f} (unsure)"
+    return f"{doubt:.2f}"
+
+
+def judgment_reliability_line(verdict: Optional[EpistemicVerdict]) -> Optional[str]:
+    """One sentence on how reliable the judgments behind a run's verdict were.
+
+    Reads the three ``VerdictProvenance`` reliability counts and returns
+    ``None`` when none of them raised anything — the same
+    speak-only-on-a-signal rule ``report_generator._scrutiny_reliability_note``
+    follows for the per-claim gate trace, so a run that measured nothing
+    suspicious renders exactly as it did before doubt was surfaced.
+
+    ``n_doubt_unmeasured_claims`` is reported alongside
+    ``n_high_doubt_claims`` and never on its own logic, because a bare
+    "0 claims were unsure" reads as "all measured, all sure" when it may
+    mean "nothing was measured".
+    """
+    if verdict is None:
+        return None
+    prov = verdict.provenance
+    clauses: list[str] = []
+    total = prov.n_active_claims
+    if prov.n_high_doubt_claims:
+        clauses.append(
+            f"{prov.n_high_doubt_claims} of {total} active claims rested on "
+            f"evidence judgments the system measured as internally unsure "
+            f"(judgment doubt at or above "
+            f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f})"
+        )
+    if prov.n_doubt_unmeasured_claims:
+        clauses.append(
+            f"{prov.n_doubt_unmeasured_claims} of {total} carried no doubt "
+            f"measurement at all"
+        )
+    if prov.judgment_doubt_escalated:
+        clauses.append("the run spent its one doubt-triggered extra round of scrutiny")
+    if not clauses:
+        return None
+    return "Judgment reliability: " + "; ".join(clauses) + ". " + DOUBT_SUSPICION_CAVEAT
+
+
 __all__ = [
     "AdversarialSummary",
     "ClaimSummary",
     "ConfidenceScores",
     "ConvergenceSummary",
+    "DOUBT_SUSPICION_CAVEAT",
     "EvidenceSummary",
     "GateTraceEntry",
     "IBECandidate",
@@ -276,4 +388,7 @@ __all__ = [
     "QUESTION_TYPE_LABELS",
     "ReportData",
     "UncertaintySummary",
+    "doubt_is_suspicious",
+    "format_doubt",
+    "judgment_reliability_line",
 ]

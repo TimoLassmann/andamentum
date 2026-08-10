@@ -2862,8 +2862,9 @@ class CheckSynthesisDemand(Node):
         reading was not borderline) is not a doubtful one, and treating it as
         such would escalate on every pre-Tier-0 and adversarial-only claim.
 
-        Note the deliberate asymmetry against ``quality_doubt``'s gate: there
-        only a CONFIDENT "fails" acts, because the action is destruction. Here
+        Note the deliberate asymmetry against ``quality_doubt``'s two destroy
+        gates: there only a CONFIDENT "fails" acts, because the action is
+        destruction — a doubtful judge leaves the evidence standing. Here
         both a confident dissent and a doubtful agreement escalate, because
         the action is one bounded extra round of inquiry — cheap, and never
         destructive.

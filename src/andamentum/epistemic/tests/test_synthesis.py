@@ -17,6 +17,11 @@ from ..entities import (
     Uncertainty,
     UncertaintyType,
 )
+from ..entities.verdict import (
+    EpistemicVerdict,
+    PosteriorReport,
+    VerdictProvenance,
+)
 from ..operations import create_operations, SynthesizeReportOperation
 from ..operations.base import OperationInput
 from .conftest import make_verdict
@@ -481,3 +486,191 @@ class TestFreezeSnapshotCollectsAllEntities:
         assert "c-fs" in snap.claim_ids
         assert "e-fs" in snap.evidence_ids
         assert "u-fs" in snap.uncertainty_ids
+
+
+class TestWriterContextCannotContradictTheVerdict:
+    """The writer's data context is held to the same coherence contract as
+    the rendered header.
+
+    Case 781 was a header that printed "Claims Established: 0 of 1" beside a
+    "Refuted" verdict. Removing that pair from the header left it in the
+    writer's prompt — the place where the prose is actually produced — with
+    a comment claiming the counter was kept "for the HTML report", which
+    never reads it.
+    """
+
+    @staticmethod
+    def _cap_decided_claim() -> Claim:
+        """A claim the cycle cap decided: adjudicated, never promoted."""
+        return Claim(
+            entity_id="c-cap",
+            objective_id="obj-cap",
+            statement="Aspirin reduces colorectal cancer risk.",
+            stage=ClaimStage.HYPOTHESIS,
+            cycle_capped=True,
+            integrated_assessment="contradicts",
+            integrated_confidence=0.85,
+            evidence_ids=["e-cap"],
+        )
+
+    @staticmethod
+    def _verdict() -> "EpistemicVerdict":
+        return EpistemicVerdict(
+            objective_id="obj-cap",
+            posterior_report=PosteriorReport(
+                posterior=0.115,
+                log_odds=0,
+                supporting_count=0.0,
+                contradicting_count=1.0,
+                counting_posterior=0.115,
+                objective_id="obj-cap",
+                question_type="verificatory",
+                explanation="test fixture",
+            ),
+            provenance=VerdictProvenance(
+                n_claims_total=1,
+                n_active_claims=1,
+                n_adjudicated=1,
+                n_cycle_capped=1,
+            ),
+        )
+
+    def _context(self) -> dict:
+        claim = self._cap_decided_claim()
+        evidence = [
+            Evidence(
+                entity_id="e-cap",
+                objective_id="obj-cap",
+                quality_score=0.7,
+                extracted=True,
+                support_judgment="contradicts",
+            )
+        ]
+        signals = SynthesizeReportOperation._compute_quality_signals(
+            [claim], evidence, []
+        )
+        return SynthesizeReportOperation._build_data_context(
+            [claim],
+            evidence,
+            [],
+            {},
+            {},
+            {"e-cap": 1},
+            signals,
+            verdict=self._verdict(),
+        )
+
+    def test_stage_counter_is_named_for_the_stage_it_counts(self):
+        """``claims_established`` read as "claims the system settled" — the
+        adjudication count. Renaming it back to any name containing
+        "established" reopens the misreading."""
+        claim = Claim(
+            entity_id="c-name",
+            objective_id="obj-name",
+            statement="X",
+            stage=ClaimStage.SUPPORTED,
+        )
+        signals = SynthesizeReportOperation._compute_quality_signals([claim], [], [])
+
+        assert signals["claims_at_supported_stage"] == 1
+        assert not [k for k in signals if "established" in k.lower()], (
+            f"quality_signals reintroduced an 'established' key: {sorted(signals)}"
+        )
+
+    def test_stage_counter_and_adjudication_count_are_both_present_and_disagree(self):
+        """The two quantities are genuinely different and MAY disagree; what
+        must hold is that the writer sees both under names that cannot be
+        confused. Breaks if the counter is silently deleted from the context,
+        or if it is 'fixed' by sourcing it from the verdict (which would
+        destroy the stage signal instead of disambiguating it)."""
+        context = self._context()
+
+        assert context["quality_signals"]["claims_at_supported_stage"] == 0
+        assert "adjudicated=1 of 1 active" in context["verdict"]
+        assert not [k for k in context["quality_signals"] if "established" in k.lower()]
+
+    def test_cap_decided_claim_is_marked_as_cap_decided(self):
+        """Without the marker the writer sees ``[HYPOTHESIS] …`` immediately
+        above ``Adjudicated: contradicts`` and is told by the hedging table to
+        call a decided claim preliminary. Breaks if the STATUS line is
+        removed."""
+        context = self._context()
+        summary = context["claims"][0]
+
+        assert "[HYPOTHESIS]" in summary
+        assert "Adjudicated: contradicts" in summary
+        assert "DECIDED AT THE INVESTIGATION CAP" in summary
+
+    def test_uncapped_claim_carries_no_cap_marker(self):
+        """Negative control: the marker is conditional on ``cycle_capped``.
+        Breaks if the STATUS line is appended unconditionally."""
+        claim = Claim(
+            entity_id="c-plain",
+            objective_id="obj-plain",
+            statement="X",
+            stage=ClaimStage.SUPPORTED,
+            integrated_assessment="supports",
+        )
+        context = SynthesizeReportOperation._build_data_context(
+            [claim],
+            [],
+            [],
+            {},
+            {},
+            {},
+            SynthesizeReportOperation._compute_quality_signals([claim], [], []),
+            verdict=self._verdict(),
+        )
+
+        assert "INVESTIGATION CAP" not in context["claims"][0]
+
+    def test_every_quality_signal_key_is_defined_in_the_writer_prompt(self):
+        """The writer is handed the signals as a raw mapping, so an
+        undocumented key is a counter the model must guess the meaning of —
+        exactly how a stage counter came to be read as an adjudication count.
+        Breaks when a key is added to ``_compute_quality_signals`` (or renamed)
+        without updating the prompt's glossary."""
+        from ..agents.synthesis import WRITE_ANSWER_PROMPT
+
+        claim = Claim(
+            entity_id="c-doc",
+            objective_id="obj-doc",
+            statement="X",
+            stage=ClaimStage.SUPPORTED,
+        )
+        signals = SynthesizeReportOperation._compute_quality_signals([claim], [], [])
+
+        undocumented = [k for k in signals if f"`{k}`" not in WRITE_ANSWER_PROMPT]
+        assert not undocumented, (
+            "quality_signals keys handed to the writer with no definition in "
+            f"WRITE_ANSWER_PROMPT: {undocumented}"
+        )
+
+    def test_stage_counter_is_read_by_nothing_outside_the_synthesis_pair(self):
+        """Pins the claim the header comment now makes: ``quality_signals`` is
+        local, so the stage counter reaches no renderer. Breaks if a consumer
+        (e.g. the HTML audit report the old comment invoked) starts reading it
+        without the counter first being persisted."""
+        from pathlib import Path
+
+        import andamentum.epistemic as epistemic_pkg
+
+        root = Path(epistemic_pkg.__file__).parent
+        allowed = {"operations/synthesis.py", "agents/synthesis.py"}
+        offenders = []
+        for path in root.rglob("*.py"):
+            if "tests" in path.parts or "__pycache__" in path.parts:
+                continue
+            rel = path.relative_to(root).as_posix()
+            if rel in allowed:
+                continue
+            text = path.read_text()
+            if "claims_at_supported_stage" in text or "claims_established" in text:
+                offenders.append(rel)
+
+        assert not offenders, (
+            "the stage-derived claim counter is read outside the synthesis "
+            f"operation/prompt pair: {offenders}. It is not persisted, so any "
+            "other consumer is reading a number that is not the run's "
+            "adjudication count."
+        )

@@ -981,8 +981,12 @@ class ReportGenerator:
         for summary in claim_summaries:
             cv_for_summary = verdict_claim_by_id.get(summary.claim_id)
             summary.verdict_label = cv_for_summary.label if cv_for_summary else ""
-            summary.scrutiny_doubt = (
-                cv_for_summary.scrutiny_doubt if cv_for_summary else None
+            # ``verdict_doubt``, not ``scrutiny_doubt``: for a cycle-capped
+            # claim the badge came from the cap's own reading, so the doubt
+            # shown beside it must be that reading's. The verdict object
+            # picks; the renderer never has to.
+            summary.verdict_doubt = (
+                cv_for_summary.verdict_doubt if cv_for_summary else None
             )
 
         # In verify mode (single claim) the objective-level posterior

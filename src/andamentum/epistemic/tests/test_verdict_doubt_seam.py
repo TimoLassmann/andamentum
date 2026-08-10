@@ -579,7 +579,7 @@ async def test_claim_summary_doubt_is_matched_by_claim_id_not_index(
     assert reversed_data is not None
 
     for extracted in (data, reversed_data):
-        by_id = {c.claim_id: c.scrutiny_doubt for c in extracted.claims}
+        by_id = {c.claim_id: c.verdict_doubt for c in extracted.claims}
         assert by_id[seeded.measured.entity_id] == pytest.approx(_HIGH)
         assert by_id[seeded.unmeasured.entity_id] is None
 

@@ -624,7 +624,8 @@ class TestDownstreamFiltering:
         # Should only have 1 summary (representative), not 2
         assert len(eligible) == 1
         assert len(summaries) == 1
-        assert "Representative finding" in summaries[0]
+        assert "Representative finding" in summaries[0].text
+        assert summaries[0].evidence_id == ev_rep.entity_id
 
     @pytest.mark.asyncio
     async def test_deferred_evidence_excluded_from_scrutiny(self, repo):
@@ -666,7 +667,8 @@ class TestDownstreamFiltering:
 
         assert len(eligible) == 1
         assert len(summaries) == 1
-        assert "Representative finding" in summaries[0]
+        assert "Representative finding" in summaries[0].text
+        assert summaries[0].evidence_id == ev_rep.entity_id
 
     @pytest.mark.asyncio
     async def test_quality_weighted_sum_includes_corroborative(self, repo):

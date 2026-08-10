@@ -134,9 +134,10 @@ class IdentifySingleIssueOutput(BaseModel):
     ] = Field(
         description=(
             "Issue classification. Empty string when has_issue is false. "
-            '"evidence_corrupted" is a sentinel that triggers evidence '
-            "invalidation rather than uncertainty creation; all other values "
-            "map to UncertaintyType members."
+            '"evidence_corrupted" is a sentinel: it PROPOSES discarding the '
+            "source, and an independent judge decides — if that judge "
+            "declines, the concern is recorded as an uncertainty instead. "
+            "All other values map to UncertaintyType members."
         )
     )
 

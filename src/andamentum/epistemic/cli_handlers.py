@@ -1237,6 +1237,7 @@ def _print_ask_results(
     # === SCORE: the run's verdict, rendered from the one object ===
     if verdict:
         from .entities.verdict import render_verdict_line
+        from .report_data import judgment_reliability_line
 
         console.print(f"[bold]Verdict:[/bold] {render_verdict_line(verdict)}")
         po = verdict.posterior_report
@@ -1245,6 +1246,14 @@ def _print_ask_results(
                 f"  [dim]({po.supporting_count} supporting, "
                 f"{po.contradicting_count} contradicting)[/dim]"
             )
+        # How reliable were the judgments underneath that verdict. Same
+        # sentence the HTML report prints in its "How confident are we?"
+        # row — one measurement, one wording. Speaks only when a count
+        # actually raised something, so a run with nothing to report
+        # prints exactly what it printed before this line existed.
+        reliability = judgment_reliability_line(verdict)
+        if reliability:
+            console.print(f"  [dim]{rich_escape(reliability)}[/dim]")
 
         # Show errors if any (HONEST FAILURE REPORTING)
         errors = stats.get("errors", [])

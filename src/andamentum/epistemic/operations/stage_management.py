@@ -340,9 +340,11 @@ class ConcludeAtCycleCapOperation(BaseOperation):
     no LLM deliberation whatsoever, so the uncertainty of the judgments
     it stands on is the only uncertainty it has; discarding it here would
     contradict the premise that a judgment carries its doubt. It is
-    persisted on ``CapEvaluation.doubt`` (and therefore reaches
-    ``ClaimVerdict.cap_evaluation`` and every renderer) as a
-    MEASUREMENT only. It is deliberately NOT written to
+    persisted on ``CapEvaluation.doubt``, which reaches
+    ``ClaimVerdict.cap_evaluation`` and is what
+    ``ClaimVerdict.verdict_doubt`` returns for a cycle-capped claim — so
+    the doubt rendered beside a cap-decided badge is this reading's, not
+    scrutiny's. A MEASUREMENT only. It is deliberately NOT written to
     ``Claim.scrutiny_doubt`` — that field has exactly one writer,
     ``ScrutiniseClaimOperation``, and a second writer would make its
     provenance ambiguous — and it deliberately does NOT escalate: a

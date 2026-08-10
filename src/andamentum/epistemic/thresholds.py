@@ -346,8 +346,14 @@ SUSPICION-RAISER ONLY: high doubt is a reason to escalate; low doubt
 never proves a verdict correct. 0.5 is the midpoint of that scale — a
 judgment carrying at least half the entropy of a uniform guess.
 
-Read by: ``graph.nodes.CheckSynthesisDemand._judgment_doubt_demand``
-(the only reader).
+Read by ``graph.nodes.CheckSynthesisDemand._judgment_doubt_demand`` (the
+only reader that ACTS on it — one extra round of inquiry) and by four
+read-only surfaces that merely report it: ``confidence.build_verdict``
+(the ``n_high_doubt_claims`` provenance count),
+``report_data.doubt_is_suspicious``, ``report_data.judgment_reliability_line``
+and ``report_generator._scrutiny_reliability_note``.
+``entities.judge_opinion.JudgeOpinion.needs_review`` applies the same
+cutoff to a single opinion's own doubt.
 
 Deliberately IDENTICAL to
 ``andamentum.llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD``. Both

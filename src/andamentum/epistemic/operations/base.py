@@ -335,9 +335,13 @@ class BaseOperation(ABC):
             evidence_gatherer: Optional evidence gathering protocol
             quality_scorer: Optional quality scoring protocol
             embedding_model: Embedding model for similarity/clustering operations.
-            judge_model: Model id used for ``llm_judge`` second opinions
-                (currently only the evidence-quality invalidation gate in
-                ``ExtractEvidenceOperation._score_evidence``). KEYWORD-ONLY:
+            judge_model: Model id used for ``llm_judge`` second opinions.
+                Four sites read it: the two TMS destroy gates
+                (``ExtractEvidenceOperation._score_evidence`` and
+                ``ScrutiniseClaimOperation._destroy_or_retain_corrupted``)
+                and the two suspend-only opinions in
+                ``ScrutiniseClaimOperation`` (direction confirmation and the
+                borderline-weight second reading). KEYWORD-ONLY:
                 this is the third same-typed model id on this constructor, and
                 a positional transposition with ``embedding_model`` would be
                 invisible to pyright and surface far from the call site.

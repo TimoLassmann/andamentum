@@ -660,6 +660,37 @@ class SynthesizeReportOperation(BaseOperation):
             if c.abandoned:
                 parts.append("  STATUS: ABANDONED")
 
+            if c.cycle_capped:
+                # A cap-decided claim carries an adjudicated verdict but is
+                # never promoted, so its bare stage label reads "preliminary"
+                # directly above the conclusion the writer is told it may not
+                # contradict. Naming the cap is what keeps the per-claim view
+                # consistent with the verdict object.
+                # No em-dash in the marker: the writer is told never to emit
+                # one, and text it is shown is text it copies.
+                #
+                # Gated on integrated_assessment, NOT on cycle_capped alone.
+                # The cap only mints a verdict when the evidence weight reads
+                # "strong" or "moderate" (stage_management.py: a "weak" or
+                # "conflicting" reading leaves verdict=None). Announcing "the
+                # adjudicated verdict is the system's conclusion" for a claim
+                # the cap left UNDECIDED would hand the writer the same
+                # contradictory pair this whole change exists to remove — an
+                # asserted conclusion beside a claim that has none.
+                if c.integrated_assessment:
+                    parts.append(
+                        "  STATUS: DECIDED AT THE INVESTIGATION CAP. The stage "
+                        "label above stops here by design; the adjudicated "
+                        "verdict is the system's conclusion for this claim."
+                    )
+                else:
+                    parts.append(
+                        "  STATUS: REACHED THE INVESTIGATION CAP UNDECIDED. "
+                        "Inquiry stopped here by design and the evidence did "
+                        "not read strongly enough either way to adjudicate. "
+                        "This claim has no verdict; do not write one for it."
+                    )
+
             claim_summaries.append("\n".join(parts))
 
         # Evidence summaries — show the system's judgment, not raw source content.
@@ -760,7 +791,16 @@ class SynthesizeReportOperation(BaseOperation):
         evidence: list["Evidence"],
         uncertainties: list["Uncertainty"],
     ) -> dict[str, Any]:
-        """Compute structured quality signals deterministically from entities."""
+        """Compute structured quality signals deterministically from entities.
+
+        These are PROCESS signals — how far the pipeline got, how much it
+        looked at, how much of it passed scrutiny. None of them is the run's
+        decision: that is the ``EpistemicVerdict``, and its
+        ``provenance.n_adjudicated`` is the only adjudication count. The
+        returned dict is local — it is handed to the writer/validator data
+        context and to ``_build_markdown``, and is never persisted on an
+        entity, so no downstream renderer reads it.
+        """
         max_stage = "hypothesis"
         confidence_scores: list[float] = []
         scrutiny_passed = 0
@@ -814,7 +854,15 @@ class SynthesizeReportOperation(BaseOperation):
         return {
             "confidence_level": confidence_level,
             "max_stage": max_stage,
-            "claims_established": supported_plus,
+            # Named for what it counts: claims PROMOTED to SUPPORTED or
+            # higher. Its predecessor name, ``claims_established``, read as
+            # "claims the system settled" — i.e. the adjudication count —
+            # and the two are different quantities: a claim decided at its
+            # investigation cap is adjudicated without ever being promoted,
+            # so this counter is 0 while the verdict reports it adjudicated.
+            # The verdict object owns the adjudication count; this one is
+            # stage progress and nothing else.
+            "claims_at_supported_stage": supported_plus,
             "claims_total": len(non_abandoned),
             "claims_abandoned": sum(1 for c in claims if c.abandoned),
             "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total)
@@ -876,12 +924,18 @@ class SynthesizeReportOperation(BaseOperation):
         sections.append(f"> **Research Question:** {question}")
         if include_quality_signals:
             # "Claims Adjudicated", sourced from the verdict object — NOT
-            # the stage-derived ``claims_established`` (which stays in
-            # quality_signals for the HTML report). A cycle-capped claim
-            # that the cap decided is never promoted to SUPPORTED, so the
-            # stage counter printed "Claims Established: 0 of 1" beside a
-            # "Refuted" verdict — literally the disagreeing-headline pair
-            # the 2026-07-08 audit read case 781 off.
+            # the stage-derived counter. A cycle-capped claim that the cap
+            # decided is never promoted to SUPPORTED, so the stage counter
+            # printed "Claims Established: 0 of 1" beside a "Refuted"
+            # verdict — literally the disagreeing-headline pair the
+            # 2026-07-08 audit read case 781 off.
+            #
+            # The stage counter is not persisted anywhere: ``quality_signals``
+            # is a local dict, never written to an entity, so the HTML report
+            # never sees it. Its only remaining consumer is the
+            # writer/validator data context, where it appears under the
+            # unambiguous name ``claims_at_supported_stage`` and the prompt
+            # states that the verdict — not that counter — owns adjudication.
             sections.append(
                 f"> **Evidence Sources:** {ev_count} | "
                 f"**Claims Adjudicated:** {prov.n_adjudicated} of "

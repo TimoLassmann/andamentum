@@ -79,12 +79,16 @@ from .entities.verdict import (
     render_verdict_line,
 )
 from .report_data import (
+    DOUBT_SUSPICION_CAVEAT,
     ClaimSummary,
     EvidenceSummary,
     GateTraceEntry,
     IBECandidate,
     QUESTION_TYPE_LABELS,
     ReportData,
+    doubt_is_suspicious,
+    format_doubt,
+    judgment_reliability_line,
 )
 from .thresholds import POSTERIOR_DECISIVE_THRESHOLD
 
@@ -188,6 +192,27 @@ def _claim_badge(claim: ClaimSummary) -> str:
 
 def _confidence_body(data: ReportData) -> str:
     """Body text for the Q&A panel's "How confident are we?" row.
+
+    Two things, in this order: what the run concluded and how strongly
+    (``_posterior_body``), then how reliable the judgments underneath
+    that number were (``judgment_reliability_line``). The reliability
+    sentence sits HERE, in the same row, because a doubt figure rendered
+    anywhere else is a number the reader has to go and correlate with
+    the confidence it qualifies — and one they will not find at all
+    unless they go looking.
+
+    It appends nothing when nothing was raised, so runs whose judgments
+    were all measured and all below the cutoff render exactly as before.
+    """
+    parts = [_posterior_body(data)]
+    reliability = judgment_reliability_line(data.verdict_object)
+    if reliability:
+        parts.append(f"_{reliability}_")
+    return "\n\n".join(parts)
+
+
+def _posterior_body(data: ReportData) -> str:
+    """The posterior half of the "How confident are we?" row.
 
     Reads the posterior directionally — "Probability the claim is true:
     0.115 → verdict Refuted" — instead of the v1 "Posterior: 11.5%"
@@ -483,11 +508,15 @@ def _evidence_line(
 
     Strength flags (RCT / meta-analysis / observational / …) appear as
     an italic parenthetical at the end of the judgement — they share
-    the neutral typeset palette and need no new CSS.
+    the neutral typeset palette and need no new CSS. So do the dissent
+    and doubt annotations, and all three survive a missing
+    ``judgment_reasoning``: the item still renders its reference and its
+    parentheticals, just without a sentence between them.
 
     Format::
 
         [ref](url) · `Provider` — Judgement sentence. *(flag, flag, ...)*
+        [ref](url) · `Provider` *(flag, flag, ...)*     # no judgement text
     """
     head_parts: list[str] = []
     if ev.source_ref:
@@ -522,13 +551,32 @@ def _evidence_line(
     if ev.direction_dissent is True:
         flag_str += " *(an independent judge disagreed with this direction)*"
 
+    # The item's own direction doubt, spoken ONLY when it was measured at
+    # or above the one cutoff (``report_data.doubt_is_suspicious``) — the
+    # same speak-on-a-signal rule as the dissent annotation above, so an
+    # item whose judge was sure renders exactly as it did before.
+    #
+    # The quality second opinion's doubt is deliberately absent: only
+    # agent-scored evidence that hit the quality cliff ever carries one,
+    # so annotating it would mark that subset as suspect while the
+    # un-instrumented majority looked clean. See
+    # ``tests/test_quality_second_opinion.py``.
+    jd = ev.judgment_doubt
+    if jd is not None and doubt_is_suspicious(jd):
+        flag_str += f" *(the direction judge was unsure — judgment doubt {jd:.2f})*"
+
+    # ``judgment_reasoning`` is Optional, so the annotations must survive its
+    # absence: an item flagged as unsure, dissented-from, or carrying strength
+    # flags says so whether or not the judge wrote a sentence. Dropping
+    # ``flag_str`` on the empty-text branch silently hid exactly the items the
+    # reader most needs to see.
     if judgement_text:
         return (
             f"{head} — {judgement_text}{flag_str}"
             if head
             else f"{judgement_text}{flag_str}"
         )
-    return head
+    return f"{head}{flag_str}" if head else flag_str.strip()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1336,8 +1384,27 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
                 if multi_claim
                 else _sanitize_excerpt(claim.statement, max_chars=140)
             )
-            claim_rows.append([label, _claim_badge(claim)])
-        sof_lines.append(_md_table(["Claim", "Verdict"], claim_rows))
+            # The doubt column sits beside the verdict rather than in a
+            # section of its own: this table is where a reader decides
+            # how much of each verdict to believe, and a reliability
+            # figure they have to go and find elsewhere is one they will
+            # not find. Unconditional, including the all-unmeasured case
+            # — "not measured" is the honest cell, and an omitted column
+            # would read as "nothing to report".
+            claim_rows.append(
+                [label, _claim_badge(claim), format_doubt(claim.verdict_doubt)]
+            )
+        sof_lines.append(_md_table(["Claim", "Verdict", "Judgment doubt"], claim_rows))
+        sof_lines.append("")
+        sof_lines.append(
+            "_Judgment doubt is how internally unsure the individual evidence "
+            "judgments behind a verdict were, averaged — 0 means each judge "
+            "was sure of its own reading, 1 means each was at a coin flip. It "
+            "is NOT agreement between judges: two judges confidently "
+            'contradicting one another both score near 0. "not measured" '
+            "means no belief distribution was captured, which is not the same "
+            f"as certainty. {DOUBT_SUSPICION_CAVEAT}_"
+        )
     if s.investigation_rounds_total:
         sof_lines.append("")
         sof_lines.append(

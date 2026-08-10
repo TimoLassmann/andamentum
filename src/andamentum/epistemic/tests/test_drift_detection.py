@@ -78,7 +78,7 @@ TRACKED_SECTIONS = [
     # operations/scrutiny.py: Scrutiny evidence loading loop
     {
         "file": _SRC / "operations" / "scrutiny.py",
-        "start": "evidence_summaries: list[str] = []",
+        "start": "evidence_summaries: list[EvidenceSummary] = []",
         "num_lines": 15,
         "description": "Scrutiny evidence loading loop",
         "test_file": "test_operations_failure.py::TestScrutinyOperationFailure",
@@ -150,7 +150,10 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # an ``llm_judge`` second opinion (``_confirm_or_retain_low_quality``) so a
     # single sampled point value can no longer destroy evidence on its own.
     "Evidence scoring 3-path chain (no fallback)": "21f2d7018905750b",
-    "Scrutiny evidence loading loop": "cd12fd7cdd66ac9d",
+    # Updated 2026-08-10: the loop now emits ``EvidenceSummary`` pairs rather
+    # than bare strings, so an issue raised about one item stays attached to
+    # that item all the way to the ``evidence_corrupted`` destroy gate.
+    "Scrutiny evidence loading loop": "3776be9239dded42",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
     # 2026-08-09: the loop returns (title, answer) — the writer no longer
     # authors a verdict; the headline is rendered from the run's

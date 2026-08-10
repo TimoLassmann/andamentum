@@ -36,7 +36,10 @@ def _report() -> PosteriorReport:
     """A mid posterior — the value that made the two cases indistinguishable."""
     return PosteriorReport(
         posterior=0.5,
-        log_odds=0.0,
+        # int, not 0.0: `PosteriorReport.log_odds` is declared int and the
+        # producer rounds (`confidence.py`: `round(math.log(p/(1-p)))`) — it is
+        # a coarse reporting quantity, not the raw log-odds.
+        log_odds=0,
         supporting_count=1,
         contradicting_count=1,
         counting_posterior=0.5,

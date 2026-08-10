@@ -10,11 +10,19 @@ pin the gate's five behaviours — destroy when confidently confirmed, retain on
 disagreement, retain on doubt, never fire on the happy path, and never
 silently degrade when the wiring is missing.
 
+The structural tests at the bottom cover BOTH destroy gates: this one and the
+``evidence_corrupted`` gate in ``operations/scrutiny.py`` (whose behavioural
+tests live in ``test_scrutiny_corruption_gate.py``). They pin the two to one
+decision rule, and pin the scrutiny gate to calling the shared driver without
+reading the partially-instrumented ``quality_distribution`` field.
+
 Every test runs offline through the shared ``stub_llm_judge`` fixture, which
 patches ``llm_judge.elicit.elicit_criterion_score``.
 """
 
 from __future__ import annotations
+
+import ast
 
 import pytest
 
@@ -222,7 +230,13 @@ def _executable_source(text: str) -> str:
 #: code, and what each is allowed to do with it.
 _QUALITY_SIGNAL_PRODUCERS_AND_GATE = {
     "entities/evidence.py",  # the field + its derived properties
-    "operations/evidence.py",  # the one gate
+    "operations/evidence.py",  # destroy gate 1 — near-zero quality score
+    # Destroy gate 2 — the ``evidence_corrupted`` sentinel. It IMPORTS the
+    # driver from ``quality_doubt`` and nothing else: it never reads
+    # ``Evidence.quality_distribution`` or ``Evidence.quality_doubt``, which
+    # only Path-2 evidence carries. Enforced, not asserted in prose, by
+    # ``test_the_second_destroy_gate_calls_the_driver_but_never_reads_the_field``.
+    "operations/scrutiny.py",
     "quality_doubt.py",  # the module that produces it
 }
 #: Modules that CARRY the signal onto the run's verdict object so a consumer
@@ -243,9 +257,9 @@ def test_quality_doubt_is_read_by_nothing_but_the_invalidation_gate() -> None:
     therefore penalise exactly the instrumented subset and nothing else — a
     systematic bias that looks like a quality improvement.
 
-    PINS: the only non-entity, non-test reader stays
-    ``operations/evidence.py``, and the only other modules that may name it
-    at all are the two that carry it onto the verdict object for a reader.
+    PINS: the only non-entity, non-test readers stay the two DESTROY GATES,
+    and the only other modules that may name the signal at all are the two
+    that carry it onto the verdict object for a reader.
     """
     from pathlib import Path
 
@@ -264,6 +278,104 @@ def test_quality_doubt_is_read_by_nothing_but_the_invalidation_gate() -> None:
         "These modules read the quality second-opinion signal, which only "
         "Path-2 evidence ever carries. Wiring it into a broader gate "
         "silently penalises the instrumented subset: " + ", ".join(offenders)
+    )
+
+
+def test_the_second_destroy_gate_calls_the_driver_but_never_reads_the_field() -> None:
+    """THE EXEMPTION THAT LETS SCRUTINY ONTO THE ALLOWLIST, BOUNDED.
+
+    ``operations/scrutiny.py`` names ``quality_doubt`` for exactly one
+    reason: it imports ``confirm_corruption``, the shared destroy-gate
+    driver. It must NOT grow a read of ``Evidence.quality_distribution`` or
+    ``Evidence.quality_doubt`` — those only Path-2 evidence ever carries, and
+    a scrutiny-time gate reading them would penalise exactly the instrumented
+    subset, which is the systematic bias the companion test above exists to
+    prevent.
+
+    PINS both halves: the import must be there (a re-implemented,
+    parallel second opinion fails), and no read of the partially-instrumented
+    signal may appear (a "while we're here, also check the quality doubt"
+    change fails).
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent
+    tree = ast.parse((src / "operations" / "scrutiny.py").read_text())
+
+    imports_the_driver = any(
+        isinstance(node, ast.ImportFrom)
+        and (node.module or "").endswith("quality_doubt")
+        and any(alias.name == "confirm_corruption" for alias in node.names)
+        for node in ast.walk(tree)
+    )
+    assert imports_the_driver, (
+        "operations/scrutiny.py must gate its evidence_corrupted destroy "
+        "through quality_doubt.confirm_corruption — one destroy-gate "
+        "mechanism, not two."
+    )
+
+    names = {
+        node.attr if isinstance(node, ast.Attribute) else node.id
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Attribute, ast.Name))
+    }
+    leaked = names & {"quality_doubt", "quality_distribution"}
+    assert not leaked, (
+        "operations/scrutiny.py reads the partially-instrumented quality "
+        "second-opinion signal: " + ", ".join(sorted(leaked))
+    )
+
+
+def _decision_rule(expr: ast.expr, receiver: str) -> str:
+    """``expr`` unparsed with ``receiver.`` blanked, for cross-file comparison."""
+    return ast.unparse(expr).replace(f"{receiver}.", "<opinion>.")
+
+
+def test_both_destroy_gates_use_one_decision_rule() -> None:
+    """ONE RULE FOR "MAY I DESTROY THIS EVIDENCE", pinned across two files.
+
+    ``QualitySecondOpinion.confidently_fails`` is the rule: a confident
+    ``fails``, with ``needs_review`` folding in llm_judge's own doubt
+    threshold so neither gate invents a numeric cutoff. Gate 2 (scrutiny)
+    calls the property; gate 1 (``operations/evidence.py``) still spells the
+    same predicate inline.
+
+    PINS them equal. Loosening either — dropping ``needs_review`` on one
+    side, adding a bespoke ``doubt < 0.3`` on the other — makes the two
+    unparsed expressions differ and fails here. A reader may then unify them
+    on purpose; they cannot drift by accident.
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent
+
+    prop_tree = ast.parse((src / "quality_doubt.py").read_text())
+    prop_rules = [
+        _decision_rule(node.value, "self")
+        for fn in ast.walk(prop_tree)
+        if isinstance(fn, ast.FunctionDef) and fn.name == "confidently_fails"
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Return) and node.value is not None
+    ]
+    assert len(prop_rules) == 1, prop_rules
+
+    gate1_tree = ast.parse((src / "operations" / "evidence.py").read_text())
+    gate1_rules = [
+        _decision_rule(node.test, "opinion")
+        for fn in ast.walk(gate1_tree)
+        if isinstance(fn, ast.AsyncFunctionDef)
+        and fn.name == "_confirm_or_retain_low_quality"
+        for node in ast.walk(fn)
+        if isinstance(node, ast.If) and "overall" in ast.unparse(node.test)
+    ]
+    assert len(gate1_rules) == 1, gate1_rules
+
+    assert prop_rules[0] == gate1_rules[0], (
+        "the two TMS destroy gates no longer apply the same rule:\n"
+        f"  confidently_fails: {prop_rules[0]}\n"
+        f"  operations/evidence.py: {gate1_rules[0]}"
     )
 
 

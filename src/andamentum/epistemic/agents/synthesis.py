@@ -35,12 +35,28 @@ You will receive:
 - **convergence_results**: Cross-domain convergence data per claim
 - **blocking_uncertainties**: Issues that prevent stronger conclusions
 - **non_blocking_uncertainties**: Caveats to keep in mind
-- **quality_signals**: Overall quality metrics (confidence level, scrutiny pass rate, etc.)
+- **quality_signals**: Process metrics describing how the investigation ran — see "Reading quality_signals" below. They are NOT the system's decision; the decision is **verdict**.
 - **verdict**: The system's DECIDED verdict for this question — direction, posterior, and the counts behind it. This is not a suggestion and not one input among many: the system has already adjudicated, and the machine-readable headline is generated from this decision, not from your text. Your answer RENDERS it in prose. You may explain it, hedge it in proportion to the posterior, and describe what would change it — but you may NOT assert a direction that contradicts it.
 
 If this is a revision, you will also receive:
 - **previous_answer**: Your prior answer
 - **validator_feedback**: Specific corrections from the validator
+
+## Reading quality_signals
+
+Each key means exactly one thing:
+
+- `confidence_level`: coarse label (none / low / medium / high) derived from how much evidence there is, whether any of it is external, and how far claims were promoted.
+- `max_stage`: the highest stage any non-abandoned claim reached.
+- `claims_at_supported_stage`: how many non-abandoned claims were PROMOTED to stage SUPPORTED or higher. This is pipeline progress, NOT the number of claims the system decided. A claim decided at its investigation cap is never promoted, so this counter can read 0 while **verdict** reports that same claim adjudicated. The two are different quantities and are allowed to disagree; when they do, **verdict** governs. Never call the question undecided, unresolved, or preliminary because this counter is low.
+- `claims_total`: non-abandoned claims investigated.
+- `claims_abandoned`: claims dropped for want of actionable evidence.
+- `scrutiny_pass_rate`: fraction of scrutinised claims that passed, or null if none were scrutinised.
+- `mean_confidence_score`: mean per-claim confidence score, or null if none was computed.
+- `evidence_count`: evidence items in view.
+- `mean_evidence_quality`: mean quality score across that evidence, or null.
+- `unresolved_uncertainties`: open uncertainties.
+- `blocking_uncertainties`: the subset of those that prevents a stronger conclusion.
 
 ## Output
 
@@ -64,6 +80,8 @@ Match your language to the data:
 | SUPPORTED claims, balance 0.4-0.6 | "Preliminary evidence indicates..." |
 | HYPOTHESIS only, or balance < 0.4 | "Initial findings suggest, though further investigation is needed..." |
 | Blocking uncertainties present | Must mention: "However, [uncertainty] limits the strength of this conclusion." |
+
+One exception to the stage column: a claim whose summary carries `STATUS: DECIDED AT THE INVESTIGATION CAP` stopped being promoted by design, so its stage label understates what is known about it. Calibrate that claim on its `Adjudicated:` verdict and confidence, not on its stage.
 
 ## If Revising
 
@@ -203,7 +221,7 @@ You verify that a research answer is faithful to the underlying data. Your job i
 
 4. **Major omission.** The answer omits a finding that, if included, would meaningfully change a reader's bottom-line conclusion. Omitting one supporting study is not a major omission. Omitting that adversarial search refuted the headline IS. Omitting a blocking uncertainty IS.
 
-5. **Misrepresentation of structural signals.** The answer describes verification results inaccurately relative to the data's own values. E.g., if adversarial_balance has not crossed the survival threshold, the answer cannot say "withstood adversarial challenge"; if a claim is at HYPOTHESIS, the answer cannot describe it as "established."
+5. **Misrepresentation of structural signals.** The answer describes verification results inaccurately relative to the data's own values. E.g., if adversarial_balance has not crossed the survival threshold, the answer cannot say "withstood adversarial challenge"; if a claim is at HYPOTHESIS, the answer cannot describe it as "established." One exception: a claim marked `STATUS: DECIDED AT THE INVESTIGATION CAP` has its stage frozen by design and its `Adjudicated:` verdict IS the system's conclusion for it — do not flag the answer for stating that conclusion, and do not read that claim's stage as proof the answer overstates.
 
 6. **Contradicting the structured verdict.** The **verdict** input carries the direction the system decided. If the answer asserts the opposite direction — says "yes" when the verdict is contradicts, or "no" when it is supports — flag it. The answer may hedge, explain, or note what would change the verdict; it may not reverse it.
 
@@ -228,7 +246,8 @@ You may receive `prior_validator_feedback` listing what was flagged in earlier r
 You receive:
 - **answer**: the current draft to validate
 - **research_question**: the original question
-- **claims**, **evidence**, **adversarial_results**, **convergence_results**, **blocking_uncertainties**, **non_blocking_uncertainties**, **quality_signals**, **verdict**: the data the writer was given
+- **claims**, **evidence**, **adversarial_results**, **convergence_results**, **blocking_uncertainties**, **non_blocking_uncertainties**, **verdict**: the data the writer was given
+- **quality_signals**: process metrics, not the decision. `claims_at_supported_stage` counts claims PROMOTED to stage SUPPORTED or higher; it is not the adjudication count, and it reads 0 for a claim decided at its investigation cap. Do not flag the answer for asserting a conclusion this counter does not "confirm" — **verdict** is where adjudication is counted.
 - **prior_validator_feedback** (when present): your previous rounds' feedback
 
 ## Output
