@@ -9,7 +9,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **scribe** | Block-based document authoring (paragraph, heading, figure, table) backed by SQLite, one-way render to .docx. |
 | **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (9 chart types, 7 journal palettes). |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
-| **whetstone** | Criterion-cascade review of your own drafts → markdown / HTML / .docx with track changes. Subcommands: `review` (default), `panel`, `proofread`, `apply-patches`. |
+| **whetstone** | Criterion-cascade review of your own drafts → markdown / HTML / .docx with track changes. Subcommands: `review` (default), `panel`, `checklist`, `proofread`, `apply-patches`, `verify-provenance`. |
 | **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
@@ -53,7 +53,7 @@ Nine scripts installed by the package. Run `--help` on any binary for full flag 
 |---|---|---|
 | `andamentum-scribe` | Block-based document authoring; renders to .docx. | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (deterministic plotting). | none |
-| `andamentum-whetstone` | Criterion-cascade draft review → markdown / HTML / .docx with track changes. Four subcommands: `review` (default), `panel`, `proofread`, `apply-patches`. | required for `review` + `panel` |
+| `andamentum-whetstone` | Criterion-cascade draft review → markdown / HTML / .docx with track changes. Six subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist` |
 | `andamentum-proofread` | Deterministic readability + style check. | none |
 | `andamentum-harvest` | Universal source → markdown extraction. | none |
 | `andamentum-chunker` | Structural-first semantic chunking. | required |

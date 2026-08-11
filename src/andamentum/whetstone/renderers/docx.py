@@ -13,10 +13,13 @@ Reuses the in-tree ``whetstone.docx.finalization.finalize_reviewed_document``
                                 comment_text="<title>\\n\\n<rationale>",
                                 explanation=rationale)
 
-Findings without quotes are skipped — there's nothing to anchor the
-comment to in the .docx structure. Edits whose ``original_text`` doesn't
-appear in the .docx are also dropped silently (``apply_patches`` already
-handles that).
+Findings without quotes cannot become comments — there is nothing to
+anchor them to in the .docx structure — so they are diverted into a
+section of the prepended review report instead of being dropped. Absence
+findings (checklist mode) are all of this kind, and any mode can produce
+one. Edits whose ``original_text`` doesn't appear in the .docx are still
+dropped by ``apply_patches`` (which reports the count it could not
+apply).
 
 Panel mode (``mode="panel"``) is now ALSO rendered: expert biosketches,
 scored expert reviews, and the panel synthesis are folded into the
@@ -39,6 +42,7 @@ preferred tool.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +54,8 @@ from .._watermark import (
 )
 from ..schemas import Edit, Finding, ReviewResult
 from ._panel_layout import body_markdown
+
+logger = logging.getLogger("andamentum.whetstone.renderers.docx")
 
 
 # The default tracked-change author. Deliberately includes "(AI)" so the
@@ -75,6 +81,11 @@ def render_docx(
     insertion of the new span). Findings become Word comments anchored
     to the first verbatim quote of each finding. The executive summary
     becomes a prepended review report.
+
+    Findings that carry no usable quote have no span to attach a comment
+    to; they are appended to the prepended report as their own section
+    rather than dropped, so a mode whose findings are document-level (an
+    absence finding in checklist mode, say) still reaches the reader.
 
     For panel-mode results, the prepended report includes the panel
     synthesis prose, scored per-expert reviews, and expert biosketches.
@@ -124,6 +135,12 @@ def render_docx(
             f"> *Produced by {provenance_line(model=model)}.*\n\n"
         )
         review_summary = banner + (review_summary or "")
+
+    # Quote-less findings can't be anchored as comments; carry them in the
+    # report body so they are visible in the .docx rather than silently lost.
+    unanchored_text = _collect_unanchored_findings(result)
+    if unanchored_text:
+        review_summary = (review_summary or "").rstrip() + "\n\n" + unanchored_text
 
     novelty_findings_text = _collect_novelty_findings(result)
 
@@ -179,19 +196,46 @@ def _edit_to_patch(edit: Edit, DocumentPatch):
     )
 
 
-def _finding_to_patch(finding: Finding, DocumentPatch):
+def _anchor_text(finding: Finding) -> str:
+    """The verbatim span a Word comment would attach to, or ``""``.
+
+    Empty means the finding is document-level (or names something missing),
+    so it belongs in the report body rather than in the margin. Both the
+    patch adapter and the report collector route on this one predicate, so
+    a finding can never fall between them.
+    """
     if not finding.quotes:
-        return None
+        return ""
     anchor = finding.quotes[0].text
-    if not anchor or not anchor.strip():
+    return anchor if anchor and anchor.strip() else ""
+
+
+def _corroboration_clause(finding: Finding) -> str:
+    """One clause naming the other producers that independently raised this.
+
+    ``corroborated_by`` holds panel perspective names or checklist probe ids
+    depending on which pipeline built the finding, so the wording names
+    neither: agreement between two independent producers is the signal, and
+    the reader can see from the names which kind they are.
+    """
+    if not finding.corroborated_by:
+        return ""
+    return f"Independently raised by: {', '.join(finding.corroborated_by)}."
+
+
+def _finding_to_patch(finding: Finding, DocumentPatch):
+    anchor = _anchor_text(finding)
+    if not anchor:
         return None
     body = finding.title
     if finding.rationale:
         body = f"{finding.title}\n\n{finding.rationale}"
-    # Cross-perspective corroboration recorded by Consolidate: surface it so
-    # the author sees the comment is not a lone opinion.
-    if len(finding.corroborated_by) >= 2:
-        body = f"{body}\n\nRaised by {len(finding.corroborated_by)} perspectives: {', '.join(finding.corroborated_by)}."
+    # Corroboration recorded upstream (panel consolidation, or checklist
+    # co-detection): surface it so the author sees the comment is not a
+    # lone opinion.
+    clause = _corroboration_clause(finding)
+    if clause:
+        body = f"{body}\n\n{clause}"
     # explanation == comment_text on purpose: the comment body is already the
     # complete title+rationale, so the patch editor must NOT re-append it as a
     # "Note:" (which produced duplicated comment text). explanation is required
@@ -272,3 +316,50 @@ def _collect_novelty_findings(result: ReviewResult) -> str:
                 lines.append(f"    {ln}")
         lines.append("")
     return "\n".join(lines)
+
+
+def _collect_unanchored_findings(result: ReviewResult) -> str:
+    """Concatenate quote-less findings into a markdown block for the report.
+
+    A Word comment needs a span to attach to. A finding with no usable quote
+    has none — it is either document-level or (checklist mode) a claim that
+    something is *missing*, which by construction cannot be quoted. Emitting
+    them here is what keeps such findings from disappearing from the .docx
+    entirely; the count is logged so a diversion is visible in a run's output
+    rather than inferred from a short comment list.
+
+    Novelty findings are excluded: ``_collect_novelty_findings`` already puts
+    them in their own report subsection.
+    """
+    unanchored = [
+        f
+        for f in (list(result.findings) + list(result.deterministic_findings))
+        if f.category != "novelty" and not _anchor_text(f)
+    ]
+    if not unanchored:
+        return ""
+
+    logger.info(
+        "[renderers.docx] %d finding(s) have no quote to anchor a comment to; "
+        "rendering them in the review report instead",
+        len(unanchored),
+    )
+
+    lines = [
+        f"## Findings without a text anchor ({len(unanchored)})",
+        "",
+        "These findings name a document-level issue or something missing, so "
+        "there is no passage to attach a comment to. They are listed here "
+        "instead.",
+        "",
+    ]
+    for f in unanchored:
+        lines.append(f"- **{f.title}** ({f.severity}, {f.confidence} confidence)")
+        if f.rationale:
+            for ln in f.rationale.splitlines():
+                lines.append(f"    {ln}")
+        clause = _corroboration_clause(f)
+        if clause:
+            lines.append(f"    {clause}")
+        lines.append("")
+    return "\n".join(lines).rstrip()

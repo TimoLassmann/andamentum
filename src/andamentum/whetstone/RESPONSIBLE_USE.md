@@ -12,6 +12,9 @@ the in-code protections that exist to make accidental misuse hard.
 - Supervisors and co-authors editing a draft with the author's
   knowledge.
 - PIs auditing a lab's pre-submission output.
+- Authors running the `andamentum-whetstone checklist <source>`
+  subcommand over their own draft as a standard pre-submission sweep,
+  or to compare one of their drafts against a later version of it.
 - Anyone running the `andamentum-whetstone proofread <source>`
   subcommand for deterministic style + readability checks on their
   own text (no LLM call — wraps `andamentum.proofread`).
@@ -63,8 +66,10 @@ andamentum-whetstone draft.md \
     --out review.md
 ```
 
-Whetstone supports local-only operation throughout the review
-pipeline. The `proofread` subcommand involves no model calls at all.
+Whetstone supports local-only operation in every mode that calls a
+model — `review`, `panel` and `checklist` all accept an `ollama:*`
+id. The `proofread` and `verify-provenance` subcommands involve no
+model calls at all.
 
 ## In-code protections — what whetstone does for you
 
@@ -74,9 +79,10 @@ rules — they're a safety net, not enforcement.
 
 ### Confidentiality-marker tripwire
 
-Before the review pipeline runs, whetstone scans the harvested text
-for phrases that suggest the document is a peer-review submission
-or editorial-office artifact: `"Manuscript ID:"`, `"MS#"`,
+Before any model is called — in `review`, `panel` and `checklist`
+mode alike — whetstone scans the harvested text for phrases that
+suggest the document is a peer-review submission or
+editorial-office artifact: `"Manuscript ID:"`, `"MS#"`,
 `"Submission ID:"`, `"Confidential — do not distribute"`,
 `"Reviewer Instructions"`, `"Editorial Office"`, `"Decision Letter"`,
 `"This manuscript is being considered"`, and similar. If any match,
@@ -86,7 +92,11 @@ To override (for false positives in your own draft):
 
 ```bash
 andamentum-whetstone draft.md --confirm-own-draft ...
+andamentum-whetstone checklist draft.md --confirm-own-draft ...
 ```
+
+In `panel` mode the mandatory `--i-am-the-author` affirmation (below)
+is what disarms the tripwire; there is no separate flag.
 
 ### Panel-mode authorship affirmation
 

@@ -219,12 +219,8 @@ def test_docx_adapter_converts_findings_with_quotes_to_comments():
     assert "[42]" in titles_in_comments
 
 
-def test_docx_adapter_skips_findings_without_quotes():
-    """A finding without quotes can't be anchored to a Word comment."""
-    from andamentum.whetstone.models import DocumentPatch
-    from andamentum.whetstone.renderers.docx import _to_document_patches
-
-    result = ReviewResult(
+def _unanchored_result() -> ReviewResult:
+    return ReviewResult(
         findings=[
             Finding(
                 title="No quote",
@@ -237,8 +233,132 @@ def test_docx_adapter_skips_findings_without_quotes():
             ),
         ],
     )
-    patches = _to_document_patches(result, DocumentPatch)
+
+
+def test_docx_adapter_emits_no_patch_for_findings_without_quotes():
+    """A finding without quotes can't be anchored to a Word comment.
+
+    It is not lost — render_docx routes it into the prepended report
+    instead (see test_docx_unanchored_findings_go_into_the_report).
+    """
+    from andamentum.whetstone.models import DocumentPatch
+    from andamentum.whetstone.renderers.docx import _to_document_patches
+
+    patches = _to_document_patches(_unanchored_result(), DocumentPatch)
     assert patches == []
+
+
+def test_docx_unanchored_findings_go_into_the_report():
+    """Quote-less findings are rendered in the report body, never dropped."""
+    from unittest import mock
+
+    from andamentum.whetstone.renderers import docx as docx_mod
+
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            _unanchored_result(),
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    summary = captured.get("review_summary", "")
+    assert "Findings without a text anchor (1)" in summary
+    assert "No quote" in summary
+    assert "floating finding" in summary
+
+
+def test_docx_anchored_findings_stay_out_of_the_unanchored_report_section():
+    """Findings with a quote become comments only — no double reporting."""
+    from unittest import mock
+
+    from andamentum.whetstone.renderers import docx as docx_mod
+
+    captured: dict = {}
+
+    def fake_finalize(**kwargs):
+        captured.update(kwargs)
+        return ("fake/output.docx", object())
+
+    with mock.patch(
+        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        fake_finalize,
+    ):
+        docx_mod.render_docx(
+            _sample_result(),
+            source_docx_path="fake.docx",
+            output_path="out.docx",
+        )
+
+    summary = captured.get("review_summary", "")
+    # The sample result has one quote-less finding ("Style: long sentences"),
+    # and two anchored ones which must NOT appear in the section.
+    assert "Findings without a text anchor (1)" in summary
+    assert "Style: long sentences" in summary
+    assert "Unsupported claim about novelty" not in summary
+
+
+def test_docx_corroboration_named_in_comment_body():
+    """A single co-detector is enough — checklist records one probe id."""
+    from andamentum.whetstone.models import DocumentPatch
+    from andamentum.whetstone.renderers.docx import _to_document_patches
+
+    result = ReviewResult(
+        findings=[
+            Finding(
+                title="Unmotivated choice",
+                severity="moderate",
+                confidence="high",
+                rationale="No reason given for the threshold.",
+                quotes=[
+                    Quote(
+                        section_id="sec_001",
+                        char_start=0,
+                        char_end=12,
+                        text="we used 0.05",
+                    )
+                ],
+                source="checklist",
+                category="unmotivated_choice",
+                corroborated_by=["unsupported_claim"],
+            ),
+        ],
+    )
+    comments = [
+        p
+        for p in _to_document_patches(result, DocumentPatch)
+        if p.patch_type == "comment"
+    ]
+    assert len(comments) == 1
+    assert "Independently raised by: unsupported_claim." in comments[0].comment_text
+
+
+def test_markdown_and_html_name_corroborating_producers():
+    result = ReviewResult(
+        findings=[
+            Finding(
+                title="Unmotivated choice",
+                severity="moderate",
+                confidence="high",
+                rationale="No reason given for the threshold.",
+                quotes=[],
+                sections_involved=["sec_001"],
+                source="checklist",
+                category="unmotivated_choice",
+                corroborated_by=["unsupported_claim"],
+            ),
+        ],
+    )
+    assert "Independently raised by: unsupported_claim." in render_markdown(result)
+    assert "Independently raised by: unsupported_claim." in render_html(result)
 
 
 def test_docx_confidence_levels_map_to_floats():

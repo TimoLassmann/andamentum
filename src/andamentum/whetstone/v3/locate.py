@@ -16,11 +16,19 @@ the smoke logs show LLMs occasionally wrap quotes in curly “…” that would
 have silently failed the gate before. The ≤2-attempt agent re-quote on a
 miss lives in the verify *nodes*, not here — this module only ever answers
 "is it there, and where?".
+
+``anchor_span`` answers that same question in the ``DocumentModel``'s own
+terms (offsets plus the section they fall in), which is the form every
+finding-producing mode needs. It is here rather than in each mode's verify
+step because "where is this text" is precisely this module's job, and having
+it in one place keeps the section-resolution rule identical across modes.
 """
 
 from __future__ import annotations
 
 from andamentum.core.text_match import find_span
+
+from .model import DocumentModel, Span
 
 
 def locate(
@@ -48,3 +56,30 @@ def is_present(
 ) -> bool:
     """True if *quote* can be located in *source* (the hallucination gate)."""
     return locate(quote, source, within=within) is not None
+
+
+def anchor_span(quote: str, model: DocumentModel) -> Span | None:
+    """Locate *quote* in the document and return its ``Span``, or ``None``.
+
+    The one step every finding-producing mode takes before it can keep a
+    finding: locate the quote, then work out which section the offset landed
+    in. It is searched against the WHOLE source rather than any one section
+    because an agent reports what it read via ``read_section`` / ``search_paper``
+    and does not reliably track which section id that came from — so the
+    section is recovered from the offset instead of trusted from the model.
+
+    ``None`` means the quote is not in the source, i.e. the finding attached to
+    it is unanchorable. What to do about that is the caller's policy (every
+    caller today drops it and logs); this function only answers where the text
+    is.
+
+    ``section_id`` falls back to ``"?"`` when the offset lands outside every
+    section — possible for text in the gap before the first heading. The span
+    is still correct and still usable; only the label is unknown.
+    """
+    location = locate(quote, model.source)
+    if location is None:
+        return None
+    start, end = location
+    section = next((s for s in model.sections if s.start <= start < s.end), None)
+    return Span(section_id=section.id if section else "?", start=start, end=end)

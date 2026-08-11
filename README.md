@@ -40,7 +40,9 @@ Two commitments shape the whole package:
 
 **Reviewing your own drafts**
 - `andamentum.whetstone` — criterion-cascade review of your own drafts
-  with track changes, panel mode, and optional novelty check
+  with track changes, panel mode, checklist mode (a fixed bank of
+  quota-driven probes → deterministic coverage table), and optional
+  novelty check
 - `andamentum.proofread` — deterministic readability + style checking (no LLM)
 - `andamentum.vision_critique` — bounded vision critique of rendered figures
   via local multimodal models
@@ -122,7 +124,7 @@ the full flag reference.
 |---|---|---|
 | `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
-| `andamentum-whetstone` | Criterion-cascade review of your own draft → markdown / HTML / .docx with track changes. Five subcommands: `review` (default), `panel` (multi-expert), `proofread` (no LLM), `apply-patches` (no LLM), `verify-provenance` (no LLM) | required for `review` + `panel` |
+| `andamentum-whetstone` | Criterion-cascade review of your own draft → markdown / HTML / .docx with track changes. Six subcommands: `review` (default), `panel` (multi-expert), `checklist` (fixed probe bank + coverage table), `proofread` (no LLM), `apply-patches` (no LLM), `verify-provenance` (no LLM) | required for `review`, `panel` + `checklist` |
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
 | `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
 | `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |

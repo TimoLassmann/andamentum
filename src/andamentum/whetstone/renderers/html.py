@@ -303,6 +303,13 @@ def _findings_atoms(
             )
             title_line = f"**{f.title}** &nbsp; {chips}{persona}"
             body = title_line + (f"\n\n{f.rationale}" if f.rationale else "")
+            # Corroboration: the names are panel perspectives or checklist
+            # probe ids depending on the pipeline, so the clause names
+            # neither — two independent producers agreeing is the signal.
+            if f.corroborated_by:
+                body += (
+                    f"\n\n_Independently raised by: {', '.join(f.corroborated_by)}._"
+                )
             out.append({"kind": "callout", "tone": tone, "content": body})
 
     return out
