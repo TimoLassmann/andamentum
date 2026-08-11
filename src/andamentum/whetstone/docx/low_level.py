@@ -45,6 +45,37 @@ logger = logging.getLogger(__name__)
 
 # Namespaces
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+# Elements that a reader sees as whitespace but that Word stores as
+# structure rather than as text. Concatenating only <w:t> silently deletes
+# them, so "Accuracy was<tab>94%" reads back as "Accuracy was94%" and any
+# quote spanning the tab can never be matched — the converted markdown kept
+# a space there, and no amount of normalisation can invent one that isn't
+# in the other string. Anything derived from run text FOR MATCHING must go
+# through :func:`visible_text`; the byte-exact ``<w:t>`` join stays the
+# basis for formatting and change tracking, whose character offsets must
+# not move.
+_WHITESPACE_ELEMENTS = frozenset(f"{{{NS['w']}}}{tag}" for tag in ("tab", "br", "cr"))
+_TEXT_ELEMENT = f"{{{NS['w']}}}t"
+
+
+def visible_text(element) -> str:
+    """The text a reader sees under *element*, in document order.
+
+    Like joining ``<w:t>`` nodes, except tabs and line breaks contribute the
+    single space they visually are. ``<w:delText>`` (tracked deletions) and
+    ``<w:instrText>`` (field codes) are different tags and stay excluded, so
+    deleted text and Zotero field plumbing are still invisible here.
+    """
+    parts: list[str] = []
+    for node in element.iter():
+        if node.tag == _TEXT_ELEMENT:
+            parts.append(node.text or "")
+        elif node.tag in _WHITESPACE_ELEMENTS:
+            parts.append(" ")
+    return "".join(parts)
+
+
 REL_NS = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
 CT_NS = {"ct": "http://schemas.openxmlformats.org/package/2006/content-types"}
 
@@ -99,6 +130,13 @@ class ParagraphData:
         full = "".join(t.text or "" for t in texts)
         self.original = full
         self.modified = full
+        # Same paragraph, but with tabs and breaks as the spaces a reader
+        # sees. Kept beside ``original`` rather than replacing it: the
+        # character offsets of ``original`` index into ``char_rprs`` and the
+        # attribution tracker, so inserting characters there would misalign
+        # run formatting on write. See :func:`visible_text` and
+        # :attr:`anchor_text`.
+        self._visible = visible_text(p_elem)
         self.comment = ""  # Legacy single comment - kept for compatibility
         self.comments = []  # New: List of (author, comment_text) tuples for separate comments
         self.change_author = None  # Legacy single author - kept for compatibility
@@ -138,6 +176,19 @@ class ParagraphData:
         self.default_rpr = next(
             (t["rPr"] for t in self.tokens if t["rPr"] is not None), None
         )
+
+    @property
+    def anchor_text(self) -> str:
+        """The text to match a finding's quote against.
+
+        The visible text (tabs and breaks included as spaces) while the
+        paragraph is untouched, and the edited text once an edit has
+        rewritten it — matching a quote against a paragraph that no longer
+        says that would anchor a comment to text the reader will not see.
+        """
+        if self.modified != self.original:
+            return self.modified
+        return self._visible
 
 
 class DocxEditor:
@@ -187,33 +238,78 @@ class DocxEditor:
         self.paragraphs = self._extract_paragraphs()
 
     def _normalize_runs(self):
-        """
-        Ensure each <w:r> contains exactly one token (whitespace or word).
+        """Split each ``<w:r>`` so it carries exactly one token.
+
+        Token-per-run is what lets tracked changes be applied at word
+        granularity while keeping each word's original formatting.
+
+        **Non-text children are preserved in place.** A run may hold more
+        than ``<w:t>`` — ``<w:tab/>``, ``<w:br/>``, drawings, footnote
+        references, field plumbing — and an earlier version of this method
+        rebuilt runs from their text alone and then removed the original,
+        deleting all of it. That silently stripped every tab from any run
+        containing more than one word: measurably, a document went in with
+        one tab and came out with none. It also made those tabs unmatchable
+        for comment anchoring, because by extraction time they no longer
+        existed.
+
+        So the run is walked in document order: text is accumulated and
+        flushed as one run per token, and any other child is emitted as its
+        own run in the position it held, carrying the same ``rPr``.
         """
         doc_path = self._doc_path
         tree = self.trees[doc_path]
         root = tree.getroot()
+        text_tag = f"{{{NS['w']}}}t"
+
         for p in root.xpath(".//w:p", namespaces=NS):
-            # collect runs to process
             for run in list(p.findall("w:r", namespaces=NS)):
-                texts = [t.text or "" for t in run.findall("w:t", namespaces=NS)]
-                full = "".join(texts)
-                tokens = TokenProcessor.tokenize(full)
-                if len(tokens) <= 1:
-                    continue
-                # get original rPr
                 rpr = run.find("w:rPr", namespaces=NS)
-                # insert new runs before original
-                for tok in tokens:
-                    new_run = etree.Element(f"{{{NS['w']}}}r")
+                children = [c for c in run if c is not rpr]
+                has_other = any(c.tag != text_tag for c in children)
+                full = "".join(c.text or "" for c in children if c.tag == text_tag)
+                if not has_other and len(TokenProcessor.tokenize(full)) <= 1:
+                    continue  # already one token and nothing to preserve
+
+                def new_run():
+                    element = etree.Element(f"{{{NS['w']}}}r")
                     if rpr is not None:
-                        new_run.append(copy.deepcopy(rpr))
-                    t_el = etree.Element(f"{{{NS['w']}}}t")
-                    t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                    t_el.text = tok
-                    new_run.append(t_el)
-                    p.insert(p.index(run), new_run)
-                # remove original run
+                        element.append(copy.deepcopy(rpr))
+                    return element
+
+                index = p.index(run)
+                pending: list[str] = []
+
+                def flush() -> None:
+                    """Emit one run per token of the accumulated text."""
+                    nonlocal index
+                    if not pending:
+                        return
+                    for token in TokenProcessor.tokenize("".join(pending)):
+                        element = new_run()
+                        t_el = etree.SubElement(element, text_tag)
+                        t_el.set(
+                            "{http://www.w3.org/XML/1998/namespace}space", "preserve"
+                        )
+                        t_el.text = token
+                        p.insert(index, element)
+                        index += 1
+                    pending.clear()
+
+                for child in children:
+                    if child.tag == text_tag:
+                        pending.append(child.text or "")
+                        continue
+                    # A tab, break, drawing, footnote reference, field char…
+                    # Flush the text before it so ordering is preserved, then
+                    # carry the element itself across untouched.
+                    flush()
+                    element = new_run()
+                    element.append(copy.deepcopy(child))
+                    p.insert(index, element)
+                    index += 1
+                flush()
+
                 p.remove(run)
         # write back document.xml
         tree.write(doc_path, xml_declaration=True, encoding="UTF-8", standalone="yes")
@@ -1507,7 +1603,12 @@ class DocxEditor:
                 continue
             runs: list[tuple[Any, str]] = []
             for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
-                text = "".join(t.text or "" for t in r.findall(f"{{{NS['w']}}}t"))
+                # visible_text, not a bare <w:t> join — this index must agree
+                # with the apply-time one (patch_editor._get_doc_index), or a
+                # target validated there misses here and the comment is
+                # dropped at the last step with a "validated but not found"
+                # warning. A tab-only run contributes its space and is kept.
+                text = visible_text(r)
                 if text:
                     runs.append((r, text))
             paragraphs_runs.append(runs)

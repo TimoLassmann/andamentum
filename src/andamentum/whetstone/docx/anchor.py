@@ -28,6 +28,7 @@ lxml dependency, so it is unit-testable in isolation.
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -53,6 +54,29 @@ def normalize_with_map(text: str) -> tuple[str, list[int]]:
     normalised space can be mapped back to original offsets.
     """
     return normalize_for_match(text)
+
+
+# Markdown the converter adds that Word never stored as text: an ordered- or
+# bulleted-list marker at the start of a line (Word generates it from the list
+# style at display time) and the pipes delimiting a table row (Word holds each
+# cell as its own paragraph).
+_LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
+
+
+def strip_converter_decoration(target: str) -> str:
+    """Drop markup the converter invented, leaving text Word actually holds.
+
+    Not a fuzzy relaxation: it removes characters that provably exist on one
+    side only, so the retry is still an exact match and still cannot land on
+    text that is not there.
+
+    Pipes become spaces rather than vanishing. A table row converts to
+    ``| Validation | 94% |`` while Word holds two separate cell paragraphs,
+    which the index joins with a space — deleting the pipe outright would
+    give ``Validation94%`` and match nothing.
+    """
+    without_marker = _LIST_MARKER.sub("", target)
+    return without_marker.replace("|", " ")
 
 
 @dataclass(frozen=True)
@@ -123,19 +147,10 @@ class DocIndex:
     def normalized(self) -> str:
         return self._norm
 
-    def find(self, target: str) -> Optional[AnchorSpan]:
-        """Locate *target* (normalised) in the document. None if absent
-        or if a match endpoint falls on a synthetic paragraph separator
-        (which would have no real run to anchor to)."""
-        norm_target, _ = normalize_with_map(target)
-        norm_target = norm_target.strip()
-        if not norm_target:
-            return None
-        pos = self._norm.find(norm_target)
-        if pos < 0:
-            return None
-        end = pos + len(norm_target) - 1
-        # Endpoints must land on real runs, not the synthetic separator.
+    def _span_at(self, pos: int, length: int) -> Optional[AnchorSpan]:
+        """Build the span for a normalised match at *pos*, or None if its
+        endpoints fall on a synthetic paragraph separator (no real run)."""
+        end = pos + length - 1
         if self._keys[pos] is None or self._keys[end] is None:
             return None
         return AnchorSpan(
@@ -144,6 +159,58 @@ class DocIndex:
             end_key=self._keys[end],
             end_char=self._chars[end],
         )
+
+    def find_all(self, target: str, *, limit: int = 8) -> list[AnchorSpan]:
+        """Every place *target* occurs, up to *limit*.
+
+        Callers need the count, not just a location: one match is an anchor,
+        several is an ambiguity that has to be resolved or refused. Bounded
+        because a caller only ever needs to know "one, or more than one",
+        and a short target can occur hundreds of times.
+        """
+        norm_target, _ = normalize_with_map(target)
+        norm_target = norm_target.strip()
+        if not norm_target:
+            return []
+        spans: list[AnchorSpan] = []
+        pos = self._norm.find(norm_target)
+        while pos >= 0 and len(spans) < limit:
+            span = self._span_at(pos, len(norm_target))
+            if span is not None:
+                spans.append(span)
+            pos = self._norm.find(norm_target, pos + 1)
+        return spans
+
+    def find(self, target: str) -> Optional[AnchorSpan]:
+        """Locate *target* in the document — only if it occurs exactly once.
+
+        Tried twice: as given, then with converter decoration removed (see
+        :func:`strip_converter_decoration`). The second pass is still an
+        exact match, just of a target with markup stripped that Word never
+        stored as text, so it cannot invent a match that is not there.
+
+        Ambiguity is a refusal, not a coin toss. This used to return the
+        FIRST match, which silently anchored to the wrong place whenever a
+        document repeated a sentence: the benchmark's ``repeats`` case
+        quotes the second occurrence and used to be annotated on the first,
+        with nothing to tell the reader the comment had moved.
+
+        A caller that can disambiguate (it knows roughly where the quote
+        sat in the source) should use :meth:`find_all` and choose; a caller
+        that cannot should accept the refusal. Anchoring nothing costs a
+        margin note. Anchoring the wrong sentence costs the reader's trust
+        in every other annotation in the document.
+        """
+        spans = self.find_all(target, limit=2)
+        if len(spans) == 1:
+            return spans[0]
+        if len(spans) > 1:
+            return None  # ambiguous as written; stripping can only widen it
+        undecorated = strip_converter_decoration(target)
+        if undecorated == target:
+            return None
+        spans = self.find_all(undecorated, limit=2)
+        return spans[0] if len(spans) == 1 else None
 
     def closest(self, target: str, window_pad: int = 30) -> tuple[float, str]:
         """Best-effort closest match, for diagnostics when ``find`` fails.
