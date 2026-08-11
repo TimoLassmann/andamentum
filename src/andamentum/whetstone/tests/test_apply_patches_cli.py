@@ -423,3 +423,47 @@ def test_explicit_author_override_works_with_warning(
         ins.get(f"{{{NS['w']}}}author") for ins in body.iter(f"{{{NS['w']}}}ins")
     }
     assert any(a == "Dr Smith" for a in ins_authors)
+
+
+# ── unplaced-annotation warning (review / checklist docx path) ──────────
+
+
+def test_unplaced_annotations_are_reported_not_swallowed(capsys) -> None:
+    """A partial .docx write must say so.
+
+    ``render_docx``'s return value used to be discarded by the review and
+    checklist paths, so a run that anchored 2 of 7 comments reported plain
+    success. Observed on a real manuscript; the quotes come from harvested
+    markdown and need not exist as contiguous runs in the Word file.
+    """
+    from types import SimpleNamespace
+
+    from rich.console import Console
+
+    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+
+    console = Console(stderr=True)
+    result = SimpleNamespace(
+        total_patches=7,
+        failed_patches=[object()] * 5,
+    )
+    _warn_on_unplaced_annotations(console, result)
+
+    err = capsys.readouterr().err
+    assert "5 of 7" in err
+    # The reader must be told the findings are not lost, only unanchored.
+    assert "listed in the review report" in err
+
+
+def test_fully_anchored_run_prints_no_annotation_warning(capsys) -> None:
+    """No noise when every annotation landed."""
+    from types import SimpleNamespace
+
+    from rich.console import Console
+
+    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+
+    _warn_on_unplaced_annotations(
+        Console(stderr=True), SimpleNamespace(total_patches=7, failed_patches=[])
+    )
+    assert capsys.readouterr().err == ""

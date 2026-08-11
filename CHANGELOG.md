@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### whetstone
+
+  - **Checklist mode** — a third review mode beside `review` and `panel`,
+    for the question "run the standard check" rather than "help me improve
+    this draft". Instead of the criterion cascade it runs a fixed bank of
+    `Probe`s (one defect class each, phrased as extraction under a quota:
+    "find the 3 claims the evidence supports least well"), and instead of
+    LLM-written prose it summarises with a computed coverage table — one
+    row per probe, in bank order, where a crashed probe reads `not run`
+    and never `0`. Findings are anchored the same way review-mode findings
+    are; `absence` probes, which have no quote to anchor, are dropped when
+    any of the search terms they ship turns up in the source. Two probes
+    landing on the same anchor are cross-linked (`corroborated_by`) and
+    both kept, never merged. Deliberately no gap loop, no consolidation
+    call and no synthesis call: the cost is one agent call per probe, and
+    predictability is the product.
+  - Fourteen default probes ship, routed by the same six document types as
+    the criterion sets (`probe_bank_for`; unknown type falls back to the
+    general bank with a warning). A caller with a house checklist passes
+    `probes=[Probe(...)]` — the machinery is fixed, the probe list is data.
+  - New API: `run_checklist(markdown, *, model)` and
+    `checklist_document(source, *, model)`, both returning the same
+    `ReviewResult` the existing renderers already consume. New CLI
+    subcommand: `andamentum-whetstone checklist INPUT --model M --out OUT`.
+  - The confidentiality-marker tripwire runs before any model call in
+    checklist mode exactly as it does in review mode; `--confirm-own-draft`
+    bypasses it. Unlike `panel`, there is no mandatory authorship
+    affirmation — checklist output is a defect table, not a document shaped
+    like a journal peer-review report.
+
 ### document_store
 
   - **Set-membership filters in `find_by_metadata`.** A filter value may now be

@@ -265,6 +265,14 @@ def _render_findings(
             if f.rationale:
                 lines.append("")
                 lines.append(f.rationale)
+            # Corroboration: the names are panel perspectives or checklist
+            # probe ids depending on the pipeline, so the clause names
+            # neither — two independent producers agreeing is the signal.
+            if f.corroborated_by:
+                lines.append("")
+                lines.append(
+                    f"_Independently raised by: {', '.join(f.corroborated_by)}._"
+                )
             lines.append("")
     return "\n".join(lines).rstrip()
 

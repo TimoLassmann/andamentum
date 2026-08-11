@@ -55,7 +55,16 @@ class Finding(BaseModel):
     rationale: str  # 2-3 sentences explaining the issue
     quotes: list[Quote] = Field(default_factory=list)
     sections_involved: list[str] = Field(default_factory=list)  # section_id list
-    source: Literal["deterministic", "investigate", "challenged"] = "deterministic"
+    # "checklist" marks a finding produced by a quota-driven probe in
+    # checklist mode (whetstone.v3.checklist) rather than by the criterion
+    # cascade. Such a finding was extracted against ONE named defect class and
+    # its quote (or, for an absence finding, the absence of its search terms)
+    # was verified deterministically against the source — so the provenance is
+    # narrower and more mechanical than an "investigate" finding, and
+    # ``category`` carries the probe id it came from.
+    source: Literal["deterministic", "investigate", "challenged", "checklist"] = (
+        "deterministic"
+    )
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
     category: str = ""  # short clustering tag picked by the lens
     priority: Literal["must_fix", "should_fix", "consider"] = "consider"

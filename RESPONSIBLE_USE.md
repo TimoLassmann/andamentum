@@ -26,9 +26,11 @@ The following uses are not supported. Some are technically possible
 with the code — possibility is not endorsement.
 
 - **Peer review of confidentially-shared manuscripts.** Whetstone is
-  not a peer-review tool. Do not run it on documents you received as
-  a journal reviewer, grant-panel member, examiner, editor, or under
-  any other confidentiality agreement. Most publishers and funders
+  not a peer-review tool, in any of its modes — `review`, `panel` and
+  `checklist` are all for drafts you wrote yourself. Do not run any of
+  them on documents you received as a journal reviewer, grant-panel
+  member, examiner, editor, or under any other confidentiality
+  agreement. Most publishers and funders
   currently prohibit sharing such documents with AI tools, including
   cloud LLMs. See [`src/andamentum/whetstone/RESPONSIBLE_USE.md`](./src/andamentum/whetstone/RESPONSIBLE_USE.md).
 - **Peer review of grant applications, fellowships, or research

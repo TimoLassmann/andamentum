@@ -51,7 +51,7 @@ class PatchDocxEditor(DocxEditor):
             from .anchor import DocIndex
 
             self._doc_index = DocIndex(
-                [[(i, p.modified)] for i, p in enumerate(self.paragraphs)]
+                [[(i, p.anchor_text)] for i, p in enumerate(self.paragraphs)]
             )
         return self._doc_index
 

@@ -28,8 +28,10 @@ trusting the README.
   Science) unless the caller passes an explicit `tdm_allowed_hosts`
   set attesting to a TDM licence.
 - **Confidentiality tripwire** (`whetstone._confidentiality`) —
-  refuses to run review when document text contains markers
-  suggestive of a peer-review submission (Manuscript ID:, MS#,
+  scans the document before any whetstone mode (`review`, `panel`,
+  `checklist`) calls a model, and refuses to run when the text
+  contains markers suggestive of a peer-review submission
+  (Manuscript ID:, MS#,
   Submission ID:, Confidential — do not distribute, Reviewer
   Instructions, Editorial Office, Decision Letter, …). Override is
   the explicit `confirm_own_draft=True` flag.
@@ -148,7 +150,7 @@ src/andamentum/
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── scribe/           — block-based document authoring → .docx
 ├── figures/          — publication-quality figure rendering
-├── whetstone/        — criterion-cascade document review over user drafts
+├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist)
 ├── proofread/        — deterministic readability + style checking
 └── vision_critique/  — bounded LLM critique of rendered figures
 ```

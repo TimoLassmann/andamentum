@@ -45,6 +45,37 @@ logger = logging.getLogger(__name__)
 
 # Namespaces
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+# Elements that a reader sees as whitespace but that Word stores as
+# structure rather than as text. Concatenating only <w:t> silently deletes
+# them, so "Accuracy was<tab>94%" reads back as "Accuracy was94%" and any
+# quote spanning the tab can never be matched — the converted markdown kept
+# a space there, and no amount of normalisation can invent one that isn't
+# in the other string. Anything derived from run text FOR MATCHING must go
+# through :func:`visible_text`; the byte-exact ``<w:t>`` join stays the
+# basis for formatting and change tracking, whose character offsets must
+# not move.
+_WHITESPACE_ELEMENTS = frozenset(f"{{{NS['w']}}}{tag}" for tag in ("tab", "br", "cr"))
+_TEXT_ELEMENT = f"{{{NS['w']}}}t"
+
+
+def visible_text(element) -> str:
+    """The text a reader sees under *element*, in document order.
+
+    Like joining ``<w:t>`` nodes, except tabs and line breaks contribute the
+    single space they visually are. ``<w:delText>`` (tracked deletions) and
+    ``<w:instrText>`` (field codes) are different tags and stay excluded, so
+    deleted text and Zotero field plumbing are still invisible here.
+    """
+    parts: list[str] = []
+    for node in element.iter():
+        if node.tag == _TEXT_ELEMENT:
+            parts.append(node.text or "")
+        elif node.tag in _WHITESPACE_ELEMENTS:
+            parts.append(" ")
+    return "".join(parts)
+
+
 REL_NS = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
 CT_NS = {"ct": "http://schemas.openxmlformats.org/package/2006/content-types"}
 
@@ -99,6 +130,13 @@ class ParagraphData:
         full = "".join(t.text or "" for t in texts)
         self.original = full
         self.modified = full
+        # Same paragraph, but with tabs and breaks as the spaces a reader
+        # sees. Kept beside ``original`` rather than replacing it: the
+        # character offsets of ``original`` index into ``char_rprs`` and the
+        # attribution tracker, so inserting characters there would misalign
+        # run formatting on write. See :func:`visible_text` and
+        # :attr:`anchor_text`.
+        self._visible = visible_text(p_elem)
         self.comment = ""  # Legacy single comment - kept for compatibility
         self.comments = []  # New: List of (author, comment_text) tuples for separate comments
         self.change_author = None  # Legacy single author - kept for compatibility
@@ -138,6 +176,19 @@ class ParagraphData:
         self.default_rpr = next(
             (t["rPr"] for t in self.tokens if t["rPr"] is not None), None
         )
+
+    @property
+    def anchor_text(self) -> str:
+        """The text to match a finding's quote against.
+
+        The visible text (tabs and breaks included as spaces) while the
+        paragraph is untouched, and the edited text once an edit has
+        rewritten it — matching a quote against a paragraph that no longer
+        says that would anchor a comment to text the reader will not see.
+        """
+        if self.modified != self.original:
+            return self.modified
+        return self._visible
 
 
 class DocxEditor:
@@ -187,33 +238,78 @@ class DocxEditor:
         self.paragraphs = self._extract_paragraphs()
 
     def _normalize_runs(self):
-        """
-        Ensure each <w:r> contains exactly one token (whitespace or word).
+        """Split each ``<w:r>`` so it carries exactly one token.
+
+        Token-per-run is what lets tracked changes be applied at word
+        granularity while keeping each word's original formatting.
+
+        **Non-text children are preserved in place.** A run may hold more
+        than ``<w:t>`` — ``<w:tab/>``, ``<w:br/>``, drawings, footnote
+        references, field plumbing — and an earlier version of this method
+        rebuilt runs from their text alone and then removed the original,
+        deleting all of it. That silently stripped every tab from any run
+        containing more than one word: measurably, a document went in with
+        one tab and came out with none. It also made those tabs unmatchable
+        for comment anchoring, because by extraction time they no longer
+        existed.
+
+        So the run is walked in document order: text is accumulated and
+        flushed as one run per token, and any other child is emitted as its
+        own run in the position it held, carrying the same ``rPr``.
         """
         doc_path = self._doc_path
         tree = self.trees[doc_path]
         root = tree.getroot()
+        text_tag = f"{{{NS['w']}}}t"
+
         for p in root.xpath(".//w:p", namespaces=NS):
-            # collect runs to process
             for run in list(p.findall("w:r", namespaces=NS)):
-                texts = [t.text or "" for t in run.findall("w:t", namespaces=NS)]
-                full = "".join(texts)
-                tokens = TokenProcessor.tokenize(full)
-                if len(tokens) <= 1:
-                    continue
-                # get original rPr
                 rpr = run.find("w:rPr", namespaces=NS)
-                # insert new runs before original
-                for tok in tokens:
-                    new_run = etree.Element(f"{{{NS['w']}}}r")
+                children = [c for c in run if c is not rpr]
+                has_other = any(c.tag != text_tag for c in children)
+                full = "".join(c.text or "" for c in children if c.tag == text_tag)
+                if not has_other and len(TokenProcessor.tokenize(full)) <= 1:
+                    continue  # already one token and nothing to preserve
+
+                def new_run():
+                    element = etree.Element(f"{{{NS['w']}}}r")
                     if rpr is not None:
-                        new_run.append(copy.deepcopy(rpr))
-                    t_el = etree.Element(f"{{{NS['w']}}}t")
-                    t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                    t_el.text = tok
-                    new_run.append(t_el)
-                    p.insert(p.index(run), new_run)
-                # remove original run
+                        element.append(copy.deepcopy(rpr))
+                    return element
+
+                index = p.index(run)
+                pending: list[str] = []
+
+                def flush() -> None:
+                    """Emit one run per token of the accumulated text."""
+                    nonlocal index
+                    if not pending:
+                        return
+                    for token in TokenProcessor.tokenize("".join(pending)):
+                        element = new_run()
+                        t_el = etree.SubElement(element, text_tag)
+                        t_el.set(
+                            "{http://www.w3.org/XML/1998/namespace}space", "preserve"
+                        )
+                        t_el.text = token
+                        p.insert(index, element)
+                        index += 1
+                    pending.clear()
+
+                for child in children:
+                    if child.tag == text_tag:
+                        pending.append(child.text or "")
+                        continue
+                    # A tab, break, drawing, footnote reference, field char…
+                    # Flush the text before it so ordering is preserved, then
+                    # carry the element itself across untouched.
+                    flush()
+                    element = new_run()
+                    element.append(copy.deepcopy(child))
+                    p.insert(index, element)
+                    index += 1
+                flush()
+
                 p.remove(run)
         # write back document.xml
         tree.write(doc_path, xml_declaration=True, encoding="UTF-8", standalone="yes")
@@ -929,12 +1025,23 @@ class DocxEditor:
           • ``1. item`` (any leading digits + dot)    → ``List Number`` style
           • ``> text``                                → ``Quote`` style
           • ``---``                                   → horizontal rule
+          • ``| a | b |`` (+ a ``| --- |`` row)       → a real Word table
           • ``**whole line**`` / ``*whole line*``     → bold / italic paragraph
           • everything else                           → regular paragraph
 
         Inline ``**bold**`` and ``*italic*`` are applied inside any
-        block (including headings and list items) via
+        block (including headings, list items, and table cells) via
         ``_parse_inline_markdown``.
+
+        Tables are the one multi-line construct, so the markdown is
+        converted block-at-a-time by
+        ``_convert_markdown_to_block_elements`` rather than line-at-a-time.
+        The resulting ``<w:tbl>`` elements are inserted into the body but
+        are deliberately NOT registered in ``self.paragraphs``: that list
+        drives the run-level diff/track-changes machinery in
+        :meth:`write` and the patch matching in ``PatchDocxEditor``, and
+        a table is neither an editable manuscript paragraph nor a valid
+        input to either (it has no direct-child ``<w:r>`` runs).
 
         After the parsed content, the method appends one final paragraph
         containing a hard page break so the original manuscript body
@@ -952,9 +1059,7 @@ class DocxEditor:
         if body is None:
             return  # No body to prepend to
 
-        elements_to_prepend = [
-            self._build_review_paragraph(line) for line in review_markdown.split("\n")
-        ]
+        elements_to_prepend = self._convert_markdown_to_block_elements(review_markdown)
         # Trailing page break separates the review report from the
         # manuscript that follows. Always added — review reports want
         # a clean visual boundary.
@@ -971,6 +1076,11 @@ class DocxEditor:
             else:
                 body.append(elem)
 
+            if elem.tag != f"{{{NS['w']}}}p":
+                # A <w:tbl> is in the body but out of the paragraph model
+                # — see this method's docstring for why.
+                continue
+
             para_data = ParagraphData(doc_path, elem)
             text = "".join(t.text or "" for t in elem.xpath(".//w:t", namespaces=NS))
             para_data.modified = text
@@ -982,6 +1092,35 @@ class DocxEditor:
         self.paragraphs = prepended_paragraphs + self.paragraphs
 
     # ── markdown → Word paragraph helpers ─────────────────────────────
+
+    def _convert_markdown_to_block_elements(self, review_markdown: str) -> list:
+        """Convert review markdown into a flat list of Word body elements.
+
+        Almost every line maps 1:1 onto a ``<w:p>`` via
+        :meth:`_build_review_paragraph`. Tables are the exception: they
+        are the only construct in the report vocabulary that spans
+        several lines, so consecutive pipe-delimited lines are buffered
+        and handed to :meth:`_build_markdown_table_elements` as a block.
+        A line-at-a-time cascade structurally cannot build a table, which
+        is why this wrapper exists rather than another branch in
+        ``_build_review_paragraph``.
+        """
+        elements: list = []
+        table_buffer: list[str] = []
+
+        for line in review_markdown.split("\n"):
+            if self._is_markdown_table_row(line):
+                table_buffer.append(line)
+                continue
+            if table_buffer:
+                elements.extend(self._build_markdown_table_elements(table_buffer))
+                table_buffer = []
+            elements.append(self._build_review_paragraph(line))
+
+        if table_buffer:
+            elements.extend(self._build_markdown_table_elements(table_buffer))
+
+        return elements
 
     def _build_review_paragraph(self, line: str):
         """Convert one markdown line into a Word `<w:p>` element.
@@ -1099,6 +1238,158 @@ class DocxEditor:
         t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
         t_elem.text = text
         return p_elem
+
+    # ── markdown table → Word table ───────────────────────────────────
+
+    @staticmethod
+    def _is_markdown_table_row(line: str) -> bool:
+        """True for a line shaped like a table row: ``| a | b |``.
+
+        Shape only. Whether a buffered run of such lines is *actually* a
+        table is decided by :meth:`_build_markdown_table_elements`, which
+        additionally requires the ``| --- |`` separator row — a lone
+        pipe-wrapped line is ordinary prose.
+        """
+        stripped = line.strip()
+        return (
+            len(stripped) >= 2 and stripped.startswith("|") and stripped.endswith("|")
+        )
+
+    @staticmethod
+    def _split_markdown_table_row(line: str) -> list[str]:
+        r"""Split ``| a | b |`` into ``["a", "b"]``.
+
+        Splits on unescaped pipes only and unescapes ``\|`` afterwards,
+        so a finding whose text contains a literal pipe does not silently
+        gain a column and make the whole table look ragged.
+        """
+        inner = line.strip()[1:-1]
+        return [
+            cell.replace("\\|", "|").strip() for cell in re.split(r"(?<!\\)\|", inner)
+        ]
+
+    @classmethod
+    def _is_markdown_table_separator_row(cls, line: str) -> bool:
+        """True for the ``| --- | :---: |`` row that follows a table header."""
+        cells = cls._split_markdown_table_row(line)
+        return bool(cells) and all(
+            re.fullmatch(r":?-+:?", cell) is not None for cell in cells
+        )
+
+    def _build_markdown_table_elements(self, rows: list[str]) -> list:
+        """Convert a buffered block of pipe-delimited lines into Word XML.
+
+        Returns a single-element list holding a ``<w:tbl>`` when the block
+        is a well-formed markdown table, and otherwise one literal
+        paragraph per line — the pre-table behaviour.
+
+        Falling back instead of raising is deliberate: this markdown is
+        prepended to the author's manuscript, and a malformed table in
+        generated report prose must not cost them the entire render. The
+        ragged case is logged at warning level so the malformation is
+        still visible rather than silently absorbed.
+        """
+        if len(rows) < 2 or not self._is_markdown_table_separator_row(rows[1]):
+            # Pipe-wrapped lines with no separator row are not a table.
+            return [self._build_review_paragraph(line) for line in rows]
+
+        header_cells = self._split_markdown_table_row(rows[0])
+        body_rows = [self._split_markdown_table_row(line) for line in rows[2:]]
+
+        ragged_count = sum(1 for cells in body_rows if len(cells) != len(header_cells))
+        if ragged_count:
+            logger.warning(
+                "[markdown-table] ragged table: header has %d column(s) but "
+                "%d of %d body row(s) differ — rendering the %d line(s) as "
+                "literal paragraphs instead of a Word table",
+                len(header_cells),
+                ragged_count,
+                len(body_rows),
+                len(rows),
+            )
+            return [self._build_review_paragraph(line) for line in rows]
+
+        return [
+            self._make_table_element(header_cells=header_cells, body_rows=body_rows)
+        ]
+
+    def _make_table_element(
+        self, *, header_cells: list[str], body_rows: list[list[str]]
+    ):
+        """Build a ``<w:tbl>`` with a bolded, page-repeating header row."""
+        tbl = etree.Element(f"{{{NS['w']}}}tbl")
+
+        tblPr = etree.SubElement(tbl, f"{{{NS['w']}}}tblPr")
+        tblW = etree.SubElement(tblPr, f"{{{NS['w']}}}tblW")
+        tblW.set(f"{{{NS['w']}}}w", "5000")  # 100% in fiftieths of a percent
+        tblW.set(f"{{{NS['w']}}}type", "pct")
+        # Borders are written out explicitly rather than referenced via
+        # <w:tblStyle w:val="TableGrid"/>: the manuscript being reviewed
+        # owns styles.xml and need not define any table style, and a
+        # dangling style reference renders as an invisible grid.
+        tblBorders = etree.SubElement(tblPr, f"{{{NS['w']}}}tblBorders")
+        for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            border = etree.SubElement(tblBorders, f"{{{NS['w']}}}{edge}")
+            border.set(f"{{{NS['w']}}}val", "single")
+            border.set(f"{{{NS['w']}}}sz", "4")
+            border.set(f"{{{NS['w']}}}space", "0")
+            border.set(f"{{{NS['w']}}}color", "auto")
+
+        # Equal columns across a 6.5in text block (9360 twips). Word
+        # re-flows these to fit content; they only need to be present and
+        # sane, since tblW above asks for the full text width.
+        column_width = 9360 // max(len(header_cells), 1)
+        tblGrid = etree.SubElement(tbl, f"{{{NS['w']}}}tblGrid")
+        for _ in header_cells:
+            gridCol = etree.SubElement(tblGrid, f"{{{NS['w']}}}gridCol")
+            gridCol.set(f"{{{NS['w']}}}w", str(column_width))
+
+        tbl.append(self._make_table_row(cells=header_cells, is_header=True))
+        for cells in body_rows:
+            tbl.append(self._make_table_row(cells=cells, is_header=False))
+
+        return tbl
+
+    def _make_table_row(self, *, cells: list[str], is_header: bool):
+        """Build one ``<w:tr>``; each cell gets the inline-markdown treatment."""
+        tr = etree.Element(f"{{{NS['w']}}}tr")
+        if is_header:
+            trPr = etree.SubElement(tr, f"{{{NS['w']}}}trPr")
+            # Repeat the header when the table spans a page break.
+            etree.SubElement(trPr, f"{{{NS['w']}}}tblHeader")
+
+        for cell in cells:
+            tc = etree.SubElement(tr, f"{{{NS['w']}}}tc")
+            tcPr = etree.SubElement(tc, f"{{{NS['w']}}}tcPr")
+            tcW = etree.SubElement(tcPr, f"{{{NS['w']}}}tcW")
+            tcW.set(f"{{{NS['w']}}}w", "0")
+            tcW.set(f"{{{NS['w']}}}type", "auto")
+            # Same builder as a normal paragraph, so **bold** / *italic*
+            # inside a cell renders as formatting, not as literal asterisks.
+            cell_paragraph = self._make_styled_paragraph(style_name=None, body=cell)
+            if is_header:
+                self._apply_bold_to_runs(cell_paragraph)
+            tc.append(cell_paragraph)
+
+        return tr
+
+    @staticmethod
+    def _apply_bold_to_runs(p_elem) -> None:
+        """Mark every run in a paragraph bold.
+
+        Applied *after* ``_parse_inline_markdown`` rather than by wrapping
+        the cell text in ``**``: pre-wrapping would collide with any
+        markers the header cell already contains. ``<w:b/>`` is inserted
+        at the front of ``<w:rPr>`` because ECMA-376 orders ``b`` before
+        the ``i`` that inline parsing may already have emitted.
+        """
+        for r_elem in p_elem.findall(f"{{{NS['w']}}}r"):
+            rPr = r_elem.find(f"{{{NS['w']}}}rPr")
+            if rPr is None:
+                rPr = etree.Element(f"{{{NS['w']}}}rPr")
+                r_elem.insert(0, rPr)
+            if rPr.find(f"{{{NS['w']}}}b") is None:
+                rPr.insert(0, etree.Element(f"{{{NS['w']}}}b"))
 
     def _build_page_break_paragraph(self):
         """A paragraph containing a hard page break — separates review from body."""
@@ -1312,7 +1603,12 @@ class DocxEditor:
                 continue
             runs: list[tuple[Any, str]] = []
             for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
-                text = "".join(t.text or "" for t in r.findall(f"{{{NS['w']}}}t"))
+                # visible_text, not a bare <w:t> join — this index must agree
+                # with the apply-time one (patch_editor._get_doc_index), or a
+                # target validated there misses here and the comment is
+                # dropped at the last step with a "validated but not found"
+                # warning. A tab-only run contributes its space and is kept.
+                text = visible_text(r)
                 if text:
                     runs.append((r, text))
             paragraphs_runs.append(runs)

@@ -248,6 +248,154 @@ The contribution is sound; novelty framing needs tightening.
     assert _last_paragraph_has_page_break(paragraphs)
 
 
+# ── Markdown tables ────────────────────────────────────────────────────
+
+
+def _prepended_tables(editor):
+    """Return the `<w:tbl>` elements that were prepended into the body."""
+    tree = editor.trees[editor._doc_path]
+    body = tree.getroot().find(".//w:body", namespaces=NS)
+    return body.findall("w:tbl", namespaces=NS)
+
+
+def _table_cell_texts(tbl_elem) -> list[list[str]]:
+    """Return the table as a list of rows, each a list of cell strings."""
+    rows = []
+    for tr in tbl_elem.findall("w:tr", namespaces=NS):
+        rows.append(
+            [
+                "".join(t.text or "" for t in tc.xpath(".//w:t", namespaces=NS))
+                for tc in tr.findall("w:tc", namespaces=NS)
+            ]
+        )
+    return rows
+
+
+COVERAGE_TABLE = """\
+| Check | Findings | Severity | Ran |
+| --- | --- | --- | --- |
+| Sample size | 2 | major | yes |
+| Blinding | 0 | none | yes |"""
+
+
+def test_markdown_table_becomes_word_table(tmp_path):
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(COVERAGE_TABLE)
+
+    tables = _prepended_tables(editor)
+    assert len(tables) == 1
+
+    rows = _table_cell_texts(tables[0])
+    # Header + 2 body rows, 4 columns each — the separator row is dropped.
+    assert len(rows) == 3
+    assert all(len(row) == 4 for row in rows)
+    assert rows[0] == ["Check", "Findings", "Severity", "Ran"]
+    assert rows[1] == ["Sample size", "2", "major", "yes"]
+    assert rows[2] == ["Blinding", "0", "none", "yes"]
+
+    # Nothing leaked into the paragraph stream as literal pipe text.
+    paragraph_text = " ".join(
+        _paragraph_text(p) for p in _prepended_body_paragraphs(editor)
+    )
+    assert "|" not in paragraph_text
+
+
+def test_markdown_table_header_row_is_bold(tmp_path):
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(COVERAGE_TABLE)
+
+    tbl = _prepended_tables(editor)[0]
+    header_tr, first_body_tr = tbl.findall("w:tr", namespaces=NS)[:2]
+
+    bold_header = [
+        t.text for t in header_tr.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)
+    ]
+    assert bold_header == ["Check", "Findings", "Severity", "Ran"]
+    # Body rows stay unbolded.
+    assert first_body_tr.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS) == []
+
+
+def test_markdown_table_cell_gets_inline_markdown(tmp_path):
+    """A `**major**` in a cell must render as formatting, not literally."""
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(
+        "| Check | Severity |\n| --- | --- |\n| Sample size | **major** |"
+    )
+
+    tbl = _prepended_tables(editor)[0]
+    body_tr = tbl.findall("w:tr", namespaces=NS)[1]
+    bold_text = [t.text for t in body_tr.xpath(".//w:r[w:rPr/w:b]/w:t", namespaces=NS)]
+    assert bold_text == ["major"]
+    assert "**" not in "".join(_table_cell_texts(tbl)[1])
+
+
+def test_ragged_table_falls_back_to_paragraphs(tmp_path, monkeypatch):
+    """A row with the wrong cell count must not break the render.
+
+    The warning is asserted by intercepting the module logger rather than
+    via ``caplog``: another test in this package attaches its own handler
+    to the root logger, and the record never reaches caplog's.
+    """
+    from andamentum.whetstone.docx import low_level
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        low_level.logger,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    ragged = "| Check | Severity |\n| --- | --- |\n| Sample size | major | extra |"
+
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(ragged)
+
+    assert _prepended_tables(editor) == []
+    paragraphs = _prepended_body_paragraphs(editor)
+    assert _paragraph_text(paragraphs[0]) == "| Check | Severity |"
+    assert _paragraph_text(paragraphs[2]) == "| Sample size | major | extra |"
+    assert any("ragged table" in message for message in warnings)
+
+
+def test_pipe_lines_without_separator_row_stay_paragraphs(tmp_path):
+    """Pipe-wrapped prose is not a table — no separator row, no `<w:tbl>`."""
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section("| not really a table |")
+
+    assert _prepended_tables(editor) == []
+    assert _paragraph_text(_prepended_body_paragraphs(editor)[0]) == (
+        "| not really a table |"
+    )
+
+
+def test_escaped_pipe_in_cell_does_not_add_a_column(tmp_path):
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(
+        "| Check | Note |\n| --- | --- |\n| Power | a \\| b |"
+    )
+
+    tbl = _prepended_tables(editor)[0]
+    assert _table_cell_texts(tbl)[1] == ["Power", "a | b"]
+
+
+def test_table_between_prose_keeps_document_order(tmp_path):
+    """Review mode's report block is unaffected: prose still surrounds
+    the table in body order, and the page break stays last."""
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section(
+        "## Coverage\n\n| Check | Ran |\n| --- | --- |\n| Blinding | yes |\n\nDone."
+    )
+
+    tree = editor.trees[editor._doc_path]
+    body = tree.getroot().find(".//w:body", namespaces=NS)
+    tags = [child.tag.split("}")[1] for child in body]
+    assert "tbl" in tags
+    # Heading and the trailing prose sit either side of the table.
+    assert tags.index("tbl") > 0
+    assert tags.index("tbl") < len(tags) - 1
+    assert _last_paragraph_has_page_break(_prepended_body_paragraphs(editor))
+
+
 def test_empty_lines_preserve_spacing(tmp_path):
     """Blank input lines remain blank paragraphs (vertical spacing)."""
     editor = _editor_for_blank_doc(tmp_path)

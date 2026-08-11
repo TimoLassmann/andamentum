@@ -9,7 +9,17 @@ findings anchored.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+Severity = Literal["minor", "moderate", "major"]
+"""How much work the author must do. Shared by every mode that emits findings.
+
+  - ``major``    — conclusions, validity, or reproducibility are at stake.
+  - ``moderate`` — a real weakness a competent reader will notice.
+  - ``minor``    — a local improvement; safe to ignore, nice to fix.
+"""
 
 
 class Span(BaseModel):

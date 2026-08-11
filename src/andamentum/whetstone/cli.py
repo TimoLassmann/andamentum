@@ -1,12 +1,16 @@
 """CLI for whetstone — ``andamentum-whetstone``.
 
-Five subcommands:
+Six subcommands:
 
     andamentum-whetstone [review] INPUT --model M --out OUT [...]
         Criterion-cascade review (the default; verb is optional).
 
     andamentum-whetstone panel INPUT --model M --out OUT [...]
         Multi-expert simulated peer review.
+
+    andamentum-whetstone checklist INPUT --model M --out OUT [...]
+        Quota-driven defect extraction against a probe bank, summarised
+        by a deterministic coverage table. Same outputs as review.
 
     andamentum-whetstone proofread INPUT [...]
         Deterministic style + readability check (no LLM).
@@ -55,11 +59,21 @@ journal reviewer, grant panel member, examiner, or editor). Most
 publishers and funders currently prohibit sharing such documents
 with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 
-Subcommands (first positional, optional — defaults to `review`):
+Which one do I want? (first positional, optional — defaults to
+`review`):
 
-  review            criterion-cascade review (the default)
-  panel             multi-expert simulated peer review
-  proofread         deterministic style + readability (no LLM)
+  review     "help me improve this draft" — criterion cascade,
+             connected findings, synthesised prose. Mid-draft.
+             (default)
+  checklist  "run the standard check" — fixed probe bank, same shape
+             every run, deterministic coverage table. Pre-submission,
+             draft-vs-draft, CI. The output centres on that table;
+             findings hang off it rather than off synthesised prose.
+  panel      simulated multi-expert peer review of your own draft
+  proofread  readability + style only, no LLM
+
+Two further verbs, neither of them a review:
+
   apply-patches     apply a pre-built JSON patch list to a .docx (no LLM)
   verify-provenance read-only: report AI-provenance markers in a .docx
 
@@ -102,6 +116,14 @@ EXAMPLES
     andamentum-whetstone panel draft.md --model openai:gpt-5.4-nano \\
         --n-experts 4 --i-am-the-author --out panel-review.md
 
+    # Checklist: one quota-driven probe per defect class + coverage table
+    andamentum-whetstone checklist draft.md --model openai:gpt-5.4-nano \\
+        --out checklist.md
+
+    # Checklist against the non-academic bank, straight into Word
+    andamentum-whetstone checklist memo.docx --model openai:gpt-5.4-nano \\
+        --document-type external_communication --out memo.reviewed.docx
+
     # Deterministic style + readability check (no LLM)
     andamentum-whetstone proofread draft.md --format json
 
@@ -125,10 +147,34 @@ EXIT CODES
 _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 
 
+# Defaults for the review-only flags that carry a non-sentinel value. They are
+# named once because _validate_args rejects these flags under `checklist` by
+# comparing the parsed value against its default — sound only while there is a
+# single definition of each. A second literal in the parser would silently turn
+# the rejection off for that flag.
+_DEFAULT_EDITOR_CRITERIA = "clarity,concision,grammar"
+_DEFAULT_NOVELTY_SEARCH_DEPTH = 2
+_DEFAULT_ROUNDS = 3
+
+# (namespace attribute, user-facing flag, value meaning "not set").
+_REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
+    ("criteria", "--criteria", None),
+    ("guidelines", "--guidelines", ""),
+    ("editor", "--editor", False),
+    ("editor_criteria", "--editor-criteria", _DEFAULT_EDITOR_CRITERIA),
+    ("check_novelty", "--check-novelty", False),
+    ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
+    ("rounds", "--rounds", _DEFAULT_ROUNDS),
+)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the (single) flat argparse parser. The subcommand front-end
     in :func:`main` rewrites verb-style invocations into flat argv before
-    parsing, so this single parser still serves all five subcommands."""
+    parsing, so this single parser serves the four subcommands that reach
+    it — review, panel, checklist and apply-patches. ``proofread`` and
+    ``verify-provenance`` short-circuit in :func:`main` and never get
+    here."""
     parser = argparse.ArgumentParser(
         prog="andamentum-whetstone",
         description=_HELP_DESCRIPTION,
@@ -158,8 +204,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
-        "ollama:gemma4:31b-nvfp4). Required for review + panel subcommands.",
+        "ollama:gemma4:31b-nvfp4). Required for the review, panel and "
+        "checklist subcommands.",
     )
+    # Shared by review and checklist: the same six types route to a criterion
+    # set in one mode and to a probe bank in the other. Deliberately ONE flag —
+    # a second `--document-type` in the checklist group would be an argparse
+    # conflict, and a differently-named twin would make the same question look
+    # like two questions.
     parser.add_argument(
         "--document-type",
         choices=(
@@ -173,9 +225,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         default="auto",
         help=(
-            "Document type → routes to one of six criterion sets. 'auto' "
+            "Document type. In review mode it routes to one of six criterion "
+            "sets; in checklist mode to the matching probe bank. 'auto' "
             "(default) runs a one-shot classifier using --model; explicit "
-            "values skip the classifier."
+            "values skip the classifier. In checklist mode 'auto' therefore "
+            "costs one extra LLM call on top of the probe calls — the CLI "
+            "still defaults to it because detection is what a command-line "
+            "run is expected to do, while the Python API "
+            "(run_checklist_v3) defaults to 'general' so its default path "
+            "stays classifier-free. Pass an explicit type to match the API."
         ),
     )
     parser.add_argument(
@@ -214,10 +272,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # --mode is internal: set by the subcommand rewriter (`panel` verb →
-    # --mode panel). Users invoke the panel subcommand instead.
+    # --mode panel, `checklist` verb → --mode checklist). Users invoke the
+    # subcommands instead.
     parser.add_argument(
         "--mode",
-        choices=("review", "panel"),
+        choices=("review", "panel", "checklist"),
         default="review",
         help=argparse.SUPPRESS,
     )
@@ -250,7 +309,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     review_grp.add_argument(
         "--editor-criteria",
-        default="clarity,concision,grammar",
+        default=_DEFAULT_EDITOR_CRITERIA,
         metavar="LIST",
         help="Comma-separated editor criteria. Default: clarity,concision,grammar.",
     )
@@ -263,7 +322,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review_grp.add_argument(
         "--novelty-search-depth",
         type=int,
-        default=2,
+        default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
         metavar="N",
         help="Search depth for --check-novelty (1=quick, 2=balanced, "
         "3=thorough). Default: 2.",
@@ -271,7 +330,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review_grp.add_argument(
         "--rounds",
         type=int,
-        default=3,
+        default=_DEFAULT_ROUNDS,
         metavar="N",
         help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
         "The loop typically exits earlier when no demands remain.",
@@ -302,6 +361,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "your own draft, not a manuscript shared with you confidentially. "
         "Set ANDAMENTUM_PANEL_OWN_AUTHOR=1 to pre-affirm.",
     )
+
+    # ── Checklist options ──────────────────────────────────────────────
+    #
+    # Checklist mode has no flags of its own. It is configured by
+    # --document-type (which bank) and --model, both declared above and both
+    # shared with review mode, and it writes the same --out formats. That is
+    # not an oversight: the mode's whole proposition is that the machinery is
+    # fixed and only the probe bank varies, so a knob here would be a knob
+    # that makes two runs less comparable. A caller who wants a different
+    # bank passes ``probes=[...]`` to ``run_checklist_v3`` in Python rather
+    # than assembling one from flags.
 
     # ── Apply-patches options ──────────────────────────────────────────
     patches_grp = parser.add_argument_group(
@@ -364,6 +434,8 @@ def _validate_args(args: argparse.Namespace) -> None:
             "  --model openai:gpt-5.4-nano\n"
             "  --model ollama:gemma4:31b-nvfp4",
         )
+    if args.mode == "checklist":
+        _reject_review_only_flags(args)
     if args.mode == "panel" and not (
         args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
     ):
@@ -397,6 +469,32 @@ def _validate_args(args: argparse.Namespace) -> None:
                 1,
                 f"Unsupported output extension {ext!r} for {out}. "
                 f"Supported: {', '.join(sorted(_SUPPORTED_OUT_EXTENSIONS))}",
+            )
+
+
+def _reject_review_only_flags(args: argparse.Namespace) -> None:
+    """Refuse the review-mode flags under ``checklist``, naming the offender.
+
+    The checklist branch of :func:`_run` passes none of these on: the mode has
+    no criterion cascade, no editor pass, no novelty check and no gap loop for
+    them to configure. Accepting one and running anyway would report success on
+    a run that did not do what was asked — a silent failure, which this project
+    treats as worse than a loud one.
+
+    Detection is by comparison against the flag's default (see
+    ``_REVIEW_ONLY_FLAGS``), so passing a flag its own default value is
+    tolerated: that run genuinely is the run the user asked for.
+    """
+    for dest, flag, unset_value in _REVIEW_ONLY_FLAGS:
+        if getattr(args, dest) != unset_value:
+            _die(
+                1,
+                f"{flag} is a review-mode flag and has no effect under "
+                "`checklist`, so the run is refused rather than run without "
+                "it. Checklist mode takes only --model, --document-type and "
+                "--out: the probe bank is fixed, which is what keeps two runs "
+                "comparable. Drop the flag, or use "
+                "`andamentum-whetstone review` instead.",
             )
 
 
@@ -482,6 +580,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     """Execute the review and write all requested outputs."""
     from .renderers import render_docx, render_html, render_markdown
     from .v3 import Criterion, review_document_v3
+    from .v3.checklist import checklist_document_v3
     from .v3.panel import run_panel_v3
 
     editor_criteria = tuple(
@@ -524,6 +623,20 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 # --confirm-own-draft. Library callers of run_panel_v3 that
                 # omit confirm_own_draft still get the marker scan.
                 confirm_own_draft=True,
+            )
+        elif args.mode == "checklist":
+            # Checklist mode runs its own graph (one quota-driven probe per
+            # defect class + a deterministic coverage table); the
+            # criterion-cascade kwargs do not apply. The confidentiality
+            # tripwire does — --confirm-own-draft is threaded through exactly
+            # as it is for review, and unlike panel there is no mandatory
+            # authorship affirmation, because checklist output is a defect
+            # table rather than a simulated peer-review report.
+            result = await checklist_document_v3(
+                args.input,
+                model=args.model,
+                document_type=args.document_type,
+                confirm_own_draft=args.confirm_own_draft,
             )
         else:
             # Default review path — Phase C unified criteria/guidelines
@@ -598,13 +711,14 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 )
             elif ext == ".docx":
                 assert baseline_docx is not None  # validated above
-                render_docx(
+                patch_result = render_docx(
                     result,
                     source_docx_path=baseline_docx,
                     output_path=out,
                     model=model_id,
                     visible_watermark=args.visible_watermark,
                 )
+                _warn_on_unplaced_annotations(console, patch_result)
             written.append(out)
             logger.info("[output] wrote %s", out)
     finally:
@@ -641,6 +755,8 @@ def _log_run_config(
         table.add_row("n_experts:", str(args.n_experts))
         if args.panel_disciplines:
             table.add_row("disciplines:", args.panel_disciplines)
+    elif args.mode == "checklist":
+        table.add_row("pipeline:", "checklist (probe bank + coverage table)")
     else:
         table.add_row("pipeline:", "review (criterion cascade + gap loop)")
         if args.criteria:
@@ -754,6 +870,7 @@ def _markdown_to_baseline_docx(markdown: str) -> Path:
 #   review         — default; the bare positional invocation also routes here
 #                    (`andamentum-whetstone draft.md --model X --out r.md`)
 #   panel          — equivalent to `--mode panel`
+#   checklist      — equivalent to `--mode checklist`
 #   proofread      — shells out to `andamentum.proofread` (no whetstone review
 #                    pipeline at all; the two are intentionally disjoint)
 #   apply-patches  — equivalent to `--apply-patches PATH`; INPUT and PATCHES
@@ -764,7 +881,7 @@ def _markdown_to_baseline_docx(markdown: str) -> Path:
 # Phase I deletes v2.
 
 _KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
-    {"review", "panel", "proofread", "apply-patches"}
+    {"review", "panel", "checklist", "proofread", "apply-patches"}
 )
 # ``proofread`` and ``verify-provenance`` short-circuit the main flat-argparse
 # pipeline entirely (see ``main()`` below); they have their own argv handlers
@@ -788,6 +905,14 @@ def _rewrite_subcommand(argv: list[str]) -> list[str]:
         if not rest or rest[0].startswith("-"):
             return ["--mode", "panel", *rest]
         return [rest[0], "--mode", "panel", *rest[1:]]
+    if head == "checklist":
+        # `checklist draft.md ...`  →  `draft.md --mode checklist ...`
+        # Same shape as the panel branch, including the leading-flag case
+        # (`checklist --model X draft.md`), where there is no positional to
+        # keep in front and argparse sorts the order out itself.
+        if not rest or rest[0].startswith("-"):
+            return ["--mode", "checklist", *rest]
+        return [rest[0], "--mode", "checklist", *rest[1:]]
     if head == "apply-patches":
         # `apply-patches draft.docx --patches p.json --out r.docx`  →
         # `draft.docx --apply-patches p.json --out r.docx`
@@ -911,8 +1036,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     Accepts either the bare-positional form (``andamentum-whetstone draft.md
     --model X --out r.md``) or the subcommand form (``andamentum-whetstone
-    review draft.md ...`` / ``... panel ...`` / ``... proofread draft.md`` /
-    ``... apply-patches draft.docx --patches p.json --out r.docx``)."""
+    review draft.md ...`` / ``... panel ...`` / ``... checklist ...`` /
+    ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
+    p.json --out r.docx`` / ``... verify-provenance reviewed.docx``)."""
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "proofread":
         # proofread short-circuits the whetstone pipeline entirely
@@ -1006,6 +1132,31 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
         _die(3, f"patch application failed: {exc}")
 
     _print_apply_patches_summary(console, patch_result, output_path)
+
+
+def _warn_on_unplaced_annotations(console: Console, result) -> None:
+    """Say so when a .docx annotation could not be placed in the text.
+
+    ``render_docx`` returns the patch-application result and this used to be
+    discarded, which made a partial write indistinguishable from a clean one:
+    on a real manuscript, 7 findings produced 2 comments and the run reported
+    success. An annotation misses when its quote — taken from the harvested
+    markdown — has no contiguous match in the Word runs, which happens for text
+    Docling reconstructed from tables, captions or fields.
+
+    Every finding is still in the prepended report regardless (see
+    ``renderers.docx._findings_as_issues``), so this is a placement warning,
+    not data loss. It is a warning rather than a failure for the same reason:
+    nothing was lost, but the margin is thinner than the report implies.
+    """
+    if result is None or not result.failed_patches:
+        return
+    console.print(
+        f"[yellow]note:[/yellow] {len(result.failed_patches)} of "
+        f"{result.total_patches} annotation(s) could not be anchored in the "
+        f"text — their quotes have no exact match in the .docx. All findings "
+        f"are still listed in the review report at the top of the document."
+    )
 
 
 def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:

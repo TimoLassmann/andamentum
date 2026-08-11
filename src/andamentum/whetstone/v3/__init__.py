@@ -8,8 +8,20 @@ verified *document model* (claims as located verbatim spans), instead of
 section-by-section lens reads. Only extraction is per-section; everything else
 reasons over the model. Every LLM-emitted span is string-match-verified against
 the source (the `locate` primitive), so hallucinations cannot survive.
+
+Three graphs live here, one per mode: `graph.py` (the criterion cascade —
+`review_document_v3` / `run_review_v3`), `panel/` (N simulated expert reviews +
+a synthesis — `run_panel_v3`) and `checklist/` (a fixed bank of quota-driven
+`Probe`s + a deterministic coverage table — `checklist_document_v3` /
+`run_checklist_v3`). All three open with the same deterministic `sectionize`
+pass and end in the same `schemas.ReviewResult`, so the three renderers consume
+any of them unchanged; review and checklist share the rest of the substrate too
+(`extract.build_claims` → `digest.build_document_model`), while panel reasons
+from the section list alone. What differs is everything built on top of that,
+which is why each mode is a separate graph rather than a flag on one.
 """
 
+from .checklist import Probe, checklist_document_v3, probe_bank_for, run_checklist_v3
 from .criteria import Criterion, criterion_set_for
 from .extract_criteria import extract_criteria_from_guidelines
 from .graph import review_document_v3, run_review_v3
@@ -20,4 +32,8 @@ __all__ = [
     "extract_criteria_from_guidelines",
     "review_document_v3",
     "run_review_v3",
+    "Probe",
+    "probe_bank_for",
+    "checklist_document_v3",
+    "run_checklist_v3",
 ]

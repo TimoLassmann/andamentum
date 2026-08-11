@@ -17,7 +17,7 @@ and drops any that can't be anchored (the hallucination gate).
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Protocol, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -28,13 +28,20 @@ from andamentum.core.models import resolve_model
 from andamentum.core.text_match import find_span
 
 from .criteria import Criterion
-from .locate import locate
-from .model import DocumentModel, Span
+from .locate import anchor_span
+from .model import DocumentModel, Severity, Span
+from .prompt_blocks import (
+    ACTIONABILITY_BAR,
+    SECTION_IDS_NOTE,
+    SEVERITY_RUBRIC,
+    TOOL_DISCIPLINE,
+    TOOLS_AVAILABLE,
+    claims_block,
+    sections_block,
+)
 from .tools import DocDeps, read_section, search_paper
 
 logger = logging.getLogger("andamentum.whetstone.v3")
-
-Severity = Literal["minor", "moderate", "major"]
 
 # Per-criterion budgets. The cascade runs five criteria sequentially, so
 # the per-call budget needs to be tight enough that one stalled stage
@@ -68,7 +75,11 @@ class _CriterionFindings(BaseModel):
     findings: list[_RawFinding] = Field(default_factory=list)
 
 
-_PROMPT = """You are reviewing a document on ONE criterion. Work through each \
+# The blocks interpolated below are shared with checklist mode and live in
+# ``prompt_blocks``; the prose around them is review-only. The cascade
+# paragraph in particular must NOT move there — probes are independent by
+# design and are never told what another probe found.
+_PROMPT = f"""You are reviewing a document on ONE criterion. Work through each \
 of the criterion's questions and surface every real problem you find. Don't \
 pad with trivia, but also don't omit a substantive issue because you've \
 already flagged a few.
@@ -89,49 +100,20 @@ For each problem: a short issue description, a VERBATIM quote from the document 
 it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
 (minor / moderate / major).
 
-Every finding must be author-actionable: the issue description should name what \
-the author would change, add, or verify to resolve it. If you cannot say what a \
-fix would look like — even abstractly ("add a power-analysis sentence", \
-"reconcile the n=50 vs n=48 mismatch", "drop the 'first-ever' claim or cite a \
-prior-art search") — the finding is too vague to keep; either sharpen it or \
-omit it.
+{ACTIONABILITY_BAR}
 
-Severity rubric — pick the level by what the author would have to do:
-  - major: the paper's conclusions, validity, or reproducibility are at stake. \
-Ignoring this would leave the work wrong, unsupported, or unusable. Author \
-must address before the paper is sound.
-  - moderate: a real weakness that a competent reader will notice and that \
-weakens the paper, but conclusions survive if it stays. Author should fix to \
-strengthen the work.
-  - minor: a local improvement — wording, typo, formatting, a single sentence \
-that could be sharper. Safe to ignore; nice to fix.
+{SEVERITY_RUBRIC}
 
-When uncertain between two severity tiers, pick the lower one.
-
-You have two tools available to investigate the source beyond the digest:
-  - read_section(section_id) — read a section in full when the gist isn't \
-enough.
-  - search_paper(query) — find where a term appears in the paper; pass \
-regex=True for patterns like (limitation|caveat|weakness) or Theorem [0-9]+.
+{TOOLS_AVAILABLE}
 
 Use them when:
   - the digest doesn't tell you enough to answer a criterion question;
   - prior-stage findings draw attention to a section worth reading in full;
   - you're considering flagging an absence — verify with a search first.
 
-Tool-use discipline:
-  - Don't re-read a section you've already loaded in this conversation. \
-Refer back to the earlier tool result; the section text is already in your \
-context.
-  - When a search returns zero hits, treat the absence as the answer. Do not \
-rephrase the same negative-result query with adjacent terms — if the concept \
-isn't there, broaden ONCE if needed (e.g. add a synonym) and then accept the \
-finding.
-  - When a search returns hits but you want more context around them, call \
-read_section on the matching section rather than re-searching with a longer \
-query that pulls in the surrounding text.
+{TOOL_DISCIPLINE}
 
-Section ids are in the SECTIONS block (e.g. 4.2, abstract, sec_004)."""
+{SECTION_IDS_NOTE}"""
 
 
 def _project(criterion: Criterion, model: DocumentModel) -> str:
@@ -140,51 +122,18 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
     The SECTIONS block is always emitted (regardless of the criterion's
     declared facets) because the agent needs section ids to invoke
     ``read_section``. Claims and citations remain facet-gated.
+
+    The two block builders are shared with checklist mode; the facet gating is
+    not, because a probe has no facet vocabulary (see
+    ``checklist.run_probes._project``).
     """
-    parts: list[str] = []
+    parts: list[str] = [sections_block(model)]
 
-    # SECTIONS — always emitted. Doubles as the navigation aid for
-    # `read_section` (gives the agent every valid section_id) and as
-    # the document outline (size hints for where the substance lives,
-    # gists for semantic flavour).
-    gist_by_id = {g.section_id: g.gist for g in model.gists}
-    if model.sections:
-        section_lines = []
-        for s in model.sections:
-            gist = gist_by_id.get(s.id, "").strip()
-            gist_part = f" — {gist}" if gist else ""
-            section_lines.append(
-                f"  - [{s.id}] {s.title} ({len(s.text):,} chars){gist_part}"
-            )
-        parts.append(
-            "SECTIONS (id | title | size | gist):\n" + "\n".join(section_lines)
-        )
-    else:
-        parts.append("SECTIONS: (none)")
-
-    # CLAIMS BY SECTION — facet-gated. Groups verbatim claims under
-    # their origin section_id so the agent sees "what each section
-    # asserts" without having to read every section.
     if "claims" in criterion.facets:
-        claims_by_section: dict[str, list[str]] = {}
-        for c in model.claims:
-            claims_by_section.setdefault(c.span.section_id, []).append(c.quote)
-        if claims_by_section:
-            lines: list[str] = []
-            # Walk sections in their declared order so the output is stable
-            # and matches the SECTIONS block above.
-            for s in model.sections:
-                section_claims = claims_by_section.get(s.id)
-                if not section_claims:
-                    continue
-                lines.append(f"  [{s.id}]:")
-                for quote in section_claims:
-                    lines.append(f"    - {quote!r}")
-            parts.append("CLAIMS BY SECTION:\n" + "\n".join(lines))
-        else:
-            parts.append("CLAIMS BY SECTION: (none)")
+        parts.append(claims_block(model))
 
-    # CITATIONS PRESENT — facet-gated, unchanged from earlier.
+    # CITATIONS PRESENT — facet-gated. Not shared: checklist mode omits it,
+    # and it is two lines rather than a block builder's worth of logic.
     if "citations" in criterion.facets:
         markers = sorted({c.marker for c in model.citations})
         parts.append(f"CITATIONS PRESENT: {', '.join(markers) or '(none)'}")
@@ -362,7 +311,7 @@ async def review_criterion(
     )
     result = await agent.run(
         prompt,
-        deps=DocDeps(document_model=model),
+        deps=DocDeps(document_model=model, label=criterion.name),
         usage_limits=UsageLimits(
             request_limit=_REQUEST_LIMIT,
             tool_calls_limit=_TOOL_CALLS_LIMIT,
@@ -407,7 +356,11 @@ async def run_criteria(
     """
     accumulated: list[Finding] = []
     failed: list[str] = []
-    for c in criteria:
+    for index, c in enumerate(criteria, start=1):
+        # Logged BEFORE the call, not just after: a criterion that stalls or
+        # loops is exactly when someone reads the log, and until it returns
+        # the only output is unattributed tool lines.
+        logger.info("[v3.review] criterion %d/%d %s", index, len(criteria), c.name)
         try:
             stage = await review_criterion(
                 c,
@@ -456,18 +409,16 @@ def verify_findings(findings: list[Finding], model: DocumentModel) -> list[Findi
 
     Deterministic. A finding's quote is matched against the whole source (the
     reviewer doesn't reliably know section ids); the section is resolved from
-    the located offset."""
+    the located offset. Both of those steps are ``locate.anchor_span`` — this
+    function is the drop policy, and nothing more."""
     kept: list[Finding] = []
     for f in findings:
-        loc = locate(f.quote, model.source)
-        if loc is None:
+        span = anchor_span(f.quote, model)
+        if span is None:
             logger.info(
                 "[v3.verify_findings] dropped (not in source): %r", f.quote[:60]
             )
             continue
-        section = next((s for s in model.sections if s.start <= loc[0] < s.end), None)
-        f.span = Span(
-            section_id=section.id if section else "?", start=loc[0], end=loc[1]
-        )
+        f.span = span
         kept.append(f)
     return kept

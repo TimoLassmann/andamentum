@@ -22,11 +22,12 @@ from andamentum.whetstone.cli import (
 
 
 def test_known_subcommand_set_matches_documented_verbs() -> None:
-    """The recognised subcommands are exactly review / panel / proofread /
-    apply-patches. Adding one (or removing one) is a UX change and must
-    be deliberate."""
+    """The recognised subcommands are exactly review / panel / checklist /
+    proofread / apply-patches. Adding one (or removing one) is a UX change
+    and must be deliberate — which is why this pin is updated by hand when
+    a verb lands, never loosened."""
     assert _KNOWN_SUBCOMMANDS == frozenset(
-        {"review", "panel", "proofread", "apply-patches"}
+        {"review", "panel", "checklist", "proofread", "apply-patches"}
     )
 
 
