@@ -8,6 +8,7 @@ real corpus papers — just shape and behaviour.
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import cast
 
@@ -68,7 +69,8 @@ def _ctx(model: DocumentModel) -> RunContext[DocDeps]:
     other plumbing we don't need for these unit tests. Cast at the
     boundary so the call sites stay clean and pyright-quiet."""
     return cast(
-        RunContext[DocDeps], SimpleNamespace(deps=DocDeps(document_model=model))
+        RunContext[DocDeps],
+        SimpleNamespace(deps=DocDeps(document_model=model, label="test_probe")),
     )
 
 
@@ -272,3 +274,42 @@ def test_section_id_at_finds_containing_section() -> None:
     assert _section_id_at(11, sections) == "?"
     # Position past the last section
     assert _section_id_at(30, sections) == "?"
+
+
+# ── caller attribution in the log ────────────────────────────────────
+
+
+async def test_tool_log_lines_name_the_caller() -> None:
+    """Every tool line must say who issued it.
+
+    These tools are shared by nine checklist probes and five review criteria,
+    all of which call them with no other output in between. An unattributed
+    line is unreadable exactly when the log is being read — something is slow
+    or looping and the question is which check is doing it.
+
+    Uses a directly-attached handler rather than ``caplog``: ``cli.py`` sets
+    ``andamentum.whetstone.propagate = False``, so once a CLI test has run in
+    the same session nothing reaches caplog's root handler and this passes
+    alone but fails in the full suite.
+    """
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _ListHandler(level=logging.INFO)
+    logger = logging.getLogger("andamentum.whetstone.v3")
+    prior_level = logger.level
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    try:
+        await search_paper(_ctx(_model()), "Adam")
+        await read_section(_ctx(_model()), "abstract")
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prior_level)
+
+    lines = [r.getMessage() for r in records]
+    assert lines, "tools logged nothing at INFO"
+    assert all("test_probe: " in line for line in lines), lines

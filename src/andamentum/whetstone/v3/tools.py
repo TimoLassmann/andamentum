@@ -68,6 +68,15 @@ class DocDeps:
     Layer 2 will extend this with novelty-search counters and a
     deep_research handle; layer 3 may add a code-interpreter handle.
 
+    ``label`` names whoever is making the call — a criterion name in
+    review mode, a probe id in checklist mode — and appears in every
+    tool log line. Without it a verbose run is a flat list of
+    ``search_paper`` calls with no way to tell which of nine probes (or
+    five criteria) issued them, which is exactly when you are reading
+    the log: something is slow or looping and you need to know who.
+    Required rather than defaulted, so a new call site cannot quietly
+    lose attribution.
+
     ``seen_sections`` is a per-DocDeps cache of which section ids
     ``read_section`` has already returned in full. Each criterion's
     ``review_criterion`` call builds a fresh ``DocDeps``, so the cache
@@ -79,7 +88,13 @@ class DocDeps:
     """
 
     document_model: DocumentModel
+    label: str
     seen_sections: set[str] = field(default_factory=set)
+
+
+def _who(ctx: RunContext[DocDeps]) -> str:
+    """``"probe_id: "`` prefix for tool log lines, or ``""`` if unlabelled."""
+    return f"{ctx.deps.label}: " if ctx.deps.label else ""
 
 
 async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
@@ -97,7 +112,9 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
     """
     section = ctx.deps.document_model.section_by_id(section_id)
     if section is None:
-        logger.info("[v3.tool] read_section(%r) → no such section", section_id)
+        logger.info(
+            "[v3.tool] %sread_section(%r) → no such section", _who(ctx), section_id
+        )
         raise ModelRetry(
             f"no section with id {section_id!r}; valid ids are listed in the "
             f"SECTIONS block of your prompt. Re-issue read_section with one "
@@ -105,7 +122,9 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
         )
     if section_id in ctx.deps.seen_sections:
         logger.info(
-            "[v3.tool] read_section(%r) → already loaded earlier (returning reminder)",
+            "[v3.tool] %sread_section(%r) → already loaded earlier "
+            "(returning reminder)",
+            _who(ctx),
             section_id,
         )
         return (
@@ -116,7 +135,12 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
             f"the rest of the criterion.)"
         )
     ctx.deps.seen_sections.add(section_id)
-    logger.info("[v3.tool] read_section(%r) → %d chars", section_id, len(section.text))
+    logger.info(
+        "[v3.tool] %sread_section(%r) → %d chars",
+        _who(ctx),
+        section_id,
+        len(section.text),
+    )
     return section.text
 
 
@@ -156,7 +180,9 @@ async def search_paper(
     mode = "regex" if regex else "substring"
     if regex:
         if len(query) > _MAX_REGEX_LENGTH:
-            logger.info("[v3.tool] search_paper(%r, regex) → too long", query[:40])
+            logger.info(
+                "[v3.tool] %ssearch_paper(%r, regex) → too long", _who(ctx), query[:40]
+            )
             raise ModelRetry(
                 f"regex pattern too long ({len(query)} chars; max "
                 f"{_MAX_REGEX_LENGTH}). Use a simpler pattern, or call "
@@ -166,7 +192,10 @@ async def search_paper(
             pattern = re.compile(query, re.IGNORECASE)
         except re.error as e:
             logger.info(
-                "[v3.tool] search_paper(%r, regex) → compile error: %s", query, e
+                "[v3.tool] %ssearch_paper(%r, regex) → compile error: %s",
+                _who(ctx),
+                query,
+                e,
             )
             raise ModelRetry(
                 f"invalid regex {query!r}: {e}. Try a simpler pattern, or "
@@ -178,7 +207,9 @@ async def search_paper(
                 timeout=_REGEX_TIMEOUT_S,
             )
         except asyncio.TimeoutError:
-            logger.info("[v3.tool] search_paper(%r, regex) → timed out", query)
+            logger.info(
+                "[v3.tool] %ssearch_paper(%r, regex) → timed out", _who(ctx), query
+            )
             raise ModelRetry(
                 f"regex {query!r} timed out (>{_REGEX_TIMEOUT_S}s) — "
                 f"likely catastrophic backtracking. Use a simpler pattern, "
@@ -189,7 +220,11 @@ async def search_paper(
 
     matches = [_build_match(start, end, source, sections) for start, end in positions]
     logger.info(
-        "[v3.tool] search_paper(%r, %s) → %d match(es)", query, mode, len(matches)
+        "[v3.tool] %ssearch_paper(%r, %s) → %d match(es)",
+        _who(ctx),
+        query,
+        mode,
+        len(matches),
     )
     return matches
 

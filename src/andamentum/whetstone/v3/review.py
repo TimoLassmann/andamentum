@@ -311,7 +311,7 @@ async def review_criterion(
     )
     result = await agent.run(
         prompt,
-        deps=DocDeps(document_model=model),
+        deps=DocDeps(document_model=model, label=criterion.name),
         usage_limits=UsageLimits(
             request_limit=_REQUEST_LIMIT,
             tool_calls_limit=_TOOL_CALLS_LIMIT,
@@ -356,7 +356,11 @@ async def run_criteria(
     """
     accumulated: list[Finding] = []
     failed: list[str] = []
-    for c in criteria:
+    for index, c in enumerate(criteria, start=1):
+        # Logged BEFORE the call, not just after: a criterion that stalls or
+        # loops is exactly when someone reads the log, and until it returns
+        # the only output is unattributed tool lines.
+        logger.info("[v3.review] criterion %d/%d %s", index, len(criteria), c.name)
         try:
             stage = await review_criterion(
                 c,

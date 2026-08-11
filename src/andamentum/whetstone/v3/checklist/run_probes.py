@@ -359,6 +359,41 @@ def _finalise(
     return findings
 
 
+def _first_sentence(text: str, *, limit: int = 150) -> str:
+    """The opening sentence of a probe instruction, for the log line.
+
+    Enough to recognise which check is running without reprinting the whole
+    instruction, which runs to a paragraph and would bury the tool lines it is
+    meant to give context to.
+    """
+    flat = " ".join(text.split())
+    cut = flat.find(". ")
+    sentence = flat[: cut + 1] if 0 < cut <= limit else flat
+    if len(sentence) > limit:
+        sentence = sentence[: limit - 1].rstrip() + "…"
+    return sentence
+
+
+def _log_probe_start(probe: Probe, *, index: int, total: int) -> None:
+    """Announce a probe BEFORE it runs, naming what it is about to look for.
+
+    Logged up front rather than only on completion. A probe holding a local
+    model for minutes emits nothing but tool lines while it works, and the
+    reader needs to know whose they are — which is precisely when the log is
+    being read at all.
+    """
+    quota = f"quota {probe.quota}" if probe.quota is not None else "no quota"
+    logger.info(
+        "[v3.checklist] probe %d/%d %s (%s, %s)\n    %s",
+        index,
+        total,
+        probe.id,
+        probe.shape,
+        quota,
+        _first_sentence(probe.instruction),
+    )
+
+
 # ── public surface ──────────────────────────────────────────────────────────
 
 
@@ -372,7 +407,7 @@ async def run_probe(
     schema is exactly the thing this design rejects.
     """
     prompt = _build_prompt(probe, model)
-    deps = DocDeps(document_model=model)
+    deps = DocDeps(document_model=model, label=probe.id)
     limits = UsageLimits(
         request_limit=_REQUEST_LIMIT,
         tool_calls_limit=_TOOL_CALLS_LIMIT,
@@ -427,7 +462,8 @@ async def run_probes(
     """
     collected: list[ProbeFinding] = []
     failed: list[str] = []
-    for probe in probes:
+    for index, probe in enumerate(probes, start=1):
+        _log_probe_start(probe, index=index, total=len(probes))
         # Strictly sequential, for two independent reasons.
         #
         # 1. INDEPENDENCE (the design): nothing from an earlier probe is passed

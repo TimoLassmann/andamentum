@@ -108,6 +108,21 @@ class ChecklistState:
     unverifiable_counts: dict[str, int] = field(default_factory=dict)
 
 
+def _stage(name: str, detail: str, *args: object) -> None:
+    """Mark a completed pipeline stage in the log, with what it produced.
+
+    A checklist run over a real manuscript on a local model spends minutes per
+    probe, and without these the log jumps from the document-type line straight
+    to tool calls with nothing saying which stage is underway. The count is the
+    payload: "0 verified claim(s)" explains a thin run that would otherwise
+    look like a bad bank.
+
+    ``VerifyProbes`` deliberately has no call here — :mod:`.verify` emits its
+    own kept/dropped summary, and two lines for one stage is worse than one.
+    """
+    logger.info("[v3.checklist] stage: %s — " + detail, name, *args)
+
+
 # ── Node 1-3: the shared deterministic/extraction substrate ────────────────
 
 
@@ -117,6 +132,7 @@ class Sectionize(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         self, ctx: GraphRunContext[ChecklistState, ChecklistDeps]
     ) -> "ExtractClaims":
         ctx.state.sections = sectionize(ctx.state.source)
+        _stage("sectionize", "%d section(s)", len(ctx.state.sections))
         return ExtractClaims()
 
 
@@ -128,6 +144,7 @@ class ExtractClaims(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         ctx.state.claims = await build_claims(
             ctx.state.sections, ctx.state.source, model=ctx.deps.agent_model
         )
+        _stage("extract claims", "%d verified claim(s)", len(ctx.state.claims))
         return BuildModel()
 
 
@@ -139,6 +156,7 @@ class BuildModel(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         ctx.state.document_model = build_document_model(
             ctx.state.source, ctx.state.sections, ctx.state.claims
         )
+        _stage("build document model", "%d probe(s) queued", len(ctx.deps.probes))
         return RunProbes()
 
 
@@ -183,10 +201,10 @@ class RunProbes(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
 class VerifyProbes(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
     """Anchor presence findings, refute absence findings, drop the failures.
 
-    Runs BEFORE ``Corroborate`` deliberately: corroboration is a claim that two
-    probes agree about something real, so it must be computed over surviving
-    findings only. Cross-linking first would let two hallucinated quotes
-    corroborate each other and then have one of them dropped, leaving the
+    Runs BEFORE ``Corroborate`` deliberately: cross-linking is a claim that two
+    checks landed on the same real passage, so it must be computed over
+    surviving findings only. Cross-linking first would let two hallucinated
+    quotes link to each other and then have one of them dropped, leaving the
     survivor carrying a citation to a finding that no longer exists.
 
     What was dropped is kept alongside what survived (``unverifiable_counts``),
@@ -213,6 +231,7 @@ class Corroborate(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         self, ctx: GraphRunContext[ChecklistState, ChecklistDeps]
     ) -> "BuildResult":
         ctx.state.findings = corroborate(ctx.state.findings)
+        _stage("corroborate", "%d finding(s)", len(ctx.state.findings))
         return BuildResult()
 
 
