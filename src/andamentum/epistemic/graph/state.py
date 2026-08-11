@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
+from ..entities.verdict import EpistemicVerdict
 from ..thresholds import IBE_AGREEMENT_K_DEFAULT
 from .quarantine import OperationLogEntry, QuarantineRecord
 
@@ -111,6 +112,14 @@ class EpistemicGraphState:
     # in the wild on smoke_v12).
     scrutiny_resolve_cycles: dict[str, int] = field(default_factory=dict)
 
+    # Set by CheckSynthesisDemand's aggregate-judgment-doubt gate once it has
+    # bought this objective its one extra round of inquiry. THIS IS THE BOUND
+    # THAT MAKES THE DOUBT LOOP-BACK TERMINATE: doubt is a suspicion-raiser,
+    # so it buys exactly one more round, never a budget. The loop it triggers
+    # is the existing Scrutinize ↔ ResolveUncertainties one, already capped
+    # per-claim by SCRUTINY_RESOLVE_CYCLE_CAP.
+    judgment_doubt_escalated: bool = False
+
     # Claims needing TMS revalidation after evidence changes.
     # Populated by graph nodes, consumed by _run_tms_sweep.
     claims_needing_tms: set[str] = field(default_factory=set)
@@ -122,6 +131,20 @@ class EpistemicGraphState:
     # suspended judgment. None on every other path — Synthesize doesn't
     # read it.
     synthesis_insufficient_reason: str | None = None
+
+    # ── The run's decision record ────────────────────────────────
+    # The single typed verdict, rebuilt from the live DB by
+    # ``CombineClaimVerdicts`` (its SOLE writer) on every pass. Read by
+    # ``CheckCompletion`` (routing + all four insufficient-reason
+    # strings), ``CheckSynthesisDemand`` (all four gates), and both
+    # terminals (which thread it into FreezeSnapshotOperation so it is
+    # persisted on the Snapshot).
+    #
+    # CombineClaimVerdicts is the sole predecessor of CheckCompletion, so
+    # this is never stale and never absent by the time a terminal decision
+    # is made; CheckCompletion raises if it is None rather than proceeding
+    # on a routing bug.
+    verdict: EpistemicVerdict | None = None
 
     # ── Operation trace ─────────────────────────────────────────
     # Lightweight log for the progress callback and final stats

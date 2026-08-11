@@ -78,7 +78,7 @@ TRACKED_SECTIONS = [
     # operations/scrutiny.py: Scrutiny evidence loading loop
     {
         "file": _SRC / "operations" / "scrutiny.py",
-        "start": "evidence_summaries: list[str] = []",
+        "start": "evidence_summaries: list[EvidenceSummary] = []",
         "num_lines": 15,
         "description": "Scrutiny evidence loading loop",
         "test_file": "test_operations_failure.py::TestScrutinyOperationFailure",
@@ -146,10 +146,19 @@ TRACKED_SECTIONS = [
 # The test failure message tells you the new hash to use.
 
 EXPECTED_CHECKSUMS: dict[str, str] = {
-    "Evidence scoring 3-path chain (no fallback)": "3929dcd70fbe2f0d",
-    "Scrutiny evidence loading loop": "cd12fd7cdd66ac9d",
+    # Updated 2026-08-09: Path 2's near-zero TMS invalidation is now gated by
+    # an ``llm_judge`` second opinion (``_confirm_or_retain_low_quality``) so a
+    # single sampled point value can no longer destroy evidence on its own.
+    "Evidence scoring 3-path chain (no fallback)": "21f2d7018905750b",
+    # Updated 2026-08-10: the loop now emits ``EvidenceSummary`` pairs rather
+    # than bare strings, so an issue raised about one item stays attached to
+    # that item all the way to the ``evidence_corrupted`` destroy gate.
+    "Scrutiny evidence loading loop": "3776be9239dded42",
     "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
-    "Writer-validator loop": "565af4046d169c0d",
+    # 2026-08-09: the loop returns (title, answer) — the writer no longer
+    # authors a verdict; the headline is rendered from the run's
+    # EpistemicVerdict. Error handling inside the loop is unchanged.
+    "Writer-validator loop": "ecf515424526f4f1",
     "Prediction generation per-aspect error handling": "fb5787ea93a0df4b",
     "Gate validate_promotion logic": "e87d8901f731e130",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",

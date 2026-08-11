@@ -16,6 +16,7 @@ from ..judgment_signal import (
     distribution_is_one_hot,
 )
 from .base import EpistemicEntity
+from .judge_opinion import JudgeOpinion
 
 
 class Evidence(EpistemicEntity):
@@ -128,6 +129,44 @@ class Evidence(EpistemicEntity):
         ),
     )
 
+    # Quality second opinion (llm_judge, tail path only)
+    quality_distribution: Optional[list[float]] = Field(
+        default=None,
+        description=(
+            "Verbalized belief distribution [meets, partial, fails] from the "
+            "``llm_judge`` second opinion that gates TMS invalidation of very "
+            "low agent quality scores (see ``quality_doubt.confirm_low_quality``). "
+            "Normalised, ordered by ``llm_judge.signals.SCORE_LABELS``. "
+            "The PRESENCE of this field is itself the marker that a second "
+            "opinion ran — there is no separate boolean, and no needs_review "
+            "flag lands on the entity (that would be a scheduling signal, P3); "
+            "the routing decision is derived at the one call site. "
+            "Only agent-scored (Path 2) evidence that fell below the "
+            "invalidation cut ever carries it: Path 1 (bibliometric) and "
+            "Path 3 (gatherer-supplied) never do."
+        ),
+    )
+
+    # Direction confirmation (llm_judge, scrutiny-time, bounded)
+    direction_opinion: Optional[JudgeOpinion] = Field(
+        default=None,
+        description=(
+            "An INDEPENDENT judge's read on the direction the primary "
+            "evidence-claim judge already committed to (see "
+            "``direction_opinion.confirm_direction``). Present only on items "
+            "that were eligible, ONE-HOT (so their own entropy is "
+            "uninformative — the blind spot this exists to cover) and "
+            "directional, and only for the first "
+            "``JUDGMENT_CONFIRMATION_MAX_PER_CLAIM`` such items on a claim. "
+            "The PRESENCE of this field is itself the marker that a "
+            "confirmation ran — there is no separate boolean, and no "
+            "needs_review flag lands on the entity (that would be a "
+            "scheduling signal, P3); the routing decision is derived at the "
+            "call site. Never overwritten: an item is confirmed at most once, "
+            "ever, which is what bounds the cost across scrutiny re-passes."
+        ),
+    )
+
     # Clustering / deduplication state
     cluster_status: str = Field(
         default="unclustered",
@@ -163,6 +202,10 @@ class Evidence(EpistemicEntity):
         }
         if self.judgment_distribution is not None:
             meta["judgment_distribution"] = self.judgment_distribution
+        if self.quality_distribution is not None:
+            meta["quality_distribution"] = self.quality_distribution
+        if self.direction_opinion is not None:
+            meta["direction_opinion"] = self.direction_opinion.model_dump()
         if self.invalidation_reason is not None:
             meta["invalidation_reason"] = self.invalidation_reason
         if self.quality_score is not None:
@@ -208,6 +251,25 @@ class Evidence(EpistemicEntity):
             return None
         return distribution_is_one_hot(self.judgment_distribution)
 
+    @property
+    def quality_confidence(self) -> Optional[float]:
+        """Belief mass the quality second opinion placed on its top label, in
+        [0, 1]. None when no second opinion ran. Mirrors
+        ``judgment_confidence``, reusing the same primitive."""
+        if self.quality_distribution is None:
+            return None
+        return distribution_confidence(self.quality_distribution)
+
+    @property
+    def quality_doubt(self) -> Optional[float]:
+        """Normalised entropy of the quality second opinion's belief
+        distribution, in [0, 1] (higher = less sure). None when no second
+        opinion ran. Mirrors ``judgment_entropy``, reusing the same
+        primitive — one doubt scale across the module."""
+        if self.quality_distribution is None:
+            return None
+        return distribution_entropy(self.quality_distribution)
+
     @classmethod
     def from_metadata(
         cls,
@@ -245,6 +307,12 @@ class Evidence(EpistemicEntity):
             support_judgment=metadata.get("support_judgment"),
             judgment_reasoning=metadata.get("judgment_reasoning"),
             judgment_distribution=metadata.get("judgment_distribution"),
+            quality_distribution=metadata.get("quality_distribution"),
+            direction_opinion=(
+                JudgeOpinion(**direction_meta)
+                if (direction_meta := metadata.get("direction_opinion"))
+                else None
+            ),
             cluster_status=metadata.get("cluster_status", "unclustered"),
             cluster_id=metadata.get("cluster_id"),
             corroboration_count=metadata.get("corroboration_count", 1),

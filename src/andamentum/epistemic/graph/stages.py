@@ -26,7 +26,6 @@ from typing import Any, Awaitable, Callable
 
 from .nodes import (
     AbandonOrDemote,
-    CheckCompletion,
     ClusterEvidence,
     CombineClaimVerdicts,
     CreateClaims,
@@ -142,14 +141,14 @@ async def _check_verification(_state: Any, repo: Any) -> bool:
 
 async def _check_integration(state: Any, repo: Any) -> bool:
     claims = await _claims(repo)
-    obj = await _objective(repo, state)
-    decomp_ok = (
-        obj is None
-        or obj.decomposition is None
-        or (obj.decomposition.combined_verdict is not None)
-    )
+    # The integration stage exits at CombineClaimVerdicts, whose whole job
+    # is to build the run's verdict object — so "the aggregate exists" is
+    # the invariant, for every run shape rather than only decomposed ones.
+    # (Was ``obj.decomposition.combined_verdict is not None``, a field that
+    # no longer exists and that verify-mode runs could never populate.)
+    verdict_ok = state.verdict is not None
     active = [c for c in claims if not c.cycle_capped and not c.abandoned]
-    return decomp_ok and all(c.integrated_assessment is not None for c in active)
+    return verdict_ok and all(c.integrated_assessment is not None for c in active)
 
 
 async def _check_synthesis(state: Any, repo: Any) -> bool:
@@ -201,7 +200,10 @@ STAGES: dict[str, StageDef] = {
     ),
     "synthesis": StageDef(
         name="synthesis",
-        entry=CheckCompletion,
+        # Entry is CombineClaimVerdicts, not CheckCompletion: resuming the
+        # synthesis stage must rebuild the verdict from the persisted DB
+        # before CheckCompletion's fail-loud guard reads it.
+        entry=CombineClaimVerdicts,
         exit_after=Synthesize,
         exit_invariant=_check_synthesis,
         description="Synthesis-demand gate, optional loop-back, final report.",

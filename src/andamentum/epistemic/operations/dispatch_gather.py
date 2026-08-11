@@ -108,13 +108,14 @@ async def dispatch_and_persist_for_text(
         agent_runner=core_runner,
     )
 
-    extract_helper = ExtractEvidenceOperation(
-        op.repo,
-        op.agent_runner,
-        evidence_gatherer=op.evidence_gatherer,
-        quality_scorer=op.quality_scorer,
-        embedding_model=op.embedding_model,
-    )
+    # ``op.derive`` rather than a hand-listed constructor call: this helper
+    # runs the SAME ``_score_evidence`` the graph reaches through
+    # ``_make_op``, so it must carry the same dependency set. Enumerating
+    # the fields here once dropped ``judge_model``, which made the
+    # near-zero-quality second-opinion gate raise on the primary gathering
+    # path — a gap that no test saw because the fake quality agent never
+    # scores low enough to reach it.
+    extract_helper = op.derive(ExtractEvidenceOperation)
 
     created_ids: list[str] = []
     for g in gathered:

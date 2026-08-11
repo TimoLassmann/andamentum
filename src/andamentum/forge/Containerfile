@@ -31,7 +31,7 @@ WORKDIR /opt/andamentum
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir pydantic "pydantic-graph>=0.1,<2" pydantic-ai rapidfuzz numpy httpx rich pytest \
+RUN pip install --no-cache-dir pydantic "pydantic-graph>=2,<3" "pydantic-ai>=2,<3" rapidfuzz numpy httpx rich pytest \
     && pip install --no-cache-dir --no-deps .
 
 # --- Domain commons: light, high-frequency libraries a *generated* system may import and

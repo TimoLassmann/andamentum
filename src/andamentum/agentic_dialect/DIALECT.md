@@ -425,7 +425,7 @@ Each is one fixed form chosen to remove a recurring micro-decision. Don't re-dec
 - **Result.** Always a Pydantic model — the `End[T]` payload. Never `str`, `dict`, or a bare
   dataclass.
 - **Entry point.** `async def run_<name>(<inputs>, *, model: str, ...) -> <Module>Result`. Builds
-  State and Deps, runs the graph, returns `.output`. `model` and all config keyword-only.
+  State and Deps, runs the graph, returns the graph output. `model` and all config keyword-only.
 - **Caps.** Every loop and fan-out bound is a named Deps field or module constant — never a literal.
 
 ## Refuse list
@@ -490,7 +490,7 @@ async def summarize(source: str, *, model: str) -> Brief:
 # brief/graph.py  (orchestration — the only engine-aware layer)
 from __future__ import annotations
 from dataclasses import dataclass
-from pydantic_graph import BaseNode, Graph, GraphRunContext, End
+from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 from .schemas import Brief
 from .summarize import summarize
 
@@ -520,9 +520,17 @@ class Done(BaseNode[BriefState, BriefDeps, Brief]):
         assert brief is not None  # topology guarantees Summarize ran first
         return End(brief)
 
-graph = Graph(nodes=[Summarize, Done])
+# Assembly: `builder.node()` reads each node's `run()` return annotation, so the
+# topology still lives in exactly one place — the annotations, not a wiring list.
+_builder = GraphBuilder[BriefState, BriefDeps, Summarize, Brief](
+    state_type=BriefState, deps_type=BriefDeps, input_type=Summarize, output_type=Brief
+)
+_builder.add(_builder.node(Summarize), _builder.node(Done))
+_builder.add(_builder.edge_from(_builder.start_node).to(Summarize))
+graph = _builder.build()
 
 async def run_brief(source: str, *, model: str) -> Brief:
-    out = await graph.run(Summarize(), state=BriefState(source=source), deps=BriefDeps(model=model))
-    return out.output
+    return await graph.run(
+        state=BriefState(source=source), deps=BriefDeps(model=model), inputs=Summarize()
+    )
 ```

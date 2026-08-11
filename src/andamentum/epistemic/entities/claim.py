@@ -12,7 +12,9 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from .base import EpistemicEntity
+from .cap_evaluation import CapEvaluation
 from .intent_record import IntentRecord
+from .judge_opinion import JudgeOpinion
 from .prediction import Prediction
 
 
@@ -158,6 +160,62 @@ class Claim(EpistemicEntity):
             "fresh Uncertainty entities."
         ),
     )
+    scrutiny_doubt: Optional[float] = Field(
+        default=None,
+        description=(
+            "MEASUREMENT accompanying scrutiny_verdict: the directional-mass-"
+            "weighted mean normalized entropy of the evidence judgments that "
+            "produced it (see scrutiny_weight.compute_evidence_weight), in "
+            "[0, 1]. Higher = the judges were internally less sure. None when "
+            "unmeasured — no eligible item carried a verbalized distribution, "
+            "or scrutiny has not run. "
+            "This is DATA, not an instruction (P3): no stage reads it to decide "
+            "what to do to this claim. Two readers: "
+            "CheckSynthesisDemand's aggregate-doubt gate, which uses it to buy "
+            "the objective one extra round of inquiry — a suspicion-raiser, "
+            "never a verdict — and confidence.build_verdict, which copies it "
+            "onto ClaimVerdict so the run's verdict object can express the "
+            "doubt behind each claim's reading. Neither DECIDES on it. "
+            "record_demotion deliberately does not clear it: a demotion nulls "
+            "scrutiny_verdict, which forces a fresh scrutiny pass, and that "
+            "pass overwrites this field alongside the new verdict."
+        ),
+    )
+    scrutiny_opinion: Optional[JudgeOpinion] = Field(
+        default=None,
+        description=(
+            "An INDEPENDENT judge's read on whether the gathered evidence "
+            "establishes this claim, taken ONLY when the deterministic "
+            "reading was BORDERLINE (scrutiny_weight.is_borderline) — see "
+            "``scrutiny_opinion.second_opinion_on_reading``. Written by the "
+            "same single writer, in the same pass, as scrutiny_verdict and "
+            "scrutiny_doubt, so all three describe one reading. "
+            "It NEVER changed the verdict: a dissenting or doubtful opinion "
+            "only feeds CheckSynthesisDemand's Gate 0, which can buy one more "
+            "bounded round of inquiry. None when the reading was not "
+            "borderline, when no agent runner was configured, or when "
+            "scrutiny has not run. "
+            "record_demotion deliberately does not clear it, for the same "
+            "reason scrutiny_doubt gives."
+        ),
+    )
+    judgment_dissent_count: int = Field(
+        default=0,
+        description=(
+            "How many of this claim's eligible, one-hot, DIRECTIONAL evidence "
+            "judgments had their direction dissented from by an independent "
+            "judge, in the scrutiny pass that produced the current verdict "
+            "(see ``direction_opinion``). Written unconditionally on every "
+            "pass by the same single writer as scrutiny_verdict, so it can "
+            "never go stale. "
+            "It exists because the per-item signal cannot travel on "
+            "scrutiny_doubt: a CONFIDENT dissent has entropy near zero, so "
+            "folding it into an entropy-shaped number would report 'no doubt' "
+            "about exactly the item most likely to be wrong. Read by "
+            "CheckSynthesisDemand's Gate 0 and copied onto ClaimVerdict; "
+            "nothing decides a verdict on it."
+        ),
+    )
 
     # Adversarial balance (computed by adversarial_balance.py)
     adversarial_balance: Optional[float] = Field(
@@ -245,22 +303,47 @@ class Claim(EpistemicEntity):
     #
     # Set when the Scrutinise/Resolve cycle cap fires for this claim
     # (graph/nodes.py:SCRUTINY_RESOLVE_CYCLE_CAP). Cycle-capped claims
-    # are NOT promoted to SUPPORTED — the inquiry didn't converge, so
-    # forcing a verdict via the IBE chain would misrepresent the
-    # epistemic state. compute_posterior detects this flag on any
-    # active claim and emits terminal_state="oscillation_detected"
-    # with posterior=0.5, distinguishing "system reached a verdict"
-    # from "system gave up after bounded inquiry".
+    # are NOT promoted to SUPPORTED and do NOT enter the IBE chain —
+    # the inquiry didn't converge, so spending four more LLM calls on
+    # abductive deliberation is not warranted.
+    #
+    # They are NOT left verdict-less, though. At the moment the cap
+    # fires, ConcludeAtCycleCapOperation reads the evidence already
+    # gathered (deterministically, no LLM) and — when that reading is
+    # directional — writes integrated_assessment /
+    # integrated_confidence / integrated_reasoning plus the
+    # cap_evaluation provenance record below. "Insufficient" must be a
+    # conclusion ABOUT THE EVIDENCE, never a side effect of scheduling.
+    #
+    # Consequence: terminal_state="oscillation_detected" is reached only
+    # when the cap reading was NOT directional (conflicting, or too thin)
+    # and the counting signal is balanced — compute_posterior's
+    # all_capped_no_signal condition. A capped claim with a cap-derived
+    # verdict yields a directional posterior at reduced weight
+    # (CYCLE_CAP_CONFIDENCE_PENALTY, applied exactly once downstream).
     #
     # This is downstream of the runtime cap in graph state — the cap
-    # bounds work; this field communicates the consequence honestly.
+    # bounds work; these fields communicate the consequence honestly.
     cycle_capped: bool = Field(
         default=False,
         description=(
             "True if this claim hit the Scrutinise ↔ Resolve cycle cap. "
-            "Cycle-capped claims terminate at HYPOTHESIS without IBE; "
-            "compute_posterior surfaces them via "
-            "terminal_state='oscillation_detected'."
+            "Cycle-capped claims terminate at HYPOTHESIS without entering "
+            "the IBE chain, but receive a deterministic terminal verdict "
+            "at the cap when the evidence reading is directional (see "
+            "cap_evaluation). compute_posterior surfaces them via "
+            "terminal_state='oscillation_detected' only when the reading "
+            "was not directional and counting is balanced."
+        ),
+    )
+    cap_evaluation: Optional[CapEvaluation] = Field(
+        default=None,
+        description=(
+            "Snapshot of the deterministic evidence reading taken when the "
+            "cycle cap fired, written by ConcludeAtCycleCapOperation. Two "
+            "meanings: provenance for a non-IBE terminal verdict, and — when "
+            "its own verdict is None — the positive record that the evidence, "
+            "not the scheduler, is why this claim has no verdict."
         ),
     )
 
@@ -311,10 +394,25 @@ class Claim(EpistemicEntity):
     )
 
     # Abductive integration (Peirce + Kahneman).
-    # Written by IntegrateEvidenceOperation on the normal path; also written by
-    # PromoteAsRefutedOperation when a HYPOTHESIS claim is refute-promoted
-    # (contradicts + mechanical confidence, integration LLM skipped). Both
-    # writers target the same entity, so the shared write is P5-compatible.
+    #
+    # Three writers, all targeting this same entity (so the shared write
+    # stays P5-compatible):
+    #
+    #   1. The IBE chain's SelectBestExplanationOperation — the normal,
+    #      certifying path (EnumerateCandidates → ScoreLoveliness →
+    #      ScoreLikeliness → SelectBestExplanation).
+    #   2. PromoteAsRefutedOperation — a HYPOTHESIS claim whose evidence
+    #      overwhelmingly contradicts it; verdict derived mechanically from
+    #      integer support/contradict COUNTS, integration LLM skipped.
+    #   3. ConcludeAtCycleCapOperation — a cycle-capped claim; verdict
+    #      derived mechanically from the quality- and corroboration-weighted
+    #      directional MASS (the same reading scrutiny performs), and only
+    #      when it owns the verdict (see that operation's docstring). Never
+    #      overwrites a verdict certified by (1) or (2).
+    #
+    # Writers (2) and (3) share the MECHANICAL_VERDICT_MAX_CONFIDENCE
+    # ceiling but derive their number differently, deliberately — see
+    # ConcludeAtCycleCapOperation's docstring for why.
     integrated_assessment: Optional[str] = Field(
         default=None,
         description="Holistic evidence verdict: 'supports', 'contradicts', 'insufficient'",
@@ -442,10 +540,22 @@ class Claim(EpistemicEntity):
             ],
             "abandoned": self.abandoned,
             "cycle_capped": self.cycle_capped,
+            "cap_evaluation": (
+                self.cap_evaluation.model_dump() if self.cap_evaluation else None
+            ),
+            "scrutiny_opinion": (
+                self.scrutiny_opinion.model_dump() if self.scrutiny_opinion else None
+            ),
+            "judgment_dissent_count": self.judgment_dissent_count,
             "persistent_concerns": self.persistent_concerns,
             "sub_investigation_id": self.sub_investigation_id,
             "integrated_assessment": self.integrated_assessment,
             "integrated_confidence": self.integrated_confidence,
+            # ``integrated_reasoning`` was absent here while ``_from_metadata``
+            # already read the key, so every save/load round-trip silently
+            # dropped the provenance prose all three integration writers
+            # produce. Fixed 2026-08-09.
+            "integrated_reasoning": self.integrated_reasoning,
             "integration_candidates": [
                 c.model_dump() for c in self.integration_candidates
             ],
@@ -454,6 +564,10 @@ class Claim(EpistemicEntity):
             meta["confidence_score"] = self.confidence_score
         if self.adversarial_balance is not None:
             meta["adversarial_balance"] = self.adversarial_balance
+        if self.scrutiny_doubt is not None:
+            # Written only when measured, so "absent" and "measured as 0.0"
+            # stay distinguishable on the round-trip too.
+            meta["scrutiny_doubt"] = self.scrutiny_doubt
         return meta
 
     @property
@@ -497,10 +611,22 @@ class Claim(EpistemicEntity):
             ],
             abandoned=metadata.get("abandoned", False),
             cycle_capped=metadata.get("cycle_capped", False),
+            cap_evaluation=(
+                CapEvaluation(**cap_eval_meta)
+                if (cap_eval_meta := metadata.get("cap_evaluation"))
+                else None
+            ),
             persistent_concerns=metadata.get("persistent_concerns", []),
             sub_investigation_id=metadata.get("sub_investigation_id"),
             scrutiny_verdict=metadata.get("scrutiny_verdict"),
             scrutiny_fingerprint=metadata.get("scrutiny_fingerprint"),
+            scrutiny_doubt=metadata.get("scrutiny_doubt"),
+            scrutiny_opinion=(
+                JudgeOpinion(**opinion_meta)
+                if (opinion_meta := metadata.get("scrutiny_opinion"))
+                else None
+            ),
+            judgment_dissent_count=metadata.get("judgment_dissent_count", 0),
             adversarial_checked=metadata.get("adversarial_checked", False),
             convergence_checked=metadata.get("convergence_checked", False),
             convergence_verdict=metadata.get("convergence_verdict"),

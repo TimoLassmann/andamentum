@@ -134,9 +134,10 @@ class IdentifySingleIssueOutput(BaseModel):
     ] = Field(
         description=(
             "Issue classification. Empty string when has_issue is false. "
-            '"evidence_corrupted" is a sentinel that triggers evidence '
-            "invalidation rather than uncertainty creation; all other values "
-            "map to UncertaintyType members."
+            '"evidence_corrupted" is a sentinel: it PROPOSES discarding the '
+            "source, and an independent judge decides — if that judge "
+            "declines, the concern is recorded as an uncertainty instead. "
+            "All other values map to UncertaintyType members."
         )
     )
 
@@ -251,13 +252,16 @@ class InvestigateClaimOutput(BaseModel):
 
 
 class WriteAnswerOutput(BaseModel):
-    """Output from epistemic_write_answer agent."""
+    """Output from epistemic_write_answer agent.
+
+    Deliberately has NO ``verdict`` field. The machine-readable headline
+    is rendered from the run's ``EpistemicVerdict`` by
+    ``entities.verdict.render_verdict_line``; the writer produces the
+    prose that renders it. Giving the model a verdict channel is what
+    let the prose and the structured decision disagree.
+    """
 
     title: str = Field(description="A concise title for the research report")
-    verdict: str = Field(
-        default="",
-        description="One sentence answering the research question — the bottom line",
-    )
     answer: str = Field(description="A direct answer to the research question")
 
 

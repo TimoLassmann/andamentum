@@ -475,6 +475,42 @@ async def count_support_contradict(
     return n_sup, n_con
 
 
+async def eligible_representative_evidence(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> list[Evidence]:
+    """The claim's eligible representative evidence: extracted, not
+    invalidated, and not a corroborative/deferred cluster member.
+
+    One definition, two callers:
+
+    * ``operations.scrutiny.ScrutiniseClaimOperation`` — the set the
+      deterministic evidence weight is computed over, and the candidate
+      pool the LLM issue-finder's representatives are drawn from;
+    * ``operations.stage_management.ConcludeAtCycleCapOperation`` — the
+      set the cycle-cap terminal verdict is read off. Sharing this helper
+      is what makes the cap's reading provably the same reading scrutiny
+      performs, rather than a third near-copy.
+
+    DELIBERATE DIVERGENCE, do not "unify": ``confidence._claim_directional_masses``
+    (and the objective-level counting loop beside it) applies a *different*
+    filter — not invalidated, not corroborative/deferred, but with **no
+    ``extracted_content`` requirement**. Routing those through this helper
+    would silently change the counting posterior on a path that has not
+    been benchmarked. The two filters genuinely differ; keep them apart.
+    """
+    candidates: list[Evidence] = []
+    for eid in claim.evidence_ids:
+        ev = await repo.get("evidence", eid)
+        if not isinstance(ev, Evidence) or not ev.extracted_content:
+            continue
+        if ev.invalidated:
+            continue
+        if ev.cluster_status in ("corroborative", "deferred"):
+            continue
+        candidates.append(ev)
+    return candidates
+
+
 async def is_refuted_by_evidence(claim: "Claim", repo: "EpistemicRepository") -> bool:
     """True when the claim's evidence overwhelmingly contradicts it.
 

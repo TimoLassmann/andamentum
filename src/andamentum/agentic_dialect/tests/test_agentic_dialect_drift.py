@@ -35,4 +35,8 @@ def test_skeleton_extracts_and_looks_runnable() -> None:
     s = skeleton()
     assert "async def run_brief" in s
     assert "from pydantic_graph import" in s
-    assert s.strip().endswith("return out.output")
+    # pydantic-graph v2: a Graph is built by GraphBuilder and `run()`
+    # returns the output directly (no result wrapper to unwrap).
+    assert "GraphBuilder" in s
+    assert "graph = _builder.build()" in s
+    assert "return await graph.run(" in s

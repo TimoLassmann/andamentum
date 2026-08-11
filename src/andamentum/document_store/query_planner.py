@@ -138,7 +138,7 @@ def _build_planner_agent(model: str):  # type: ignore[no-untyped-def]
     )
 
     @agent.output_validator
-    async def validate_plan(ctx: RunContext[None], output: SearchPlan) -> SearchPlan:
+    async def validate_plan(ctx: RunContext[object], output: SearchPlan) -> SearchPlan:
         issues: list[str] = []
 
         if output.filter is not None:

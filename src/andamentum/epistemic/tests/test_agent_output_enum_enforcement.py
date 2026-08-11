@@ -349,8 +349,9 @@ class TestComplexVocabConstraints:
             IdentifySingleIssueOutput.model_json_schema(), "issue_type"
         )
         # Includes "" for the has_issue=False case, plus the 9 UncertaintyType
-        # values the LLM may pick + the "evidence_corrupted" sentinel that
-        # triggers evidence invalidation rather than uncertainty creation.
+        # values the LLM may pick + the "evidence_corrupted" sentinel, which
+        # PROPOSES an evidence invalidation that an independent judge gates;
+        # a declined proposal becomes an uncertainty like any other issue.
         assert set(values) == {
             "",
             "evidence_corrupted",

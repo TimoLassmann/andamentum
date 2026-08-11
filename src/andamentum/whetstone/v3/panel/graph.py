@@ -45,7 +45,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from pydantic_graph import BaseNode, End, Graph, GraphRunContext
+from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
 from ...schemas import ExpertProfile, ExpertReview, PanelSynthesis, ReviewResult
 from ..model import Section
@@ -221,16 +221,33 @@ def _result(ctx: GraphRunContext[PanelState, PanelDeps]) -> ReviewResult:
 # ── Graph + public entry ───────────────────────────────────────────────────
 
 
+def _build_panel_graph() -> Graph[PanelState, PanelDeps, Sectionize, ReviewResult]:
+    """Assemble the panel graph from the `BaseNode` classes above.
+
+    pydantic-graph v2 dropped `Graph(nodes=[...])`; the builder is now the
+    only construction path. Edges are still derived from each node's `run`
+    return annotation.
+    """
+    g = GraphBuilder[PanelState, PanelDeps, Sectionize, ReviewResult](
+        name="panel_graph_v3",
+        state_type=PanelState,
+        deps_type=PanelDeps,
+        input_type=Sectionize,
+        output_type=ReviewResult,
+    )
+    g.add(
+        g.edge_from(g.start_node).to(Sectionize),
+        g.node(Sectionize),
+        g.node(ExtractKeywords),
+        g.node(GenerateExpertPanel),
+        g.node(ExpertReviewPhase),
+        g.node(PanelSynthesisPhase),
+    )
+    return g.build()
+
+
 # linear pipeline — topology test exempt
-panel_graph_v3 = Graph(
-    nodes=[
-        Sectionize,
-        ExtractKeywords,
-        GenerateExpertPanel,
-        ExpertReviewPhase,
-        PanelSynthesisPhase,
-    ]
-)
+panel_graph_v3 = _build_panel_graph()
 
 
 async def run_panel_v3(
@@ -286,5 +303,4 @@ async def run_panel_v3(
         panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
     )
     state = PanelState(source=markdown)
-    result = await panel_graph_v3.run(Sectionize(), state=state, deps=deps)
-    return result.output
+    return await panel_graph_v3.run(state=state, deps=deps, inputs=Sectionize())

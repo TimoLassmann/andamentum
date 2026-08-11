@@ -72,18 +72,25 @@ from typing import Any, Optional
 
 from andamentum.typeset import Report
 
+from .entities.verdict import (
+    DIRECTIONAL_HI,
+    DIRECTIONAL_LO,
+    VERDICT_INSUFFICIENT,
+    render_verdict_line,
+)
 from .report_data import (
+    DOUBT_SUSPICION_CAVEAT,
     ClaimSummary,
     EvidenceSummary,
     GateTraceEntry,
     IBECandidate,
     QUESTION_TYPE_LABELS,
     ReportData,
+    doubt_is_suspicious,
+    format_doubt,
+    judgment_reliability_line,
 )
-from .thresholds import (
-    POSTERIOR_DECISIVE_THRESHOLD,
-    POSTERIOR_DIRECTIONAL_BREAKPOINT,
-)
+from .thresholds import POSTERIOR_DECISIVE_THRESHOLD
 
 # How many top supporting / contradicting items to show inline per claim.
 # Items beyond this go into the appendix's full list.
@@ -138,30 +145,26 @@ def _short_source(source_ref: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Closed verdict vocabulary — single source of truth, neutral CSS values
+# Verdict labels — READ from the verdict object, never re-derived here
 # ──────────────────────────────────────────────────────────────────────────────
-
-
-# Map raw integrated_assessment tokens + posterior thresholds to one of
-# five user-facing labels. The labels are designed so their lowercased
-# form does NOT match the existing ``[data-value="supported"]`` /
-# ``[data-value="contradicts"]`` CSS rules in typeset — i.e. badges
-# render neutral, no green/red tones. The word does the signalling.
-_VERDICT_CONFIRMED = "Confirmed"
-_VERDICT_CONFIRMED_REFINED = "Confirmed with refinement"
-_VERDICT_REFUTED = "Refuted"
-_VERDICT_INCONCLUSIVE = "Inconclusive"
-_VERDICT_INSUFFICIENT = "Insufficient evidence"
-
-# Posterior bands. Both read from the ``thresholds`` module so the
-# renderer and the pipeline cannot disagree.
 #
-# The pipeline uses TWO different thresholds for the posterior, and the
-# legend in the Q&A panel surfaces both:
+# This renderer used to own ``_normalised_verdict``, its own
+# posterior→label mapping over ``ReportData.confidence_scores``. That was
+# one of five independent verdict derivations in the package, and it
+# disagreed with the combiner's on the band boundaries (``>=`` here vs
+# ``>`` there) — so the Q&A headline and the per-claim badges in the same
+# document could differ. The labels now come from
+# ``entities.verdict``: the headline from ``render_verdict_line``, the
+# per-claim badges from ``ClaimSummary.verdict_label`` (populated by
+# ``report_generator`` off the run's ``ClaimVerdict``).
 #
-#   - **Directional breakpoint** (``POSTERIOR_DIRECTIONAL_BREAKPOINT``)
-#     decides the verdict *label* (Confirmed / Refuted / Inconclusive).
-#     Read by ``graph/combination._verdict_label``.
+# The pipeline uses TWO different posterior bands, and the legend in the
+# Q&A panel surfaces both:
+#
+#   - **Directional breakpoint** decides the verdict *label*
+#     (Confirmed / Refuted / Inconclusive). Owned by
+#     ``entities.verdict.verdict_label``; the legend imports the named
+#     band constants rather than the threshold itself.
 #   - **Decisive threshold** (``POSTERIOR_DECISIVE_THRESHOLD``) decides
 #     whether to stop iterating. Read by
 #     ``graph/nodes.CheckSynthesisDemand``.
@@ -170,57 +173,16 @@ _VERDICT_INSUFFICIENT = "Insufficient evidence"
 # not yet decisive; the system would keep investigating.
 _DECISIVE_HI = POSTERIOR_DECISIVE_THRESHOLD  # ≥ this → decisive confirm
 _DECISIVE_LO = 1.0 - POSTERIOR_DECISIVE_THRESHOLD  # ≤ this → decisive refute
-_DIRECTIONAL_HI = POSTERIOR_DIRECTIONAL_BREAKPOINT  # ≥ this → Confirmed label
-_DIRECTIONAL_LO = 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT  # ≤ this → Refuted label
 
 
-def _normalised_verdict(
-    data: ReportData,
-    claim: Optional[ClaimSummary] = None,
-) -> str:
-    """Return the closed-vocabulary verdict label.
+def _claim_badge(claim: ClaimSummary) -> str:
+    """The claim's adjudicated label, as decided upstream.
 
-    Used everywhere the verdict appears: Q&A panel headline, Evidence-
-    at-a-glance row, claim-card badge. One mapping function, one source
-    of truth. The vocabulary is deliberately limited to five labels so
-    a reader (and downstream tooling) can rely on stable strings.
-
-    Selection rules, in order:
-
-    1. ``terminal_state`` not ``completed``         → Insufficient
-       evidence (the inquiry suspended judgment; the posterior is
-       not a directional answer).
-    2. ``posterior`` is None                        → Insufficient
-       evidence.
-    3. ``posterior ≥ 0.66`` AND
-       ``integrated_assessment == "supports_refined"`` → Confirmed
-       with refinement.
-    4. ``posterior ≥ 0.66``                         → Confirmed.
-    5. ``posterior ≤ 0.34``                         → Refuted.
-    6. otherwise                                    → Inconclusive.
+    Never re-derives: an empty ``verdict_label`` means no verdict object
+    was persisted for the run, which reads as "Insufficient evidence" —
+    the same thing the headline says in that state.
     """
-    cs = data.confidence_scores
-    if cs is None or cs.terminal_state != "completed":
-        return _VERDICT_INSUFFICIENT
-    p = cs.posterior
-    if p is None:
-        return _VERDICT_INSUFFICIENT
-    # Integrated assessment is per-claim; use the claim's if provided,
-    # otherwise the first claim's (verify mode) or fall back to the
-    # posterior-only mapping for multi-claim cases without a specific
-    # claim.
-    assessment: Optional[str] = None
-    if claim is not None:
-        assessment = claim.integrated_assessment
-    elif len(data.claims) == 1:
-        assessment = data.claims[0].integrated_assessment
-    if p >= _DIRECTIONAL_HI:
-        if assessment == "supports_refined":
-            return _VERDICT_CONFIRMED_REFINED
-        return _VERDICT_CONFIRMED
-    if p <= _DIRECTIONAL_LO:
-        return _VERDICT_REFUTED
-    return _VERDICT_INCONCLUSIVE
+    return claim.verdict_label or VERDICT_INSUFFICIENT
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -231,35 +193,65 @@ def _normalised_verdict(
 def _confidence_body(data: ReportData) -> str:
     """Body text for the Q&A panel's "How confident are we?" row.
 
+    Two things, in this order: what the run concluded and how strongly
+    (``_posterior_body``), then how reliable the judgments underneath
+    that number were (``judgment_reliability_line``). The reliability
+    sentence sits HERE, in the same row, because a doubt figure rendered
+    anywhere else is a number the reader has to go and correlate with
+    the confidence it qualifies — and one they will not find at all
+    unless they go looking.
+
+    It appends nothing when nothing was raised, so runs whose judgments
+    were all measured and all below the cutoff render exactly as before.
+    """
+    parts = [_posterior_body(data)]
+    reliability = judgment_reliability_line(data.verdict_object)
+    if reliability:
+        parts.append(f"_{reliability}_")
+    return "\n\n".join(parts)
+
+
+def _posterior_body(data: ReportData) -> str:
+    """The posterior half of the "How confident are we?" row.
+
     Reads the posterior directionally — "Probability the claim is true:
     0.115 → verdict Refuted" — instead of the v1 "Posterior: 11.5%"
     which a non-Bayesian reader misreads as "low confidence". An inline
     legend names the decisive bands so the reader can map any future
     number themselves.
     """
-    cs = data.confidence_scores
-    if cs is None:
+    v = data.verdict_object
+    if v is None:
         return "No posterior computed."
-    ts = cs.terminal_state
+    ts = v.terminal_state
     if ts == "retrieval_failed":
         return "No posterior — retrieval failed before evidence converged."
     if ts == "oscillation_detected":
         return "No posterior — no IBE-certified verdict."
     if ts != "completed":
         return f"No posterior — inquiry terminated: {ts}."
-    p = cs.posterior
+    if v.direction in ("no_data", "union"):
+        # No scalar objective verdict BY CONSTRUCTION (question type not
+        # posterior-eligible, or a UNION decomposition). Reporting the
+        # fall-through number as "the probability the claim is true"
+        # would contradict the headline directly above.
+        return (
+            "No single objective posterior — the per-claim verdicts below "
+            "are the result."
+        )
+    p = v.posterior
     if p is None:
         return "No posterior computed."
 
-    verdict = _normalised_verdict(data)
+    verdict = v.label
     # Two bands, two different decisions. The legend names both so the
     # reader can map any future number themselves, and the gate-trace
     # row that uses the decisive band stays interpretable.
     parts = [
         f"Probability the claim is true: **{p:.3f}** · verdict **{verdict}**.",
         (
-            f"_Verdict band (label-assignment): posterior ≥ "
-            f"{_DIRECTIONAL_HI:.2f} → Confirmed · ≤ {_DIRECTIONAL_LO:.2f} → "
+            f"_Verdict band (label-assignment): posterior > "
+            f"{DIRECTIONAL_HI:.2f} → Confirmed · < {DIRECTIONAL_LO:.2f} → "
             f"Refuted · otherwise Inconclusive._"
         ),
         (
@@ -516,11 +508,15 @@ def _evidence_line(
 
     Strength flags (RCT / meta-analysis / observational / …) appear as
     an italic parenthetical at the end of the judgement — they share
-    the neutral typeset palette and need no new CSS.
+    the neutral typeset palette and need no new CSS. So do the dissent
+    and doubt annotations, and all three survive a missing
+    ``judgment_reasoning``: the item still renders its reference and its
+    parentheticals, just without a sentence between them.
 
     Format::
 
         [ref](url) · `Provider` — Judgement sentence. *(flag, flag, ...)*
+        [ref](url) · `Provider` *(flag, flag, ...)*     # no judgement text
     """
     head_parts: list[str] = []
     if ev.source_ref:
@@ -547,13 +543,40 @@ def _evidence_line(
         if flags:
             flag_str = f" *({', '.join(flags)})*"
 
+    # Speaks ONLY on a recorded dissent, so an item with no confirmation —
+    # every item in every pre-existing fixture — renders byte-identically to
+    # before. A confirmation that AGREED is deliberately silent too: the
+    # useful signal is the disagreement, and annotating agreement would add
+    # noise to every line the budget happened to reach.
+    if ev.direction_dissent is True:
+        flag_str += " *(an independent judge disagreed with this direction)*"
+
+    # The item's own direction doubt, spoken ONLY when it was measured at
+    # or above the one cutoff (``report_data.doubt_is_suspicious``) — the
+    # same speak-on-a-signal rule as the dissent annotation above, so an
+    # item whose judge was sure renders exactly as it did before.
+    #
+    # The quality second opinion's doubt is deliberately absent: only
+    # agent-scored evidence that hit the quality cliff ever carries one,
+    # so annotating it would mark that subset as suspect while the
+    # un-instrumented majority looked clean. See
+    # ``tests/test_quality_second_opinion.py``.
+    jd = ev.judgment_doubt
+    if jd is not None and doubt_is_suspicious(jd):
+        flag_str += f" *(the direction judge was unsure — judgment doubt {jd:.2f})*"
+
+    # ``judgment_reasoning`` is Optional, so the annotations must survive its
+    # absence: an item flagged as unsure, dissented-from, or carrying strength
+    # flags says so whether or not the judge wrote a sentence. Dropping
+    # ``flag_str`` on the empty-text branch silently hid exactly the items the
+    # reader most needs to see.
     if judgement_text:
         return (
             f"{head} — {judgement_text}{flag_str}"
             if head
             else f"{judgement_text}{flag_str}"
         )
-    return head
+    return f"{head}{flag_str}" if head else flag_str.strip()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -921,7 +944,7 @@ def _render_claim_section(
     contradicting evidence (h3 embedded).
     """
     supports, contradicts, no_bearing = _evidence_for_claim(claim, all_evidence)
-    verdict_label = _normalised_verdict(data, claim=claim)
+    verdict_label = _claim_badge(claim)
 
     # ── Claim card ─────────────────────────────────────────────────────
     statement = f"**Claim:** {claim.statement}"
@@ -1088,7 +1111,7 @@ def _build_gate_trace_json(data: ReportData) -> str:
             {
                 "claim_id": claim.claim_id,
                 "statement": claim.statement,
-                "verdict": _normalised_verdict(data, claim=claim),
+                "verdict": _claim_badge(claim),
                 "posterior": (
                     data.confidence_scores.posterior if data.confidence_scores else None
                 ),
@@ -1263,13 +1286,14 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
         qt_label = QUESTION_TYPE_LABELS.get(data.question_type, data.question_type)
         qt_body = f"This is a {qt_label}."
 
-    verdict_body = data.verdict
-    if not verdict_body:
-        verdict_body = _normalised_verdict(data) + "."
-    if multi_claim and not data.verdict:
-        verdict_body = (
-            f"{_normalised_verdict(data)} — see per-sub-claim verdicts below."
-        )
+    # The headline is the verdict object's own rendering — the SAME
+    # function and the SAME object the artefact's "> **Verdict:**" line
+    # used. It used to prefer ``data.verdict``, a string scraped out of
+    # the writer agent's prose, which is how a headline could contradict
+    # the badges below it.
+    verdict_body = render_verdict_line(data.verdict_object)
+    if multi_claim:
+        verdict_body = f"{verdict_body} — see per-sub-claim verdicts below."
 
     qa_entries: list[dict[str, str]] = []
     qa_entries.append({"label": "What did we find?", "body": verdict_body})
@@ -1360,8 +1384,27 @@ def build_audit_report(data: ReportData) -> list[dict[str, Any]]:
                 if multi_claim
                 else _sanitize_excerpt(claim.statement, max_chars=140)
             )
-            claim_rows.append([label, _normalised_verdict(data, claim=claim)])
-        sof_lines.append(_md_table(["Claim", "Verdict"], claim_rows))
+            # The doubt column sits beside the verdict rather than in a
+            # section of its own: this table is where a reader decides
+            # how much of each verdict to believe, and a reliability
+            # figure they have to go and find elsewhere is one they will
+            # not find. Unconditional, including the all-unmeasured case
+            # — "not measured" is the honest cell, and an omitted column
+            # would read as "nothing to report".
+            claim_rows.append(
+                [label, _claim_badge(claim), format_doubt(claim.verdict_doubt)]
+            )
+        sof_lines.append(_md_table(["Claim", "Verdict", "Judgment doubt"], claim_rows))
+        sof_lines.append("")
+        sof_lines.append(
+            "_Judgment doubt is how internally unsure the individual evidence "
+            "judgments behind a verdict were, averaged — 0 means each judge "
+            "was sure of its own reading, 1 means each was at a coin flip. It "
+            "is NOT agreement between judges: two judges confidently "
+            'contradicting one another both score near 0. "not measured" '
+            "means no belief distribution was captured, which is not the same "
+            f"as certainty. {DOUBT_SUSPICION_CAVEAT}_"
+        )
     if s.investigation_rounds_total:
         sof_lines.append("")
         sof_lines.append(

@@ -11,8 +11,14 @@ This module:
 * ``combine_claim_verdicts(claims, rule, weights) -> CombinedVerdict`` —
   the pure function the graph node calls. Honours
   AND / OR / WEIGHTED_AND / UNION combination rules. Drops claims that
-  are abandoned, cycle_capped, or have no integration verdict from
-  numeric combination; surfaces the dropped subset in the diagnostic.
+  are abandoned or have no integration verdict from numeric combination;
+  surfaces the dropped subset in the diagnostic. **Cycle-capped claims
+  are NOT dropped** — since 2026-05-04 a capped claim that carries an
+  integration verdict contributes it, penalised inside
+  ``_claim_posterior`` (see that function's docstring). Discarding
+  already-acquired signal because the scheduler gave up is exactly the
+  bug ``ConcludeAtCycleCapOperation`` exists to prevent; do not
+  reintroduce the drop.
 
 Combination semantics (Mill / Lakatos / Lipton):
 
@@ -41,7 +47,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..entities.claim import Claim
-from ..thresholds import POSTERIOR_DIRECTIONAL_BREAKPOINT
+from ..entities.verdict import verdict_label as _verdict_label
 
 if TYPE_CHECKING:
     from ..entities.decomposition import Decomposition
@@ -53,7 +59,11 @@ class CombinedVerdict:
 
     posterior is None when:
       * combination_rule is UNION (no scalar verdict by design)
-      * all input claims are excluded (capped, abandoned, no verdict)
+      * all input claims are excluded — abandoned, or carrying no
+        integration verdict. Cycle-capped claims are NOT an exclusion
+        category: a capped claim that carries a verdict contributes it,
+        penalised inside ``_claim_posterior``. ``n_capped`` counts them
+        for diagnostics only.
     """
 
     posterior: float | None
@@ -66,20 +76,48 @@ class CombinedVerdict:
     explanation: str
 
 
-def _verdict_label(p: float) -> str:
-    """Map a combined posterior to a verdict label.
+def order_claims_for_combination(
+    claims: list[Claim], decomposition: "Decomposition | None"
+) -> tuple[list[Claim], int]:
+    """Order ``claims`` by the decomposition's sub-investigation order.
 
-    Uses ``POSTERIOR_DIRECTIONAL_BREAKPOINT`` from
-    ``epistemic.thresholds`` (canonical value 0.66) and its mirror
-    ``1 - threshold`` for the contradicts side. Symmetric around 0.5.
-    The label is consumed by reporters and the writer agent — it does
-    not gate any routing decision in the graph.
+    Returns ``(ordered, n_orphan)``. ``ordered`` contains only claims
+    whose ``sub_investigation_id`` matches an entry in the current
+    decomposition, in decomposition order — which is what makes the
+    WEIGHTED_AND weight alignment deterministic regardless of repo
+    query order. ``n_orphan`` counts claims that exist but have no
+    matching sub-id (sub-investigation removed by a later reflection
+    round, or a claim minted without one); without surfacing it the
+    combiner would silently exclude them.
+
+    One implementation, two callers (``confidence.build_verdict`` and
+    ``confidence.compute_posterior``'s rule-aware branch) — the two
+    used to carry separate copies of this loop.
+
+    With NO decomposition (verify mode, open research) both numbers are
+    zero: orphan-ness is defined relative to a decomposition, so with
+    none every claim would count as an orphan and the run would persist
+    ``n_orphan == len(claims)`` plus the flatly false explanation
+    "sub_investigation_id not in the current decomposition" — a statement
+    about a decomposition that does not exist. Returning ``(([], 0))``
+    keeps the caller's existing fall-back (``if not ordered``) intact.
     """
-    if p > POSTERIOR_DIRECTIONAL_BREAKPOINT:
-        return "supports"
-    if p < 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT:
-        return "contradicts"
-    return "insufficient"
+    sub_ids_in_order = [
+        s.id for s in (decomposition.sub_investigations if decomposition else [])
+    ]
+    if not sub_ids_in_order:
+        return [], 0
+    claims_by_sub = {
+        c.sub_investigation_id: c for c in claims if c.sub_investigation_id is not None
+    }
+    ordered = [claims_by_sub[sid] for sid in sub_ids_in_order if sid in claims_by_sub]
+    n_orphan = sum(
+        1
+        for c in claims
+        if c.sub_investigation_id is None
+        or c.sub_investigation_id not in sub_ids_in_order
+    )
+    return ordered, n_orphan
 
 
 def _claim_posterior(claim: Claim, suspended: bool = False) -> float | None:
@@ -130,9 +168,12 @@ def combine_claim_verdicts(
     """Aggregate per-claim posteriors into a combined verdict.
 
     Args:
-        claims: claims in decomposition order. Abandoned, cycle_capped,
-            and no-verdict claims are excluded from numeric combination
-            but recorded in the diagnostic.
+        claims: claims in decomposition order. Abandoned and no-verdict
+            claims are excluded from numeric combination but recorded in
+            the diagnostic. Cycle-capped claims are NOT excluded — a
+            capped claim carrying an integration verdict contributes it,
+            penalised inside ``_claim_posterior`` (see the module
+            docstring; do not reintroduce the drop).
         combination_rule: AND / OR / WEIGHTED_AND / UNION (case-insensitive).
         weights: optional per-claim weights, same length as ``claims``,
             consumed only by WEIGHTED_AND. None or all-equal makes

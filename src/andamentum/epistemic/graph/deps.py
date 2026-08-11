@@ -31,6 +31,13 @@ class EpistemicDeps:
     evidence_gatherer: Any | None = None
     quality_scorer: Any | None = None
     embedding_model: str | None = None
+    # Model id for ``llm_judge`` second opinions, threaded from
+    # ``run_epistemic_graph``'s ``model``. Read only by ``_make_op``, which
+    # hands it to every operation; the single consumer today is the
+    # evidence-quality invalidation gate. Kept distinct from
+    # ``embedding_model`` (a different service) and from the agent runner's
+    # own model (which two of the test runners do not even expose).
+    judge_model: str | None = None
     provider: str = "all"
     verbose: bool = False
     progress_callback: Optional[ProgressCallback] = None

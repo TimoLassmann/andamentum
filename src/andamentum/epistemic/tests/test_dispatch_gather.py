@@ -333,6 +333,153 @@ class TestPlanEvidenceWiring:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# The near-zero-quality second-opinion gate, ON THE GATHERING PATH
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+_LOW_QUALITY_SCORING: dict[str, Any] = {
+    "source_credibility": 0.02,
+    "relevance": 0.02,
+    "specificity": 0.02,
+    "recency_appropriate": 0.02,
+    "justification": "looks like an error page",
+}
+
+
+def _low_quality_setup(repo: EpistemicRepository) -> tuple[Any, Any]:
+    """A provider + runner pair whose gathered item scores below the cut."""
+    gathered = GatheredEvidence(
+        content="Some real text about a trial.",
+        source_ref="https://example.org/x",
+        source_type="stub_a",
+        evidence_kind="literature",
+    )
+    provider = _StubProvider(name="stub_a", gathered=[gathered])
+    runner = _DispatchStubRunner(
+        dispatch_responses={
+            "stub_a": {
+                "queries": ["stub query"],
+                "reasoning": "fits",
+                "confidence": 0.9,
+            }
+        },
+        scoring_response=_LOW_QUALITY_SCORING,
+    )
+    return provider, runner
+
+
+class TestSecondOpinionOnTheGatheringPath:
+    """The gate must be reachable through a PRODUCTION construction.
+
+    ``dispatch_and_persist_for_text`` builds its own
+    ``ExtractEvidenceOperation`` helper and calls that helper's
+    ``_score_evidence``. Every one of the gate's own unit tests builds an
+    ``ExtractEvidenceOperation`` by hand, so none of them can see a
+    dependency the helper fails to inherit. These tests drive the real
+    helper construction, and the live graph node above it.
+    """
+
+    async def _objective(self, repo: EpistemicRepository) -> None:
+        obj = Objective(
+            entity_id="obj_lowq",
+            objective_id="obj_lowq",
+            description="Does stub claim hold?",
+            phase="analyzed",
+        )
+        await repo.save(obj)
+
+    async def test_low_quality_item_is_retained_when_the_judge_disagrees(
+        self, repo: EpistemicRepository, stub_llm_judge: Any
+    ) -> None:
+        """The gate RUNS on the dispatch path — it neither raises nor destroys.
+
+        Before ``dispatch_and_persist_for_text`` inherited ``judge_model``
+        from its parent operation, this raised ``RuntimeError`` out of the
+        persistence loop, aborting the rest of the gather.
+        """
+        await self._objective(repo)
+        provider, runner = _low_quality_setup(repo)
+        recorder = stub_llm_judge((90, 5, 5))
+
+        op = DispatchGatherOperation(
+            repo,
+            runner,
+            judge_model="test:judge",
+            providers={"stub_a": provider},
+        )
+        result = await op.execute(
+            _make_input(entity_id="obj_lowq", entity_type="objective")
+        )
+
+        assert result.success
+        ev_list = await repo.query("evidence", objective_id="obj_lowq")
+        assert len(ev_list) == 1
+        ev = ev_list[0]
+        assert ev.invalidated is False
+        assert ev.quality_distribution is not None
+        assert ev.quality_score is not None and ev.quality_score < 0.10
+        assert len(recorder.calls) == 1
+
+    async def test_low_quality_item_is_invalidated_when_the_judge_agrees(
+        self, repo: EpistemicRepository, stub_llm_judge: Any
+    ) -> None:
+        """The destroy arm still works through the same construction."""
+        await self._objective(repo)
+        provider, runner = _low_quality_setup(repo)
+        stub_llm_judge((5, 5, 90))
+
+        op = DispatchGatherOperation(
+            repo,
+            runner,
+            judge_model="test:judge",
+            providers={"stub_a": provider},
+        )
+        await op.execute(_make_input(entity_id="obj_lowq", entity_type="objective"))
+
+        ev_list = await repo.query("evidence", objective_id="obj_lowq")
+        assert len(ev_list) == 1
+        assert ev_list[0].invalidated is True
+
+    async def test_plan_evidence_threads_judge_model_all_the_way_down(
+        self, repo: EpistemicRepository, stub_llm_judge: Any
+    ) -> None:
+        """The LIVE graph path: deps.judge_model must reach the helper.
+
+        ``PlanEvidence._run_dispatch`` builds ``DispatchGatherOperation``
+        inline (it needs the ``providers`` kwarg ``_make_op`` doesn't
+        know), so a dependency omitted there is missing on the live path
+        and nowhere else. With ``judge_model`` dropped, the gate raised
+        and ``_run_dispatch``'s broad ``except`` quarantined the WHOLE
+        gather — losing every remaining item rather than one.
+        """
+        await self._objective(repo)
+        provider, runner = _low_quality_setup(repo)
+        recorder = stub_llm_judge((90, 5, 5))
+
+        state = EpistemicGraphState(objective_id="obj_lowq", question="q?")
+        deps = EpistemicDeps(
+            repo=repo,
+            agent_runner=runner,
+            providers={"stub_a": provider},
+            judge_model="test:judge",
+        )
+
+        next_node = await PlanEvidence().run(_FakeCtx(state, deps))  # type: ignore[arg-type]
+
+        assert isinstance(next_node, ExtractEvidence)
+        assert state.quarantined == [], (
+            "the gather must not be quarantined: a near-zero quality score is "
+            "a handled outcome, not a wiring failure"
+        )
+        assert len(recorder.calls) == 1, (
+            "the second opinion must actually run on the live gathering path"
+        )
+        ev_list = await repo.query("evidence", objective_id="obj_lowq")
+        assert len(ev_list) == 1
+        assert ev_list[0].invalidated is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 

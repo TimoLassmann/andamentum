@@ -68,19 +68,21 @@ def increment_gap_rounds(n: int = 1) -> None:
 
 
 def bump_from_result(result) -> None:
-    """Bump ``llm_calls`` by pydantic-ai's ``result.usage().requests``
-    when available — that captures tool-call expansion (an agent.run
-    with three tool turns is reported as 4 requests). Falls back to +1
-    when the usage call is missing or returns nothing parseable, so the
-    counter is an honest lower bound even when usage is unreadable."""
+    """Bump ``llm_calls`` by pydantic-ai's ``result.usage.requests`` when
+    available — that captures tool-call expansion (an agent.run with three
+    tool turns is reported as 4 requests). Falls back to +1 when usage is
+    absent or unparseable, so the counter is an honest lower bound.
+
+    ``usage`` is a PROPERTY in pydantic-ai v2 (it was a method in v1).
+    Reading it as a method raised ``TypeError`` into the except-branch below,
+    which silently degraded every count to the +1 fallback — invisible,
+    because the fallback is a legitimate outcome. Hence the narrow except:
+    a missing/None usage is expected and tolerated, but a wrong-shaped API
+    is a bug and must surface."""
     n = 1
-    try:
-        usage = result.usage()
-        candidate = getattr(usage, "requests", None) or getattr(
-            usage, "request_count", None
-        )
+    usage = getattr(result, "usage", None)
+    if usage is not None:
+        candidate = getattr(usage, "requests", None)
         if isinstance(candidate, int) and candidate >= 1:
             n = candidate
-    except Exception:
-        pass
     increment_llm_calls(n)

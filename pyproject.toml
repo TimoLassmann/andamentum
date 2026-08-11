@@ -55,8 +55,9 @@ dependencies = [
     "torch>=2.2,<3",
     "torchvision>=0.17,<1",
     "scikit-learn>=1.3,<2",          # epistemic
-    "pydantic-ai>=1.84.0,<2",        # whetstone / epistemic / deep-research
-    "pydantic-graph>=0.1.0,<2",      # graph state machines (whetstone, deep-research)
+    # v2 unbundled the bedrock provider; core.models imports it, hence the extra.
+    "pydantic-ai[bedrock]>=2.22,<3",  # whetstone / epistemic / deep-research
+    "pydantic-graph>=2.22,<3",       # graph state machines (whetstone, deep-research)
     "python-dotenv>=1.0.0,<2",       # epistemic / deep-research demos
     "rich>=13.0.0,<16",              # epistemic / whetstone CLI rendering
     "markdown>=3.5.0,<4",            # typeset
@@ -116,7 +117,7 @@ dev = [
     "uvicorn>=0.27,<1",
     "trafilatura>=2.0.0,<3",   # dev install gets every backend for full-suite tests
 ]
-# The SciFact calibration benchmark (benchmarks/scifact/) is orchestrated by
+# The SciFact calibration benchmark (paper/scifact/) is orchestrated by
 # Snakemake; everything else it needs (scipy, matplotlib, numpy, pyyaml, rich,
 # python-dotenv, pydantic-ai) is already a core dependency. Install
 # `andamentum[benchmark]` and run it from this single venv — no separate env.

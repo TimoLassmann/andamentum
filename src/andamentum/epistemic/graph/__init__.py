@@ -101,11 +101,37 @@ async def _check_stage_invariant(
         )
 
 
+def _pending_node_class(pending: Any) -> Optional[type]:
+    """The pipeline node class a pending graph task is about to run.
+
+    pydantic-graph v2 schedules *tasks*, and not every task runs a
+    pipeline node: the synthetic start node and the entry decision are
+    tasks too, and both carry the entry node instance as their inputs
+    without executing it. A task executes a node exactly when its
+    ``node_id`` is that node class's own id — everything else is
+    engine plumbing and returns None.
+    """
+    from pydantic_graph import BaseNode
+
+    if len(pending) != 1:
+        raise RuntimeError(
+            f"Epistemic graph scheduled {len(pending)} concurrent tasks; the "
+            "stage runner assumes a strictly sequential pipeline. Adding a "
+            "fork to the graph means this loop needs rewriting, not relaxing."
+        )
+    task = pending[0]
+    node = task.inputs
+    if isinstance(node, BaseNode) and task.node_id == type(node).get_node_id():
+        return type(node)
+    return None
+
+
 async def _emit_artifacts(
     output_dir: Path,
     visits: list[dict[str, Any]],
     repo: Any,
     objective_id: str,
+    verdict: Any = None,
 ) -> None:
     """Write run.jsonl, diff.json, timing.txt to output_dir.
 
@@ -125,7 +151,6 @@ async def _emit_artifacts(
     evidence = await repo.query("evidence")
     obj = next((o for o in objs if o.objective_id == objective_id), None)
     decomp = obj.decomposition if obj is not None else None
-    cv = decomp.combined_verdict if decomp is not None else None
     diff = {
         "objective_id": objective_id,
         "claims": len(claims),
@@ -136,8 +161,11 @@ async def _emit_artifacts(
             if (e.extracted_content or "") and len(e.extracted_content) > 200
         ),
         "decomposition_present": decomp is not None,
-        "combined_verdict": cv.verdict if cv is not None else None,
-        "combined_posterior": cv.posterior if cv is not None else None,
+        # Sourced from the run's verdict object, so verify-mode runs
+        # populate these too (the previous decomposition-only lookup left
+        # them null for the whole SciFact arm).
+        "combined_verdict": verdict.direction if verdict is not None else None,
+        "combined_posterior": verdict.posterior if verdict is not None else None,
         "claims_terminal": sum(1 for c in claims if c.cycle_capped or c.abandoned),
         "claims_with_integrated_assessment": sum(
             1 for c in claims if c.integrated_assessment is not None
@@ -317,6 +345,10 @@ async def run_epistemic_graph(
         evidence_gatherer=evidence_gatherer,
         quality_scorer=quality_scorer,
         embedding_model=embedding_model,
+        # The run's LLM is also the second-opinion judge. One model per run,
+        # no separate flag, no ambient default — the judge is not a different
+        # capability tier, it is the same model asked a bounded question.
+        judge_model=model,
         provider=provider,
         verbose=verbose,
         progress_callback=progress_callback,
@@ -330,29 +362,48 @@ async def run_epistemic_graph(
     entry_node = (start_at or PrepareObjective)()
     if stop_after is None and output_dir is None:
         # Fast path: no stop, no instrumentation — let pydantic-graph
-        # drive the run in one shot.
-        graph_result = await epistemic_graph.run(
-            entry_node,
+        # drive the run in one shot. v2's ``run()`` returns the graph
+        # output directly (no result wrapper) and takes the entry node
+        # as ``inputs``; the graph's start node routes it to the
+        # matching node step.
+        result = await epistemic_graph.run(
             state=state,
             deps=deps,
+            inputs=entry_node,
         )
-        result = graph_result.output
     else:
         # Stage-runner mode: drive the graph node-by-node so we can
         # break after a named node and/or record visit timings. The
         # DB is the checkpoint; callers resume by passing start_at
         # on a later invocation. See
         # docs/superpowers/plans/2026-05-03-stage-runners.md.
+        #
+        # v2 iteration protocol: ``run.next_task`` holds what is about
+        # to execute, ``anext(run)`` executes it and returns what comes
+        # after, and the run is finished once ``next_task`` is an
+        # ``EndMarker`` (whose value ``run.output`` exposes).
+        from pydantic_graph import EndMarker
+
         visits: list[dict[str, Any]] = []
-        async with epistemic_graph.iter(entry_node, state=state, deps=deps) as run:
-            while run.result is None:
-                next_node = run.next_node
-                if next_node is None:
+        async with epistemic_graph.iter(
+            state=state, deps=deps, inputs=entry_node
+        ) as run:
+            while True:
+                pending = run.next_task
+                if isinstance(pending, EndMarker):
                     break
-                node_class = type(next_node)
+                node_class = _pending_node_class(pending)
                 t0 = time.monotonic()
-                await run.next()
+                # No StopAsyncIteration guard: the EndMarker check above is the
+                # loop's only exit, and an ErrorMarker is re-raised by __anext__ —
+                # a swallow here would turn a real premature-exhaustion bug into a
+                # confusing AssertionError downstream.
+                await anext(run)
                 elapsed_ms = (time.monotonic() - t0) * 1000
+                if node_class is None:
+                    # Engine plumbing (the start node, the entry
+                    # decision) — not a pipeline node visit.
+                    continue
                 if output_dir is not None:
                     visits.append(
                         {
@@ -363,9 +414,11 @@ async def run_epistemic_graph(
                     )
                 if stop_after is not None and node_class is stop_after:
                     break
-        result = run.result.output if run.result is not None else None
+            result = run.output
         if output_dir is not None:
-            await _emit_artifacts(output_dir, visits, repo, objective_id)
+            await _emit_artifacts(
+                output_dir, visits, repo, objective_id, state.verdict
+            )
         if stop_after is not None:
             await _check_stage_invariant(stop_after, state, repo)
 
@@ -378,15 +431,14 @@ async def run_epistemic_graph(
             assert stop_after is not None
             logger.info(f"Graph stopped after {stop_after.__name__}")
 
-    # Compute posterior confidence only on a complete graph traversal.
-    posterior_report = None
-    if result is not None and result.successful > 0:
-        from ..confidence import compute_posterior
-
-        posterior_report = await compute_posterior(
-            repo, objective_id, retrieval_failed=result.retrieval_failed
-        )
-
+    # The posterior is computed INSIDE the graph now, by
+    # CombineClaimVerdicts, and persisted on the frozen Snapshot. The
+    # previous post-End ``compute_posterior`` call was a second,
+    # independent computation whose retrieval_failed input and claim
+    # state could differ from the one the writer had rendered — one of
+    # the three-answers-that-disagree paths. PipelineResult exposes the
+    # embedded report so the CLI, the artefact, the HTML report and the
+    # benchmark harness all read literally the same object.
     from ..operations_runner import PipelineResult
 
     if result is None:
@@ -398,7 +450,10 @@ async def run_epistemic_graph(
             failed=0,
             status=f"stopped_after:{stop_after.__name__}",
             errors=[],
-            posterior=None,
+            posterior=(
+                state.verdict.posterior_report if state.verdict is not None else None
+            ),
+            verdict=state.verdict,
             quarantined=[],
             retrieval_failed=False,
         )
@@ -409,7 +464,10 @@ async def run_epistemic_graph(
         failed=result.failed,
         status=result.status,
         errors=result.errors,
-        posterior=posterior_report,
+        posterior=(
+            state.verdict.posterior_report if state.verdict is not None else None
+        ),
+        verdict=state.verdict,
         quarantined=result.quarantined,
         retrieval_failed=result.retrieval_failed,
     )

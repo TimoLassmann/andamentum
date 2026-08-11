@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pydantic_graph import BaseNode, End, Graph, GraphRunContext
+from pydantic_graph import BaseNode, End, EndMarker, GraphBuilder, GraphRunContext
 
 from .agents import MODEL_OUTPUT_ERRORS, AgentSink, CoreAgentSink
 from .audit import audit_system
@@ -295,21 +295,27 @@ class Finish(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
         )
 
 
-graph = Graph(
-    nodes=[
-        Understand,
-        Assess,
-        Frame,
-        Decompose,
-        Compile,
-        Review,
-        Render,
-        Verify,
-        Build,
-        Audit,
-        Finish,
-    ]
+_builder = GraphBuilder[ForgeState, ForgeDeps, Understand, ForgeResult](
+    state_type=ForgeState,
+    deps_type=ForgeDeps,
+    input_type=Understand,
+    output_type=ForgeResult,
 )
+_builder.add(
+    _builder.edge_from(_builder.start_node).to(Understand),
+    _builder.node(Understand),
+    _builder.node(Assess),
+    _builder.node(Frame),
+    _builder.node(Decompose),
+    _builder.node(Compile),
+    _builder.node(Review),
+    _builder.node(Render),
+    _builder.node(Verify),
+    _builder.node(Build),
+    _builder.node(Audit),
+    _builder.node(Finish),
+)
+graph = _builder.build()
 
 
 async def run_forge(
@@ -368,27 +374,29 @@ async def run_forge(
 
     # Drive the graph node-by-node (Law 2: still all engine-aware code, in this one file)
     # so the reporter can light each stage as it runs and read its one-line summary off the
-    # state once it finishes. graph.iter yields each node *before* it runs; by the time the
-    # next node is yielded the previous one has completed and the state reflects its work.
+    # state once it finishes. graph.iter yields each pending task *before* its node runs; by
+    # the time the next task is yielded the previous one has completed and the state reflects
+    # its work. The pipeline never forks, so each yield is a single task, and its ``node_id``
+    # is the node class name.
     # Only the displayed stages emit events — internal nodes (Finish) are not stages.
     current = ""
     prev_name = ""
     try:
-        async with graph.iter(Understand(), state=state, deps=deps) as run:
-            async for node in run:
+        async with graph.iter(inputs=Understand(), state=state, deps=deps) as run:
+            async for tasks in run:
                 if prev_name:
                     resolved_reporter.stage_finished(
                         name=prev_name, detail=_stage_detail(prev_name, state)
                     )
                     prev_name = ""
-                if isinstance(node, End):
+                if isinstance(tasks, EndMarker):
                     break
-                current = type(node).__name__
+                current = str(tasks[0].node_id)
                 if current in planned_set:
                     resolved_reporter.stage_started(name=current)
                     prev_name = current
-        result = run.result
-        assert result is not None
+        out = run.output
+        assert out is not None
     except Exception as exc:  # surface which stage failed, then re-raise (fail loud)
         resolved_reporter.stage_failed(name=current, error=str(exc))
         # A hard LLM-output failure in a load-bearing design stage (understand / assess /
@@ -402,7 +410,6 @@ async def run_forge(
                 f"after retries — try a more capable model. Underlying error: {exc}"
             ) from exc
         raise
-    out = result.output
     resolved_reporter.run_finished(works=out.works, stage_reached=out.stage_reached)
     return out
 

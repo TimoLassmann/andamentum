@@ -30,11 +30,8 @@ class _StubResult:
     through without exercising the real pipeline."""
 
 
-async def _mock_run(_node, *, state, deps):  # noqa: ARG001 - signature mirrors pydantic-graph
-    class _Wrapper:
-        output = _StubResult()
-
-    return _Wrapper()
+async def _mock_run(*, state, deps, inputs):  # noqa: ARG001 - signature mirrors pydantic-graph
+    return _StubResult()
 
 
 async def test_refuses_markered_input_by_default() -> None:

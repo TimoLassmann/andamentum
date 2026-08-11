@@ -113,9 +113,9 @@ class Objective(EpistemicEntity):
         default=None,
         description=(
             "Top-down decomposition produced by DecomposeQuestionOperation. "
-            "After CombineClaimVerdicts runs, ``combined_verdict`` is "
-            "populated in-place; FreezeSnapshot then promotes that onto "
-            "Snapshot.combined_verdict."
+            "Structure only — the aggregate outcome is the typed "
+            "EpistemicVerdict that CombineClaimVerdicts writes to graph "
+            "state and FreezeSnapshot stamps onto Snapshot.verdict."
         ),
     )
 

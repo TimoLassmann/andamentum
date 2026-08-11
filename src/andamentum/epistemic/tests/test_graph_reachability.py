@@ -50,7 +50,7 @@ from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
     AbandonOrDemote,
-    CheckCompletion,
+    CombineClaimVerdicts,
     PromoteToSupported,
     Scrutinize,
 )
@@ -435,7 +435,16 @@ class TestEndToEndNoStrandedClaims:
     ) -> None:
         """Refute-promoted claim has its verdict pre-set and is in
         verification_done. PromoteToSupported should see no work and
-        return CheckCompletion — the IBE chain correctly does NOT run."""
+        route toward the terminal — the IBE chain correctly does NOT run.
+
+        BEHAVIOUR CHANGE (2026-08-09): the no-work exit returns
+        ``CombineClaimVerdicts``, not ``CheckCompletion``. That single
+        retargeted edge makes CombineClaimVerdicts the sole predecessor
+        of CheckCompletion, so the run's verdict object is rebuilt from
+        the live DB before every terminal decision — including after a
+        loop-back, where the old edge left CheckCompletion reading a
+        stale verdict or none at all.
+        """
         obj, claims, repo = await _build_objective_with_claims(
             tmp_path,
             "refute_flow_e2e",
@@ -453,7 +462,7 @@ class TestEndToEndNoStrandedClaims:
         deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
 
         next_node = await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
-        assert isinstance(next_node, CheckCompletion)
+        assert isinstance(next_node, CombineClaimVerdicts)
 
 
 # ── Stranded-claim invariant as a standalone unit test ────────────────

@@ -41,6 +41,7 @@ class _StubDeps:
     evidence_gatherer: Any = None
     quality_scorer: Any = None
     embedding_model: Any = None
+    judge_model: Any = None
     progress_callback: Any = None
 
 
@@ -425,34 +426,32 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp_path):
-    """When compute_posterior raises, run_epistemic_graph must propagate —
-    a silent None posterior hides the headline result."""
-    from andamentum.epistemic.graph import run_epistemic_graph
-    from andamentum.epistemic.graph.result import EpistemicResult
+async def test_combine_claim_verdicts_propagates_posterior_failure(tmp_path, monkeypatch):
+    """When compute_posterior raises, the node that builds the run's
+    verdict must propagate — a silent None verdict hides the headline
+    result, and CheckCompletion would then raise a confusing
+    routing-bug error far from the real cause.
 
-    # Fake graph result with successful=1 so the posterior branch is reached.
-    fake_epistemic_result = EpistemicResult(
-        objective_id="obj-fake",
-        status="complete",
-        successful=1,
-        failed=0,
-    )
+    BEHAVIOUR CHANGE (2026-08-09): the posterior is computed INSIDE the
+    graph, by CombineClaimVerdicts via ``confidence.build_verdict``, and
+    persisted on the Snapshot. The previous post-End computation in
+    ``run_epistemic_graph`` is gone, so the no-swallow contract is
+    pinned at the new site.
+    """
+    from andamentum.document_store import DocumentStore
+    from andamentum.epistemic.entities import Objective
+    from andamentum.epistemic.graph.deps import EpistemicDeps
+    from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
+    from andamentum.epistemic.graph.state import EpistemicGraphState
+    from andamentum.epistemic.repository import EpistemicRepository
 
-    class _FakeGraphRunResult:
-        output = fake_epistemic_result
+    store = DocumentStore.for_database("posterior_failure", db_dir=tmp_path)
+    await store.initialize()
+    repo = EpistemicRepository(store)
+    obj = Objective(description="Does X cause Y?", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
 
-    class _FakeGraph:
-        async def run(self, *args, **kwargs):
-            return _FakeGraphRunResult()
-
-    # Patch the graph object inside nodes so run_epistemic_graph uses our fake.
-    monkeypatch.setattr(
-        "andamentum.epistemic.graph.nodes.epistemic_graph",
-        _FakeGraph(),
-    )
-
-    # Patch compute_posterior to raise.
     async def _raising_posterior(*args, **kwargs):
         raise RuntimeError("posterior computation failed")
 
@@ -461,15 +460,15 @@ async def test_run_epistemic_graph_propagates_posterior_failure(monkeypatch, tmp
         _raising_posterior,
     )
 
+    class _Ctx:
+        def __init__(self, state, deps):
+            self.state = state
+            self.deps = deps
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None)
     with pytest.raises(RuntimeError, match="posterior computation failed"):
-        await run_epistemic_graph(
-            question="Does X cause Y?",
-            database_name="test_posterior_failure",
-            model="test:stub",
-            provider="none",
-            providers={},
-            db_dir=str(tmp_path),
-        )
+        await CombineClaimVerdicts().run(_Ctx(state, deps))  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -770,4 +769,53 @@ async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
     )
     assert "deferred" not in result.message, (
         f"deferred clusters should be retired. Got:\n{result.message}"
+    )
+
+
+# ── Evidence-quality second opinion ──────────────────────────────────
+
+
+async def test_score_evidence_propagates_second_opinion_failure(
+    repo, stub_llm_judge
+) -> None:
+    """A failed second opinion must PROPAGATE, not resolve into a decision.
+
+    Swallowing it either way is a silent wrong answer: swallow-to-invalidate
+    destroys evidence on an infrastructure error, swallow-to-pass keeps
+    evidence the gate never actually checked. The exception reaches
+    ``_execute_op``, which records it as a loud quarantine.
+
+    PINS: the standing no-swallow contract at the new call site.
+    """
+    from andamentum.epistemic.entities import Evidence
+    from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
+    from andamentum.epistemic.tests.conftest import FakeAgentRunner
+
+    stub_llm_judge(raises=RuntimeError("judge transport died"))
+    ev = Evidence(
+        objective_id="obj-1",
+        source_type="web_search",
+        source_ref="https://example.org/x",
+        extracted_content="Some real text about a trial.",
+    )
+    op = ExtractEvidenceOperation(
+        repo,
+        FakeAgentRunner(
+            overrides={
+                "epistemic_assess_evidence_quality": {
+                    "source_credibility": 0.02,
+                    "relevance": 0.02,
+                    "specificity": 0.02,
+                    "recency_appropriate": 0.02,
+                    "justification": "looks empty",
+                }
+            }
+        ),
+        judge_model="test:judge",
+    )
+
+    with pytest.raises(RuntimeError, match="judge transport died"):
+        await op._score_evidence(ev)
+    assert ev.invalidated is False, (
+        "a transport failure must not be resolved into a destroy"
     )

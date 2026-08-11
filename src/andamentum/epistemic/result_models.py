@@ -11,6 +11,7 @@ Per TYPING_CONVENTIONS.md: Never use Dict[str, Any] for data passed between comp
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
+from .entities.verdict import EpistemicVerdict
 from .primitives import (
     Claim,
     Evidence,
@@ -189,6 +190,14 @@ class AskResult(BaseResult):
     kept: bool = Field(default=False, description="Whether project was kept")
     artefact_content: Optional[str] = Field(
         default=None, description="Full artefact markdown — the canonical output"
+    )
+    verdict: Optional[EpistemicVerdict] = Field(
+        default=None,
+        description=(
+            "The run's single decision record — direction, posterior, "
+            "provenance, per-claim breakdown. A caller gets the verdict "
+            "here without parsing ``artefact_content``."
+        ),
     )
 
 

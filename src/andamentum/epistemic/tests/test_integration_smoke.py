@@ -1,16 +1,22 @@
 """Integration smoke tests — hit real APIs to verify response shapes.
 
 These tests catch API schema changes between releases. They require network
-access and are skipped by default. Run with:
+access and are excluded from the default selection. Run with:
 
-    uv run pytest packages/epistemic/tests/test_integration_smoke.py -v -m integration
+    uv run pytest src/andamentum/epistemic/tests/test_integration_smoke.py -v -m live_provider
 
-Marked @pytest.mark.integration so they don't run in CI or normal test runs.
+Marked ``live_provider`` — the registered marker for "calls a live evidence
+provider API (PubMed, OpenAlex, ...)", which ``addopts`` deselects by default.
+It previously said ``integration``, which is NOT a registered marker and NOT in
+the deselect list, so these live-network tests ran in *every* default invocation
+(emitting PytestUnknownMarkWarning) and turned any provider rate-limit into a
+suite failure — OpenAlex 429s did exactly that on 2026-08-09. The docstring
+above always claimed they were skipped by default; now they are.
 """
 
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = pytest.mark.live_provider
 
 
 class TestMonarchAPISmoke:

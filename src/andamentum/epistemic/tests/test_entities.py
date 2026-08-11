@@ -125,6 +125,64 @@ class TestSerializationRoundTrip:
         assert restored.quality_score == 0.85
         assert restored.extracted is True
 
+    def test_claim_scrutiny_doubt_round_trips_through_metadata(self):
+        """The measurement must survive a save/load.
+
+        PINS: the persistence of ``scrutiny_doubt``. A future
+        ``_extra_metadata`` edit that drops the key would silently reload it
+        as None, and the doubt gate would go quiet without anything failing.
+        Also pins that ``None`` stays ABSENT rather than serialising as a
+        stored null — "unmeasured" and "measured as 0.0" must stay
+        distinguishable on the round-trip too.
+        """
+        measured = Claim(
+            objective_id="obj-1",
+            statement="c",
+            scrutiny_verdict="pass",
+            scrutiny_doubt=0.73,
+        )
+        _content, metadata = measured.to_document()
+        assert metadata["scrutiny_doubt"] == 0.73
+        assert Claim.from_document(_content, metadata).scrutiny_doubt == 0.73
+
+        unmeasured = Claim(objective_id="obj-1", statement="c")
+        _c2, meta2 = unmeasured.to_document()
+        assert "scrutiny_doubt" not in meta2
+        assert Claim.from_document(_c2, meta2).scrutiny_doubt is None
+
+    def test_evidence_quality_distribution_round_trips_and_derives_doubt(self):
+        """Store the distribution, DERIVE the signals.
+
+        PINS: the derived properties are computed from the stored
+        distribution, not stored alongside it (which could drift), and the
+        field's absence is what marks "no second opinion ran".
+        """
+        from andamentum.epistemic.judgment_signal import distribution_entropy
+
+        judged = Evidence(
+            objective_id="obj-1",
+            source_type="web_search",
+            source_ref="https://example.org",
+            quality_distribution=[0.1, 0.2, 0.7],
+        )
+        content, metadata = judged.to_document()
+        restored = Evidence.from_document(content, metadata)
+        assert restored.quality_distribution == [0.1, 0.2, 0.7]
+        assert restored.quality_confidence == pytest.approx(0.7)
+        assert restored.quality_doubt == pytest.approx(
+            distribution_entropy([0.1, 0.2, 0.7])
+        )
+
+        plain = Evidence(
+            objective_id="obj-1", source_type="web_search", source_ref="x"
+        )
+        c2, m2 = plain.to_document()
+        assert "quality_distribution" not in m2
+        reloaded = Evidence.from_document(c2, m2)
+        assert reloaded.quality_distribution is None
+        assert reloaded.quality_doubt is None
+        assert reloaded.quality_confidence is None
+
     def test_uncertainty_roundtrip(self):
         original = Uncertainty(
             entity_id="unc-001",

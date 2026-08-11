@@ -50,9 +50,10 @@ def test_check_completion_not_in_abandon_or_demote_successors() -> None:
     If this test fires, someone widened AbandonOrDemote's return
     annotation back to ``Union[..., CheckCompletion]``. Don't. The
     correct routing is AbandonOrDemote → PromoteToSupported →
-    (ClusterEvidence | CheckCompletion). PromoteToSupported is
-    idempotent — when there's no work, it itself returns
-    CheckCompletion.
+    (ClusterEvidence | CombineClaimVerdicts). PromoteToSupported is
+    idempotent — when there's no work, it itself routes to
+    CombineClaimVerdicts, which rebuilds the run's verdict object and
+    then hands off to CheckCompletion.
     """
     topo = topology()
     successors = topo[AbandonOrDemote]

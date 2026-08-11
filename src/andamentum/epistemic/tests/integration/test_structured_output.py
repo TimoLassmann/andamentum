@@ -179,12 +179,13 @@ async def run_test(
     else:
         output_type = test.output_model  # auto (default)
 
+    # pydantic-ai v2 folded the separate ``output_retries`` argument into
+    # ``retries``, which now takes per-category budgets as a dict.
     agent = Agent(
         model,
         system_prompt=test.system_prompt,
         output_type=output_type,
-        retries=1,
-        output_retries=test.output_retries,
+        retries={"tools": 1, "output": test.output_retries},
     )
 
     start = time.monotonic()

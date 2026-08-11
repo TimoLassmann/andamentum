@@ -9,10 +9,16 @@ Depends on: base (BaseOperation, OperationResult)
 Operates on: Claim entities
 """
 
+from typing import Literal, cast
+
 from .base import BaseOperation, OperationInput, OperationResult
 
-from ..entities import Claim
+from ..entities import CapEvaluation, Claim
 from ..entities.claim import ClaimStage
+from ..thresholds import (
+    MECHANICAL_VERDICT_MAX_CONFIDENCE,
+    SCRUTINY_STRONG_MASS_THRESHOLD,
+)
 
 
 class PromoteClaimOperation(BaseOperation):
@@ -204,9 +210,11 @@ class PromoteAsRefutedOperation(BaseOperation):
             )
 
         n_sup, n_con = await count_support_contradict(claim, self.repo)
-        # Confidence from imbalance; cap at 0.9 because this is a mechanical
+        # Confidence from imbalance; ceilinged because this is a mechanical
         # count, not holistic integration.
-        confidence = min(0.9, n_con / (n_con + max(1, n_sup)))
+        confidence = min(
+            MECHANICAL_VERDICT_MAX_CONFIDENCE, n_con / (n_con + max(1, n_sup))
+        )
 
         claim.record_promotion(
             claim.stage,
@@ -233,6 +241,268 @@ class PromoteAsRefutedOperation(BaseOperation):
             success=True,
             entity_id=claim.entity_id,
             message=f"[{claim.statement[:60]}] → supported (refuted: {n_con}⊥ / {n_sup}✓)",
+        )
+
+
+class ConcludeAtCycleCapOperation(BaseOperation):
+    """Record what the evidence said at the moment the cycle cap fired.
+
+    THE DEFECT THIS EXISTS TO FIX. A claim that cannot pass a stage gate
+    retries, hits ``PEIRCE_CYCLE_CAP``, and — before this operation — was
+    left with ``integrated_assessment=None`` forever, so the pipeline
+    wrote "insufficient evidence" even when the gathered evidence was
+    decisive. That is a scheduling side effect masquerading as an
+    epistemic conclusion (2026-07-08 audit issue #2, case 781: the
+    refuting studies were present; the claim just failed to climb).
+    "Insufficient" must be a conclusion ABOUT THE EVIDENCE.
+
+    What it does, deterministically and with **no LLM call**:
+
+    1. Gathers the claim's eligible representative evidence via
+       ``gates.eligible_representative_evidence`` — the same set scrutiny
+       reasons over, by construction (one shared helper).
+    2. Computes ``scrutiny_weight.compute_evidence_weight`` over it — the
+       same engine that produces the scrutiny verdict, so the cap does not
+       introduce a second, divergent reading of the evidence.
+    3. Always records the reading as a ``CapEvaluation`` on the Claim.
+    4. When the reading is directional — ``weight.label`` in
+       {strong, moderate}, exactly the set for which
+       ``ScrutiniseClaimOperation._verdict_from_weight`` returns "pass" —
+       AND this operation owns the verdict, writes
+       ``integrated_assessment`` / ``integrated_confidence`` /
+       ``integrated_reasoning``. ``conflicting`` (genuine disagreement) and
+       ``weak`` (too thin) emit no verdict: the cap must never manufacture
+       a direction the evidence does not carry.
+
+    CONFIDENCE. ``purity × mass_adequacy``, ceilinged at
+    ``MECHANICAL_VERDICT_MAX_CONFIDENCE``, where::
+
+        purity        = (dominant - minority) / (dominant + minority)
+        mass_adequacy = min(1, dominant / SCRUTINY_STRONG_MASS_THRESHOLD)
+
+    ``purity`` alone is a *directional-purity* measure and is 1.0 for any
+    one-sided pool regardless of size, so on its own it saturated the
+    ceiling for a single unopposed item — reporting the system's maximum
+    mechanical confidence off one source, above what a 5-vs-1 pool got.
+    That is incompatible with "emit the verdict the evidence supports
+    WITH LOW CONFIDENCE" and with the Reichenbach ≥2-independent-sources
+    doctrine the rest of the module applies. ``mass_adequacy`` discounts
+    proportionally until the dominant direction carries the mass the
+    system already calls "strong" (``SCRUTINY_STRONG_MASS_THRESHOLD``);
+    no new constant is introduced. Both factors are in [0, 1], so the
+    "can never be decisive" bound is unchanged.
+
+    VERDICT OWNERSHIP across repeated cap firings. ``_mark_cycle_capped``
+    can fire more than once per claim (ResolveUncertainties fires per
+    affected claim per resolution), and other operations may certify a
+    verdict *between* two firings, so ownership is recorded EXPLICITLY on
+    the previous ``CapEvaluation``::
+
+        cap_owns_live_verdict = (
+            previous is not None
+            and previous.wrote_live_verdict
+            and claim.stage == ClaimStage.HYPOTHESIS
+        )
+        may_write = claim.integrated_assessment is None or cap_owns_live_verdict
+        may_clear = cap_owns_live_verdict
+
+    An earlier design inferred ownership from ``cap_evaluation is not
+    None``, on the reasoning that no certified verdict can appear after a
+    cap record exists. ``PromoteAsRefutedOperation`` breaks that
+    reasoning: ``AbandonOrDemote`` dispatches it with no ``cycle_capped``
+    filter and it guards only on stage, so cap#1 (non-directional) →
+    refute-promotion (``contradicts``, SUPPORTED) → cap#2 would have
+    nulled a certified verdict, leaving a SUPPORTED claim with none. The
+    stage clause is the second, structural guard: this operation never
+    promotes, so a verdict on a claim above HYPOTHESIS was written by a
+    promotion path, not by the cap.
+
+    When a later reading turns non-directional AND the cap owns the live
+    verdict, it CLEARS what it previously wrote, so its record and its
+    verdict never disagree.
+
+    WHY MASS, NOT COUNTS. ``PromoteAsRefutedOperation`` — the other
+    mechanical verdict writer — derives its confidence from
+    ``gates.count_support_contradict``, i.e. hard integer counts of
+    supporting vs contradicting items. This operation deliberately uses
+    ``compute_evidence_weight``'s quality- and corroboration-weighted
+    *mass* instead, because its stated requirement is to reproduce the
+    reading scrutiny performs at the same moment. The two derivations are
+    not unified: converting the refutation gate to soft mass would change
+    an unbenchmarked promotion path. They share only the
+    ``MECHANICAL_VERDICT_MAX_CONFIDENCE`` ceiling — one ceiling, two
+    documented derivations.
+
+    THE DOUBT IS RECORDED, NOT DISCARDED. ``compute_evidence_weight``
+    also reports ``EvidenceWeight.doubt`` — the directional-mass-weighted
+    mean entropy of the verbalized judgment distributions behind the
+    mass. This is the one site in the pipeline that mints a verdict with
+    no LLM deliberation whatsoever, so the uncertainty of the judgments
+    it stands on is the only uncertainty it has; discarding it here would
+    contradict the premise that a judgment carries its doubt. It is
+    persisted on ``CapEvaluation.doubt``, which reaches
+    ``ClaimVerdict.cap_evaluation`` and is what
+    ``ClaimVerdict.verdict_doubt`` returns for a cycle-capped claim — so
+    the doubt rendered beside a cap-decided badge is this reading's, not
+    scrutiny's. A MEASUREMENT only. It is deliberately NOT written to
+    ``Claim.scrutiny_doubt`` — that field has exactly one writer,
+    ``ScrutiniseClaimOperation``, and a second writer would make its
+    provenance ambiguous — and it deliberately does NOT escalate: a
+    capped claim is not ``_loopback_eligible``, which is the whole point
+    of the cap.
+
+    WHAT IT DELIBERATELY DOES NOT DO:
+
+    * It does not change ``claim.stage``. A capped claim is one whose
+      inquiry did not converge; promoting it would send it to an IBE
+      chain that filters capped claims out anyway, leaving it stranded at
+      SUPPORTED. Note that leaving the stage alone is NOT by itself
+      sufficient to protect the verdict: ``AbandonOrDemote`` promotes
+      failed-scrutiny claims of its own accord, and a later demotion runs
+      ``record_demotion``, which nulls ``integrated_assessment``. That
+      erasure path is closed in ``AbandonOrDemote`` itself, which now
+      refuses to demote a cycle-capped claim (see the comment there).
+    * It does not pre-apply ``CYCLE_CAP_CONFIDENCE_PENALTY``. That penalty
+      is already applied downstream in all three posterior paths; applying
+      it here too would recalibrate silently (0.7² = 0.49).
+    * It touches no entity other than the Claim (P5).
+    """
+
+    entity_type = "claim"
+
+    async def execute(self, work: OperationInput) -> OperationResult:
+        from ..gates import eligible_representative_evidence
+        from ..scrutiny_weight import compute_evidence_weight
+
+        claim = await self.repo.get("claim", work.entity_id)
+        if not isinstance(claim, Claim):
+            return OperationResult(
+                success=False,
+                entity_id=work.entity_id,
+                message="Entity is not Claim",
+                did_work=False,
+            )
+
+        evidence = await eligible_representative_evidence(claim, self.repo)
+        weight = compute_evidence_weight(evidence)
+
+        # Ownership is decided against the PRE-EXISTING record, before the
+        # fresh CapEvaluation overwrites it. See the class docstring: an
+        # explicit ``wrote_live_verdict`` flag, not an inference from the
+        # record's existence, because PromoteAsRefutedOperation can certify
+        # a verdict between two cap firings.
+        previous = claim.cap_evaluation
+        cap_owns_live_verdict = (
+            previous is not None
+            and previous.wrote_live_verdict
+            and claim.stage == ClaimStage.HYPOTHESIS
+        )
+        may_write = claim.integrated_assessment is None or cap_owns_live_verdict
+        may_clear = cap_owns_live_verdict
+
+        weight_label: Literal["strong", "moderate", "weak", "conflicting"] = cast(
+            Literal["strong", "moderate", "weak", "conflicting"], weight.label
+        )
+        verdict: Literal["supports", "contradicts"] | None = None
+        confidence: float | None = None
+        if weight_label in ("strong", "moderate"):
+            # The label algebra guarantees strict dominance here: an equal
+            # split with enough mass reads as ``conflicting``, and an equal
+            # split without it reads as ``weak``.
+            dominant = max(weight.supporting_mass, weight.contradicting_mass)
+            minority = min(weight.supporting_mass, weight.contradicting_mass)
+            verdict = (
+                "supports"
+                if weight.supporting_mass > weight.contradicting_mass
+                else "contradicts"
+            )
+            purity = (dominant - minority) / (dominant + minority)
+            mass_adequacy = min(1.0, dominant / SCRUTINY_STRONG_MASS_THRESHOLD)
+            confidence = min(MECHANICAL_VERDICT_MAX_CONFIDENCE, purity * mass_adequacy)
+
+        wrote_verdict = verdict is not None and may_write
+        claim.cap_evaluation = CapEvaluation(
+            weight_label=weight_label,
+            supporting_mass=weight.supporting_mass,
+            contradicting_mass=weight.contradicting_mass,
+            n_evidence=len(evidence),
+            verdict=verdict,
+            confidence=confidence,
+            doubt=weight.doubt,
+            wrote_live_verdict=wrote_verdict,
+        )
+
+        if wrote_verdict:
+            claim.integrated_assessment = verdict
+            claim.integrated_confidence = confidence
+            claim.integrated_reasoning = (
+                f"Concluded at the scrutiny-resolve cycle cap: the "
+                f"deterministic evidence reading was {weight_label} "
+                f"({weight.supporting_mass:.2f} supporting vs "
+                f"{weight.contradicting_mass:.2f} contradicting mass over "
+                f"{len(evidence)} eligible item(s)), so the verdict is "
+                f"{verdict}. Derived mechanically from the directional "
+                f"balance — the IBE chain did not run on this claim "
+                f"because its inquiry did not converge."
+            )
+        elif verdict is None and may_clear:
+            # Non-directional reading, and the cap owns the live verdict.
+            # Clear what THIS operation wrote on an earlier firing, so its
+            # record and its verdict can never disagree. A verdict owned by
+            # anyone else is left strictly alone.
+            claim.integrated_assessment = None
+            claim.integrated_confidence = None
+            claim.integrated_reasoning = None
+
+        await self.repo.save(claim)
+
+        await self.log_event(
+            "claim_concluded_at_cycle_cap",
+            claim.entity_id,
+            {
+                "weight_label": weight_label,
+                "supporting_mass": weight.supporting_mass,
+                "contradicting_mass": weight.contradicting_mass,
+                "n_evidence": len(evidence),
+                "verdict": verdict,
+                "confidence": confidence,
+                "wrote_live_verdict": wrote_verdict,
+                "cap_owns_live_verdict": cap_owns_live_verdict,
+            },
+        )
+
+        if wrote_verdict:
+            # ``confidence`` is non-None whenever ``verdict`` is (the
+            # CapEvaluation validator enforces both-or-neither), but format
+            # defensively rather than asserting.
+            confidence_text = "n/a" if confidence is None else f"{confidence:.2f}"
+            message = (
+                f"[{claim.statement[:60]}] cap verdict: {verdict} "
+                f"(conf={confidence_text}, weight={weight_label})"
+            )
+        elif verdict is not None:
+            message = (
+                f"[{claim.statement[:60]}] cap reading {verdict} recorded; "
+                f"existing verdict {claim.integrated_assessment} kept "
+                "(not written by the cap)"
+            )
+        elif claim.integrated_assessment is not None:
+            message = (
+                f"[{claim.statement[:60]}] cap reading was {weight_label} — "
+                f"not directional; existing verdict "
+                f"{claim.integrated_assessment} kept (not written by the cap)"
+            )
+        else:
+            message = (
+                f"[{claim.statement[:60]}] cap reading was {weight_label} — "
+                "not directional, no verdict emitted"
+            )
+
+        return OperationResult(
+            success=True,
+            entity_id=claim.entity_id,
+            message=message,
+            did_work=wrote_verdict,
         )
 
 

@@ -195,12 +195,45 @@ CYCLE_CAP_CONFIDENCE_PENALTY (the two stack multiplicatively when
 both apply: a doubly-provisional verdict gets 0.7 × 0.7 = 0.49 on
 distance from 0.5)."""
 
+# A verdict may also be derived *mechanically* — directly from the
+# directional balance of the evidence, without the IBE chain's holistic
+# deliberation (loveliness / likeliness / contrastive selection). Such a
+# verdict is real signal and must be surfaced, but it must not claim more
+# certainty than the deliberated path, so it carries a hard ceiling.
+
+MECHANICAL_VERDICT_MAX_CONFIDENCE: float = 0.9
+"""Ceiling on ``integrated_confidence`` for a verdict derived from the
+evidence balance alone, without the IBE chain.
+
+Theoretical basis: the IBE chain is the system's certifier — it weighs
+competing explanations against each other before committing. A verdict
+read straight off the directional balance skips that deliberation, so it
+is capped below full confidence regardless of how lopsided the balance is.
+0.9 is the value ``PromoteAsRefutedOperation`` has always applied for
+exactly this reason; naming it keeps one ceiling rather than two bare
+literals.
+
+Read by: ``operations.stage_management.PromoteAsRefutedOperation`` and
+``operations.stage_management.ConcludeAtCycleCapOperation``.
+
+It is a CEILING, not a target. The cap reaches it only when the evidence
+is both one-sided AND carries at least ``SCRUTINY_STRONG_MASS_THRESHOLD``
+of dominant mass; a thin one-sided pool is discounted below it by the
+mass-adequacy factor (see that operation's docstring).
+
+Load-bearing side effect at the cap: a cycle-capped claim's confidence is
+additionally multiplied by ``CYCLE_CAP_CONFIDENCE_PENALTY`` downstream, so
+the furthest a cap-derived single-claim posterior can sit from neutral is
+``0.9 × 0.7 / 2 = 0.315``. That keeps it strictly inside
+``[1 - POSTERIOR_DECISIVE_THRESHOLD, POSTERIOR_DECISIVE_THRESHOLD]`` — a
+mechanically-derived verdict can never, on its own, read as decisive."""
+
 
 # ── Posterior breakpoints ──────────────────────────────────────────
 #
 # Two distinct decisions read the aggregated posterior:
 #
-#   * **Verdict labelling** (combiner, _verdict_label): map a
+#   * **Verdict labelling** (entities.verdict.verdict_label): map a
 #     posterior to "supports" / "contradicts" / "insufficient". The
 #     directional breakpoint is wider than 0.5 to keep the label
 #     calibrated with the underlying evidence strength.
@@ -215,7 +248,12 @@ distance from 0.5)."""
 POSTERIOR_DIRECTIONAL_BREAKPOINT: float = 0.66
 """Posteriors above this map to "supports"; below ``1 -
 POSTERIOR_DIRECTIONAL_BREAKPOINT`` map to "contradicts"; otherwise
-"insufficient". Read by: graph/combination._verdict_label."""
+"insufficient". Read by: entities/verdict.py::verdict_label — the SOLE
+reader in the package, pinned by a source scan in
+tests/test_verdict_single_source.py. (It was graph/combination._verdict_label
+until 2026-08-09; that symbol no longer exists — combination.py imports
+the shared function.) The comparison is strict on both sides: exactly
+0.66 and exactly 0.34 map to "insufficient"."""
 
 POSTERIOR_DECISIVE_THRESHOLD: float = 0.85
 """Posteriors at or above this (or at or below ``1 - threshold``)
@@ -284,6 +322,49 @@ Read by: ``judgment_signal.distribution_is_one_hot`` and
 ``Evidence.judgment_one_hot``."""
 
 
+# ── Aggregate judgment doubt (escalation, not a decision) ──────────
+#
+# The scrutiny verdict is a deterministic reading of quality- and
+# corroboration-weighted directional mass. Each contributing judgment
+# also carries a verbalized distribution, whose normalized Shannon
+# entropy is the system's doubt signal. ``scrutiny_weight`` aggregates
+# those into one claim-level number (the directional-mass-weighted mean
+# entropy of the judgments that produced the verdict), persisted as
+# ``Claim.scrutiny_doubt``.
+#
+# High doubt does NOT change any verdict. It buys one extra round of
+# inquiry — the lazy-escalation (P7) response to "the judgments behind
+# this verdict were internally unsure".
+
+JUDGMENT_DOUBT_ESCALATION_THRESHOLD: float = 0.5
+"""At or above this aggregate judgment doubt, a claim's evidence
+judgments are unsure enough to warrant one more round of inquiry.
+
+Theoretical basis: normalized Shannon entropy of a verbalized belief
+distribution, in [0, 1] — 0 = one-hot, 1 = uniform. It is a
+SUSPICION-RAISER ONLY: high doubt is a reason to escalate; low doubt
+never proves a verdict correct. 0.5 is the midpoint of that scale — a
+judgment carrying at least half the entropy of a uniform guess.
+
+Read by ``graph.nodes.CheckSynthesisDemand._judgment_doubt_demand`` (the
+only reader that ACTS on it — one extra round of inquiry) and by four
+read-only surfaces that merely report it: ``confidence.build_verdict``
+(the ``n_high_doubt_claims`` provenance count),
+``report_data.doubt_is_suspicious``, ``report_data.judgment_reliability_line``
+and ``report_generator._scrutiny_reliability_note``.
+``entities.judge_opinion.JudgeOpinion.needs_review`` applies the same
+cutoff to a single opinion's own doubt.
+
+Deliberately IDENTICAL to
+``andamentum.llm_judge.signals.NEEDS_REVIEW_DOUBT_THRESHOLD``. Both
+modules measure the same quantity on the same scale, so epistemic does
+not get its own cutoff. The two are pinned equal by a drift test
+(``tests/test_doubt_scale_single_source.py``) rather than by an import —
+see ``judgment_signal``'s module docstring for why importing
+``llm_judge`` from a leaf is not available here. Tuning one without the
+other fails that test."""
+
+
 # ── Scrutiny evidence weight (deterministic; replaces an LLM call) ──
 #
 # Scrutiny's evidence-weight verdict (strong / moderate / weak /
@@ -319,7 +400,12 @@ SCRUTINY_STRONG_MASS_THRESHOLD: float = 1.5
 """At or above this dominant-direction mass, the evidence weight is
 ``strong``. ~1.5 corresponds to a well-corroborated high-quality line or
 two independent moderate ones. Read by:
-``scrutiny_weight.compute_evidence_weight``."""
+``scrutiny_weight.compute_evidence_weight`` and
+``operations.stage_management.ConcludeAtCycleCapOperation``, where it is
+the saturation point of the cap verdict's mass-adequacy factor — below
+it, a cap-derived confidence is discounted proportionally, so a single
+unopposed source cannot report the same certainty as a well-corroborated
+one-sided pool."""
 
 SCRUTINY_WEAK_MASS_THRESHOLD: float = 0.4
 """Below this dominant-direction mass, the evidence is too thin to
@@ -334,6 +420,82 @@ SCRUTINY_CONFLICT_MINORITY_FRACTION: float = 0.35
 dissent. Paired with ``SCRUTINY_WEAK_MASS_THRESHOLD`` as an absolute floor
 on the minority mass so a rounding wobble never reads as conflict. Read by:
 ``scrutiny_weight.compute_evidence_weight``."""
+
+
+# ── Second-opinion budgets (llm_judge, bounded by construction) ────
+#
+# Two sites layer an INDEPENDENT judge above a judgment the system has
+# already made (see ``direction_opinion`` and ``scrutiny_opinion``). Both
+# fire inside ``ScrutiniseClaimOperation.execute``, per claim, strictly
+# sequentially, and neither can ever change a verdict. The three constants
+# below are what make their cost a STRUCTURAL bound rather than a budget
+# counter someone can forget to decrement.
+#
+# Note the deliberate kind difference: the first two are COUNTS (how many
+# extra model calls a claim may buy) and the third is a RELATIVE DISTANCE
+# IN MASS UNITS (how close to a cutoff counts as "could have gone either
+# way"). None of them is a doubt cutoff — ``JUDGMENT_DOUBT_ESCALATION_
+# THRESHOLD`` remains the only one of those, so the doubt scale stays
+# single-source.
+
+JUDGMENT_CONFIRMATION_MAX_PER_PASS: int = 3
+"""Maximum per-evidence direction confirmations one scrutiny pass may run.
+
+Theoretical basis: a cost bound in the same family as
+``ScrutiniseClaimOperation.MAX_ISSUES`` (5) and the reproducibility sweep's
+``max_checks`` (4), deliberately SMALLER than both because it fires on every
+scrutiny pass rather than only at the decisive-posterior gate. Candidates
+are ranked by the directional mass they contributed, so the budget is spent
+on the items that actually moved the verdict.
+
+Read by: ``operations.scrutiny.ScrutiniseClaimOperation._confirm_load_bearing_judgments``.
+Benchmark-pending, like the ``SCRUTINY_*`` family."""
+
+JUDGMENT_CONFIRMATION_MAX_PER_CLAIM: int = 4
+"""Ceiling on direction confirmations for one claim in one run.
+
+A claim may be scrutinised up to ``1 + PEIRCE_CYCLE_CAP`` times, so the
+per-pass cap alone would permit 12. This is the flat bound that replaces
+that product. It is counted over ``claim.evidence_ids`` — every id the claim
+CURRENTLY links, not just the currently-eligible subset — so evidence added
+between passes, or items that stopped being eligible, cannot reopen the
+budget.
+
+The one case that does reopen it, stated rather than hidden: an id
+*unlinked* from the claim releases its slot, because the tally is a read of
+the claim's present books, not a run-lifetime ledger. That is unreachable
+today — the only writers of ``claim.evidence_ids`` outside tests are
+``operations.verification``'s ``.append`` and ``operations.investigation``'s
+``.extend`` — and the growth case that *is* reachable is pinned by
+``test_direction_confirmation.py``. A future caller that removes ids must
+revisit this bound.
+
+Combined with the ``≤ 1`` per-claim-per-pass scrutiny second opinion over
+``≤ 4`` passes, a claim can add at most **8** model calls per run, whatever
+the size of its evidence pool.
+
+Read by: ``operations.scrutiny.ScrutiniseClaimOperation._confirm_load_bearing_judgments``.
+Benchmark-pending."""
+
+SCRUTINY_BORDERLINE_BAND: float = 0.20
+"""Relative distance from a weight cutoff inside which the deterministic
+reading counts as BORDERLINE, and is worth one independent second opinion.
+
+Theoretical basis: the label ``compute_evidence_weight`` produces is a step
+function of three cutoffs (``SCRUTINY_WEAK_MASS_THRESHOLD``,
+``SCRUTINY_STRONG_MASS_THRESHOLD``, ``SCRUTINY_CONFLICT_MINORITY_FRACTION``).
+A reading that would flip under a ±20 % relative perturbation of the masses
+is one whose label is an artefact of where the cutoff happens to sit, not of
+the evidence; a clearly-strong or clearly-thin reading is not, and pays
+nothing. 20 % is a fifth of the cutoff — small enough that the common case
+never fires, large enough to catch a genuine coin flip.
+
+THIS IS NOT A DOUBT CUTOFF. It is a relative distance in MASS units, a
+different quantity from normalized entropy, so it does not fork the scale
+``JUDGMENT_DOUBT_ESCALATION_THRESHOLD`` owns.
+
+Read by: ``scrutiny_weight.is_borderline`` (the only reader).
+Benchmark-pending, like the four ``SCRUTINY_*`` constants above."""
 
 
 # ── Promotion-gate judgment confidence floor (Tier 1.5) ────────────
@@ -367,15 +529,20 @@ __all__ = [
     "IBE_AGREEMENT_K_DEFAULT",
     "CYCLE_CAP_CONFIDENCE_PENALTY",
     "RETRIEVAL_FAILED_CONFIDENCE_PENALTY",
+    "MECHANICAL_VERDICT_MAX_CONFIDENCE",
     "POSTERIOR_DIRECTIONAL_BREAKPOINT",
     "POSTERIOR_DECISIVE_THRESHOLD",
     "CONVERGENCE_STRONG_THRESHOLD",
     "CONVERGENCE_INTRA_DIVERSITY_THRESHOLD",
     "CONVERGENCE_INTER_DOMAIN_DISTANCE_LOW",
     "JUDGMENT_ONE_HOT_THRESHOLD",
+    "JUDGMENT_DOUBT_ESCALATION_THRESHOLD",
     "SCRUTINY_DEFAULT_QUALITY",
     "SCRUTINY_STRONG_MASS_THRESHOLD",
     "SCRUTINY_WEAK_MASS_THRESHOLD",
     "SCRUTINY_CONFLICT_MINORITY_FRACTION",
+    "JUDGMENT_CONFIRMATION_MAX_PER_PASS",
+    "JUDGMENT_CONFIRMATION_MAX_PER_CLAIM",
+    "SCRUTINY_BORDERLINE_BAND",
     "GATE_MIN_JUDGMENT_CONFIDENCE",
 ]

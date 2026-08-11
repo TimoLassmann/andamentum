@@ -35,10 +35,15 @@ import pytest
 from andamentum.epistemic.audit_report import (
     _extract_strength_flags,
     _is_adversarial_judgement,
-    _normalised_verdict,
     _source_url,
     _strip_summary_preamble,
     build_audit_report,
+)
+from andamentum.epistemic.entities.verdict import (
+    ClaimVerdict,
+    EpistemicVerdict,
+    PosteriorReport,
+    VerdictProvenance,
 )
 from andamentum.epistemic.report_data import (
     AdversarialSummary,
@@ -86,6 +91,67 @@ def _atom_content_contains(atoms: list[dict[str, Any]], needle: str) -> bool:
     return False
 
 
+def _label_of(data: ReportData) -> str:
+    """The label the renderer will read off the run's verdict object."""
+    assert data.verdict_object is not None
+    return data.verdict_object.label
+
+
+def _make_verdict(
+    *,
+    posterior: float | None,
+    terminal_state: str,
+    claims: list[ClaimSummary],
+) -> EpistemicVerdict:
+    """Build the run's decision record the way ``build_verdict`` would.
+
+    BEHAVIOUR CHANGE (2026-08-09): the renderer no longer derives labels
+    from ``confidence_scores`` — it reads them off the verdict object.
+    So the fixtures build the object, and (as ``report_generator`` does)
+    copy each claim's label onto its ``ClaimSummary.verdict_label``.
+    """
+    report = (
+        PosteriorReport(
+            posterior=posterior,
+            log_odds=0,
+            supporting_count=0.0,
+            contradicting_count=0.0,
+            counting_posterior=posterior,
+            objective_id="obj-test",
+            question_type="verificatory",
+            explanation="test",
+            terminal_state=terminal_state,  # type: ignore[arg-type]
+        )
+        if posterior is not None
+        else None
+    )
+    active = [c for c in claims if c.stage != "abandoned"]
+    verdict = EpistemicVerdict(
+        objective_id="obj-test",
+        posterior_report=report,
+        claims=[
+            ClaimVerdict(
+                claim_id=c.claim_id,
+                statement=c.statement,
+                stage=c.stage,
+                integrated_assessment=c.integrated_assessment,
+                integrated_confidence=c.integrated_confidence,
+                posterior=posterior,
+            )
+            for c in claims
+        ],
+        provenance=VerdictProvenance(
+            n_claims_total=len(claims),
+            n_active_claims=len(active),
+            n_adjudicated=len(active),
+        ),
+    )
+    labels = {cv.claim_id: cv.label for cv in verdict.claims}
+    for c in claims:
+        c.verdict_label = labels.get(c.claim_id, "")
+    return verdict
+
+
 def _make_report_data(
     *,
     claims: list[ClaimSummary] | None = None,
@@ -123,6 +189,7 @@ def _make_report_data(
                 1 for ev in evidence if ev.support_judgment == "no_bearing"
             ),
         )
+    claims = claims or []
     return ReportData(
         research_question="Aspirin reduces colorectal cancer risk",
         clarified_question="Aspirin reduces colorectal cancer risk in adults",
@@ -131,8 +198,10 @@ def _make_report_data(
         database_name="test",
         direct_answer=direct_answer,
         question_type="verificatory",
-        verdict="",  # let renderer fall back to _normalised_verdict
-        claims=claims or [],
+        verdict_object=_make_verdict(
+            posterior=posterior, terminal_state=terminal_state, claims=claims
+        ),
+        claims=claims,
         evidence=evidence,
         uncertainties=uncertainties or [],
         adversarial=adversarial or [],
@@ -202,11 +271,17 @@ class TestNormalisedVerdict:
     Q&A panel comes from one closed-vocabulary mapping. The labels are
     chosen so their lowercased ``data-value`` never matches the
     existing green/red CSS rules in typeset/atoms.py — i.e. badges
-    render neutral. The *word* signals the verdict, not pigment."""
+    render neutral. The *word* signals the verdict, not pigment.
+
+    BEHAVIOUR CHANGE: the mapping used to live in this module
+    (``audit_report._normalised_verdict``), one of five independent
+    verdict derivations. It now lives on the verdict object; these tests
+    assert the label the renderer will read.
+    """
 
     def test_high_posterior_confirms(self):
         data = _make_report_data(posterior=0.92)
-        assert _normalised_verdict(data) == "Confirmed"
+        assert _label_of(data) == "Confirmed"
 
     def test_high_posterior_with_refined_assessment(self):
         claim = ClaimSummary(
@@ -218,23 +293,52 @@ class TestNormalisedVerdict:
             integrated_assessment="supports_refined",
         )
         data = _make_report_data(claims=[claim], posterior=0.92)
-        assert _normalised_verdict(data) == "Confirmed with refinement"
+        assert _label_of(data) == "Confirmed with refinement"
 
     def test_low_posterior_refutes(self):
         data = _make_report_data(posterior=0.12)
-        assert _normalised_verdict(data) == "Refuted"
+        assert _label_of(data) == "Refuted"
 
     def test_middling_posterior_is_inconclusive(self):
         data = _make_report_data(posterior=0.50)
-        assert _normalised_verdict(data) == "Inconclusive"
+        assert _label_of(data) == "Inconclusive"
 
-    def test_terminal_not_completed_is_insufficient(self):
+    def test_terminal_state_does_not_override_the_direction(self):
+        """BEHAVIOUR CHANGE (2026-08-09). The label is a total function of
+        the direction; a non-completed terminal state is reported as a
+        CAVEAT, not as a different verdict.
+
+        The override came from this module, where it only coloured a
+        report. Once the same mapping drove the artefact's code-owned
+        ``> **Verdict:**`` line it contradicted the router:
+        ``CheckCompletion`` deliberately sends ``retrieval_failed`` plus
+        an adjudicated claim to the DIRECTIONAL terminal, so posterior,
+        artefact_type, prose and routing all said directional while the
+        headline alone said "Insufficient evidence".
+        """
         data = _make_report_data(posterior=0.92, terminal_state="oscillation_detected")
-        assert _normalised_verdict(data) == "Insufficient evidence"
+        assert _label_of(data) == "Confirmed"
 
-    def test_no_posterior_is_insufficient(self):
+    def test_retrieval_failure_is_reported_as_a_caveat_on_the_same_line(self):
+        """The caveat is not lost — it moves onto the rendered line."""
+        from andamentum.epistemic.entities.verdict import render_verdict_line
+
+        data = _make_report_data(posterior=0.92, terminal_state="retrieval_failed")
+        assert data.verdict_object is not None
+        data.verdict_object.provenance.retrieval_failed = True
+        line = render_verdict_line(data.verdict_object)
+        assert line.startswith("Confirmed")
+        assert "retrieval failed" in line
+
+    def test_no_posterior_is_no_single_verdict(self):
+        """BEHAVIOUR CHANGE (2026-08-09). An objective with no scalar
+        posterior — a question type ``compute_posterior`` declines to
+        score — is not "the evidence did not decide". Its claims may all
+        be adjudicated, and collapsing it onto "Insufficient evidence"
+        printed that headline beside "Confirmed" per-claim badges in the
+        same document."""
         data = _make_report_data(posterior=None)
-        assert _normalised_verdict(data) == "Insufficient evidence"
+        assert _label_of(data) == "No single verdict"
 
     def test_vocabulary_avoids_css_color_collisions(self):
         """The five verdict labels must not lowercase to any of the
@@ -297,6 +401,48 @@ class TestQAPanel:
         )
         assert "Refuted" in find["body"]
 
+    def test_headline_and_badges_agree_when_there_is_no_scalar_posterior(self):
+        """THE DEFECT THIS REPAIR CLOSES, at the rendered-document level.
+
+        An objective with no scalar posterior (a question type
+        ``compute_posterior`` declines to score) can still have fully
+        adjudicated claims. The headline used to read "Insufficient
+        evidence" while the per-claim badges in the SAME document read
+        "Confirmed" — the disagreement ``entities/verdict.py`` exists to
+        remove, with its polarity merely flipped.
+
+        Parametrising posteriors (as ``test_direction_and_label_never_
+        disagree`` does) structurally cannot reach this: it needs an
+        objective with no number and a claim with one.
+        """
+        claim = ClaimSummary(
+            claim_id="c1",
+            statement="Contextual input drives remapping.",
+            scope="g",
+            assumptions=[],
+            stage="supported",
+            integrated_assessment="supports",
+            integrated_confidence=0.8,
+        )
+        data = _make_report_data(claims=[claim], posterior=None)
+        assert data.verdict_object is not None
+        # The objective has no scalar verdict; the claim does.
+        data.verdict_object.claims[0].posterior = 0.9
+        claim.verdict_label = data.verdict_object.claims[0].label
+        assert claim.verdict_label == "Confirmed"
+
+        atoms = build_audit_report(data)
+        items_atoms = _atoms_of_kind(atoms, "items")
+        find = next(
+            e for e in items_atoms[0]["entries"] if e["label"] == "What did we find?"
+        )
+        assert "Insufficient evidence" not in find["body"], (
+            "the headline must not contradict a Confirmed badge in the "
+            "same document"
+        )
+        assert "No single verdict" in find["body"]
+        assert _atom_content_contains(atoms, "Confirmed")
+
     def test_confidence_body_uses_directional_phrasing_with_legend(self):
         """The posterior is read directionally so a non-Bayesian reader
         doesn't misread 11.5% as 'low confidence'. The legend defines
@@ -331,18 +477,23 @@ class TestQAPanel:
         """The verdict-band thresholds in the report come from
         ``thresholds.POSTERIOR_DIRECTIONAL_BREAKPOINT``, not a hardcoded
         constant. If the pipeline ever moves the breakpoint, the report
-        moves with it. Pins the import so a future refactor that drops
-        the import is caught."""
-        from andamentum.epistemic.audit_report import (
-            _DIRECTIONAL_HI,
-            _DIRECTIONAL_LO,
+        moves with it.
+
+        The named band constants live in ``entities.verdict`` — the one
+        module that reads the threshold — and the renderer imports THOSE.
+        That is what lets the single-source scan hold while the legend
+        still prints real numbers.
+        """
+        from andamentum.epistemic.entities.verdict import (
+            DIRECTIONAL_HI,
+            DIRECTIONAL_LO,
         )
         from andamentum.epistemic.thresholds import (
             POSTERIOR_DIRECTIONAL_BREAKPOINT,
         )
 
-        assert _DIRECTIONAL_HI == POSTERIOR_DIRECTIONAL_BREAKPOINT
-        assert _DIRECTIONAL_LO == 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT
+        assert DIRECTIONAL_HI == POSTERIOR_DIRECTIONAL_BREAKPOINT
+        assert DIRECTIONAL_LO == 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT
 
     def test_confidence_surfaces_terminal_when_not_completed(self):
         data = _make_report_data(terminal_state="oscillation_detected")

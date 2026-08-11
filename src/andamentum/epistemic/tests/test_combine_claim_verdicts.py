@@ -20,6 +20,12 @@ from andamentum.document_store import DocumentStore
 from andamentum.epistemic.entities import Claim, Objective, Snapshot
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import Decomposition
+from andamentum.epistemic.entities.verdict import (
+    ClaimVerdict,
+    EpistemicVerdict,
+    PosteriorReport,
+    VerdictProvenance,
+)
 from andamentum.epistemic.graph.combination import (
     CombinedVerdict,
     combine_claim_verdicts,
@@ -245,10 +251,16 @@ class TestExtractWeights:
         assert extract_weights_from_decomposition(empty, claims) is None
 
 
-# ── Snapshot.combined_verdict round-trip ──────────────────────────────
+# ── Snapshot.verdict round-trip ───────────────────────────────────────
 
 
-class TestSnapshotCombinedVerdict:
+class TestSnapshotVerdict:
+    """BEHAVIOUR CHANGE: ``Snapshot.combined_verdict: dict[str, Any]`` is
+    replaced by the typed ``Snapshot.verdict: EpistemicVerdict | None``.
+    The untyped boundary is gone and the field now round-trips as a
+    model, so a reader gets ``.posterior`` / ``.label`` by attribute
+    rather than by dict key."""
+
     async def test_field_round_trips(self, tmp_path: Path) -> None:
         store = DocumentStore.for_database("snap_round", db_dir=tmp_path)
         await store.initialize()
@@ -259,27 +271,37 @@ class TestSnapshotCombinedVerdict:
         snapshot = Snapshot(
             objective_id=obj.entity_id,
             claim_ids=["c1", "c2"],
-            combined_verdict={
-                "posterior": 0.75,
-                "verdict": "supports",
-                "combination_rule": "WEIGHTED_AND",
-                "claim_posteriors": [0.9, 0.7],
-                "n_capped": 0,
-                "n_no_verdict": 0,
-                "n_abandoned": 0,
-                "explanation": "weighted mean",
-            },
+            verdict=EpistemicVerdict(
+                objective_id=obj.entity_id,
+                posterior_report=PosteriorReport(
+                    posterior=0.75,
+                    log_odds=1,
+                    supporting_count=2.0,
+                    contradicting_count=0.0,
+                    counting_posterior=0.88,
+                    objective_id=obj.entity_id,
+                    question_type="verificatory",
+                    explanation="x",
+                ),
+                claims=[ClaimVerdict(claim_id="c1", posterior=0.9)],
+                provenance=VerdictProvenance(
+                    combination_rule="WEIGHTED_AND",
+                    n_active_claims=2,
+                    n_adjudicated=2,
+                ),
+            ),
         )
         await repo.save(snapshot)
 
         loaded = await repo.get("snapshot", snapshot.entity_id)
-        assert loaded.combined_verdict is not None
-        assert loaded.combined_verdict["posterior"] == 0.75
-        assert loaded.combined_verdict["verdict"] == "supports"
+        assert loaded.verdict is not None
+        assert loaded.verdict.posterior == 0.75
+        assert loaded.verdict.direction == "supports"
+        assert loaded.verdict.provenance.combination_rule == "WEIGHTED_AND"
+        assert loaded.verdict.claims[0].claim_id == "c1"
 
     async def test_default_is_none(self, tmp_path: Path) -> None:
-        """Snapshots without a combined_verdict (open-research) leave
-        the field as None."""
+        """Snapshots created outside the graph leave the field as None."""
         store = DocumentStore.for_database("snap_default", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
@@ -289,7 +311,7 @@ class TestSnapshotCombinedVerdict:
         snapshot = Snapshot(objective_id=obj.entity_id, claim_ids=["c1", "c2"])
         await repo.save(snapshot)
         loaded = await repo.get("snapshot", snapshot.entity_id)
-        assert loaded.combined_verdict is None
+        assert loaded.verdict is None
 
 
 # ── CombineClaimVerdicts graph node ───────────────────────────────────
@@ -302,28 +324,93 @@ class _FakeRunContext:
 
 
 class TestCombineClaimVerdictsNode:
-    async def test_no_decomposition_is_noop(self, tmp_path: Path) -> None:
-        """When the Objective has no decomposition (open research), the
-        node passes through without writing anything."""
+    async def test_the_node_threads_the_gate_zero_escalation_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """WIRING, not arithmetic.
+
+        ``judgment_doubt_escalated`` lives on graph state, never in the DB,
+        so ``build_verdict`` cannot read it — the node must pass it. Deleting
+        that keyword argument leaves every other test green and makes
+        ``VerdictProvenance.judgment_doubt_escalated`` permanently ``False``
+        on every real run: the run that spent its one extra scrutiny round
+        becomes indistinguishable from the run that never needed it. Exactly
+        the drift class ``test_structural_wiring`` exists to catch for
+        ``judge_model``, one field over.
+        """
+        store = DocumentStore.for_database("combine_escalated", db_dir=tmp_path)
+        await store.initialize()
+        repo = EpistemicRepository(store)
+        obj = Objective(description="parent", question_type="verificatory")
+        obj.objective_id = obj.entity_id
+        await repo.save(obj)
+        c = _make_claim(verdict="supports", confidence=0.8)
+        c.objective_id = obj.entity_id
+        await repo.save(c)
+
+        # Default: nothing escalated, so the flag must be False.
+        quiet_state = EpistemicGraphState(objective_id=obj.entity_id)
+        deps = EpistemicDeps(repo=repo, agent_runner=None)
+        await CombineClaimVerdicts().run(_FakeRunContext(quiet_state, deps))  # type: ignore[arg-type]
+        assert quiet_state.verdict is not None
+        assert quiet_state.verdict.provenance.judgment_doubt_escalated is False
+
+        # Gate 0 fired: the verdict object must say so.
+        loud_state = EpistemicGraphState(objective_id=obj.entity_id)
+        loud_state.judgment_doubt_escalated = True
+        await CombineClaimVerdicts().run(_FakeRunContext(loud_state, deps))  # type: ignore[arg-type]
+        assert loud_state.verdict is not None
+        assert loud_state.verdict.provenance.judgment_doubt_escalated is True
+
+    async def test_the_node_declares_the_state_it_reads(self) -> None:
+        """The contract (P6) must name the field, or ``topology()`` and every
+        reader of ``reads`` describe a node that silently consults state it
+        never declared."""
+        assert "judgment_doubt_escalated" in CombineClaimVerdicts.reads
+
+    async def test_decomposition_free_run_still_builds_a_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """BEHAVIOUR CHANGE, and the point of the change.
+
+        The node used to no-op when the Objective had no decomposition —
+        which is every verify-mode and open-research run, i.e. the whole
+        SciFact arm — so those runs produced NO structured verdict at all
+        and the writer agent's prose was the only verdict that existed.
+        It now builds the object for every run shape.
+        """
         store = DocumentStore.for_database("combine_noop", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
-        obj = Objective(description="parent")
+        obj = Objective(
+            description="Interferon-gamma protects against myocarditis.",
+            claim_to_verify="Interferon-gamma protects against myocarditis.",
+            question_type="verificatory",
+        )
         obj.objective_id = obj.entity_id
         await repo.save(obj)
+        c = _make_claim(verdict="contradicts", confidence=0.8)
+        c.objective_id = obj.entity_id
+        await repo.save(c)
 
         state = EpistemicGraphState(objective_id=obj.entity_id)
         deps = EpistemicDeps(repo=repo, agent_runner=None)
         ctx = _FakeRunContext(state, deps)
         await CombineClaimVerdicts().run(ctx)  # type: ignore[arg-type]
 
+        assert state.verdict is not None
+        assert state.verdict.provenance.combination_rule is None
+        assert state.verdict.provenance.n_adjudicated == 1
+        assert state.verdict.direction == "contradicts"
+        assert len(state.verdict.claims) == 1
+        # The decomposition itself is untouched — it no longer carries
+        # the aggregate at all.
         reloaded = await repo.get("objective", obj.entity_id)
-        # decomposition is None, so no combined_verdict written.
         assert reloaded.decomposition is None
 
     async def test_combines_and_stashes_on_objective(self, tmp_path: Path) -> None:
         """With decomposition + matching claims, the node writes the
-        CombinedVerdict to objective.decomposition["combined_verdict"]."""
+        rule-aware aggregate onto ``state.verdict``."""
         store = DocumentStore.for_database("combine_stash", db_dir=tmp_path)
         await store.initialize()
         repo = EpistemicRepository(store)
@@ -356,15 +443,11 @@ class TestCombineClaimVerdictsNode:
         ctx = _FakeRunContext(state, deps)
         await CombineClaimVerdicts().run(ctx)  # type: ignore[arg-type]
 
-        reloaded = await repo.get("objective", obj.entity_id)
-        assert reloaded.decomposition is not None
-        # Phase 6 of the Move-3 plan: typed CombinedVerdictData access.
-        cv = reloaded.decomposition.combined_verdict
-        assert cv is not None
-        assert cv.combination_rule == "AND"
+        assert state.verdict is not None
+        assert state.verdict.provenance.combination_rule == "AND"
         # min over [0.9 (A), 0.8 (B)] = 0.8
-        assert cv.posterior == pytest.approx(0.8)
-        assert cv.verdict == "supports"
+        assert state.verdict.posterior == pytest.approx(0.8)
+        assert state.verdict.direction == "supports"
 
     async def test_orders_claims_by_decomposition(self, tmp_path: Path) -> None:
         """The node aligns claims with the decomposition order, not
@@ -397,14 +480,10 @@ class TestCombineClaimVerdictsNode:
         ctx = _FakeRunContext(state, deps)
         await CombineClaimVerdicts().run(ctx)  # type: ignore[arg-type]
 
-        reloaded = await repo.get("objective", obj.entity_id)
-        assert reloaded.decomposition is not None
-        # Phase 6 of the Move-3 plan: typed CombinedVerdictData access.
-        cv = reloaded.decomposition.combined_verdict
-        assert cv is not None
+        assert state.verdict is not None
         # A has weight 3 and posterior 0.9; B has weight 1 and 0.7.
         # weighted = (0.9*3 + 0.7*1) / 4 = 3.4/4 = 0.85.
-        assert cv.posterior == pytest.approx(0.85)
+        assert state.verdict.posterior == pytest.approx(0.85)
 
 
 class TestCombinedVerdictType:

@@ -32,11 +32,20 @@ from .judge import judge_evidence
 class _EvidenceLike(Protocol):
     entity_id: str
     support_judgment: Optional[str]
-    judgment_one_hot: Optional[bool]
     extracted_content: str
     source_ref: str
     invalidated: bool
     cluster_status: str
+
+    # Declared read-only, because that is all this module does with it and
+    # because the real ``Evidence`` derives it (``judgment_one_hot`` is a
+    # ``@property`` over ``judgment_distribution``, P3: derived, never
+    # stored). A mutable-attribute declaration here would make the real
+    # entity fail to satisfy its own module's protocol — a read-only member
+    # is satisfied by both a property and a plain attribute, so test stubs
+    # are unaffected.
+    @property
+    def judgment_one_hot(self) -> Optional[bool]: ...
 
 
 # The directional verdicts. A one-hot ``no_bearing`` is not load-bearing on the

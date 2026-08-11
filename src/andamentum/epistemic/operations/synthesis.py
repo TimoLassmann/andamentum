@@ -10,7 +10,7 @@ Depends on: base (BaseOperation, OperationResult, DEDUP_SIMILARITY_THRESHOLD)
 Operates on: Objective, Snapshot, Artefact, Claim, Evidence, Uncertainty entities
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .base import (
     BaseOperation,
@@ -29,6 +29,9 @@ from ..entities import (
     Uncertainty,
 )
 from ..gates import STAGE_HIERARCHY
+
+if TYPE_CHECKING:
+    from ..entities.verdict import EpistemicVerdict
 
 
 def _tokens(text: str) -> set[str]:
@@ -173,25 +176,19 @@ class FreezeSnapshotOperation(BaseOperation):
         )
         uncertainty_ids = [u.entity_id for u in uncertainties]
 
-        # Carry the combined verdict from CombineClaimVerdicts (Phase 4)
-        # onto the snapshot so SynthesizeReport can present a rule-aware
-        # combined view alongside the per-claim narrative. Stored under
-        # objective.decomposition.combined_verdict by the graph node;
-        # promoted to a top-level snapshot field here. Serialised to
-        # dict for the snapshot's persistence layer.
-        # Phase 6 of the Move-3 plan: typed Decomposition access.
-        combined_verdict = None
-        if objective.decomposition and objective.decomposition.combined_verdict:
-            combined_verdict = objective.decomposition.combined_verdict.model_dump()
-
-        # Create snapshot
+        # Create snapshot. The run's decision record arrives on the typed
+        # ``work.verdict`` channel (threaded from graph state by
+        # ``_run_op``) and is stamped at construction time — Snapshots are
+        # frozen, so it cannot be attached afterwards. This is the
+        # auditable half of the artefact duality: objective.snapshot_id →
+        # snapshot.verdict is what the offline report reads.
         snapshot = Snapshot(
             objective_id=objective.entity_id,
             claim_ids=claim_ids,
             evidence_ids=evidence_ids,
             uncertainty_ids=uncertainty_ids,
             snapshot_type="final",
-            combined_verdict=combined_verdict,
+            verdict=work.verdict,
         )
         await self.repo.save(snapshot)
 
@@ -257,6 +254,16 @@ class SynthesizeReportOperation(BaseOperation):
                 entity_id=work.entity_id,
                 message="Artefact already compiled",
             )
+
+        if snapshot.verdict is None:
+            raise RuntimeError(
+                f"Snapshot {snapshot.entity_id} carries no verdict. The "
+                "report RENDERS the run's EpistemicVerdict — it does not "
+                "re-decide — so a missing verdict is a routing bug "
+                "(FreezeSnapshotOperation stamps it from graph state), not "
+                "a state to write a headline-less artefact around."
+            )
+        verdict = snapshot.verdict
 
         objective = await self.repo.get("objective", snapshot.objective_id)
 
@@ -346,16 +353,15 @@ class SynthesizeReportOperation(BaseOperation):
             convergence_by_claim,
             evidence_index,
             quality_signals,
-            combined_verdict=getattr(snapshot, "combined_verdict", None),
+            verdict=verdict,
         )
 
         # Writer-validator loop
         title = "Research Summary"
-        verdict = ""
         answer = ""
 
         if self.agent_runner:
-            title, verdict, answer = await self._writer_validator_loop(
+            title, answer = await self._writer_validator_loop(
                 question,
                 data_context,
                 objective_id=snapshot.objective_id,
@@ -423,7 +429,7 @@ class SynthesizeReportOperation(BaseOperation):
         data_context: dict[str, Any],
         *,
         objective_id: str = "",
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str]:
         """Run writer-validator loop until answer is faithful or max rounds reached.
 
         ``objective_id`` is included in K4 log lines as a per-case
@@ -432,8 +438,10 @@ class SynthesizeReportOperation(BaseOperation):
         tag is the only way to attribute a 9-round-cap session to a
         specific case after the fact.
 
-        Returns:
-            (title, verdict, answer) tuple
+        Returns ``(title, answer)``. The writer no longer returns a
+        verdict: the machine-readable headline is code-owned, rendered
+        from the run's ``EpistemicVerdict`` by ``_build_markdown``. The
+        writer's job is the prose, and its prose cannot move the verdict.
         """
         import json
         import logging
@@ -446,7 +454,6 @@ class SynthesizeReportOperation(BaseOperation):
         oid_tag = objective_id[:12] if objective_id else "????????????"
 
         title = "Research Summary"
-        verdict = ""
         answer = ""
         prior_feedback: list[str] = []
 
@@ -481,7 +488,6 @@ class SynthesizeReportOperation(BaseOperation):
             result = await self.run_agent("epistemic_write_answer", **writer_kwargs)
             writer_ms = (time.monotonic() - writer_t0) * 1000
             title = result.title or title
-            verdict = getattr(result, "verdict", "") or ""
             answer = result.answer or ""
             answer_chars = len(answer)
 
@@ -584,7 +590,7 @@ class SynthesizeReportOperation(BaseOperation):
             round_num >= self.MAX_VALIDATION_ROUNDS,
         )
 
-        return title, verdict, answer
+        return title, answer
 
     @staticmethod
     def _build_data_context(
@@ -595,7 +601,8 @@ class SynthesizeReportOperation(BaseOperation):
         convergence_by_claim: dict[str, Any],
         evidence_index: dict[str, int],
         quality_signals: dict[str, Any],
-        combined_verdict: dict[str, Any] | None = None,
+        *,
+        verdict: "EpistemicVerdict",
     ) -> dict[str, Any]:
         """Build data summaries for writer and validator agents.
 
@@ -611,6 +618,17 @@ class SynthesizeReportOperation(BaseOperation):
                 parts.append(f"  Confidence: {c.confidence_score:.2f}")
             if c.scrutiny_verdict:
                 parts.append(f"  Scrutiny: {c.scrutiny_verdict}")
+            # The adjudicated verdict, per claim. Previously omitted
+            # entirely, which is a large part of WHY the writer used to
+            # invent one: it was asked for a verdict and shown the
+            # evidence but never the system's own conclusion.
+            if c.integrated_assessment:
+                conf = (
+                    f" at confidence {c.integrated_confidence:.2f}"
+                    if c.integrated_confidence is not None
+                    else ""
+                )
+                parts.append(f"  Adjudicated: {c.integrated_assessment}{conf}")
 
             # Verification status
             verifications = []
@@ -641,6 +659,37 @@ class SynthesizeReportOperation(BaseOperation):
 
             if c.abandoned:
                 parts.append("  STATUS: ABANDONED")
+
+            if c.cycle_capped:
+                # A cap-decided claim carries an adjudicated verdict but is
+                # never promoted, so its bare stage label reads "preliminary"
+                # directly above the conclusion the writer is told it may not
+                # contradict. Naming the cap is what keeps the per-claim view
+                # consistent with the verdict object.
+                # No em-dash in the marker: the writer is told never to emit
+                # one, and text it is shown is text it copies.
+                #
+                # Gated on integrated_assessment, NOT on cycle_capped alone.
+                # The cap only mints a verdict when the evidence weight reads
+                # "strong" or "moderate" (stage_management.py: a "weak" or
+                # "conflicting" reading leaves verdict=None). Announcing "the
+                # adjudicated verdict is the system's conclusion" for a claim
+                # the cap left UNDECIDED would hand the writer the same
+                # contradictory pair this whole change exists to remove — an
+                # asserted conclusion beside a claim that has none.
+                if c.integrated_assessment:
+                    parts.append(
+                        "  STATUS: DECIDED AT THE INVESTIGATION CAP. The stage "
+                        "label above stops here by design; the adjudicated "
+                        "verdict is the system's conclusion for this claim."
+                    )
+                else:
+                    parts.append(
+                        "  STATUS: REACHED THE INVESTIGATION CAP UNDECIDED. "
+                        "Inquiry stopped here by design and the evidence did "
+                        "not read strongly enough either way to adjudicate. "
+                        "This claim has no verdict; do not write one for it."
+                    )
 
             claim_summaries.append("\n".join(parts))
 
@@ -702,33 +751,24 @@ class SynthesizeReportOperation(BaseOperation):
             if not u.is_blocking and u.resolution is None
         ]
 
-        # Combined verdict (multi-seed-claim runs only). Surfaces the
-        # rule-aware aggregate verdict so the writer agent can frame its
-        # answer around AND/OR/WEIGHTED_AND/UNION semantics rather than
-        # narrating per-claim verdicts in isolation. The combiner has
-        # already applied the decomposition's combination_rule; without
-        # this the writer might produce prose that disagrees with the
-        # structured combined verdict on the snapshot.
-        combined_verdict_summary = "Not applicable (no decomposition)."
-        if combined_verdict:
-            posterior = combined_verdict.get("posterior")
-            verdict_label = combined_verdict.get("verdict", "n/a")
-            rule = combined_verdict.get("combination_rule", "n/a")
-            n_capped = combined_verdict.get("n_capped", 0)
-            n_no_verdict = combined_verdict.get("n_no_verdict", 0)
-            n_abandoned = combined_verdict.get("n_abandoned", 0)
-            posterior_str = (
-                f"{posterior:.3f}" if isinstance(posterior, (int, float)) else "n/a"
-            )
-            combined_verdict_summary = (
-                f"Combination rule: {rule}; combined verdict: "
-                f"{verdict_label}; combined posterior: {posterior_str}. "
-                f"Diagnostic counts: capped={n_capped}, no_verdict="
-                f"{n_no_verdict}, abandoned={n_abandoned}. "
-                "(This aggregate honours the decomposition rule. Frame "
-                "your answer around it; per-claim verdicts above are "
-                "supporting detail.)"
-            )
+        # The system's DECIDED verdict. Every run has one — verify mode
+        # and open research included, where the old decomposition-only
+        # field handed the writer "Not applicable (no decomposition)."
+        # and left it to invent a direction.
+        prov = verdict.provenance
+        posterior_str = (
+            f"{verdict.posterior:.3f}" if verdict.posterior is not None else "n/a"
+        )
+        rule = prov.combination_rule or "n/a (single-claim or open research)"
+        verdict_summary = (
+            f"DECIDED: {verdict.label} (direction: {verdict.direction}); "
+            f"posterior: {posterior_str}; combination rule: {rule}. "
+            f"Diagnostic counts: adjudicated={prov.n_adjudicated} of "
+            f"{prov.n_active_claims} active, capped={prov.n_cycle_capped}, "
+            f"no_verdict={prov.n_no_verdict}, abandoned={prov.n_abandoned}. "
+            "(This is the system's decision. Your answer RENDERS it — you "
+            "must not assert a different direction.)"
+        )
 
         return {
             "claims": claim_summaries,
@@ -742,7 +782,7 @@ class SynthesizeReportOperation(BaseOperation):
             "blocking_uncertainties": blocking if blocking else ["None."],
             "non_blocking_uncertainties": non_blocking if non_blocking else ["None."],
             "quality_signals": quality_signals,
-            "combined_verdict": combined_verdict_summary,
+            "verdict": verdict_summary,
         }
 
     @staticmethod
@@ -751,7 +791,16 @@ class SynthesizeReportOperation(BaseOperation):
         evidence: list["Evidence"],
         uncertainties: list["Uncertainty"],
     ) -> dict[str, Any]:
-        """Compute structured quality signals deterministically from entities."""
+        """Compute structured quality signals deterministically from entities.
+
+        These are PROCESS signals — how far the pipeline got, how much it
+        looked at, how much of it passed scrutiny. None of them is the run's
+        decision: that is the ``EpistemicVerdict``, and its
+        ``provenance.n_adjudicated`` is the only adjudication count. The
+        returned dict is local — it is handed to the writer/validator data
+        context and to ``_build_markdown``, and is never persisted on an
+        entity, so no downstream renderer reads it.
+        """
         max_stage = "hypothesis"
         confidence_scores: list[float] = []
         scrutiny_passed = 0
@@ -805,7 +854,15 @@ class SynthesizeReportOperation(BaseOperation):
         return {
             "confidence_level": confidence_level,
             "max_stage": max_stage,
-            "claims_established": supported_plus,
+            # Named for what it counts: claims PROMOTED to SUPPORTED or
+            # higher. Its predecessor name, ``claims_established``, read as
+            # "claims the system settled" — i.e. the adjudication count —
+            # and the two are different quantities: a claim decided at its
+            # investigation cap is adjudicated without ever being promoted,
+            # so this counter is 0 while the verdict reports it adjudicated.
+            # The verdict object owns the adjudication count; this one is
+            # stage progress and nothing else.
+            "claims_at_supported_stage": supported_plus,
             "claims_total": len(non_abandoned),
             "claims_abandoned": sum(1 for c in claims if c.abandoned),
             "scrutiny_pass_rate": (scrutiny_passed / scrutiny_total)
@@ -825,7 +882,7 @@ class SynthesizeReportOperation(BaseOperation):
     @staticmethod
     def _build_markdown(
         title: str,
-        verdict: str,
+        verdict: "EpistemicVerdict",
         answer: str,
         question: str,
         claims: list["Claim"],
@@ -843,32 +900,52 @@ class SynthesizeReportOperation(BaseOperation):
         The answer section is LLM-written (validated by writer-validator loop).
         Everything else is deterministic — assembled from entity fields.
 
+        The ``> **Verdict:**`` line is rendered from the run's
+        ``EpistemicVerdict`` by ``render_verdict_line``, in BOTH the full
+        content and the quality-signal-free ``content_body`` the benchmark
+        judge reads. It is code-owned: a writer that says the opposite of
+        the object cannot move it.
+
         Args:
             include_quality_signals: If False, omits confidence header,
                 per-claim stage/confidence metadata, and Methodology section.
                 Use False for benchmark evaluation where these pre-computed
                 labels would bias downstream interpreters.
         """
+        from ..entities.verdict import render_verdict_line
+
         sections: list[str] = []
 
-        established = quality_signals.get("claims_established", 0)
-        total_claims = quality_signals.get("claims_total", 0)
         ev_count = quality_signals.get("evidence_count", 0)
+        prov = verdict.provenance
 
         # === Header ===
         sections.append(f"# {title}\n")
         sections.append(f"> **Research Question:** {question}")
         if include_quality_signals:
+            # "Claims Adjudicated", sourced from the verdict object — NOT
+            # the stage-derived counter. A cycle-capped claim that the cap
+            # decided is never promoted to SUPPORTED, so the stage counter
+            # printed "Claims Established: 0 of 1" beside a "Refuted"
+            # verdict — literally the disagreeing-headline pair the
+            # 2026-07-08 audit read case 781 off.
+            #
+            # The stage counter is not persisted anywhere: ``quality_signals``
+            # is a local dict, never written to an entity, so the HTML report
+            # never sees it. Its only remaining consumer is the
+            # writer/validator data context, where it appears under the
+            # unambiguous name ``claims_at_supported_stage`` and the prompt
+            # states that the verdict — not that counter — owns adjudication.
             sections.append(
                 f"> **Evidence Sources:** {ev_count} | "
-                f"**Claims Established:** {established} of {total_claims}"
+                f"**Claims Adjudicated:** {prov.n_adjudicated} of "
+                f"{prov.n_active_claims}"
             )
         sections.append("")
 
-        # === Verdict (one-sentence bottom line) ===
-        if verdict:
-            sections.append(f"> **Verdict:** {verdict}")
-            sections.append("")
+        # === Verdict (code-owned bottom line) ===
+        sections.append(f"> **Verdict:** {render_verdict_line(verdict)}")
+        sections.append("")
 
         # === LLM-written answer (validated) ===
         if answer:
@@ -911,14 +988,18 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
     The artefact's ``artefact_type`` is ``"insufficient"`` so downstream
     consumers (CLI, tests, exporters) can distinguish a structural
     "we suspended judgment" from a directional verdict by reading a
-    typed field rather than parsing prose. The verdict string is
-    fixed: "Insufficient evidence to answer." — Peirce's fallibilism
-    encoded in the system's topology, not delegated to an LLM prompt.
+    typed field rather than parsing prose. The verdict line is rendered
+    from the same ``EpistemicVerdict`` object the directional terminal
+    renders, with the same provenance clauses, through
+    ``render_insufficient_verdict_line`` — which pins the LABEL to
+    "Insufficient evidence" because reaching this terminal IS the system
+    declaring it has no directional answer. See that function's docstring
+    for the case that made the shared renderer print "Inconclusive" inside
+    a document titled "Insufficient Evidence". Peirce's fallibilism
+    encoded in the system's topology.
     """
 
     entity_type = "snapshot"
-
-    INSUFFICIENT_VERDICT = "Insufficient evidence to answer."
 
     async def execute(self, work: OperationInput) -> OperationResult:
         snapshot = await self.repo.get("snapshot", work.entity_id)
@@ -935,6 +1016,14 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
                 success=True,
                 entity_id=work.entity_id,
                 message="Artefact already compiled",
+            )
+
+        if snapshot.verdict is None:
+            raise RuntimeError(
+                f"Snapshot {snapshot.entity_id} carries no verdict. Both "
+                "terminals RENDER the run's EpistemicVerdict; a missing "
+                "verdict is a routing bug (FreezeSnapshotOperation stamps "
+                "it from graph state), not a state to omit the headline for."
             )
 
         objective = await self.repo.get("objective", snapshot.objective_id)
@@ -983,6 +1072,7 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
             evidence=evidence,
             quality_signals=quality_signals,
             reason=reason,
+            verdict=snapshot.verdict,
             include_quality_signals=True,
         )
         content_body = self._build_markdown(
@@ -992,6 +1082,7 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
             evidence=evidence,
             quality_signals=quality_signals,
             reason=reason,
+            verdict=snapshot.verdict,
             include_quality_signals=False,
         )
 
@@ -1040,12 +1131,15 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
         evidence: list["Evidence"],
         quality_signals: dict[str, Any],
         reason: str,
+        verdict: "EpistemicVerdict",
         include_quality_signals: bool,
     ) -> str:
         """Deterministic templated body. No LLM. Surfaces structural
         counts plus the gate's diagnosis so the artefact reads as a
         coherent "system suspended judgment, here's why" — not a
         directional verdict invented from no data."""
+        from ..entities.verdict import render_insufficient_verdict_line
+
         n_claims = quality_signals.get("claims_total", 0)
         n_abandoned = quality_signals.get("claims_abandoned", 0)
         n_capped = sum(1 for c in claims if getattr(c, "cycle_capped", False))
@@ -1063,19 +1157,36 @@ class SynthesizeInsufficientReportOperation(BaseOperation):
         sections.append(f"# {title}\n")
         sections.append(f"> **Research Question:** {question}")
         if include_quality_signals:
+            prov = verdict.provenance
             sections.append(
                 f"> **Evidence Sources:** {n_evidence} | "
-                f"**Claims Established:** 0 of {n_claims}"
+                f"**Claims Adjudicated:** {prov.n_adjudicated} of "
+                f"{prov.n_active_claims}"
             )
         sections.append("")
-        sections.append(f"> **Verdict:** {cls.INSUFFICIENT_VERDICT}")
+        sections.append(f"> **Verdict:** {render_insufficient_verdict_line(verdict)}")
         sections.append("")
-        sections.append(
-            "The investigation completed without reaching an integration "
-            "verdict. The system suspends judgment on this question rather "
-            "than producing a directional answer the evidence does not "
-            "support."
-        )
+        if verdict.provenance.n_adjudicated:
+            # Reachable via ``CheckSynthesisDemand._maybe_loop_back``:
+            # every claim cycle-capped and every integrated_assessment
+            # equal to "insufficient". Claims WERE adjudicated; none of
+            # them directionally. Saying "without reaching an integration
+            # verdict" here would contradict the header line two rows up.
+            sections.append(
+                f"The investigation adjudicated "
+                f"{verdict.provenance.n_adjudicated} of "
+                f"{verdict.provenance.n_active_claims} claim(s), but none of "
+                "them directionally. The system suspends judgment on this "
+                "question rather than producing a directional answer the "
+                "evidence does not support."
+            )
+        else:
+            sections.append(
+                "The investigation completed without reaching an integration "
+                "verdict. The system suspends judgment on this question rather "
+                "than producing a directional answer the evidence does not "
+                "support."
+            )
         sections.append("")
 
         sections.append("## What the system attempted")

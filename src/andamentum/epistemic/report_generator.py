@@ -15,6 +15,7 @@ from typing import Optional
 
 from andamentum.document_store import DocumentStore
 from .entities import ClaimStage
+from .entities.verdict import EpistemicVerdict, EvidenceRef
 from .gates import STAGE_GATES
 from .primitives import UncertaintyType
 from .report_data import (
@@ -103,10 +104,60 @@ def _routing_label(activation: "TrackActivation") -> str:
     return "SKIP"
 
 
+def _scrutiny_reliability_note(source: object) -> str | None:
+    """One sentence on how reliable the judgments behind the scrutiny
+    verdict were — or ``None`` when there is nothing to say.
+
+    ``source`` is the record the reliability is read OFF: normally the run's
+    ``ClaimVerdict``, which is where ``build_verdict`` froze these numbers;
+    the live ``Claim`` entity when no verdict object exists yet. The two
+    carry the same three field names deliberately, so this reads either.
+
+    ``None`` in the overwhelmingly common case, which is what keeps every
+    currently-rendered gate-trace row byte-identical. It speaks only when a
+    measurement actually raised a suspicion: doubt at or above the
+    escalation threshold, an independent judge contradicting an evidence
+    direction, or an independent judge contradicting the reading itself.
+
+    This is the READ SITE that stops the doubt plumbing from repeating
+    ``CapEvaluation.doubt``'s fate — a field that reaches the verdict object
+    and is read by zero renderers. ``GateTraceEntry.note`` already exists and
+    already flows into ``audit_report._build_gate_trace_json``, so a machine
+    reader gets it too, with no new component and no new section.
+    """
+    from .thresholds import JUDGMENT_DOUBT_ESCALATION_THRESHOLD
+
+    parts: list[str] = []
+    doubt = getattr(source, "scrutiny_doubt", None)
+    if doubt is not None and doubt >= JUDGMENT_DOUBT_ESCALATION_THRESHOLD:
+        parts.append(
+            f"the evidence judgments behind this verdict were internally "
+            f"unsure (judgment doubt {doubt:.2f}, at or above "
+            f"{JUDGMENT_DOUBT_ESCALATION_THRESHOLD:.2f})"
+        )
+    dissent_count = getattr(source, "judgment_dissent_count", 0) or 0
+    if dissent_count:
+        parts.append(
+            f"an independent judge disagreed with {dissent_count} evidence "
+            f"direction(s)"
+        )
+    opinion = getattr(source, "scrutiny_opinion", None)
+    if opinion is not None and opinion.dissents:
+        parts.append(
+            f"an independent judge read the evidence as '{opinion.overall}' "
+            f"against a '{opinion.reference}' weight"
+        )
+    if not parts:
+        return None
+    return "; ".join(parts).capitalize() + "."
+
+
 def _build_gate_trace(
     claim: object,
     question_type: str | None,
     posterior: float | None,
+    *,
+    reliability: object | None = None,
 ) -> list[GateTraceEntry]:
     """Build the per-claim gate trace from claim entity state.
 
@@ -114,6 +165,12 @@ def _build_gate_trace(
     are routed SKIP for this question type render as ``skipped``; gates
     with no recorded value render as ``skipped`` with a ``no value
     recorded`` note.
+
+    ``reliability`` is the record the scrutiny row's judgment-reliability
+    note is read off — the run's ``ClaimVerdict`` when one was persisted,
+    so the rendered note and the frozen decision cannot disagree. Keyword-
+    only, and defaulting to ``claim``, because it and ``claim`` are two
+    same-shaped objects whose transposition would be invisible to pyright.
 
     The trace is the renderer-facing answer to Schneider (2025)'s
     "black box" challenge: the reasoning steps are named, the
@@ -161,6 +218,9 @@ def _build_gate_trace(
                 required="pass",
                 observed=str(sv),
                 status=status,
+                note=_scrutiny_reliability_note(
+                    claim if reliability is None else reliability
+                ),
             )
         )
 
@@ -483,52 +543,29 @@ class ReportGenerator:
         artefacts = await self.repo.get_artefacts_for_objective(obj_id)
         artefact = artefacts[-1] if artefacts else None
 
+        # The artefact contributes the PROSE only. The verdict is read
+        # off the persisted verdict object below — the previous
+        # "> **Verdict:**" scrape (plus its "first sentence that ends in
+        # a period" fallback) was one of the five independent verdict
+        # derivations this design collapses. Demoting it to a fallback
+        # would preserve exactly the disagreement it caused.
         direct_answer = ""
-        verdict = ""
         artefact_trace: dict[str, list[str]] = {}
         if artefact:
             content = artefact.content
-            # Extract verdict if present (stored as "> **Verdict:** ..." line)
-            for line in content.split("\n"):
-                stripped = line.strip()
-                if stripped.startswith("> **Verdict:**"):
-                    verdict = stripped[len("> **Verdict:**") :].strip()
-                    break
-
-            # Extract content, removing the header and verdict if present
+            # Strip the "# Title" header and the machine-owned verdict
+            # line so ``direct_answer`` is the writer's prose alone.
             if content.startswith("# "):
                 lines = content.split("\n", 2)
                 if len(lines) > 2:
                     content = lines[2]
-            # Remove verdict line from the answer body
-            if verdict:
-                content_lines = content.split("\n")
-                content_lines = [
-                    ln
-                    for ln in content_lines
-                    if not ln.strip().startswith("> **Verdict:**")
-                ]
-                content = "\n".join(content_lines)
+            content = "\n".join(
+                ln
+                for ln in content.split("\n")
+                if not ln.strip().startswith("> **Verdict:**")
+            )
             direct_answer = content.strip()
             artefact_trace = artefact.trace or {}
-
-        # Fallback: if no verdict was stored, extract first substantive
-        # sentence from the answer (skip headers, blockquotes, blank lines)
-        if not verdict and direct_answer:
-            for line in direct_answer.split("\n"):
-                line = line.strip()
-                if not line or line.startswith("#") or line.startswith(">"):
-                    continue
-                # Found a substantive line — take the first sentence
-                for sep in [". ", ".\n"]:
-                    if sep in line:
-                        verdict = line[: line.index(sep) + 1]
-                        break
-                else:
-                    if line.endswith("."):
-                        verdict = line
-                if verdict:
-                    break
 
         # Get all claims - NO FILTERING, get everything
         all_claims = await self.repo.get_claims_for_objective(obj_id)
@@ -551,6 +588,36 @@ class ReportGenerator:
 
         # Get ALL evidence - NO TRUNCATION
         all_evidence = await self.repo.get_evidence_for_objective(obj_id)
+
+        # ── The persisted verdict object ──
+        # Read ONCE, here, because three separate parts of this function
+        # need it: the confidence scores, each claim's adjudicated label and
+        # scrutiny doubt, and each evidence item's reliability annotation.
+        # It is the run's decision RECORD — the frozen thing the report is a
+        # rendering of — so wherever a field exists on it, the renderer reads
+        # it from there rather than re-reading the live entity, exactly as
+        # ``verdict_label`` already does. The entity is the fallback for
+        # reports extracted before a snapshot was ever written.
+        snapshot_id_for_verdict = getattr(objective, "snapshot_id", None)
+        verdict_object: EpistemicVerdict | None = None
+        if snapshot_id_for_verdict:
+            snapshot = await self.repo.get("snapshot", snapshot_id_for_verdict)
+            verdict_object = getattr(snapshot, "verdict", None)
+
+        verdict_claims = verdict_object.claims if verdict_object else []
+        # Matched by claim_id, never by index — the two lists are built by
+        # different code and an index assumption would silently mislabel
+        # every badge if either ordering changed.
+        verdict_claim_by_id = {cv.claim_id: cv for cv in verdict_claims}
+        # Same rule one level down: an EvidenceRef names the item it
+        # describes, so the map is keyed by that id. First occurrence wins —
+        # the same item can be cited by several claims, and the reliability
+        # fields are copies of one entity's own numbers, so every occurrence
+        # carries the same values.
+        verdict_ref_by_evidence: dict[str, EvidenceRef] = {}
+        for cv in verdict_claims:
+            for ref in [*cv.supporting_evidence, *cv.refuting_evidence]:
+                verdict_ref_by_evidence.setdefault(ref.evidence_id, ref)
 
         # ── Evidence filtering, dedup, and renumbering ──
         # Only include judged evidence (support_judgment is not None)
@@ -577,6 +644,19 @@ class ReportGenerator:
 
         evidence_summaries: list[EvidenceSummary] = []
         for ev in deduped_evidence:
+            # Reliability comes off the verdict object's EvidenceRef when the
+            # run produced one — that ref is provably one of the items that
+            # produced the claim's number, so annotating from it keeps the
+            # rendered line and the persisted decision in agreement. Falls
+            # back to the entity for reports extracted before any snapshot
+            # exists, and for items no claim cited.
+            ref_for_ev = verdict_ref_by_evidence.get(ev.evidence_id)
+            if ref_for_ev is not None:
+                judgment_doubt = ref_for_ev.judgment_doubt
+                direction_opinion = ref_for_ev.direction_opinion
+            else:
+                judgment_doubt = ev.judgment_entropy
+                direction_opinion = ev.direction_opinion
             evidence_summaries.append(
                 EvidenceSummary(
                     evidence_id=ev.evidence_id,
@@ -589,6 +669,12 @@ class ReportGenerator:
                     support_judgment=ev.support_judgment,
                     judgment_reasoning=ev.judgment_reasoning,
                     quality_score=ev.quality_score,
+                    judgment_doubt=judgment_doubt,
+                    direction_dissent=(
+                        direction_opinion.dissents
+                        if direction_opinion is not None
+                        else None
+                    ),
                 )
             )
 
@@ -706,6 +792,7 @@ class ReportGenerator:
                     if claim.integrated_confidence is not None
                     else None
                 ),
+                reliability=verdict_claim_by_id.get(claim.claim_id),
             )
 
             claim_summaries.append(
@@ -726,12 +813,8 @@ class ReportGenerator:
                     integrated_assessment=claim.integrated_assessment,
                     integrated_confidence=claim.integrated_confidence,
                     gate_trace=gate_trace,
-                    # verdict_label is computed at render time by
-                    # ``audit_report._normalised_verdict`` since it
-                    # blends posterior + integrated_assessment + terminal
-                    # state, all of which the renderer already has. Left
-                    # empty here so the source of truth stays in one
-                    # place rather than diverging.
+                    # Backfilled below from the run's verdict object,
+                    # once it has been loaded off the snapshot.
                     verdict_label="",
                 )
             )
@@ -873,29 +956,38 @@ class ReportGenerator:
             resolved_count,
         )
 
-        # Compute confidence scores.
-        # Note: this call does NOT thread retrieval_failed — that flag lives
-        # on the graph state and is not persisted on the Objective. So an
-        # offline report regenerated from a stored DB will always show
-        # terminal_state="completed" even if the original run failed
-        # retrieval. The retrieval_failed signal is only surfaced in the
-        # live CLI path (via PipelineResult.retrieval_failed).
+        # ``verdict_object`` — the run's persisted decision record — was read
+        # once, above. This is a READER, not a second computation: the
+        # previous implementation re-ran ``compute_posterior`` here, which
+        # could not thread ``retrieval_failed`` (it lives on graph state), so
+        # an offline report always claimed terminal_state="completed" even
+        # when the live run had reported a retrieval failure. It also
+        # swallowed every exception into a silent None.
         confidence_scores: ConfidenceScores | None = None
-        try:
-            from .confidence import compute_posterior
-
-            po = await compute_posterior(self.repo, obj_id)
-
+        if verdict_object is not None and verdict_object.posterior_report is not None:
+            po = verdict_object.posterior_report
             confidence_scores = ConfidenceScores(
-                posterior=po.posterior if po else None,
-                posterior_supporting=po.supporting_count if po else 0,
-                posterior_contradicting=po.contradicting_count if po else 0,
-                posterior_question_type=po.question_type if po else None,
-                terminal_state=po.terminal_state if po else "completed",
+                posterior=po.posterior,
+                posterior_supporting=po.supporting_count,
+                posterior_contradicting=po.contradicting_count,
+                posterior_question_type=po.question_type,
+                terminal_state=po.terminal_state,
             )
-        except Exception as e:
-            logger.warning(f"Failed to compute confidence scores: {e}")
-            confidence_scores = None
+
+        # Copy each claim's adjudicated label and scrutiny doubt off the
+        # verdict object, matched by claim_id (see ``verdict_claim_by_id``).
+        # ``None`` stays ``None`` — an unmeasured claim must not render as a
+        # certain one.
+        for summary in claim_summaries:
+            cv_for_summary = verdict_claim_by_id.get(summary.claim_id)
+            summary.verdict_label = cv_for_summary.label if cv_for_summary else ""
+            # ``verdict_doubt``, not ``scrutiny_doubt``: for a cycle-capped
+            # claim the badge came from the cap's own reading, so the doubt
+            # shown beside it must be that reading's. The verdict object
+            # picks; the renderer never has to.
+            summary.verdict_doubt = (
+                cv_for_summary.verdict_doubt if cv_for_summary else None
+            )
 
         # In verify mode (single claim) the objective-level posterior
         # directly describes the claim's verdict. Backfill it onto the
@@ -922,6 +1014,9 @@ class ReportGenerator:
                     source_claim,
                     objective.question_type,
                     confidence_scores.posterior,
+                    reliability=verdict_claim_by_id.get(
+                        claim_summaries[0].claim_id
+                    ),
                 )
 
         # Reproducibility metadata — stable across re-renders of the
@@ -943,7 +1038,7 @@ class ReportGenerator:
             model_used=model_name,
             database_name=self.database_name,
             question_type=objective.question_type,
-            verdict=verdict,
+            verdict_object=verdict_object,
             direct_answer=direct_answer,
             artefact_trace=artefact_trace,
             investigation_narrative=investigation_narrative,
