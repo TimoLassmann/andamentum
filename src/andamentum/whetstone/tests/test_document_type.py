@@ -64,13 +64,20 @@ class TestClassifyPureFunction:
             )
         assert result == category
 
-    async def test_classifier_exception_defaults_to_general(self) -> None:
+    async def test_unusable_answer_defaults_to_general(self) -> None:
+        """The model was reached and answered; the answer was no good.
+
+        That is a genuine classification failure, so the neutral default
+        applies and the run continues.
+        """
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
         class BoomAgent:
             def __init__(self, *a: object, **kw: object) -> None:
                 pass
 
             async def run(self, _prompt: str) -> None:
-                raise RuntimeError("network down")
+                raise UnexpectedModelBehavior("exceeded max retries")
 
         with mock.patch("pydantic_ai.Agent", BoomAgent):
             result = await classify(
@@ -79,6 +86,67 @@ class TestClassifyPureFunction:
                 markdown="anything",
             )
         assert result == "general"
+
+    async def test_transport_failure_propagates_instead_of_defaulting(self) -> None:
+        """A provider that cannot be reached is NOT a classification failure.
+
+        Absorbing it into ``"general"`` reports a decision about the document
+        that was never made, and hides a misconfiguration that is about to
+        break every remaining call in the run. Observed live: an unresolved
+        Ollama base URL silently routed an academic manuscript to the general
+        probe bank.
+        """
+
+        class BoomAgent:
+            def __init__(self, *a: object, **kw: object) -> None:
+                pass
+
+            async def run(self, _prompt: str) -> None:
+                raise RuntimeError("connection refused")
+
+        with mock.patch("pydantic_ai.Agent", BoomAgent):
+            with pytest.raises(RuntimeError, match="connection refused"):
+                await classify(
+                    model="fake:test",
+                    section_titles=["Anything"],
+                    markdown="anything",
+                )
+
+    async def test_model_id_goes_through_the_resolver(self) -> None:
+        """The classifier must resolve the model id, not hand it to Agent raw.
+
+        ``resolve_model`` supplies provider setup the bare ``Agent()``
+        constructor cannot infer — for ``ollama:`` ids that includes the base
+        URL. This was the actual bug: the classifier was the one agent in
+        whetstone building itself from the raw string, so it failed on every
+        local model while the rest of the pipeline ran fine. Only a test can
+        catch a regression here, because the failure is provider-specific and
+        invisible on the cloud models most runs use.
+        """
+        sentinel = object()
+        seen: list[object] = []
+
+        class CapturingAgent(FakeAgent):
+            _canned_type = "general"  # type: ignore[misc]
+
+            def __init__(
+                self, model: object, output_type: type | None = None, **kw: object
+            ) -> None:
+                seen.append(model)
+                super().__init__(model, output_type, **kw)
+
+        with mock.patch(
+            "andamentum.core.models.resolve_model", return_value=sentinel
+        ) as resolver:
+            with mock.patch("pydantic_ai.Agent", CapturingAgent):
+                await classify(
+                    model="ollama:gemma4:26b-nvfp4",
+                    section_titles=["S"],
+                    markdown="body",
+                )
+
+        resolver.assert_called_once_with("ollama:gemma4:26b-nvfp4")
+        assert seen == [sentinel]  # the resolved model, never the raw string
 
     async def test_empty_section_titles_handled(self) -> None:
         with _patch_agent("general"):
