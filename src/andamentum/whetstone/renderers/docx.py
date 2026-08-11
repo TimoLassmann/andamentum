@@ -13,13 +13,20 @@ Reuses the in-tree ``whetstone.docx.finalization.finalize_reviewed_document``
                                 comment_text="<title>\\n\\n<rationale>",
                                 explanation=rationale)
 
-Findings without quotes cannot become comments — there is nothing to
-anchor them to in the .docx structure — so they are diverted into a
-section of the prepended review report instead of being dropped. Absence
-findings (checklist mode) are all of this kind, and any mode can produce
-one. Edits whose ``original_text`` doesn't appear in the .docx are still
-dropped by ``apply_patches`` (which reports the count it could not
-apply).
+**Every finding is also listed in the prepended report**, via the
+``critical_issues`` payload — the comment is an anchored convenience, not
+the only copy. Three independent things stop a comment reaching the
+reader: a quote-less finding has nothing to attach to (all checklist
+absence findings, and any mode can produce one); an anchor can miss when
+the quote came from harvested markdown but the Word text was
+reconstructed from a table, caption or field; and a comment is invisible
+in any viewer that does not render docx markup. Measured on a real
+manuscript before the report list existed: 7 findings, 2 comments placed,
+5 with no trace in the document.
+
+Edits whose ``original_text`` doesn't appear in the .docx are still
+dropped by ``apply_patches``, which reports the count it could not apply
+— the CLI now surfaces that count rather than discarding it.
 
 Panel mode (``mode="panel"``) is now ALSO rendered: expert biosketches,
 scored expert reviews, and the panel synthesis are folded into the
@@ -78,14 +85,16 @@ def render_docx(
     """Render a ReviewResult as a .docx with track changes + comments.
 
     Edits become tracked changes (deletion of the original span,
-    insertion of the new span). Findings become Word comments anchored
-    to the first verbatim quote of each finding. The executive summary
-    becomes a prepended review report.
+    insertion of the new span). The executive summary becomes a prepended
+    review report.
 
-    Findings that carry no usable quote have no span to attach a comment
-    to; they are appended to the prepended report as their own section
-    rather than dropped, so a mode whose findings are document-level (an
-    absence finding in checklist mode, say) still reaches the reader.
+    **Every finding is listed in that report**, and separately anchored as
+    a Word comment where its quote can be located. The list is the record;
+    the comment is the convenience. Findings must not depend on anchoring
+    having worked — a quote-less finding has nothing to attach to, an
+    anchor can legitimately miss on text Docling reconstructed, and a
+    comment is invisible in any viewer that does not render docx markup.
+    See :func:`_findings_as_issues`.
 
     For panel-mode results, the prepended report includes the panel
     synthesis prose, scored per-expert reviews, and expert biosketches.
@@ -136,12 +145,6 @@ def render_docx(
         )
         review_summary = banner + (review_summary or "")
 
-    # Quote-less findings can't be anchored as comments; carry them in the
-    # report body so they are visible in the .docx rather than silently lost.
-    unanchored_text = _collect_unanchored_findings(result)
-    if unanchored_text:
-        review_summary = (review_summary or "").rstrip() + "\n\n" + unanchored_text
-
     novelty_findings_text = _collect_novelty_findings(result)
 
     _, patch_result = finalize_reviewed_document(
@@ -149,6 +152,9 @@ def render_docx(
         patches=patches,
         review_summary=review_summary,
         issues_count=len(findings),
+        # The findings themselves, not just their count. Without this the
+        # report announced N issues and listed none — see _findings_as_issues.
+        critical_issues=_findings_as_issues(result) or None,
         output_path=Path(output_path),
         author=author,
         # Panel-mode payload (None / empty when not in panel mode)
@@ -318,48 +324,65 @@ def _collect_novelty_findings(result: ReviewResult) -> str:
     return "\n".join(lines)
 
 
-def _collect_unanchored_findings(result: ReviewResult) -> str:
-    """Concatenate quote-less findings into a markdown block for the report.
+def _finding_location(finding: Finding) -> str:
+    """Where the reader should look for this finding, in prose.
 
-    A Word comment needs a span to attach to. A finding with no usable quote
-    has none — it is either document-level or (checklist mode) a claim that
-    something is *missing*, which by construction cannot be quoted. Emitting
-    them here is what keeps such findings from disappearing from the .docx
-    entirely; the count is logged so a diversion is visible in a run's output
-    rather than inferred from a short comment list.
-
-    Novelty findings are excluded: ``_collect_novelty_findings`` already puts
-    them in their own report subsection.
+    The report list has to stand on its own: a Word comment sits beside the
+    text, but a finding whose anchor failed to place has nothing pointing at
+    it, and a quote-less finding never had anywhere to point.
     """
-    unanchored = [
+    sections = ", ".join(finding.sections_involved)
+    quote = _anchor_text(finding)
+    if quote:
+        snippet = quote if len(quote) <= 80 else quote[:79].rstrip() + "…"
+        return f"{sections} — “{snippet}”" if sections else f"“{snippet}”"
+    return sections or "document-level (no single passage)"
+
+
+def _findings_as_issues(result: ReviewResult) -> list[dict[str, Any]]:
+    """Every finding, as the issue records the .docx report body renders.
+
+    The report previously listed NOTHING: ``render_docx`` announced
+    ``Critical Issues: N`` and passed no issue list, so the formatter fell
+    through to its "See detailed reviews below." placeholder and the findings
+    existed only as Word comments in the margin.
+
+    That made the .docx the one output format where findings could vanish, in
+    two ways at once. A comment is invisible in any viewer that does not render
+    docx markup (Preview, Quick Look, Word with markup hidden). And a comment
+    is only placed if its quote anchors: quotes come from the harvested
+    markdown, but Word text that Docling reconstructed — table cells, captions,
+    fields — need not exist as contiguous runs, so the anchor legitimately
+    misses. Measured on a real manuscript: 7 findings, 2 comments placed, 5
+    silently gone.
+
+    Listing all of them here makes the body the complete record and the
+    comments the convenience, so no finding depends on anchoring having
+    worked. Novelty findings are excluded — ``_collect_novelty_findings``
+    already gives them their own subsection.
+    """
+    findings = [
         f
         for f in (list(result.findings) + list(result.deterministic_findings))
-        if f.category != "novelty" and not _anchor_text(f)
+        if f.category != "novelty"
     ]
-    if not unanchored:
-        return ""
-
-    logger.info(
-        "[renderers.docx] %d finding(s) have no quote to anchor a comment to; "
-        "rendering them in the review report instead",
-        len(unanchored),
-    )
-
-    lines = [
-        f"## Findings without a text anchor ({len(unanchored)})",
-        "",
-        "These findings name a document-level issue or something missing, so "
-        "there is no passage to attach a comment to. They are listed here "
-        "instead.",
-        "",
-    ]
-    for f in unanchored:
-        lines.append(f"- **{f.title}** ({f.severity}, {f.confidence} confidence)")
-        if f.rationale:
-            for ln in f.rationale.splitlines():
-                lines.append(f"    {ln}")
-        clause = _corroboration_clause(f)
+    issues: list[dict[str, Any]] = []
+    for finding in findings:
+        description = finding.rationale
+        clause = _corroboration_clause(finding)
         if clause:
-            lines.append(f"    {clause}")
-        lines.append("")
-    return "\n".join(lines).rstrip()
+            description = f"{description}\n\n{clause}" if description else clause
+        issues.append(
+            {
+                "title": finding.title,
+                "description": description,
+                "severity": finding.severity,
+                "location": _finding_location(finding),
+                # Panel mode names the expert who raised it; every other mode
+                # has no second party to credit and leaves this unset.
+                "source_reviewers": [finding.perspective]
+                if finding.perspective
+                else [],
+            }
+        )
+    return issues

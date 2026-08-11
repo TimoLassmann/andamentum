@@ -711,13 +711,14 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 )
             elif ext == ".docx":
                 assert baseline_docx is not None  # validated above
-                render_docx(
+                patch_result = render_docx(
                     result,
                     source_docx_path=baseline_docx,
                     output_path=out,
                     model=model_id,
                     visible_watermark=args.visible_watermark,
                 )
+                _warn_on_unplaced_annotations(console, patch_result)
             written.append(out)
             logger.info("[output] wrote %s", out)
     finally:
@@ -1131,6 +1132,31 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
         _die(3, f"patch application failed: {exc}")
 
     _print_apply_patches_summary(console, patch_result, output_path)
+
+
+def _warn_on_unplaced_annotations(console: Console, result) -> None:
+    """Say so when a .docx annotation could not be placed in the text.
+
+    ``render_docx`` returns the patch-application result and this used to be
+    discarded, which made a partial write indistinguishable from a clean one:
+    on a real manuscript, 7 findings produced 2 comments and the run reported
+    success. An annotation misses when its quote — taken from the harvested
+    markdown — has no contiguous match in the Word runs, which happens for text
+    Docling reconstructed from tables, captions or fields.
+
+    Every finding is still in the prepended report regardless (see
+    ``renderers.docx._findings_as_issues``), so this is a placement warning,
+    not data loss. It is a warning rather than a failure for the same reason:
+    nothing was lost, but the margin is thinner than the report implies.
+    """
+    if result is None or not result.failed_patches:
+        return
+    console.print(
+        f"[yellow]note:[/yellow] {len(result.failed_patches)} of "
+        f"{result.total_patches} annotation(s) could not be anchored in the "
+        f"text — their quotes have no exact match in the .docx. All findings "
+        f"are still listed in the review report at the top of the document."
+    )
 
 
 def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:

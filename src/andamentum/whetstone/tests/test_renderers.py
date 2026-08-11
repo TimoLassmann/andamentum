@@ -249,7 +249,7 @@ def test_docx_adapter_emits_no_patch_for_findings_without_quotes():
 
 
 def test_docx_unanchored_findings_go_into_the_report():
-    """Quote-less findings are rendered in the report body, never dropped."""
+    """Quote-less findings reach the report body, never dropped."""
     from unittest import mock
 
     from andamentum.whetstone.renderers import docx as docx_mod
@@ -270,14 +270,21 @@ def test_docx_unanchored_findings_go_into_the_report():
             output_path="out.docx",
         )
 
-    summary = captured.get("review_summary", "")
-    assert "Findings without a text anchor (1)" in summary
-    assert "No quote" in summary
-    assert "floating finding" in summary
+    issues = captured.get("critical_issues") or []
+    assert [i["title"] for i in issues] == ["No quote"]
+    assert issues[0]["description"] == "floating finding"
+    # No quote to point at, so the location falls back to the section — the
+    # reader still gets somewhere to look, which a bare comment would not
+    # have given them at all.
+    assert issues[0]["location"] == "sec_001"
 
 
-def test_docx_anchored_findings_stay_out_of_the_unanchored_report_section():
-    """Findings with a quote become comments only — no double reporting."""
+def test_docx_every_finding_reaches_the_report_body():
+    """Anchored findings are listed too — the comment is not the only copy.
+
+    Measured on a real manuscript before this: 7 findings, 2 comments placed,
+    5 with no trace in the document at all.
+    """
     from unittest import mock
 
     from andamentum.whetstone.renderers import docx as docx_mod
@@ -298,12 +305,14 @@ def test_docx_anchored_findings_stay_out_of_the_unanchored_report_section():
             output_path="out.docx",
         )
 
-    summary = captured.get("review_summary", "")
-    # The sample result has one quote-less finding ("Style: long sentences"),
-    # and two anchored ones which must NOT appear in the section.
-    assert "Findings without a text anchor (1)" in summary
-    assert "Style: long sentences" in summary
-    assert "Unsupported claim about novelty" not in summary
+    # EVERY finding reaches the report body — anchored or not. A comment is
+    # only placed when the quote locates in the Word runs, and it is invisible
+    # in viewers that do not render docx markup, so the body is the record.
+    issues = captured.get("critical_issues") or []
+    titles = [i["title"] for i in issues]
+    assert "Style: long sentences in §2" in titles  # quote-less
+    assert "Unsupported claim about novelty" in titles  # anchored
+    assert captured.get("issues_count") == len(issues)  # header matches body
 
 
 def test_docx_corroboration_named_in_comment_body():
