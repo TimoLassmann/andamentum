@@ -28,7 +28,9 @@ Everything ships in one distribution. The default dependencies are the flat unio
 
 ## Commands
 
-Use `uv run` for everything Python-related (not plain `python`).
+Use `uv run` for everything Python-related — `uv run python`, never plain `python` or `python3`, including one-off `-c` snippets and throwaway checks.
+
+**Never write scratch artefacts into the repo.** Screenshots, rendered previews, sample outputs, temp scripts, benchmark dumps and anything else generated while working goes in the session scratchpad directory, not in the working tree. That includes tool output directories such as `.playwright-mcp/` — pass an absolute scratchpad path when a tool asks where to save. The only files that should appear in `git status` after a task are the ones the task was actually asked to produce.
 
 ```bash
 # Install dev deps

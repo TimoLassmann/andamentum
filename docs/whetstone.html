@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>andamentum.whetstone</title>
+<style>
+/* ─────────────────────────────────────────────────────────────────────
+   andamentum design tokens (subset of docs/design/components.css).
+   Light is canonical; dark via prefers-color-scheme and [data-theme].
+   ───────────────────────────────────────────────────────────────────── */
+:root {
+  --am-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --am-font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --am-font-mono:  'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
+
+  --am-fs-display: 32px;
+  --am-fs-h2:      22px;
+  --am-fs-h3:      18px;
+  --am-fs-prose:   19px;
+  --am-fs-body:    16px;
+  --am-fs-ui:      15px;
+  --am-fs-meta:    14px;
+  --am-fs-small:   13px;
+  --am-fs-micro:   12px;
+  --am-fs-lead:    20px;
+  --am-fs-eyebrow: 10px;
+
+  --am-lh-prose: 1.85;
+  --am-lh-tight: 1.25;
+  --am-lh-ui:    1.5;
+
+  --am-sp-1: 4px;  --am-sp-2: 8px;  --am-sp-3: 12px; --am-sp-4: 16px;
+  --am-sp-5: 20px; --am-sp-6: 24px; --am-sp-7: 32px; --am-sp-8: 40px;
+  --am-sp-9: 48px; --am-sp-10: 64px;
+
+  --am-rad-1: 3px; --am-rad-2: 4px; --am-rad-3: 6px; --am-rad-4: 8px;
+
+  --am-paper:   #f9f7f4;
+  --am-paper-2: #f4f1ec;
+  --am-paper-3: #f0ede8;
+  --am-paper-4: #e8e4de;
+
+  --am-ink:   #1a1a1a;
+  --am-ink-2: #2b2b2b;
+  --am-ink-3: #555555;
+  --am-ink-4: #777777;
+  --am-ink-5: #999999;
+
+  --am-rule:   #e8e4de;
+  --am-rule-3: #d4d0c8;
+
+  --am-link:       #7c6a4f;
+  --am-link-hover: #1a1a1a;
+  --am-link-rule:  #d4d0c8;
+
+  --am-info-bg: #e8eaee; --am-info-accent: #6e7a8c; --am-info-ink: #3e4a5c;
+  --am-warn-bg: #ece5d2; --am-warn-accent: #9a8559; --am-warn-ink: #5a4818;
+  --am-success-bg: #e3e6d9; --am-success-accent: #5e7a6a; --am-success-ink: #2e4636;
+  --am-danger-bg: #f1ddd4; --am-danger-accent: #9c4a36; --am-danger-ink: #6e2818;
+  --am-note-bg: #f4f1ec; --am-note-accent: #c4b99a; --am-note-ink: #555555;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --am-paper:   #18160f;
+    --am-paper-2: #201d16;
+    --am-paper-3: #28241c;
+    --am-paper-4: #312c23;
+
+    --am-ink:   #ede8df;
+    --am-ink-2: #d8d2c5;
+    --am-ink-3: #b5ad9d;
+    --am-ink-4: #948c7c;
+    --am-ink-5: #756e60;
+
+    --am-rule:   #36312a;
+    --am-rule-3: #4a4438;
+
+    --am-link:       #c4b08a;
+    --am-link-hover: #ede8df;
+    --am-link-rule:  #4a4438;
+
+    --am-info-bg: #1c2026; --am-info-accent: #8a99ac; --am-info-ink: #c2cedb;
+    --am-warn-bg: #26211a; --am-warn-accent: #b8a37a; --am-warn-ink: #d4c89e;
+    --am-success-bg: #1f231d; --am-success-accent: #8a9e8e; --am-success-ink: #b8c8bd;
+    --am-danger-bg: #2a1d18; --am-danger-accent: #c47a64; --am-danger-ink: #d8a796;
+    --am-note-bg: #28241c; --am-note-accent: #6a6149; --am-note-ink: #b5ad9d;
+  }
+}
+
+[data-theme="dark"] {
+  --am-paper:   #18160f;
+  --am-paper-2: #201d16;
+  --am-paper-3: #28241c;
+  --am-paper-4: #312c23;
+
+  --am-ink:   #ede8df;
+  --am-ink-2: #d8d2c5;
+  --am-ink-3: #b5ad9d;
+  --am-ink-4: #948c7c;
+  --am-ink-5: #756e60;
+
+  --am-rule:   #36312a;
+  --am-rule-3: #4a4438;
+
+  --am-link:       #c4b08a;
+  --am-link-hover: #ede8df;
+  --am-link-rule:  #4a4438;
+
+  --am-info-bg: #1c2026; --am-info-accent: #8a99ac; --am-info-ink: #c2cedb;
+  --am-warn-bg: #26211a; --am-warn-accent: #b8a37a; --am-warn-ink: #d4c89e;
+  --am-success-bg: #1f231d; --am-success-accent: #8a9e8e; --am-success-ink: #b8c8bd;
+  --am-danger-bg: #2a1d18; --am-danger-accent: #c47a64; --am-danger-ink: #d8a796;
+  --am-note-bg: #28241c; --am-note-accent: #6a6149; --am-note-ink: #b5ad9d;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--am-paper);
+  color: var(--am-ink-2);
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-prose);
+  line-height: var(--am-lh-prose);
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: var(--am-sp-9) var(--am-sp-5) var(--am-sp-10);
+}
+
+/* ── Title block ─────────────────────────────────────────────────────── */
+.doc-heading {
+  margin-bottom: var(--am-sp-8);
+  padding-bottom: var(--am-sp-6);
+  border-bottom: 1px solid var(--am-rule);
+}
+.doc-heading h1 {
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--am-ink);
+  margin: 0 0 var(--am-sp-3);
+}
+.doc-subtitle {
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-lead);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--am-ink-3);
+  margin: 0 0 var(--am-sp-4);
+}
+.doc-meta {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-meta);
+  color: var(--am-ink-4);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.doc-meta code {
+  font-family: var(--am-font-mono);
+  color: var(--am-ink-3);
+}
+
+/* ── Prose ───────────────────────────────────────────────────────────── */
+h2 {
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-h2);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--am-ink);
+  margin: var(--am-sp-10) 0 var(--am-sp-4);
+  padding-top: var(--am-sp-5);
+  border-top: 1px solid var(--am-rule);
+}
+h2 .n {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-meta);
+  font-weight: 600;
+  color: var(--am-ink-5);
+  margin-right: var(--am-sp-3);
+  font-variant-numeric: tabular-nums;
+}
+h3 {
+  font-family: var(--am-font-serif);
+  font-size: var(--am-fs-h3);
+  font-weight: 600;
+  color: var(--am-ink);
+  margin: var(--am-sp-7) 0 var(--am-sp-3);
+}
+p { margin: 0 0 var(--am-sp-4); }
+strong { font-weight: 600; color: var(--am-ink); }
+em { font-style: italic; }
+
+a {
+  color: var(--am-link);
+  text-decoration: none;
+  border-bottom: 1px solid var(--am-link-rule);
+}
+a:hover { color: var(--am-link-hover); border-bottom-color: currentColor; }
+
+ul { margin: 0 0 var(--am-sp-4); padding-left: var(--am-sp-5); }
+li { margin-bottom: var(--am-sp-2); }
+
+.eyebrow {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--am-ink-5);
+  margin: 0 0 var(--am-sp-2);
+}
+
+code {
+  font-family: var(--am-font-mono);
+  font-size: 0.86em;
+  background: var(--am-paper-2);
+  border: 1px solid var(--am-rule);
+  border-radius: var(--am-rad-1);
+  padding: 0.08em 0.35em;
+}
+
+pre {
+  font-family: var(--am-font-mono);
+  font-size: var(--am-fs-small);
+  line-height: 1.6;
+  background: var(--am-paper-2);
+  border: 1px solid var(--am-rule);
+  border-radius: var(--am-rad-3);
+  padding: var(--am-sp-4) var(--am-sp-5);
+  overflow-x: auto;
+  margin: 0 0 var(--am-sp-4);
+  color: var(--am-ink-2);
+}
+pre code {
+  background: none; border: none; padding: 0; font-size: inherit;
+}
+.tok-com { color: var(--am-ink-4); font-style: italic; }
+.tok-kw  { color: var(--am-info-accent); }
+.tok-str { color: var(--am-success-accent); }
+.tok-fn  { color: var(--am-link); }
+
+/* ── Callouts ────────────────────────────────────────────────────────── */
+.callout {
+  background: var(--am-paper-2);
+  border-radius: var(--am-rad-2);
+  border-left: 3px solid var(--am-note-accent);
+  padding: var(--am-sp-4) var(--am-sp-5);
+  margin: 0 0 var(--am-sp-5);
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .eyebrow { color: var(--am-ink-4); }
+.callout.tone-info    { border-left-color: var(--am-info-accent); }
+.callout.tone-warn    { border-left-color: var(--am-warn-accent); }
+.callout.tone-success { border-left-color: var(--am-success-accent); }
+.callout.tone-danger  {
+  background: var(--am-danger-bg);
+  border-left-color: var(--am-danger-accent);
+  color: var(--am-danger-ink);
+}
+.callout.tone-danger .eyebrow { color: var(--am-danger-accent); }
+.callout.tone-danger strong { color: var(--am-danger-ink); }
+
+/* The lead paragraph. No rules of its own: the title block already closes
+   with one and the first h2 opens with one, so borders here stack into a
+   double rule with dead space between. */
+.verdict {
+  font-size: var(--am-fs-lead);
+  margin: 0 0 var(--am-sp-6);
+  color: var(--am-ink-2);
+}
+.verdict strong { color: var(--am-ink); }
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+.table-scroll { overflow-x: auto; margin: 0 0 var(--am-sp-5); }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-ui);
+  line-height: var(--am-lh-ui);
+}
+th, td {
+  text-align: left;
+  padding: var(--am-sp-3) var(--am-sp-3);
+  border-bottom: 1px solid var(--am-rule);
+  vertical-align: top;
+}
+th {
+  font-size: var(--am-fs-small);
+  font-weight: 600;
+  color: var(--am-ink-3);
+  border-bottom: 2px solid var(--am-rule-3);
+  white-space: nowrap;
+}
+td code, th code { font-size: 0.9em; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-note {
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-meta);
+  line-height: var(--am-lh-ui);
+  color: var(--am-ink-4);
+  margin: calc(-1 * var(--am-sp-2)) 0 var(--am-sp-6);
+}
+
+/* ── Field / definition list ─────────────────────────────────────────── */
+.fields {
+  border: 1px solid var(--am-rule);
+  border-radius: var(--am-rad-3);
+  overflow: hidden;
+  margin: 0 0 var(--am-sp-5);
+}
+.field {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--am-sp-4);
+  padding: var(--am-sp-3) var(--am-sp-4);
+  border-bottom: 1px solid var(--am-rule);
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-ui);
+  line-height: var(--am-lh-ui);
+}
+.field:last-child { border-bottom: none; }
+.field__name {
+  font-family: var(--am-font-mono);
+  font-size: var(--am-fs-small);
+  color: var(--am-ink);
+  word-break: break-word;
+}
+.field__type {
+  display: block;
+  font-family: var(--am-font-mono);
+  font-size: var(--am-fs-micro);
+  color: var(--am-info-accent);
+  margin-top: 2px;
+}
+.field__desc { color: var(--am-ink-3); }
+@media (max-width: 560px) {
+  .field { grid-template-columns: 1fr; gap: var(--am-sp-1); }
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-tag, 11px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: var(--am-rad-1);
+  background: var(--am-note-bg);
+  color: var(--am-note-ink);
+  border: 1px solid var(--am-rule);
+  vertical-align: baseline;
+}
+.badge--success { background: var(--am-success-bg); color: var(--am-success-ink); border-color: transparent; }
+.badge--warn    { background: var(--am-warn-bg);    color: var(--am-warn-ink);    border-color: transparent; }
+.badge--danger  { background: var(--am-danger-bg);  color: var(--am-danger-ink);  border-color: transparent; }
+.badge--info    { background: var(--am-info-bg);    color: var(--am-info-ink);    border-color: transparent; }
+
+/* ── Two-up cards (the two functions) ────────────────────────────────── */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--am-sp-4); margin: 0 0 var(--am-sp-5); }
+@media (max-width: 640px) { .duo { grid-template-columns: 1fr; } }
+.card {
+  border: 1px solid var(--am-rule);
+  border-radius: var(--am-rad-3);
+  padding: var(--am-sp-5);
+  background: var(--am-paper);
+}
+.card h3 { margin-top: 0; }
+.card h3 code { font-size: 0.9em; }
+.card p:last-child { margin-bottom: 0; }
+.card .eyebrow { margin-bottom: var(--am-sp-2); }
+
+/* ── Theme toggle ────────────────────────────────────────────────────── */
+.theme-toggle {
+  position: fixed;
+  top: var(--am-sp-4);
+  right: var(--am-sp-4);
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-small);
+  color: var(--am-ink-4);
+  background: var(--am-paper-2);
+  border: 1px solid var(--am-rule);
+  border-radius: var(--am-rad-2);
+  padding: var(--am-sp-1) var(--am-sp-3);
+  cursor: pointer;
+  z-index: 10;
+}
+.theme-toggle:hover { color: var(--am-ink-2); }
+
+.footer {
+  margin-top: var(--am-sp-10);
+  padding-top: var(--am-sp-5);
+  border-top: 1px solid var(--am-rule);
+  font-family: var(--am-font-sans);
+  font-size: var(--am-fs-small);
+  color: var(--am-ink-4);
+}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle colour theme">Theme</button>
+<main class="wrap">
+
+  <header class="doc-heading">
+    <p class="eyebrow">andamentum sub-module</p>
+    <h1>andamentum.whetstone</h1>
+    <p class="doc-subtitle">Structured review of drafts you wrote yourself — three graphs over one deterministic substrate, rendering to markdown, HTML, or Word with tracked changes.</p>
+    <p class="doc-meta">CLI <code>andamentum-whetstone</code> · six subcommands · depends on <code>core</code>, <code>typeset</code>, <code>chunker</code>, <code>harvest</code> · reference for maintainers and callers</p>
+  </header>
+
+  <div class="verdict">
+    Every finding is <strong>anchored to a verbatim quote</strong> and dropped if that quote is not in the source — the hallucination gate the whole design rests on. Above that sit three review shapes that answer different questions: a <strong>criterion cascade</strong> that reads the draft and connects what it finds, a <strong>probe bank</strong> that checks a fixed list and returns the same shape every run, and a <strong>simulated panel</strong> of expert reviewers.
+  </div>
+
+  <div class="callout tone-danger">
+    <p class="eyebrow">Scope</p>
+    <p><strong>Not a peer-review tool.</strong> Whetstone is for sharpening drafts you wrote. Do not run it on manuscripts, grants, or other documents shared with you in confidence as a reviewer, panel member, examiner, or editor. Most publishers and funders prohibit sharing such documents with AI tools, cloud LLMs included.</p>
+    <p>A confidentiality-marker tripwire refuses to run when it detects peer-review material, before any model call. <code>--confirm-own-draft</code> overrides it. See <code>RESPONSIBLE_USE.md</code>.</p>
+  </div>
+
+  <h2><span class="n">01</span>Which mode do I want</h2>
+
+  <p>Four things review a document, and they are not interchangeable. The first question is what you are asking for.</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>The question it answers</th><th>Output</th><th>When</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>review</code> <span class="badge badge--info">default</span></td>
+        <td>“Help me improve this draft”</td>
+        <td>Connected findings plus synthesised prose</td>
+        <td>Mid-draft, one document</td>
+      </tr>
+      <tr>
+        <td><code>checklist</code></td>
+        <td>“Run the standard check”</td>
+        <td>Fixed slots plus a deterministic coverage table</td>
+        <td>Pre-submission, draft-vs-draft, CI</td>
+      </tr>
+      <tr>
+        <td><code>panel</code></td>
+        <td>“What would reviewers say”</td>
+        <td>N independent expert reviews plus a synthesis</td>
+        <td>Before submitting, on your own work</td>
+      </tr>
+      <tr>
+        <td><code>proofread</code></td>
+        <td>“Is the prose clean”</td>
+        <td>Readability scores and style flags</td>
+        <td>Any time — no model needed</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="table-note">Review and checklist are complements, not rivals. Review notices what is not on any list and connects two distant problems into one root cause. Checklist cannot do either, and in exchange gives you output that is comparable between two drafts. Running both is a reasonable habit.</p>
+
+  <h2><span class="n">02</span>The shared substrate</h2>
+
+  <p>All three review graphs stand on the same deterministic ground, and only one step in it uses a model.</p>
+
+  <div class="fields">
+    <div class="field">
+      <div class="field__name">sectionize<span class="field__type">deterministic</span></div>
+      <div class="field__desc">Heading-aware, size-banded split via the chunker's structural layer. Every section carries char offsets back into the source.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">extract claims<span class="field__type">one model call per section</span></div>
+      <div class="field__desc">The only extraction step. Claims come back as verbatim spans and are located in the source; anything that will not locate is discarded.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">build document model<span class="field__type">deterministic</span></div>
+      <div class="field__desc">Section gists, citation markers and <code>has_citation</code> are computed, never generated. The result is the shared store every later stage queries.</div>
+    </div>
+  </div>
+
+  <p>Review stages do not receive the whole document. They get a sections table-of-contents with gists, the claims, and two tools — <code>read_section</code> and <code>search_paper</code> — and fetch what they need. That is what keeps the design document-type agnostic: nothing in the model knows which section is “Methods”, and a blog post has none.</p>
+
+  <h2><span class="n">03</span>Review mode — the criterion cascade</h2>
+
+  <p>One agent call per criterion, run in sequence, each seeing what the earlier ones found. That threading is the point: a later criterion can say <em>the evaluation is weak for the same reason the introduction overclaims</em>, which is a judgment about the document as a whole and the kind of finding that changes how an author revises.</p>
+
+  <p>Document type routes to one of six criterion sets, auto-detected by a one-shot classifier or set explicitly.</p>
+
+  <p><code>academic</code> · <code>external_communication</code> · <code>essay</code> · <code>tutorial</code> · <code>creative</code> · <code>general</code></p>
+
+  <h3>Pipeline</h3>
+  <pre><code>sectionize → extract claims → build model → <span class="tok-kw">run criteria</span>
+  → verify findings → gap loop → consolidate
+  → [novelty check] → gate → synthesise → critique &amp; revise
+  → [editor] → finalize</code></pre>
+
+  <ul>
+    <li><strong>verify findings</strong> — locate every quote in the source; drop what cannot be anchored. The hallucination gate.</li>
+    <li><strong>gap loop</strong> — bounded re-grounding pass for findings that came back thin.</li>
+    <li><strong>consolidate</strong> — merge near-duplicates so the author reads one comment instead of nine.</li>
+    <li><strong>novelty check</strong> — opt-in, three nodes (flag → search → judge) over <code>deep_research</code>. The import is deferred until you ask for it.</li>
+    <li><strong>editor</strong> — opt-in; proposes concrete <code>Edit</code>s, which become tracked changes rather than comments.</li>
+  </ul>
+
+  <p>Criteria are data. Pass <code>criteria=[Criterion(...)]</code> to supply your own, or <code>guidelines_text="…"</code> to have a set of reviewer guidelines decomposed into criteria in one call.</p>
+
+  <h2><span class="n">04</span>Checklist mode — the probe bank</h2>
+
+  <p>The cascade asks evaluative questions: <em>“are claimed results backed by evidence?”</em> A small model answers “yes, broadly” and produces nothing. A probe asks for extraction under a quota: <em>“find the 3 claims the reported results support least well.”</em> That is a task a 20B local model does reliably, and it returns the same shape every run.</p>
+
+  <div class="duo">
+    <div class="card">
+      <p class="eyebrow">Presence</p>
+      <h3>The defect is in the text</h3>
+      <p>The probe returns a verbatim quote. Verification locates it, or the finding is dropped — the same gate review mode uses.</p>
+    </div>
+    <div class="card">
+      <p class="eyebrow">Absence</p>
+      <h3>The defect is something missing</h3>
+      <p>No quote exists, so the probe names the missing item plus the terms that would appear if it were present. <strong>If any term turns up, the finding is discarded.</strong></p>
+    </div>
+  </div>
+
+  <p>The absence rule is deliberately conservative. A false “you never state your sample size”, sitting next to a paragraph stating it, is the most damaging thing this mode can emit, so a single hit refutes the claim rather than requiring all of them to.</p>
+
+  <h3>A probe</h3>
+  <div class="fields">
+    <div class="field">
+      <div class="field__name">id<span class="field__type">str</span></div>
+      <div class="field__desc">Stable snake_case identifier. The join key for cross-linking, the coverage-table row, and the finding's category — renaming one is a breaking change to saved output.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">instruction<span class="field__type">str</span></div>
+      <div class="field__desc">One defect class, defined precisely enough that two readers would agree what counts. “Find 3 issues with the methods” is what this design rejects: <em>issue</em> is undefined, so the model invents its own bar and it moves between runs.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">quota<span class="field__type">int | None</span></div>
+      <div class="field__desc"><code>3</code> means “find the 3 most serious” — a ranking with fixed output size. <code>None</code> means “report every instance; empty is a valid answer”. Use a quota only where the defect is near-universal; forcing one where the defect is often genuinely absent manufactures findings.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">shape<span class="field__type">presence | absence</span></div>
+      <div class="field__desc">Selects the output schema and the verification route.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">tags<span class="field__type">tuple[str, ...]</span></div>
+      <div class="field__desc">Optional closed label set. Out-of-set answers are dropped rather than repaired, so the drop rate reads as what it is: whether the model can follow a closed set at all.</div>
+    </div>
+  </div>
+
+  <p>Fourteen probes ship as the default bank — a nine-id core, re-skinned academic versus general, plus per-type additions, so any one bank is nine to eleven probes. They are a default, not a schema: pass <code>probes=[Probe(...)]</code> for a house checklist.</p>
+
+  <h3>What it deliberately does not reuse</h3>
+  <p>Predictability is the product, so three stages from review mode are absent on purpose. A future reader should not “fix” the omission.</p>
+  <ul>
+    <li><strong>consolidate</strong> — a stochastic merger makes counts wobble between runs of an unchanged document, destroying the comparability the mode exists for.</li>
+    <li><strong>the gap loop</strong> — how many rounds fire depends on what the first pass happened to return.</li>
+    <li><strong>LLM synthesis</strong> — the summary is a computed coverage table, so two runs of a clean document produce the same table.</li>
+  </ul>
+
+  <p>In place of consolidation, findings landing on the same passage are cross-linked and <em>both kept</em>. That records co-location, not agreement: the checks have different instructions, so the ordinary case is one passage carrying two different defects.</p>
+
+  <h3>The coverage table</h3>
+  <p>Rows come from the bank, not from the findings, so a probe that found nothing still has a row. Three states that look alike and mean entirely different things are kept apart:</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Cell</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="num"><code>3 of 3</code></td><td>Ran, found three, quota saturated — may be hiding more.</td></tr>
+      <tr><td class="num"><code>0</code></td><td>Ran, found nothing. A result: the defect was looked for and is not there.</td></tr>
+      <tr><td class="num"><code>0 (3 unverifiable)</code></td><td>Ran, found three, all failed the anchoring gate. Nothing was established.</td></tr>
+      <tr><td class="num"><code>not run</code></td><td>The probe crashed. Absence of checking, never rendered as absence of defects.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="table-note">Conflating the last two with a bare <code>0</code> is the single failure this mode is built to avoid: it reports a clean bill of health for a check that established nothing.</p>
+
+  <h2><span class="n">05</span>Panel mode</h2>
+
+  <p>A different shape again — N expert biosketches are generated from the document's own subject matter, each writes an independent scored review, and a synthesis reconciles them. Its own graph, invoked by its own subcommand.</p>
+
+  <p>Panel requires <code>--i-am-the-author</code>. Simulating peer review of someone else's manuscript is exactly the use the tool refuses, so the gate is explicit rather than implied.</p>
+
+  <h2><span class="n">06</span>Output</h2>
+
+  <p>All three modes return the same <code>ReviewResult</code>, and all three renderers consume it unchanged.</p>
+
+  <div class="fields">
+    <div class="field">
+      <div class="field__name">render_markdown<span class="field__type">→ str</span></div>
+      <div class="field__desc">Findings grouped by priority, edits as diff blocks, author questions, document map.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">render_html<span class="field__type">→ str</span></div>
+      <div class="field__desc">Self-contained page via <code>typeset</code>. The same structure, styled for reading.</div>
+    </div>
+    <div class="field">
+      <div class="field__name">render_docx<span class="field__type">→ PatchApplicationResult</span></div>
+      <div class="field__desc">Tracked changes for edits, Word comments for findings, and the review report prepended to the document.</div>
+    </div>
+  </div>
+
+  <div class="callout tone-info">
+    <p class="eyebrow">Word output</p>
+    <p><strong>Every finding is listed in the prepended report</strong>, and separately anchored as a comment where its quote can be located. The list is the record; the comment is the convenience. Three independent things stop a comment reaching a reader — a finding with no quote has nothing to attach to, an anchor can miss on text the converter reconstructed, and comments are invisible in viewers that do not render Word markup — so no finding depends on anchoring having worked.</p>
+  </div>
+
+  <h2><span class="n">07</span>Anchoring, and how it is measured</h2>
+
+  <p>A finding's quote comes from harvested markdown; a Word comment has to be pinned back into the original <code>.docx</code>. Those are two different texts. The converter reshapes tables into rows, invents list numbering Word generates from styles, and Word stores tabs as structure rather than characters — so the pin is a search, and a search can miss or hit the wrong place.</p>
+
+  <p>Matching is <strong>exact after normalisation</strong>, never fuzzy. A retry strips decoration the converter added, which is still an exact match of a smaller target and so cannot land on text that is not there. When a target occurs more than once the match is <strong>refused</strong> rather than guessed: a comment on the wrong sentence is worse than no comment, because the reader cannot tell it has moved.</p>
+
+  <p>A deterministic benchmark — no model, no network — generates a corpus with a known answer key and scores three outcomes.</p>
+
+  <pre><code>uv run python -m andamentum.whetstone.tests.anchor_bench</code></pre>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Construct</th><th class="num">Quotes</th><th class="num">Correct</th><th class="num">Wrong</th><th class="num">Missed</th></tr></thead>
+    <tbody>
+      <tr><td>plain, tabs, tables, lists, runs, headings, typography</td><td class="num">46</td><td class="num">46</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>repeats <span class="badge">ambiguous by design</span></td><td class="num">8</td><td class="num">6</td><td class="num">0</td><td class="num">2</td></tr>
+      <tr><td><strong>Total</strong></td><td class="num"><strong>54</strong></td><td class="num"><strong>52</strong></td><td class="num"><strong>0</strong></td><td class="num"><strong>2</strong></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="table-note">Anchor rate alone is a bad target because guessing maximises it. <code>wrong</code> is the number that must stay zero, and a test fails if it does not. The two remaining misses are genuinely repeated sentences, correctly refused.</p>
+
+  <h2><span class="n">08</span>Command line</h2>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Subcommand</th><th>What it does</th><th>Model</th></tr></thead>
+    <tbody>
+      <tr><td><code>review</code></td><td>Criterion cascade. The verb is optional — it is the default.</td><td><span class="badge badge--warn">required</span></td></tr>
+      <tr><td><code>checklist</code></td><td>Probe bank plus coverage table.</td><td><span class="badge badge--warn">required</span></td></tr>
+      <tr><td><code>panel</code></td><td>Multi-expert simulated review. Needs <code>--i-am-the-author</code>.</td><td><span class="badge badge--warn">required</span></td></tr>
+      <tr><td><code>proofread</code></td><td>Readability and style. Delegates to <code>andamentum-proofread</code>.</td><td><span class="badge badge--success">none</span></td></tr>
+      <tr><td><code>apply-patches</code></td><td>Apply a pre-built JSON patch list to a <code>.docx</code>.</td><td><span class="badge badge--success">none</span></td></tr>
+      <tr><td><code>verify-provenance</code></td><td>Read-only: report the AI-provenance markers a <code>.docx</code> carries.</td><td><span class="badge badge--success">none</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <pre><code><span class="tok-com"># review a draft, three formats at once</span>
+andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
+    --out review.md --out review.html --out draft.reviewed.docx
+
+<span class="tok-com"># the standard check, on a local model, with progress</span>
+andamentum-whetstone checklist draft.docx --model ollama:gemma4:26b-nvfp4 \
+    --document-type academic --out checklist.md --verbose
+
+<span class="tok-com"># style only — no model involved</span>
+andamentum-whetstone proofread draft.md</code></pre>
+
+  <p>Input may be a path or URL — PDF, DOCX, HTML, Markdown or plain text, detected automatically. Output format is inferred from each <code>--out</code> extension. For <code>.docx</code> output from a non-Word source, a clean baseline document is generated to patch.</p>
+
+  <p><code>--document-type</code> defaults to <code>auto</code> on the CLI, which spends one classifier call; the Python API defaults to <code>general</code> to keep the default path free of it. Pass the type explicitly to skip the call.</p>
+
+  <h2><span class="n">09</span>Python</h2>
+
+  <pre><code><span class="tok-kw">from</span> andamentum.whetstone <span class="tok-kw">import</span> (
+    review_document, run_checklist, run_panel,
+    render_markdown, render_html, render_docx,
+)
+
+<span class="tok-com"># criterion cascade — source may be a path or URL</span>
+result = <span class="tok-kw">await</span> <span class="tok-fn">review_document</span>(<span class="tok-str">"draft.docx"</span>, model=<span class="tok-str">"openai:gpt-5.4-nano"</span>)
+
+<span class="tok-com"># probe bank over markdown you already have</span>
+result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</span>(markdown, model=<span class="tok-str">"ollama:gemma4:26b-nvfp4"</span>,
+                             document_type=<span class="tok-str">"academic"</span>)
+
+<span class="tok-kw">for</span> finding <span class="tok-kw">in</span> result.findings:
+    <span class="tok-fn">print</span>(finding.severity, finding.title, finding.quotes)</code></pre>
+
+  <p>Every function that calls a model takes <code>model</code> as a keyword-only argument. There is no shared config, no ambient default, and no silent fallback.</p>
+
+  <h2><span class="n">10</span>Provenance</h2>
+
+  <p>Output is marked as AI-generated in three places at once, and the markers are not decorative.</p>
+
+  <ul>
+    <li>A visible banner on every rendered report, naming the model and date. <code>--no-visible-watermark</code> removes it.</li>
+    <li>Word core properties are stamped regardless of that flag, so the File → Info pane shows the provenance even on an unwatermarked render.</li>
+    <li>Tracked changes are attributed to <code>andamentum-whetstone (AI)</code>. Overriding that name requires <code>--allow-author-override</code> and prints a warning: presenting AI edits as a human reviewer's may constitute research misconduct under most institutional codes.</li>
+  </ul>
+
+  <p><code>andamentum-whetstone verify-provenance FILE</code> reports what a document carries, without a model and without modifying it.</p>
+
+</main>
+
+<script>
+(function () {
+  var btn = document.getElementById('themeToggle');
+  var root = document.documentElement;
+  btn.addEventListener('click', function () {
+    var current = root.getAttribute('data-theme');
+    if (!current) {
+      var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      current = systemDark ? 'dark' : 'light';
+    }
+    root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>

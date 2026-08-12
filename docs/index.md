@@ -9,7 +9,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **scribe** | Block-based document authoring (paragraph, heading, figure, table) backed by SQLite, one-way render to .docx. |
 | **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (9 chart types, 7 journal palettes). |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
-| **whetstone** | Criterion-cascade review of your own drafts → markdown / HTML / .docx with track changes. Subcommands: `review` (default), `panel`, `checklist`, `proofread`, `apply-patches`, `verify-provenance`. |
+| [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with track changes. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `proofread`, `apply-patches`, `verify-provenance`. |
 | **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
