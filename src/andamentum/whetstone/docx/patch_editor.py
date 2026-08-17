@@ -9,13 +9,79 @@ while preserving all the sophisticated formatting and track changes functionalit
 import difflib
 import logging
 import time
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .low_level import DocxEditor
 from ..models import DocumentPatch, PatchApplicationResult
-from .validator import PatchValidator
 
 logger = logging.getLogger("andamentum.whetstone")
+
+
+@dataclass(frozen=True)
+class EditPlacement:
+    """One text edit resolved to a concrete span, before anything mutates.
+
+    Resolving every edit up front is what makes conflicts decidable. Applied
+    one at a time against the running text, two edits on overlapping spans
+    could BOTH succeed — the first rewrite can leave the second's pattern
+    intact — and compose into a sentence neither patch proposed, with both
+    reported as applied. Offsets index ``ParagraphData.modified`` as it stood
+    before any edit in this batch was applied.
+    """
+
+    patch: DocumentPatch
+    author: str
+    paragraph_index: int
+    start: int
+    end: int
+    target: str
+    replacement: str
+
+
+def find_occurrences(needle: str, haystack: str) -> list[int]:
+    """Every start offset of *needle* in *haystack*, non-overlapping."""
+    if not needle:
+        return []
+    found: list[int] = []
+    cursor = haystack.find(needle)
+    while cursor != -1:
+        found.append(cursor)
+        cursor = haystack.find(needle, cursor + len(needle))
+    return found
+
+
+def resolve_edit_conflicts(
+    placements: List[EditPlacement],
+) -> Tuple[List[EditPlacement], List[Tuple[EditPlacement, EditPlacement]]]:
+    """Split *placements* into the ones to apply and the ones that clash.
+
+    Greedy over the incoming order, which the caller sorts by confidence — the
+    only priority signal a ``DocumentPatch`` carries. A placement is accepted
+    when its span touches no already-accepted span in the same paragraph;
+    otherwise it is returned paired with the placement that displaced it, so
+    the caller can say which edit won rather than reporting a bare count.
+
+    Pure, so the arbitration rule is testable without a Word document.
+    """
+    accepted: List[EditPlacement] = []
+    conflicted: List[Tuple[EditPlacement, EditPlacement]] = []
+    for candidate in placements:
+        clash = next(
+            (
+                won
+                for won in accepted
+                if won.paragraph_index == candidate.paragraph_index
+                and won.start < candidate.end
+                and candidate.start < won.end
+            ),
+            None,
+        )
+        if clash is None:
+            accepted.append(candidate)
+        else:
+            conflicted.append((candidate, clash))
+    return accepted, conflicted
 
 
 class PatchDocxEditor(DocxEditor):
@@ -71,11 +137,12 @@ class PatchDocxEditor(DocxEditor):
         start_time = time.time()
 
         applied_count = 0
-        failed_patches = []
+        failed_patches: List[DocumentPatch] = []
         applied_edits = 0
         applied_comments = 0
         location_failures = 0
         validation_failures = 0
+        conflict_failures = 0
 
         # Extract patches and authors from the input
         patch_author_pairs = []
@@ -94,50 +161,119 @@ class PatchDocxEditor(DocxEditor):
                 author = self.author
                 patch_author_pairs.append((item, author))
 
-        # Sort patches by confidence (apply high-confidence patches first)
-        sorted_patch_pairs = sorted(
-            patch_author_pairs, key=lambda x: x[0].confidence, reverse=True
+        # Confidence still orders the work — it is the only priority signal a
+        # DocumentPatch carries. What changed is that it no longer decides
+        # conflicts by accident of application order: conflicts are resolved
+        # explicitly below, before any text is touched.
+        ordered = sorted(
+            patch_author_pairs, key=lambda pair: pair[0].confidence, reverse=True
         )
+        edit_pairs = [(p, a) for p, a in ordered if p.patch_type == "text_edit"]
+        other_pairs = [(p, a) for p, a in ordered if p.patch_type != "text_edit"]
 
-        for patch, patch_author in sorted_patch_pairs:
+        # ── Phase 1: resolve every text edit against the untouched text ─────
+        placements: List[EditPlacement] = []
+        for patch, patch_author in edit_pairs:
+            placement, reason = self._resolve_edit_placement(patch, patch_author)
+            if placement is None:
+                failed_patches.append(patch)
+                self.failed_patches.append(patch)
+                location_failures += 1
+                logger.info(
+                    "[patch] text edit not placed (%s): %r",
+                    reason,
+                    (patch.text_pattern or "")[:80],
+                )
+                continue
+            placements.append(placement)
+
+        # ── Phase 2: drop clashing edits before any of them is applied ──────
+        accepted, conflicted = resolve_edit_conflicts(placements)
+        for loser, winner in conflicted:
+            failed_patches.append(loser.patch)
+            self.failed_patches.append(loser.patch)
+            conflict_failures += 1
+            logger.warning(
+                "[patch] text edit DROPPED — its span overlaps an edit already "
+                "accepted in the same paragraph. Only one rewrite per span can "
+                "be tracked.\n"
+                "         dropped : %r (%s)\n"
+                "         kept    : %r (%s)",
+                loser.target[:80],
+                loser.patch.explanation[:80],
+                winner.target[:80],
+                winner.patch.explanation[:80],
+            )
+
+        # ── Phase 3: apply survivors right to left within each paragraph ────
+        # Right to left keeps every not-yet-applied offset valid: a splice only
+        # moves text at or after its own start, and the accepted spans do not
+        # overlap, so each remaining edit sits entirely to the left.
+        for placement in sorted(
+            accepted, key=lambda pl: (pl.paragraph_index, -pl.start)
+        ):
+            try:
+                self._apply_placement(placement)
+            except Exception as exc:
+                failed_patches.append(placement.patch)
+                self.failed_patches.append(placement.patch)
+                validation_failures += 1
+                logger.warning(
+                    "[patch] text edit raised while applying (%s): %r",
+                    exc,
+                    placement.target[:80],
+                )
+                continue
+            applied_count += 1
+            applied_edits += 1
+            self.applied_patches.append(placement.patch)
+
+        # Comments resolve against the document as it reads AFTER the edits,
+        # which is the same text the write pass indexes. Resolving them first
+        # would validate a target here and then miss at write time, where the
+        # rebuilt runs no longer say that — a comment that reports success and
+        # is invisible in Word. A comment whose anchor an edit rewrote now
+        # fails here instead, loudly and with a reason.
+        if accepted:
+            self._doc_index = None
+
+        for patch, patch_author in other_pairs:
             try:
                 success, failure_reason = self._apply_single_patch_with_author(
                     patch, patch_author
                 )
-
-                if success:
-                    applied_count += 1
-                    self.applied_patches.append(patch)
-
-                    if patch.patch_type == "text_edit":
-                        applied_edits += 1
-                    elif patch.patch_type == "comment":
-                        applied_comments += 1
-                else:
-                    failed_patches.append(patch)
-                    self.failed_patches.append(patch)
-
-                    # Categorize failure reasons
-                    if "location" in failure_reason.lower():
-                        location_failures += 1
-                    elif "validation" in failure_reason.lower():
-                        validation_failures += 1
-
             except Exception:
                 failed_patches.append(patch)
                 self.failed_patches.append(patch)
                 validation_failures += 1
+                continue
+
+            if success:
+                applied_count += 1
+                self.applied_patches.append(patch)
+                if patch.patch_type == "comment":
+                    applied_comments += 1
+            else:
+                failed_patches.append(patch)
+                self.failed_patches.append(patch)
+                if "location" in failure_reason.lower():
+                    location_failures += 1
+                elif "validation" in failure_reason.lower():
+                    validation_failures += 1
+                else:
+                    location_failures += 1
 
         processing_time = time.time() - start_time
 
         logger.info(
             "[anchor] %d/%d patch(es) anchored (%d comment(s), %d edit(s)); "
-            "%d could not be anchored",
+            "%d could not be anchored (%d of them dropped as conflicting)",
             applied_count,
             len(patches),
             applied_comments,
             applied_edits,
             len(failed_patches),
+            conflict_failures,
         )
 
         return PatchApplicationResult(
@@ -149,11 +285,82 @@ class PatchDocxEditor(DocxEditor):
             applied_comments=applied_comments,
             location_failures=location_failures,
             validation_failures=validation_failures,
+            conflict_failures=conflict_failures,
         )
+
+    def _resolve_edit_placement(
+        self, patch: DocumentPatch, author: str
+    ) -> Tuple[Optional[EditPlacement], str]:
+        """Resolve one text edit to an unambiguous span, or explain why not.
+
+        A pattern that occurs more than once in its paragraph is refused rather
+        than guessed at. The producer knows which occurrence it read; this layer
+        does not, and picking one silently rewrites a sentence the author never
+        had reviewed. ``renderers/docx.py`` widens whetstone's own patterns with
+        surrounding words so they arrive unique.
+        """
+        if not patch.new_text:
+            return None, "text edit has no new_text"
+
+        target = (patch.original_text or patch.text_pattern or "").strip()
+        if not target:
+            return None, "text edit has no target text"
+
+        paragraph_index = self._locate_patch_target(patch)
+        if paragraph_index is None:
+            return None, "target text not found in document"
+        if paragraph_index >= len(self.paragraphs):
+            return None, "target paragraph index out of range"
+
+        text = self.paragraphs[paragraph_index].modified
+        offsets = find_occurrences(target, text)
+        if not offsets:
+            return None, "target text not found in the located paragraph"
+        if len(offsets) > 1:
+            return None, (
+                f"target text occurs {len(offsets)} times in the paragraph and is "
+                "ambiguous — extend the pattern with surrounding words so it "
+                "identifies one span"
+            )
+
+        start = offsets[0]
+        return (
+            EditPlacement(
+                patch=patch,
+                author=author,
+                paragraph_index=paragraph_index,
+                start=start,
+                end=start + len(target),
+                target=target,
+                replacement=patch.new_text.strip(),
+            ),
+            "",
+        )
+
+    def _apply_placement(self, placement: EditPlacement) -> None:
+        """Splice one resolved edit into its paragraph.
+
+        Splices the exact resolved span. The previous implementation called
+        ``str.replace`` with no count, so a pattern appearing three times in a
+        paragraph was rewritten three times — including in sentences no
+        reviewer had looked at.
+        """
+        paragraph = self.paragraphs[placement.paragraph_index]
+        before = paragraph.modified
+        after = (
+            before[: placement.start] + placement.replacement + before[placement.end :]
+        )
+        paragraph.modified = after
+        paragraph.change_author = placement.author
+        paragraph.attribution_tracker.track_change(before, after, placement.author)
 
     def _apply_single_patch(self, patch: DocumentPatch) -> Tuple[bool, str]:
         """
-        Apply a single patch to the document.
+        Apply a single non-edit patch to the document.
+
+        Text edits do not come through here. They are resolved to spans and
+        arbitrated as a batch in :meth:`apply_patches` before any of them runs,
+        because a conflict between two of them cannot be seen one at a time.
 
         Args:
             patch: DocumentPatch to apply
@@ -166,24 +373,10 @@ class PatchDocxEditor(DocxEditor):
         if patch.patch_type == "comment":
             return self._apply_comment_patch(patch)
 
-        # Locate the target paragraph
-        paragraph_index = self._locate_patch_target(patch)
+        if patch.patch_type == "text_edit":
+            return False, "text edits are applied as a batch, not one at a time"
 
-        if paragraph_index is None:
-            return False, "Could not locate target text in document"
-
-        # Validate that the paragraph still matches expectations
-        if not self._validate_patch_location(patch, paragraph_index):
-            return False, "Paragraph content has changed since patch generation"
-
-        try:
-            if patch.patch_type == "text_edit":
-                return self._apply_text_edit_patch(patch, paragraph_index)
-            else:
-                return False, f"Unknown patch type: {patch.patch_type}"
-
-        except Exception as e:
-            return False, f"Error applying patch: {str(e)}"
+        return False, f"Unknown patch type: {patch.patch_type}"
 
     def _apply_single_patch_with_author(
         self, patch: DocumentPatch, author: str
@@ -273,85 +466,6 @@ class PatchDocxEditor(DocxEditor):
         difflib — replaces the ~700-LOC TextProcessor module that was
         only ever used here."""
         return difflib.SequenceMatcher(None, text1, text2, autojunk=False).ratio()
-
-    def _validate_patch_location(
-        self, patch: DocumentPatch, paragraph_index: int
-    ) -> bool:
-        """
-        Validate that a patch can still be applied to the specified paragraph.
-
-        Args:
-            patch: DocumentPatch to validate
-            paragraph_index: Target paragraph index
-
-        Returns:
-            True if patch can be applied, False otherwise
-        """
-        if paragraph_index >= len(self.paragraphs):
-            return False
-
-        paragraph = self.paragraphs[paragraph_index]
-
-        # For text edits, check that original text is still present
-        if patch.patch_type == "text_edit" and patch.original_text:
-            if patch.original_text.strip() not in paragraph.modified:
-                return False
-
-        # For any patch with text_pattern, verify it's still there
-        if patch.text_pattern:
-            if patch.text_pattern.lower().strip() not in paragraph.modified.lower():
-                return False
-
-        return True
-
-    def _apply_text_edit_patch(
-        self, patch: DocumentPatch, paragraph_index: int
-    ) -> Tuple[bool, str]:
-        """
-        Apply a text edit patch to a specific paragraph.
-
-        Args:
-            patch: Text edit patch to apply
-            paragraph_index: Target paragraph index
-
-        Returns:
-            Tuple of (success: bool, failure_reason: str)
-        """
-        if not patch.new_text:
-            return False, "Text edit patch missing new_text"
-
-        paragraph = self.paragraphs[paragraph_index]
-        current_text = paragraph.modified
-
-        # If we have original_text, do precise replacement
-        if patch.original_text and patch.original_text.strip() in current_text:
-            new_text = current_text.replace(
-                patch.original_text.strip(), patch.new_text.strip()
-            )
-        elif patch.text_pattern and patch.text_pattern.strip() in current_text:
-            # Use text_pattern for replacement
-            new_text = current_text.replace(
-                patch.text_pattern.strip(), patch.new_text.strip()
-            )
-        else:
-            return False, "Could not find target text for replacement"
-
-        # Apply the change using existing DocxEditor logic
-        original_text = paragraph.modified
-        paragraph.modified = new_text
-
-        # Track who made this change (for track changes attribution)
-        paragraph.change_author = (
-            self.author
-        )  # Legacy single author - kept for compatibility
-
-        # Track the specific token-level changes made by this agent
-        paragraph.attribution_tracker.track_change(original_text, new_text, self.author)
-
-        # Note: patch.explanation is preserved for console display and internal validation
-        # but no longer automatically converted to Word comments for text edits
-
-        return True, ""
 
     def _apply_comment_patch(self, patch: DocumentPatch) -> Tuple[bool, str]:
         """Resolve a comment's target text at the document level and attach it.
@@ -517,20 +631,6 @@ class PatchDocxEditor(DocxEditor):
             lines.append("")
 
         return "\n".join(lines)
-
-    def validate_patches_before_application(self, patches: List[DocumentPatch]) -> dict:
-        """
-        Validate patches before attempting to apply them.
-
-        Args:
-            patches: List of patches to validate
-
-        Returns:
-            Dictionary with validation results
-        """
-        # Use centralized validation
-        paragraph_texts = [para.modified for para in self.paragraphs]
-        return PatchValidator.validate_patch_batch(patches, paragraph_texts)
 
     def get_document_text(self) -> str:
         """

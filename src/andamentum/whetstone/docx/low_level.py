@@ -1594,15 +1594,14 @@ class DocxEditor:
         from .anchor import DocIndex
 
         # Build paragraphs-of-runs over the final document, keyed by run
-        # element. Only direct-child runs (the structure produced by the
-        # rebuild) are indexed. The prepended review report is excluded so a
-        # finding's quote can't anchor onto the report's own restatement of it.
+        # element. The prepended review report is excluded so a finding's quote
+        # can't anchor onto the report's own restatement of it.
         paragraphs_runs: list[list[tuple[Any, str]]] = []
         for pd in self.paragraphs:
             if getattr(pd, "is_review_report", False):
                 continue
             runs: list[tuple[Any, str]] = []
-            for r in pd.p_elem.findall(f"{{{NS['w']}}}r"):
+            for r in self._anchorable_runs(pd.p_elem):
                 # visible_text, not a bare <w:t> join — this index must agree
                 # with the apply-time one (patch_editor._get_doc_index), or a
                 # target validated there misses here and the comment is
@@ -1625,6 +1624,39 @@ class DocxEditor:
                 )
                 continue
             self._place_comment_range(span.start_key, span.end_key, cid)
+
+    @staticmethod
+    def _anchorable_runs(p_elem):
+        """The runs of *p_elem* that a comment may anchor to, in reading order.
+
+        Direct-child ``<w:r>`` runs plus the runs nested inside ``<w:ins>``
+        containers. Together those are the paragraph as it reads once the
+        tracked changes are accepted — the same text the apply-time index sees
+        in ``ParagraphData.modified``, which is what the two indexes have to
+        agree on.
+
+        Runs inside ``<w:del>`` are excluded: that text is on its way out, and
+        a comment bracketing it would vanish the moment the author accepts the
+        change it belongs to.
+
+        Before this walked into ``<w:ins>``, every run the rebuild produced for
+        an edited span sat inside a change container and so was invisible here.
+        A comment on a passage that an edit rewrote could not be placed at all
+        — the body was still written into ``comments.xml`` and the run reported
+        success, so the reason for a tracked change disappeared with no error
+        anywhere. That is the normal case when a finding and the edit that
+        fixes it point at the same sentence.
+        """
+        for child in p_elem:
+            # XML comments and processing instructions carry a callable tag,
+            # not a string, and QName() raises on them.
+            if not isinstance(child.tag, str):
+                continue
+            tag = etree.QName(child).localname
+            if tag == "r":
+                yield child
+            elif tag == "ins":
+                yield from child.findall(f"{{{NS['w']}}}r")
 
     def _place_comment_range(self, start_run, end_run, cid) -> None:
         """Bracket the runs ``start_run``..``end_run`` with comment markers.

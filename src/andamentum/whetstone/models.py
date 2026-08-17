@@ -206,6 +206,15 @@ class PatchApplicationResult(BaseModel):
     validation_failures: int = Field(
         default=0, description="Patches that failed validation"
     )
+    conflict_failures: int = Field(
+        default=0,
+        description=(
+            "Text edits dropped because their span overlapped an edit already "
+            "accepted in the same paragraph. Counted apart from location "
+            "failures because the cause and the remedy differ: the text was "
+            "found, and two reviewers wanted to rewrite it differently."
+        ),
+    )
 
     @property
     def success_rate(self) -> float:

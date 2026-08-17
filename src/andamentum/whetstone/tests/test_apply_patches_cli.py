@@ -428,6 +428,12 @@ def test_explicit_author_override_works_with_warning(
 # ── unplaced-annotation warning (review / checklist docx path) ──────────
 
 
+def _failed(patch_type: str, pattern: str = "some text"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(patch_type=patch_type, text_pattern=pattern)
+
+
 def test_unplaced_annotations_are_reported_not_swallowed(capsys) -> None:
     """A partial .docx write must say so.
 
@@ -445,14 +451,45 @@ def test_unplaced_annotations_are_reported_not_swallowed(capsys) -> None:
     console = Console(stderr=True)
     result = SimpleNamespace(
         total_patches=7,
-        failed_patches=[object()] * 5,
+        failed_patches=[_failed("comment")] * 5,
+        conflict_failures=0,
     )
     _warn_on_unplaced_annotations(console, result)
 
     err = capsys.readouterr().err
     assert "5 of 7" in err
     # The reader must be told the findings are not lost, only unanchored.
-    assert "listed in the review report" in err
+    assert "still listed in the review report" in err
+
+
+def test_dropped_edits_are_not_reported_as_merely_unanchored(capsys) -> None:
+    """A dropped edit is data loss and must not get the comment reassurance.
+
+    Comments carry findings, and every finding is also in the prepended report,
+    so an unplaced comment loses nothing. Edits are in no report — a dropped
+    edit vanishes. The single "all findings are still listed" line used to
+    cover both, telling the author nothing was lost when a rewrite was.
+    """
+    from types import SimpleNamespace
+
+    from rich.console import Console
+
+    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+
+    result = SimpleNamespace(
+        total_patches=4,
+        failed_patches=[_failed("text_edit", "the results show a large effect")],
+        conflict_failures=1,
+    )
+    _warn_on_unplaced_annotations(Console(stderr=True), result)
+
+    err = capsys.readouterr().err
+    assert "NOT applied" in err
+    assert "overlapping" in err
+    # The pattern is named so the author can find what went missing.
+    assert "the results show" in err
+    # And the comment-only reassurance must NOT appear.
+    assert "still listed in the review report" not in err
 
 
 def test_fully_anchored_run_prints_no_annotation_warning(capsys) -> None:

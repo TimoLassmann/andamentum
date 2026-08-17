@@ -1135,28 +1135,47 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
 
 
 def _warn_on_unplaced_annotations(console: Console, result) -> None:
-    """Say so when a .docx annotation could not be placed in the text.
+    """Say what a .docx run failed to place, and whether it was lost.
 
     ``render_docx`` returns the patch-application result and this used to be
     discarded, which made a partial write indistinguishable from a clean one:
     on a real manuscript, 7 findings produced 2 comments and the run reported
-    success. An annotation misses when its quote — taken from the harvested
-    markdown — has no contiguous match in the Word runs, which happens for text
-    Docling reconstructed from tables, captions or fields.
+    success.
 
-    Every finding is still in the prepended report regardless (see
-    ``renderers.docx._findings_as_issues``), so this is a placement warning,
-    not data loss. It is a warning rather than a failure for the same reason:
-    nothing was lost, but the margin is thinner than the report implies.
+    The two kinds of failure are reported apart because only one of them loses
+    anything. A comment carries a finding, and every finding is also listed in
+    the prepended report (``renderers.docx._findings_as_issues``), so an
+    unplaced comment is a thinner margin and nothing more. An edit exists only
+    as its tracked change: the report lists findings, never edits, so a dropped
+    edit leaves no trace at all. Reporting both under one "all findings are
+    still listed" line told the author nothing was lost when a rewrite was.
     """
     if result is None or not result.failed_patches:
         return
-    console.print(
-        f"[yellow]note:[/yellow] {len(result.failed_patches)} of "
-        f"{result.total_patches} annotation(s) could not be anchored in the "
-        f"text — their quotes have no exact match in the .docx. All findings "
-        f"are still listed in the review report at the top of the document."
-    )
+
+    lost_edits = [p for p in result.failed_patches if p.patch_type == "text_edit"]
+    unplaced_comments = [p for p in result.failed_patches if p.patch_type == "comment"]
+    conflicts = getattr(result, "conflict_failures", 0)
+
+    if unplaced_comments:
+        console.print(
+            f"[yellow]note:[/yellow] {len(unplaced_comments)} of "
+            f"{result.total_patches} comment(s) could not be anchored in the "
+            f"text — their quotes have no exact match in the .docx. Those "
+            f"findings are still listed in the review report at the top of the "
+            f"document."
+        )
+
+    if lost_edits:
+        console.print(
+            f"[yellow]warning:[/yellow] {len(lost_edits)} suggested edit(s) "
+            f"were NOT applied and appear nowhere in the .docx"
+            + (f" ({conflicts} dropped as overlapping)" if conflicts else "")
+            + ". Edits are not listed in the review report — use a markdown or "
+            "HTML output as well to see every proposed rewrite:"
+        )
+        for patch in lost_edits:
+            console.print(f"  • {(patch.text_pattern or '')[:70]}")
 
 
 def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:
