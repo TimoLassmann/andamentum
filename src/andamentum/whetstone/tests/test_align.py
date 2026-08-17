@@ -8,6 +8,8 @@ which is why searching for it failed and why mapping it works.
 
 from __future__ import annotations
 
+import pytest
+
 from andamentum.whetstone.docx.align import (
     OffsetMap,
     Seed,
@@ -163,3 +165,97 @@ def test_identical_strings_map_one_to_one() -> None:
     assert offsets.coverage == 1.0
     span = offsets.map_span(6, 15)
     assert span == (6, 15)
+
+
+# ── verification: never trust the map, check it ─────────────────────────
+
+VERIFY_DOCUMENT = (
+    "A large body of work exists to categorise agentic systems according to "
+    "their aim3,4. For the purposes of this article we refer to two types. "
+    "The main challenge is their lack of transparency10. A black-box model "
+    "provides access to text-only output. "
+    "Reproducibility depends on recording the version of every tool that ran."
+)
+CONVERTED = (
+    "A large body of work exists to categorise agentic systems according to "
+    "their aim 3,4 . For the purposes of this article we refer to two types.\n\n"
+    "The main challenge is their lack of transparency 10 . A *black-box* model "
+    "provides access to text-only output.\n\n"
+    "- Reproducibility depends on recording the version of every tool that ran."
+)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "according to their aim 3,4 .",
+        "The main challenge is their lack of transparency 10 .",
+        "A *black-box* model provides access to text-only output.",
+        "- Reproducibility depends on recording the version of every tool that ran.",
+    ],
+)
+def test_converter_notation_costs_no_drift(quote: str) -> None:
+    """Spacing, markers and pipes are not letters, so they measure zero —
+    however long the quote is."""
+    offsets = OffsetMap(CONVERTED, VERIFY_DOCUMENT)
+    at = CONVERTED.find(quote)
+    span = offsets.map_span(at, at + len(quote))
+    assert span is not None
+    assert offsets.drift(span, quote) == 0
+    assert offsets.verifies(span, quote)
+
+
+@pytest.mark.parametrize("span", [(120, 175), (155, 208), (270, 330), (0, 55)])
+def test_a_span_that_landed_elsewhere_is_refused(span: tuple[int, int]) -> None:
+    """Whether a converter reorders content is not knowable in advance, so the
+    check has to catch a wrong span however it arose."""
+    offsets = OffsetMap(CONVERTED, VERIFY_DOCUMENT)
+    quote = "The main challenge is their lack of transparency 10 ."
+    assert not offsets.verifies(span, quote)
+
+
+def test_reordered_input_never_yields_wrong_text() -> None:
+    """A converter that shuffles blocks must produce refusals, not silent
+    misplacement."""
+    scrambled = "\n\n".join(reversed(CONVERTED.split("\n\n")))
+    offsets = OffsetMap(scrambled, VERIFY_DOCUMENT)
+    for quote in (
+        "according to their aim 3,4 .",
+        "The main challenge is their lack of transparency 10 .",
+        "A *black-box* model provides access to text-only output.",
+    ):
+        at = scrambled.find(quote)
+        span = offsets.map_span(at, at + len(quote))
+        if span is None or not offsets.verifies(span, quote):
+            continue  # refused, which is a safe outcome
+        landed = VERIFY_DOCUMENT[span[0] : span[1]].replace(" ", "")
+        assert landed in quote.replace(" ", "").replace("*", "")
+
+
+def test_a_near_duplicate_differing_by_one_digit_is_refused() -> None:
+    """The case a ratio gets wrong: 412 against 413 scores 0.98."""
+    document = (
+        "Validation reached 412 of the sampled records. "
+        "Validation reached 413 of the sampled records."
+    )
+    offsets = OffsetMap(document, document)
+    quote = "Validation reached 412 of the sampled records."
+    second = document.find("Validation reached 413")
+
+    own = offsets.map_span(0, len(quote))
+    assert own is not None and offsets.verifies(own, quote)
+    assert not offsets.verifies((second, second + len(quote)), quote)
+
+
+def test_drift_does_not_shrink_as_the_quote_grows() -> None:
+    """A ratio hides one changed word inside a long quote. A count does not."""
+    filler = "The calibration figures below are computed from every arm. " * 6
+    document = filler + "The cohort of 412 patients was recruited in 2019."
+    other = filler + "The cohort of 907 patients was recruited in 2019."
+    offsets = OffsetMap(document, other)
+    assert offsets.drift((0, len(other)), document) >= 3
+
+
+def test_an_empty_quote_never_verifies() -> None:
+    offsets = OffsetMap("some text here", "some text here")
+    assert not offsets.verifies((0, 14), "")

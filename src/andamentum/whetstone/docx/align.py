@@ -47,6 +47,15 @@ _WORD = re.compile(r"\S+")
 # rarely coincidental and short enough that seeds stay dense in ordinary prose.
 DEFAULT_SEED_WORDS = 3
 
+# A mapped span is used only when its letters and digits match the quote's
+# EXACTLY. Not a threshold — see :meth:`OffsetMap.drift`.
+MAX_DRIFT = 0
+
+
+def _letters_and_digits(text: str) -> str:
+    """The part of *text* a converter has no licence to change."""
+    return "".join(char for char in text.lower() if char.isalnum())
+
 
 @dataclass(frozen=True)
 class Seed:
@@ -239,3 +248,35 @@ class OffsetMap:
         if not present:
             return None
         return min(present), max(present) + 1
+
+    def drift(self, span: tuple[int, int], quote: str) -> int:
+        """How many letters and digits separate the text at *span* from *quote*.
+
+        A mapped span is never trusted on the strength of the alignment alone.
+        The converter is third-party software doing a lossy job: a floating
+        figure legend sits far from its anchor in the XML, a PDF's reading
+        order is inferred rather than recorded, and a version bump can change
+        any of it. Whether it reorders a given construct is not knowable in
+        advance and not worth depending on, so every span is checked.
+
+        **Letters and digits only, and the count must be zero.** A converter
+        alters punctuation, spacing and markup — never words. So its edits are
+        invisible to this comparison: spaces around a superscript, ``*`` around
+        emphasis, a list marker and a table's pipes all measure 0 no matter how
+        long the quote. Text that is genuinely elsewhere differs in words or
+        numbers, and by a fixed count that does not shrink as the quote grows.
+
+        A ratio cannot do this job. Two sentences differing in one word score
+        0.95 — indistinguishable from a real match — and the score only climbs
+        as the quote lengthens. Nor is a small tolerance safe: two table rows
+        reading 412 and 413 are one character apart.
+        """
+        landed = _letters_and_digits(self._target[span[0] : span[1]])
+        expected = _letters_and_digits(quote)
+        if not expected:
+            return len(landed) or 1
+        return Levenshtein.distance(landed, expected)
+
+    def verifies(self, span: tuple[int, int], quote: str) -> bool:
+        """Whether *span* may be used for *quote*. See :meth:`drift`."""
+        return self.drift(span, quote) <= MAX_DRIFT
