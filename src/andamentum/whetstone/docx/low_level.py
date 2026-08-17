@@ -187,14 +187,25 @@ class DocxEditor:
 
     @property
     def paragraph_elements(self) -> list:
-        """The body's ``<w:p>`` elements, in reading order.
+        """The body's outermost ``<w:p>`` elements, in reading order.
 
         Read from the tree each time rather than cached: an edit may split a
         paragraph in two, and a stale list would hide the new one. Empty
         paragraphs are included — each one is a real break a reader sees.
+
+        Paragraphs nested inside another paragraph are excluded. A text box
+        holds its content in a ``<w:p>`` inside the anchoring paragraph's run,
+        and the atom walker descends into it already — so returning both would
+        read that text twice, once in place and once as a paragraph of its own.
+        Table cells are not affected: a ``<w:tbl>`` is a sibling of body
+        paragraphs, not a descendant of one.
         """
         root = self.trees[self._doc_path].getroot()
-        return root.xpath(".//w:p", namespaces=NS)
+        return [
+            paragraph
+            for paragraph in root.xpath(".//w:p", namespaces=NS)
+            if not paragraph.xpath("ancestor::w:p", namespaces=NS)
+        ]
 
     def _unzip(self, docx_path):
         """Extract the .docx archive into the temporary working directory.

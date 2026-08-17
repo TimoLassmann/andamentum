@@ -178,3 +178,58 @@ def test_no_break_before_the_first_paragraph() -> None:
 
 def test_projection_of_an_empty_document_is_empty() -> None:
     assert projection(document_atoms([])) == ""
+
+
+# ── paragraphs nested inside paragraphs ─────────────────────────────────
+
+
+def test_text_box_content_is_read_once_not_twice(tmp_path) -> None:
+    """A text box holds a <w:p> inside the anchoring paragraph's run.
+
+    The walker descends into it, so if the paragraph list also contained that
+    nested paragraph the text would be read twice — once in place and once as
+    a paragraph of its own. Found by comparing marker order against Docling's
+    output, where the box appeared once and the projection had it twice.
+    """
+    from andamentum.whetstone.docx.low_level import DocxEditor
+
+    namespace = qn("t")[1:].split("}")[0]
+    doc = Document()
+    doc.add_paragraph("Before the box.")
+    run = doc.add_paragraph().add_run()
+    run._r.append(
+        etree.fromstring(
+            f'<w:pict xmlns:w="{namespace}" xmlns:v="urn:schemas-microsoft-com:vml">'
+            '<v:shape type="#_x0000_t202"><v:textbox><w:txbxContent>'
+            "<w:p><w:r><w:t>TEXTBOX CONTENT</w:t></w:r></w:p>"
+            "</w:txbxContent></v:textbox></v:shape></w:pict>"
+        )
+    )
+    doc.add_paragraph("After the box.")
+    source = tmp_path / "textbox.docx"
+    doc.save(str(source))
+
+    elements = DocxEditor(str(source)).paragraph_elements
+    text = projection(document_atoms(elements))
+
+    assert text.count("TEXTBOX CONTENT") == 1
+    assert text == "Before the box.\nTEXTBOX CONTENT\nAfter the box."
+
+
+def test_table_cells_are_still_their_own_paragraphs(tmp_path) -> None:
+    """A <w:tbl> is a sibling of body paragraphs, so excluding nested
+    paragraphs must not swallow the cells."""
+    from andamentum.whetstone.docx.low_level import DocxEditor
+
+    doc = Document()
+    doc.add_paragraph("Before the table.")
+    table = doc.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Signal"
+    table.cell(0, 1).text = "Coverage"
+    doc.add_paragraph("After the table.")
+    source = tmp_path / "table.docx"
+    doc.save(str(source))
+
+    text = projection(document_atoms(DocxEditor(str(source)).paragraph_elements))
+    assert "Signal" in text and "Coverage" in text
+    assert text.count("Signal") == 1
