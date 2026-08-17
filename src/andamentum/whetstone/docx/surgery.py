@@ -102,6 +102,37 @@ def _deletion_of_run(run: Any, *, author: str, cid: int) -> Any:
     return container
 
 
+#: Where change ids start in a document that carries none. Arbitrary, and high
+#: enough to be recognisable as ours in a hand-inspected file.
+FIRST_CHANGE_ID = 1000
+
+
+def next_change_id(root: Any) -> int:
+    """One above every revision id already in the document under *root*.
+
+    Word groups a revision by its ``w:id``: accepting one change accepts every
+    element sharing that id. So a second round that restarts its numbering
+    welds its own edits onto the first round's — measured on a two-round run,
+    ``<w:ins id="1000" author="A">`` and ``<w:del id="1000" author="B">`` ended
+    up in one file, where accepting A's insertion also accepted B's deletion of
+    it.
+
+    A revision marker is recognised by carrying both an id and an author, which
+    is the signature of every one of them (``w:ins``, ``w:del``, ``w:moveFrom``,
+    ``w:rPrChange``, …) rather than a list this has to keep up to date.
+    """
+    id_attr, author_attr = qn("id"), qn("author")
+    used = [
+        element.get(id_attr)
+        for element in root.iter()
+        if isinstance(element.tag, str)
+        and element.get(author_attr) is not None
+        and element.get(id_attr) is not None
+    ]
+    numeric = [int(value) for value in used if value.isdigit()]
+    return max(numeric) + 1 if numeric else FIRST_CHANGE_ID
+
+
 def _mark_paragraph_mark(p_elem: Any, kind: str, *, author: str, cid: int) -> None:
     """Mark a paragraph's own mark as inserted or deleted.
 
@@ -403,14 +434,27 @@ def _split_paragraph_after(node: Any, *, author: str, cid: int) -> Any:
     return new_paragraph
 
 
+def _first_change_id(textmap: TextMap) -> int:
+    """Where this batch of changes starts numbering, read off the document."""
+    for atom in textmap.atoms:
+        if atom.paragraph is not None:
+            return next_change_id(atom.paragraph.getroottree().getroot())
+    return FIRST_CHANGE_ID
+
+
 def apply_edits(
-    textmap: TextMap, edits: Sequence[Edit], *, first_id: int = 1000
+    textmap: TextMap, edits: Sequence[Edit], *, first_id: int | None = None
 ) -> EditReport:
     """Apply every edit in *edits*, which must have been resolved against *textmap*.
 
     Overlapping edits are refused rather than composed: applied one at a time
     against running text, two edits over one sentence could both succeed and
     leave it saying something neither reviewer proposed.
+
+    *first_id* defaults to :func:`next_change_id` over the document the textmap
+    addresses, rather than to a constant. A constant is what let a second round
+    reuse the first round's revision ids; deriving it here means no caller can
+    forget to.
     """
     report = EditReport()
     accepted: list[Edit] = []
@@ -440,7 +484,7 @@ def apply_edits(
 
     cuts, paragraph_marks, splits = _compile(textmap, accepted)
 
-    cid = first_id
+    cid = _first_change_id(textmap) if first_id is None else first_id
     written: dict[Any, dict[int, Any]] = {}
     for run, plan in cuts.items():
         cid, ends_at = _rewrite_run(run, plan, author=accepted[0].author, cid=cid)

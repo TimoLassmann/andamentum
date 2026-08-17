@@ -268,15 +268,28 @@ def test_a_second_round_edits_what_the_first_round_inserted() -> None:
     second = TextMap(document_atoms(_live(paragraphs)))
     assert second.text == "The evidence layer earns its keep."
     apply_edits(
-        second,
-        [_edit(second, "earns its keep", "earns its salt", "Reviewer B")],
-        first_id=5000,
+        second, [_edit(second, "earns its keep", "earns its salt", "Reviewer B")]
     )
 
     assert _accepted(paragraphs) == "The evidence layer earns its salt."
-    authors = {
-        e.get(qn("author"))
-        for e in paragraphs[0].iter()
-        if e.tag in (qn("ins"), qn("del"))
-    }
-    assert authors == {"Reviewer A", "Reviewer B"}
+    changes = [e for e in paragraphs[0].iter() if e.tag in (qn("ins"), qn("del"))]
+    assert {e.get(qn("author")) for e in changes} == {"Reviewer A", "Reviewer B"}
+    # The second round numbers its changes above the first round's, without
+    # being told to: Word treats one id as one change, whoever wrote it.
+    ids = [e.get(qn("id")) for e in changes]
+    assert len(ids) == len(set(ids)), ids
+
+
+def test_change_ids_are_read_off_the_document_not_restarted() -> None:
+    """Any revision marker counts, not just the ones this module writes."""
+    from andamentum.whetstone.docx.surgery import FIRST_CHANGE_ID, next_change_id
+
+    _, paragraphs = _doc("The evidence layer earns its place.")
+    root = paragraphs[0].getroottree().getroot()
+    assert next_change_id(root) == FIRST_CHANGE_ID
+
+    # A property change Word wrote — an id and an author, no ins/del in sight.
+    marker = etree.SubElement(paragraphs[0], qn("rPrChange"))
+    marker.set(qn("id"), "77")
+    marker.set(qn("author"), "Someone Else")
+    assert next_change_id(root) == 78

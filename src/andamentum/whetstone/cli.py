@@ -104,6 +104,13 @@ EXAMPLES
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
         --editor --out draft.reviewed.docx
 
+    # A second round over the first round's output. No round flag: the input
+    # file carries round one's changes, and the review reads them as accepted.
+    # Give it its own name or Word shows both rounds as one reviewer.
+    andamentum-whetstone draft.reviewed.docx --model openai:gpt-5.4-nano \\
+        --editor --patch-author "Second pass (AI)" --allow-author-override \\
+        --out draft.reviewed2.docx
+
     # Review with caller-supplied criteria
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
         --criteria "originality; depth of literature; clarity" \\
@@ -253,6 +260,27 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print phase-by-phase progress to stderr.",
     )
+    # Shared by every path that writes a .docx. A second review round over the
+    # first round's output is just another run with another name here — the
+    # input file already carries round one's changes, so there is no round
+    # number to pass and no sequential mode to switch on.
+    parser.add_argument(
+        "--patch-author",
+        default=None,
+        metavar="NAME",
+        help="Track-changes author attribution. Default: 'andamentum-"
+        "whetstone (AI)'. Overriding requires --allow-author-override. "
+        "Give a second review round a different name to tell the two "
+        "apart in Word's reviewing pane; the same name twice is valid "
+        "but indistinguishable there.",
+    )
+    parser.add_argument(
+        "--allow-author-override",
+        action="store_true",
+        help="Explicitly authorise a non-default --patch-author value. "
+        "Misrepresenting AI-generated edits as a human reviewer's may "
+        "constitute research misconduct.",
+    )
 
     # Watermark flags (mutually exclusive)
     visible_wm = parser.add_mutually_exclusive_group()
@@ -388,20 +416,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ".docx file. PATH is a JSON array of DocumentPatch objects.",
     )
     patches_grp.add_argument(
-        "--patch-author",
-        default=None,
-        metavar="NAME",
-        help="Track-changes author attribution. Default: 'andamentum-"
-        "whetstone (AI)'. Overriding requires --allow-author-override.",
-    )
-    patches_grp.add_argument(
-        "--allow-author-override",
-        action="store_true",
-        help="Explicitly authorise a non-default --patch-author value. "
-        "Misrepresenting AI-generated edits as a human reviewer's may "
-        "constitute research misconduct.",
-    )
-    patches_grp.add_argument(
         "--patch-report",
         type=Path,
         default=None,
@@ -423,10 +437,7 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     if args.patch_report is not None:
         _die(1, "--patch-report is only valid with --apply-patches.")
-    if args.patch_author is not None:
-        _die(1, "--patch-author is only valid with --apply-patches.")
-    if args.allow_author_override:
-        _die(1, "--allow-author-override is only valid with --apply-patches.")
+    _validate_author_args(args)
 
     if not args.model:
         _die(
@@ -492,9 +503,9 @@ def _reject_review_only_flags(args: argparse.Namespace) -> None:
                 1,
                 f"{flag} is a review-mode flag and has no effect under "
                 "`checklist`, so the run is refused rather than run without "
-                "it. Checklist mode takes only --model, --document-type and "
-                "--out: the probe bank is fixed, which is what keeps two runs "
-                "comparable. Drop the flag, or use "
+                "it. Checklist mode takes only --model, --document-type, "
+                "--out and the author flags: the probe bank is fixed, which "
+                "is what keeps two runs comparable. Drop the flag, or use "
                 "`andamentum-whetstone review` instead.",
             )
 
@@ -523,6 +534,21 @@ def _validate_apply_patches_args(args: argparse.Namespace) -> None:
         _die(1, f"patches file not found: {args.apply_patches}")
     if args.patch_report is not None and not args.patch_report.exists():
         _die(1, f"patch report file not found: {args.patch_report}")
+    _validate_author_args(args)
+
+
+def _validate_author_args(args: argparse.Namespace) -> None:
+    """The author flags pair up the same way on every path that writes a .docx.
+
+    Review mode takes ``--patch-author`` too, because a second reviewer needs a
+    second name: round two opens round one's output, reads it as Word will show
+    it with the changes accepted, and writes its own tracked changes beside
+    them. One name for both rounds is legal and produces a valid document — it
+    just cannot be told apart in Word's reviewing pane.
+
+    Which is exactly why the misconduct rail stays on both paths: a second name
+    is more tempting to make a human one, not less.
+    """
     if args.patch_author is not None and not args.allow_author_override:
         _die(
             1,
@@ -533,6 +559,32 @@ def _validate_apply_patches_args(args: argparse.Namespace) -> None:
         )
     if args.allow_author_override and args.patch_author is None:
         _die(1, "--allow-author-override requires --patch-author NAME.")
+    if args.patch_author is not None and not any(
+        out.suffix.lower() == ".docx" for out in args.out
+    ):
+        # An author is a property of tracked changes, and only .docx carries
+        # them. Accepting the flag and writing nowhere it applies would report
+        # success on a run that ignored what was asked for.
+        _die(
+            1,
+            "--patch-author names the author of tracked changes, so it needs "
+            "a .docx output. Add --out FILE.docx, or drop the flag.",
+        )
+
+
+def _resolve_author(args: argparse.Namespace) -> str:
+    """The tracked-change author, and the warning that overriding it earns."""
+    from .renderers.docx import DEFAULT_AI_AUTHOR
+
+    if args.patch_author is None:
+        return DEFAULT_AI_AUTHOR
+    print(
+        f"WARNING: attributing AI-generated changes to '{args.patch_author}' "
+        f"instead of the default '{DEFAULT_AI_AUTHOR}'. Misrepresenting "
+        f"AI work as human authorship may constitute research misconduct.",
+        file=sys.stderr,
+    )
+    return args.patch_author
 
 
 def _die(code: int, message: str) -> NoReturn:
@@ -713,6 +765,9 @@ async def _review_and_write(
             _die(3, f"review pipeline failed: {exc}")
 
     written: list[Path] = []
+    # Resolved once: it prints the override warning, and a run asking for two
+    # .docx outputs should not warn twice.
+    author = _resolve_author(args)
     # ── Write each requested output ──────────────────────────────
     for out in args.out:
         ext = out.suffix.lower()
@@ -737,6 +792,7 @@ async def _review_and_write(
                 result,
                 document=document,
                 output_path=out,
+                author=author,
                 model=model_id,
                 visible_watermark=args.visible_watermark,
             )
@@ -1055,18 +1111,7 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
     output_path: Path = args.out[0]
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    from .renderers.docx import DEFAULT_AI_AUTHOR
-
-    resolved_author = (
-        args.patch_author if args.patch_author is not None else DEFAULT_AI_AUTHOR
-    )
-    if args.allow_author_override:
-        print(
-            f"WARNING: attributing AI-generated patches to '{resolved_author}' "
-            f"instead of the default '{DEFAULT_AI_AUTHOR}'. Misrepresenting "
-            f"AI work as human authorship may constitute research misconduct.",
-            file=sys.stderr,
-        )
+    resolved_author = _resolve_author(args)
 
     try:
         _, patch_result = finalize_reviewed_document(

@@ -10,6 +10,15 @@ caller: which part is the main document, and which ``<w:p>`` elements are body
 paragraphs. ``DocxEditor`` delegates to both, so a paragraph list built for
 sectionising and one built for editing cannot disagree — and a span resolved
 against the first is a valid address in the second.
+
+The second rule has a third job, and it is what makes a review of a reviewed
+document possible: **a prepended review report is not part of the document.**
+Round one writes its report into the top of the file, so without this round two
+would read its own predecessor's findings as if the author had written them,
+and re-flagging a passage round one already flagged would make that passage's
+text ambiguous (the report restates every quote). The marker is a bookmark
+written into the file rather than a flag on an object, because round two is a
+different process opening a file.
 """
 
 from __future__ import annotations
@@ -25,6 +34,19 @@ from .atoms import paragraph_atoms, projection, qn
 from .exceptions import ConversionError
 
 _PARAGRAPH_TAG = qn("p")
+_BOOKMARK_START_TAG = qn("bookmarkStart")
+_BOOKMARK_END_TAG = qn("bookmarkEnd")
+_ID_ATTR = qn("id")
+_NAME_ATTR = qn("name")
+
+# Bookmark names bracketing a prepended review report. A bookmark rather than a
+# paragraph style, because the report's paragraphs already carry the styles that
+# make it readable (Heading1, ListBullet, Quote) and a marker must not compete
+# for that slot; and because it is invisible, so nothing about the document a
+# reader sees changes. Each round takes the next free number, so two reports
+# never share a name — Word renames a duplicate bookmark on save, and a renamed
+# marker is an unmarked report.
+REVIEW_REPORT_BOOKMARK_PREFIX = "andamentum_review_report_"
 
 # Parts that hold reader-visible text but are not the body. The reviewer never
 # sees them — every offset is an address in the body projection — but the
@@ -68,6 +90,10 @@ def body_paragraphs(root: Any) -> list[Any]:
     unaffected: a ``<w:tbl>`` is a sibling of body paragraphs, not a descendant
     of one.
 
+    Paragraphs inside a review-report bookmark are excluded too: a report an
+    earlier round prepended is this pipeline's own output, not the author's
+    draft (see the module docstring).
+
     Empty paragraphs are kept. Each one is a real break a reader sees, and
     dropping them would move every offset after it.
 
@@ -76,11 +102,34 @@ def body_paragraphs(root: Any) -> list[Any]:
     takes no namespace map — the same call would work on a tree parsed here and
     raise on one handed over by python-docx.
     """
-    return [
-        paragraph
-        for paragraph in root.iter(_PARAGRAPH_TAG)
-        if paragraph is not root and not has_ancestor(paragraph, _PARAGRAPH_TAG)
-    ]
+    every: list[Any] = []
+    outside_report: list[Any] = []
+    open_report: set[str | None] = set()
+
+    for element in root.iter():
+        tag = element.tag
+        if not isinstance(tag, str):  # XML comment / processing instruction
+            continue
+        if tag == _BOOKMARK_START_TAG:
+            if (element.get(_NAME_ATTR) or "").startswith(
+                REVIEW_REPORT_BOOKMARK_PREFIX
+            ):
+                open_report.add(element.get(_ID_ATTR))
+        elif tag == _BOOKMARK_END_TAG:
+            open_report.discard(element.get(_ID_ATTR))
+        elif tag == _PARAGRAPH_TAG:
+            if element is root or has_ancestor(element, _PARAGRAPH_TAG):
+                continue
+            every.append(element)
+            if not open_report:
+                outside_report.append(element)
+
+    if open_report:
+        # A start with no end: someone edited the report and took the closing
+        # marker with it. Excluding everything from there to the end of the file
+        # would hide the manuscript, so a damaged marker is no marker.
+        return every
+    return outside_report
 
 
 def _relationship_target(rels_xml: bytes, *, type_suffix: str) -> str | None:

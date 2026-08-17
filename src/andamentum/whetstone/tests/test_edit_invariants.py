@@ -240,19 +240,19 @@ def test_edits_are_repeatable_over_their_own_output(shape) -> None:
     assert "earns its keep" in second.text
     span2 = second.find("earns its keep")
     assert span2 is not None
-    apply_edits(
-        second, [Edit(span=span2, new_text="earns its salt", author="B")], first_id=9000
-    )
+    # No first_id: the second round reads its own starting number off the
+    # document. Passing one by hand was the workaround for its absence.
+    apply_edits(second, [Edit(span=span2, new_text="earns its salt", author="B")])
 
     final = projection(document_atoms(_paragraphs(doc)))
     assert "earns its salt" in final
     assert "earns its keep" not in final
-    authors = {
-        e.get(qn("author"))
-        for e in doc.element.body.iter()
-        if e.tag in (qn("ins"), qn("del"))
-    }
-    assert {"A", "B"} <= authors
+    changes = [e for e in doc.element.body.iter() if e.tag in (qn("ins"), qn("del"))]
+    assert {"A", "B"} <= {e.get(qn("author")) for e in changes}
+    # Word groups a revision by its id: a reused one makes accepting A's
+    # insertion accept B's deletion of it as well.
+    ids = [e.get(qn("id")) for e in changes]
+    assert len(ids) == len(set(ids)), ids
 
 
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda f: f.__name__)

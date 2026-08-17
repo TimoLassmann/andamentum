@@ -162,16 +162,64 @@ def test_patch_report_without_apply_patches_rejected(tmp_path: Path) -> None:
         _validate_args(args)
 
 
-def test_patch_author_without_apply_patches_rejected(tmp_path: Path) -> None:
-    """--patch-author only makes sense in patch-only mode."""
+def test_patch_author_on_the_review_path_still_needs_the_override(
+    tmp_path: Path,
+) -> None:
+    """Naming an author is allowed in review mode; naming one silently is not.
+
+    Review mode accepts ``--patch-author`` because a second review round needs
+    a second name. The misconduct rail is unchanged by that: the flag on its
+    own is still refused, on this path exactly as on the patch-only one.
+    """
     parser = _build_parser()
     args = parser.parse_args(
         [
             "paper.md",
             "--out",
             str(tmp_path / "out.md"),
+            "--model",
+            "stub",
             "--patch-author",
             "Alice",
+        ]
+    )
+    with pytest.raises(SystemExit):
+        _validate_args(args)
+
+
+def test_patch_author_with_override_is_accepted_on_the_review_path(
+    tmp_path: Path,
+) -> None:
+    """The pair together is how round two gets its own name in Word."""
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "paper.md",
+            "--out",
+            str(tmp_path / "out.docx"),
+            "--model",
+            "stub",
+            "--patch-author",
+            "Reviewer B",
+            "--allow-author-override",
+        ]
+    )
+    _validate_args(args)  # does not exit
+
+
+def test_naming_an_author_with_no_docx_output_is_refused(tmp_path: Path) -> None:
+    """Only a .docx carries tracked changes, so only a .docx has an author."""
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "paper.md",
+            "--out",
+            str(tmp_path / "review.md"),
+            "--model",
+            "stub",
+            "--patch-author",
+            "Reviewer B",
+            "--allow-author-override",
         ]
     )
     with pytest.raises(SystemExit):

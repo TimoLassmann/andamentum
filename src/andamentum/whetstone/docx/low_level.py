@@ -35,7 +35,7 @@ from lxml import etree  # type: ignore
 from docx.oxml.ns import qn
 
 from .atoms import paragraph_atoms, projection
-from .reading import body_paragraphs, main_document_part
+from .reading import REVIEW_REPORT_BOOKMARK_PREFIX, body_paragraphs, main_document_part
 from .xml_builder import XMLElementBuilder
 
 # Logger for this module
@@ -126,10 +126,6 @@ class ParagraphData:
         self.xml_path = xml_path
         self.p_elem = p_elem
         self.change_author = None
-        # True for paragraphs synthesised by prepend_review_section (the
-        # prepended review report), so a finding's quote can't anchor onto the
-        # report's own restatement of it.
-        self.is_review_report = False
 
     @property
     def text(self) -> str:
@@ -637,6 +633,14 @@ class DocxEditor:
         starts on its own page — visually separating the review report
         from the document being reviewed.
 
+        The whole block is bracketed by a review-report bookmark, which is
+        what stops a later round reading its predecessor's findings as
+        manuscript (see :func:`.reading.body_paragraphs`). Reports STACK: a
+        second round prepends its own above the first rather than replacing
+        it, because the earlier report is the earlier reviewer's record and
+        deleting it would throw away findings the author may not have worked
+        through yet.
+
         Args:
             review_markdown: Markdown-formatted review report
         """
@@ -654,27 +658,55 @@ class DocxEditor:
         # a clean visual boundary.
         elements_to_prepend.append(self._build_page_break_paragraph())
 
-        first_child = body[0] if len(body) > 0 else None
+        start, end = self._build_review_report_bookmark(root)
+        block = [start, *elements_to_prepend, end]
 
         # Create ParagraphData objects WITHOUT re-extracting from XML so
         # any changes made by apply_patches() are preserved.
         prepended_paragraphs = []
-        for elem in reversed(elements_to_prepend):
-            if first_child is not None:
-                body.insert(0, elem)
-            else:
-                body.append(elem)
+        for position, elem in enumerate(block):
+            body.insert(position, elem)
 
             if elem.tag != f"{{{NS['w']}}}p":
                 # A <w:tbl> is in the body but out of the paragraph model
-                # — see this method's docstring for why.
+                # — see this method's docstring for why. So are the two
+                # bookmark markers.
                 continue
 
-            para_data = ParagraphData(doc_path, elem)
-            para_data.is_review_report = True
-            prepended_paragraphs.insert(0, para_data)
+            prepended_paragraphs.append(ParagraphData(doc_path, elem))
 
         self.paragraphs = prepended_paragraphs + self.paragraphs
+
+    def _build_review_report_bookmark(self, root) -> tuple[Any, Any]:
+        """A ``bookmarkStart`` / ``bookmarkEnd`` pair naming one review report.
+
+        The id and the number in the name are both taken above whatever the
+        document already carries, so a second round's report gets its own
+        bookmark instead of colliding with the first's — Word renames a
+        duplicate bookmark on save, and a renamed marker is an unmarked report.
+        """
+        used_ids = {
+            element.get(qn("w:id"))
+            for element in root.iter(qn("w:bookmarkStart"))
+            if element.get(qn("w:id")) is not None
+        }
+        used_names = {
+            element.get(qn("w:name")) for element in root.iter(qn("w:bookmarkStart"))
+        }
+        numeric = [int(value) for value in used_ids if str(value).isdigit()]
+        bookmark_id = str(max(numeric) + 1) if numeric else "1"
+
+        ordinal = 1
+        while f"{REVIEW_REPORT_BOOKMARK_PREFIX}{ordinal}" in used_names:
+            ordinal += 1
+        name = f"{REVIEW_REPORT_BOOKMARK_PREFIX}{ordinal}"
+
+        start = etree.Element(qn("w:bookmarkStart"))
+        start.set(qn("w:id"), bookmark_id)
+        start.set(qn("w:name"), name)
+        end = etree.Element(qn("w:bookmarkEnd"))
+        end.set(qn("w:id"), bookmark_id)
+        return start, end
 
     # ── markdown → Word paragraph helpers ─────────────────────────────
 
@@ -1002,7 +1034,8 @@ class DocxEditor:
         comments_path, comments_tree = self._load_or_create_comments_tree()
         comments_root = comments_tree.getroot()
 
-        for cid, placed in enumerate(self.placed_comments, start=1):
+        first_cid = self._next_comment_id(comments_root)
+        for cid, placed in enumerate(self.placed_comments, start=first_cid):
             comments_root.append(
                 XMLElementBuilder.create_comment_element(
                     cid=cid, author=placed.author, text=placed.text
@@ -1017,6 +1050,35 @@ class DocxEditor:
         for path, tree in self.trees.items():
             tree.write(path, xml_declaration=True, encoding="UTF-8", standalone="yes")
         self._zip(output_path)
+
+    def _next_comment_id(self, comments_root) -> int:
+        """One above every comment id the document already uses.
+
+        A second review round opens a file that already holds comments, and
+        numbering from 1 again gave two comments the same ``w:id`` — measured:
+        round two produced ``id=1`` twice in ``comments.xml`` and two
+        ``commentRangeStart`` markers both claiming id 1. Word resolves that by
+        showing one comment in two places, or by offering to repair the file.
+
+        The document's own range markers are counted too, not just
+        ``comments.xml``: a marker whose comment body was deleted still owns
+        its id as far as Word's anchoring is concerned.
+        """
+        used = [
+            element.get(qn("w:id"))
+            for root in (comments_root, self.trees[self._doc_path].getroot())
+            for element in root.iter()
+            if element.tag
+            in (
+                qn("w:comment"),
+                qn("w:commentRangeStart"),
+                qn("w:commentRangeEnd"),
+            )
+        ]
+        numeric = [
+            int(value) for value in used if value is not None and value.isdigit()
+        ]
+        return max(numeric) + 1 if numeric else 1
 
     def _place_comment_range(self, start_run, end_run, cid) -> None:
         """Bracket the runs ``start_run``..``end_run`` with comment markers.

@@ -37,6 +37,30 @@ Novelty findings (category="novelty") are pulled out and passed as
 ``novelty_findings`` so they appear in their own report subsection rather than
 mixed with the criterion findings — they are document-level claims with no
 passage to point at.
+
+**Sequential rounds are one parameter: ``author``.** A second review takes the
+first's output as its input, and nothing has to be told that is what is
+happening — the file already carries round one's changes, and the projection
+reads them as Word will once they are accepted, so round two reviews the
+revised text and its offsets address the revised document. An edit landing
+inside text round one inserted nests as ``<w:ins A><w:del B>``, which is Word's
+own markup for "B revised what A wrote"; that falls out of the surgery rule
+(rewrite the runs the span covers, in place) rather than being coded for.
+
+Two consequences worth knowing before running two rounds:
+
+*One name twice is legal and lossy.* ``w:author`` is the only thing Word groups
+changes by, so a second round under the same name merges into the first in the
+reviewing pane and the author cannot accept one round while holding the other
+back. Nothing is corrupted — every change keeps its own revision id and is
+accepted or rejected individually — but the attribution is gone. Pass a
+different name for a second round.
+
+*Reports stack.* Each round prepends its own report above the last rather than
+replacing it: an earlier report is the earlier reviewer's record and the author
+may not have worked through it yet. Every report is bracketed by a bookmark and
+excluded from the next round's reading, so what accumulates is pages in the
+file, not text under review.
 """
 
 from __future__ import annotations
@@ -105,7 +129,11 @@ def render_docx(
     output_path:
         Where to write the reviewed .docx.
     author:
-        Author name attributed to the tracked changes.
+        Author name attributed to the tracked changes and comments. This is
+        the whole of the sequential-round surface: give a second round over
+        the first round's output a different name and Word shows two
+        reviewers. See the module docstring for what the same name twice
+        costs.
 
     Returns
     -------

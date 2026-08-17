@@ -407,3 +407,78 @@ def test_empty_lines_preserve_spacing(tmp_path):
     assert _paragraph_text(paragraphs[1]) == ""
     assert _paragraph_text(paragraphs[2]) == ""
     assert "New paragraph after gap" in _paragraph_text(paragraphs[3])
+
+
+# ── The bookmark that keeps a report out of the next round's reading ────
+
+
+def _report_bookmark_names(editor) -> list[str]:
+    root = editor.trees[editor._doc_path].getroot()
+    return [
+        element.get(f"{{{NS['w']}}}name")
+        for element in root.iter(f"{{{NS['w']}}}bookmarkStart")
+    ]
+
+
+def test_prepended_report_is_bracketed_and_left_out_of_the_paragraph_list(tmp_path):
+    """The report is in the file and not in the document under review.
+
+    ``paragraph_elements`` is what the atom stream, the sectioniser and every
+    annotation offset are built from, so a report that showed up there would be
+    reviewed as manuscript by the next round.
+    """
+    src = tmp_path / "draft.docx"
+    document = Document()
+    document.add_paragraph("The manuscript's own sentence.")
+    document.save(str(src))
+
+    from andamentum.whetstone.docx.low_level import DocxEditor
+
+    editor = DocxEditor(str(src))
+    before = list(editor.paragraph_elements)
+    editor.prepend_review_section("# Whetstone Review\n\nSomething to fix.")
+
+    assert _report_bookmark_names(editor) == ["andamentum_review_report_1"]
+    assert editor.paragraph_elements == before
+    # The report really is in the body — it is excluded, not skipped over.
+    body = editor.trees[editor._doc_path].getroot().find(".//w:body", namespaces=NS)
+    assert any(
+        _paragraph_text(p) == "Whetstone Review" for p in body.findall("w:p", NS)
+    )
+
+
+def test_a_second_report_takes_the_next_bookmark_name(tmp_path):
+    """Word renames a duplicate bookmark on save, and that unmarks the report."""
+    editor = _editor_for_blank_doc(tmp_path)
+    editor.prepend_review_section("# Round one")
+    editor.prepend_review_section("# Round two")
+
+    names = sorted(_report_bookmark_names(editor))
+    assert names == ["andamentum_review_report_1", "andamentum_review_report_2"]
+    assert len(set(names)) == len(names)
+
+
+def test_a_report_bookmark_with_no_end_hides_nothing(tmp_path):
+    """A damaged marker is no marker — it must never swallow the manuscript.
+
+    The author edits the report like any other text, and can take the closing
+    marker with them. Failing closed there would drop every paragraph from the
+    break to the end of the file out of the review, silently.
+    """
+    from andamentum.whetstone.docx.low_level import DocxEditor
+    from andamentum.whetstone.docx.reading import body_paragraphs
+
+    src = tmp_path / "draft.docx"
+    document = Document()
+    document.add_paragraph("The manuscript's own sentence.")
+    document.save(str(src))
+
+    editor = DocxEditor(str(src))
+    editor.prepend_review_section("# Whetstone Review\n\nSomething to fix.")
+    root = editor.trees[editor._doc_path].getroot()
+    end = next(root.iter(f"{{{NS['w']}}}bookmarkEnd"))
+    end.getparent().remove(end)
+
+    texts = [_paragraph_text(p) for p in body_paragraphs(root)]
+    assert "The manuscript's own sentence." in texts
+    assert "Whetstone Review" in texts  # the report comes back too: fail open

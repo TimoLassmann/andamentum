@@ -19,6 +19,7 @@ from rich.console import Console
 from andamentum.whetstone import cli as cli_mod
 from andamentum.whetstone.docx.atoms import document_atoms, projection
 from andamentum.whetstone.docx.reading import read_docx
+from andamentum.whetstone.renderers.docx import DEFAULT_AI_AUTHOR
 from andamentum.whetstone.reviewed_document import ReviewedDocument
 from andamentum.whetstone.schemas import Edit, Finding, Quote, ReviewResult
 
@@ -198,3 +199,68 @@ async def test_a_crashed_review_still_removes_the_baseline(
         )
 
     assert opened and not opened[0].docx_path.exists()
+
+
+async def test_the_review_path_attributes_changes_to_the_named_author(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--patch-author`` is how round two gets its own name in Word.
+
+    The flag used to be refused outside ``--apply-patches``, so two review
+    rounds through the CLI were both written by the default AI name and Word
+    showed them as one reviewer. Nothing else about round two is a flag: the
+    input file already carries round one's changes.
+    """
+    source = tmp_path / "draft.docx"
+    _draft(source)
+    out = tmp_path / "reviewed.docx"
+
+    _, fake_review = _seen_and_result()
+    monkeypatch.setattr(
+        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+    )
+
+    await cli_mod._run(
+        _args(
+            [
+                str(source),
+                "--model",
+                "stub:none",
+                "--out",
+                str(out),
+                "--patch-author",
+                "Reviewer B",
+                "--allow-author-override",
+            ]
+        ),
+        Console(stderr=True),
+    )
+
+    with zipfile.ZipFile(out) as archive:
+        body = archive.read("word/document.xml").decode()
+        comments = archive.read("word/comments.xml").decode()
+    assert 'w:author="Reviewer B"' in body
+    assert DEFAULT_AI_AUTHOR not in body
+    assert 'w:author="Reviewer B"' in comments
+
+
+async def test_the_default_author_names_the_tool_not_a_person(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "draft.docx"
+    _draft(source)
+    out = tmp_path / "reviewed.docx"
+
+    _, fake_review = _seen_and_result()
+    monkeypatch.setattr(
+        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+    )
+
+    await cli_mod._run(
+        _args([str(source), "--model", "stub:none", "--out", str(out)]),
+        Console(stderr=True),
+    )
+
+    with zipfile.ZipFile(out) as archive:
+        body = archive.read("word/document.xml").decode()
+    assert DEFAULT_AI_AUTHOR in body
