@@ -329,20 +329,6 @@ class XMLPatternMatcher:
         return paragraph.xpath(".//w:r[w:t]", namespaces=NS)
 
     @staticmethod
-    def extract_text_from_element(element: etree.Element) -> str:
-        """
-        Extract all text content from an element and its children.
-
-        Args:
-            element: Element to extract text from
-
-        Returns:
-            Combined text content
-        """
-        text_elements = element.xpath(".//w:t | .//w:delText", namespaces=NS)
-        return "".join(elem.text or "" for elem in text_elements)
-
-    @staticmethod
     def is_change_element(element: etree.Element) -> bool:
         """
         Check if element is a change tracking element.

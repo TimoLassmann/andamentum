@@ -1,8 +1,7 @@
-"""Regression tests for how overlapping and ambiguous text edits are applied.
+"""End-to-end behaviour of a patch batch against a real .docx.
 
-Every case here was reproduced against the real machinery before the fix. The
-short version of what used to happen when two reviewers wanted to rewrite the
-same sentence:
+Every case here was reproduced against the shipped machinery before the fix.
+What used to happen when two annotations landed on one sentence:
 
 - a pattern occurring three times in a paragraph was rewritten three times,
   including in sentences no reviewer had read;
@@ -12,8 +11,8 @@ same sentence:
   ``comments.xml``, never anchored, and reported as applied — so the rewrite
   landed and the reason for it disappeared with no error anywhere.
 
-The last one is why these matter beyond tidiness: it is the normal case as soon
-as a finding and the edit that fixes it point at the same span.
+The unit-level arbitration tests live beside the code that now does the work,
+in ``test_surgery.py``.
 """
 
 from __future__ import annotations
@@ -23,12 +22,7 @@ from pathlib import Path
 
 from docx import Document
 
-from andamentum.whetstone.docx.patch_editor import (
-    EditPlacement,
-    PatchDocxEditor,
-    find_occurrences,
-    resolve_edit_conflicts,
-)
+from andamentum.whetstone.docx.patch_editor import PatchDocxEditor
 from andamentum.whetstone.models import DocumentPatch
 
 SENTENCE = "We found that the results show a significant effect on patient outcomes."
@@ -65,69 +59,22 @@ def _comment(pattern: str, body: str, confidence: float = 0.9) -> DocumentPatch:
     )
 
 
-# ── the arbitration rule, as a pure function ────────────────────────────
+def _text(editor: PatchDocxEditor) -> str:
+    from andamentum.whetstone.docx.atoms import document_atoms, projection
+
+    return projection(document_atoms(editor.paragraph_elements))
 
 
-def _placement(start: int, end: int, *, paragraph: int = 0, name: str = "x"):
-    return EditPlacement(
-        patch=_edit(name, "replacement", name, 0.8),
-        author="tester",
-        paragraph_index=paragraph,
-        start=start,
-        end=end,
-        target=name,
-        replacement="replacement",
-    )
+# ── ambiguity ───────────────────────────────────────────────────────────
 
 
-def test_disjoint_spans_are_all_accepted() -> None:
-    first, second = _placement(0, 5, name="a"), _placement(10, 15, name="b")
-    accepted, conflicted = resolve_edit_conflicts([first, second])
-    assert accepted == [first, second]
-    assert conflicted == []
-
-
-def test_touching_spans_do_not_count_as_overlapping() -> None:
-    """``[0,5)`` and ``[5,9)`` are adjacent, not overlapping — both may apply."""
-    first, second = _placement(0, 5, name="a"), _placement(5, 9, name="b")
-    accepted, _ = resolve_edit_conflicts([first, second])
-    assert len(accepted) == 2
-
-
-def test_overlapping_spans_keep_the_first_and_name_the_winner() -> None:
-    first, second = _placement(0, 20, name="a"), _placement(10, 30, name="b")
-    accepted, conflicted = resolve_edit_conflicts([first, second])
-    assert accepted == [first]
-    # The loser is paired with the placement that displaced it, so the caller
-    # can report which edit won rather than emitting a bare count.
-    assert conflicted == [(second, first)]
-
-
-def test_same_span_in_different_paragraphs_is_not_a_conflict() -> None:
-    first = _placement(0, 20, paragraph=0, name="a")
-    second = _placement(0, 20, paragraph=1, name="b")
-    accepted, conflicted = resolve_edit_conflicts([first, second])
-    assert len(accepted) == 2
-    assert conflicted == []
-
-
-def test_find_occurrences_reports_every_position() -> None:
-    assert find_occurrences("ab", "ab_ab_ab") == [0, 3, 6]
-    assert find_occurrences("zz", "ab") == []
-    assert find_occurrences("", "ab") == []
-
-
-# ── applied against a real document ─────────────────────────────────────
-
-
-def test_repeated_pattern_is_refused_rather_than_rewritten_everywhere(
+def test_a_repeated_pattern_is_refused_rather_than_rewritten_everywhere(
     tmp_path: Path,
 ) -> None:
-    """A pattern with three matches identifies no single span, so it is refused.
+    """Three matches identify no single passage, so the patch is refused.
 
-    ``str.replace`` with no count used to rewrite all three. The producer knows
-    which occurrence it read; this layer does not, and guessing rewrites a
-    sentence the author never had reviewed.
+    ``str.replace`` with no count used to rewrite all three, including in
+    sentences the reviewer never quoted.
     """
     paragraph = (
         "The data shows a trend in cohort A. "
@@ -143,53 +90,51 @@ def test_repeated_pattern_is_refused_rather_than_rewritten_everywhere(
 
     assert result.applied_patches == 0
     assert len(result.failed_patches) == 1
-    assert editor.paragraphs[0].modified == paragraph
+    assert _text(editor) == paragraph
 
 
-def test_unique_pattern_still_applies(tmp_path: Path) -> None:
-    """The control for the test above — one match is not ambiguous."""
+def test_a_unique_pattern_applies(tmp_path: Path) -> None:
     editor = PatchDocxEditor(
         str(_docx(tmp_path / "in.docx", [SENTENCE])), author="tester"
     )
-    result = editor.apply_patches([_edit("patient outcomes", "clinical outcomes", "x", 0.9)])
+    result = editor.apply_patches(
+        [_edit("patient outcomes", "clinical outcomes", "precision", 0.9)]
+    )
 
     assert result.applied_patches == 1
-    assert "clinical outcomes" in editor.paragraphs[0].modified
+    assert "clinical outcomes" in _text(editor)
+
+
+# ── conflicts ───────────────────────────────────────────────────────────
 
 
 def test_overlapping_edits_never_compose(tmp_path: Path) -> None:
-    """Two edits over one span produce one of the two rewrites, never a blend.
-
-    Both used to apply: the first rewrite left the second's pattern intact, so
-    the paragraph ended up saying something neither reviewer wrote.
-    """
-    substantive = _edit(
-        OLD_SPAN,
-        NEW_SPAN,
-        "overclaim relative to sample size",
-        0.4,
-    )
-    cosmetic = _edit(
-        "a significant effect on patient outcomes",
-        "a significant effect on outcomes",
-        "concision",
-        0.95,
-    )
+    """Two edits over one span give one of the two rewrites, never a blend."""
     editor = PatchDocxEditor(
         str(_docx(tmp_path / "in.docx", [SENTENCE])), author="tester"
     )
-    result = editor.apply_patches([substantive, cosmetic])
+    result = editor.apply_patches(
+        [
+            _edit(OLD_SPAN, NEW_SPAN, "overclaim relative to sample size", 0.4),
+            _edit(
+                "a significant effect on patient outcomes",
+                "a significant effect on outcomes",
+                "concision",
+                0.95,
+            ),
+        ]
+    )
 
     solo_substantive = SENTENCE.replace(OLD_SPAN, NEW_SPAN)
     solo_cosmetic = SENTENCE.replace(
         "a significant effect on patient outcomes", "a significant effect on outcomes"
     )
-    assert editor.paragraphs[0].modified in {solo_substantive, solo_cosmetic}
+    assert _text(editor) in {solo_substantive, solo_cosmetic}
     assert result.applied_patches == 1
     assert result.conflict_failures == 1
 
 
-def test_conflict_is_counted_apart_from_a_location_miss(tmp_path: Path) -> None:
+def test_a_conflict_is_counted_apart_from_a_location_miss(tmp_path: Path) -> None:
     """The cause and the remedy differ, so the counts must not be pooled."""
     editor = PatchDocxEditor(
         str(_docx(tmp_path / "in.docx", [SENTENCE])), author="tester"
@@ -220,9 +165,8 @@ def test_disjoint_edits_in_one_paragraph_both_apply(tmp_path: Path) -> None:
 
     assert result.applied_patches == 2
     assert result.conflict_failures == 0
-    text = editor.paragraphs[0].modified
-    assert "We observed that" in text
-    assert "clinical outcomes" in text
+    text = _text(editor)
+    assert "We observed that" in text and "clinical outcomes" in text
 
 
 # ── comments beside edits ───────────────────────────────────────────────
@@ -241,8 +185,8 @@ def _finalize(tmp_path: Path, patches: list[DocumentPatch]):
         author="tester",
     )
     with zipfile.ZipFile(out) as archive:
-        document_xml = archive.read("word/document.xml").decode("utf-8")
         names = archive.namelist()
+        document_xml = archive.read("word/document.xml").decode("utf-8")
         comments_xml = (
             archive.read("word/comments.xml").decode("utf-8")
             if "word/comments.xml" in names
@@ -251,15 +195,10 @@ def _finalize(tmp_path: Path, patches: list[DocumentPatch]):
     return result, document_xml, comments_xml
 
 
-def test_comment_anchors_onto_text_an_edit_inserted(tmp_path: Path) -> None:
-    """A rewrite and the reason for it can coexist on the same sentence.
-
-    The write-time index used to walk only direct-child ``<w:r>`` runs. Every
-    run the rebuild produces for an edited span is nested inside a ``<w:ins>``
-    or ``<w:del>`` container, so an edited passage was unreachable and the
-    comment could not be placed anywhere. Insertions are indexed now: they are
-    the paragraph as it reads once the changes are accepted.
-    """
+def test_a_rewrite_and_the_reason_for_it_can_share_a_sentence(
+    tmp_path: Path,
+) -> None:
+    """The comment anchors onto the replacement text, beside the tracked change."""
     result, document_xml, comments_xml = _finalize(
         tmp_path,
         [
@@ -274,16 +213,14 @@ def test_comment_anchors_onto_text_an_edit_inserted(tmp_path: Path) -> None:
     assert "commentReference" in document_xml
 
 
-def test_comment_on_a_rewritten_span_fails_loudly(tmp_path: Path) -> None:
-    """Quoting the OLD wording after an edit replaced it is now a reported miss.
+def test_a_comment_body_is_never_written_without_an_anchor(tmp_path: Path) -> None:
+    """Quoting the pre-edit wording is a reported miss, not a silent orphan.
 
     It used to report success: the comment resolved against the pre-edit text,
-    then missed at write time against the rebuilt runs, leaving an orphan body
-    in ``comments.xml`` that Word does not show. Comments resolve after edits
-    now, against the same text the write pass indexes, so the failure surfaces
-    where the caller can see it.
+    then missed at write time against the rebuilt runs, leaving a body in
+    ``comments.xml`` that Word does not show.
     """
-    result, document_xml, _ = _finalize(
+    result, document_xml, comments_xml = _finalize(
         tmp_path,
         [
             _edit(OLD_SPAN, NEW_SPAN, "overclaim", 0.9),
@@ -293,13 +230,11 @@ def test_comment_on_a_rewritten_span_fails_loudly(tmp_path: Path) -> None:
 
     assert result.applied_patches == 1
     assert [p.patch_type for p in result.failed_patches] == ["comment"]
+    assert "n=12" not in comments_xml
     assert "commentRangeStart" not in document_xml
 
 
-def test_comment_on_an_untouched_span_is_unaffected_by_an_edit_elsewhere(
-    tmp_path: Path,
-) -> None:
-    """Ordering edits before comments must not cost an ordinary comment."""
+def test_a_comment_elsewhere_is_unaffected_by_an_edit(tmp_path: Path) -> None:
     result, document_xml, comments_xml = _finalize(
         tmp_path,
         [
@@ -311,3 +246,23 @@ def test_comment_on_an_untouched_span_is_unaffected_by_an_edit_elsewhere(
     assert result.applied_patches == 2
     assert "specifically" in comments_xml
     assert "commentRangeStart" in document_xml
+
+
+def test_every_comment_body_written_has_a_range_in_the_document(
+    tmp_path: Path,
+) -> None:
+    """The count that used to lie: 8 comments reported applied, 2 visible."""
+    result, document_xml, comments_xml = _finalize(
+        tmp_path,
+        [
+            _comment("We found that", "One"),
+            _comment("patient outcomes", "Two"),
+            _comment("not present in the text at all", "Three"),
+        ],
+    )
+
+    bodies = comments_xml.count("<w:comment ")
+    ranges = document_xml.count("commentRangeStart")
+    assert bodies == ranges == 2
+    assert result.applied_comments == 2
+    assert len(result.failed_patches) == 1

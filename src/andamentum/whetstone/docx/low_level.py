@@ -24,21 +24,18 @@ import zipfile
 import tempfile
 import shutil
 import os
-import difflib
 import re
-import copy
 import logging
+from dataclasses import dataclass
 
 from pydantic import BaseModel
-from typing import Optional, Any, List
+from typing import Optional, Any
 
 from lxml import etree  # type: ignore
 from docx.oxml.ns import qn
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
-from .attribution import ChangeAttributionTracker
+from .atoms import paragraph_atoms, projection
 from .xml_builder import XMLElementBuilder
-from .token_processor import TokenProcessor
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -62,18 +59,11 @@ _TEXT_ELEMENT = f"{{{NS['w']}}}t"
 def visible_text(element) -> str:
     """The text a reader sees under *element*, in document order.
 
-    Like joining ``<w:t>`` nodes, except tabs and line breaks contribute the
-    single space they visually are. ``<w:delText>`` (tracked deletions) and
-    ``<w:instrText>`` (field codes) are different tags and stay excluded, so
-    deleted text and Zotero field plumbing are still invisible here.
+    A thin name over the atom projection rather than a second walker, so the
+    two cannot drift apart. Tabs and line breaks contribute the single space
+    they visually are; tracked deletions and field plumbing are excluded.
     """
-    parts: list[str] = []
-    for node in element.iter():
-        if node.tag == _TEXT_ELEMENT:
-            parts.append(node.text or "")
-        elif node.tag in _WHITESPACE_ELEMENTS:
-            parts.append(" ")
-    return "".join(parts)
+    return projection(list(paragraph_atoms(element)))
 
 
 REL_NS = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
@@ -97,25 +87,35 @@ class ParagraphContext(BaseModel):
     after: list[str]
 
 
-class ParagraphData:
-    """Live representation of a single Word paragraph with edit tracking.
+@dataclass
+class PlacedComment:
+    """A comment resolved to the runs it brackets.
 
-    Holds the original text, the current modified text, per-token
-    formatting (``rPr``) mappings, and the attribution tracker that
-    records which author changed which tokens. Instances are created
-    during ``DocxEditor._extract_paragraphs()`` by walking the
-    ``<w:p>`` element of the Word XML and preserving run-level
-    formatting so track changes can be serialized back to ``.docx``
-    with the original styling intact.
+    Resolution happens once, in the patch editor, and the two run elements are
+    kept. Nothing searches for the text again at write time — that second
+    search was how a comment came to be validated, written into
+    ``comments.xml``, and then never anchored, while the run reported success.
+    """
+
+    author: str
+    text: str
+    start_run: Any
+    end_run: Any
+
+
+class ParagraphData:
+    """A single Word paragraph, plus the annotations attached to it.
+
+    Deliberately holds no text of its own. It used to carry two — a ``<w:t>``
+    join and a whitespace-faithful rendering — which disagreed wherever the
+    paragraph contained a line break, and a third appeared once anything
+    indexed runs directly. Text now comes from
+    :mod:`~andamentum.whetstone.docx.atoms`, which is the only place that
+    answers "what does this say".
     """
 
     def __init__(self, xml_path, p_elem):
-        """Parse a Word paragraph element into a ParagraphData instance.
-
-        Extracts the full paragraph text, builds a character-to-``rPr``
-        mapping so formatting can be restored token-by-token, tokenizes
-        the text, and initializes a :class:`ChangeAttributionTracker`
-        seeded with the original tokens attributed to ``"Original"``.
+        """Wrap one ``<w:p>`` element.
 
         Args:
             xml_path: Filesystem path to the XML file this paragraph
@@ -124,71 +124,18 @@ class ParagraphData:
         """
         self.xml_path = xml_path
         self.p_elem = p_elem
-
-        # 1) grab the full paragraph text
-        texts = p_elem.xpath(".//w:t", namespaces=NS)
-        full = "".join(t.text or "" for t in texts)
-        self.original = full
-        self.modified = full
-        # Same paragraph, but with tabs and breaks as the spaces a reader
-        # sees. Kept beside ``original`` rather than replacing it: the
-        # character offsets of ``original`` index into ``char_rprs`` and the
-        # attribution tracker, so inserting characters there would misalign
-        # run formatting on write. See :func:`visible_text` and
-        # :attr:`anchor_text`.
-        self._visible = visible_text(p_elem)
-        self.comment = ""  # Legacy single comment - kept for compatibility
-        self.comments = []  # New: List of (author, comment_text) tuples for separate comments
-        self.change_author = None  # Legacy single author - kept for compatibility
+        self.change_author = None
         # True for paragraphs synthesised by prepend_review_section (the
-        # prepended review report). Comment anchoring excludes these so a
-        # finding's quote can't match the report's restatement of itself.
+        # prepended review report), so a finding's quote can't anchor onto the
+        # report's own restatement of it.
         self.is_review_report = False
 
-        # Multi-author attribution tracking
-        self.attribution_tracker = ChangeAttributionTracker(full, "Original")
-
-        # 2) build a list mapping each character back to its run's rPr
-        char_rprs = []
-        for run in p_elem.findall(".//w:r", namespaces=NS):
-            rpr = run.find("w:rPr", namespaces=NS)
-            run_rpr = copy.deepcopy(rpr) if rpr is not None else None
-            run_text = "".join(
-                t.text or "" for t in run.findall(".//w:t", namespaces=NS)
-            )
-            # each character in run_text gets this run_rpr
-            char_rprs += [run_rpr] * len(run_text)
-
-        # 3) now split into tokens *once*, attaching the rPr of the first char
-        self.tokens = []
-        for m in TokenProcessor.TOKEN_REGEX.finditer(full):
-            tok = m.group(0)
-            start = m.start()
-            # fall back to the first non-None rPr if out of bounds
-            rpr = (
-                char_rprs[start]
-                if start < len(char_rprs)
-                else next((x for x in char_rprs if x is not None), None)
-            )
-            self.tokens.append({"text": tok, "rPr": rpr})
-
-        # keep the very first rPr as a default fallback
-        self.default_rpr = next(
-            (t["rPr"] for t in self.tokens if t["rPr"] is not None), None
-        )
-
     @property
-    def anchor_text(self) -> str:
-        """The text to match a finding's quote against.
+    def text(self) -> str:
+        """What this paragraph says, from the one text representation."""
+        from .atoms import paragraph_atoms, projection
 
-        The visible text (tabs and breaks included as spaces) while the
-        paragraph is untouched, and the edited text once an edit has
-        rewritten it — matching a quote against a paragraph that no longer
-        says that would anchor a comment to text the reader will not see.
-        """
-        if self.modified != self.original:
-            return self.modified
-        return self._visible
+        return projection(list(paragraph_atoms(self.p_elem)))
 
 
 class DocxEditor:
@@ -233,86 +180,21 @@ class DocxEditor:
         self._unzip(input_path)
         self._doc_filename = self._detect_document_filename()
         self.trees = self._load_trees()
-        self._normalize_runs()
-
         self.paragraphs = self._extract_paragraphs()
+        # Comments resolved to the runs they bracket. Written out by `write`;
+        # nothing re-searches for them, so what was validated is what is placed.
+        self.placed_comments: list[PlacedComment] = []
 
-    def _normalize_runs(self):
-        """Split each ``<w:r>`` so it carries exactly one token.
+    @property
+    def paragraph_elements(self) -> list:
+        """The body's ``<w:p>`` elements, in reading order.
 
-        Token-per-run is what lets tracked changes be applied at word
-        granularity while keeping each word's original formatting.
-
-        **Non-text children are preserved in place.** A run may hold more
-        than ``<w:t>`` — ``<w:tab/>``, ``<w:br/>``, drawings, footnote
-        references, field plumbing — and an earlier version of this method
-        rebuilt runs from their text alone and then removed the original,
-        deleting all of it. That silently stripped every tab from any run
-        containing more than one word: measurably, a document went in with
-        one tab and came out with none. It also made those tabs unmatchable
-        for comment anchoring, because by extraction time they no longer
-        existed.
-
-        So the run is walked in document order: text is accumulated and
-        flushed as one run per token, and any other child is emitted as its
-        own run in the position it held, carrying the same ``rPr``.
+        Read from the tree each time rather than cached: an edit may split a
+        paragraph in two, and a stale list would hide the new one. Empty
+        paragraphs are included — each one is a real break a reader sees.
         """
-        doc_path = self._doc_path
-        tree = self.trees[doc_path]
-        root = tree.getroot()
-        text_tag = f"{{{NS['w']}}}t"
-
-        for p in root.xpath(".//w:p", namespaces=NS):
-            for run in list(p.findall("w:r", namespaces=NS)):
-                rpr = run.find("w:rPr", namespaces=NS)
-                children = [c for c in run if c is not rpr]
-                has_other = any(c.tag != text_tag for c in children)
-                full = "".join(c.text or "" for c in children if c.tag == text_tag)
-                if not has_other and len(TokenProcessor.tokenize(full)) <= 1:
-                    continue  # already one token and nothing to preserve
-
-                def new_run():
-                    element = etree.Element(f"{{{NS['w']}}}r")
-                    if rpr is not None:
-                        element.append(copy.deepcopy(rpr))
-                    return element
-
-                index = p.index(run)
-                pending: list[str] = []
-
-                def flush() -> None:
-                    """Emit one run per token of the accumulated text."""
-                    nonlocal index
-                    if not pending:
-                        return
-                    for token in TokenProcessor.tokenize("".join(pending)):
-                        element = new_run()
-                        t_el = etree.SubElement(element, text_tag)
-                        t_el.set(
-                            "{http://www.w3.org/XML/1998/namespace}space", "preserve"
-                        )
-                        t_el.text = token
-                        p.insert(index, element)
-                        index += 1
-                    pending.clear()
-
-                for child in children:
-                    if child.tag == text_tag:
-                        pending.append(child.text or "")
-                        continue
-                    # A tab, break, drawing, footnote reference, field char…
-                    # Flush the text before it so ordering is preserved, then
-                    # carry the element itself across untouched.
-                    flush()
-                    element = new_run()
-                    element.append(copy.deepcopy(child))
-                    p.insert(index, element)
-                    index += 1
-                flush()
-
-                p.remove(run)
-        # write back document.xml
-        tree.write(doc_path, xml_declaration=True, encoding="UTF-8", standalone="yes")
+        root = self.trees[self._doc_path].getroot()
+        return root.xpath(".//w:p", namespaces=NS)
 
     def _unzip(self, docx_path):
         """Extract the .docx archive into the temporary working directory.
@@ -394,7 +276,7 @@ class DocxEditor:
         for path, tree in self.trees.items():
             root = tree.getroot()
             for p in root.xpath(".//w:p", namespaces=NS):
-                if p.xpath(".//w:t", namespaces=NS):
+                if any(paragraph_atoms(p)):
                     paras.append(ParagraphData(path, p))
         return paras
 
@@ -670,299 +552,6 @@ class DocxEditor:
                 )
         return self.author
 
-    def _get_agent_authors_for_paragraph(self, attribution_tracker) -> List[str]:
-        """Get list of agent authors that made changes to this paragraph."""
-        if not attribution_tracker or not hasattr(
-            attribution_tracker, "change_history"
-        ):
-            return []
-
-        agent_authors = []
-        for change in attribution_tracker.change_history:
-            author = change.get("author", "")
-            if author and author != "Original" and "Specialist" in author:
-                if author not in agent_authors:
-                    agent_authors.append(author)
-
-        return agent_authors
-
-    def _merge_adjacent_changes(self, p_elem, attribution_tracker=None):
-        """
-        Scan p_elem’s children; whenever you see consecutive <w:del> or <w:ins>
-        containers, merge each run of them into one by concatenating their text.
-        """
-        new_children = []
-        merge_type = None
-        merge_cid = None
-        merge_rPr = None
-        merge_author = None  # Track author of elements being merged
-        buffer = []
-
-        for child in list(p_elem):
-            local = etree.QName(child.tag).localname
-            if local in ("del", "ins"):
-                # pull out its single <w:r> inside
-                r_el = child.find("./w:r", namespaces=NS)
-                rPr_el = r_el.find("./w:rPr", namespaces=NS)
-                # pick the right text element
-                if local == "del":
-                    t_el = r_el.find("./w:delText", namespaces=NS)
-                else:
-                    t_el = r_el.find(".//w:t", namespaces=NS)
-
-                txt = t_el.text or ""
-                if local == merge_type:
-                    # same run type: append text (keep existing merge_author)
-                    buffer.append(txt)
-                else:
-                    # flush previous merge block
-                    if merge_type and merge_author:
-                        new_children.append(
-                            self._build_change_container(
-                                merge_type,
-                                merge_cid,
-                                merge_rPr,
-                                "".join(buffer),
-                                merge_author,
-                            )
-                        )
-                    # start new merge block - get author from current element
-                    merge_type = local
-                    merge_cid = child.get(qn("w:id"))
-                    merge_rPr = copy.deepcopy(rPr_el) if rPr_el is not None else None
-                    merge_author = self._get_author_from_element(
-                        child
-                    )  # Author from first element of this merge
-                    buffer = [txt]
-            else:
-                # flush any open merge
-                if merge_type and merge_author:
-                    new_children.append(
-                        self._build_change_container(
-                            merge_type,
-                            merge_cid,
-                            merge_rPr,
-                            "".join(buffer),
-                            merge_author,
-                        )
-                    )
-                    merge_type = None
-                    merge_author = None
-                    buffer = []
-                # keep this non-change node as-is
-                new_children.append(child)
-
-        # flush trailing
-        if merge_type and merge_author:
-            new_children.append(
-                self._build_change_container(
-                    merge_type, merge_cid, merge_rPr, "".join(buffer), merge_author
-                )
-            )
-
-        # replace old children
-        for c in list(p_elem):
-            p_elem.remove(c)
-        for c in new_children:
-            p_elem.append(c)
-
-    def _normalize_whitespace_changes(self, p_elem, attribution_tracker=None):
-        """
-        Collapse any <w:del> + <w:ins> pair whose non-whitespace chars are identical.
-        Rebuild it as:
-            <w:r>…shared-chars…</w:r>
-            <w:ins>…only-the-new-whitespace…</w:ins>
-        """
-        children = list(p_elem)
-        out = []
-        i = 0
-
-        while i < len(children):
-            node = children[i]
-            tag = etree.QName(node.tag).localname
-
-            if tag == "del" and i + 1 < len(children):
-                nxt = children[i + 1]
-                if etree.QName(nxt.tag).localname == "ins":
-                    old_t = node.find(".//w:delText", namespaces=NS)
-                    new_t = nxt.find(".//w:t", namespaces=NS)
-                    old_txt = old_t.text or ""
-                    new_txt = new_t.text or ""
-
-                    # if non-space content matches
-                    if re.sub(r"\s+", "", old_txt) == re.sub(r"\s+", "", new_txt):
-                        # 1) build an unchanged run with the shared text
-                        shared = re.sub(r"\s+", "", new_txt)
-                        rPr_el = node.find(".//w:rPr", namespaces=NS)
-                        rPr = copy.deepcopy(rPr_el) if rPr_el is not None else None
-
-                        keep = etree.Element(f"{{{NS['w']}}}r")
-                        if rPr is not None:
-                            keep.append(copy.deepcopy(rPr))
-
-                        t0 = etree.Element(f"{{{NS['w']}}}t")
-                        t0.set(
-                            "{http://www.w3.org/XML/1998/namespace}space", "preserve"
-                        )
-                        t0.text = shared
-                        keep.append(t0)  # ← make sure to append the text!
-
-                        out.append(keep)
-
-                        # 2) build an <ins> of just the new whitespace
-                        ws_only = "".join(ch for ch in new_txt if ch.isspace())
-                        cid = nxt.get(qn("w:id"))
-                        # Get author from the insertion element
-                        ins_author = self._get_author_from_element(nxt)
-                        ins_cont = self._build_change_container(
-                            "ins", cid, rPr, ws_only, ins_author
-                        )
-                        out.append(ins_cont)
-
-                        i += 2
-                        continue
-
-            # otherwise, pass through
-            out.append(node)
-            i += 1
-
-        # replace paragraph runs
-        for c in list(p_elem):
-            p_elem.remove(c)
-        for c in out:
-            p_elem.append(c)
-
-    def _lcp(self, a, b):
-        """Return the longest common prefix of two sequences.
-
-        Used by :meth:`_split_affix_changes` to find shared leading
-        characters between adjacent deletion and insertion runs so
-        the track change can be narrowed to just the differing middle.
-        """
-        n = min(len(a), len(b))
-        i = 0
-        while i < n and a[i] == b[i]:
-            i += 1
-        return a[:i]
-
-    def _lcs(self, a, b):
-        """Return the longest common suffix of two sequences.
-
-        Implemented by reversing both inputs, taking the longest
-        common prefix, and reversing the result. Paired with
-        :meth:`_lcp` in :meth:`_split_affix_changes`.
-        """
-        # longest common suffix
-        ra, rb = a[::-1], b[::-1]
-        rc = self._lcp(ra, rb)
-        return rc[::-1]
-
-    def _split_affix_changes(self, p_elem, attribution_tracker=None):
-        """
-        For any adjacent <w:del> + <w:ins> where old and new text share
-        a long common prefix or suffix (>=3 chars), split them into:
-            [prefix run] [del(mid)] [ins(mid)] [suffix run]
-        so only the differing middle is tracked.
-        """
-
-        children = list(p_elem)
-        out = []
-        i = 0
-
-        while i < len(children):
-            node = children[i]
-            tag = etree.QName(node.tag).localname
-
-            # look for del → ins
-            if tag == "del" and i + 1 < len(children):
-                ins_node = children[i + 1]
-                if etree.QName(ins_node.tag).localname == "ins":
-                    old_txt = node.find(".//w:delText", namespaces=NS).text or ""
-                    new_txt = ins_node.find(".//w:t", namespaces=NS).text or ""
-
-                    # compute shared affixes
-                    prefix = self._lcp(old_txt, new_txt)
-                    suffix = self._lcs(old_txt, new_txt)
-
-                    # ensure prefix + suffix don't overlap the whole string
-                    if len(prefix) >= 3 or len(suffix) >= 3:
-                        # drop the overlap if both prefix & suffix cover everything
-                        if len(prefix) + len(suffix) > min(len(old_txt), len(new_txt)):
-                            suffix = ""
-
-                        # capture formatting
-                        rPr_el = node.find(".//w:rPr", namespaces=NS)
-                        rPr = copy.deepcopy(rPr_el) if rPr_el is not None else None
-
-                        # 1) unchanged prefix run
-                        if prefix:
-                            run0 = etree.Element(f"{{{NS['w']}}}r")
-                            if rPr is not None:
-                                run0.append(copy.deepcopy(rPr))
-                            t0 = etree.Element(f"{{{NS['w']}}}t")
-                            t0.set(
-                                "{http://www.w3.org/XML/1998/namespace}space",
-                                "preserve",
-                            )
-                            t0.text = prefix
-                            run0.append(t0)
-                            out.append(run0)
-
-                        # 2) delete the old middle
-                        mid_old = old_txt[
-                            len(prefix) : len(old_txt) - len(suffix) if suffix else None
-                        ]
-                        if mid_old:
-                            cid = node.get(qn("w:id"))
-                            # Get author from deletion element
-                            del_author = self._get_author_from_element(node)
-                            out.append(
-                                self._build_change_container(
-                                    "del", cid, rPr, mid_old, del_author
-                                )
-                            )
-
-                        # 3) insert the new middle
-                        mid_new = new_txt[
-                            len(prefix) : len(new_txt) - len(suffix) if suffix else None
-                        ]
-                        if mid_new:
-                            cid = ins_node.get(qn("w:id"))
-                            # Get author from insertion element
-                            ins_author = self._get_author_from_element(ins_node)
-                            out.append(
-                                self._build_change_container(
-                                    "ins", cid, rPr, mid_new, ins_author
-                                )
-                            )
-
-                        # 4) unchanged suffix run
-                        if suffix:
-                            run1 = etree.Element(f"{{{NS['w']}}}r")
-                            if rPr is not None:
-                                run1.append(copy.deepcopy(rPr))
-                            t1 = etree.Element(f"{{{NS['w']}}}t")
-                            t1.set(
-                                "{http://www.w3.org/XML/1998/namespace}space",
-                                "preserve",
-                            )
-                            t1.text = suffix
-                            run1.append(t1)
-                            out.append(run1)
-
-                        i += 2
-                        continue
-
-            # otherwise, keep the node
-            out.append(node)
-            i += 1
-
-        # replace all children
-        for c in list(p_elem):
-            p_elem.remove(c)
-        for c in out:
-            p_elem.append(c)
-
     def _parse_inline_markdown(self, text: str, parent_elem):
         """
         Parse inline markdown formatting and create Word XML run elements.
@@ -1082,10 +671,6 @@ class DocxEditor:
                 continue
 
             para_data = ParagraphData(doc_path, elem)
-            text = "".join(t.text or "" for t in elem.xpath(".//w:t", namespaces=NS))
-            para_data.modified = text
-            para_data.original = text
-            para_data.comment = ""
             para_data.is_review_report = True
             prepended_paragraphs.insert(0, para_data)
 
@@ -1400,263 +985,38 @@ class DocxEditor:
         return p_elem
 
     def write(self, output_path):
-        """Serialize the edited document to a new .docx file.
+        """Serialize the document to a new ``.docx``.
 
-        This is the most important method on ``DocxEditor``. For each
-        paragraph in the document, it:
+        The document is already in the state the caller asked for: edits were
+        applied as surgery on the runs they covered, so there is nothing to
+        rebuild here. All that remains is to emit the comment bodies and
+        bracket the runs each one was resolved to.
 
-        1. Skips unmodified paragraphs that have no comments (echo mode).
-        2. Clears the existing runs and tokenizes the current ``modified`` text.
-        3. Runs ``difflib.ndiff`` between original and new tokens.
-        4. Emits plain runs for unchanged tokens, ``<w:del>`` wrappers
-           for deletions, and ``<w:ins>`` wrappers for insertions — each
-           attributed to the appropriate author via the paragraph's
-           :class:`ChangeAttributionTracker`.
-        5. Attaches any comments as ``<w:commentRangeStart>`` /
-           ``<w:commentRangeEnd>`` / ``<w:commentReference>`` markers
-           and writes corresponding ``<w:comment>`` entries to
-           ``comments.xml``.
-        6. Normalizes adjacent track changes and splits affix overlaps
-           so only the truly differing text is marked as changed.
-
-        After all paragraphs are processed the XML trees are written
-        back to the temp directory and the whole thing is re-zipped
-        via :meth:`_zip`.
+        This method used to clear every touched paragraph's runs and
+        regenerate them from a string, which destroyed line breaks, tabs and
+        any tracked change already in the paragraph — including a co-author's.
 
         Args:
             output_path: Path for the output ``.docx`` file.
         """
-        change_id = 0
         comments_path, comments_tree = self._load_or_create_comments_tree()
         comments_root = comments_tree.getroot()
-        # Comments are placed in a single document-level pass AFTER all
-        # paragraphs are rebuilt, so each anchors precisely to its own target
-        # span (no last-run pile-up). Collected here as
-        # (cid, author, comment_text, target_text).
-        pending_comments: list[tuple[int, str, str, str]] = []
 
-        for para_idx, pd in enumerate(self.paragraphs):
-            # Special handling for page break or review paragraphs
-            if pd.comment == "PAGE_BREAK":
-                # For dedicated page break paragraphs, just ensure the br element is present
-                self._clear_runs(pd.p_elem)
-                r_elem = etree.SubElement(pd.p_elem, f"{{{NS['w']}}}r")
-                br_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}br")
-                br_elem.set(f"{{{NS['w']}}}type", "page")
-                continue
-
-            # echo mode: skip unmodified paragraphs unless they're review paragraphs with comments
-            if pd.modified == pd.original and not pd.comment and not pd.comments:
-                continue
-
-            # rebuild paragraph runs
-            self._clear_runs(pd.p_elem)
-            orig_tokens = [t["text"] for t in pd.tokens]
-            new_tokens = TokenProcessor.tokenize(pd.modified)
-
-            # Get attribution mapping for current paragraph
-            author_map = pd.attribution_tracker.get_attribution_for_diff_operation(
-                orig_tokens, new_tokens
-            )
-
-            # For paragraphs edited by agents, get the primary agent(s) involved
-            agent_authors = self._get_agent_authors_for_paragraph(
-                pd.attribution_tracker
-            )
-            primary_agent = agent_authors[0] if agent_authors else None
-
-            i = 0
-            j = 0  # Track position in new_tokens for attribution lookup
-            for diff in difflib.ndiff(orig_tokens, new_tokens):
-                tag = diff[0]
-                tok = diff[2:]
-                if tag == " ":
-                    rPr = pd.tokens[i]["rPr"]
-                    self._add_run(pd.p_elem, tok, rPr)
-                    i += 1
-                    j += 1
-                elif tag == "-":
-                    rPr = pd.tokens[i]["rPr"]
-                    change_id += 1
-                    # Use unified attribution: all deletions attributed to primary agent
-                    deletion_author = (
-                        primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
-                    )
-                    self._add_run(
-                        pd.p_elem,
-                        tok,
-                        rPr,
-                        change_type="del",
-                        cid=change_id,
-                        change_author=deletion_author,
-                    )
-                    i += 1
-                elif tag == "+":
-                    rPr = pd.tokens[i - 1]["rPr"] if i > 0 else pd.default_rpr
-                    change_id += 1
-                    # Use unified attribution: get author from attribution tracker (should be consistent now)
-                    raw_author = author_map.get(j)
-                    if raw_author and raw_author != "Original":
-                        insertion_author = raw_author
-                    else:
-                        # Fallback to primary agent for unified attribution
-                        insertion_author = (
-                            primary_agent or pd.change_author or "ATTRIBUTION_ERROR"
-                        )
-
-                    self._add_run(
-                        pd.p_elem,
-                        tok,
-                        rPr,
-                        change_type="ins",
-                        cid=change_id,
-                        change_author=insertion_author,
-                    )
-                    j += 1
-
-            # IMPORTANT: For comment-only paragraphs, ensure we have runs for comment anchors
-            # If no text changes occurred but we have comments, we need runs to attach comments to
-            if pd.modified == pd.original and (pd.comments or pd.comment):
-                # No text changes but has comments - make sure we have runs
-                runs = pd.p_elem.findall(".//w:r", namespaces=NS)
-                if not runs:
-                    # Recreate original runs from tokens since diff generated no runs
-                    for token_data in pd.tokens:
-                        rPr = token_data["rPr"]
-                        self._add_run(pd.p_elem, token_data["text"], rPr)
-
-            # 2) **collapse** any long runs of adjacent <w:del>/<w:ins>
-            self._merge_adjacent_changes(pd.p_elem, pd.attribution_tracker)
-            # 3) **new**: normalize any pure-whitespace change pairs
-            self._normalize_whitespace_changes(pd.p_elem, pd.attribution_tracker)
-            # 4) split off large common-prefix/suffix changes
-            self._split_affix_changes(pd.p_elem, pd.attribution_tracker)
-            # Create separate comments for each agent. The comment BODY goes
-            # into comments.xml now; the in-document RANGE markers are placed
-            # in a single document-level pass after this loop (see
-            # _place_pending_comments) so each anchors to its own target span.
-            if pd.comments:
-                for comment_author, comment_text, target_text in pd.comments:
-                    cid = change_id + 1
-                    change_id = cid
-                    comment_el = XMLElementBuilder.create_comment_element(
-                        cid=cid, author=comment_author, text=comment_text
-                    )
-                    comments_root.append(comment_el)
-                    pending_comments.append(
-                        (cid, comment_author, comment_text, target_text)
-                    )
-
-            # Legacy single comment support (fallback)
-            elif pd.comment:
-                cid = change_id + 1
-                change_id = cid
-                # 1) insert anchor tags into the paragraph XML
-                self._insert_comment_anchor(pd.p_elem, cid)
-                # 2) then add the <comment> element to comments.xml as before
-                # Use primary agent for unified attribution consistency
-                comment_author = primary_agent or pd.change_author or self.author
-                if comment_author == self.author:
-                    logger.warning(
-                        f"Comment using fallback author '{self.author}' instead of agent. primary_agent: {primary_agent}, pd.change_author: {pd.change_author}"
-                    )
-                comment_el = XMLElementBuilder.create_comment_element(
-                    cid=cid, author=comment_author, text=pd.comment
+        for cid, placed in enumerate(self.placed_comments, start=1):
+            comments_root.append(
+                XMLElementBuilder.create_comment_element(
+                    cid=cid, author=placed.author, text=placed.text
                 )
-                comments_root.append(comment_el)
+            )
+            self._place_comment_range(placed.start_run, placed.end_run, cid)
 
-        # Place all comment ranges precisely, document-level, in one pass.
-        self._place_pending_comments(pending_comments)
+        if self.placed_comments:
+            self._ensure_comments_relationship()
+            self._ensure_comments_content_type()
 
-        # finalize and write unchanged parts
-        self._ensure_comments_relationship()
-        self._ensure_comments_content_type()
         for path, tree in self.trees.items():
             tree.write(path, xml_declaration=True, encoding="UTF-8", standalone="yes")
         self._zip(output_path)
-
-    def _place_pending_comments(self, pending) -> None:
-        """Place each comment's range markers at its resolved text span.
-
-        Builds a document-level normalised index over the FINAL run
-        structure (after all paragraph rebuilds) and, for each pending
-        comment, locates its target text and brackets the matching runs
-        with ``commentRangeStart`` / ``commentRangeEnd`` /
-        ``commentReference``. The span may cross runs and paragraphs.
-
-        Targets were validated to resolve at apply time, so a miss here is
-        unexpected (e.g. a paragraph was rebuilt with altered text by an
-        edit). Such misses are logged loudly and skipped — never anchored
-        to a wrong location.
-        """
-        if not pending:
-            return
-        from .anchor import DocIndex
-
-        # Build paragraphs-of-runs over the final document, keyed by run
-        # element. The prepended review report is excluded so a finding's quote
-        # can't anchor onto the report's own restatement of it.
-        paragraphs_runs: list[list[tuple[Any, str]]] = []
-        for pd in self.paragraphs:
-            if getattr(pd, "is_review_report", False):
-                continue
-            runs: list[tuple[Any, str]] = []
-            for r in self._anchorable_runs(pd.p_elem):
-                # visible_text, not a bare <w:t> join — this index must agree
-                # with the apply-time one (patch_editor._get_doc_index), or a
-                # target validated there misses here and the comment is
-                # dropped at the last step with a "validated but not found"
-                # warning. A tab-only run contributes its space and is kept.
-                text = visible_text(r)
-                if text:
-                    runs.append((r, text))
-            paragraphs_runs.append(runs)
-
-        index = DocIndex(paragraphs_runs)
-        for cid, _author, _text, target in pending:
-            span = index.find(target)
-            if span is None:
-                logger.warning(
-                    "[anchor] write-time placement miss for comment %s "
-                    "(validated at apply but not found in rebuilt runs): %r",
-                    cid,
-                    (target or "")[:80],
-                )
-                continue
-            self._place_comment_range(span.start_key, span.end_key, cid)
-
-    @staticmethod
-    def _anchorable_runs(p_elem):
-        """The runs of *p_elem* that a comment may anchor to, in reading order.
-
-        Direct-child ``<w:r>`` runs plus the runs nested inside ``<w:ins>``
-        containers. Together those are the paragraph as it reads once the
-        tracked changes are accepted — the same text the apply-time index sees
-        in ``ParagraphData.modified``, which is what the two indexes have to
-        agree on.
-
-        Runs inside ``<w:del>`` are excluded: that text is on its way out, and
-        a comment bracketing it would vanish the moment the author accepts the
-        change it belongs to.
-
-        Before this walked into ``<w:ins>``, every run the rebuild produced for
-        an edited span sat inside a change container and so was invisible here.
-        A comment on a passage that an edit rewrote could not be placed at all
-        — the body was still written into ``comments.xml`` and the run reported
-        success, so the reason for a tracked change disappeared with no error
-        anywhere. That is the normal case when a finding and the edit that
-        fixes it point at the same sentence.
-        """
-        for child in p_elem:
-            # XML comments and processing instructions carry a callable tag,
-            # not a string, and QName() raises on them.
-            if not isinstance(child.tag, str):
-                continue
-            tag = etree.QName(child).localname
-            if tag == "r":
-                yield child
-            elif tag == "ins":
-                yield from child.findall(f"{{{NS['w']}}}r")
 
     def _place_comment_range(self, start_run, end_run, cid) -> None:
         """Bracket the runs ``start_run``..``end_run`` with comment markers.
@@ -1676,552 +1036,3 @@ class DocxEditor:
 
         start_parent = start_run.getparent()
         start_parent.insert(start_parent.index(start_run), crs)
-
-
-class DocumentReview:
-    """Handles conversion of markdown reviews to docx formatted content and prepends them to a document."""
-
-    # Breaking the _convert_markdown_to_paragraphs method into smaller helper methods
-    # to reduce cyclomatic complexity
-    def __init__(self):
-        """Initialize heading style table for markdown -> Word conversion.
-
-        Builds the lookup used when converting markdown headings
-        (``#``, ``##``, etc.) to Word paragraph formatting. Each
-        heading level maps to font size, bold flag, and paragraph
-        alignment. Levels 1-6 mirror HTML ``<h1>``-``<h6>``.
-        """
-        self.heading_styles = {
-            1: {"size": 16, "bold": True, "alignment": WD_PARAGRAPH_ALIGNMENT.CENTER},
-            2: {"size": 14, "bold": True, "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-            3: {"size": 12, "bold": True, "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-            4: {"size": 11, "bold": True, "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-            5: {"size": 10, "bold": True, "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-            6: {"size": 10, "bold": False, "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-        }
-
-    def prepend_review(self, docx_editor: DocxEditor, markdown_content: str) -> None:
-        """
-        Converts markdown content to docx format and prepends it to the document.
-
-        Args:
-            docx_editor: The DocxEditor instance being used
-            markdown_content: The markdown formatted review content
-        """
-        # First get the current paragraphs for reference
-        if not docx_editor.paragraphs:
-            return
-
-        document_path = self._find_document_path(docx_editor)
-        if not document_path:
-            logger.error("Could not find document.xml path")
-            return
-
-        # Get the main document tree and body element
-        document_tree, body = self._get_document_body(docx_editor, document_path)
-
-        # Convert markdown to paragraph data structures
-        review_dicts = self._convert_markdown_to_paragraphs(markdown_content)
-
-        # Store current paragraphs to preserve their edits
-        existing_paragraphs = docx_editor.paragraphs.copy()
-
-        # Create and insert paragraph elements
-        review_paragraph_objects = self._create_review_paragraphs(
-            review_dicts, document_path, body
-        )
-
-        # Add a dedicated page break paragraph
-        page_break_data = self._add_page_break(document_path, body, len(review_dicts))
-
-        # Combine the review paragraphs with the page break and existing paragraphs
-        docx_editor.paragraphs = (
-            review_paragraph_objects + [page_break_data] + existing_paragraphs
-        )
-
-    def _find_document_path(self, docx_editor: DocxEditor) -> Optional[str]:
-        """Find the main document XML file path in the docx file."""
-        return docx_editor._doc_path
-
-    def _get_document_body(self, docx_editor: DocxEditor, document_path: str):
-        """Get the document tree and body element."""
-        document_tree = docx_editor.trees[document_path]
-        body = document_tree.xpath(".//w:body", namespaces=NS)[0]
-        return document_tree, body
-
-    def _create_review_paragraphs(self, review_dicts, document_path, body):
-        """Create paragraph elements and insert them at the beginning of the body."""
-        review_paragraph_objects = []
-
-        # We need to insert them in reverse order since we're always inserting at the start
-        for para_dict in reversed(review_dicts):
-            p_elem = self._create_paragraph_element(para_dict)
-
-            # Insert at the beginning of the body
-            body.insert(0, p_elem)
-
-            # Create a paragraph data object for this paragraph
-            para_data = self._create_paragraph_data(para_dict, document_path, p_elem)
-
-            # Add to our review paragraphs list (insert at beginning to maintain order)
-            review_paragraph_objects.insert(0, para_data)
-
-        return review_paragraph_objects
-
-    def _create_paragraph_element(self, para_dict):
-        """Create a paragraph XML element with properties."""
-        p_elem = etree.Element(f"{{{NS['w']}}}p")
-
-        # Apply paragraph properties (like alignment, indentation, borders, and spacing)
-        if any(
-            prop in para_dict["props"]
-            for prop in ["alignment", "left_indent", "bottom_border", "spacing_after"]
-        ):
-            self._apply_paragraph_properties(p_elem, para_dict["props"])
-
-        # Add the runs with their styling
-        for run_dict in para_dict["runs"]:
-            self._add_run_to_paragraph(p_elem, run_dict)
-
-        return p_elem
-
-    def _apply_paragraph_properties(self, p_elem, props):
-        """Apply properties like alignment and indentation to a paragraph element."""
-        pPr = etree.SubElement(p_elem, f"{{{NS['w']}}}pPr")
-
-        # Apply alignment if present
-        if "alignment" in props:
-            jc = etree.SubElement(pPr, f"{{{NS['w']}}}jc")
-            alignment = props["alignment"]
-            if alignment == WD_PARAGRAPH_ALIGNMENT.CENTER:
-                jc.set(f"{{{NS['w']}}}val", "center")
-            elif alignment == WD_PARAGRAPH_ALIGNMENT.LEFT:
-                jc.set(f"{{{NS['w']}}}val", "left")
-            elif alignment == WD_PARAGRAPH_ALIGNMENT.RIGHT:
-                jc.set(f"{{{NS['w']}}}val", "right")
-
-        # Apply left indentation if present
-        if "left_indent" in props:
-            ind = etree.SubElement(pPr, f"{{{NS['w']}}}ind")
-            # Convert inches to twips (1 inch = 1440 twips)
-            left_twips = int(props["left_indent"] * 1440)
-            ind.set(f"{{{NS['w']}}}left", str(left_twips))
-
-        # Apply bottom border for horizontal rules
-        if "bottom_border" in props and props["bottom_border"]:
-            pBdr = etree.SubElement(pPr, f"{{{NS['w']}}}pBdr")
-            bottom = etree.SubElement(pBdr, f"{{{NS['w']}}}bottom")
-            bottom.set(f"{{{NS['w']}}}val", "single")
-            bottom.set(f"{{{NS['w']}}}sz", "6")  # Line thickness
-            bottom.set(f"{{{NS['w']}}}space", "1")
-            bottom.set(f"{{{NS['w']}}}color", "auto")
-
-        # Apply spacing after paragraph
-        if "spacing_after" in props:
-            spacing = etree.SubElement(pPr, f"{{{NS['w']}}}spacing")
-            # Convert points to twips (1 point = 20 twips)
-            spacing_twips = int(props["spacing_after"] * 20)
-            spacing.set(f"{{{NS['w']}}}after", str(spacing_twips))
-
-    def _add_run_to_paragraph(self, p_elem, run_dict):
-        """Add a run with styling to a paragraph element."""
-        r_elem = etree.SubElement(p_elem, f"{{{NS['w']}}}r")
-        rPr = etree.SubElement(r_elem, f"{{{NS['w']}}}rPr")
-
-        # Apply run properties
-        self._apply_run_properties(rPr, run_dict["props"])
-
-        # Add page break if needed
-        if "page_break" in run_dict["props"] and run_dict["props"]["page_break"]:
-            br = etree.SubElement(r_elem, f"{{{NS['w']}}}br")
-            br.set(f"{{{NS['w']}}}type", "page")
-        else:
-            # Add the text
-            t_elem = etree.SubElement(r_elem, f"{{{NS['w']}}}t")
-            t_elem.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-            t_elem.text = run_dict["text"]
-
-    def _apply_run_properties(self, rPr, props):
-        """Apply properties to a run element."""
-        if "bold" in props and props["bold"]:
-            etree.SubElement(rPr, f"{{{NS['w']}}}b")
-
-        if "italic" in props and props["italic"]:
-            etree.SubElement(rPr, f"{{{NS['w']}}}i")
-
-        if "color" in props:
-            color = etree.SubElement(rPr, f"{{{NS['w']}}}color")
-            color.set(f"{{{NS['w']}}}val", props["color"])
-
-        if "size" in props:
-            sz = etree.SubElement(rPr, f"{{{NS['w']}}}sz")
-            sz.set(f"{{{NS['w']}}}val", str(props["size"] * 2))  # Word uses half-points
-
-        if "font_name" in props:
-            rFonts = etree.SubElement(rPr, f"{{{NS['w']}}}rFonts")
-            rFonts.set(f"{{{NS['w']}}}ascii", props["font_name"])
-            rFonts.set(f"{{{NS['w']}}}hAnsi", props["font_name"])
-
-    def _create_paragraph_data(self, para_dict, document_path, p_elem):
-        """Create a ParagraphData object from a paragraph dictionary."""
-        # Use text from the paragraph dictionary for content
-        text = "".join(run["text"] for run in para_dict["runs"])
-        para_data = ParagraphData(document_path, p_elem)
-
-        # For review paragraphs, set modified and original to the same value
-        # to avoid showing tracked changes in the review section
-        para_data.modified = text
-        para_data.original = text
-
-        # Override the skip condition in write() by making this a special case
-        # We'll add a comment to force the paragraph to be written
-        para_data.comment = ""
-
-        return para_data
-
-    def _add_page_break(self, document_path, body, position):
-        """Add a page break paragraph after the review content."""
-        page_break_p = etree.Element(f"{{{NS['w']}}}p")
-        page_break_r = etree.SubElement(page_break_p, f"{{{NS['w']}}}r")
-        page_break_br = etree.SubElement(page_break_r, f"{{{NS['w']}}}br")
-        page_break_br.set(f"{{{NS['w']}}}type", "page")
-
-        # Insert the page break into the document body
-        body.insert(position, page_break_p)
-
-        # Create a ParagraphData object for the page break
-        page_break_data = ParagraphData(document_path, page_break_p)
-        page_break_data.modified = " "  # Need some content to ensure it's written
-        page_break_data.original = " "
-        page_break_data.comment = "PAGE_BREAK"  # Special comment to force processing
-
-        return page_break_data
-
-    def _process_heading(self, line: str) -> dict[str, Any]:
-        """Process a markdown heading line and return paragraph data"""
-        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if heading_match:
-            level = len(heading_match.group(1))
-            text = heading_match.group(2)
-
-            style = self.heading_styles.get(level, self.heading_styles[6])
-
-            return {
-                "runs": [
-                    {
-                        "text": text,
-                        "props": {
-                            "bold": style["bold"],
-                            "size": style["size"],
-                        },
-                    }
-                ],
-                "props": {"alignment": style["alignment"]},
-            }
-
-        # Default return if no match (shouldn't happen with proper validation)
-        return {
-            "runs": [{"text": line, "props": {}}],
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-        }
-
-    def _process_unordered_list(self, line: str) -> dict[str, Any]:
-        """Process an unordered list item and return paragraph data"""
-        list_match = re.match(r"^([-*])\s+(.+)$", line)
-        if list_match:
-            content_text = list_match.group(2)
-
-            # Process for inline formatting
-            formatted_para = self._process_inline_formatting(content_text)
-
-            # Add bullet at the beginning
-            runs = [{"text": "• ", "props": {"bold": True}}]
-            runs.extend(formatted_para["runs"])
-
-            return {
-                "runs": runs,
-                "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5},
-            }
-
-        # Default return if no match (shouldn't happen with proper validation)
-        return {
-            "runs": [{"text": line, "props": {}}],
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-        }
-
-    def _process_ordered_list(self, line: str, list_item_number: int) -> dict[str, Any]:
-        """Process an ordered list item and return paragraph data"""
-        list_match = re.match(r"^(\d+)\.?\s+(.+)$", line)
-        if list_match:
-            content_text = list_match.group(2)
-
-            # Process for inline formatting
-            formatted_para = self._process_inline_formatting(content_text)
-
-            # Add number at the beginning
-            runs = [{"text": f"{list_item_number}. ", "props": {"bold": True}}]
-            runs.extend(formatted_para["runs"])
-
-            return {
-                "runs": runs,
-                "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.5},
-            }
-
-        # Default return if no match (shouldn't happen with proper validation)
-        return {
-            "runs": [{"text": line, "props": {}}],
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT},
-        }
-
-    def _process_indented_paragraph(
-        self, content: str, indent_level: float
-    ) -> dict[str, Any]:
-        """Process an indented paragraph and return paragraph data with proper indentation"""
-        # Process the content for inline formatting
-        formatted_para = self._process_inline_formatting(content)
-
-        # Add left indentation based on indent level
-        # indent_level is already in inches
-        left_indent = indent_level
-
-        formatted_para["props"]["left_indent"] = left_indent
-        return formatted_para
-
-    def _process_horizontal_rule(self) -> dict[str, Any]:
-        """Process a horizontal rule and return paragraph data with a bottom border"""
-        return {
-            "runs": [{"text": " ", "props": {}}],  # Empty paragraph with border
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "bottom_border": True},
-        }
-
-    def _process_grey_right_aligned(self, content: str) -> dict[str, Any]:
-        """Process grey right-aligned text for metadata display"""
-        return {
-            "runs": [{"text": content, "props": {"color": "808080"}}],  # Grey color
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.RIGHT},
-        }
-
-    def _process_indented_grey_metadata(self, content: str) -> dict[str, Any]:
-        """Process indented grey metadata text with proper indentation"""
-        return {
-            "runs": [{"text": content, "props": {"color": "808080"}}],  # Grey color
-            "props": {
-                "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT,
-                "left_indent": 0.2,  # 0.2 inches indentation
-            },
-        }
-
-    def _process_indented_heading(self, content: str) -> dict[str, Any]:
-        """Process indented headings (e.g., '  #### Title')"""
-        heading_match = re.match(r"^(#{1,6})\s+(.+)$", content)
-        if heading_match:
-            level = len(heading_match.group(1))
-            text = heading_match.group(2)
-
-            # Use the existing heading styles but add indentation
-            style = self.heading_styles.get(level, self.heading_styles[6])
-
-            return {
-                "runs": [
-                    {
-                        "text": text,
-                        "props": {
-                            "bold": style["bold"],
-                            "size": style["size"],
-                        },
-                    }
-                ],
-                "props": {
-                    "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT,  # Left-aligned instead of center
-                    "left_indent": 0.2,  # 0.2 inches indentation
-                },
-            }
-
-        # Fallback if regex doesn't match (shouldn't happen)
-        return {
-            "runs": [{"text": content, "props": {}}],
-            "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT, "left_indent": 0.2},
-        }
-
-    def _process_spacing_paragraph(self) -> dict[str, Any]:
-        """Process a spacing paragraph that adds vertical space"""
-        return {
-            "runs": [{"text": " ", "props": {}}],  # Single space
-            "props": {
-                "alignment": WD_PARAGRAPH_ALIGNMENT.LEFT,
-                "spacing_after": 12,  # Extra spacing after paragraph (in points)
-            },
-        }
-
-    def _process_inline_formatting(self, line: str) -> dict[str, Any]:
-        """Process a line with inline markdown formatting and return paragraph data"""
-        paragraph = {"runs": [], "props": {"alignment": WD_PARAGRAPH_ALIGNMENT.LEFT}}
-
-        j = 0
-        while j < len(line):
-            # Bold text (**bold**)
-            if j + 3 < len(line) and line[j : j + 2] == "**" and "**" in line[j + 2 :]:
-                end = line.find("**", j + 2)
-                paragraph["runs"].append(
-                    {"text": line[j + 2 : end], "props": {"bold": True}}
-                )
-                j = end + 2
-
-            # Italic text (*italic*)
-            elif j + 2 < len(line) and line[j] == "*" and "*" in line[j + 1 :]:
-                end = line.find("*", j + 1)
-                paragraph["runs"].append(
-                    {"text": line[j + 1 : end], "props": {"italic": True}}
-                )
-                j = end + 1
-
-            # Code (`code`)
-            elif j + 2 < len(line) and line[j] == "`" and "`" in line[j + 1 :]:
-                end = line.find("`", j + 1)
-                paragraph["runs"].append(
-                    {"text": line[j + 1 : end], "props": {"font_name": "Courier New"}}
-                )
-                j = end + 1
-
-            # Regular text
-            else:
-                # Find the next special character
-                next_special = len(
-                    line
-                )  # Default to end of line instead of float('inf')
-                for special in ["**", "*", "`"]:
-                    pos = line.find(special, j)
-                    if pos != -1 and pos < next_special:
-                        next_special = pos
-
-                if next_special == len(line):
-                    paragraph["runs"].append({"text": line[j:], "props": {}})
-                    j = len(line)
-                else:
-                    paragraph["runs"].append(
-                        {"text": line[j:next_special], "props": {}}
-                    )
-                    j = next_special
-
-        return paragraph
-
-    def _convert_markdown_to_paragraphs(
-        self, markdown_content: str
-    ) -> list[dict[str, Any]]:
-        """
-        Converts markdown content to a list of paragraph data dictionaries.
-
-        Args:
-            markdown_content: The markdown formatted content
-
-        Returns:
-            A list of paragraph data dictionaries ready to be added to the document
-        """
-        lines = markdown_content.split("\n")
-        paragraphs = []
-        current_list_type = None
-        list_item_number = 0
-
-        i = 0
-        while i < len(lines):
-            line = lines[i]  # Don't strip here - we need to preserve indentation
-
-            # Skip empty lines
-            if not line.strip():
-                i += 1
-                continue
-
-            # Process indented paragraphs (2+ spaces at start) - CHECK BEFORE STRIPPING!
-            indent_match = re.match(r"^( {2,})(.+)$", line)
-            if indent_match:
-                content = indent_match.group(2)
-
-                # Check if this is an indented ~~~ pattern that should be processed as metadata
-                grey_match = re.match(r"^~~~(.+)~~~$", content)
-                if grey_match:
-                    metadata_content = grey_match.group(1)
-                    if metadata_content == "SPACING":
-                        # Create spacing paragraph
-                        paragraphs.append(self._process_spacing_paragraph())
-                    else:
-                        # Process as indented grey metadata
-                        paragraphs.append(
-                            self._process_indented_grey_metadata(metadata_content)
-                        )
-                    i += 1
-                    continue
-
-                # Check if this is an indented heading (e.g., "  #### Title")
-                heading_match = re.match(r"^(#{1,6})\s+(.+)$", content)
-                if heading_match:
-                    # Process as indented heading
-                    paragraphs.append(self._process_indented_heading(content))
-                    i += 1
-                    continue
-
-                # Regular indented paragraph
-                # Convert to 0.5cm indentation (approximately 0.2 inches)
-                indent_level = 0.2  # Fixed 0.2 inches regardless of spaces
-                paragraphs.append(
-                    self._process_indented_paragraph(content, indent_level)
-                )
-                i += 1
-                continue
-
-            # Now strip for all other patterns (headings, lists, etc.)
-            line = line.strip()
-
-            # Process headings (# Heading) - support levels 1-6
-            heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
-            if heading_match:
-                paragraphs.append(self._process_heading(line))
-                i += 1
-                continue
-
-            # Process unordered lists (- Item or * Item)
-            list_match = re.match(r"^([-*])\s+(.+)$", line)
-            if list_match:
-                if current_list_type != "unordered":
-                    current_list_type = "unordered"
-                    list_item_number = 0
-
-                paragraphs.append(self._process_unordered_list(line))
-                i += 1
-                continue
-
-            # Process ordered lists (1. Item)
-            list_match = re.match(r"^(\d+)\.?\s+(.+)$", line)
-            if list_match:
-                if current_list_type != "ordered":
-                    current_list_type = "ordered"
-                    list_item_number = int(list_match.group(1))
-                else:
-                    list_item_number += 1
-
-                paragraphs.append(self._process_ordered_list(line, list_item_number))
-                i += 1
-                continue
-
-            # Process horizontal rules (*** or ---)
-            if line in ["***", "---"]:
-                paragraphs.append(self._process_horizontal_rule())
-                i += 1
-                continue
-
-            # Process grey right-aligned text (~~~text~~~)
-            grey_match = re.match(r"^~~~(.+)~~~$", line)
-            if grey_match:
-                content = grey_match.group(1)
-                if content == "SPACING":
-                    # Create spacing paragraph
-                    paragraphs.append(self._process_spacing_paragraph())
-                else:
-                    paragraphs.append(self._process_grey_right_aligned(content))
-                i += 1
-                continue
-
-            # Process normal paragraphs with inline formatting
-            paragraphs.append(self._process_inline_formatting(line))
-            i += 1
-
-        return paragraphs

@@ -262,9 +262,48 @@ class Outcome:
 
 
 def _paragraph_texts(docx_path: Path) -> list[str]:
+    from andamentum.whetstone.docx.atoms import paragraph_atoms, projection
     from andamentum.whetstone.docx.low_level import DocxEditor
 
-    return [p.anchor_text for p in DocxEditor(str(docx_path)).paragraphs]
+    editor = DocxEditor(str(docx_path))
+    return [
+        projection(list(paragraph_atoms(p))) for p in editor.paragraph_elements
+    ]
+
+
+def _marker_free_atoms(paragraph_texts: list[str]) -> list:
+    """One atom per character of the corpus, with the block markers removed.
+
+    The markers are the harness's answer key, not part of the corpus: left in,
+    one sitting between two table cells would break a cross-cell match and
+    score the matcher down for the scaffolding. ``paragraph`` carries the
+    paragraph number so a match can be scored against the key.
+    """
+    from andamentum.whetstone.docx.atoms import Atom, AtomKind
+
+    stream: list[Atom] = []
+    for number, text in enumerate(paragraph_texts):
+        if number > 0:
+            stream.append(
+                Atom(
+                    char="\n",
+                    kind=AtomKind.PARAGRAPH_BREAK,
+                    run=None,
+                    paragraph=number - 1,
+                    offset=-1,
+                )
+            )
+        for offset, char in enumerate(strip_marker(text)):
+            stream.append(
+                Atom(
+                    char=char,
+                    kind=AtomKind.TEXT,
+                    run=None,
+                    paragraph=number,
+                    offset=offset,
+                )
+            )
+    return stream
 
 
 def run_case(case: Case, docx_path: Path, markdown: str) -> Outcome:
@@ -277,11 +316,14 @@ def run_case(case: Case, docx_path: Path, markdown: str) -> Outcome:
     Block identity is captured BEFORE stripping, so the answer key
     survives while staying invisible to the thing being measured.
     """
-    from andamentum.whetstone.docx.anchor import DocIndex
+    from andamentum.whetstone.docx.textmap import TextMap
 
     raw = _paragraph_texts(docx_path)
     block_of = [marker_in(t) for t in raw]
-    index = DocIndex([[(i, strip_marker(t))] for i, t in enumerate(raw)])
+    # The index is built over synthetic atoms carrying the paragraph number, so
+    # the harness measures the same TextMap the product uses rather than a
+    # parallel implementation of it.
+    index = TextMap(_marker_free_atoms(raw))
     outcome = Outcome()
 
     for probe in sample_quotes(case.name, markdown):
@@ -290,7 +332,7 @@ def run_case(case: Case, docx_path: Path, markdown: str) -> Outcome:
             outcome.missed += 1
             outcome.missed_detail.append(f"[{probe.kind}] {probe.quote[:70]}")
             continue
-        landed = block_of[span.start_key]
+        landed = block_of[index.atoms[span.start].paragraph]
         if landed in probe.expected:
             outcome.correct += 1
         else:

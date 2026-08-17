@@ -126,5 +126,5 @@ def test_visible_text_reads_tabs_as_the_space_they_are(tmp_path: Path) -> None:
     document.save(str(source))
 
     paragraph = DocxEditor(str(source)).paragraphs[0]
-    assert "was ninety-four" in paragraph.anchor_text
-    assert visible_text(paragraph.p_elem) == paragraph.anchor_text
+    assert "was ninety-four" in paragraph.text
+    assert visible_text(paragraph.p_elem) == paragraph.text
