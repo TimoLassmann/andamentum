@@ -50,6 +50,7 @@ proofread reviews STYLE.
 """
 
 from .renderers import render_docx, render_html, render_markdown
+from .reviewed_document import ReviewedDocument, open_source
 from .schemas import (
     AuthorQuestion,
     CheckableItem,
@@ -89,6 +90,8 @@ __all__ = [
     "criterion_set_for",
     "probe_bank_for",
     "extract_criteria_from_guidelines",
+    "ReviewedDocument",
+    "open_source",
     "render_docx",
     "render_html",
     "render_markdown",

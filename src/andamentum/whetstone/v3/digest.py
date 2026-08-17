@@ -36,11 +36,18 @@ def has_citation(text: str) -> bool:
 
 
 def _heading_stripped(section: Section) -> str:
-    """Section body with a leading markdown heading line removed."""
+    """Section body with its leading heading line removed.
+
+    Two shapes, because a section has two possible origins. Markdown text
+    opens with ``## Methods``; a Word document opens with the bare word
+    ``Methods``, because the heading is carried in the paragraph's style and
+    the projection holds only what a reader sees. Stripping only the first
+    made every gist on the .docx path read back as the section's own title.
+    """
     body = section.text.lstrip()
-    if body.startswith("#"):
-        nl = body.find("\n")
-        body = body[nl + 1 :] if nl != -1 else ""
+    first, newline, rest = body.partition("\n")
+    if first.startswith("#") or first.strip() == section.title:
+        body = rest if newline else ""
     return body.strip()
 
 

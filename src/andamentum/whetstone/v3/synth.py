@@ -187,13 +187,15 @@ def _flatten(review: StructuredReview) -> str:
 def _to_wfinding(f: Finding, model: DocumentModel) -> WFinding:
     quotes: list[Quote] = []
     if f.span is not None:
-        section = model.section_by_id(f.span.section_id)
-        base = section.start if section else 0
+        # Span and Quote are both document coordinates now, so there is
+        # nothing to rebase. The docx renderer passes these offsets to the
+        # surgery layer unchanged; subtracting the section's start here would
+        # anchor every annotation that many characters too early.
         quotes.append(
             Quote(
                 section_id=f.span.section_id,
-                char_start=f.span.start - base,
-                char_end=f.span.end - base,
+                char_start=f.span.start,
+                char_end=f.span.end,
                 text=f.quote,
             )
         )

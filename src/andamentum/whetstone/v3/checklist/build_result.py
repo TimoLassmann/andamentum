@@ -99,10 +99,12 @@ def _to_public_finding(
     (docx concatenates them, markdown and HTML stack them), so mapping one
     statement into both fields shows the reader the same sentence twice.
 
-    ``Quote`` offsets are section-relative while ``Span`` offsets are
-    document-relative, so the section's start is subtracted. Getting this wrong
-    is invisible in markdown (which prints ``Quote.text``) and corrupts the
-    docx anchor, which seeks by offset.
+    ``Quote`` and ``Span`` are the same coordinate system — the whole reviewed
+    document — so the span is copied across untouched. It used to be rebased
+    onto the section, and the docx renderer then had to find the quote by text
+    instead; that search lost 15 of 43 rewrites on one real manuscript. Any
+    arithmetic here is a bug: the offsets are addresses, and an address you
+    adjust is an address you have lost.
 
     ``corroborator_titles`` names the OTHER checks that landed on this same
     passage. It is written into ``corroborated_by`` for machine consumers *and*
@@ -130,13 +132,11 @@ def _to_public_finding(
                 finding.quote[:60],
             )
         else:
-            section = model.section_by_id(finding.span.section_id)
-            base = section.start if section else 0
             quotes.append(
                 Quote(
                     section_id=finding.span.section_id,
-                    char_start=finding.span.start - base,
-                    char_end=finding.span.end - base,
+                    char_start=finding.span.start,
+                    char_end=finding.span.end,
                     text=finding.quote,
                 )
             )

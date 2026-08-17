@@ -425,46 +425,41 @@ def test_explicit_author_override_works_with_warning(
     assert any(a == "Dr Smith" for a in ins_authors)
 
 
-# ── unplaced-annotation warning (review / checklist docx path) ──────────
+# ── dropped-annotation warning (review / checklist docx path) ───────────
 
 
-def _failed(patch_type: str, pattern: str = "some text"):
-    from types import SimpleNamespace
+def _report(**kwargs):
+    from andamentum.whetstone.docx.annotate import AnnotationReport
 
-    return SimpleNamespace(patch_type=patch_type, text_pattern=pattern)
+    return AnnotationReport(**kwargs)
 
 
-def test_unplaced_annotations_are_reported_not_swallowed(capsys) -> None:
+def test_shadowed_comments_are_reported_not_swallowed(capsys) -> None:
     """A partial .docx write must say so.
 
     ``render_docx``'s return value used to be discarded by the review and
-    checklist paths, so a run that anchored 2 of 7 comments reported plain
-    success. Observed on a real manuscript; the quotes come from harvested
-    markdown and need not exist as contiguous runs in the Word file.
+    checklist paths, so a run that placed 2 of 7 comments reported plain
+    success. Observed on a real manuscript.
     """
-    from types import SimpleNamespace
-
     from rich.console import Console
 
-    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+    from andamentum.whetstone.cli import _warn_on_dropped_annotations
+    from andamentum.whetstone.docx.annotate import Note
 
-    console = Console(stderr=True)
-    result = SimpleNamespace(
-        total_patches=7,
-        failed_patches=[_failed("comment")] * 5,
-        applied_comments=2,
-        conflict_failures=0,
+    note = Note(start=0, end=4, body="b", author="a")
+    _warn_on_dropped_annotations(
+        Console(stderr=True),
+        _report(total=7, applied_notes=2, shadowed_notes=[note] * 5),
     )
-    _warn_on_unplaced_annotations(console, result)
 
     err = capsys.readouterr().err
-    # Out of the comments attempted (5 missed + 2 placed), not out of 7 patches.
+    # Out of the comments attempted (5 dropped + 2 placed), not out of 7.
     assert "5 of 7 comment" in err
-    # The reader must be told the findings are not lost, only unanchored.
+    # The reader must be told the findings are not lost, only unplaced.
     assert "still listed in the review report" in err
 
 
-def test_dropped_edits_are_not_reported_as_merely_unanchored(capsys) -> None:
+def test_dropped_edits_are_not_reported_as_merely_unplaced(capsys) -> None:
     """A dropped edit is data loss and must not get the comment reassurance.
 
     Comments carry findings, and every finding is also in the prepended report,
@@ -472,38 +467,38 @@ def test_dropped_edits_are_not_reported_as_merely_unanchored(capsys) -> None:
     edit vanishes. The single "all findings are still listed" line used to
     cover both, telling the author nothing was lost when a rewrite was.
     """
-    from types import SimpleNamespace
-
     from rich.console import Console
 
-    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+    from andamentum.whetstone.cli import _warn_on_dropped_annotations
+    from andamentum.whetstone.docx.annotate import Rewrite
 
-    result = SimpleNamespace(
-        total_patches=4,
-        failed_patches=[_failed("text_edit", "the results show a large effect")],
-        applied_comments=0,
-        conflict_failures=1,
+    rewrite = Rewrite(
+        start=0,
+        end=31,
+        new_text="…",
+        author="a",
+        label="the results show a large effect",
     )
-    _warn_on_unplaced_annotations(Console(stderr=True), result)
+    _warn_on_dropped_annotations(
+        Console(stderr=True), _report(total=4, conflicted_rewrites=[rewrite])
+    )
 
     err = capsys.readouterr().err
     assert "NOT applied" in err
-    assert "overlapping" in err
-    # The pattern is named so the author can find what went missing.
+    assert "overlaps an edit already accepted" in err
+    # The edit is named so the author can find what went missing.
     assert "the results show" in err
     # And the comment-only reassurance must NOT appear.
     assert "still listed in the review report" not in err
 
 
-def test_fully_anchored_run_prints_no_annotation_warning(capsys) -> None:
+def test_fully_placed_run_prints_no_annotation_warning(capsys) -> None:
     """No noise when every annotation landed."""
-    from types import SimpleNamespace
-
     from rich.console import Console
 
-    from andamentum.whetstone.cli import _warn_on_unplaced_annotations
+    from andamentum.whetstone.cli import _warn_on_dropped_annotations
 
-    _warn_on_unplaced_annotations(
-        Console(stderr=True), SimpleNamespace(total_patches=7, failed_patches=[])
+    _warn_on_dropped_annotations(
+        Console(stderr=True), _report(total=7, applied_rewrites=4, applied_notes=3)
     )
     assert capsys.readouterr().err == ""

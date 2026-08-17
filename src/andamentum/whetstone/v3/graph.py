@@ -13,6 +13,7 @@ at the node level. Entry point: `run_review_v3(markdown, *, model=…)`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
@@ -36,6 +37,9 @@ from .novelty import (
 from .review import Finding, run_criteria, verify_findings
 from .sectionize import sectionize
 from .synth import StructuredReview, critique_and_revise, synthesise, to_review_result
+
+if TYPE_CHECKING:
+    from ..reviewed_document import ReviewedDocument
 
 
 @dataclass(frozen=True)
@@ -78,8 +82,18 @@ class V3State:
 
 @dataclass
 class Sectionize(BaseNode[V3State, V3Deps, ReviewResult]):
+    """Split the source into reviewable units — unless it arrived split.
+
+    A Word document says which paragraphs are headings in their style, and
+    :func:`~andamentum.whetstone.reviewed_document.open_source` has already
+    used that. Re-deriving the sections here would fall back to looking for
+    ``#`` lines in text that has none, and collapse the whole manuscript into
+    one unit.
+    """
+
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "ExtractClaims":
-        ctx.state.sections = sectionize(ctx.state.source)
+        if not ctx.state.sections:
+            ctx.state.sections = sectionize(ctx.state.source)
         return ExtractClaims()
 
 
@@ -314,6 +328,8 @@ async def run_review_v3(
     *,
     model: str,
     cap: int = 2,
+    sections: list[Section] | None = None,
+    confidentiality_text: str | None = None,
     document_type: str = "auto",
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,
@@ -346,6 +362,17 @@ async def run_review_v3(
     ways to supply the active set and choosing between them must be
     explicit.
 
+    ``sections`` lets a caller that already knows the document's structure
+    supply it. A Word document declares its headings in their paragraph
+    styles, which the ``#``-line sectioniser cannot see, so
+    :func:`~andamentum.whetstone.reviewed_document.open_source` resolves them
+    and passes them in. Omitted, the sections are derived from *markdown*.
+
+    ``confidentiality_text`` is what the marker scan reads, when that is more
+    than the reviewed text. A Word document's running headers and footnotes
+    are outside the body projection, and a "CONFIDENTIAL" stamp usually lives
+    in a header.
+
     Refuses to run on text containing confidentiality markers
     (``"Manuscript ID:"``, ``"Reviewer Instructions"``, etc.) — the
     safety gate that protects against accidentally using whetstone on
@@ -364,7 +391,9 @@ async def run_review_v3(
     if not confirm_own_draft:
         from .._confidentiality import check_confidentiality
 
-        check_confidentiality(markdown)
+        check_confidentiality(
+            markdown if confidentiality_text is None else confidentiality_text
+        )
 
     # Per-run metric counters live in a contextvar; helpers throughout
     # v3 bump them after each agent.run(). Read at Finalize time.
@@ -388,7 +417,7 @@ async def run_review_v3(
 
             # sectionize is deterministic; calling it here AND inside
             # the graph's first node is cheap (no LLM).
-            titles = [s.title for s in sectionize(markdown)]
+            titles = [s.title for s in (sections or sectionize(markdown))]
             document_type = await classify(
                 model=model, section_titles=titles, markdown=markdown
             )
@@ -410,66 +439,12 @@ async def run_review_v3(
         novelty_target_cap=novelty_target_cap,
         novelty_search_depth=novelty_search_depth,
     )
-    state = V3State(source=markdown)
+    state = V3State(source=markdown, sections=list(sections or []))
     return await review_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
 
 
-_PATH_EXTENSIONS: frozenset[str] = frozenset(
-    {".md", ".markdown", ".txt", ".html", ".htm", ".pdf", ".docx", ".pptx", ".tex"}
-)
-
-
-def _looks_like_filesystem_path(source: str) -> bool:
-    """Heuristic: does this string look like a file path the caller meant
-    us to read from disk? Used to distinguish a path that doesn't exist
-    (loud-fail) from raw markdown content the caller passed directly.
-
-    True if the string is short, single-line, and starts with a path
-    prefix OR ends with a recognised file extension. Conservatively
-    biased: a string that clearly looks like a content blob (multi-line,
-    long, no slashes) is not treated as a path attempt.
-    """
-    if not source or "\n" in source:
-        return False
-    if source.startswith(("/", "./", "../", "~/")):
-        return True
-    if len(source) > 500:
-        return False
-    # Heuristic: a single-segment-ish string ending in a recognised
-    # extension (e.g. "draft.md") was almost certainly meant as a file.
-    from pathlib import Path as _P
-
-    return _P(source).suffix.lower() in _PATH_EXTENSIONS
-
-
-async def _harvest_or_treat_as_markdown(source: str) -> str:
-    """Resolve ``source`` to markdown content. If it points to an existing
-    file, harvest it. If it looks like a file path but doesn't exist,
-    raise FileNotFoundError loudly — silently treating a missing path as
-    raw markdown content (the v3 bug fixed in 2026-05-26) made the LLM
-    review the string ``"/tmp/missing.md"`` as if it were the manuscript.
-    Only fall back to "treat source as raw markdown" when the string
-    clearly is not a path attempt."""
-    from pathlib import Path
-
-    from andamentum.harvest import extract
-
-    p = Path(source)
-    if p.exists():
-        return await extract(p)
-    if _looks_like_filesystem_path(source):
-        raise FileNotFoundError(
-            f"input file not found: {source!r}. The string looks like a "
-            "path attempt (starts with /, ./, ../, ~/, or ends in a "
-            "recognised extension like .md / .docx / .pdf). To pass raw "
-            "markdown content directly, include newlines or omit the "
-            "file extension; otherwise check the path."
-        )
-    return source
-
-
 async def review_document_v3(
-    source: str,
+    source: str | ReviewedDocument,
     *,
     model: str,
     cap: int = 2,
@@ -483,26 +458,43 @@ async def review_document_v3(
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
 ) -> ReviewResult:
-    """v3 entry from a source path/URL: harvest → markdown → review.
+    """v3 entry from a source path / URL / markdown blob, or an open document.
 
-    Opt-in alongside the v2 `review_document`; v2 remains the default
-    until v3 is validated. Raw markdown can be passed directly to
-    `run_review_v3`. See :func:`run_review_v3` for argument semantics
-    (criterion-set resolution precedence, confidentiality gate,
-    classifier behaviour).
+    *source* is resolved by
+    :func:`~andamentum.whetstone.reviewed_document.open_source`, which returns
+    the text to review together with the ``.docx`` those offsets address. A
+    caller that also wants to RENDER a ``.docx`` — the CLI — opens the document
+    itself and passes it here, so one resolution serves both and the annotated
+    file is provably the one that was reviewed. A caller that just wants the
+    ``ReviewResult`` passes the string and this function cleans up after
+    itself.
+
+    See :func:`run_review_v3` for argument semantics (criterion-set resolution
+    precedence, confidentiality gate, classifier behaviour).
     """
-    md = await _harvest_or_treat_as_markdown(source)
-    return await run_review_v3(
-        md,
-        model=model,
-        cap=cap,
-        document_type=document_type,
-        confirm_own_draft=confirm_own_draft,
-        criteria=criteria,
-        guidelines_text=guidelines_text,
-        editor=editor,
-        editor_criteria=editor_criteria,
-        check_novelty=check_novelty,
-        novelty_target_cap=novelty_target_cap,
-        novelty_search_depth=novelty_search_depth,
-    )
+    from ..reviewed_document import ReviewedDocument as _Opened
+    from ..reviewed_document import open_source
+
+    owned = not isinstance(source, _Opened)
+    document = await open_source(source) if owned else source
+    assert isinstance(document, _Opened)
+    try:
+        return await run_review_v3(
+            document.text,
+            model=model,
+            cap=cap,
+            sections=document.sections,
+            confidentiality_text=document.confidentiality_text,
+            document_type=document_type,
+            confirm_own_draft=confirm_own_draft,
+            criteria=criteria,
+            guidelines_text=guidelines_text,
+            editor=editor,
+            editor_criteria=editor_criteria,
+            check_novelty=check_novelty,
+            novelty_target_cap=novelty_target_cap,
+            novelty_search_depth=novelty_search_depth,
+        )
+    finally:
+        if owned:
+            document.cleanup()

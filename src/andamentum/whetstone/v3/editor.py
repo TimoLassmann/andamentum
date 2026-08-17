@@ -167,7 +167,7 @@ class EditorOutput(BaseModel):
 async def _run_editor_on_section(
     section: Section, criteria: list[str], *, agent_model: str
 ) -> list[Edit]:
-    """One LLM call → list[Edit] with section-local char offsets. Drops any
+    """One LLM call → list[Edit] with DOCUMENT char offsets. Drops any
     EditProposal whose original_text can't be located in section.text."""
     defn = AgentDefinition(
         name="v3_editor",
@@ -208,6 +208,12 @@ async def _run_editor_on_section(
             )
             continue
         start, end = span
+        # The agent read one section, so `locate` answers in section
+        # coordinates; `Edit` records document coordinates, because that is
+        # what the docx renderer hands to the surgery layer as a span. The
+        # section's own offset is the whole conversion — and doing it here,
+        # once, is why a phrase that occurs in three sections still lands in
+        # the one the editor was reading.
         edits.append(
             Edit(
                 title=prop.title or "(untitled edit)",
@@ -215,8 +221,8 @@ async def _run_editor_on_section(
                 confidence=prop.confidence,
                 rationale=prop.rationale,
                 section_id=section.id,
-                char_start=start,
-                char_end=end,
+                char_start=section.start + start,
+                char_end=section.start + end,
                 original_text=section.text[start:end],
                 new_text=prop.new_text,
             )

@@ -17,6 +17,7 @@ from andamentum.whetstone import (
     ReviewMetrics,
     ReviewResult,
     SectionCard,
+    ReviewedDocument,
     render_html,
     render_markdown,
 )
@@ -187,36 +188,45 @@ def test_html_clean_document_emits_success_callout():
     assert "looks clean" in html.lower()
 
 
-# ── DOCX adapter (v2 → v1 DocumentPatch) ───────────────────────────────
+# ── DOCX adapter (review → resolved annotations) ───────────────────────
 
 
-def test_docx_adapter_converts_edits_to_text_edit_patches():
-    from andamentum.whetstone.models import DocumentPatch
-    from andamentum.whetstone.renderers.docx import _to_document_patches
+def _reviewed(text: str = "x" * 4000) -> ReviewedDocument:
+    """A stand-in for the opened document, for tests that mock the writer.
 
-    patches = _to_document_patches(_sample_result(), DocumentPatch)
-    text_edits = [p for p in patches if p.patch_type == "text_edit"]
-    assert len(text_edits) == 1
-    assert (
-        text_edits[0].text_pattern
-        == "It is generally the case that approaches to this problem have been varied"
+    ``docx_path`` is never opened: ``finalize_annotated_document`` is replaced,
+    so nothing reads the file. What the renderer uses is ``text`` — the
+    coordinate system every offset is an address in.
+    """
+    return ReviewedDocument(
+        text=text, sections=[], docx_path=Path("fake.docx"), docx_is_temp=False
     )
-    assert text_edits[0].new_text == "Approaches to this problem vary widely"
-    assert "wordier" in text_edits[0].explanation.lower()
 
 
-def test_docx_adapter_converts_findings_with_quotes_to_comments():
-    from andamentum.whetstone.models import DocumentPatch
-    from andamentum.whetstone.renderers.docx import _to_document_patches
+def test_docx_adapter_carries_an_edit_span_straight_through():
+    """The offsets ARE the address — nothing is searched for, so nothing that
+    a converter might have re-rendered can go missing."""
+    from andamentum.whetstone.renderers.docx import _to_annotations
 
-    patches = _to_document_patches(_sample_result(), DocumentPatch)
-    comments = [p for p in patches if p.patch_type == "comment"]
+    rewrites, _ = _to_annotations(_sample_result(), author="t")
+    assert len(rewrites) == 1
+    edit = _sample_result().edits[0]
+    assert (rewrites[0].start, rewrites[0].end) == (edit.char_start, edit.char_end)
+    assert rewrites[0].new_text == "Approaches to this problem vary widely"
+    assert rewrites[0].label == "Tighten opening sentence"
+
+
+def test_docx_adapter_converts_findings_with_quotes_to_notes():
+    from andamentum.whetstone.renderers.docx import _to_annotations
+
+    _, notes = _to_annotations(_sample_result(), author="t")
     # Two findings have quotes (one LLM, one deterministic). The other LLM
     # finding has no quotes → must be skipped (no anchor).
-    assert len(comments) == 2
-    titles_in_comments = " ".join(p.comment_text for p in comments)
-    assert "Unsupported claim" in titles_in_comments
-    assert "[42]" in titles_in_comments
+    assert len(notes) == 2
+    bodies = " ".join(n.body for n in notes)
+    assert "Unsupported claim" in bodies
+    assert "[42] is cited 3 times" in bodies
+    assert [(n.start, n.end) for n in notes] == [(10, 40), (100, 104)]
 
 
 def _unanchored_result() -> ReviewResult:
@@ -235,17 +245,15 @@ def _unanchored_result() -> ReviewResult:
     )
 
 
-def test_docx_adapter_emits_no_patch_for_findings_without_quotes():
-    """A finding without quotes can't be anchored to a Word comment.
+def test_docx_adapter_emits_no_note_for_findings_without_quotes():
+    """A finding without quotes has nowhere in the margin to go.
 
     It is not lost — render_docx routes it into the prepended report
     instead (see test_docx_unanchored_findings_go_into_the_report).
     """
-    from andamentum.whetstone.models import DocumentPatch
-    from andamentum.whetstone.renderers.docx import _to_document_patches
+    from andamentum.whetstone.renderers.docx import _to_annotations
 
-    patches = _to_document_patches(_unanchored_result(), DocumentPatch)
-    assert patches == []
+    assert _to_annotations(_unanchored_result(), author="t") == ([], [])
 
 
 def test_docx_unanchored_findings_go_into_the_report():
@@ -256,17 +264,17 @@ def test_docx_unanchored_findings_go_into_the_report():
 
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             _unanchored_result(),
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 
@@ -291,17 +299,17 @@ def test_docx_every_finding_reaches_the_report_body():
 
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             _sample_result(),
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 
@@ -317,8 +325,7 @@ def test_docx_every_finding_reaches_the_report_body():
 
 def test_docx_corroboration_named_in_comment_body():
     """A single co-detector is enough — checklist records one probe id."""
-    from andamentum.whetstone.models import DocumentPatch
-    from andamentum.whetstone.renderers.docx import _to_document_patches
+    from andamentum.whetstone.renderers.docx import _to_annotations
 
     result = ReviewResult(
         findings=[
@@ -341,13 +348,9 @@ def test_docx_corroboration_named_in_comment_body():
             ),
         ],
     )
-    comments = [
-        p
-        for p in _to_document_patches(result, DocumentPatch)
-        if p.patch_type == "comment"
-    ]
-    assert len(comments) == 1
-    assert "Independently raised by: unsupported_claim." in comments[0].comment_text
+    _, notes = _to_annotations(result, author="t")
+    assert len(notes) == 1
+    assert "Independently raised by: unsupported_claim." in notes[0].body
 
 
 def test_markdown_and_html_name_corroborating_producers():
@@ -370,12 +373,27 @@ def test_markdown_and_html_name_corroborating_producers():
     assert "Independently raised by: unsupported_claim." in render_html(result)
 
 
-def test_docx_confidence_levels_map_to_floats():
-    """v2 uses low/medium/high; v1's DocumentPatch wants a 0..1 float."""
-    from andamentum.whetstone.renderers.docx import _confidence_to_float
+def test_docx_adapter_skips_a_zero_width_quote():
+    """A malformed span is not an address, but it must not sink the render.
 
-    assert 0.0 < _confidence_to_float("low") < _confidence_to_float("medium")
-    assert _confidence_to_float("medium") < _confidence_to_float("high") <= 1.0
+    Refusing the whole document over one bad finding would lose the other
+    forty; the docx layer's loud refusal is reserved for the case that says
+    the WHOLE coordinate system is wrong (a document that is not the one that
+    was reviewed)."""
+    from andamentum.whetstone.renderers.docx import _to_annotations
+
+    result = ReviewResult(
+        findings=[
+            Finding(
+                title="Empty span",
+                severity="minor",
+                confidence="low",
+                rationale="nothing to point at",
+                quotes=[Quote(section_id="s1", char_start=7, char_end=7, text="")],
+            )
+        ]
+    )
+    assert _to_annotations(result, author="t") == ([], [])
 
 
 def test_docx_strips_duplicate_executive_summary_heading():
@@ -474,18 +492,18 @@ def test_docx_panel_synthesis_in_review_summary():
 
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
-        # Return shape matches finalize_reviewed_document (path, result)
+        # Return shape matches finalize_annotated_document (path, report)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             _panel_result(),
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 
@@ -511,17 +529,17 @@ def test_docx_panel_passes_expert_payload_through():
 
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             _panel_result(),
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 
@@ -545,17 +563,17 @@ def test_docx_review_mode_omits_panel_payload():
 
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             _sample_result(),
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 
@@ -570,9 +588,8 @@ def test_docx_novelty_findings_routed_to_dedicated_field():
     anchored comments — they have no quotes to anchor to."""
     from unittest import mock
 
-    from andamentum.whetstone.models import DocumentPatch
     from andamentum.whetstone.renderers import docx as docx_mod
-    from andamentum.whetstone.renderers.docx import _to_document_patches
+    from andamentum.whetstone.renderers.docx import _to_annotations
 
     novelty_finding = Finding(
         title="Novelty claim contradicted by prior work",
@@ -587,23 +604,22 @@ def test_docx_novelty_findings_routed_to_dedicated_field():
     result = ReviewResult(findings=[novelty_finding])
 
     # Adapter must NOT emit a comment for the novelty finding
-    patches = _to_document_patches(result, DocumentPatch)
-    assert patches == []
+    assert _to_annotations(result, author="t") == ([], [])
 
     # render_docx should pass it through novelty_findings instead
     captured: dict = {}
 
-    def fake_finalize(**kwargs):
+    def fake_finalize(_path, **kwargs):
         captured.update(kwargs)
         return ("fake/output.docx", object())
 
     with mock.patch(
-        "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+        "andamentum.whetstone.docx.finalization.finalize_annotated_document",
         fake_finalize,
     ):
         docx_mod.render_docx(
             result,
-            source_docx_path="fake.docx",
+            document=_reviewed(),
             output_path="out.docx",
         )
 

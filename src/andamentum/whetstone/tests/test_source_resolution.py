@@ -1,4 +1,4 @@
-"""Source resolution for run_review_v3 / run_panel_v3.
+"""Source resolution for the review entry points.
 
 The legacy v3 behaviour was: if ``Path(source).exists()`` was False,
 silently treat ``source`` as raw markdown content. That bit users on
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from andamentum.whetstone.v3.graph import (
+from andamentum.whetstone.reviewed_document import (
     _harvest_or_treat_as_markdown,
     _looks_like_filesystem_path,
 )

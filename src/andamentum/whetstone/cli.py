@@ -82,9 +82,10 @@ INPUT is a path or URL to a document. Supported: .pdf, .docx, .html,
 --out FILE one or more times; format is inferred from the extension
 (.md / .html / .docx).
 
-For .docx output, if INPUT is already .docx whetstone uses it as the
-track-changes baseline; otherwise it harvests INPUT to markdown and
-generates a clean baseline .docx to patch.
+Whetstone reviews the text of the document it annotates. A .docx INPUT
+is read directly; anything else is harvested to markdown and written out
+as a clean baseline .docx FIRST, and the review then reads that file.
+Either way a quote's offsets are already an address in the output.
 """
 
 
@@ -501,7 +502,7 @@ def _reject_review_only_flags(args: argparse.Namespace) -> None:
 def _validate_apply_patches_args(args: argparse.Namespace) -> None:
     """Validate the patch-only path. ``--apply-patches`` is set."""
     input_path = Path(args.input)
-    if _is_url(args.input) or not input_path.exists():
+    if not input_path.exists():
         _die(
             1,
             "--apply-patches requires INPUT to be a local .docx file "
@@ -577,19 +578,10 @@ def _parse_criteria(values: list[str]) -> list[str]:
 
 
 async def _run(args: argparse.Namespace, console: Console) -> None:
-    """Execute the review and write all requested outputs."""
-    from .renderers import render_docx, render_html, render_markdown
-    from .v3 import Criterion, review_document_v3
-    from .v3.checklist import checklist_document_v3
-    from .v3.panel import run_panel_v3
-
+    """Resolve the input once, then review it and write every output."""
     editor_criteria = tuple(
         c.strip() for c in args.editor_criteria.split(",") if c.strip()
     )
-    panel_disciplines = tuple(
-        d.strip() for d in args.panel_disciplines.split(",") if d.strip()
-    )
-    guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
 
     # Always-on one-line scope banner — short, unmissable, not gated on
     # --verbose. Goes to stderr so it doesn't pollute piped output.
@@ -599,9 +591,50 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         file=sys.stderr,
     )
 
-    logger = logging.getLogger(_LOGGER_NAME)
     if args.verbose:
         _log_run_config(console, args, editor_criteria)
+
+    # ONE resolution of the input, before any mode runs and whatever the
+    # requested outputs are. It yields the text to review together with the
+    # .docx that text is the projection of, so the annotated file is provably
+    # the file that was reviewed. The two harvests this replaces could
+    # genuinely disagree: for an ambiguous HTML page harvest races two
+    # extractors and keeps the better-scoring output.
+    from .reviewed_document import open_source
+
+    try:
+        document = await open_source(args.input)
+    except Exception as exc:
+        _die(2, f"could not load input {args.input!r}: {exc}")
+    for warning in document.warnings:
+        console.print(f"[yellow]note:[/yellow] {warning}")
+
+    # A non-.docx source left a generated baseline on disk, and it is this
+    # function's to remove — including when the review crashes, which is when
+    # the file is least likely to be noticed.
+    try:
+        await _review_and_write(args, console, document)
+    finally:
+        document.cleanup()
+
+
+async def _review_and_write(
+    args: argparse.Namespace, console: Console, document
+) -> None:
+    """Run the requested pipeline over *document* and write every output."""
+    from .renderers import render_docx, render_html, render_markdown
+    from .v3 import Criterion, review_document_v3
+    from .v3.checklist import checklist_document_v3
+    from .v3.panel import run_panel_v3
+
+    logger = logging.getLogger(_LOGGER_NAME)
+    editor_criteria = tuple(
+        c.strip() for c in args.editor_criteria.split(",") if c.strip()
+    )
+    panel_disciplines = tuple(
+        d.strip() for d in args.panel_disciplines.split(",") if d.strip()
+    )
+    guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
 
     try:
         _t0 = time.perf_counter()
@@ -609,13 +642,12 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             # Panel mode runs its own graph (different shape — multi-
             # expert fan-out + synthesis); criterion-cascade kwargs do
             # not apply.
-            from .v3.graph import _harvest_or_treat_as_markdown
-
-            md = await _harvest_or_treat_as_markdown(args.input)
             result = await run_panel_v3(
-                md,
+                document.text,
                 model=args.model,
                 n_experts=args.n_experts,
+                sections=document.sections,
+                confidentiality_text=document.confidentiality_text,
                 panel_disciplines=list(panel_disciplines) or None,
                 # The panel subcommand already required --i-am-the-author
                 # (gated above) — that affirmation is what disarms the
@@ -633,7 +665,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             # authorship affirmation, because checklist output is a defect
             # table rather than a simulated peer-review report.
             result = await checklist_document_v3(
-                args.input,
+                document,
                 model=args.model,
                 document_type=args.document_type,
                 confirm_own_draft=args.confirm_own_draft,
@@ -650,7 +682,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
                 v3_guidelines = guidelines_text
 
             result = await review_document_v3(
-                args.input,
+                document,
                 model=args.model,
                 cap=args.rounds,
                 document_type=args.document_type,
@@ -680,54 +712,37 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
         else:
             _die(3, f"review pipeline failed: {exc}")
 
-    # If any output is .docx, prepare a baseline .docx ONCE upfront
-    # (rather than per-output) so we don't re-harvest if the user asked
-    # for multiple .docx outputs.
-    baseline_docx: Path | None = None
-    baseline_is_temp = False
-    if any(o.suffix.lower() == ".docx" for o in args.out):
-        baseline_docx, baseline_is_temp = await _ensure_docx_source(args.input)
-
     written: list[Path] = []
-    try:
-        # ── Write each requested output ──────────────────────────────
-        for out in args.out:
-            ext = out.suffix.lower()
-            out.parent.mkdir(parents=True, exist_ok=True)
-            model_id = args.model
-            if ext == ".md":
-                render_markdown(
-                    result,
-                    out,
-                    model=model_id,
-                    visible_watermark=args.visible_watermark,
-                )
-            elif ext == ".html":
-                render_html(
-                    result,
-                    out,
-                    model=model_id,
-                    visible_watermark=args.visible_watermark,
-                )
-            elif ext == ".docx":
-                assert baseline_docx is not None  # validated above
-                patch_result = render_docx(
-                    result,
-                    source_docx_path=baseline_docx,
-                    output_path=out,
-                    model=model_id,
-                    visible_watermark=args.visible_watermark,
-                )
-                _warn_on_unplaced_annotations(console, patch_result)
-            written.append(out)
-            logger.info("[output] wrote %s", out)
-    finally:
-        # Clean up the auto-generated baseline docx (if we created one).
-        if baseline_is_temp and baseline_docx is not None:
-            try:
-                baseline_docx.unlink()
-            except OSError:
-                pass
+    # ── Write each requested output ──────────────────────────────
+    for out in args.out:
+        ext = out.suffix.lower()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        model_id = args.model
+        if ext == ".md":
+            render_markdown(
+                result,
+                out,
+                model=model_id,
+                visible_watermark=args.visible_watermark,
+            )
+        elif ext == ".html":
+            render_html(
+                result,
+                out,
+                model=model_id,
+                visible_watermark=args.visible_watermark,
+            )
+        elif ext == ".docx":
+            report = render_docx(
+                result,
+                document=document,
+                output_path=out,
+                model=model_id,
+                visible_watermark=args.visible_watermark,
+            )
+            _warn_on_dropped_annotations(console, report)
+        written.append(out)
+        logger.info("[output] wrote %s", out)
 
     _print_summary(console, result, written)
 
@@ -799,66 +814,6 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
         table.add_row("gap-loop rounds:", str(m.reflection_rounds_used))
     table.add_row("outputs:", "\n".join(str(p) for p in written))
     console.print(Panel(table, title="review complete", border_style="green"))
-
-
-async def _ensure_docx_source(input_arg: str) -> tuple[Path, bool]:
-    """Return ``(path, is_temp)`` for a .docx suitable as track-changes baseline.
-
-    If the input is already a local .docx, return its Path with
-    ``is_temp=False``. Otherwise harvest the input into markdown and
-    write a clean baseline .docx via python-docx; return that path with
-    ``is_temp=True`` so the caller knows to clean it up.
-    """
-    input_path = Path(input_arg) if not _is_url(input_arg) else None
-    if input_path is not None and input_path.suffix.lower() == ".docx":
-        return input_path, False
-
-    logger = logging.getLogger(_LOGGER_NAME)
-    logger.info("[baseline] input is not .docx — generating from harvested text")
-
-    from andamentum.harvest import extract as harvest_extract
-
-    markdown = await harvest_extract(input_arg)
-    return _markdown_to_baseline_docx(markdown), True
-
-
-def _is_url(s: str) -> bool:
-    return s.startswith(("http://", "https://", "file://"))
-
-
-def _markdown_to_baseline_docx(markdown: str) -> Path:
-    """Generate a clean baseline .docx from markdown text.
-
-    The output is intentionally minimal — just headings and paragraphs —
-    because the goal is to give the track-changes machinery something to
-    write into. Anchor matching against this plain prose works because
-    ``find_anchor`` is whitespace-tolerant.
-    """
-    import tempfile
-
-    from docx import Document  # python-docx
-
-    doc = Document()
-    for block in markdown.split("\n\n"):
-        block = block.strip()
-        if not block:
-            continue
-        if block.startswith("#"):
-            level = 0
-            while level < 9 and level < len(block) and block[level] == "#":
-                level += 1
-            title = block[level:].strip()
-            doc.add_heading(title, level=min(level, 9))
-        else:
-            doc.add_paragraph(block)
-
-    fd, path = tempfile.mkstemp(suffix=".docx", prefix="whetstone-baseline-")
-    import os
-
-    os.close(fd)
-    out = Path(path)
-    doc.save(str(out))
-    return out
 
 
 # ── Subcommand front-end (Phase F) ──────────────────────────────────────────
@@ -1134,50 +1089,44 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
     _print_apply_patches_summary(console, patch_result, output_path)
 
 
-def _warn_on_unplaced_annotations(console: Console, result) -> None:
-    """Say what a .docx run failed to place, and whether it was lost.
+def _warn_on_dropped_annotations(console: Console, report) -> None:
+    """Say what a .docx run did not write, and whether it was lost.
 
-    ``render_docx`` returns the patch-application result and this used to be
-    discarded, which made a partial write indistinguishable from a clean one:
-    on a real manuscript, 7 findings produced 2 comments and the run reported
-    success.
+    The result used to be discarded, which made a partial write
+    indistinguishable from a clean one: on a real manuscript, 7 findings
+    produced 2 comments and the run reported success.
 
-    The two kinds of failure are reported apart because only one of them loses
-    anything. A comment carries a finding, and every finding is also listed in
-    the prepended report (``renderers.docx._findings_as_issues``), so an
-    unplaced comment is a thinner margin and nothing more. An edit exists only
-    as its tracked change: the report lists findings, never edits, so a dropped
-    edit leaves no trace at all. Reporting both under one "all findings are
-    still listed" line told the author nothing was lost when a rewrite was.
+    Both remaining failures are decisions rather than misses — "the quote
+    could not be found" is not a category any more. A comment is dropped when
+    a rewrite is about to consume the text it anchors to; a rewrite is dropped
+    when two of them want to change the same span. They are reported apart
+    because only one of them loses anything: every finding is also listed in
+    the prepended report, so an unplaced comment is a thinner margin and
+    nothing more, while an edit exists only as its tracked change.
     """
-    if result is None or not result.failed_patches:
+    if report is None:
         return
 
-    lost_edits = [p for p in result.failed_patches if p.patch_type == "text_edit"]
-    unplaced_comments = [p for p in result.failed_patches if p.patch_type == "comment"]
-    conflicts = getattr(result, "conflict_failures", 0)
-
-    if unplaced_comments:
-        # Denominator is the comments attempted, not every patch in the batch:
-        # "7 of 55" reads as a 13% miss rate when 7 of 12 comments missed.
-        attempted = len(unplaced_comments) + result.applied_comments
+    if report.shadowed_notes:
+        attempted = len(report.shadowed_notes) + report.applied_notes
         console.print(
-            f"[yellow]note:[/yellow] {len(unplaced_comments)} of {attempted} "
-            f"comment(s) could not be anchored in the text — their quotes have "
-            f"no exact match in the .docx. Those findings are still listed in "
-            f"the review report at the top of the document."
+            f"[yellow]note:[/yellow] {len(report.shadowed_notes)} of "
+            f"{attempted} comment(s) were not placed — a suggested rewrite "
+            f"covers the text they point at, and the tracked change says the "
+            f"same thing in place. Those findings are still listed in the "
+            f"review report at the top of the document."
         )
 
-    if lost_edits:
+    if report.conflicted_rewrites:
         console.print(
-            f"[yellow]warning:[/yellow] {len(lost_edits)} suggested edit(s) "
-            f"were NOT applied and appear nowhere in the .docx"
-            + (f" ({conflicts} dropped as overlapping)" if conflicts else "")
-            + ". Edits are not listed in the review report — use a markdown or "
-            "HTML output as well to see every proposed rewrite:"
+            f"[yellow]warning:[/yellow] {len(report.conflicted_rewrites)} "
+            f"suggested edit(s) were NOT applied and appear nowhere in the "
+            f".docx — each overlaps an edit already accepted over the same "
+            f"span. Edits are not listed in the review report — use a "
+            f"markdown or HTML output as well to see every proposed rewrite:"
         )
-        for patch in lost_edits:
-            console.print(f"  • {(patch.text_pattern or '')[:70]}")
+        for rewrite in report.conflicted_rewrites:
+            console.print(f"  • {(rewrite.label or rewrite.new_text)[:70]}")
 
 
 def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:

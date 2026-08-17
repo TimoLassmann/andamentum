@@ -1,5 +1,10 @@
 """Deterministic benchmark for .docx comment anchoring. No LLM, no network.
 
+Scope note: this measures the ``apply-patches`` path — locating a supplied text
+pattern in a Word file. The review path no longer searches for anything (see
+:mod:`andamentum.whetstone.docx.annotate`), so its placement rate is 100% by
+construction and a benchmark of it would only ever be measuring a bug.
+
 A finding's quote comes from harvested markdown; a Word comment has to be
 pinned back into the original .docx. Those are two different texts — the
 converter reshapes tables, drops characters Word stores as structure, and
@@ -266,9 +271,7 @@ def _paragraph_texts(docx_path: Path) -> list[str]:
     from andamentum.whetstone.docx.low_level import DocxEditor
 
     editor = DocxEditor(str(docx_path))
-    return [
-        projection(list(paragraph_atoms(p))) for p in editor.paragraph_elements
-    ]
+    return [projection(list(paragraph_atoms(p))) for p in editor.paragraph_elements]
 
 
 def _marker_free_atoms(paragraph_texts: list[str]) -> list:

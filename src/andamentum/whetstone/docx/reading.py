@@ -21,10 +21,19 @@ from typing import Any
 
 from lxml import etree  # type: ignore
 
-from .atoms import qn
+from .atoms import paragraph_atoms, projection, qn
 from .exceptions import ConversionError
 
 _PARAGRAPH_TAG = qn("p")
+
+# Parts that hold reader-visible text but are not the body. The reviewer never
+# sees them — every offset is an address in the body projection — but the
+# confidentiality tripwire has to, because "CONFIDENTIAL — FOR PEER REVIEW
+# ONLY" is most often a running header rather than a paragraph of the draft.
+_AUXILIARY_PART_PREFIXES: tuple[str, ...] = ("word/header", "word/footer")
+_AUXILIARY_PARTS: frozenset[str] = frozenset(
+    {"word/footnotes.xml", "word/endnotes.xml"}
+)
 
 _RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _RELATIONSHIP_TAG = f"{{{_RELS_NS}}}Relationship"
@@ -135,6 +144,40 @@ def read_docx(path: str | Path) -> DocxParts:
         raise ConversionError(f"{path}: not a readable .docx archive ({exc})") from exc
 
     return DocxParts(paragraphs=body_paragraphs(document_root), styles_root=styles_root)
+
+
+def auxiliary_text(path: str | Path) -> str:
+    """Reader-visible text OUTSIDE the body: headers, footers, notes.
+
+    Returned as one blob for scanning, not for reviewing — it carries no
+    offsets and nothing is ever anchored into it. The body projection is the
+    document as far as every coordinate in whetstone is concerned; this exists
+    so a marker Word keeps in a header cannot walk past the confidentiality
+    gate just because the gate now reads the body directly.
+
+    A part that will not parse is skipped rather than raised on: a malformed
+    header must not stop a review of a well-formed body.
+    """
+    blocks: list[str] = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for name in sorted(archive.namelist()):
+                if not (
+                    name.startswith(_AUXILIARY_PART_PREFIXES)
+                    or name in _AUXILIARY_PARTS
+                ):
+                    continue
+                try:
+                    root = etree.fromstring(archive.read(name))
+                except etree.XMLSyntaxError:
+                    continue
+                for paragraph in body_paragraphs(root):
+                    text = projection(list(paragraph_atoms(paragraph))).strip()
+                    if text:
+                        blocks.append(text)
+    except zipfile.BadZipFile as exc:
+        raise ConversionError(f"{path}: not a readable .docx archive ({exc})") from exc
+    return "\n".join(blocks)
 
 
 def _styles_part(

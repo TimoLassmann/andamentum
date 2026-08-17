@@ -31,12 +31,24 @@ _DEFAULT_PRIORITY_FROM_SEVERITY = {
 
 
 class Quote(BaseModel):
-    """A verbatim span of source text. Locatable via section_id + char range."""
+    """A located span of the reviewed document.
+
+    The offsets are the address. They index the text the reviewer read, which
+    for a Word source IS that document's own text (see
+    :mod:`andamentum.whetstone.reviewed_document`) — so the docx renderer hands
+    them straight to the surgery layer instead of searching for ``text``. That
+    search, over a converted rendering of the document, lost 15 of 43 rewrites
+    on one real manuscript.
+
+    ``text`` is a label for a human reader, not a locator: it is what the model
+    quoted, and the located slice may differ from it in case, whitespace or
+    markdown markers. When the two disagree, the offsets are right.
+    """
 
     section_id: str
-    char_start: int  # offset within the section (NOT the whole document)
+    char_start: int  # offset in the whole reviewed document
     char_end: int
-    text: str  # the verbatim text at [char_start, char_end)
+    text: str  # what was quoted; see the note above
 
 
 class Finding(BaseModel):
@@ -107,7 +119,7 @@ class Edit(BaseModel):
     confidence: Literal["low", "medium", "high"] = "medium"
     rationale: str  # 1-2 sentences explaining why
     section_id: str
-    char_start: int  # offset within the section (NOT the whole document)
+    char_start: int  # offset in the whole reviewed document — see Quote
     char_end: int
     original_text: str  # what's there now (verbatim)
     new_text: str  # what to replace it with

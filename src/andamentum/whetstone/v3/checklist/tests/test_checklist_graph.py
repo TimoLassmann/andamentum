@@ -24,6 +24,7 @@ from unittest.mock import patch
 import pytest
 
 from andamentum.whetstone.renderers import render_html, render_markdown
+from andamentum.whetstone.reviewed_document import ReviewedDocument
 from andamentum.whetstone.schemas import ReviewResult
 from andamentum.whetstone.v3.checklist.graph import run_checklist_v3
 from andamentum.whetstone.v3.checklist.probes import Probe
@@ -211,9 +212,7 @@ async def test_summary_is_byte_identical_across_two_identical_runs() -> None:
     assert first.summary == second.summary
 
 
-async def test_findings_carry_source_probe_category_and_section_relative_quotes() -> (
-    None
-):
+async def test_findings_carry_source_probe_category_and_document_quotes() -> None:
     """The offsets on a rendered quote are SECTION-relative.
 
     ``Span`` is document-relative and ``Quote`` is section-relative; mixing
@@ -237,10 +236,10 @@ async def test_findings_carry_source_probe_category_and_section_relative_quotes(
 
     section = next(s for s in sectionize(SRC) if s.id == quote.section_id)
     assert section.start > 0, "test would not discriminate on the first section"
-    # The offsets resolve, against the SECTION text, back to the quote.
-    assert section.text[quote.char_start : quote.char_end] == _RESULTS_CLAIM
-    # …and would not resolve against the whole document.
-    assert SRC[quote.char_start : quote.char_end] != _RESULTS_CLAIM
+    # The offsets are an address in the whole reviewed document — the
+    # coordinate system the docx renderer resolves a span in. Rebasing them
+    # onto the section is what made the renderer search for the quote instead.
+    assert SRC[quote.char_start : quote.char_end] == _RESULTS_CLAIM
 
 
 async def test_absence_finding_has_no_quote_and_a_self_sufficient_rationale() -> None:
@@ -352,6 +351,16 @@ async def test_a_crashed_probe_degrades_the_result_and_reads_not_run() -> None:
     assert [f.category for f in result.findings] == [PRESENCE_PROBE.id]
 
 
+def _reviewed(text: str, path: Path) -> ReviewedDocument:
+    """A stand-in for the opened document, for a test that mocks the writer.
+
+    ``docx_path`` is never opened here: ``finalize_annotated_document`` is
+    replaced, so nothing reads the file. What the renderer does use is
+    ``text``, which is the coordinate system the offsets are checked against.
+    """
+    return ReviewedDocument(text=text, sections=[], docx_path=path, docx_is_temp=False)
+
+
 # ── the renderers are unchanged ─────────────────────────────────────────────
 
 
@@ -377,14 +386,14 @@ async def test_all_three_renderers_accept_a_checklist_result(tmp_path: Path) -> 
 
     captured: dict[str, Any] = {}
 
-    def fake_finalize(**kwargs: Any) -> tuple[str, object]:
+    def fake_finalize(_path: Any, **kwargs: Any) -> tuple[str, object]:
         captured.update(kwargs)
         return (str(tmp_path / "out.docx"), object())
 
     with ExitStack() as stack:
         stack.enter_context(
             patch(
-                "andamentum.whetstone.docx.finalization.finalize_reviewed_document",
+                "andamentum.whetstone.docx.finalization.finalize_annotated_document",
                 fake_finalize,
             )
         )
@@ -393,15 +402,16 @@ async def test_all_three_renderers_accept_a_checklist_result(tmp_path: Path) -> 
         )
         docx_mod.render_docx(
             result,
-            source_docx_path=tmp_path / "source.docx",
+            document=_reviewed(SRC, tmp_path / "source.docx"),
             output_path=tmp_path / "out.docx",
         )
 
-    # The presence finding became an anchored comment patch; the absence
-    # finding has no anchor and so contributes none.
-    patches = captured["patches"]
-    assert len(patches) == 1
-    assert patches[0].text_pattern == _RESULTS_CLAIM
+    # The presence finding became an anchored comment; the absence finding has
+    # nowhere to point and so contributes none. The comment's span is the
+    # quote's own offsets — no pattern travels to the docx layer at all.
+    notes = captured["notes"]
+    assert len(notes) == 1
+    assert SRC[notes[0].start : notes[0].end] == _RESULTS_CLAIM
     assert "Checklist coverage" in captured["review_summary"]
     assert captured["issues_count"] == 2
 

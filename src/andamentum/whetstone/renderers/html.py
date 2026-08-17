@@ -188,7 +188,7 @@ def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
     ]
     for e in edits:
         details = (
-            f"_Original (in section {e.section_id}, chars {e.char_start}–{e.char_end}):_\n\n"
+            f"_Original ({e.section_id}, document chars {e.char_start}–{e.char_end}):_\n\n"
             f"`{e.original_text}`\n\n"
             f"_Proposed:_\n\n"
             f"`{e.new_text}`"

@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
@@ -73,6 +74,9 @@ from .corroborate import corroborate
 from .probes import Probe, ProbeFinding
 from .run_probes import run_probes
 from .verify import verify_probe_findings
+
+if TYPE_CHECKING:
+    from ...reviewed_document import ReviewedDocument
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -131,7 +135,10 @@ class Sectionize(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
     async def run(
         self, ctx: GraphRunContext[ChecklistState, ChecklistDeps]
     ) -> "ExtractClaims":
-        ctx.state.sections = sectionize(ctx.state.source)
+        # Already split when the source was a Word document: its headings live
+        # in paragraph styles, which the ``#``-line sectioniser cannot see.
+        if not ctx.state.sections:
+            ctx.state.sections = sectionize(ctx.state.source)
         _stage("sectionize", "%d section(s)", len(ctx.state.sections))
         return ExtractClaims()
 
@@ -300,6 +307,8 @@ async def run_checklist_v3(
     markdown: str,
     *,
     model: str,
+    sections: list[Section] | None = None,
+    confidentiality_text: str | None = None,
     document_type: str = "general",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
@@ -319,6 +328,15 @@ async def run_checklist_v3(
     model:
         pydantic-ai model id (e.g. "openai:gpt-5.4-nano",
         "ollama:gemma4:31b-nvfp4").
+    sections:
+        Pre-resolved sections, when the caller knows the document's structure.
+        A Word document declares its headings in their paragraph styles, which
+        the ``#``-line sectioniser cannot see; see
+        :func:`~andamentum.whetstone.reviewed_document.open_source`.
+    confidentiality_text:
+        What the marker scan reads, when that is more than the reviewed text —
+        a Word document's running headers and footnotes are outside the body
+        projection, and a "CONFIDENTIAL" stamp usually lives in a header.
     document_type:
         Selects the probe bank via :func:`~.bank.probe_bank_for`. Defaults to
         ``"general"`` — NOT to ``"auto"``, unlike review mode: the default path
@@ -341,7 +359,9 @@ async def run_checklist_v3(
     if not confirm_own_draft:
         from ..._confidentiality import check_confidentiality
 
-        check_confidentiality(markdown)
+        check_confidentiality(
+            markdown if confidentiality_text is None else confidentiality_text
+        )
 
     # Per-run metric counters live in a contextvar; run_probes bumps them
     # after each agent.run(). Read at BuildResult time.
@@ -357,7 +377,7 @@ async def run_checklist_v3(
 
             # sectionize is deterministic; calling it here AND inside the
             # graph's first node is cheap (no LLM).
-            titles = [s.title for s in sectionize(markdown)]
+            titles = [s.title for s in (sections or sectionize(markdown))]
             document_type = await classify(
                 model=model, section_titles=titles, markdown=markdown
             )
@@ -368,33 +388,42 @@ async def run_checklist_v3(
         active_probes = probe_bank_for(document_type)
 
     deps = ChecklistDeps(agent_model=model, probes=active_probes)
-    state = ChecklistState(source=markdown)
+    state = ChecklistState(source=markdown, sections=list(sections or []))
     return await checklist_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
 
 
 async def checklist_document_v3(
-    source: str,
+    source: "str | ReviewedDocument",
     *,
     model: str,
     document_type: str = "general",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
 ) -> ReviewResult:
-    """Checklist entry from a source path/URL: harvest → markdown → checklist.
+    """Checklist entry from a path / URL / markdown blob, or an open document.
 
     Thin wrapper over :func:`run_checklist_v3`; see it for argument semantics.
-    The harvest helpers are imported from the review graph rather than
-    reimplemented, so a path that loud-fails there loud-fails identically here
-    (a missing file must never be reviewed as if the path string were the
-    document).
+    Source resolution is
+    :func:`~andamentum.whetstone.reviewed_document.open_source`, shared with
+    review mode, so a ``.docx`` is sectionised by its own heading styles here
+    too and a missing path loud-fails identically.
     """
-    from ..graph import _harvest_or_treat_as_markdown
+    from ...reviewed_document import ReviewedDocument as _Opened
+    from ...reviewed_document import open_source
 
-    md = await _harvest_or_treat_as_markdown(source)
-    return await run_checklist_v3(
-        md,
-        model=model,
-        document_type=document_type,
-        probes=probes,
-        confirm_own_draft=confirm_own_draft,
-    )
+    owned = not isinstance(source, _Opened)
+    document = await open_source(source) if owned else source
+    assert isinstance(document, _Opened)
+    try:
+        return await run_checklist_v3(
+            document.text,
+            model=model,
+            sections=document.sections,
+            confidentiality_text=document.confidentiality_text,
+            document_type=document_type,
+            probes=probes,
+            confirm_own_draft=confirm_own_draft,
+        )
+    finally:
+        if owned:
+            document.cleanup()

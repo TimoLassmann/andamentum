@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Apply a batch of patches to a Word document.
+"""Apply a batch of patches to a Word document, located by their text.
+
+**This is the ``apply-patches`` path, and only that path.** Its input is a JSON
+list of text patterns from an outside agent that never saw the document's
+coordinates, so searching is the correct — and the only possible — answer here.
+The review pipeline no longer comes through: the reviewer reads the document's
+own projection, so its offsets are already addresses and
+:mod:`~andamentum.whetstone.docx.annotate` places them without a matcher. See
+that module for why (measured: 15 of 43 rewrites lost to this search when the
+quotes came from a converted rendering).
 
 Every patch — a rewrite or a comment — is located the same way: once, through
 :class:`~andamentum.whetstone.docx.textmap.TextMap`, against the one atom

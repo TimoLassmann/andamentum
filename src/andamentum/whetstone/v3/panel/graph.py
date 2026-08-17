@@ -94,7 +94,10 @@ class Sectionize(BaseNode[PanelState, PanelDeps, ReviewResult]):
     async def run(
         self, ctx: GraphRunContext[PanelState, PanelDeps]
     ) -> "ExtractKeywords":
-        ctx.state.sections = sectionize(ctx.state.source)
+        # Already split when the source was a Word document: its headings live
+        # in paragraph styles, which the ``#``-line sectioniser cannot see.
+        if not ctx.state.sections:
+            ctx.state.sections = sectionize(ctx.state.source)
         return ExtractKeywords()
 
 
@@ -255,6 +258,8 @@ async def run_panel_v3(
     *,
     model: str,
     n_experts: int = 4,
+    sections: list[Section] | None = None,
+    confidentiality_text: str | None = None,
     panel_disciplines: list[str] | None = None,
     confirm_own_draft: bool = False,
 ) -> ReviewResult:
@@ -275,6 +280,12 @@ async def run_panel_v3(
         Cap on parallel expert generations. Default 4. If
         `panel_disciplines` is supplied, this is the upper bound on
         how many disciplines from that list become experts.
+    sections:
+        Pre-resolved sections, when the caller knows the document's structure
+        (see :func:`~andamentum.whetstone.reviewed_document.open_source`).
+    confidentiality_text:
+        What the marker scan reads, when that is more than the reviewed text —
+        a Word document's running headers are outside the body projection.
     panel_disciplines:
         Optional explicit list of disciplines. When supplied, the
         keyword-extraction LLM call is skipped (saving one call) and
@@ -289,7 +300,9 @@ async def run_panel_v3(
     if not confirm_own_draft:
         from andamentum.whetstone._confidentiality import check_confidentiality
 
-        check_confidentiality(markdown)
+        check_confidentiality(
+            markdown if confidentiality_text is None else confidentiality_text
+        )
 
     # Per-run metric counters live in the shared v3 contextvar; the
     # panel workers bump them after each agent run. Read at End time.
@@ -302,5 +315,5 @@ async def run_panel_v3(
         n_experts=n_experts,
         panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
     )
-    state = PanelState(source=markdown)
+    state = PanelState(source=markdown, sections=list(sections or []))
     return await panel_graph_v3.run(state=state, deps=deps, inputs=Sectionize())

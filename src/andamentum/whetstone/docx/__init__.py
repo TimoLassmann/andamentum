@@ -7,9 +7,16 @@ The document has one text representation: the atom stream in :mod:`.atoms`.
 runs a resolved span covers.
 """
 
+from .annotate import (
+    AnnotationReport,
+    CoordinateError,
+    Note,
+    Rewrite,
+    apply_annotations,
+)
 from .atoms import Atom, AtomKind, document_atoms, paragraph_atoms, projection
 from .exceptions import FinalizationError
-from .finalization import finalize_reviewed_document
+from .finalization import finalize_annotated_document, finalize_reviewed_document
 from .headings import (
     DocxHeading,
     ParagraphSpan,
@@ -18,7 +25,13 @@ from .headings import (
     heading_level,
     paragraph_spans,
 )
-from .reading import DocxParts, body_paragraphs, main_document_part, read_docx
+from .reading import (
+    DocxParts,
+    auxiliary_text,
+    body_paragraphs,
+    main_document_part,
+    read_docx,
+)
 from .low_level import DocxEditor, ParagraphContext, ParagraphData, PlacedComment
 from .patch_editor import PatchDocxEditor
 from .surgery import Edit, EditReport, apply_edits, isolate_span, split_run_at
@@ -36,6 +49,13 @@ from .validator import PatchValidator
 from .xml_builder import XMLElementBuilder, XMLPatternMatcher
 
 __all__ = [
+    "AnnotationReport",
+    "CoordinateError",
+    "Note",
+    "Rewrite",
+    "apply_annotations",
+    "finalize_annotated_document",
+    "auxiliary_text",
     "Atom",
     "AtomKind",
     "AtomSpan",

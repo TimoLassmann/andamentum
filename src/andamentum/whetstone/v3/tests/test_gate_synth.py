@@ -48,7 +48,7 @@ def test_flatten_review_markdown() -> None:
     assert "## Weaknesses" in md and "- no baseline" in md
 
 
-def test_to_review_result_maps_quotes_to_section_relative_offsets() -> None:
+def test_to_review_result_keeps_quotes_in_document_coordinates() -> None:
     src = "0123456789ABCDEFGHIJ"
     model = DocumentModel(
         source=src,
@@ -58,8 +58,11 @@ def test_to_review_result_maps_quotes_to_section_relative_offsets() -> None:
     rr = to_review_result(model, [f], StructuredReview(synopsis="x"))
     assert len(rr.findings) == 1
     q = rr.findings[0].quotes[0]
-    # source-absolute (12,16) → section-relative (2,6) since section.start=10
-    assert (q.char_start, q.char_end) == (2, 6)
+    # The span is copied across, not rebased. Both are addresses in the whole
+    # reviewed document, which is what the docx renderer hands to the surgery
+    # layer; subtracting section.start=10 would place the annotation ten
+    # characters early.
+    assert (q.char_start, q.char_end) == (12, 16)
     assert q.section_id == "s1" and q.text == "2345"
     assert rr.findings[0].category == "evaluations"
     assert rr.summary.startswith("## Summary")

@@ -211,10 +211,15 @@ def test_comment_anchors_in_body_not_prepended_report(tmp_path: Path) -> None:
 
 
 def test_comment_text_not_duplicated(tmp_path: Path) -> None:
-    """The comment body must not contain a duplicated 'Note:' re-append of
-    its own text (the dedup fix)."""
-    from andamentum.whetstone.renderers.docx import _to_document_patches
-    from andamentum.whetstone.models import DocumentPatch as DP
+    """The comment body says each thing once.
+
+    The patch path carried the body twice — as ``comment_text`` and as
+    ``explanation`` — and the patch editor appended the second under a
+    "Note:" heading unless they were set equal. A ``Note`` has one body
+    field, so the duplication is not expressible; this pins that the body is
+    still the whole title + rationale.
+    """
+    from andamentum.whetstone.renderers.docx import _to_annotations
     from andamentum.whetstone.schemas import Finding, Quote, ReviewResult
 
     finding = Finding(
@@ -227,10 +232,7 @@ def test_comment_text_not_duplicated(tmp_path: Path) -> None:
         category="style:passive",
     )
     result = ReviewResult(summary="", findings=[], deterministic_findings=[finding])
-    patches = _to_document_patches(result, DP)
-    comment_patches = [p for p in patches if p.patch_type == "comment"]
-    assert len(comment_patches) == 1
-    p = comment_patches[0]
-    # explanation == comment_text → editor appends no "Note:" duplicate.
-    assert p.explanation == p.comment_text
-    assert p.comment_text.count("Detected passive-voice construction") == 1
+    _, notes = _to_annotations(result, author="t")
+    assert len(notes) == 1
+    assert notes[0].body.startswith("Passive voice")
+    assert notes[0].body.count("Detected passive-voice construction") == 1
