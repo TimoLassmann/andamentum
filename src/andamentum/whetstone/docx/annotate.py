@@ -295,16 +295,21 @@ def _split_at_boundaries(atoms: Sequence[Atom], notes: Sequence[Note]) -> None:
         if index >= len(atoms):
             continue
         atom = atoms[index]
-        if atom.kind is AtomKind.TEXT and atom.run is not None and atom.offset > 0:
-            split_run_at(atom.run, atom.offset)
+        if atom.kind is AtomKind.TEXT and atom.element is not None and atom.offset > 0:
+            split_run_at(atom.element, atom.offset)
 
 
 def _run_bounds(atoms: Sequence[Atom], start: int, end: int) -> tuple[Any, Any] | None:
-    """The first and last run the span ``[start, end)`` covers."""
-    covered = [atom for atom in atoms[start:end] if atom.run is not None]
+    """The first and last run the span ``[start, end)`` covers.
+
+    Read from the element, not from ``atom.run``. Splitting a boundary moves
+    text into a new run, so the run an atom was built with may no longer hold
+    that character — the element does, and it is never replaced.
+    """
+    covered = [atom for atom in atoms[start:end] if atom.element is not None]
     if not covered:
         return None
-    return covered[0].run, covered[-1].run
+    return covered[0].element.getparent(), covered[-1].element.getparent()
 
 
 def _slice(atoms: Sequence[Atom], start: int, end: int) -> str:

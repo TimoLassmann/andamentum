@@ -151,8 +151,14 @@ def _mark_paragraph_mark(p_elem: Any, kind: str, *, author: str, cid: int) -> No
     rpr = ppr.find(qn("rPr"))
     if rpr is None:
         rpr = etree.SubElement(ppr, qn("rPr"))
-    for existing in rpr.findall(qn(kind)):
-        rpr.remove(existing)
+
+    # A paragraph mark carries at most one revision of each kind, so a second
+    # proposal cannot be added alongside the first. Leave the first alone: it
+    # already says the mark is deleted (or inserted), so the outcome is the
+    # same, and overwriting it would restamp a co-author's revision with this
+    # author's name — the very thing this module exists to stop.
+    if rpr.find(qn(kind)) is not None:
+        return
     rpr.insert(0, _change(kind, author=author, cid=cid))
 
 
@@ -163,9 +169,13 @@ def _mark_paragraph_mark(p_elem: Any, kind: str, *, author: str, cid: int) -> No
 class _RunCuts:
     """Every change to make inside one run, in run-local character offsets."""
 
-    deletions: list[tuple[int, int]] = field(default_factory=list)
-    insertions: list[tuple[int, str]] = field(default_factory=list)
+    # Each cut carries the reviewer that asked for it. Holding one author per
+    # element was too coarse: two reviewers editing different words of the same
+    # ``<w:t>`` had the second one's change stamped with the first one's name.
+    deletions: list[tuple[int, int, str]] = field(default_factory=list)
+    insertions: list[tuple[int, str, str]] = field(default_factory=list)
     delete_whole_run: bool = False
+    whole_run_author: str = ""
     # Offsets that must end up as node boundaries even if nothing is cut there,
     # so a paragraph split has an element to sit after.
     split_points: set[int] = field(default_factory=set)
@@ -215,17 +225,17 @@ def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
 def _anchor_for_insertion(
     atoms: Sequence[Atom], index: int
 ) -> tuple[Any, int] | None:
-    """Where to put text inserted at atom *index*: ``(run, run-local offset)``.
+    """Where to put text inserted at atom *index*: ``(<w:t> element, offset)``.
 
     Prefers to append after the preceding character so the insertion inherits
     that run's formatting and sits inside the same paragraph.
     """
     previous = atoms[index - 1] if index > 0 else None
     if previous is not None and previous.kind is AtomKind.TEXT:
-        return previous.run, previous.offset + 1
+        return previous.element, previous.offset + 1
     following = atoms[index] if index < len(atoms) else None
     if following is not None and following.kind is AtomKind.TEXT:
-        return following.run, following.offset
+        return following.element, following.offset
     return None
 
 
@@ -246,10 +256,10 @@ def _compile(
     paragraph_marks: list[tuple[Any, str, str]] = []  # (p_elem, kind, author)
     splits: list[tuple[Any, int, list[str], str]] = []  # (run, offset, tails, author)
 
-    def cuts_for(run: Any) -> _RunCuts:
-        if run not in cuts:
-            cuts[run] = _RunCuts()
-        return cuts[run]
+    def cuts_for(element: Any) -> _RunCuts:
+        if element not in cuts:
+            cuts[element] = _RunCuts()
+        return cuts[element]
 
     for edit in edits:
         old = textmap.slice(edit.span)
@@ -259,10 +269,12 @@ def _compile(
                     if atom.kind is AtomKind.PARAGRAPH_BREAK:
                         paragraph_marks.append((atom.paragraph, "del", edit.author))
                     elif atom.kind is AtomKind.STRUCTURAL:
-                        cuts_for(atom.run).delete_whole_run = True
+                        structural = cuts_for(atom.element)
+                        structural.delete_whole_run = True
+                        structural.whole_run_author = edit.author
                     else:
-                        cuts_for(atom.run).deletions.append(
-                            (atom.offset, atom.offset + 1)
+                        cuts_for(atom.element).deletions.append(
+                            (atom.offset, atom.offset + 1, edit.author)
                         )
             if kind in ("insert", "replace") and inserted:
                 anchor = _anchor_for_insertion(atoms, edit.span.start + lo)
@@ -271,65 +283,124 @@ def _compile(
                         "[surgery] nowhere to attach inserted text %r", inserted[:40]
                     )
                     continue
-                run, offset = anchor
+                element, offset = anchor
                 head, *tails = inserted.split("\n")
                 if head:
-                    cuts_for(run).insertions.append((offset, head))
+                    cuts_for(element).insertions.append((offset, head, edit.author))
                 if tails:
                     # Each newline starts a paragraph. The anchor run has to be
                     # cut at this offset even when nothing else happens there,
                     # so the split has a node to sit after.
-                    cuts_for(run).split_points.add(offset)
-                    splits.append((run, offset, tails, edit.author))
+                    cuts_for(element).split_points.add(offset)
+                    splits.append((element, offset, tails, edit.author))
     return cuts, paragraph_marks, splits
 
 
-def _merge_ranges(ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Collapse adjacent and overlapping ranges so each becomes one mark."""
-    ordered = sorted(ranges)
-    merged: list[tuple[int, int]] = []
-    for low, high in ordered:
-        if merged and low <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], high))
+def _merge_ranges(
+    ranges: Iterable[tuple[int, int, str]],
+) -> list[tuple[int, int, str]]:
+    """Collapse adjacent and overlapping ranges so each becomes one mark.
+
+    Only ranges from the same reviewer merge. Two reviewers deleting adjacent
+    words are two revisions, and folding them into one would attribute both to
+    whichever came first.
+    """
+    merged: list[tuple[int, int, str]] = []
+    for low, high, author in sorted(ranges):
+        if merged and low <= merged[-1][1] and author == merged[-1][2]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], high), author)
         else:
-            merged.append((low, high))
+            merged.append((low, high, author))
     return merged
 
 
 def _rewrite_run(
-    run: Any, plan: _RunCuts, *, author: str, cid: int
-) -> tuple[int, dict[int, Any]]:
-    """Replace *run* in its parent with the nodes its cuts describe.
+    run: Any, plans: dict[Any, _RunCuts], *, cid: int
+) -> tuple[int, dict[Any, dict[int, Any]]]:
+    """Rebuild *run* once, applying the cuts for every element inside it.
 
-    Returns the next free change id and a map from run-local offset to the last
-    node that ends there — the address a paragraph split uses to find the
-    element it should follow.
+    A run is not one string. It may hold several ``<w:t>`` children with a
+    ``<w:br>``, a ``<w:tab>`` or a ``<w:lastRenderedPageBreak/>`` between them,
+    and Word writes the last of those on every save — so a real manuscript is
+    full of runs with more than one child.
+
+    Two earlier versions got this wrong in different ways. The first read
+    ``run.find(qn("t"))`` and replaced the whole run, deleting every other
+    child: measured, one edit turned "The first half<br>the second half." into
+    "The initial half", losing a sentence with no tracked deletion and
+    reporting success. The second keyed cuts by element but still replaced the
+    run per element, so two cut ``<w:t>`` children in one run meant the second
+    pass operated on a run the first had already detached.
+
+    Hence one pass per run: walk its children in order, cut the ones that have
+    cuts, and carry everything else across untouched. Children with no cuts are
+    accumulated so an untouched stretch stays a single run rather than being
+    shattered into one run per node.
     """
     parent = run.getparent()
     at = parent.index(run)
     rpr = run.find(qn("rPr"))
-    ends_at: dict[int, Any] = {}
+    replacement: list[Any] = []
+    ends_at: dict[Any, dict[int, Any]] = {}
+    carried: list[Any] = []
 
-    if plan.delete_whole_run:
-        replacement = [_deletion_of_run(run, author=author, cid=cid)]
-        cid += 1
-    else:
-        text_element = run.find(qn("t"))
-        text = (text_element.text or "") if text_element is not None else ""
+    def flush() -> Any | None:
+        """Emit the accumulated untouched children as one run."""
+        nonlocal carried
+        if not carried:
+            return None
+        kept = etree.Element(qn("r"))
+        if rpr is not None:
+            kept.append(copy.deepcopy(rpr))
+        for node in carried:
+            kept.append(copy.deepcopy(node))
+        carried = []
+        replacement.append(kept)
+        return kept
+
+    def emit_text(text: str) -> Any:
+        """Emit kept text, merged with anything carried before it."""
+        nonlocal carried
+        kept = etree.Element(qn("r"))
+        if rpr is not None:
+            kept.append(copy.deepcopy(rpr))
+        for node in carried:
+            kept.append(copy.deepcopy(node))
+        carried = []
+        written = etree.SubElement(kept, qn("t"))
+        written.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        written.text = text
+        replacement.append(kept)
+        return kept
+
+    for child in run:
+        if child is rpr:
+            continue
+        plan = plans.get(child)
+        if plan is None:
+            carried.append(child)
+            continue
+
+        if plan.delete_whole_run:
+            flush()
+            replacement.append(
+                _wrapped_deletion(child, rpr, author=plan.whole_run_author, cid=cid)
+            )
+            cid += 1
+            continue
+
+        text = child.text or ""
         deletions = _merge_ranges(plan.deletions)
         insertions = sorted(plan.insertions)
-
-        replacement = []
-        cursor = 0
-        # Walk the run left to right, emitting kept text, deletions and
-        # insertions in the order they occur.
         boundaries = sorted(
             {0, len(text)}
             | plan.split_points
-            | {low for low, _ in deletions}
-            | {high for _, high in deletions}
-            | {position for position, _ in insertions}
+            | {low for low, _, _ in deletions}
+            | {high for _, high, _ in deletions}
+            | {offset for offset, _, _ in insertions}
         )
+        marks: dict[int, Any] = {}
+        cursor = 0
         for boundary in boundaries:
             if boundary > cursor:
                 chunk = text[cursor:boundary]
@@ -339,44 +410,72 @@ def _rewrite_run(
                         None,
                     )
                     if covering is not None:
+                        flush()
                         replacement.append(
-                            _deletion_of_text(chunk, rpr, author=author, cid=cid)
+                            _deletion_of_text(chunk, rpr, author=covering[2], cid=cid)
                         )
                         cid += 1
                     else:
-                        replacement.append(_text_run(chunk, rpr))
-                    ends_at[boundary] = replacement[-1]
+                        emit_text(chunk)
+                    marks[boundary] = replacement[-1]
                 cursor = boundary
-            for position, inserted in insertions:
-                if position == boundary:
+            for offset, inserted, inserted_by in insertions:
+                if offset == boundary:
+                    flush()
                     replacement.append(
-                        _insertion(inserted, rpr, author=author, cid=cid)
+                        _insertion(inserted, rpr, author=inserted_by, cid=cid)
                     )
                     cid += 1
                     # Last writer wins: a split at this offset must follow the
                     # newly inserted text, not the kept text before it.
-                    ends_at[boundary] = replacement[-1]
+                    marks[boundary] = replacement[-1]
+        ends_at[child] = marks
 
-    for offset, node in enumerate(replacement):
-        parent.insert(at + offset, node)
+    flush()
+
+    for index, node in enumerate(replacement):
+        parent.insert(at + index, node)
     parent.remove(run)
     return cid, ends_at
 
 
-def split_run_at(run: Any, offset: int) -> tuple[Any, Any]:
-    """Cut *run* in two at *offset*, returning ``(head, tail)``.
+def _wrapped_deletion(element: Any, rpr: Any | None, *, author: str, cid: int) -> Any:
+    """Delete one structural child (a break, a tab) as a tracked change."""
+    container = _change("del", author=author, cid=cid)
+    run = etree.Element(qn("r"))
+    if rpr is not None:
+        run.append(copy.deepcopy(rpr))
+    run.append(copy.deepcopy(element))
+    container.append(run)
+    return container
 
-    The head is the original element, truncated — so any address already held
-    against it stays valid for offsets before the cut. The tail is a new run
-    with the same formatting, inserted immediately after.
+
+def split_run_at(element: Any, offset: int) -> tuple[Any, Any]:
+    """Cut the run holding *element* at *offset* within it; return (head, tail).
+
+    The head is the original run, truncated — so any address already held
+    against it stays valid for offsets before the cut. Siblings after
+    *element* move to the tail, because they follow the cut in reading order.
     """
-    element = run.find(qn("t"))
-    text = (element.text or "") if element is not None else ""
-    if element is None or offset <= 0 or offset >= len(text):
-        return run, run
+    text = element.text or ""
+    if offset <= 0 or offset >= len(text):
+        return element.getparent(), element.getparent()
 
+    run = element.getparent()
     rpr = run.find(qn("rPr"))
-    tail = _text_run(text[offset:], rpr)
+    siblings = [child for child in run if child is not rpr]
+    after = siblings[siblings.index(element) + 1 :]
+
+    tail = etree.Element(qn("r"))
+    if rpr is not None:
+        tail.append(copy.deepcopy(rpr))
+    written = etree.SubElement(tail, qn("t"))
+    written.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    written.text = text[offset:]
+    for node in after:
+        run.remove(node)
+        tail.append(node)
+
     element.text = text[:offset]
     element.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
     run.addnext(tail)
@@ -393,22 +492,36 @@ def isolate_span(atoms: Sequence[Atom], span: AtomSpan) -> tuple[Any, Any] | Non
     The right-hand cut is made before the left so that, when both fall in the
     same run, the left cut still sees the offsets it was given.
     """
-    covered = [a for a in atoms[span.start : span.end] if a.run is not None]
+    covered = [a for a in atoms[span.start : span.end] if a.element is not None]
     if not covered:
         return None
     first, last = covered[0], covered[-1]
+    shared = first.element is last.element
 
-    end_run = last.run
-    if last.kind is AtomKind.TEXT:
-        end_run, _ = split_run_at(last.run, last.offset + 1)
-    start_run = first.run
-    if first.kind is AtomKind.TEXT:
-        _, start_run = split_run_at(first.run, first.offset)
-        # When both ends were in one run, the second cut left the original
-        # element holding the prefix; the span's own text moved to the tail.
-        if end_run is first.run:
-            end_run = start_run
-    return start_run, end_run
+    # Left cut first, then right. The left cut moves the span's text into a new
+    # element, so when both ends share one ``<w:t>`` the right cut has to be
+    # taken against that new element at a rebased offset — addressing the
+    # original would cut text that is no longer there.
+    start_element = first.element
+    last_element = last.element
+    last_offset = last.offset
+    if first.kind is AtomKind.TEXT and first.offset > 0:
+        _, tail = split_run_at(first.element, first.offset)
+        moved = tail.find(qn("t"))
+        if moved is not None:
+            start_element = moved
+            if shared:
+                last_element = moved
+                last_offset = last.offset - first.offset
+
+    if last.kind is AtomKind.TEXT and last_element is not None:
+        text = last_element.text or ""
+        if 0 <= last_offset + 1 < len(text):
+            split_run_at(last_element, last_offset + 1)
+
+    if start_element is None or last_element is None:
+        return None
+    return start_element.getparent(), last_element.getparent()
 
 
 def _split_paragraph_after(node: Any, *, author: str, cid: int) -> Any:
@@ -489,10 +602,17 @@ def apply_edits(
     cuts, paragraph_marks, splits = _compile(textmap, accepted)
 
     cid = _first_change_id(textmap) if first_id is None else first_id
+    # Grouped by run, because a run is rebuilt as a whole: two cut ``<w:t>``
+    # children in one run must be handled in the same pass or the second finds
+    # a run the first already replaced.
+    by_run: dict[Any, dict[Any, _RunCuts]] = {}
+    for element, plan in cuts.items():
+        by_run.setdefault(element.getparent(), {})[element] = plan
+
     written: dict[Any, dict[int, Any]] = {}
-    for run, plan in cuts.items():
-        cid, ends_at = _rewrite_run(run, plan, author=accepted[0].author, cid=cid)
-        written[run] = ends_at
+    for run, plans in by_run.items():
+        cid, ends_at = _rewrite_run(run, plans, cid=cid)
+        written.update(ends_at)
 
     for p_elem, kind, author in paragraph_marks:
         _mark_paragraph_mark(p_elem, kind, author=author, cid=cid)
@@ -502,8 +622,8 @@ def apply_edits(
     # Splits last: they move nodes between paragraphs, so every run rewrite has
     # to be finished before the tree is reshaped. Reversed so an earlier split
     # cannot move the reference node of a later one out from under it.
-    for run, offset, tails, author in reversed(splits):
-        reference = written.get(run, {}).get(offset)
+    for element, offset, tails, author in reversed(splits):
+        reference = written.get(element, {}).get(offset)
         if reference is None:
             logger.warning("[surgery] no anchor for a paragraph split; skipped")
             continue

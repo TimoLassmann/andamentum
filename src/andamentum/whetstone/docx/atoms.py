@@ -88,6 +88,13 @@ class Atom:
     run: Any | None
     paragraph: Any
     offset: int
+    # The node the character came from: the ``<w:t>`` for text, the
+    # ``<w:br>``/``<w:tab>`` for structure. ``offset`` indexes into THIS
+    # element, not into the run — a run may hold several ``<w:t>`` children
+    # with a break or a page-break marker between them, and an offset against
+    # the run would then be ambiguous. Addressing the element instead is what
+    # lets an edit cut one span and leave every sibling node in place.
+    element: Any = None
 
     @property
     def editable(self) -> bool:
@@ -119,6 +126,7 @@ def _walk(node: Any, *, paragraph: Any, run: Any | None) -> Iterator[Atom]:
                     run=run,
                     paragraph=paragraph,
                     offset=index,
+                    element=child,
                 )
         elif tag in SPACE_TAGS:
             yield Atom(
@@ -127,6 +135,7 @@ def _walk(node: Any, *, paragraph: Any, run: Any | None) -> Iterator[Atom]:
                 run=run,
                 paragraph=paragraph,
                 offset=-1,
+                element=child,
             )
         elif tag == RUN_TAG:
             yield from _walk(child, paragraph=paragraph, run=child)
