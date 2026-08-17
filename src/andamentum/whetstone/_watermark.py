@@ -66,25 +66,6 @@ def banner_markdown(*, model: str | None) -> str:
     return f"> **⚠ {BANNER_TITLE}.** {DISCLAIMER_SHORT}\n> \n> *Produced by {prov}.*"
 
 
-def banner_html_callout() -> dict[str, str]:
-    """Visible banner atom for the HTML renderer (a typeset callout)."""
-    return {
-        "kind": "callout",
-        "tone": "warning",
-        "content": f"{BANNER_TITLE}. {DISCLAIMER_SHORT}",
-    }
-
-
-def metadata_html_meta_tags(*, model: str | None) -> str:
-    """HTML <meta> tags embedded in the typeset output's <head>."""
-    prov = provenance_line(model=model)
-    return (
-        f'<meta name="generator" content="andamentum-whetstone">\n'
-        f'<meta name="andamentum:produced-by" content="{prov}">\n'
-        f'<meta name="andamentum:ai-generated" content="true">'
-    )
-
-
 def metadata_markdown_comment(*, model: str | None) -> str:
     """HTML-comment header for markdown — recoverable, invisible in renders."""
     prov = provenance_line(model=model)

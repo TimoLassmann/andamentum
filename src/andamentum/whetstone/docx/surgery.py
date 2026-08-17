@@ -96,16 +96,6 @@ def _deletion_of_text(text: str, rpr: Any | None, *, author: str, cid: int) -> A
     return container
 
 
-def _deletion_of_run(run: Any, *, author: str, cid: int) -> Any:
-    """Wrap a whole run (e.g. one holding a ``<w:br>``) in a deletion."""
-    container = _change("del", author=author, cid=cid)
-    moved = copy.deepcopy(run)
-    for text_element in moved.findall(qn("t")):
-        text_element.tag = qn("delText")
-    container.append(moved)
-    return container
-
-
 #: Where change ids start in a document that carries none. Arbitrary, and high
 #: enough to be recognisable as ours in a hand-inspected file.
 FIRST_CHANGE_ID = 1000
