@@ -452,12 +452,14 @@ def test_unplaced_annotations_are_reported_not_swallowed(capsys) -> None:
     result = SimpleNamespace(
         total_patches=7,
         failed_patches=[_failed("comment")] * 5,
+        applied_comments=2,
         conflict_failures=0,
     )
     _warn_on_unplaced_annotations(console, result)
 
     err = capsys.readouterr().err
-    assert "5 of 7" in err
+    # Out of the comments attempted (5 missed + 2 placed), not out of 7 patches.
+    assert "5 of 7 comment" in err
     # The reader must be told the findings are not lost, only unanchored.
     assert "still listed in the review report" in err
 
@@ -479,6 +481,7 @@ def test_dropped_edits_are_not_reported_as_merely_unanchored(capsys) -> None:
     result = SimpleNamespace(
         total_patches=4,
         failed_patches=[_failed("text_edit", "the results show a large effect")],
+        applied_comments=0,
         conflict_failures=1,
     )
     _warn_on_unplaced_annotations(Console(stderr=True), result)

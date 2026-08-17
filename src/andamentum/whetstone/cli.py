@@ -1158,12 +1158,14 @@ def _warn_on_unplaced_annotations(console: Console, result) -> None:
     conflicts = getattr(result, "conflict_failures", 0)
 
     if unplaced_comments:
+        # Denominator is the comments attempted, not every patch in the batch:
+        # "7 of 55" reads as a 13% miss rate when 7 of 12 comments missed.
+        attempted = len(unplaced_comments) + result.applied_comments
         console.print(
-            f"[yellow]note:[/yellow] {len(unplaced_comments)} of "
-            f"{result.total_patches} comment(s) could not be anchored in the "
-            f"text — their quotes have no exact match in the .docx. Those "
-            f"findings are still listed in the review report at the top of the "
-            f"document."
+            f"[yellow]note:[/yellow] {len(unplaced_comments)} of {attempted} "
+            f"comment(s) could not be anchored in the text — their quotes have "
+            f"no exact match in the .docx. Those findings are still listed in "
+            f"the review report at the top of the document."
         )
 
     if lost_edits:
