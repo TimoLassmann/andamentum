@@ -35,10 +35,9 @@ from typing import Literal, NamedTuple
 # Markdown markers dropped entirely during normalisation. Aggressive on
 # purpose: these never carry meaning for *locating* prose, and dropping
 # them lets a markdown-flavoured quote match plain text. Exposed as a
-# public constant so callers with their own multi-segment indexing
-# (e.g. whetstone/docx/anchor.py's DocIndex) can share the exact same
-# character class without re-declaring it — the "rules cannot drift"
-# guarantee.
+# public constant so callers with their own multi-segment indexing can
+# share the exact same character class without re-declaring it — the
+# "rules cannot drift" guarantee.
 MARKDOWN_MARKERS: frozenset[str] = frozenset("#*_`[]~")
 _MARKDOWN_MARKERS = MARKDOWN_MARKERS  # internal alias for backward compat
 

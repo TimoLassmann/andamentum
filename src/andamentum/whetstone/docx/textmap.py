@@ -79,10 +79,6 @@ class TextMap:
         """The document as a reader sees it, with changes accepted."""
         return self._text
 
-    @property
-    def normalized(self) -> str:
-        return self._normalized
-
     def slice(self, span: AtomSpan) -> str:
         return "".join(a.char for a in self._atoms[span.start : span.end])
 

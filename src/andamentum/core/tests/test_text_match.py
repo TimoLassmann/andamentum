@@ -2,11 +2,10 @@
 
 Covers the canonical contract (markdown stripping + smart-quote stripping +
 case folding + whitespace collapsing) plus each individual toggle, the
-fuzzy backends, and the within-window scoping. The five existing matchers
-across the codebase (whetstone/docx/anchor.py, whetstone/v3/locate.py,
-chunker/validation.py, epistemic/passage_extraction.py, and the dead
-whetstone/docx/text_processor.py) all migrate to call this module — so
-its behaviour is the ground truth.
+fuzzy backends, and the within-window scoping. The remaining matchers
+across the codebase (whetstone/v3/locate.py, chunker/validation.py,
+epistemic/passage_extraction.py) all call this module — so its behaviour
+is the ground truth.
 """
 
 from __future__ import annotations

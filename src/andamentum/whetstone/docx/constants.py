@@ -33,7 +33,3 @@ DEFAULT_DISCIPLINE = "Not specified"
 DEFAULT_DESCRIPTION = "No description"
 DEFAULT_SEVERITY = "medium"
 DEFAULT_ISSUE_TITLE = "Issue"
-
-# Inline markdown patterns
-MARKDOWN_BOLD_PATTERN = r"\*\*(.*?)\*\*"
-MARKDOWN_ITALIC_PATTERN = r"\*(.*?)\*"

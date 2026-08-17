@@ -32,21 +32,10 @@ from .reading import (
     main_document_part,
     read_docx,
 )
-from .low_level import DocxEditor, ParagraphContext, ParagraphData, PlacedComment
+from .low_level import DocxEditor, ParagraphData, PlacedComment
 from .patch_editor import PatchDocxEditor
 from .surgery import Edit, EditReport, apply_edits, isolate_span, split_run_at
 from .textmap import AtomSpan, TextMap
-from .result_types import (
-    LocationResult,
-    LocationStatus,
-    ProcessingResult,
-    ValidationResult,
-    ValidationStatus,
-    combine_validation_results,
-)
-from .token_processor import TokenData, TokenIterator, TokenProcessor
-from .validator import PatchValidator
-from .xml_builder import XMLElementBuilder, XMLPatternMatcher
 
 __all__ = [
     "AnnotationReport",
@@ -82,19 +71,6 @@ __all__ = [
     "FinalizationError",
     "finalize_reviewed_document",
     "DocxEditor",
-    "ParagraphContext",
     "ParagraphData",
     "PatchDocxEditor",
-    "LocationResult",
-    "LocationStatus",
-    "ProcessingResult",
-    "ValidationResult",
-    "ValidationStatus",
-    "combine_validation_results",
-    "TokenData",
-    "TokenIterator",
-    "TokenProcessor",
-    "PatchValidator",
-    "XMLElementBuilder",
-    "XMLPatternMatcher",
 ]

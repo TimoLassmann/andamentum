@@ -33,6 +33,7 @@ import copy
 import datetime
 import difflib
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
@@ -43,10 +44,13 @@ from .textmap import AtomSpan, TextMap
 
 logger = logging.getLogger("andamentum.whetstone")
 
-def _tokenize(text: str) -> list[str]:
-    from .token_processor import TokenProcessor
+# Whitespace runs are tokens in their own right, so a diff that only changes
+# spacing marks the spacing and not the words either side of it.
+_TOKEN_RE = re.compile(r"\s+|\S+")
 
-    return TokenProcessor.tokenize(text)
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text)
 
 
 # ── XML construction ────────────────────────────────────────────────────

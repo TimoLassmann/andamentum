@@ -44,9 +44,6 @@ class DocumentPatch(BaseModel):
     )
 
     # Location identification - OPTIONAL
-    paragraph_index: Optional[int] = Field(
-        default=None, description="OPTIONAL: Target paragraph index if known"
-    )
     original_text: Optional[str] = Field(
         default=None, description="OPTIONAL: Original text for validation"
     )
@@ -63,20 +60,6 @@ class DocumentPatch(BaseModel):
     analysis_text: Optional[str] = Field(
         default=None,
         description="REQUIRED for document_analysis patches: Detailed structured analysis in markdown format with comprehensive evaluation, scores, recommendations, and specific insights",
-    )
-
-    # Position tracking - SYSTEM USE ONLY (not for LLM)
-    found_at: Optional[int] = Field(
-        default=None,
-        description="SYSTEM-POPULATED: Do NOT set this field. The system will automatically populate it after finding the text_pattern.",
-    )
-    original_start: Optional[int] = Field(
-        default=None,
-        description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system.",
-    )
-    original_end: Optional[int] = Field(
-        default=None,
-        description="SYSTEM-POPULATED: Do NOT set this field. Automatically calculated by the system.",
     )
 
     # Metadata - REQUIRED

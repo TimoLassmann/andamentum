@@ -19,12 +19,6 @@ class ConversionError(DocumentReviewError):
     pass
 
 
-class PatchValidationError(DocumentReviewError):
-    """Patch validation failed."""
-
-    pass
-
-
 class FinalizationError(DocumentReviewError):
     """Document finalization failed."""
 

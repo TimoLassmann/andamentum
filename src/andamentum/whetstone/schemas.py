@@ -160,7 +160,6 @@ class ReviewMetrics(BaseModel):
     wall_seconds: float = 0.0
     deterministic_findings_count: int = 0
     investigated_findings_count: int = 0
-    challenged_findings_count: int = 0
     edits_count: int = 0
     sections_processed: int = 0
     reflection_rounds_used: int = 0  # how many of reflection_round_cap got consumed

@@ -59,10 +59,8 @@ def _target_of(patch: DocumentPatch) -> str:
 class PatchDocxEditor(DocxEditor):
     """A :class:`DocxEditor` that applies :class:`DocumentPatch` batches."""
 
-    def __init__(
-        self, input_path: str, author: str = "Document Editor", context_size: int = 1
-    ):
-        super().__init__(input_path, author, context_size)
+    def __init__(self, input_path: str, author: str = "Document Editor"):
+        super().__init__(input_path, author)
         self.applied_patches: List[DocumentPatch] = []
         self.failed_patches: List[DocumentPatch] = []
 

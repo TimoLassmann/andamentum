@@ -8,9 +8,7 @@ directly), but exposing this is the contract benchmark cases rely on.
 This module is now a thin shim over ``andamentum.core.text_match.find_span``
 — the single canonical answer to "is this verbatim in the source." The
 tier-named ``AnchorMatch.method`` ("exact" / "whitespace_normalised" /
-"fuzzy") is preserved as the public contract so existing callers
-(``whetstone/anchoring.py``, ``whetstone/lenses/strunk/nodes/*``,
-``whetstone/nodes/edit_sections.py``) don't have to change.
+"fuzzy") is preserved as the public contract for the benchmark cases.
 
 Tiers (in priority order):
   1. exact                  — byte-identical substring (case-sensitive,

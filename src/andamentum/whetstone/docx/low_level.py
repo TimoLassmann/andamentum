@@ -4,20 +4,21 @@ This module is the core Word XML engine for the document-review
 package. A ``.docx`` file is a zip archive containing XML — this
 module unzips it, edits the XML, and zips it back up.
 
-The primary class :class:`DocxEditor` exposes a document as a list of
-:class:`ParagraphData` objects. Callers mutate each paragraph's
-``modified`` text freely; on :meth:`DocxEditor.write`, the editor
-diffs original vs modified tokens and emits proper Word track
-changes (``<w:ins>`` / ``<w:del>``) with per-author attribution.
+The primary class :class:`DocxEditor` owns the archive, the parsed XML
+trees, and the comment parts. It does NOT rewrite paragraph text: the
+predecessor design let callers mutate a paragraph's text and rebuilt the
+runs from a token diff on :meth:`write`, which destroyed everything the
+text projection dropped (line breaks, hyperlinks, a co-author's existing
+tracked changes). Tracked changes are now made in :mod:`.surgery`, which
+cuts only the runs a resolved span covers, and :meth:`write` emits
+comments and re-zips — it rebuilds nothing.
 
 :class:`PatchDocxEditor` (in ``patch_editor.py``) extends this engine
-with ``DocumentPatch`` application. :class:`DocumentReview` in this
-module handles the conversion of markdown review reports into Word
-content for prepending to the final document.
+with ``DocumentPatch`` application.
 
 Most consumers should use the higher-level
-``document_review.renderers.render_docx`` function rather than
-constructing ``DocxEditor`` directly.
+``whetstone.renderers.render_docx`` function rather than constructing
+``DocxEditor`` directly.
 """
 
 import zipfile
@@ -28,8 +29,7 @@ import re
 import logging
 from dataclasses import dataclass
 
-from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Any
 
 from lxml import etree  # type: ignore
 from docx.oxml.ns import qn
@@ -69,23 +69,6 @@ def visible_text(element) -> str:
 
 REL_NS = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
 CT_NS = {"ct": "http://schemas.openxmlformats.org/package/2006/content-types"}
-
-
-class ParagraphContext(BaseModel):
-    """Neighborhood view of a paragraph for agent consumption.
-
-    Provides the paragraph text along with a configurable window of
-    preceding and following paragraphs as read-only context. Used by
-    agents that need surrounding context to reason about a specific
-    paragraph without having to process the entire document.
-    """
-
-    index: int
-    original: str
-    modified: str
-    comment: Optional[str]
-    before: list[str]
-    after: list[str]
 
 
 @dataclass
@@ -140,19 +123,17 @@ class DocxEditor:
 
     A Word document is a zip archive of XML files. This class unzips
     the archive into a temporary directory, loads every XML file as an
-    ``lxml`` tree, and exposes each paragraph as a :class:`ParagraphData`
-    object whose ``modified`` string can be freely mutated by callers.
-    On :meth:`write`, diffs are computed between ``original`` and
-    ``modified`` tokens and serialized as ``<w:ins>`` / ``<w:del>``
-    elements with proper author attribution, producing a valid Word
-    track-changes document.
+    ``lxml`` tree, and exposes the body's paragraphs via
+    :attr:`paragraph_elements` and :class:`ParagraphData`. Tracked changes
+    are applied to those elements in place by :mod:`.surgery`;
+    :meth:`write` writes the comment parts and re-zips.
 
     This is the core engine used by :class:`PatchDocxEditor` and the
     ``render_docx`` renderer. Most callers should use those higher-level
     interfaces rather than constructing ``DocxEditor`` directly.
     """
 
-    def __init__(self, input_path, author="Python", context_size=1):
+    def __init__(self, input_path, author="Python"):
         """Open a Word document and prepare it for editing.
 
         Unzips the ``.docx`` into a temporary directory, loads all XML
@@ -163,8 +144,6 @@ class DocxEditor:
             input_path: Path to an existing ``.docx`` file.
             author: Default author name used for track changes that
                 are not explicitly attributed to another agent.
-            context_size: Number of surrounding paragraphs returned by
-                :meth:`get_paragraph_context`.
 
         Raises:
             FileNotFoundError: If ``input_path`` does not exist.
@@ -172,7 +151,6 @@ class DocxEditor:
         if not os.path.isfile(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")
         self.author = author
-        self.context_size = context_size
         self.tmpdir = tempfile.mkdtemp()
         self._unzip(input_path)
         self._doc_filename = self._detect_document_filename()
@@ -276,101 +254,6 @@ class DocxEditor:
                     paras.append(ParagraphData(path, p))
         return paras
 
-    def get_selection(self, start: int, end: int) -> str:
-        """
-        Return the concatenated (modified) text of paragraphs in [start, end],
-        each prefixed with its paragraph index.
-        """
-        selection = []
-        # clamp end to last paragraph
-        last = min(end, len(self.paragraphs) - 1)
-        for i in range(start, last + 1):
-            text = self.paragraphs[i].modified
-            # put the index right before the paragraph
-            selection.append(f"[{i}]\n{text}")
-        # separate paragraphs with a blank line
-        return "\n\n".join(selection)
-
-    def get_paragraph_context(self, index: int) -> ParagraphContext:
-        """
-        Return the ParagraphContext for the paragraph at `index`.
-        """
-        pd = self.paragraphs[index]
-        N = self.context_size
-        before = [p.original for p in self.paragraphs[max(0, index - N) : index]]
-        after = [p.original for p in self.paragraphs[index + 1 : index + N + 1]]
-        return ParagraphContext(
-            index=index,
-            original=pd.original,
-            modified=pd.modified,
-            comment=pd.comment or None,
-            before=before,
-            after=after,
-        )
-
-    def get_paragraphs(self):
-        """Return the list of :class:`ParagraphData` instances.
-
-        The list is in document order and can be mutated freely —
-        each paragraph's ``modified`` attribute is what gets written
-        back on :meth:`write`.
-        """
-        return self.paragraphs
-
-    def _clear_runs(self, p_elem):
-        """Remove all child elements from a paragraph except ``<w:pPr>``.
-
-        Paragraph properties (``<w:pPr>``) are preserved because they
-        hold indentation, alignment, and style settings that must
-        survive the rewrite. Everything else (runs, hyperlinks,
-        comment anchors) is cleared so :meth:`write` can rebuild the
-        paragraph content from the current token state.
-        """
-        for child in list(p_elem):
-            if child.tag != f"{{{NS['w']}}}pPr":
-                p_elem.remove(child)
-
-    def _add_run(
-        self, parent, text, rPr, change_type=None, cid=None, change_author=None
-    ):
-        """Append a single ``<w:r>`` run element to a parent paragraph.
-
-        Delegates XML construction to :class:`XMLElementBuilder`. When
-        ``change_type`` is ``"ins"`` or ``"del"``, the run is wrapped
-        in the appropriate track changes element with author attribution.
-        Plain runs (``change_type=None``) are appended without track
-        changes markup.
-
-        Args:
-            parent: ``<w:p>`` element to append to.
-            text: Run text content.
-            rPr: Run properties element (formatting) to preserve, or None.
-            change_type: ``"ins"``, ``"del"``, or None for a plain run.
-            cid: Change ID for track changes (ignored when ``change_type`` is None).
-            change_author: Author name override; falls back to ``self.author``.
-        """
-        # Use XMLElementBuilder to create run elements
-        run_author = change_author or self.author
-        # Only warn for actual track changes (not simple runs)
-        if (
-            change_type in ("ins", "del")
-            and run_author == self.author
-            and change_author is None
-        ):
-            logger.warning(
-                f"Track change using fallback author '{self.author}' for text '{text[:20]}...'. change_author: {change_author}"
-            )
-        # Monitor for Sequential Agent attributions (should be rare now)
-        if change_type in ("ins", "del") and run_author == "Sequential Agent":
-            logger.warning(
-                f"Sequential Agent track change: {change_type} '{text[:15]}...' - check attribution logic"
-            )
-
-        run_element = XMLElementBuilder.create_simple_run(
-            text=text, rPr=rPr, change_type=change_type, cid=cid, author=run_author
-        )
-        parent.append(run_element)
-
     def _ensure_comments_relationship(self):
         """Ensure the document's ``.rels`` file declares a comments relationship.
 
@@ -423,35 +306,6 @@ class DocxEditor:
             tree.write(
                 ct_path, xml_declaration=True, encoding="UTF-8", standalone="yes"
             )
-
-    def _insert_comment_anchor(self, p_elem, cid):
-        """Insert comment range markers around the last run in a paragraph.
-
-        Word comments are anchored via a triple of elements:
-        ``<w:commentRangeStart>``, ``<w:commentRangeEnd>``, and
-        ``<w:commentReference>``. This helper places them around the
-        final ``<w:r>`` of ``p_elem`` so the comment attaches to the
-        end of the paragraph text. No-op if the paragraph has no runs.
-
-        Args:
-            p_elem: ``<w:p>`` element to anchor the comment in.
-            cid: Comment ID matching the entry in ``comments.xml``.
-        """
-        # find the last run in this paragraph
-        runs = p_elem.findall(".//w:r", namespaces=NS)
-        if not runs:
-            return
-        last = runs[-1]
-        parent = last.getparent()
-        idx = parent.index(last)
-
-        # Use XMLElementBuilder to create comment range elements
-        crs, cre, rref = XMLElementBuilder.create_comment_range_elements(cid)
-
-        # splice them in right after the last run
-        parent.insert(idx, crs)
-        parent.insert(idx + 2, cre)
-        parent.insert(idx + 3, rref)
 
     def _load_or_create_comments_tree(self):
         """Return the ``comments.xml`` tree, creating an empty one if needed.
@@ -507,46 +361,6 @@ class DocxEditor:
                     arc = os.path.relpath(full, self.tmpdir)
                     z.write(full, arc)
         shutil.rmtree(self.tmpdir)
-
-    def _build_change_container(self, change_type, cid, rPr, text, change_author=None):
-        """
-        Build one <w:del> or <w:ins> element containing a single <w:r> whose
-        text is the given 'text' and whose rPr is copied from the first run.
-        """
-        container_author = change_author or self.author
-        if container_author == self.author and change_author is None:
-            logger.warning(
-                f"Change container using fallback author '{self.author}' for text '{text[:20]}...', change_author: {change_author}"
-            )
-        # Monitor for Sequential Agent attributions (should be rare now)
-        if container_author == "Sequential Agent":
-            logger.warning(
-                f"Sequential Agent container: {change_type} '{text[:15]}...' - check attribution logic"
-            )
-
-        return XMLElementBuilder.create_change_container(
-            change_type=change_type,
-            cid=cid,
-            author=container_author,
-            text=text,
-            rPr=rPr,
-        )
-
-    def _get_author_from_element(self, element) -> str:
-        """Extract author from an existing track change element."""
-        if element is not None:
-            author = element.get(qn("w:author"))
-            if author:
-                return author
-            else:
-                # Log when element has no author attribute
-                tag_name = (
-                    etree.QName(element.tag).localname if element.tag else "unknown"
-                )
-                logger.debug(
-                    f"Element {tag_name} has no w:author attribute, falling back to '{self.author}'"
-                )
-        return self.author
 
     def _parse_inline_markdown(self, text: str, parent_elem):
         """
