@@ -10,6 +10,15 @@ runs a resolved span covers.
 from .atoms import Atom, AtomKind, document_atoms, paragraph_atoms, projection
 from .exceptions import FinalizationError
 from .finalization import finalize_reviewed_document
+from .headings import (
+    DocxHeading,
+    ParagraphSpan,
+    StyleLevels,
+    document_headings,
+    heading_level,
+    paragraph_spans,
+)
+from .reading import DocxParts, body_paragraphs, main_document_part, read_docx
 from .low_level import DocxEditor, ParagraphContext, ParagraphData, PlacedComment
 from .patch_editor import PatchDocxEditor
 from .surgery import Edit, EditReport, apply_edits, isolate_span, split_run_at
@@ -39,6 +48,16 @@ __all__ = [
     "paragraph_atoms",
     "projection",
     "split_run_at",
+    "DocxHeading",
+    "DocxParts",
+    "ParagraphSpan",
+    "StyleLevels",
+    "body_paragraphs",
+    "document_headings",
+    "heading_level",
+    "main_document_part",
+    "paragraph_spans",
+    "read_docx",
     "PlacedComment",
     "FinalizationError",
     "finalize_reviewed_document",

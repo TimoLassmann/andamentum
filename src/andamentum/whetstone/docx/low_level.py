@@ -35,6 +35,7 @@ from lxml import etree  # type: ignore
 from docx.oxml.ns import qn
 
 from .atoms import paragraph_atoms, projection
+from .reading import body_paragraphs, main_document_part
 from .xml_builder import XMLElementBuilder
 
 # Logger for this module
@@ -190,22 +191,14 @@ class DocxEditor:
         """The body's outermost ``<w:p>`` elements, in reading order.
 
         Read from the tree each time rather than cached: an edit may split a
-        paragraph in two, and a stale list would hide the new one. Empty
-        paragraphs are included — each one is a real break a reader sees.
+        paragraph in two, and a stale list would hide the new one.
 
-        Paragraphs nested inside another paragraph are excluded. A text box
-        holds its content in a ``<w:p>`` inside the anchoring paragraph's run,
-        and the atom walker descends into it already — so returning both would
-        read that text twice, once in place and once as a paragraph of its own.
-        Table cells are not affected: a ``<w:tbl>`` is a sibling of body
-        paragraphs, not a descendant of one.
+        The selection rule itself lives in :func:`.reading.body_paragraphs`,
+        shared with the read-only sectioniser, so the paragraph list an edit is
+        addressed against and the one the reviewer's offsets were computed
+        against are the same list.
         """
-        root = self.trees[self._doc_path].getroot()
-        return [
-            paragraph
-            for paragraph in root.xpath(".//w:p", namespaces=NS)
-            if not paragraph.xpath("ancestor::w:p", namespaces=NS)
-        ]
+        return body_paragraphs(self.trees[self._doc_path].getroot())
 
     def _unzip(self, docx_path):
         """Extract the .docx archive into the temporary working directory.
@@ -232,16 +225,12 @@ class DocxEditor:
         if not os.path.isfile(rels_path):
             return "document.xml"
         try:
-            tree = etree.parse(rels_path)
-            ns = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
-            for rel in tree.xpath(".//r:Relationship", namespaces=ns):
-                rel_type = rel.get("Type", "")
-                if rel_type.endswith("/officeDocument"):
-                    target = rel.get("Target", "")
-                    # Target is like "word/document2.xml" — we want just "document2.xml"
-                    filename = os.path.basename(target)
-                    logger.debug("Detected main document: %s", filename)
-                    return filename
+            with open(rels_path, "rb") as handle:
+                # Target is like "word/document2.xml" — we want just the name,
+                # because everything here is addressed inside the unzipped tree.
+                filename = os.path.basename(main_document_part(handle.read()))
+            logger.debug("Detected main document: %s", filename)
+            return filename
         except Exception as e:
             logger.warning(
                 "Could not parse _rels/.rels: %s — falling back to document.xml", e
