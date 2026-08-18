@@ -629,7 +629,32 @@ def apply_edits(
     """
     report = EditReport()
     accepted: list[Edit] = []
-    for edit in edits:
+    # Arbitration order is derived from the edits, not from the order the
+    # caller happened to build the list in. Without this the winner of a
+    # collision depends on which section finished first and what order the
+    # model listed its suggestions — the same set of edits could resolve
+    # differently between two runs over an unchanged document.
+    #
+    # WHICH edit wins is arbitrary, and deliberately so: this layer knows only
+    # spans and text. It cannot see a finding's severity, or whether one
+    # suggestion fixes a reported problem while the other is a passing tweak,
+    # so it is in no position to judge. Earliest-in-the-document is chosen
+    # because it is stable and explicable, not because it is right.
+    #
+    # The real decision belongs upstream, in an edit gate mirroring
+    # `v3/gate.py`, which already does exactly this for findings — dropping
+    # overlapping ones and keeping the most severe. Edits have no such gate,
+    # so the choice falls through to here, which is the one place without the
+    # information to make it. Collisions are rare today (0 of 41 suggested
+    # rewrites on a real manuscript; 1 of 27 on another document) and will
+    # become common once the editor reads findings, because several findings
+    # on one sentence each want a fix.
+    #
+    # What must NOT change is the refusal itself. Two overlapping edits applied
+    # one after another can both succeed — the first rewrite can leave the
+    # second's target intact — and compose into a sentence neither reviewer
+    # proposed. Every refusal is reported and named to the user.
+    for edit in sorted(edits, key=lambda e: (e.span.start, e.span.end)):
         clash = next(
             (
                 other

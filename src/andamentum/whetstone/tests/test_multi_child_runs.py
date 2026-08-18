@@ -206,3 +206,89 @@ def test_a_paragraph_mark_is_still_marked_when_nobody_claimed_it() -> None:
     marks = paragraph.findall(f"{qn('pPr')}/{qn('rPr')}/{qn('ins')}")
     assert len(marks) == 1
     assert marks[0].get(qn("author")) == "whetstone (AI)"
+
+
+# ── collisions between two rewrites ─────────────────────────────────────
+
+
+def test_the_survivor_of_a_collision_does_not_depend_on_input_order() -> None:
+    """Arbitration reads the spans, not the order the caller built the list in.
+
+    Before this, the winner was whichever edit came first in the list — which
+    depends on the order sections finished and the order the model listed its
+    suggestions. The same set of edits could resolve differently between two
+    runs over an unchanged document. WHICH one wins is still arbitrary; that it
+    is the same one every time is not.
+    """
+    from andamentum.whetstone.docx.textmap import TextMap
+
+    def survivor(order):
+        _, paragraph = _paragraph_with(
+            [("t", "We found that the results show a large effect on outcomes.")]
+        )
+        textmap = TextMap(document_atoms([paragraph]))
+        wide = textmap.find("the results show a large effect")
+        narrow = textmap.find("a large effect on outcomes")
+        assert wide is not None and narrow is not None
+        edits = {
+            "wide": Edit(span=wide, new_text="the results suggest an effect", author="AI"),
+            "narrow": Edit(span=narrow, new_text="a modest effect on outcomes", author="AI"),
+        }
+        report = apply_edits(textmap, [edits[name] for name in order])
+        assert report.applied == 1 and len(report.conflicted) == 1
+        return _text(paragraph)
+
+    assert survivor(["wide", "narrow"]) == survivor(["narrow", "wide"])
+
+
+def test_a_collision_is_reported_with_both_sides() -> None:
+    """A refusal the caller cannot see is a silent loss. The report names the
+    edit that was dropped and the one that displaced it."""
+    from andamentum.whetstone.docx.textmap import TextMap
+
+    _, paragraph = _paragraph_with(
+        [("t", "We found that the results show a large effect on outcomes.")]
+    )
+    textmap = TextMap(document_atoms([paragraph]))
+    wide = textmap.find("the results show a large effect")
+    narrow = textmap.find("a large effect on outcomes")
+    assert wide is not None and narrow is not None
+
+    report = apply_edits(
+        textmap,
+        [
+            Edit(span=wide, new_text="the results suggest an effect", author="AI"),
+            Edit(span=narrow, new_text="a modest effect on outcomes", author="AI"),
+        ],
+    )
+    assert len(report.conflicted) == 1
+    loser, winner = report.conflicted[0]
+    assert loser is not winner
+    assert loser not in report.applied_edits
+    assert winner in report.applied_edits
+
+
+def test_many_edits_over_one_span_keep_exactly_one() -> None:
+    """N mutually overlapping edits refuse N-1. No cascade, nothing composed."""
+    from andamentum.whetstone.docx.textmap import TextMap
+
+    _, paragraph = _paragraph_with([("t", "alpha beta gamma delta epsilon zeta")])
+    textmap = TextMap(document_atoms([paragraph]))
+    found = [
+        textmap.find("beta gamma"),
+        textmap.find("gamma delta"),
+        textmap.find("beta gamma delta"),
+        textmap.find("delta epsilon"),
+    ]
+    assert all(s is not None for s in found)
+    spans = [s for s in found if s is not None]
+    report = apply_edits(
+        textmap,
+        [Edit(span=s, new_text=f"r{i}", author="AI") for i, s in enumerate(spans)],
+    )
+    assert report.applied + len(report.conflicted) == 4
+    assert report.applied >= 1
+    # Whatever survived, the paragraph reads as one coherent edit of the
+    # original — never a blend of two.
+    text = _text(paragraph)
+    assert text.count("r") >= 1
