@@ -124,8 +124,9 @@ When the input lists REVIEWER FINDINGS, they are the priority. Another reader
 has already gone through this document and said what is wrong with it; your
 job is to answer them where a rewrite can, and to say plainly where it cannot.
 
-  • Emit exactly ONE entry per listed finding, with `addresses` set to its
-    number. Never two entries for one finding.
+  • Emit an entry for every listed finding, with `addresses` set to its
+    number. One entry is the usual answer. Emit a second only when the
+    finding names a problem in two SEPARATE places that need two rewrites.
   • Set can_fix=false when rewriting a span cannot answer the finding — it
     needs data you do not have, a new paragraph, a restructure, or a decision
     only the author can make. Give one sentence in `why`. THIS IS THE RIGHT
@@ -145,10 +146,21 @@ job is to answer them where a rewrite can, and to say plainly where it cannot.
   • Findings outrank the editorial criteria. Where concision would undo what
     a finding asks for, the finding wins and you skip the style edit.
 
-Edits of your own (`addresses=0`) come after, and only where they do not touch
-a span a finding-directed rewrite already covers.
+# Your own editorial pass
 
-Output an EditorOutput with the edits list (possibly empty)."""
+Edits of your own (`addresses=0`) are a SEPARATE job, and the findings do not
+reduce it. Read the section again against the editorial criteria and propose
+the edits you would have proposed had the finding list been empty — no more
+than that, and no fewer. A section with three findings still gets its grammar
+and concision pass, and a finding you had to decline does not cancel it.
+
+One limit: an edit of your own must not touch a span a finding-directed
+rewrite already covers. Only one change can be applied to a span, so the
+second would be discarded.
+
+Output an EditorOutput holding BOTH — your answer to every finding, and your
+own edits. Either may be empty on its own merits, and neither is empty
+because the other one is long."""
 
 
 class EditProposal(BaseModel):
@@ -283,8 +295,10 @@ async def _run_editor_on_section(
         )
         findings_block = (
             f"REVIEWER FINDINGS for this section — answer each one:\n{listed}\n\n"
-            f"Emit exactly one entry per finding above, plus any edits of your "
-            f"own with addresses=0.\n\n"
+            f"Answer every finding above. THEN, separately, edit this section "
+            f"against the editorial criteria with addresses=0, exactly as you "
+            f"would if the list above were empty. The findings do not reduce "
+            f"that second pass.\n\n"
         )
     else:
         findings_block = (
@@ -313,21 +327,28 @@ async def _run_editor_on_section(
 
     edits: list[Edit] = []
     declined: list[Declined] = []
+    # Which findings got any response at all. Used ONLY to notice silence — a
+    # second rewrite for the same finding is not dropped here. One finding can
+    # legitimately need two changes in different sentences, and where two
+    # rewrites really do collide the surgery layer refuses one and reports it.
+    # Deduplicating by finding number as well threw away edits that never
+    # conflicted with anything.
     answered: set[int] = set()
+
+    logger.debug(
+        "[v3.editor] %s: %d finding(s) in, %d proposal(s) back (%d of the "
+        "editor's own, %d declined)",
+        section.id,
+        len(ordered),
+        len(output.edits),
+        sum(1 for p in output.edits if p.addresses == 0),
+        sum(1 for p in output.edits if not p.can_fix),
+    )
 
     for prop in output.edits:
         addressed = ordered[prop.addresses - 1] if 1 <= prop.addresses <= len(ordered) else None
 
         if addressed is not None:
-            if prop.addresses in answered:
-                # The prompt asks for one entry per finding; a second is a
-                # duplicate rewrite of a span only one edit can occupy.
-                logger.debug(
-                    "[v3.editor] %s: finding %d answered twice, ignoring the second",
-                    section.id,
-                    prop.addresses,
-                )
-                continue
             answered.add(prop.addresses)
 
         if not prop.can_fix or not prop.original_text or not prop.new_text:

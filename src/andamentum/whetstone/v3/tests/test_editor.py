@@ -516,9 +516,15 @@ async def test_a_rewrite_that_did_not_quote_the_document_leaves_it_unanswered() 
     assert "verbatim" in declined[0].why
 
 
-async def test_only_one_rewrite_per_finding_is_kept() -> None:
-    """Two rewrites for one finding are two edits of one span, and only one
-    can be applied. The second is ignored rather than left to collide."""
+async def test_one_finding_may_need_two_changes() -> None:
+    """A finding can span more than one sentence — "this paragraph overclaims
+    in several places" is answered by several rewrites, not one.
+
+    An earlier version deduplicated by finding number and threw the second
+    away. Only genuine SPAN collisions are a problem, and the surgery layer
+    already refuses those and reports them; refusing here as well discarded
+    edits that never conflicted with anything.
+    """
     section = SECTIONS[0]
     words = section.text.split()
     finding = _finding(section.id, section.start, section.start + 5)
@@ -536,5 +542,5 @@ async def test_only_one_rewrite_per_finding_is_kept() -> None:
         [finding],
         sections=[section],
     )
-    assert len(edits) == 1
-    assert edits[0].new_text == "A"
+    assert len(edits) == 2
+    assert {e.new_text for e in edits} == {"A", "B"}
