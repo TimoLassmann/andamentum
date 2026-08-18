@@ -28,14 +28,39 @@ def _f(criterion, sev, sec, start, end, *, issue="i", quote="q") -> Finding:
     )
 
 
-def test_gate_drops_overlapping_keeps_most_severe() -> None:
-    a = _f("Story", "minor", "s1", 0, 10)
-    b = _f("Story", "major", "s1", 5, 15)  # overlaps a; more severe
-    c = _f("Evaluations", "moderate", "s2", 0, 10)  # disjoint
+def test_no_finding_is_discarded_for_overlapping_a_more_severe_one() -> None:
+    """Both points survive, each on its own passage.
+
+    Dropping the less severe one lost about a fifth of the review on two real
+    documents, and every drop was cross-criterion — consolidate has already
+    merged the same-point findings, so what reaches the gate is a DIFFERENT
+    observation about the same sentence.
+    """
+    a = _f("Presentation", "minor", "s1", 0, 10, issue="signposting is weak")
+    b = _f("Story", "major", "s1", 5, 15, issue="the novelty claim is unsupported")
+    c = _f("Evaluations", "moderate", "s2", 0, 10, issue="define the metric")
+
     kept = gate_and_aggregate([a, b, c])
-    assert b in kept and a not in kept  # most-severe overlapper kept
-    assert c in kept
-    assert kept[0].severity == "major"  # ordered by severity desc
+
+    assert sorted(kept, key=id) == sorted([a, b, c], key=id)
+    # Each keeps its own anchor, severity and criterion — nothing is reworded.
+    assert kept == [b, c, a]  # severity desc, then criterion
+
+
+def test_findings_are_ordered_most_severe_first() -> None:
+    minor = _f("Story", "minor", "s1", 0, 10)
+    major = _f("Story", "major", "s2", 0, 10)
+    moderate = _f("Story", "moderate", "s3", 0, 10)
+    assert gate_and_aggregate([minor, major, moderate]) == [major, moderate, minor]
+
+
+def test_one_perspective_s_points_sit_together() -> None:
+    """Criterion is the secondary key, so a reader reads one angle at a time."""
+    story = _f("Story", "moderate", "s1", 0, 10)
+    evaluations = _f("Evaluations", "moderate", "s2", 0, 10)
+    story_two = _f("Story", "moderate", "s3", 0, 10)
+    ordered = gate_and_aggregate([story, evaluations, story_two])
+    assert [f.criterion for f in ordered] == ["Evaluations", "Story", "Story"]
 
 
 def test_flatten_review_markdown() -> None:
@@ -183,3 +208,38 @@ async def test_synthesise_returns_structured_review() -> None:
     ):
         r = await synthesise(model, [], agent_model="stub")
     assert r.synopsis == "ok"
+
+
+def test_an_exact_repeat_is_dropped() -> None:
+    """Same span, same words — one observation reported twice. Deciding this
+    needs no judgement, unlike dropping a differently-worded point."""
+    a = _f("Story", "major", "s1", 0, 10, issue="the claim is unsupported")
+    b = _f("Evaluations", "minor", "s1", 0, 10, issue="the claim is unsupported")
+    kept = gate_and_aggregate([a, b])
+    assert kept == [a]  # the more severe copy survives
+
+
+def test_the_same_words_on_a_different_passage_are_two_findings() -> None:
+    """A repeated problem in two places is two problems to fix."""
+    a = _f("Story", "major", "s1", 0, 10, issue="unsupported claim")
+    b = _f("Story", "major", "s1", 40, 50, issue="unsupported claim")
+    assert len(gate_and_aggregate([a, b])) == 2
+
+
+def test_differently_worded_points_on_one_passage_both_survive() -> None:
+    """Similarity is not identity. Judging whether two wordings mean the same
+    thing is consolidate's job, with an LLM and a conservative bias — this
+    stage only removes literal repeats."""
+    a = _f("Story", "major", "s1", 0, 10, issue="the claim is unsupported")
+    b = _f("Story", "major", "s1", 0, 10, issue="this claim lacks support")
+    assert len(gate_and_aggregate([a, b])) == 2
+
+
+def test_a_consolidate_failure_cannot_flood_one_sentence() -> None:
+    """Consolidate returns its input unchanged on any agent error. Without a
+    deterministic backstop that would put nine identical comments in a margin."""
+    repeats = [
+        _f(c, "moderate", "s1", 0, 10, issue="operationally under-specified")
+        for c in ("Story", "Presentation", "Evaluations", "Correctness", "Significance")
+    ]
+    assert len(gate_and_aggregate(repeats)) == 1
