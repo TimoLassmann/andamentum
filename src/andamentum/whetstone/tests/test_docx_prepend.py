@@ -1,4 +1,4 @@
-"""Tests for ``DocxEditor.prepend_review_section`` markdown parsing.
+"""Tests for ``review_report.prepend_review_section`` markdown parsing.
 
 Exercises the markdown→Word styling cascade: headings, lists,
 blockquotes, horizontal rules, and the trailing page break. We assert
@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+
+from andamentum.whetstone.docx.review_report import prepend_review_section
 
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -68,7 +70,7 @@ def _last_paragraph_has_page_break(paragraphs) -> bool:
 )
 def test_heading_levels(tmp_path, markdown_prefix, expected_style):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(f"{markdown_prefix}Title text")
+    prepend_review_section(editor, f"{markdown_prefix}Title text")
     paragraphs = _prepended_body_paragraphs(editor)
     # First paragraph is the one we wrote; last is the page break.
     assert _style_name(paragraphs[0]) == expected_style
@@ -77,7 +79,7 @@ def test_heading_levels(tmp_path, markdown_prefix, expected_style):
 
 def test_heading_supports_inline_bold(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("## Title with **bold** in it")
+    prepend_review_section(editor, "## Title with **bold** in it")
     paragraphs = _prepended_body_paragraphs(editor)
     p = paragraphs[0]
     assert _style_name(p) == "Heading2"
@@ -91,7 +93,7 @@ def test_heading_supports_inline_bold(tmp_path):
 
 def test_bullet_dash(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("- first\n- second\n- third")
+    prepend_review_section(editor, "- first\n- second\n- third")
     paragraphs = _prepended_body_paragraphs(editor)
     items = paragraphs[:3]
     assert all(_style_name(p) == "ListBullet" for p in items)
@@ -102,7 +104,7 @@ def test_bullet_dash(tmp_path):
 
 def test_bullet_star(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("* alpha\n* beta")
+    prepend_review_section(editor, "* alpha\n* beta")
     paragraphs = _prepended_body_paragraphs(editor)
     assert _style_name(paragraphs[0]) == "ListBullet"
     assert _style_name(paragraphs[1]) == "ListBullet"
@@ -110,7 +112,7 @@ def test_bullet_star(tmp_path):
 
 def test_bullet_with_inline_bold(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("- item with **emphasis** inside")
+    prepend_review_section(editor, "- item with **emphasis** inside")
     paragraphs = _prepended_body_paragraphs(editor)
     p = paragraphs[0]
     assert _style_name(p) == "ListBullet"
@@ -121,7 +123,7 @@ def test_bullet_with_inline_bold(tmp_path):
 def test_double_star_not_treated_as_bullet(tmp_path):
     """``**Whole-line bold**`` should NOT be parsed as a bullet."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("**Bold paragraph**")
+    prepend_review_section(editor, "**Bold paragraph**")
     paragraphs = _prepended_body_paragraphs(editor)
     assert _style_name(paragraphs[0]) is None  # no list style
     assert _paragraph_text(paragraphs[0]) == "Bold paragraph"
@@ -132,7 +134,7 @@ def test_double_star_not_treated_as_bullet(tmp_path):
 
 def test_numbered_single_digit(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("1. first\n2. second\n3. third")
+    prepend_review_section(editor, "1. first\n2. second\n3. third")
     paragraphs = _prepended_body_paragraphs(editor)
     items = paragraphs[:3]
     assert all(_style_name(p) == "ListNumber" for p in items)
@@ -142,7 +144,7 @@ def test_numbered_single_digit(tmp_path):
 
 def test_numbered_multi_digit(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("12. twelfth\n100. hundredth")
+    prepend_review_section(editor, "12. twelfth\n100. hundredth")
     paragraphs = _prepended_body_paragraphs(editor)
     assert _style_name(paragraphs[0]) == "ListNumber"
     assert _paragraph_text(paragraphs[0]) == "twelfth"
@@ -155,7 +157,7 @@ def test_numbered_multi_digit(tmp_path):
 
 def test_blockquote(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("> Recommendation: Minor Revisions")
+    prepend_review_section(editor, "> Recommendation: Minor Revisions")
     paragraphs = _prepended_body_paragraphs(editor)
     assert _style_name(paragraphs[0]) == "Quote"
     assert "Minor Revisions" in _paragraph_text(paragraphs[0])
@@ -163,7 +165,7 @@ def test_blockquote(tmp_path):
 
 def test_blockquote_with_inline_bold(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("> **Recommendation:** Minor Revisions")
+    prepend_review_section(editor, "> **Recommendation:** Minor Revisions")
     paragraphs = _prepended_body_paragraphs(editor)
     p = paragraphs[0]
     assert _style_name(p) == "Quote"
@@ -176,7 +178,7 @@ def test_blockquote_with_inline_bold(tmp_path):
 
 def test_horizontal_rule(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("---")
+    prepend_review_section(editor, "---")
     paragraphs = _prepended_body_paragraphs(editor)
     # The horizontal-rule paragraph has a bottom border in pPr
     p = paragraphs[0]
@@ -190,7 +192,7 @@ def test_horizontal_rule(tmp_path):
 
 def test_trailing_page_break_always_added(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("# Title\n\nSome prose.")
+    prepend_review_section(editor, "# Title\n\nSome prose.")
     paragraphs = _prepended_body_paragraphs(editor)
     # Last prepended paragraph carries the page break
     assert _last_paragraph_has_page_break(paragraphs)
@@ -200,7 +202,7 @@ def test_page_break_is_after_review_content(tmp_path):
     """Original document body lives AFTER the page break — verify
     structural ordering even if we can't open Word here."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("- one\n- two")
+    prepend_review_section(editor, "- one\n- two")
     paragraphs = _prepended_body_paragraphs(editor)
     # 2 list items + page break paragraph = 3 prepended; the existing
     # blank doc had one empty paragraph that's now last.
@@ -235,7 +237,7 @@ The contribution is sound; novelty framing needs tightening.
 
 - sound rigor
 - clarity"""
-    editor.prepend_review_section(md)
+    prepend_review_section(editor, md)
     paragraphs = _prepended_body_paragraphs(editor)
 
     styles = [_style_name(p) for p in paragraphs]
@@ -280,7 +282,7 @@ COVERAGE_TABLE = """\
 
 def test_markdown_table_becomes_word_table(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(COVERAGE_TABLE)
+    prepend_review_section(editor, COVERAGE_TABLE)
 
     tables = _prepended_tables(editor)
     assert len(tables) == 1
@@ -302,7 +304,7 @@ def test_markdown_table_becomes_word_table(tmp_path):
 
 def test_markdown_table_header_row_is_bold(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(COVERAGE_TABLE)
+    prepend_review_section(editor, COVERAGE_TABLE)
 
     tbl = _prepended_tables(editor)[0]
     header_tr, first_body_tr = tbl.findall("w:tr", namespaces=NS)[:2]
@@ -318,7 +320,7 @@ def test_markdown_table_header_row_is_bold(tmp_path):
 def test_markdown_table_cell_gets_inline_markdown(tmp_path):
     """A `**major**` in a cell must render as formatting, not literally."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(
+    prepend_review_section(editor, 
         "| Check | Severity |\n| --- | --- |\n| Sample size | **major** |"
     )
 
@@ -348,7 +350,7 @@ def test_ragged_table_falls_back_to_paragraphs(tmp_path, monkeypatch):
     ragged = "| Check | Severity |\n| --- | --- |\n| Sample size | major | extra |"
 
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(ragged)
+    prepend_review_section(editor, ragged)
 
     assert _prepended_tables(editor) == []
     paragraphs = _prepended_body_paragraphs(editor)
@@ -360,7 +362,7 @@ def test_ragged_table_falls_back_to_paragraphs(tmp_path, monkeypatch):
 def test_pipe_lines_without_separator_row_stay_paragraphs(tmp_path):
     """Pipe-wrapped prose is not a table — no separator row, no `<w:tbl>`."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("| not really a table |")
+    prepend_review_section(editor, "| not really a table |")
 
     assert _prepended_tables(editor) == []
     assert _paragraph_text(_prepended_body_paragraphs(editor)[0]) == (
@@ -370,7 +372,7 @@ def test_pipe_lines_without_separator_row_stay_paragraphs(tmp_path):
 
 def test_escaped_pipe_in_cell_does_not_add_a_column(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(
+    prepend_review_section(editor, 
         "| Check | Note |\n| --- | --- |\n| Power | a \\| b |"
     )
 
@@ -382,7 +384,7 @@ def test_table_between_prose_keeps_document_order(tmp_path):
     """Review mode's report block is unaffected: prose still surrounds
     the table in body order, and the page break stays last."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section(
+    prepend_review_section(editor, 
         "## Coverage\n\n| Check | Ran |\n| --- | --- |\n| Blinding | yes |\n\nDone."
     )
 
@@ -399,7 +401,7 @@ def test_table_between_prose_keeps_document_order(tmp_path):
 def test_empty_lines_preserve_spacing(tmp_path):
     """Blank input lines remain blank paragraphs (vertical spacing)."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("# Title\n\n\nNew paragraph after gap")
+    prepend_review_section(editor, "# Title\n\n\nNew paragraph after gap")
     paragraphs = _prepended_body_paragraphs(editor)
     # Title + empty + empty + paragraph + page break + ...
     assert _style_name(paragraphs[0]) == "Heading1"
@@ -436,7 +438,7 @@ def test_prepended_report_is_bracketed_and_left_out_of_the_paragraph_list(tmp_pa
 
     editor = DocxEditor(str(src))
     before = list(editor.paragraph_elements)
-    editor.prepend_review_section("# Whetstone Review\n\nSomething to fix.")
+    prepend_review_section(editor, "# Whetstone Review\n\nSomething to fix.")
 
     assert _report_bookmark_names(editor) == ["andamentum_review_report_1"]
     assert editor.paragraph_elements == before
@@ -450,8 +452,8 @@ def test_prepended_report_is_bracketed_and_left_out_of_the_paragraph_list(tmp_pa
 def test_a_second_report_takes_the_next_bookmark_name(tmp_path):
     """Word renames a duplicate bookmark on save, and that unmarks the report."""
     editor = _editor_for_blank_doc(tmp_path)
-    editor.prepend_review_section("# Round one")
-    editor.prepend_review_section("# Round two")
+    prepend_review_section(editor, "# Round one")
+    prepend_review_section(editor, "# Round two")
 
     names = sorted(_report_bookmark_names(editor))
     assert names == ["andamentum_review_report_1", "andamentum_review_report_2"]
@@ -474,7 +476,7 @@ def test_a_report_bookmark_with_no_end_hides_nothing(tmp_path):
     document.save(str(src))
 
     editor = DocxEditor(str(src))
-    editor.prepend_review_section("# Whetstone Review\n\nSomething to fix.")
+    prepend_review_section(editor, "# Whetstone Review\n\nSomething to fix.")
     root = editor.trees[editor._doc_path].getroot()
     end = next(root.iter(f"{{{NS['w']}}}bookmarkEnd"))
     end.getparent().remove(end)

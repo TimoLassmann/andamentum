@@ -34,7 +34,14 @@ from .reading import (
 )
 from .low_level import DocxEditor, ParagraphData, PlacedComment
 from .patch_editor import PatchDocxEditor
-from .surgery import Edit, EditReport, apply_edits, isolate_span, split_run_at
+from .surgery import (
+    Edit,
+    EditReport,
+    apply_edits,
+    run_bounds,
+    split_at_boundaries,
+    split_run_at,
+)
 from .textmap import AtomSpan, TextMap
 
 __all__ = [
@@ -53,7 +60,8 @@ __all__ = [
     "TextMap",
     "apply_edits",
     "document_atoms",
-    "isolate_span",
+    "run_bounds",
+    "split_at_boundaries",
     "paragraph_atoms",
     "projection",
     "split_run_at",

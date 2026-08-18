@@ -51,12 +51,12 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Sequence
 
-from .atoms import Atom, AtomKind, document_atoms, projection
+from .atoms import Atom, document_atoms, projection
 from .exceptions import DocumentReviewError
 from .low_level import DocxEditor, PlacedComment
-from .surgery import Edit, apply_edits, split_run_at
+from .surgery import Edit, apply_edits, run_bounds, split_at_boundaries
 from .textmap import AtomSpan, TextMap
 
 logger = logging.getLogger("andamentum.whetstone")
@@ -135,7 +135,7 @@ def apply_annotations(
     kept = _drop_shadowed_notes(notes, rewrites, report=report, atoms=atoms)
 
     if kept:
-        _split_at_boundaries(atoms, kept)
+        split_at_boundaries(atoms, [AtomSpan(n.start, n.end) for n in kept])
         atoms = document_atoms(editor.paragraph_elements)
         # Splitting a run moves no characters. Asserting it rather than
         # assuming it: split_run_at silently declines a cut at offset 0 or at
@@ -147,7 +147,7 @@ def apply_annotations(
             why="splitting runs at the comment boundaries",
         )
         for note in kept:
-            bounds = _run_bounds(atoms, note.start, note.end)
+            bounds = run_bounds(atoms, AtomSpan(note.start, note.end))
             if bounds is None:
                 # A span holding no run at all — e.g. one covering only a
                 # paragraph break. There is nothing to bracket.
@@ -274,42 +274,6 @@ def _drop_shadowed_notes(
             _slice(atoms, clash.start, clash.end)[:70],
         )
     return kept
-
-
-def _split_at_boundaries(atoms: Sequence[Atom], notes: Sequence[Note]) -> None:
-    """Cut runs so every note's span starts and ends on a run boundary.
-
-    A comment brackets runs, not characters. Splitting every boundary in one
-    pass — rather than isolating each note in turn — is what makes overlapping
-    and identical note spans safe: isolating one note invalidates the run
-    addresses the next one holds, and two comments on the same sentence is an
-    ordinary review, not an edge case.
-
-    Descending order means cuts inside one run are made right to left, so an
-    earlier cut never moves the text a later one is measured against.
-    """
-    boundaries = sorted(
-        {edge for note in notes for edge in (note.start, note.end)}, reverse=True
-    )
-    for index in boundaries:
-        if index >= len(atoms):
-            continue
-        atom = atoms[index]
-        if atom.kind is AtomKind.TEXT and atom.element is not None and atom.offset > 0:
-            split_run_at(atom.element, atom.offset)
-
-
-def _run_bounds(atoms: Sequence[Atom], start: int, end: int) -> tuple[Any, Any] | None:
-    """The first and last run the span ``[start, end)`` covers.
-
-    Read from the element, not from ``atom.run``. Splitting a boundary moves
-    text into a new run, so the run an atom was built with may no longer hold
-    that character — the element does, and it is never replaced.
-    """
-    covered = [atom for atom in atoms[start:end] if atom.element is not None]
-    if not covered:
-        return None
-    return covered[0].element.getparent(), covered[-1].element.getparent()
 
 
 def _slice(atoms: Sequence[Atom], start: int, end: int) -> str:

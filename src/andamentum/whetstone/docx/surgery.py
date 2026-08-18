@@ -472,46 +472,56 @@ def split_run_at(element: Any, offset: int) -> tuple[Any, Any]:
     return run, tail
 
 
-def isolate_span(atoms: Sequence[Atom], span: AtomSpan) -> tuple[Any, Any] | None:
-    """Split boundary runs so *span* occupies whole runs; return its ends.
+def split_at_boundaries(atoms: Sequence[Atom], spans: Iterable[AtomSpan]) -> None:
+    """Cut runs so every span in *spans* starts and ends on a run boundary.
 
-    A comment brackets runs, not characters, so a range over part of a run
-    would either overshoot or — when two comments share one run — nest inside
-    another comment's markers. Splitting first gives each range its own runs.
+    A comment brackets runs, not characters, so a range covering part of a run
+    would either overshoot or — when two comments share a run — nest inside
+    another comment's markers.
 
-    The right-hand cut is made before the left so that, when both fall in the
-    same run, the left cut still sees the offsets it was given.
+    Every boundary is cut before any is read back, which is what makes
+    overlapping and identical spans safe. The alternative, isolating one span
+    at a time, has to rebase the second cut whenever both ends of a span share
+    one ``<w:t>``: the first cut moves the text the second was measured
+    against. That rebasing was wrong twice — once addressing runs, once
+    addressing elements — and splitting everything first makes the case
+    unrepresentable rather than merely handled.
+
+    Descending order means cuts inside one run are made right to left, so an
+    earlier cut never moves the text a later one is measured against.
+
+    **Re-derive the atom stream afterwards.** A cut moves characters into a new
+    element while the atoms built before it still point at the old one, so
+    ``run_bounds`` would read the wrong run. The projection is unchanged by a
+    split, so the spans themselves stay valid across the rebuild.
     """
-    covered = [a for a in atoms[span.start : span.end] if a.element is not None]
+    boundaries = sorted(
+        {edge for span in spans for edge in (span.start, span.end)}, reverse=True
+    )
+    for index in boundaries:
+        if index >= len(atoms):
+            continue
+        atom = atoms[index]
+        if atom.kind is AtomKind.TEXT and atom.element is not None and atom.offset > 0:
+            split_run_at(atom.element, atom.offset)
+
+
+def run_bounds(
+    atoms: Sequence[Atom], span: AtomSpan
+) -> tuple[Any, Any] | None:
+    """The first and last run *span* covers, or None if it covers none.
+
+    Call after :func:`split_at_boundaries`, which guarantees the span occupies
+    whole runs. Read from the element rather than ``atom.run``: splitting a
+    boundary moves text into a new run, so the run an atom was built with may
+    no longer hold that character, while the element always does.
+    """
+    covered = [
+        atom for atom in atoms[span.start : span.end] if atom.element is not None
+    ]
     if not covered:
         return None
-    first, last = covered[0], covered[-1]
-    shared = first.element is last.element
-
-    # Left cut first, then right. The left cut moves the span's text into a new
-    # element, so when both ends share one ``<w:t>`` the right cut has to be
-    # taken against that new element at a rebased offset — addressing the
-    # original would cut text that is no longer there.
-    start_element = first.element
-    last_element = last.element
-    last_offset = last.offset
-    if first.kind is AtomKind.TEXT and first.offset > 0:
-        _, tail = split_run_at(first.element, first.offset)
-        moved = tail.find(qn("t"))
-        if moved is not None:
-            start_element = moved
-            if shared:
-                last_element = moved
-                last_offset = last.offset - first.offset
-
-    if last.kind is AtomKind.TEXT and last_element is not None:
-        text = last_element.text or ""
-        if 0 <= last_offset + 1 < len(text):
-            split_run_at(last_element, last_offset + 1)
-
-    if start_element is None or last_element is None:
-        return None
-    return start_element.getparent(), last_element.getparent()
+    return covered[0].element.getparent(), covered[-1].element.getparent()
 
 
 def _split_paragraph_after(node: Any, *, author: str, cid: int) -> Any:

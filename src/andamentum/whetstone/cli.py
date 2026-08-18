@@ -1121,7 +1121,6 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
             issues_count=len(patches),
             output_path=output_path,
             author=resolved_author,
-            use_patch_authors=False,
         )
         # Apply invisible AI-provenance metadata so the modified manuscript
         # carries discoverable AI authorship even without a visible banner.

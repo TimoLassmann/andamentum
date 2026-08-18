@@ -39,7 +39,7 @@ from typing import Any, List, Tuple
 from ..models import DocumentPatch, PatchApplicationResult
 from .atoms import document_atoms
 from .low_level import DocxEditor, PlacedComment
-from .surgery import Edit, apply_edits, isolate_span
+from .surgery import Edit, apply_edits, run_bounds, split_at_boundaries
 from .textmap import TextMap
 
 logger = logging.getLogger("andamentum.whetstone")
@@ -64,9 +64,7 @@ class PatchDocxEditor(DocxEditor):
         self.applied_patches: List[DocumentPatch] = []
         self.failed_patches: List[DocumentPatch] = []
 
-    def apply_patches(
-        self, patches, use_patch_authors: bool = False
-    ) -> PatchApplicationResult:
+    def apply_patches(self, patches) -> PatchApplicationResult:
         """Apply *patches*, rewrites before comments.
 
         Returns a :class:`PatchApplicationResult` in which every count is a
@@ -76,15 +74,13 @@ class PatchDocxEditor(DocxEditor):
         """
         started = time.time()
 
-        pairs: List[Tuple[DocumentPatch, str]] = []
-        for item in patches:
-            if hasattr(item, "patch") and hasattr(item, "attribution"):
-                author = (
-                    item.attribution.author_name if use_patch_authors else self.author
-                )
-                pairs.append((item.patch, author))
-            else:
-                pairs.append((item, self.author))
+        # One author for the batch. Per-patch attribution used to be selected
+        # by `use_patch_authors`, reading `.patch`/`.attribution` off a wrapper
+        # type that no longer exists — the branch had been unreachable since
+        # `attribution.py` was deleted, and its default was True.
+        pairs: List[Tuple[DocumentPatch, str]] = [
+            (patch, self.author) for patch in patches
+        ]
 
         # Confidence orders the work; it no longer decides conflicts by accident
         # of application order, because conflicts are arbitrated explicitly.
@@ -167,15 +163,17 @@ class PatchDocxEditor(DocxEditor):
                     continue
                 located.append((patch, author, span))
 
-            # Right to left: isolating a span splits its runs, and a split
-            # keeps the original element as the left-hand half. Working
-            # backwards therefore leaves every not-yet-placed comment's address
-            # untouched. Three comments in one run used to be placed against a
-            # stream that the first split had already invalidated.
-            for patch, author, span in sorted(
-                located, key=lambda item: item[2].start, reverse=True
-            ):
-                bounds = isolate_span(after.atoms, span)
+            # Every boundary is cut before any run is read back, so comments
+            # sharing a run — or overlapping outright — are ordinary. The
+            # caller used to have to place them right to left instead, an
+            # obligation nothing could check.
+            split_at_boundaries(after.atoms, [span for _, _, span in located])
+            # Re-derive: splitting moves a character into a new element, and an
+            # atom built before the cut still points at the old one. The
+            # projection is unchanged, so the spans stay valid.
+            after = TextMap(document_atoms(self.paragraph_elements))
+            for patch, author, span in located:
+                bounds = run_bounds(after.atoms, span)
                 if bounds is None:
                     failed.append(patch)
                     location_failures += 1
