@@ -56,7 +56,13 @@ from typing import Sequence
 from .atoms import Atom, document_atoms, projection
 from .exceptions import DocumentReviewError
 from .low_level import DocxEditor, PlacedComment
-from .surgery import Edit, apply_edits, run_bounds, split_at_boundaries
+from .surgery import (
+    Edit,
+    apply_edits,
+    run_bounds,
+    split_at_boundaries,
+    translate_span,
+)
 from .textmap import AtomSpan, TextMap
 
 logger = logging.getLogger("andamentum.whetstone")
@@ -102,10 +108,10 @@ class AnnotationReport:
     applied_notes: int = 0
     conflicted_rewrites: list[Rewrite] = field(default_factory=list)
     shadowed_notes: list[Note] = field(default_factory=list)
-    # Notes moved onto the text a rewrite inserted, rather than dropped. They
-    # ARE placed — counted in applied_notes — and are listed separately only so
-    # a caller can say the comment sits on the new wording, not the old.
-    rehomed_notes: list[Note] = field(default_factory=list)
+    # Notes whose span a rewrite shifted or partly replaced. They ARE placed —
+    # counted in applied_notes — and listed separately only so a caller can say
+    # the comment now covers revised text.
+    moved_notes: list[Note] = field(default_factory=list)
     paragraphs_merged: int = 0
     paragraphs_created: int = 0
     processing_time: float = 0.0
@@ -136,28 +142,55 @@ def apply_annotations(
     for annotation in (*rewrites, *notes):
         _require_addressable(annotation, len(atoms))
 
-    kept, covered = _partition_notes(notes, rewrites)
+    # Rewrites first. They replace runs, so a comment bracketing one would be
+    # pointing at a detached element — and placing comments first meant a note
+    # over a rewritten passage had to be dropped or moved onto the insertion,
+    # which pinned a sentence-level finding to a two-word change.
+    applied: list[Edit] = []
+    if rewrites:
+        edits = [
+            Edit(
+                span=AtomSpan(rewrite.start, rewrite.end),
+                new_text=rewrite.new_text,
+                author=rewrite.author,
+            )
+            for rewrite in rewrites
+        ]
+        origin = {id(edit): rewrite for edit, rewrite in zip(edits, rewrites)}
+        edit_report = apply_edits(TextMap(atoms), edits)
+        report.applied_rewrites = edit_report.applied
+        report.conflicted_rewrites = [
+            origin[id(loser)] for loser, _winner in edit_report.conflicted
+        ]
+        report.paragraphs_merged = edit_report.paragraphs_merged
+        report.paragraphs_created = edit_report.paragraphs_created
+        applied = edit_report.applied_edits
 
-    if kept:
-        split_at_boundaries(atoms, [AtomSpan(n.start, n.end) for n in kept])
+    if notes:
+        # Every note's span, in the coordinates the document now has. Exact
+        # arithmetic over the applied rewrites — see `translate_span`. A note
+        # whose passage merely CONTAINS a rewrite still covers its whole
+        # passage, which is what the reviewer was talking about.
         atoms = document_atoms(editor.paragraph_elements)
-        # Splitting a run moves no characters. Asserting it rather than
-        # assuming it: split_run_at silently declines a cut at offset 0 or at
-        # the end of a run, and a decline that went unnoticed would place the
-        # next comment against a stale address.
-        _require_projection(
-            projection(atoms),
-            reviewed_text,
-            why="splitting runs at the comment boundaries",
-        )
-        for note in kept:
-            bounds = run_bounds(atoms, AtomSpan(note.start, note.end))
+        spans = {
+            id(note): translate_span(AtomSpan(note.start, note.end), applied)
+            for note in notes
+        }
+        split_at_boundaries(atoms, list(spans.values()))
+        # Splitting a run moves no characters, so the spans still hold. The
+        # atoms do not: a cut puts characters in a new element.
+        atoms = document_atoms(editor.paragraph_elements)
+
+        for note in notes:
+            span = spans[id(note)]
+            bounds = run_bounds(atoms, span) if len(span) else None
             if bounds is None:
-                # A span holding no run at all — e.g. one covering only a
-                # paragraph break. There is nothing to bracket.
+                # Nothing survives for it to bracket: a span holding only a
+                # paragraph break, or one a rewrite emptied by deleting the
+                # passage outright.
                 report.shadowed_notes.append(note)
                 logger.info(
-                    "[annotate] note not placed — its span holds no run: %r",
+                    "[annotate] note not placed — nothing left to anchor to: %r",
                     note.label or note.body[:60],
                 )
                 continue
@@ -171,53 +204,8 @@ def apply_annotations(
                 )
             )
             report.applied_notes += 1
-
-    if rewrites:
-        textmap = TextMap(atoms)
-        edits = [
-            Edit(
-                span=AtomSpan(rewrite.start, rewrite.end),
-                new_text=rewrite.new_text,
-                author=rewrite.author,
-            )
-            for rewrite in rewrites
-        ]
-        origin = {id(edit): rewrite for edit, rewrite in zip(edits, rewrites)}
-        edit_report = apply_edits(textmap, edits)
-        report.applied_rewrites = edit_report.applied
-        report.conflicted_rewrites = [
-            origin[id(loser)] for loser, _winner in edit_report.conflicted
-        ]
-        report.paragraphs_merged = edit_report.paragraphs_merged
-        report.paragraphs_created = edit_report.paragraphs_created
-
-        # A note whose anchor a rewrite consumed goes onto the words the
-        # rewrite put there instead of being dropped. The nodes come from the
-        # edit report — they were recorded as they were built, so nothing is
-        # searched for.
-        by_rewrite = {id(rewrite): edit for edit, rewrite in zip(edits, rewrites)}
-        for note, clash in covered:
-            edit = by_rewrite.get(id(clash))
-            inserted = edit_report.insertions.get(id(edit)) if edit else None
-            if not inserted:
-                # A rewrite that only deletes leaves nothing to point at.
-                report.shadowed_notes.append(note)
-                logger.info(
-                    "[annotate] note not placed — the rewrite covering it "
-                    "inserts nothing to anchor to: %r",
-                    note.label or note.body[:60],
-                )
-                continue
-            editor.placed_comments.append(
-                PlacedComment(
-                    author=note.author,
-                    text=note.body,
-                    start_run=inserted[0],
-                    end_run=inserted[-1],
-                )
-            )
-            report.applied_notes += 1
-            report.rehomed_notes.append(note)
+            if span != AtomSpan(note.start, note.end):
+                report.moved_notes.append(note)
 
     report.processing_time = time.time() - started
     logger.info(
@@ -228,7 +216,7 @@ def apply_annotations(
         report.total,
         report.applied_rewrites,
         report.applied_notes,
-        len(report.rehomed_notes),
+        len(report.moved_notes),
         len(report.shadowed_notes),
         len(report.conflicted_rewrites),
     )
@@ -269,40 +257,6 @@ def _require_addressable(annotation: Rewrite | Note, length: int) -> None:
 
 
 # ── shadowing, boundaries, bracketing ───────────────────────────────────
-
-
-def _partition_notes(
-    notes: Sequence[Note], rewrites: Sequence[Rewrite]
-) -> tuple[list[Note], list[tuple[Note, Rewrite]]]:
-    """Split notes into those with a standing anchor and those a rewrite covers.
-
-    A note over text a rewrite is about to consume cannot bracket that text —
-    the runs will not survive. But it is not homeless: the rewrite puts new
-    words in their place, and the note belongs on those, which is also the more
-    useful reading. The author sees the change and the reason for it together.
-
-    The left edge reaches one character further than the rewrite's own span:
-    an insertion at the head of a rewrite is attached to the run of the
-    preceding character (:func:`~.surgery._anchor_for_insertion`), and that run
-    is rewritten — so a note ending exactly at the rewrite's start shares a run
-    with it after all.
-    """
-    standing: list[Note] = []
-    covered: list[tuple[Note, Rewrite]] = []
-    for note in notes:
-        clash = next(
-            (
-                rewrite
-                for rewrite in rewrites
-                if note.start < rewrite.end and rewrite.start <= note.end
-            ),
-            None,
-        )
-        if clash is None:
-            standing.append(note)
-        else:
-            covered.append((note, clash))
-    return standing, covered
 
 
 def _slice(atoms: Sequence[Atom], start: int, end: int) -> str:

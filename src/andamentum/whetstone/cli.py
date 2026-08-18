@@ -1151,12 +1151,11 @@ def _warn_on_dropped_annotations(console: Console, report) -> None:
     if report is None:
         return
 
-    if report.rehomed_notes:
+    if report.moved_notes:
         console.print(
-            f"[dim]note:[/dim] {len(report.rehomed_notes)} comment(s) sit on "
-            f"the replacement text rather than the original — a suggested "
-            f"rewrite covers the passage they were raised against, so the "
-            f"change and the reason for it are together."
+            f"[dim]note:[/dim] {len(report.moved_notes)} comment(s) cover "
+            f"text a suggested rewrite revised, so they sit on the passage as "
+            f"it now reads rather than as it was written."
         )
 
     if report.shadowed_notes:

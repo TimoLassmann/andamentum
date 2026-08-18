@@ -520,11 +520,11 @@ def test_comments_moved_onto_a_rewrite_are_reported_as_placed(capsys) -> None:
     note = Note(start=0, end=4, body="b", author="a")
     _warn_on_dropped_annotations(
         Console(stderr=True),
-        _report(total=3, applied_notes=3, rehomed_notes=[note] * 3),
+        _report(total=3, applied_notes=3, moved_notes=[note] * 3),
     )
 
     err = " ".join(capsys.readouterr().err.split())
-    assert "3 comment(s) sit on the replacement text" in err
+    assert "3 comment(s) cover text a suggested rewrite revised" in err
     assert "were not placed" not in err
 
 

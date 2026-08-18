@@ -194,6 +194,10 @@ class EditReport:
     # the moment they are built, and looking them up afterwards would be the
     # deleted coordinate system growing back.
     insertions: dict[int, list[Any]] = field(default_factory=dict)  # <w:r> runs
+    # The edits that ran, in document order. A caller holding offsets from
+    # before the edits can translate them exactly from these: the spans do not
+    # overlap, so each one shifts everything after it by a known amount.
+    applied_edits: list[Edit] = field(default_factory=list)
 
 
 def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
@@ -488,6 +492,40 @@ def split_run_at(element: Any, offset: int) -> tuple[Any, Any]:
     return run, tail
 
 
+def translate_offset(offset: int, applied: Sequence[Edit], *, clamp: str) -> int:
+    """Where *offset* sits once *applied* has run, exactly.
+
+    A rewrite replaces one span with text of another length, shifting
+    everything after it. The spans do not overlap, so the shift at any point is
+    just the sum of the length changes before it — arithmetic, not a search.
+
+    An offset landing INSIDE a rewritten span has no exact image, because the
+    characters it addressed are gone. ``clamp="start"`` maps it to the start of
+    the replacement and ``clamp="end"`` to the end, so a range whose ends fall
+    inside rewrites still covers the replacement rather than collapsing.
+    """
+    shift = 0
+    for edit in applied:
+        if edit.span.end <= offset:
+            shift += len(edit.new_text) - len(edit.span)
+        elif edit.span.start < offset:
+            start = edit.span.start + shift
+            return start if clamp == "start" else start + len(edit.new_text)
+        else:
+            break
+    return offset + shift
+
+
+def translate_span(
+    span: AtomSpan, applied: Sequence[Edit]
+) -> AtomSpan:
+    """*span* in the coordinates the document has after *applied* has run."""
+    return AtomSpan(
+        translate_offset(span.start, applied, clamp="start"),
+        translate_offset(span.end, applied, clamp="end"),
+    )
+
+
 def split_at_boundaries(atoms: Sequence[Atom], spans: Iterable[AtomSpan]) -> None:
     """Cut runs so every span in *spans* starts and ends on a run boundary.
 
@@ -612,6 +650,7 @@ def apply_edits(
                 textmap.slice(clash.span)[:70],
             )
     report.applied = len(accepted)
+    report.applied_edits = sorted(accepted, key=lambda e: e.span.start)
     if not accepted:
         return report
 

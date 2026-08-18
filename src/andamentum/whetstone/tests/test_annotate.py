@@ -374,7 +374,7 @@ def test_a_note_the_rewrite_covers_moves_onto_the_new_text(tmp_path: Path) -> No
     )
     assert report.applied_rewrites == 1
     assert report.applied_notes == 1
-    assert [n.body for n in report.rehomed_notes] == ["on the same word"]
+    assert [n.body for n in report.moved_notes] == ["on the same word"]
     assert report.shadowed_notes == []
 
     out = _write(editor, tmp_path / "out.docx")
@@ -519,3 +519,85 @@ def test_the_review_path_never_searches_for_its_text() -> None:
             if token == "TextMap(" and module == "docx/annotate.py":
                 continue  # apply_edits takes one; it is never searched
             assert token not in code, f"{module} reaches for {token}"
+
+
+def test_a_note_over_a_sentence_still_covers_the_sentence(tmp_path: Path) -> None:
+    """A finding quotes a passage; an edit changes a few words inside it.
+
+    That pairing is the common case — both come from a model reading the same
+    text, so they land on the same troublesome sentences — and most of the
+    note's span survives the rewrite. Two earlier attempts got it wrong: the
+    first dropped the note, the second pinned a 79-character finding to a
+    two-word insertion. The note's offsets are translated through the applied
+    rewrites, so it covers its whole passage as that passage now reads.
+    """
+    source = tmp_path / "src.docx"
+    doc = Document()
+    doc.add_paragraph(
+        "This means a reviewer encounters greater effort when auditing claims, "
+        "which undermines the premise."
+    )
+    doc.save(str(source))
+
+    editor = DocxEditor(str(source))
+    text = projection(document_atoms(editor.paragraph_elements))
+    sentence = "This means a reviewer encounters greater effort when auditing claims"
+    note_start = text.index(sentence)
+    word_start = text.index("greater effort")
+
+    report = apply_annotations(
+        editor,
+        rewrites=[
+            Rewrite(
+                start=word_start,
+                end=word_start + len("greater effort"),
+                new_text="more work",
+                author="t",
+            )
+        ],
+        notes=[
+            Note(
+                start=note_start,
+                end=note_start + len(sentence),
+                body="The audit burden is asserted, never quantified.",
+                author="t",
+            )
+        ],
+        reviewed_text=text,
+    )
+
+    assert report.applied_rewrites == 1
+    assert report.applied_notes == 1
+    assert [n.body for n in report.moved_notes] == [
+        "The audit burden is asserted, never quantified."
+    ]
+
+    out = _write(editor, tmp_path / "out.docx")
+    bracketed = next(iter(_comment_spans(out).values()))
+    # The whole sentence, not just the words the rewrite touched.
+    assert bracketed.startswith("This means a reviewer")
+    assert bracketed.rstrip().endswith("auditing claims")
+    assert "more work" in bracketed
+
+
+def test_a_note_clear_of_every_rewrite_is_not_reported_as_moved(tmp_path: Path) -> None:
+    """Only spans a rewrite actually shifted count as moved."""
+    source = tmp_path / "src.docx"
+    doc = Document()
+    doc.add_paragraph("First sentence stands. Second sentence gets edited later.")
+    doc.save(str(source))
+
+    editor = DocxEditor(str(source))
+    text = projection(document_atoms(editor.paragraph_elements))
+    later = text.index("gets edited")
+
+    report = apply_annotations(
+        editor,
+        rewrites=[
+            Rewrite(start=later, end=later + 11, new_text="was revised", author="t")
+        ],
+        notes=[Note(start=0, end=22, body="on the first", author="t")],
+        reviewed_text=text,
+    )
+    assert report.applied_notes == 1
+    assert report.moved_notes == []
