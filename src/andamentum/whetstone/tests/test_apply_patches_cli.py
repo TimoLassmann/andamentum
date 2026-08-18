@@ -500,11 +500,32 @@ def test_shadowed_comments_are_reported_not_swallowed(capsys) -> None:
         _report(total=7, applied_notes=2, shadowed_notes=[note] * 5),
     )
 
-    err = capsys.readouterr().err
+    # Rich wraps to the terminal width, so compare on collapsed whitespace —
+    # the assertion is about what the message says, not where it breaks.
+    err = " ".join(capsys.readouterr().err.split())
     # Out of the comments attempted (5 dropped + 2 placed), not out of 7.
     assert "5 of 7 comment" in err
     # The reader must be told the findings are not lost, only unplaced.
     assert "still listed in the review report" in err
+
+
+def test_comments_moved_onto_a_rewrite_are_reported_as_placed(capsys) -> None:
+    """Not a failure: the comment sits on the replacement, so the author sees
+    the change and the reason for it together. Worth saying, not warning."""
+    from rich.console import Console
+
+    from andamentum.whetstone.cli import _warn_on_dropped_annotations
+    from andamentum.whetstone.docx.annotate import Note
+
+    note = Note(start=0, end=4, body="b", author="a")
+    _warn_on_dropped_annotations(
+        Console(stderr=True),
+        _report(total=3, applied_notes=3, rehomed_notes=[note] * 3),
+    )
+
+    err = " ".join(capsys.readouterr().err.split())
+    assert "3 comment(s) sit on the replacement text" in err
+    assert "were not placed" not in err
 
 
 def test_dropped_edits_are_not_reported_as_merely_unplaced(capsys) -> None:

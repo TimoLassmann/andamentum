@@ -163,7 +163,8 @@ class _RunCuts:
     # element was too coarse: two reviewers editing different words of the same
     # ``<w:t>`` had the second one's change stamped with the first one's name.
     deletions: list[tuple[int, int, str]] = field(default_factory=list)
-    insertions: list[tuple[int, str, str]] = field(default_factory=list)
+    # (offset, text, author, id of the Edit that asked for it)
+    insertions: list[tuple[int, str, str, int]] = field(default_factory=list)
     delete_whole_run: bool = False
     whole_run_author: str = ""
     # Offsets that must end up as node boundaries even if nothing is cut there,
@@ -186,6 +187,13 @@ class EditReport:
     conflicted: list[tuple[Edit, Edit]] = field(default_factory=list)
     paragraphs_merged: int = 0
     paragraphs_created: int = 0
+    # The ``<w:ins>`` nodes each edit produced, keyed by ``id(edit)``. A
+    # comment whose anchor a rewrite consumed can bracket these instead of
+    # being dropped — the reader then sees the new wording and the reason for
+    # it together. Reported rather than searched for: the nodes are known at
+    # the moment they are built, and looking them up afterwards would be the
+    # deleted coordinate system growing back.
+    insertions: dict[int, list[Any]] = field(default_factory=dict)  # <w:r> runs
 
 
 def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
@@ -276,7 +284,9 @@ def _compile(
                 element, offset = anchor
                 head, *tails = inserted.split("\n")
                 if head:
-                    cuts_for(element).insertions.append((offset, head, edit.author))
+                    cuts_for(element).insertions.append(
+                        (offset, head, edit.author, id(edit))
+                    )
                 if tails:
                     # Each newline starts a paragraph. The anchor run has to be
                     # cut at this offset even when nothing else happens there,
@@ -305,7 +315,7 @@ def _merge_ranges(
 
 
 def _rewrite_run(
-    run: Any, plans: dict[Any, _RunCuts], *, cid: int
+    run: Any, plans: dict[Any, _RunCuts], produced: dict[int, list[Any]], *, cid: int
 ) -> tuple[int, dict[Any, dict[int, Any]]]:
     """Rebuild *run* once, applying the cuts for every element inside it.
 
@@ -387,7 +397,7 @@ def _rewrite_run(
             | plan.split_points
             | {low for low, _, _ in deletions}
             | {high for _, high, _ in deletions}
-            | {offset for offset, _, _ in insertions}
+            | {offset for offset, _, _, _ in insertions}
         )
         marks: dict[int, Any] = {}
         cursor = 0
@@ -409,11 +419,17 @@ def _rewrite_run(
                         emit_text(chunk)
                     marks[boundary] = replacement[-1]
                 cursor = boundary
-            for offset, inserted, inserted_by in insertions:
+            for offset, inserted, inserted_by, owner in insertions:
                 if offset == boundary:
                     flush()
                     replacement.append(
                         _insertion(inserted, rpr, author=inserted_by, cid=cid)
+                    )
+                    # The run inside, not the container: a caller bracketing
+                    # a comment across it needs runs, and reaching into the
+                    # XML for one is exactly the searching this design removed.
+                    produced.setdefault(owner, []).extend(
+                        replacement[-1].findall(qn("r"))
                     )
                     cid += 1
                     # Last writer wins: a split at this offset must follow the
@@ -611,7 +627,7 @@ def apply_edits(
 
     written: dict[Any, dict[int, Any]] = {}
     for run, plans in by_run.items():
-        cid, ends_at = _rewrite_run(run, plans, cid=cid)
+        cid, ends_at = _rewrite_run(run, plans, report.insertions, cid=cid)
         written.update(ends_at)
 
     for p_elem, kind, author in paragraph_marks:

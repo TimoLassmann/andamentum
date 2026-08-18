@@ -1151,14 +1151,22 @@ def _warn_on_dropped_annotations(console: Console, report) -> None:
     if report is None:
         return
 
+    if report.rehomed_notes:
+        console.print(
+            f"[dim]note:[/dim] {len(report.rehomed_notes)} comment(s) sit on "
+            f"the replacement text rather than the original — a suggested "
+            f"rewrite covers the passage they were raised against, so the "
+            f"change and the reason for it are together."
+        )
+
     if report.shadowed_notes:
         attempted = len(report.shadowed_notes) + report.applied_notes
         console.print(
             f"[yellow]note:[/yellow] {len(report.shadowed_notes)} of "
-            f"{attempted} comment(s) were not placed — a suggested rewrite "
-            f"covers the text they point at, and the tracked change says the "
-            f"same thing in place. Those findings are still listed in the "
-            f"review report at the top of the document."
+            f"{attempted} comment(s) were not placed — the rewrite covering "
+            f"each one only removes text, so there is nothing left to point "
+            f"at. Those findings are still listed in the review report at the "
+            f"top of the document."
         )
 
     if report.conflicted_rewrites:

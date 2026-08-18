@@ -102,6 +102,10 @@ class AnnotationReport:
     applied_notes: int = 0
     conflicted_rewrites: list[Rewrite] = field(default_factory=list)
     shadowed_notes: list[Note] = field(default_factory=list)
+    # Notes moved onto the text a rewrite inserted, rather than dropped. They
+    # ARE placed — counted in applied_notes — and are listed separately only so
+    # a caller can say the comment sits on the new wording, not the old.
+    rehomed_notes: list[Note] = field(default_factory=list)
     paragraphs_merged: int = 0
     paragraphs_created: int = 0
     processing_time: float = 0.0
@@ -132,7 +136,7 @@ def apply_annotations(
     for annotation in (*rewrites, *notes):
         _require_addressable(annotation, len(atoms))
 
-    kept = _drop_shadowed_notes(notes, rewrites, report=report, atoms=atoms)
+    kept, covered = _partition_notes(notes, rewrites)
 
     if kept:
         split_at_boundaries(atoms, [AtomSpan(n.start, n.end) for n in kept])
@@ -187,14 +191,44 @@ def apply_annotations(
         report.paragraphs_merged = edit_report.paragraphs_merged
         report.paragraphs_created = edit_report.paragraphs_created
 
+        # A note whose anchor a rewrite consumed goes onto the words the
+        # rewrite put there instead of being dropped. The nodes come from the
+        # edit report — they were recorded as they were built, so nothing is
+        # searched for.
+        by_rewrite = {id(rewrite): edit for edit, rewrite in zip(edits, rewrites)}
+        for note, clash in covered:
+            edit = by_rewrite.get(id(clash))
+            inserted = edit_report.insertions.get(id(edit)) if edit else None
+            if not inserted:
+                # A rewrite that only deletes leaves nothing to point at.
+                report.shadowed_notes.append(note)
+                logger.info(
+                    "[annotate] note not placed — the rewrite covering it "
+                    "inserts nothing to anchor to: %r",
+                    note.label or note.body[:60],
+                )
+                continue
+            editor.placed_comments.append(
+                PlacedComment(
+                    author=note.author,
+                    text=note.body,
+                    start_run=inserted[0],
+                    end_run=inserted[-1],
+                )
+            )
+            report.applied_notes += 1
+            report.rehomed_notes.append(note)
+
     report.processing_time = time.time() - started
     logger.info(
-        "[annotate] %d/%d applied (%d rewrite(s), %d comment(s)); "
-        "%d note(s) shadowed by a rewrite, %d rewrite(s) dropped as overlapping",
+        "[annotate] %d/%d applied (%d rewrite(s), %d comment(s), %d of them "
+        "moved onto a rewrite's new text); %d note(s) with nothing to anchor "
+        "to, %d rewrite(s) dropped as overlapping",
         report.applied,
         report.total,
         report.applied_rewrites,
         report.applied_notes,
+        len(report.rehomed_notes),
         len(report.shadowed_notes),
         len(report.conflicted_rewrites),
     )
@@ -237,22 +271,24 @@ def _require_addressable(annotation: Rewrite | Note, length: int) -> None:
 # ── shadowing, boundaries, bracketing ───────────────────────────────────
 
 
-def _drop_shadowed_notes(
-    notes: Sequence[Note],
-    rewrites: Sequence[Rewrite],
-    *,
-    report: AnnotationReport,
-    atoms: Sequence[Atom],
-) -> list[Note]:
-    """Notes a rewrite is about to consume the anchor of.
+def _partition_notes(
+    notes: Sequence[Note], rewrites: Sequence[Rewrite]
+) -> tuple[list[Note], list[tuple[Note, Rewrite]]]:
+    """Split notes into those with a standing anchor and those a rewrite covers.
+
+    A note over text a rewrite is about to consume cannot bracket that text —
+    the runs will not survive. But it is not homeless: the rewrite puts new
+    words in their place, and the note belongs on those, which is also the more
+    useful reading. The author sees the change and the reason for it together.
 
     The left edge reaches one character further than the rewrite's own span:
     an insertion at the head of a rewrite is attached to the run of the
     preceding character (:func:`~.surgery._anchor_for_insertion`), and that run
-    is rewritten — so a note ending exactly at the rewrite's start would be
-    bracketing an element that no longer exists by write time.
+    is rewritten — so a note ending exactly at the rewrite's start shares a run
+    with it after all.
     """
-    kept: list[Note] = []
+    standing: list[Note] = []
+    covered: list[tuple[Note, Rewrite]] = []
     for note in notes:
         clash = next(
             (
@@ -263,17 +299,10 @@ def _drop_shadowed_notes(
             None,
         )
         if clash is None:
-            kept.append(note)
-            continue
-        report.shadowed_notes.append(note)
-        logger.info(
-            "[annotate] note DROPPED — a rewrite covers the text it anchors to.\n"
-            "           note    : %r\n"
-            "           rewrite : %r",
-            _slice(atoms, note.start, note.end)[:70],
-            _slice(atoms, clash.start, clash.end)[:70],
-        )
-    return kept
+            standing.append(note)
+        else:
+            covered.append((note, clash))
+    return standing, covered
 
 
 def _slice(atoms: Sequence[Atom], start: int, end: int) -> str:

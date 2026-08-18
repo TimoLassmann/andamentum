@@ -350,12 +350,14 @@ def test_two_comments_on_the_identical_span_both_land(tmp_path: Path) -> None:
     assert list(_comment_spans(out).values()) == ["large", "large"]
 
 
-def test_a_note_the_rewrite_will_eat_is_dropped_and_counted(tmp_path: Path) -> None:
-    """Same outcome as before, different reason — and now it is a decision.
+def test_a_note_the_rewrite_covers_moves_onto_the_new_text(tmp_path: Path) -> None:
+    """A finding and the fix for it belong together, not one instead of the other.
 
-    The rewrite removes the runs its span covers, so a comment bracketing one
-    of them would be pointing at a detached element by write time. The note
-    is dropped by integer comparison, before anything touches the tree.
+    The rewrite removes the runs its span covers, so the note cannot bracket
+    the old wording — but the rewrite puts new words in their place, and the
+    note goes on those. Measured on a real manuscript before this: 9 of 18
+    comments dropped, every one of them the reason for a tracked change the
+    author was then shown without it.
     """
     source = tmp_path / "src.docx"
     text = _emphasis_doc(source)
@@ -371,11 +373,32 @@ def test_a_note_the_rewrite_will_eat_is_dropped_and_counted(tmp_path: Path) -> N
         reviewed_text=text,
     )
     assert report.applied_rewrites == 1
-    assert report.applied_notes == 0
-    assert [n.body for n in report.shadowed_notes] == ["on the same word"]
+    assert report.applied_notes == 1
+    assert [n.body for n in report.rehomed_notes] == ["on the same word"]
+    assert report.shadowed_notes == []
 
     out = _write(editor, tmp_path / "out.docx")
-    assert _comment_spans(out) == {}
+    spans = _comment_spans(out)
+    assert len(spans) == 1
+    # It brackets the replacement, which is what the reader needs to see.
+    assert "substantial" in next(iter(spans.values()))
+
+
+def test_a_note_over_a_pure_deletion_has_nothing_to_move_to(tmp_path: Path) -> None:
+    """A rewrite that only removes text leaves no new wording to point at."""
+    source = tmp_path / "src.docx"
+    text = _emphasis_doc(source)
+    start = text.index("large")
+
+    editor = DocxEditor(str(source))
+    report = apply_annotations(
+        editor,
+        rewrites=[Rewrite(start=start, end=start + 6, new_text="", author="t")],
+        notes=[Note(start=start, end=start + 5, body="on the same word", author="t")],
+        reviewed_text=text,
+    )
+    assert report.applied_notes == 0
+    assert [n.body for n in report.shadowed_notes] == ["on the same word"]
 
 
 def test_a_note_clear_of_the_rewrite_survives_it(tmp_path: Path) -> None:
