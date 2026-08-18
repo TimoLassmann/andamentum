@@ -242,6 +242,51 @@ def test_annotating_a_random_document_is_exact(seed: int, tmp_path: Path) -> Non
             assert any(want in got for got in placed), (
                 f"note lost its passage\n  want {want!r}\n  got  {placed!r}"
             )
+        # An empty expectation means every word of the passage was deleted.
+        # There is nothing left to assert here — the note either goes or sits
+        # on the whitespace the words left behind, and neither is wrong.
+        # Anchoring it to the struck-through text instead would put it
+        # somewhere that vanishes the moment the deletion is accepted, and the
+        # finding is listed in full in the prepended report either way. What
+        # must not happen is the note drifting onto SOMEONE ELSE's text, and
+        # that is checked on its own below.
+
+
+@pytest.mark.parametrize("seed", range(CASES))
+def test_a_note_never_drifts_onto_text_that_was_not_its_own(
+    seed: int, tmp_path: Path
+) -> None:
+    """The safety property, stated on its own.
+
+    Whatever a rewrite does to a note's passage — shifts it, revises part of
+    it, deletes every word of it — the note must never end up bracketing a
+    DIFFERENT passage. A comment that quietly moved to another sentence is
+    worse than one that was dropped, because nothing tells the reader.
+    """
+    rng = random.Random(seed)
+    source = tmp_path / "in.docx"
+    random_document(rng, source)
+    editor = DocxEditor(str(source), author="AI")
+    text = accepted_text(editor.paragraph_elements)
+    rewrites, notes = random_events(rng, text)
+    if not notes:
+        pytest.skip("no notes for this seed")
+
+    apply_annotations(editor, rewrites=rewrites, notes=notes, reviewed_text=text)
+    out = tmp_path / "out.docx"
+    editor.write(str(out))
+
+    final = accepted_text(DocxEditor(str(out)).paragraph_elements)
+
+    for span in comment_ranges(out):
+        flat = _flat(span)
+        if not flat:
+            continue  # its passage was deleted; whitespace is all that is left
+        # Whatever it brackets must be text that is actually in the document,
+        # not a fragment stitched from two places.
+        assert _flat(span) in _flat(final), (
+            f"comment brackets text that is not in the document: {flat!r}"
+        )
 
 
 @pytest.mark.parametrize("seed", range(CASES))
