@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Literal, cast
 
 from pydantic import BaseModel, Field
@@ -35,6 +36,7 @@ from andamentum.core.models import resolve_model
 from ..schemas import Edit
 from .locate import locate
 from .model import Section
+from .review import Finding
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -116,16 +118,76 @@ Apply these checks as you read, scaled to the criteria in your input:
   • Don't change discipline-specific terminology unless it's used
     incorrectly.
 
+# Reviewer findings
+
+When the input lists REVIEWER FINDINGS, they are the priority. Another reader
+has already gone through this document and said what is wrong with it; your
+job is to answer them where a rewrite can, and to say plainly where it cannot.
+
+  • Emit exactly ONE entry per listed finding, with `addresses` set to its
+    number. Never two entries for one finding.
+  • Set can_fix=false when rewriting a span cannot answer the finding — it
+    needs data you do not have, a new paragraph, a restructure, or a decision
+    only the author can make. Give one sentence in `why`. THIS IS THE RIGHT
+    ANSWER FOR MOST STRUCTURAL FINDINGS, and it is more useful than a
+    cosmetic change that leaves the problem in place while looking addressed.
+  • When you can fix it, the rewrite must actually answer the finding. If your
+    change would leave a reader with the same objection, set can_fix=false
+    instead.
+  • Two findings on the SAME sentence: produce one rewrite that answers both,
+    attached to the lower-numbered one, and set can_fix=false on the other
+    with `why` naming the entry that covers it. Never two rewrites of one
+    sentence — only one can be applied and the other is discarded.
+  • Two findings that pull in OPPOSITE directions — one saying a claim is
+    overstated, another saying it is undersold — cannot both be satisfied.
+    Set can_fix=false on both and say so. Choosing between them is the
+    author's decision, not yours.
+  • Findings outrank the editorial criteria. Where concision would undo what
+    a finding asks for, the finding wins and you skip the style edit.
+
+Edits of your own (`addresses=0`) come after, and only where they do not touch
+a span a finding-directed rewrite already covers.
+
 Output an EditorOutput with the edits list (possibly empty)."""
 
 
 class EditProposal(BaseModel):
-    """One proposed edit on a verbatim span of section text."""
+    """One response: a rewrite of a verbatim span, or a reasoned refusal.
 
+    Findings and free-standing style edits share one flat list rather than
+    having a structure each, because small models fill a flat list reliably
+    and lose their place in nested ones.
+    """
+
+    addresses: int = Field(
+        default=0,
+        description=(
+            "The number of the REVIEWER FINDING this responds to, as listed in "
+            "the input. Use 0 for an edit of your own that no finding asked "
+            "for."
+        ),
+    )
+    can_fix: bool = Field(
+        default=True,
+        description=(
+            "False when the finding cannot be answered by rewriting a span — "
+            "it needs new content, a restructure, or a decision only the "
+            "author can make. Then leave original_text and new_text empty. "
+            "Saying so is the correct answer, not a failure."
+        ),
+    )
     title: str = Field(
         description="Short label for this edit, e.g. 'Tighten sentence'."
     )
     rationale: str = Field(description="One sentence: why your version is better.")
+    why: str = Field(
+        default="",
+        description=(
+            "When can_fix is false: one sentence on what the finding needs "
+            "that a rewrite cannot give — data, a new paragraph, a "
+            "restructure, or a decision only the author can make."
+        ),
+    )
     severity: Literal["minor", "moderate", "major"] = Field(
         default="minor",
         description=(
@@ -143,13 +205,20 @@ class EditProposal(BaseModel):
         ),
     )
     original_text: str = Field(
-        description="Verbatim span from the section to replace. Copy exactly."
+        default="",
+        description=(
+            "Verbatim span from the section to replace. Copy exactly. Empty "
+            "when can_fix is false."
+        ),
     )
-    new_text: str = Field(description="Your proposed rewrite of that span.")
+    new_text: str = Field(
+        default="",
+        description="Your proposed rewrite of that span. Empty when can_fix is false.",
+    )
 
 
 class EditorOutput(BaseModel):
-    """Editor agent's flat output: 0–8 EditProposals for ONE section."""
+    """Editor agent's flat output for ONE section."""
 
     edits: list[EditProposal] = Field(
         default_factory=list,
@@ -164,11 +233,36 @@ class EditorOutput(BaseModel):
 # ── Per-section runner ──────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class Declined:
+    """A finding the editor could not answer with a rewrite, and why.
+
+    Recorded rather than dropped. A finding with no edit is work left to the
+    author, and saying which ones those are — with the reason — is the
+    difference between a review that answers itself and one that only looks
+    like it did.
+    """
+
+    section_id: str
+    criterion: str
+    issue: str
+    why: str
+
+
 async def _run_editor_on_section(
-    section: Section, criteria: list[str], *, agent_model: str
-) -> list[Edit]:
-    """One LLM call → list[Edit] with DOCUMENT char offsets. Drops any
-    EditProposal whose original_text can't be located in section.text."""
+    section: Section,
+    criteria: list[str],
+    findings: list[Finding],
+    *,
+    agent_model: str,
+) -> tuple[list[Edit], list[Declined]]:
+    """One LLM call → the edits it proposed and the findings it declined.
+
+    Offsets come back in DOCUMENT coordinates. An EditProposal whose
+    original_text cannot be located in the section is dropped — the agent
+    paraphrased instead of quoting, and a span that is not in the source
+    cannot be anchored.
+    """
     defn = AgentDefinition(
         name="v3_editor",
         prompt=EDITOR_PROMPT,
@@ -177,17 +271,39 @@ async def _run_editor_on_section(
         output_retries=2,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+
+    # In document order, so two findings on one sentence are adjacent in the
+    # list and the agent can see that it must answer them with one rewrite.
+    ordered = sorted(findings, key=lambda f: f.span.start if f.span else 0)
+    if ordered:
+        listed = "\n".join(
+            f"{number}. [{finding.criterion}/{finding.severity}] {finding.issue}\n"
+            f'   concerning: "{finding.quote}"'
+            for number, finding in enumerate(ordered, start=1)
+        )
+        findings_block = (
+            f"REVIEWER FINDINGS for this section — answer each one:\n{listed}\n\n"
+            f"Emit exactly one entry per finding above, plus any edits of your "
+            f"own with addresses=0.\n\n"
+        )
+    else:
+        findings_block = (
+            "REVIEWER FINDINGS for this section: none. Apply the editorial "
+            "criteria alone, with addresses=0 on every entry.\n\n"
+        )
+
     user_prompt = (
         f"SECTION TITLE: {section.title}\n"
         f"SECTION ID: {section.id}\n\n"
+        f"{findings_block}"
         f"EDITORIAL CRITERIA TO APPLY:\n"
         f"{', '.join(criteria) or '(none specified — use general editing judgement)'}\n\n"
         f"SECTION TEXT (quote VERBATIM from below — copy original_text exactly):\n"
         f"--- BEGIN ---\n"
         f"{section.text}\n"
         f"--- END ---\n\n"
-        f"Emit 0–8 EditProposals. An empty list is fine if the section "
-        f"is already well-written."
+        f"An empty list is fine if there are no findings and the section is "
+        f"already well-written."
     )
     res = await agent.run(user_prompt)
     from ._metrics import bump_from_result
@@ -196,9 +312,36 @@ async def _run_editor_on_section(
     output = cast(EditorOutput, res.output)
 
     edits: list[Edit] = []
+    declined: list[Declined] = []
+    answered: set[int] = set()
+
     for prop in output.edits:
-        if not prop.original_text or not prop.new_text:
+        addressed = ordered[prop.addresses - 1] if 1 <= prop.addresses <= len(ordered) else None
+
+        if addressed is not None:
+            if prop.addresses in answered:
+                # The prompt asks for one entry per finding; a second is a
+                # duplicate rewrite of a span only one edit can occupy.
+                logger.debug(
+                    "[v3.editor] %s: finding %d answered twice, ignoring the second",
+                    section.id,
+                    prop.addresses,
+                )
+                continue
+            answered.add(prop.addresses)
+
+        if not prop.can_fix or not prop.original_text or not prop.new_text:
+            if addressed is not None:
+                declined.append(
+                    Declined(
+                        section_id=section.id,
+                        criterion=addressed.criterion,
+                        issue=addressed.issue,
+                        why=prop.why or prop.rationale or "no reason given",
+                    )
+                )
             continue
+
         span = locate(prop.original_text, section.text)
         if span is None:
             logger.debug(
@@ -206,8 +349,23 @@ async def _run_editor_on_section(
                 section.id,
                 prop.original_text[:60],
             )
+            if addressed is not None:
+                # The finding is not answered after all: say so rather than
+                # letting it look handled because an edit was attempted.
+                declined.append(
+                    Declined(
+                        section_id=section.id,
+                        criterion=addressed.criterion,
+                        issue=addressed.issue,
+                        why="the proposed rewrite did not quote the document verbatim",
+                    )
+                )
             continue
+
         start, end = span
+        rationale = prop.rationale
+        if addressed is not None:
+            rationale = f"{rationale} (addresses: {addressed.issue})"
         # The agent read one section, so `locate` answers in section
         # coordinates; `Edit` records document coordinates, because that is
         # what the docx renderer hands to the surgery layer as a span. The
@@ -219,7 +377,7 @@ async def _run_editor_on_section(
                 title=prop.title or "(untitled edit)",
                 severity=prop.severity,
                 confidence=prop.confidence,
-                rationale=prop.rationale,
+                rationale=rationale,
                 section_id=section.id,
                 char_start=section.start + start,
                 char_end=section.start + end,
@@ -227,45 +385,102 @@ async def _run_editor_on_section(
                 new_text=prop.new_text,
             )
         )
-    return edits
+
+    # A finding the agent simply omitted is not answered either. Silence is
+    # not a decision, and it would otherwise read as one.
+    for number, finding in enumerate(ordered, start=1):
+        if number not in answered:
+            declined.append(
+                Declined(
+                    section_id=section.id,
+                    criterion=finding.criterion,
+                    issue=finding.issue,
+                    why="the editor did not respond to this finding",
+                )
+            )
+
+    return edits, declined
 
 
 # ── Orchestrator (semaphore-bounded fanout) ─────────────────────────────────
 
 
 async def run_editor(
-    sections: list[Section], *, criteria: list[str], agent_model: str
-) -> list[Edit]:
-    """Run the editor agent across every section, bounded by
-    ``_MAX_CONCURRENT_EDITORS=5`` parallel calls. Per-section failures
-    are logged and treated as 'no edits for that section' — they do not
-    abort the run."""
+    sections: list[Section],
+    *,
+    criteria: list[str],
+    agent_model: str,
+    findings: list[Finding] | None = None,
+) -> tuple[list[Edit], list[Declined]]:
+    """Run the editor across every section, bounded by
+    ``_MAX_CONCURRENT_EDITORS=5`` parallel calls. Per-section failures are
+    logged and treated as 'no edits for that section' — they do not abort the
+    run.
+
+    Findings are routed to the section their span falls in, so each call sees
+    the problems raised about the text in front of it and nothing else. A
+    finding with no span is never sent: it names something missing, or the
+    document as a whole, and inviting a rewrite for it is inviting invention.
+    """
     if not sections:
-        return []
+        return [], []
+
+    by_section: dict[str, list[Finding]] = {}
+    unanchored = 0
+    for finding in findings or []:
+        if finding.span is None:
+            unanchored += 1
+            continue
+        by_section.setdefault(finding.span.section_id, []).append(finding)
+    if unanchored:
+        logger.info(
+            "[v3.editor] %d finding(s) not sent to the editor — they have no "
+            "span, so there is no passage to rewrite",
+            unanchored,
+        )
+
     sem = asyncio.Semaphore(_MAX_CONCURRENT_EDITORS)
 
-    async def _one(s: Section) -> list[Edit]:
+    async def _one(section: Section) -> tuple[list[Edit], list[Declined]]:
         async with sem:
             try:
                 return await _run_editor_on_section(
-                    s, criteria, agent_model=agent_model
+                    section,
+                    criteria,
+                    by_section.get(section.id, []),
+                    agent_model=agent_model,
                 )
             except Exception as exc:
                 logger.warning(
                     "[v3.editor] section %s crashed (%s) — no edits emitted",
-                    s.id,
+                    section.id,
                     exc,
                 )
-                return []
+                return [], []
 
     per_section = await asyncio.gather(*[_one(s) for s in sections])
-    flat: list[Edit] = []
-    for batch in per_section:
-        flat.extend(batch)
+    edits: list[Edit] = []
+    declined: list[Declined] = []
+    for section_edits, section_declined in per_section:
+        edits.extend(section_edits)
+        declined.extend(section_declined)
+
+    directed = sum(1 for e in edits if "(addresses:" in e.rationale)
     logger.info(
-        "[v3.editor] %d edits across %d sections (criteria: %s)",
-        len(flat),
+        "[v3.editor] %d edit(s) across %d section(s) — %d answering a finding, "
+        "%d of the editor's own; %d finding(s) need the author (criteria: %s)",
+        len(edits),
         len(sections),
+        directed,
+        len(edits) - directed,
+        len(declined),
         ", ".join(criteria) or "(none)",
     )
-    return flat
+    for entry in declined:
+        logger.info(
+            "[v3.editor] no local fix — [%s] %s\n              because: %s",
+            entry.criterion,
+            entry.issue[:70],
+            entry.why,
+        )
+    return edits, declined

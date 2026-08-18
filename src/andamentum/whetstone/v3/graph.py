@@ -20,7 +20,7 @@ from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 from ..schemas import Edit, ReviewResult
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
-from .editor import DEFAULT_EDITOR_CRITERIA, run_editor
+from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor
 from .extract import build_claims
 from .digest import build_document_model
 from .gaps import gap_loop
@@ -76,6 +76,11 @@ class V3State:
     failed_criteria: list[str] = field(default_factory=list)
     review: StructuredReview | None = None
     edits: list[Edit] = field(default_factory=list)
+    # Findings the editor could not answer with a rewrite, and why. A finding
+    # with no edit is work left to the author; naming which ones is the
+    # difference between a review that answers itself and one that looks
+    # like it did.
+    declined_findings: list[Declined] = field(default_factory=list)
     novelty_targets: list[NoveltyTarget] = field(default_factory=list)
     novelty_evidence: list[NoveltyEvidence] = field(default_factory=list)
 
@@ -252,10 +257,14 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Finalize":
         if not ctx.deps.editor_enabled:
             return Finalize()
-        ctx.state.edits = await run_editor(
+        ctx.state.edits, ctx.state.declined_findings = await run_editor(
             ctx.state.sections,
             criteria=ctx.deps.editor_criteria,
             agent_model=ctx.deps.agent_model,
+            # The findings are final by now — Gate has run — so the editor
+            # answers the review rather than guessing at prose in parallel
+            # with it. This is the whole point of running the editor last.
+            findings=ctx.state.findings,
         )
         return Finalize()
 

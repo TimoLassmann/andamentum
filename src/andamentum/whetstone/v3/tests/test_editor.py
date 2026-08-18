@@ -15,6 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
+from andamentum.whetstone.v3.model import Span
+from andamentum.whetstone.v3.review import Finding, Severity
 from andamentum.whetstone.v3.editor import (
     DEFAULT_EDITOR_CRITERIA,
     EditorOutput,
@@ -91,7 +93,7 @@ async def test_run_editor_empty_sections_returns_empty() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits = await run_editor(
+        edits, _declined = await run_editor(
             [], criteria=DEFAULT_EDITOR_CRITERIA, agent_model="stub"
         )
     assert edits == []
@@ -124,7 +126,7 @@ async def test_run_editor_anchors_proposals_to_section_text() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits = await run_editor(SECTIONS, criteria=["grammar"], agent_model="stub")
+        edits, _declined = await run_editor(SECTIONS, criteria=["grammar"], agent_model="stub")
     assert len(edits) == 1
     e = edits[0]
     assert e.section_id == "s1"
@@ -161,7 +163,7 @@ async def test_run_editor_drops_unanchored_proposals_silently() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits = await run_editor(
+        edits, _declined = await run_editor(
             SECTIONS, criteria=DEFAULT_EDITOR_CRITERIA, agent_model="stub"
         )
     assert edits == []
@@ -221,7 +223,7 @@ async def test_run_editor_isolates_per_section_failures() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits = await run_editor(SECTIONS, criteria=["concision"], agent_model="stub")
+        edits, _declined = await run_editor(SECTIONS, criteria=["concision"], agent_model="stub")
     # First section crashed → no edits from it. Second section produced 1.
     assert len(edits) == 1
     assert edits[0].section_id == "s2"
@@ -260,7 +262,7 @@ async def test_run_editor_respects_concurrency_cap() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits = await run_editor(
+        edits, _declined = await run_editor(
             many_sections, criteria=["grammar"], agent_model="stub"
         )
     assert edits == []
@@ -321,7 +323,7 @@ async def test_editor_enabled_via_graph_invokes_run_editor(
     )
 
     async def _stub_run_editor(*_args, **_kwargs):
-        return [sentinel]
+        return [sentinel], []
 
     monkeypatch.setattr(graph_mod, "run_editor", _stub_run_editor)
 
@@ -339,3 +341,200 @@ async def test_editor_enabled_via_graph_invokes_run_editor(
     result = await node.run(_Ctx(state, deps))
     assert isinstance(result, Finalize)
     assert state.edits == [sentinel]
+
+
+# ── the editor answering the review ─────────────────────────────────────
+
+
+def _finding(
+    section_id: str,
+    start: int,
+    end: int,
+    *,
+    criterion: str = "Story",
+    severity: Severity = "major",
+    issue: str = "the claim is unsupported",
+    quote: str = "q",
+):
+    return Finding(
+        criterion=criterion,
+        issue=issue,
+        quote=quote,
+        severity=severity,
+        span=Span(section_id=section_id, start=start, end=end),
+    )
+
+
+async def _run(outputs, findings, sections=None):
+    fake = _patch_editor(outputs)
+    with (
+        patch(
+            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            return_value=fake,
+        ),
+        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+    ):
+        edits, declined = await run_editor(
+            sections if sections is not None else SECTIONS,
+            criteria=["clarity"],
+            agent_model="stub",
+            findings=findings,
+        )
+    return edits, declined, fake
+
+
+async def test_the_findings_for_a_section_reach_its_prompt() -> None:
+    """The whole point: the editor is told what the review found."""
+    section = SECTIONS[0]
+    finding = _finding(section.id, section.start, section.start + 5,
+                       issue="the sample size is never stated")
+    _edits, _declined, fake = await _run(
+        [EditorOutput(edits=[])], [finding], sections=[section]
+    )
+    prompt = fake.captured_prompts[0]
+    assert "REVIEWER FINDINGS" in prompt
+    assert "the sample size is never stated" in prompt
+    assert "[Story/major]" in prompt
+
+
+async def test_a_section_with_no_findings_says_so() -> None:
+    """Silence would read as an omission; the prompt states it explicitly."""
+    _edits, _declined, fake = await _run(
+        [EditorOutput(edits=[])], [], sections=[SECTIONS[0]]
+    )
+    assert "REVIEWER FINDINGS for this section: none" in fake.captured_prompts[0]
+
+
+async def test_a_finding_with_no_span_is_never_sent() -> None:
+    """It names something missing, or the document as a whole. Inviting a
+    rewrite for it is inviting invention."""
+    homeless = Finding(
+        criterion="Story", issue="the limitations are never stated", quote="", span=None
+    )
+    _edits, declined, fake = await _run(
+        [EditorOutput(edits=[])], [homeless], sections=[SECTIONS[0]]
+    )
+    assert "the limitations are never stated" not in fake.captured_prompts[0]
+    # It is not counted as declined either — it was never asked.
+    assert declined == []
+
+
+async def test_declining_a_finding_records_the_reason() -> None:
+    """`can_fix=false` is the right answer for a structural finding, and the
+    reason has to survive to the author."""
+    section = SECTIONS[0]
+    finding = _finding(section.id, section.start, section.start + 5,
+                       issue="the evaluation is missing entirely")
+    edits, declined, _fake = await _run(
+        [
+            EditorOutput(
+                edits=[
+                    EditProposal(
+                        addresses=1,
+                        can_fix=False,
+                        title="needs the author",
+                        rationale="-",
+                        why="this needs a new experiment, not a rewrite",
+                    )
+                ]
+            )
+        ],
+        [finding],
+        sections=[section],
+    )
+    assert edits == []
+    assert len(declined) == 1
+    assert declined[0].issue == "the evaluation is missing entirely"
+    assert declined[0].why == "this needs a new experiment, not a rewrite"
+    assert declined[0].criterion == "Story"
+
+
+async def test_a_finding_the_editor_ignored_is_still_reported() -> None:
+    """Silence is not a decision, and it would otherwise read as one."""
+    section = SECTIONS[0]
+    finding = _finding(section.id, section.start, section.start + 5)
+    _edits, declined, _fake = await _run(
+        [EditorOutput(edits=[])], [finding], sections=[section]
+    )
+    assert len(declined) == 1
+    assert "did not respond" in declined[0].why
+
+
+async def test_an_edit_answering_a_finding_says_which_one() -> None:
+    section = SECTIONS[0]
+    target = section.text.split()[0]
+    finding = _finding(section.id, section.start, section.start + 5,
+                       issue="this phrasing overclaims")
+    edits, declined, _fake = await _run(
+        [
+            EditorOutput(
+                edits=[
+                    EditProposal(
+                        addresses=1,
+                        can_fix=True,
+                        title="hedge the claim",
+                        rationale="softens an overstated verb",
+                        original_text=target,
+                        new_text="Perhaps",
+                    )
+                ]
+            )
+        ],
+        [finding],
+        sections=[section],
+    )
+    assert len(edits) == 1
+    assert "addresses: this phrasing overclaims" in edits[0].rationale
+    assert declined == []
+
+
+async def test_a_rewrite_that_did_not_quote_the_document_leaves_it_unanswered() -> None:
+    """The edit is dropped for being unanchorable — and the finding must not
+    look handled because an attempt was made."""
+    section = SECTIONS[0]
+    finding = _finding(section.id, section.start, section.start + 5)
+    edits, declined, _fake = await _run(
+        [
+            EditorOutput(
+                edits=[
+                    EditProposal(
+                        addresses=1,
+                        can_fix=True,
+                        title="x",
+                        rationale="y",
+                        original_text="text that is nowhere in the section",
+                        new_text="z",
+                    )
+                ]
+            )
+        ],
+        [finding],
+        sections=[section],
+    )
+    assert edits == []
+    assert len(declined) == 1
+    assert "verbatim" in declined[0].why
+
+
+async def test_only_one_rewrite_per_finding_is_kept() -> None:
+    """Two rewrites for one finding are two edits of one span, and only one
+    can be applied. The second is ignored rather than left to collide."""
+    section = SECTIONS[0]
+    words = section.text.split()
+    finding = _finding(section.id, section.start, section.start + 5)
+    edits, _declined, _fake = await _run(
+        [
+            EditorOutput(
+                edits=[
+                    EditProposal(addresses=1, can_fix=True, title="a", rationale="a",
+                                 original_text=words[0], new_text="A"),
+                    EditProposal(addresses=1, can_fix=True, title="b", rationale="b",
+                                 original_text=words[1], new_text="B"),
+                ]
+            )
+        ],
+        [finding],
+        sections=[section],
+    )
+    assert len(edits) == 1
+    assert edits[0].new_text == "A"
