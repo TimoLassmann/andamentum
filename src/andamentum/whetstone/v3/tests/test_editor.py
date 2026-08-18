@@ -11,16 +11,20 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from andamentum.whetstone.v3.model import Span
 from andamentum.whetstone.v3.review import Finding, Severity
+from pydantic_ai import ModelRetry
+
 from andamentum.whetstone.v3.editor import (
     DEFAULT_EDITOR_CRITERIA,
     EditorOutput,
     EditProposal,
+    make_edit_validator,
     run_editor,
 )
 from andamentum.whetstone.v3.model import Section
@@ -65,6 +69,14 @@ class _FakeAgent:
         self._outputs = outputs
         self._calls = 0
         self.captured_prompts: list[str] = []
+        self.validator = None
+
+    def output_validator(self, fn):
+        """Record it. The real agent runs this on every completion; these
+        fakes return a payload directly, so the tests that care about the
+        validator call it themselves (see test_validator_*)."""
+        self.validator = fn
+        return fn
 
     async def run(self, prompt: str):
         self.captured_prompts.append(prompt)
@@ -198,6 +210,9 @@ async def test_run_editor_isolates_per_section_failures() -> None:
         def __init__(self) -> None:
             self._calls = 0
 
+        def output_validator(self, fn):
+            return fn
+
         async def run(self, _prompt: str):  # noqa: ARG002
             self._calls += 1
             if self._calls == 1:
@@ -238,6 +253,9 @@ async def test_run_editor_respects_concurrency_cap() -> None:
     lock = asyncio.Lock()
 
     class _CountingAgent:
+        def output_validator(self, fn):
+            return fn
+
         async def run(self, _prompt: str):  # noqa: ARG002
             async with lock:
                 in_flight[0] += 1
@@ -544,3 +562,111 @@ async def test_one_finding_may_need_two_changes() -> None:
     )
     assert len(edits) == 2
     assert {e.new_text for e in edits} == {"A", "B"}
+
+
+# ── the output validator ────────────────────────────────────────────────────
+#
+# Everything the editor's schema relies on is a prompt rule, so the validator
+# is the only thing standing between a small model's mistake and a silently
+# discarded section. These call it directly: the fakes above return a payload
+# without ever running it.
+
+
+def _ctx(retry: int) -> Any:
+    """Stand-in for pydantic-ai's RunContext. The validator reads two
+    attributes off it; constructing a real one needs a live model."""
+    return SimpleNamespace(retry=retry, partial_output=False)
+
+
+SECTION_TEXT = "The evidence layer earns its place. The results are clear."
+
+
+def _prop(
+    *,
+    title: str = "t",
+    rationale: str = "r",
+    addresses: int = 0,
+    can_fix: bool = True,
+    why: str = "",
+    original_text: str = "",
+    new_text: str = "",
+) -> EditProposal:
+    return EditProposal(
+        title=title,
+        rationale=rationale,
+        addresses=addresses,
+        can_fix=can_fix,
+        why=why,
+        original_text=original_text,
+        new_text=new_text,
+    )
+
+
+async def test_validator_locks_a_good_entry_and_asks_only_about_the_bad_one():
+    """A retry must be able to add, never to subtract.
+
+    The review agent moved to lock-and-refine because a model asked to redo
+    its whole output reintroduced errors into quotes it had already got right.
+    The editor inherits both the pattern and the reason.
+    """
+    validate = make_edit_validator(SECTION_TEXT, 0)
+    good = _prop(original_text="The results are clear.", new_text="The results are unambiguous.")
+    bad = _prop(title="paraphrased", original_text="the results were clear", new_text="x")
+
+    with pytest.raises(ModelRetry) as exc:
+        await validate(_ctx(0), EditorOutput(edits=[good, bad]))
+
+    message = str(exc.value)
+    assert "LOCKED (1 entry" in message
+    assert "DO NOT re-emit" in message
+    assert "the results were clear" in message      # names the text to fix
+    assert "The results are clear." not in message  # never mentions the good one
+
+    # The model drops the good entry on its retry. It survives anyway.
+    out = await validate(_ctx(1), EditorOutput(edits=[]))
+    assert [e.original_text for e in out.edits] == ["The results are clear."]
+
+
+async def test_validator_names_an_unanswered_finding():
+    """A finding with no entry used to vanish. Now the model is told."""
+    validate = make_edit_validator(SECTION_TEXT, 2)
+    answered = _prop(addresses=1, can_fix=False, why="needs a restructure")
+
+    with pytest.raises(ModelRetry) as exc:
+        await validate(_ctx(0), EditorOutput(edits=[answered]))
+    assert "NOT YET ANSWERED: finding(s) 2" in str(exc.value)
+
+
+async def test_validator_rejects_a_finding_number_that_does_not_exist():
+    validate = make_edit_validator(SECTION_TEXT, 2)
+    stray = _prop(addresses=7, original_text="The results are clear.", new_text="x")
+
+    with pytest.raises(ModelRetry) as exc:
+        await validate(_ctx(0), EditorOutput(edits=[stray]))
+    assert "addresses=7" in str(exc.value)
+    assert "use 1-2" in str(exc.value)
+
+
+async def test_validator_gives_up_and_keeps_what_anchored():
+    """Attempts are bounded. What survives is the lock, not the last attempt."""
+    validate = make_edit_validator(SECTION_TEXT, 1)
+    good = _prop(addresses=1, original_text="The results are clear.", new_text="Clear.")
+    bad = _prop(original_text="not in the document", new_text="x")
+
+    with pytest.raises(ModelRetry):
+        await validate(_ctx(0), EditorOutput(edits=[good, bad]))
+    with pytest.raises(ModelRetry):
+        await validate(_ctx(1), EditorOutput(edits=[bad]))
+
+    out = await validate(_ctx(2), EditorOutput(edits=[bad]))
+    assert [e.new_text for e in out.edits] == ["Clear."]
+
+
+async def test_validator_keeps_both_rewrites_for_one_finding():
+    """Locked by (finding, quote), so a finding needing two changes keeps both."""
+    validate = make_edit_validator(SECTION_TEXT, 1)
+    first = _prop(addresses=1, original_text="The evidence layer earns its place.", new_text="A.")
+    second = _prop(addresses=1, original_text="The results are clear.", new_text="B.")
+
+    out = await validate(_ctx(0), EditorOutput(edits=[first, second]))
+    assert {e.new_text for e in out.edits} == {"A.", "B."}

@@ -26,9 +26,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
+from pydantic_ai import ModelRetry, RunContext
 
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
@@ -242,6 +243,114 @@ class EditorOutput(BaseModel):
     )
 
 
+# ── Output validation ───────────────────────────────────────────────────────
+
+# How many times the validator pushes back before it accepts what it has. Two
+# gives the model a first correction and a second look; a third rarely changed
+# anything in the review agent and costs a full generation on a local model.
+_VALIDATOR_ATTEMPTS = 2
+
+
+def make_edit_validator(
+    section_text: str,
+    finding_count: int,
+    *,
+    max_attempts: int = _VALIDATOR_ATTEMPTS,
+):
+    """Tell the editor what it got wrong, instead of discarding it in silence.
+
+    Every rule this schema depends on lives in the prompt, because none of it
+    is expressible in JSON: ``addresses`` must index the finding list, a
+    refusal must leave its text fields empty, a rewrite must quote the section
+    character for character, and every listed finding must get an answer. A
+    small model breaks one of them and the old code dropped the entry without
+    telling anyone — the finding it was answering came back as "the proposed
+    rewrite did not quote the document verbatim", which is true and useless.
+
+    This is :func:`~andamentum.whetstone.v3.review.make_anchor_validator`
+    applied to the editor's shape, and it is the same bargain: entries that
+    pass are LOCKED and survive whatever the model does next, so a retry can
+    only add. The review agent adopted lock-and-refine after smoke logs caught
+    the model reintroducing errors into quotes it had already got right; there
+    is no reason to expect the editor to behave differently.
+
+    Locked by ``(addresses, original_text)`` rather than by finding number, so
+    a finding answered in two separate sentences keeps both entries.
+    """
+    locked: dict[tuple[int, str], EditProposal] = {}
+
+    async def validator(ctx: RunContext[Any], output: EditorOutput) -> EditorOutput:
+        if ctx.partial_output:
+            return output
+
+        problems: list[str] = []
+        for prop in output.edits:
+            if not 0 <= prop.addresses <= finding_count:
+                problems.append(
+                    f"addresses={prop.addresses} on {prop.title!r}: the list "
+                    f"has {finding_count} finding(s), so use 1-{finding_count} "
+                    f"or 0 for an edit of your own"
+                )
+                continue
+            if prop.addresses and not prop.can_fix:
+                locked.setdefault((prop.addresses, ""), prop)
+                continue
+            if not prop.original_text.strip():
+                problems.append(
+                    f"{prop.title!r}: can_fix is true but original_text is "
+                    f"empty — quote the span you are replacing, or set "
+                    f"can_fix=false and say why"
+                )
+                continue
+            key = (prop.addresses, prop.original_text)
+            if key in locked or locate(prop.original_text, section_text) is not None:
+                locked.setdefault(key, prop)
+                continue
+            problems.append(
+                f"not found in the section, copy it exactly: "
+                f"{prop.original_text[:100]!r}"
+            )
+
+        answered = {number for number, _ in locked if number}
+        unanswered = [n for n in range(1, finding_count + 1) if n not in answered]
+
+        if (problems or unanswered) and ctx.retry < max_attempts:
+            parts = [
+                f"LOCKED ({len(locked)} entry/entries already accepted — they "
+                f"are kept whatever you send next. DO NOT re-emit them.)"
+            ]
+            if problems:
+                listed = "\n".join(f"  - {p}" for p in problems[:6])
+                parts.append(f"FIX THESE ({len(problems)}):\n{listed}")
+            if unanswered:
+                parts.append(
+                    f"NOT YET ANSWERED: finding(s) "
+                    f"{', '.join(str(n) for n in unanswered)}. Every listed "
+                    f"finding needs an entry — a rewrite, or can_fix=false "
+                    f"with a reason in `why`."
+                )
+            logger.info(
+                "[v3.editor.validator] attempt %d: %d locked, %d problem(s), "
+                "%d unanswered",
+                ctx.retry,
+                len(locked),
+                len(problems),
+                len(unanswered),
+            )
+            raise ModelRetry("\n\n".join(parts))
+
+        if problems or unanswered:
+            logger.info(
+                "[v3.editor.validator] attempts spent: keeping %d, dropped %d "
+                "malformed, %d finding(s) unanswered",
+                len(locked),
+                len(problems),
+                len(unanswered),
+            )
+        return EditorOutput(edits=list(locked.values()))
+
+    return validator
+
 # ── Per-section runner ──────────────────────────────────────────────────────
 
 
@@ -280,7 +389,12 @@ async def _run_editor_on_section(
         prompt=EDITOR_PROMPT,
         output_model=EditorOutput,
         retries=2,
-        output_retries=2,
+        # Two validator pushes plus a reserve for pydantic-ai's own
+        # structured-output coercion, matching the review agent's budget.
+        # Two was too tight to correct anything: a small model that broke one
+        # coupling rule spent both attempts on the schema and the section came
+        # back empty.
+        output_retries=4,
     )
     agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
 
@@ -319,6 +433,10 @@ async def _run_editor_on_section(
         f"An empty list is fine if there are no findings and the section is "
         f"already well-written."
     )
+    # Registered per call: the lock is closure state and must start empty for
+    # each section.
+    agent.output_validator(make_edit_validator(section.text, len(ordered)))
+
     res = await agent.run(user_prompt)
     from ._metrics import bump_from_result
 
