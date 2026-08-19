@@ -19,7 +19,13 @@ from andamentum.core.models import resolve_model
 
 from ..schemas import Edit
 from ..schemas import Finding as WFinding
-from ..schemas import Quote, ReviewMetrics, ReviewResult, SectionCard
+from ..schemas import (
+    DeclinedFinding,
+    Quote,
+    ReviewMetrics,
+    ReviewResult,
+    SectionCard,
+)
 from .model import DocumentModel
 from .review import Finding
 
@@ -221,6 +227,7 @@ def to_review_result(
     findings: list[Finding],
     review: StructuredReview,
     edits: list[Edit] | None = None,
+    declined: list[DeclinedFinding] | None = None,
     llm_calls: int = 0,
     gap_rounds_used: int = 0,
     failed_criteria: list[str] | None = None,
@@ -243,6 +250,7 @@ def to_review_result(
         summary=_flatten(review),
         findings=[_to_wfinding(f, model) for f in findings],
         edits=list(edits),
+        declined_findings=list(declined or []),
         failed_criteria=failed,
         degraded=bool(degraded_reason),
         degraded_reason=degraded_reason,

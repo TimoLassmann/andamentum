@@ -375,6 +375,25 @@ class CustomEvaluation(BaseModel):
     )
 
 
+class DeclinedFinding(BaseModel):
+    """A finding the editor read, could not answer with a rewrite, and said why.
+
+    Recorded rather than dropped. Most substantive criticism cannot be answered
+    by rewriting a span — it needs a new paragraph, a restructure, or a decision
+    only the author can make — and saying so IS the correct answer, not a
+    failure of the editor.
+
+    Without this, a finding with no edit against it is indistinguishable from
+    one the editor ignored. That is the difference between a review that
+    answers itself and one that only looks like it did.
+    """
+
+    criterion: str
+    issue: str
+    why: str  # one sentence: what it needs that a rewrite cannot give
+    section_id: str = ""
+
+
 class ReviewResult(BaseModel):
     """What ``review_document`` returns.
 
@@ -407,6 +426,10 @@ class ReviewResult(BaseModel):
     degraded: bool = False
     degraded_reason: str = ""
     edits: list[Edit] = Field(default_factory=list)  # concrete rewrites (Edit phase)
+    # Findings the editor answered with a reason instead of a rewrite.
+    # Populated only when the editor ran (editor=True); empty otherwise,
+    # which is not the same as 'every finding was fixed'.
+    declined_findings: list[DeclinedFinding] = Field(default_factory=list)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)
     metrics: ReviewMetrics = Field(default_factory=ReviewMetrics)

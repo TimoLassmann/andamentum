@@ -331,11 +331,15 @@ def make_edit_validator(
                 )
             logger.info(
                 "[v3.editor.validator] attempt %d: %d locked, %d problem(s), "
-                "%d unanswered",
+                "%d unanswered%s",
                 ctx.retry,
                 len(locked),
                 len(problems),
                 len(unanswered),
+                # Name the first one. A count alone told us qwen3.8 broke a
+                # rule and not which of the four, which is the question you
+                # need answered when you read the log a month later.
+                f" — first: {problems[0]}" if problems else "",
             )
             raise ModelRetry("\n\n".join(parts))
 
@@ -370,6 +374,33 @@ class Declined:
     why: str
 
 
+def _passage(finding: Finding, section: Section) -> str:
+    """The document's own words for what a finding points at.
+
+    Falls back to the stored quote only when the finding has no span — which
+    in review mode means it is document-level, and there is no passage.
+    """
+    span = finding.span
+    if span is None:
+        return finding.quote
+    start = span.start - section.start
+    end = span.end - section.start
+    if 0 <= start < end <= len(section.text):
+        return section.text[start:end]
+    # A span outside the section it was routed to is a bug upstream, not
+    # something to paper over silently.
+    logger.warning(
+        "[v3.editor] finding span %d-%d falls outside section %s (%d-%d); "
+        "showing the reviewer's quote instead",
+        span.start,
+        span.end,
+        section.id,
+        section.start,
+        section.end,
+    )
+    return finding.quote
+
+
 async def _run_editor_on_section(
     section: Section,
     criteria: list[str],
@@ -402,9 +433,17 @@ async def _run_editor_on_section(
     # list and the agent can see that it must answer them with one rewrite.
     ordered = sorted(findings, key=lambda f: f.span.start if f.span else 0)
     if ordered:
+        # The passage comes from the SECTION, not from `finding.quote`. The
+        # quote is the reviewer's transcription and is a lossy copy of what it
+        # points at — measured on paper/FINDINGS.md, 3 of 7 differed from the
+        # text at their own span (a dropped `**`, a collapsed line break,
+        # altered indentation). The anchoring step recovered the true location
+        # regardless, so the span is authoritative and the quote is not.
+        # Showing the transcription invites the editor to echo it back and
+        # rewrite text the document does not contain.
         listed = "\n".join(
             f"{number}. [{finding.criterion}/{finding.severity}] {finding.issue}\n"
-            f'   concerning: "{finding.quote}"'
+            f'   concerning: "{_passage(finding, section)}"'
             for number, finding in enumerate(ordered, start=1)
         )
         findings_block = (

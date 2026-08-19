@@ -15,6 +15,7 @@ from andamentum.typeset import render as typeset_render
 
 from .._watermark import DISCLAIMER_SHORT
 from ..schemas import (
+    DeclinedFinding,
     AuthorQuestion,
     CustomEvaluation,
     Edit,
@@ -116,6 +117,9 @@ def render_html(
     if result.edits:
         atoms.extend(_edits_atoms(result.edits))
 
+    if result.declined_findings:
+        atoms.extend(_declined_atoms(result.declined_findings))
+
     if result.findings:
         atoms.extend(
             _findings_atoms(
@@ -204,6 +208,37 @@ def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
         )
     return out
 
+
+
+def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
+    """Findings the editor handed back, with its reason.
+
+    Rendered as items rather than cards: there is no before/after to show, and
+    a card invites the reader to look for one.
+    """
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Left to the author ({len(declined)})",
+            "level": 2,
+        },
+        {
+            "kind": "prose",
+            "content": (
+                "The editor read these and judged that rewriting a passage "
+                "cannot answer them. Each needs a decision, new content, or a "
+                "restructure."
+            ),
+        },
+    ]
+    entries = []
+    for d in declined:
+        body = d.issue
+        if d.why:
+            body += f" — _{d.why}_"
+        entries.append({"label": d.criterion or "—", "body": body})
+    out.append({"kind": "items", "entries": entries})
+    return out
 
 _PRIORITY_HEADINGS = {
     "must_fix": "MUST FIX",

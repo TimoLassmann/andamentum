@@ -17,6 +17,7 @@ EXECUTIVE_SUMMARY_HEADER = "## Executive Summary"
 CRITICAL_ISSUES_HEADER = "## Critical Issues"
 EXPERT_REVIEWS_HEADER = "## Expert Reviews"
 NOVELTY_FINDINGS_HEADER = "## Novelty Assessment"
+DECLINED_FINDINGS_HEADER = "## Left to the Author"
 
 # Field labels
 FIELD_LABEL_LOCATION = "Location"

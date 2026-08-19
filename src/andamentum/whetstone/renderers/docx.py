@@ -186,6 +186,7 @@ def render_docx(
         generated_experts=list(result.expert_profiles) or None,
         # Novelty-check payload (empty string when not used)
         novelty_findings=novelty_findings_text,
+        declined_findings=_collect_declined(result),
     )
     # Invisible metadata: always on, regardless of visible_watermark.
     stamp_docx_core_properties(Path(output_path), model=model)
@@ -317,6 +318,35 @@ def _fallback_summary(result: ReviewResult) -> str:
         parts.append("Run with model= for synthesis prose.")
     return " ".join(parts)
 
+
+
+def _collect_declined(result: ReviewResult) -> str:
+    """The editor's refusals, as markdown for the prepended report.
+
+    A finding the editor could not answer with a rewrite has no tracked change
+    and no comment of its own — the rewrite it would have carried does not
+    exist. Without this block it leaves the .docx with no trace at all, and the
+    author cannot tell it from a finding nobody looked at.
+
+    Empty string when the editor did not run, which is NOT the same as "every
+    finding was fixed"; the report simply has nothing to say about edits.
+    """
+    if not result.declined_findings:
+        return ""
+    # Asterisks, not underscores: the markdown-to-Word renderer in
+    # review_report.py recognises *italic* and leaves _italic_ as literal
+    # characters in the document.
+    lines = [
+        "*The editor read these and judged that rewriting a passage cannot "
+        "answer them. Each needs a decision, new content, or a restructure.*",
+        "",
+    ]
+    for d in result.declined_findings:
+        label = f"**[{d.criterion}]** " if d.criterion else ""
+        lines.append(f"- {label}{d.issue}")
+        if d.why:
+            lines.append(f"  - *Editor:* {d.why}")
+    return "\n".join(lines)
 
 def _collect_novelty_findings(result: ReviewResult) -> str:
     """Concatenate novelty-category findings into a markdown block.

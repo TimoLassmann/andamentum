@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
-from ..schemas import Edit, ReviewResult
+from ..schemas import DeclinedFinding, Edit, ReviewResult
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
 from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor
@@ -283,6 +283,15 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                 ctx.state.findings,
                 ctx.state.review,
                 ctx.state.edits,
+                declined=[
+                    DeclinedFinding(
+                        criterion=d.criterion,
+                        issue=d.issue,
+                        why=d.why,
+                        section_id=d.section_id,
+                    )
+                    for d in ctx.state.declined_findings
+                ],
                 llm_calls=counters.llm_calls if counters else 0,
                 gap_rounds_used=counters.gap_rounds if counters else 0,
                 failed_criteria=ctx.state.failed_criteria,

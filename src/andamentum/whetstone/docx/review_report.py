@@ -43,6 +43,7 @@ from .constants import (
     FIELD_LABEL_LOCATION,
     FIELD_LABEL_POSITION,
     FIELD_LABEL_SCORES,
+    DECLINED_FINDINGS_HEADER,
     NOVELTY_FINDINGS_HEADER,
     REPORT_TITLE,
     SECTION_SEPARATOR,
@@ -320,6 +321,7 @@ def _format_review_report(
     expert_reviews: Optional[list] = None,
     generated_experts: Optional[list] = None,
     novelty_findings: str = "",
+    declined_findings: str = "",
 ) -> str:
     """
     Format review report for prepending to document.
@@ -343,6 +345,21 @@ def _format_review_report(
                 NOVELTY_FINDINGS_HEADER,
                 "",
                 novelty_findings.strip(),
+                "",
+            ]
+        )
+
+    # Findings the editor handed back. Placed after the issues and before the
+    # expert reviews: they are part of the answer to "what was done about the
+    # review", not a separate opinion about the document.
+    if declined_findings and declined_findings.strip():
+        lines.extend(
+            [
+                SECTION_SEPARATOR,
+                "",
+                DECLINED_FINDINGS_HEADER,
+                "",
+                declined_findings.strip(),
                 "",
             ]
         )

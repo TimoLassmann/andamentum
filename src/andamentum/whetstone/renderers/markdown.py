@@ -25,6 +25,7 @@ from typing import Iterable
 from ..schemas import (
     AuthorQuestion,
     CustomEvaluation,
+    DeclinedFinding,
     Edit,
     ExpertProfile,
     ExpertReview,
@@ -115,6 +116,9 @@ def render_markdown(
     if result.edits:
         sections.append(_render_edits(result.edits))
 
+    if result.declined_findings:
+        sections.append(_render_declined(result.declined_findings))
+
     llm_findings = list(result.findings)
     if llm_findings:
         sections.append(
@@ -170,6 +174,30 @@ def _render_questions(qs: Iterable[AuthorQuestion]) -> str:
             lines.append(f"  · sections: {', '.join(q.sections_involved)}")
     return "\n".join(lines)
 
+
+
+def _render_declined(declined: list[DeclinedFinding]) -> str:
+    """Findings the editor read and could not answer with a rewrite.
+
+    Placed directly after the edits, because the two together are the whole
+    answer to "what did the editor do with the review": these are the ones it
+    handed back, with its reason. Without them a finding with no edit against
+    it is indistinguishable from one nobody looked at.
+    """
+    lines = [
+        f"## Left to the author ({len(declined)})",
+        "",
+        "_The editor read these and judged that rewriting a passage cannot "
+        "answer them. Each needs a decision, new content, or a restructure._",
+        "",
+    ]
+    for d in declined:
+        label = f"**[{d.criterion}]**" if d.criterion else "**Finding**"
+        lines.append(f"- {label} {d.issue}")
+        if d.why:
+            lines.append(f"  - _Editor:_ {d.why}")
+    lines.append("")
+    return "\n".join(lines)
 
 def _render_edits(edits: Iterable[Edit]) -> str:
     edits = list(edits)
