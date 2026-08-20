@@ -325,7 +325,7 @@ def test_markdown_prints_the_reviewer_block() -> None:
     assert PROFILES["methods"].brief in text
     assert "methods reviewer on a document classified as creative" in text
     assert "criteria: Reproducibility" in text
-    assert "andamentum-whetstone version" in text
+    assert "andamentum-whetstone 0.3.0" in text
 
 
 def test_markdown_prints_nothing_for_the_default_reviewer() -> None:
@@ -336,7 +336,7 @@ def test_html_prints_the_reviewer_block() -> None:
     html = render_html(_result(_header()), model="stub:none")
     assert "Reviewer: Methods reviewer" in html
     assert "classified as creative" in html
-    assert "andamentum-whetstone version" in html
+    assert "andamentum-whetstone 0.3.0" in html
 
 
 def test_html_prints_nothing_for_the_default_reviewer() -> None:

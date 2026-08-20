@@ -58,8 +58,15 @@ from .model_utils import categorize_review_fields, extract_fields, normalize_to_
 
 
 def _build_report_header(summary: str, issues_count: int) -> List[str]:
-    """Build the report header with executive summary."""
-    return [
+    """Title, executive summary, and the issue count — when there are issues.
+
+    ``Critical Issues: 0`` is omitted rather than printed. A report that
+    carries only a summary is the shape a multi-reviewer run's reconciliation
+    takes — the findings themselves are in the per-reviewer reports below it
+    and in the margin — and heading that with a zero reads as "nothing was
+    found", which is the opposite of what it means.
+    """
+    lines = [
         REPORT_TITLE,
         "",
         SECTION_SEPARATOR,
@@ -68,11 +75,15 @@ def _build_report_header(summary: str, issues_count: int) -> List[str]:
         "",
         summary,
         "",
-        SECTION_SEPARATOR,
-        "",
-        f"{CRITICAL_ISSUES_HEADER}: {issues_count}",
-        "",
     ]
+    if issues_count:
+        lines += [
+            SECTION_SEPARATOR,
+            "",
+            f"{CRITICAL_ISSUES_HEADER}: {issues_count}",
+            "",
+        ]
+    return lines
 
 
 def _format_critical_issue(issue: Any, index: int) -> List[str]:
@@ -125,7 +136,10 @@ def _format_critical_issue(issue: Any, index: int) -> List[str]:
 def _format_critical_issues(critical_issues: Optional[list]) -> List[str]:
     """Format all critical issues section."""
     if not critical_issues:
-        return ["See detailed reviews below.", ""]
+        # Nothing to say. The old placeholder ("See detailed reviews below.")
+        # pointed at reviews that may not exist — a review-mode report with no
+        # findings has nothing below it.
+        return []
 
     lines = []
     for i, issue in enumerate(critical_issues, 1):
@@ -324,6 +338,7 @@ def _format_review_report(
     novelty_findings: str = "",
     declined_findings: str = "",
     novelty_claims: str = "",
+    configuration: str = "",
 ) -> str:
     """
     Format review report for prepending to document.
@@ -382,6 +397,12 @@ def _format_review_report(
 
     # Individual expert reviews
     lines.extend(_format_expert_reviews(expert_reviews, generated_experts))
+
+    # Provenance last and quiet: what ran, for a reader who wants to check or
+    # to compare two reports. Not at the top, where it had a heading and a
+    # bulleted list and the same weight as the review itself.
+    if configuration and configuration.strip():
+        lines.extend([SECTION_SEPARATOR, "", configuration.strip(), ""])
 
     # Footer
     lines.extend([SECTION_SEPARATOR, ""])
@@ -525,6 +546,13 @@ def _convert_markdown_to_block_elements(review_markdown: str) -> list:
         if table_buffer:
             elements.extend(_build_markdown_table_elements(table_buffer))
             table_buffer = []
+        # A blank line separates paragraphs in markdown. Word paragraphs
+        # separate themselves, so emitting one for every blank line adds an
+        # empty paragraph between every block — measured at 170 of 452
+        # paragraphs, 38% of a three-reviewer report, and it reads as though
+        # the document has been double-spaced by accident.
+        if not line.strip():
+            continue
         elements.append(_build_review_paragraph(line))
 
     if table_buffer:

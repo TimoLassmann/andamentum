@@ -1031,7 +1031,12 @@ async def _carry_forward(
         # sequential review exists to avoid.
         author=author_for(profile=profile),
         model=args.model,
-        visible_watermark=args.visible_watermark,
+        # No banner on an interim round. Every report carries the AI-content
+        # disclaimer and the provenance line, and four reports in one file
+        # means four copies of both — the reader stops seeing a warning that
+        # appears four times. The final render puts one at the top, which is
+        # where a reader meets the document.
+        visible_watermark=False,
     )
     return await open_source(str(interim))
 
@@ -1276,6 +1281,12 @@ async def _review_and_write(
                     reviewer=profile,
                     patch_author=args.patch_author,
                 )
+                if index > 0:
+                    # The draft's novelty claims do not change because a
+                    # second reviewer read it, so only the first reviewer's
+                    # report carries the list. Three reviewers were putting
+                    # three copies of the same eight sentences in one file.
+                    result.novelty_claims = []
                 reviews.append((profile.identity, result))
                 if len(reviewer_names) > 1:
                     # EVERY round writes its own pass, the last one included.

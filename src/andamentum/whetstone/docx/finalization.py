@@ -118,6 +118,7 @@ def finalize_annotated_document(
     novelty_findings: str = "",
     declined_findings: str = "",
     novelty_claims: str = "",
+    configuration: str = "",
 ) -> tuple[str, Any]:
     """Apply resolved annotations, prepend the report, and save.
 
@@ -159,6 +160,7 @@ def finalize_annotated_document(
                     novelty_findings,
                     declined_findings,
                     novelty_claims,
+                    configuration,
                 )
             )
 

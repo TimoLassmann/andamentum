@@ -28,7 +28,7 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
-from ._reviewer_header import header_atoms
+from ._reviewer_header import configuration_atoms, header_atoms
 from ._panel_layout import (
     criterion_summary,
     diverged_criteria,
@@ -166,6 +166,12 @@ def render_html(
                 "content": "No findings, edits, or questions — document looks clean.",
             }
         )
+
+    # Provenance last, and AFTER the clean-document check: it is not review
+    # content, and counting it as content would silence "looks clean" on every
+    # report a named reviewer produced.
+    if result.reviewer_header is not None:
+        atoms.extend(configuration_atoms(result.reviewer_header))
 
     html = typeset_render(atoms, style=style, title=_TITLE)
 

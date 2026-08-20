@@ -398,17 +398,20 @@ def test_table_between_prose_keeps_document_order(tmp_path):
     assert _last_paragraph_has_page_break(_prepended_body_paragraphs(editor))
 
 
-def test_empty_lines_preserve_spacing(tmp_path):
-    """Blank input lines remain blank paragraphs (vertical spacing)."""
+def test_blank_lines_do_not_become_blank_paragraphs(tmp_path):
+    """A blank line separates paragraphs in markdown. Word paragraphs separate
+    themselves, so carrying the blank across produces a spacer paragraph
+    between every block — 170 of 452 paragraphs on a real three-reviewer
+    report, which reads as a document double-spaced by accident.
+
+    Spacing between blocks is the paragraph style's job, not an empty
+    paragraph's.
+    """
     editor = _editor_for_blank_doc(tmp_path)
     prepend_review_section(editor, "# Title\n\n\nNew paragraph after gap")
     paragraphs = _prepended_body_paragraphs(editor)
-    # Title + empty + empty + paragraph + page break + ...
     assert _style_name(paragraphs[0]) == "Heading1"
-    # Two empty paragraphs follow
-    assert _paragraph_text(paragraphs[1]) == ""
-    assert _paragraph_text(paragraphs[2]) == ""
-    assert "New paragraph after gap" in _paragraph_text(paragraphs[3])
+    assert "New paragraph after gap" in _paragraph_text(paragraphs[1])
 
 
 # ── The bookmark that keeps a report out of the next round's reading ────

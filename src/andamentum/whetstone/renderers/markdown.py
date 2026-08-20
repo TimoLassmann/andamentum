@@ -41,7 +41,7 @@ from .._watermark import (
     metadata_markdown_comment,
 )
 from ._panel_layout import body_markdown
-from ._reviewer_header import header_markdown
+from ._reviewer_header import configuration_markdown, header_markdown
 
 _TITLE = "# Whetstone Review"
 
@@ -123,6 +123,11 @@ def render_markdown(
 
     if result.novelty_claims:
         sections.append(_render_novelty_claims(result.novelty_claims))
+
+    # Provenance, last and quiet. See configuration_markdown for why it is not
+    # at the top with the reviewer's identity and brief.
+    if result.reviewer_header is not None:
+        sections.append(configuration_markdown(result.reviewer_header))
 
     llm_findings = list(result.findings)
     if llm_findings:

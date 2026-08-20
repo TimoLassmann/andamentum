@@ -77,7 +77,7 @@ from .._watermark import (
 )
 from ..schemas import Finding, Quote, ReviewResult
 from ._panel_layout import body_markdown
-from ._reviewer_header import header_markdown
+from ._reviewer_header import configuration_markdown, header_markdown
 
 if TYPE_CHECKING:
     from ..docx.annotate import Note, Rewrite
@@ -197,6 +197,11 @@ def render_docx(
         # Novelty-check payload (empty string when not used)
         novelty_findings=novelty_findings_text,
         declined_findings=_collect_declined(result),
+        configuration=(
+            configuration_markdown(result.reviewer_header)
+            if result.reviewer_header is not None
+            else ""
+        ),
         novelty_claims=_collect_novelty_claims(result),
     )
     # Invisible metadata: always on, regardless of visible_watermark.

@@ -52,12 +52,26 @@ def header_markdown(header: ReviewerHeader) -> str:
         lines += [f"**Brief.** {header.brief}", ""]
     if header.fit_warning:
         lines += [f"**Fit.** {header.fit_warning}", ""]
-    lines.append(_configuration_intro(header))
-    lines.append("")
-    lines += [
-        f"- {line.label}: {line.value} — {line.source}" for line in header.configuration
-    ]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def configuration_markdown(header: ReviewerHeader) -> str:
+    """The configuration as ONE line, for the foot of the report.
+
+    Separate from the header, and deliberately quiet. What a reader needs
+    before the findings mean anything is WHO reviewed and under what brief; the
+    exact criteria, probe ids and author string are provenance — worth having
+    when you want to check what ran or compare two reports, and not worth the
+    weight of a heading and a bulleted list at the top of the page, which is
+    what it had. Same information, one italic line, at the end.
+    """
+    parts = [f"{line.label}: {line.value} ({line.source})" for line in header.configuration]
+    version = header.version or "unknown"
+    return (
+        f"*{header.identity} · "
+        + " · ".join(parts)
+        + f" · andamentum-whetstone {version}*"
+    )
 
 
 def header_atoms(header: ReviewerHeader) -> list[dict[str, Any]]:
@@ -73,33 +87,12 @@ def header_atoms(header: ReviewerHeader) -> list[dict[str, Any]]:
         atoms.append(
             {"kind": "callout", "tone": "warning", "content": header.fit_warning}
         )
-    atoms.append({"kind": "prose", "content": _configuration_intro(header)})
-    atoms.append(
-        {
-            "kind": "items",
-            "entries": [
-                {"label": line.label, "body": f"{line.value} — {line.source}"}
-                for line in header.configuration
-            ],
-        }
-    )
     return atoms
 
 
-def _configuration_intro(header: ReviewerHeader) -> str:
-    """The line that introduces the configuration list, version included.
+def configuration_atoms(header: ReviewerHeader) -> list[dict[str, Any]]:
+    """The configuration as one quiet line, for the foot of the HTML report."""
+    return [{"kind": "aside", "content": configuration_markdown(header)}]
 
-    One sentence in both formatters so the version cannot appear in one report
-    and not in another — the whole point of printing it is comparing two
-    reports.
-    """
-    version = header.version or "unknown"
-    # "what this reviewer selects", not "what this run did": the list carries
-    # every value the reviewer resolves to, and each mode acts on its own half
-    # of them — a review run has no probes to run and a checklist run has no
-    # criteria. Describing the reviewer is true in both; describing the run
-    # would be false in each.
-    return (
-        f"**Configuration** — what this reviewer selects, and where each "
-        f"value came from (andamentum-whetstone version {version}):"
-    )
+
+
