@@ -491,7 +491,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
       <tr><td><code>framing</code></td><td>Does the body deliver what the opening promises, and can a reader say what the document adds?</td><td>&mdash;</td></tr>
       <tr><td><code>reader</code></td><td>Where does a capable outsider stop, and what did they need there?</td><td>&mdash;</td></tr>
       <tr><td><code>adversary</code></td><td>What is the strongest objection the draft does not already answer?</td><td>&mdash;</td></tr>
-      <tr><td><code>editor</code></td><td>Prose only. No commentary on the argument.</td><td>&mdash;</td></tr>
+      <tr><td><code>editor</code></td><td>Prose only. No commentary on the argument. In a list, one pass at the end over every reviewer's findings.</td><td>&mdash;</td></tr>
     </tbody>
   </table>
   </div>
@@ -513,18 +513,20 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h3>Several reviewers at once</h3>
 
-  <p>Give <code>--reviewer</code> a comma-separated list and they run <strong>in that order</strong>, each reading the previous one's edited text. Order matters: the list is a sequence, not a set.</p>
+  <p>Give <code>--reviewer</code> a comma-separated list and they run <strong>in that order</strong>, each reading the same unchanged text. No reviewer in a list rewrites anything; they comment. Order matters for the reports, which stack in the order the reviewers ran.</p>
 
   <pre><code>andamentum-whetstone draft.docx --reviewer claims,methods,adversary --editor \
     --model openai:gpt-5.4-mini --out draft.reviewed.docx</code></pre>
 
-  <p>Each reviewer signs its own tracked changes, so Word's reviewing pane separates the passes without you naming anyone. Their comments accumulate, their reports stack, and nothing is overwritten.</p>
+  <p>Each reviewer signs its own comments, so Word's reviewing pane separates the passes without you naming anyone. Their comments accumulate, their reports stack, and nothing is overwritten.</p>
+
+  <p>The rewrites come from <strong>one editor pass at the end</strong>. With <code>--editor</code>, or with <code>editor</code> anywhere in the list (the two spellings are the same run), the line editor reads every reviewer's findings at once after the last one has finished and writes one set of tracked changes, signed by the line editor. Two findings on one sentence get one rewrite; two that pull in opposite directions are both declined and left to you; and where the reconciliation found the reviewers disagreeing, the editor is told not to settle it. The earlier design ran the editor inside every round, and five reviewers each rewriting the same abstract — each re-editing the last one's insertions — produced tracked changes with no paper underneath.</p>
 
   <p>A run with more than one reviewer ends with a <strong>reconciliation</strong> — not a flag, because being handed four reports to cross-reference by hand is the problem it solves. It says what more than one reviewer raised, where they disagreed, and what only one of them saw, and it is prepended last so it is the first thing you read. It does not restate every finding; the per-reviewer reports are underneath for that.</p>
 
   <div class="callout tone-info">
     <p class="eyebrow">Cost</p>
-    <p>Each reviewer is a complete review. Three reviewers on a two-page draft took about three minutes and seventy model calls; one takes about a minute and thirty. The reconciliation adds one call on top.</p>
+    <p>Each reviewer is a complete review. Three reviewers on a two-page draft took about three minutes and seventy model calls; one takes about a minute and thirty. The reconciliation adds one call on top, and the editor pass one call per section.</p>
   </div>
 
   <p class="table-note">Checklist mode takes one reviewer, not a list. Its output is a coverage table whose rows come from one probe bank, and two banks in one run would give two tables that cannot be compared with each other or with the previous run — which is the property checklist exists for.</p>
@@ -600,7 +602,7 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <p>Last and quiet: one italic line naming the exact criteria, probes, editor criteria and author, each with where it came from, and the package version. It is provenance — worth having when you want to check what ran or compare two reports, and not worth the weight of a heading and a bulleted list at the top of the page.</p>
 
-  <p class="table-note">Several reviewers stack the same way, newest first: the reconciliation, then each reviewer's own report in reverse order of running, then your manuscript with every round's comments and tracked changes in it.</p>
+  <p class="table-note">Several reviewers stack the same way, newest first: the reconciliation, then each reviewer's own report in reverse order of running, then your manuscript with every reviewer's comments and the editor's tracked changes in it.</p>
 
   <h2><span class="n">05</span>Command line</h2>
 
