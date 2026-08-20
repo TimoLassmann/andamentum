@@ -12,12 +12,13 @@ at the node level. Entry point: `run_review_v3(markdown, *, model=…)`.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
-from ..schemas import DeclinedFinding, Edit, ReviewResult
+from ..schemas import DeclinedFinding, Edit, ReviewerHeader, ReviewResult
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
 from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor
@@ -40,6 +41,9 @@ from .synth import StructuredReview, critique_and_revise, synthesise, to_review_
 
 if TYPE_CHECKING:
     from ..reviewed_document import ReviewedDocument
+    from .reviewers import ReviewerProfile
+
+logger = logging.getLogger("andamentum.whetstone.v3")
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,14 @@ class V3Deps:
     check_novelty: bool = False
     novelty_target_cap: int = 8
     novelty_search_depth: int = 2
+    # The active reviewer profile's stance, rendered at the top of every
+    # criterion and editor prompt. Empty for the default reviewer, and then
+    # rendered as nothing at all.
+    brief: str = ""
+    # What the renderers print about the reviewer, or None when the default
+    # reviewer ran and there is nothing to print. Carried on Deps rather than
+    # rebuilt at the end: it is an input to the run, not a result of it.
+    reviewer_header: ReviewerHeader | None = None
 
 
 @dataclass
@@ -129,6 +141,7 @@ class ReviewCriteria(BaseNode[V3State, V3Deps, ReviewResult]):
             ctx.deps.criteria,
             model,
             agent_model=ctx.deps.agent_model,
+            brief=ctx.deps.brief,
         )
         return VerifyFindings()
 
@@ -147,6 +160,13 @@ class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Consolidate":
         model = ctx.state.document_model
         assert model is not None
+        if not ctx.deps.criteria:
+            # Nothing was reviewed, so there is no coverage to re-examine. The
+            # loop would still run its full round cap against "(no findings
+            # yet)" and a summary listing every section as untouched — the
+            # most expensive way available to find nothing. Skipping is a flow
+            # decision, so it lives in the graph rather than inside gap_loop.
+            return Consolidate()
         ctx.state.findings = await gap_loop(
             model,
             ctx.state.findings,
@@ -265,6 +285,7 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
             # answers the review rather than guessing at prose in parallel
             # with it. This is the whole point of running the editor last.
             findings=ctx.state.findings,
+            brief=ctx.deps.brief,
         )
         return Finalize()
 
@@ -277,28 +298,32 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
         counters = current_counters()
-        return End(
-            to_review_result(
-                model,
-                ctx.state.findings,
-                ctx.state.review,
-                ctx.state.edits,
-                declined=[
-                    DeclinedFinding(
-                        criterion=d.criterion,
-                        issue=d.issue,
-                        why=d.why,
-                        section_id=d.section_id,
-                    )
-                    for d in ctx.state.declined_findings
-                ],
-                llm_calls=counters.llm_calls if counters else 0,
-                gap_rounds_used=counters.gap_rounds if counters else 0,
-                failed_criteria=ctx.state.failed_criteria,
-                total_criteria=len(ctx.deps.criteria),
-                soft_failure_threshold=ctx.deps.soft_failure_threshold,
-            )
+        result = to_review_result(
+            model,
+            ctx.state.findings,
+            ctx.state.review,
+            ctx.state.edits,
+            declined=[
+                DeclinedFinding(
+                    criterion=d.criterion,
+                    issue=d.issue,
+                    why=d.why,
+                    section_id=d.section_id,
+                )
+                for d in ctx.state.declined_findings
+            ],
+            llm_calls=counters.llm_calls if counters else 0,
+            gap_rounds_used=counters.gap_rounds if counters else 0,
+            failed_criteria=ctx.state.failed_criteria,
+            total_criteria=len(ctx.deps.criteria),
+            soft_failure_threshold=ctx.deps.soft_failure_threshold,
         )
+        # Assigned rather than passed through `to_review_result`: which
+        # reviewer ran is a property of the configuration, not of the findings
+        # that function assembles, and every other caller of it would have to
+        # learn a parameter it has nothing to say about.
+        result.reviewer_header = ctx.deps.reviewer_header
+        return End(result)
 
 
 def _build_review_graph() -> Graph[V3State, V3Deps, Sectionize, ReviewResult]:
@@ -357,6 +382,8 @@ async def run_review_v3(
     check_novelty: bool = False,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
+    reviewer: "ReviewerProfile | None" = None,
+    patch_author: str | None = None,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -385,6 +412,22 @@ async def run_review_v3(
     styles, which the ``#``-line sectioniser cannot see, so
     :func:`~andamentum.whetstone.reviewed_document.open_source` resolves them
     and passes them in. Omitted, the sections are derived from *markdown*.
+
+    ``reviewer`` is the reviewer profile whose stance, criteria and editor
+    criteria this run uses (see :mod:`.reviewers`). ``None`` means the default
+    reviewer, which selects nothing of its own and therefore reproduces the
+    behaviour above exactly. A profile is resolved **inside** this function
+    rather than by the caller because resolution needs the document type, and
+    under ``document_type="auto"`` that type is only known once the classifier
+    below has run — resolving earlier would mean classifying twice. Anything a
+    profile supplies is still overridden field by field by the arguments
+    above, which is what keeps a named reviewer and a typed-out one the same
+    mechanism.
+
+    ``patch_author`` is the tracked-change author the caller will render with,
+    recorded in the reviewer header so the report names the same author the
+    ``.docx`` will carry. It configures nothing else: this function writes no
+    files.
 
     ``confidentiality_text`` is what the marker scan reads, when that is more
     than the reviewed text. A Word document's running headers and footnotes
@@ -419,43 +462,74 @@ async def run_review_v3(
 
     start_run()
 
-    if criteria is not None:
-        active_criteria = criteria
-    elif guidelines_text is not None:
+    from .reviewers import GENERAL_PROFILE, may_misfit, resolve
+
+    profile = reviewer if reviewer is not None else GENERAL_PROFILE
+
+    # Only classify when the answer is actually consumed. Two things consume
+    # it: the criterion set, when neither the caller nor the profile supplied
+    # one; and the fit check, but only for a reviewer that some document type
+    # could fail — a reviewer that fits all six cannot, so asking would be a
+    # model call spent on a question whose answer is already known.
+    type_decides_criteria = (
+        criteria is None and guidelines_text is None and profile.criteria is None
+    )
+    if document_type == "auto" and (
+        type_decides_criteria or may_misfit(profile=profile)
+    ):
+        from .._document_type import classify
+
+        # sectionize is deterministic; calling it here AND inside
+        # the graph's first node is cheap (no LLM).
+        titles = [s.title for s in (sections or sectionize(markdown))]
+        document_type = await classify(
+            model=model, section_titles=titles, markdown=markdown
+        )
+        # Classifier is one LLM call; count it (classify() doesn't
+        # touch the metrics module itself to keep _document_type.py
+        # decoupled from v3 internals).
+        increment_llm_calls(1)
+
+    resolved = resolve(
+        profile=profile,
+        document_type=document_type,
+        criteria=criteria,
+        guidelines_text=guidelines_text,
+        editor_criteria=editor_criteria,
+        patch_author=patch_author,
+    )
+
+    if resolved.criteria is None:
+        # The one answer resolution defers, because it needs a model: the
+        # caller gave free-text guidelines and the criteria come out of them.
         from .extract_criteria import extract_criteria_from_guidelines
 
+        assert guidelines_text is not None
         active_criteria = await extract_criteria_from_guidelines(
             guidelines_text, model=model
         )
     else:
-        # Only classify when the result is actually consumed — i.e. we
-        # are falling back to the document-type default set.
-        if document_type == "auto":
-            from .._document_type import classify
+        active_criteria = resolved.criteria
 
-            # sectionize is deterministic; calling it here AND inside
-            # the graph's first node is cheap (no LLM).
-            titles = [s.title for s in (sections or sectionize(markdown))]
-            document_type = await classify(
-                model=model, section_titles=titles, markdown=markdown
-            )
-            # Classifier is one LLM call; count it (classify() doesn't
-            # touch the metrics module itself to keep _document_type.py
-            # decoupled from v3 internals).
-            increment_llm_calls(1)
-        active_criteria = criterion_set_for(document_type)
+    if resolved.fit_warning:
+        # The run proceeds. Document type is usually classified rather than
+        # stated, the user asked for this reviewer on their own draft, and the
+        # failure mode is findings about something the document was never
+        # doing — not damage. The same line goes into the report header, so it
+        # survives being scrolled off a terminal.
+        logger.warning("[v3.review] %s", resolved.fit_warning)
 
     deps = V3Deps(
         agent_model=model,
         cap=cap,
         criteria=active_criteria,
         editor_enabled=editor,
-        editor_criteria=(
-            list(editor_criteria) if editor_criteria else list(DEFAULT_EDITOR_CRITERIA)
-        ),
+        editor_criteria=resolved.editor_criteria,
         check_novelty=check_novelty,
         novelty_target_cap=novelty_target_cap,
         novelty_search_depth=novelty_search_depth,
+        brief=resolved.brief,
+        reviewer_header=resolved.header,
     )
     state = V3State(source=markdown, sections=list(sections or []))
     return await review_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
@@ -475,6 +549,8 @@ async def review_document_v3(
     check_novelty: bool = False,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
+    reviewer: "ReviewerProfile | None" = None,
+    patch_author: str | None = None,
 ) -> ReviewResult:
     """v3 entry from a source path / URL / markdown blob, or an open document.
 
@@ -512,6 +588,8 @@ async def review_document_v3(
             check_novelty=check_novelty,
             novelty_target_cap=novelty_target_cap,
             novelty_search_depth=novelty_search_depth,
+            reviewer=reviewer,
+            patch_author=patch_author,
         )
     finally:
         if owned:

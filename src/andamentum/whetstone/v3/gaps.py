@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
-from .criteria import SPECS
 from .model import DocumentModel
 from .review import Finding, Severity, make_anchor_validator, verify_findings
 
@@ -78,7 +77,13 @@ class _ReexamineFindings(BaseModel):
 def _snap_criterion(value: str, names: list[str]) -> str:
     """Map the agent's criterion onto the active set (case-insensitive) so a
     re-examined finding lands under a real criterion rather than a generic
-    label. Falls back to the first criterion if nothing matches."""
+    label. Falls back to the first criterion if nothing matches.
+
+    With no active set there is nothing to snap to, and the finding gets the
+    neutral label rather than a criterion name from somewhere else — a
+    finding filed under a criterion nobody selected is a wrong answer that
+    reads like a right one.
+    """
     v = value.strip().lower()
     for n in names:
         if n.lower() == v:
@@ -86,7 +91,7 @@ def _snap_criterion(value: str, names: list[str]) -> str:
     for n in names:
         if n.lower() in v or v in n.lower():
             return n
-    return names[0] if names else "Finding"
+    return names[0] if names else "Gap"
 
 
 # ── Deterministic: coverage summary + loop control ──────────────────────────
@@ -285,7 +290,11 @@ async def gap_loop(
 
     from ._metrics import increment_gap_rounds
 
-    names = criterion_names or [c.name for c in SPECS]
+    # The caller's own set, and nothing else. The predecessor fell back to the
+    # academic criterion names whenever the list came in empty, so a run with
+    # no criteria produced findings labelled "Story" — a criterion the caller
+    # never selected, on a document that was never reviewed against it.
+    names = list(criterion_names or [])
     current = list(findings)
     prior: set[str] = set()
     for round_idx in range(1, cap + 1):

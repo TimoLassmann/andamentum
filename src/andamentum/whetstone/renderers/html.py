@@ -27,6 +27,7 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
+from ._reviewer_header import header_atoms
 from ._panel_layout import (
     criterion_summary,
     diverged_criteria,
@@ -81,6 +82,13 @@ def render_html(
         )
     else:
         atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
+
+    # The reviewer block, when a reviewer other than the default one ran. Part
+    # of the prelude, so it is counted below rather than mistaken for review
+    # content by the "looks clean" check.
+    if result.reviewer_header is not None:
+        atoms.extend(header_atoms(result.reviewer_header))
+    prelude_atoms = len(atoms)
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
@@ -142,9 +150,10 @@ def render_html(
             )
         )
 
-    # Count prelude atoms (heading + single combined banner) so the
-    # "looks clean" message fires only when there's no review content.
-    prelude_atoms = 2
+    # The prelude count was taken above rather than written as a literal: it
+    # is the heading, one banner, and however many atoms the reviewer block
+    # added, and a stale literal would make the "looks clean" message fire on
+    # a report that has content or stay silent on one that has none.
     if len(atoms) <= prelude_atoms:
         atoms.append(
             {
@@ -213,7 +222,6 @@ def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
     return out
 
 
-
 def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
     """Findings the editor handed back, with its reason.
 
@@ -243,6 +251,7 @@ def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
         entries.append({"label": d.criterion or "—", "body": body})
     out.append({"kind": "items", "entries": entries})
     return out
+
 
 _PRIORITY_HEADINGS = {
     "must_fix": "MUST FIX",

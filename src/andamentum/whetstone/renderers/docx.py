@@ -77,6 +77,7 @@ from .._watermark import (
 )
 from ..schemas import Finding, Quote, ReviewResult
 from ._panel_layout import body_markdown
+from ._reviewer_header import header_markdown
 
 if TYPE_CHECKING:
     from ..docx.annotate import Note, Rewrite
@@ -158,6 +159,15 @@ def render_docx(
         review_summary = body_markdown(
             result.panel_synthesis, list(result.expert_reviews)
         )
+
+    # The reviewer block, when a reviewer other than the default one ran. It
+    # goes into the review summary rather than above the report title: the
+    # title is written three call frames down, inside the report builder, and
+    # threading a keyword through two signatures to move this block up a
+    # heading is not worth what it costs to read. Accepted asymmetry with the
+    # markdown and HTML renderers, where the block sits in the prelude.
+    if result.reviewer_header is not None:
+        review_summary = f"{header_markdown(result.reviewer_header)}\n{review_summary}"
 
     if visible_watermark:
         banner = (
@@ -319,7 +329,6 @@ def _fallback_summary(result: ReviewResult) -> str:
     return " ".join(parts)
 
 
-
 def _collect_declined(result: ReviewResult) -> str:
     """The editor's refusals, as markdown for the prepended report.
 
@@ -347,6 +356,7 @@ def _collect_declined(result: ReviewResult) -> str:
         if d.why:
             lines.append(f"  - *Editor:* {d.why}")
     return "\n".join(lines)
+
 
 def _collect_novelty_findings(result: ReviewResult) -> str:
     """Concatenate novelty-category findings into a markdown block.

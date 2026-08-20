@@ -55,7 +55,7 @@ def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
 
 
 def test_specs_is_the_academic_default() -> None:
-    assert criterion_set_for("academic") is SPECS
+    assert criterion_set_for("academic") == SPECS
     assert [c.name for c in SPECS] == [
         "Story",
         "Presentation",
@@ -71,7 +71,7 @@ def test_external_comms_set_is_routed_for_external_communication() -> None:
     (Hook/Argument/Evidence/Voice/Clarity), not SPECS — applying
     Evaluations and Correctness to a non-academic piece produces
     forced findings that don't serve the author."""
-    assert criterion_set_for("external_communication") is EXTERNAL_COMMS
+    assert criterion_set_for("external_communication") == EXTERNAL_COMMS
     assert [c.name for c in EXTERNAL_COMMS] == [
         "Hook",
         "Argument",
@@ -85,7 +85,7 @@ def test_external_comms_set_is_routed_for_external_communication() -> None:
 def test_general_set_is_routed_for_general() -> None:
     """Issue 1: notes, drafts, books, technical documentation get
     GENERAL (Purpose/Structure/Completeness/Clarity)."""
-    assert criterion_set_for("general") is GENERAL
+    assert criterion_set_for("general") == GENERAL
     assert [c.name for c in GENERAL] == [
         "Purpose",
         "Structure",
@@ -99,7 +99,7 @@ def test_essay_set_is_routed_for_essay() -> None:
     """Phase A: personal/narrative/opinion essays get ESSAY
     (Thesis/Narrative arc/Specificity/Voice/Fresh observation) — not
     the academic SPECS or the generic GENERAL."""
-    assert criterion_set_for("essay") is ESSAY
+    assert criterion_set_for("essay") == ESSAY
     assert [c.name for c in ESSAY] == [
         "Thesis",
         "Narrative arc",
@@ -114,7 +114,7 @@ def test_tutorial_set_is_routed_for_tutorial() -> None:
     """Phase A: how-tos / walkthroughs / cookbooks get TUTORIAL
     (Goal/Prerequisites/Step ordering/Correctness/Completeness) —
     the reader is trying to accomplish a task."""
-    assert criterion_set_for("tutorial") is TUTORIAL
+    assert criterion_set_for("tutorial") == TUTORIAL
     assert [c.name for c in TUTORIAL] == [
         "Goal",
         "Prerequisites",
@@ -129,7 +129,7 @@ def test_creative_set_is_routed_for_creative() -> None:
     """Phase A: short fiction / memoir / narrative non-fiction get
     CREATIVE (Premise/Character & voice/Scene & sensory grounding/
     Tension/Prose craft) — story craft is the substance."""
-    assert criterion_set_for("creative") is CREATIVE
+    assert criterion_set_for("creative") == CREATIVE
     assert [c.name for c in CREATIVE] == [
         "Premise",
         "Character & voice",
@@ -144,8 +144,8 @@ def test_unknown_document_type_falls_back_to_general() -> None:
     """Issue 1: the previous behaviour silently fell back to SPECS for
     unknown types — meaning Evaluations and Correctness would run on
     essays. GENERAL is the safe neutral default."""
-    assert criterion_set_for("anything-unknown") is GENERAL
-    assert criterion_set_for("") is GENERAL
+    assert criterion_set_for("anything-unknown") == GENERAL
+    assert criterion_set_for("") == GENERAL
 
 
 def test_six_sets_are_disjoint() -> None:

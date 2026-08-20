@@ -718,3 +718,63 @@ def probe_bank_for(document_type: str) -> list[Probe]:
         )
         return list(GENERAL_PROBES)
     return list(bank)
+
+
+# ── Selection by id ─────────────────────────────────────────────────────────
+#
+# A reviewer profile selects probes by id rather than by document type, so it
+# needs a lookup the per-type banks do not provide. Nothing here changes a
+# probe's text or a bank's membership: ``probe_bank_for`` and every bank list
+# are untouched, so an existing checklist run resolves exactly the probes it
+# always did.
+#
+# The five per-type variants above are private on purpose — they are not a
+# bank and selecting one by hand only makes sense with an id in front of you —
+# so this is the one door onto them.
+
+_CROSS_TYPE_PROBES: tuple[Probe, ...] = (
+    _ORDER_DEPENDENCY,
+    _UNATTRIBUTED_SOURCE,
+    _UNDEFINED_TERM,
+    _STATED_NOT_SHOWN,
+    _INERT_PASSAGE,
+)
+
+ALL_PROBE_IDS: frozenset[str] = frozenset(
+    p.id for bank in (*_BANKS.values(), _CROSS_TYPE_PROBES) for p in bank
+)
+"""Every probe id this package ships, across all six banks and the variants.
+
+Membership only. Two ids in here name *different* ``Probe`` objects depending
+on the document type (``unmotivated_choice`` has an academic wording and a
+general one), which is why the resolver below takes the type as well.
+"""
+
+
+def probe_for(probe_id: str, *, document_type: str) -> Probe:
+    """The document-type-appropriate variant of one probe, by id.
+
+    Resolution order is the type's own bank first, then the cross-type
+    variants. The order matters because the same id names two different probes:
+    ``unmotivated_choice`` asks about an academic paper's choices in
+    ACADEMIC_PROBES and about a general document's in GENERAL_PROBES, and a
+    profile that selects it should get the wording that matches the document in
+    front of it. The cross-type variants exist in one form only, so they
+    resolve the same way whatever the type.
+
+    An unrecognised document type resolves through ``probe_bank_for``, which
+    falls back to the general bank and logs that it did — one behaviour for
+    unknown types, not two.
+
+    Raises ``ValueError`` naming the id and the known ids when the id is not
+    one this package ships. A profile that names a probe which no longer
+    exists is a bug in the profile, and dropping it silently would produce a
+    coverage table with a missing row and no explanation for it.
+    """
+    for probe in (*probe_bank_for(document_type), *_CROSS_TYPE_PROBES):
+        if probe.id == probe_id:
+            return probe
+    raise ValueError(
+        f"probe_for: unknown probe id {probe_id!r}. Known ids: "
+        f"{', '.join(sorted(ALL_PROBE_IDS))}."
+    )

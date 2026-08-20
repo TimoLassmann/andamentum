@@ -25,6 +25,14 @@ from .checklist import Probe, checklist_document_v3, probe_bank_for, run_checkli
 from .criteria import Criterion, criterion_set_for
 from .extract_criteria import extract_criteria_from_guidelines
 from .graph import review_document_v3, run_review_v3
+from .reviewers import (
+    DEFAULT_PROFILE_NAME,
+    PROFILES,
+    ReviewerProfile,
+    author_for,
+    fits,
+    resolve,
+)
 
 __all__ = [
     "Criterion",
@@ -32,6 +40,12 @@ __all__ = [
     "extract_criteria_from_guidelines",
     "review_document_v3",
     "run_review_v3",
+    "PROFILES",
+    "DEFAULT_PROFILE_NAME",
+    "ReviewerProfile",
+    "author_for",
+    "fits",
+    "resolve",
     "Probe",
     "probe_bank_for",
     "checklist_document_v3",

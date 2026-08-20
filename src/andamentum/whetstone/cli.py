@@ -116,6 +116,13 @@ EXAMPLES
         --criteria "originality; depth of literature; clarity" \\
         --out review.md
 
+    # A named reviewer: its own criteria, probes and stance
+    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+        --reviewer methods --out review.md
+
+    # Which reviewers exist, and which suit this kind of document
+    andamentum-whetstone --list-reviewers --document-type academic
+
     # Review with free-text guidelines (one extractor call + cascade)
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
         --guidelines @/path/to/author-guidelines.md --out review.md
@@ -160,16 +167,37 @@ _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 # comparing the parsed value against its default — sound only while there is a
 # single definition of each. A second literal in the parser would silently turn
 # the rejection off for that flag.
-_DEFAULT_EDITOR_CRITERIA = "clarity,concision,grammar"
+#
+# --editor-criteria is deliberately NOT in this list: its default is None, the
+# sentinel meaning "the user did not say". A default of "clarity,concision,
+# grammar" here would make the CLI pass an explicit editor-criteria list on
+# every run, and an explicit list is an inline override — so a reviewer
+# profile's own editor criteria would be silently replaced by a value nobody
+# typed. The editor's default list lives in one place, `editor
+# .DEFAULT_EDITOR_CRITERIA`, and the run falls through to it.
 _DEFAULT_NOVELTY_SEARCH_DEPTH = 2
 _DEFAULT_ROUNDS = 3
+
+# One list of document types, read by the main parser and by the
+# --list-reviewers short-circuit in main(), which builds a parser of its own.
+# Two lists would let a typo pass the second parser and print a fit column
+# against a type the first one refuses.
+_DOCUMENT_TYPE_CHOICES: tuple[str, ...] = (
+    "auto",
+    "academic",
+    "external_communication",
+    "essay",
+    "tutorial",
+    "creative",
+    "general",
+)
 
 # (namespace attribute, user-facing flag, value meaning "not set").
 _REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("criteria", "--criteria", None),
     ("guidelines", "--guidelines", ""),
     ("editor", "--editor", False),
-    ("editor_criteria", "--editor-criteria", _DEFAULT_EDITOR_CRITERIA),
+    ("editor_criteria", "--editor-criteria", None),
     ("check_novelty", "--check-novelty", False),
     ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
     ("rounds", "--rounds", _DEFAULT_ROUNDS),
@@ -222,15 +250,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # like two questions.
     parser.add_argument(
         "--document-type",
-        choices=(
-            "auto",
-            "academic",
-            "external_communication",
-            "essay",
-            "tutorial",
-            "creative",
-            "general",
-        ),
+        choices=_DOCUMENT_TYPE_CHOICES,
         default="auto",
         help=(
             "Document type. In review mode it routes to one of six criterion "
@@ -242,6 +262,40 @@ def _build_parser() -> argparse.ArgumentParser:
             "run is expected to do, while the Python API "
             "(run_checklist_v3) defaults to 'general' so its default path "
             "stays classifier-free. Pass an explicit type to match the API."
+        ),
+    )
+    # Shared by review and checklist for the same reason --document-type is:
+    # one reviewer selects a criterion set in one mode and a probe bank in the
+    # other, and a second flag would make one question look like two. Panel and
+    # apply-patches reject it in _validate_args rather than ignoring it.
+    #
+    # The choices come from the profile registry, so a profile added there is
+    # offered here with no second list to update — and argparse names every
+    # valid value in its own error message.
+    from .v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES
+
+    parser.add_argument(
+        "--reviewer",
+        choices=tuple(PROFILES),
+        default=DEFAULT_PROFILE_NAME,
+        metavar="NAME",
+        help=(
+            "Which reviewer to run: a named bundle of criteria, probes and "
+            "editor criteria, plus a brief that fixes the reviewer's stance "
+            "and the bar a finding has to clear. Default: "
+            f"{DEFAULT_PROFILE_NAME} — the document type's own criteria and "
+            "probes, which is what ran before reviewers were named. Every "
+            "value a reviewer supplies is still overridden by the matching "
+            "flag. Run --list-reviewers to see them all."
+        ),
+    )
+    parser.add_argument(
+        "--list-reviewers",
+        action="store_true",
+        help=(
+            "List the reviewers, with a fit marker per document type when "
+            "--document-type is given, and exit. Needs no input file and no "
+            "model."
         ),
     )
     parser.add_argument(
@@ -296,8 +350,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-visible-watermark",
         dest="visible_watermark",
         action="store_false",
+        # The HTML renderer writes no provenance meta tag — it never has, and
+        # the help text used to say it did. What it does write, banner or not,
+        # is the AI-content disclaimer callout.
         help="Suppress the visible banner. Invisible provenance metadata "
-        "(docx core properties, HTML <meta>) is written regardless.",
+        "(docx core properties and customXml) is written regardless, and the "
+        "HTML report keeps a short disclaimer callout.",
     )
 
     # --mode is internal: set by the subcommand rewriter (`panel` verb →
@@ -338,9 +396,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     review_grp.add_argument(
         "--editor-criteria",
-        default=_DEFAULT_EDITOR_CRITERIA,
+        default=None,
         metavar="LIST",
-        help="Comma-separated editor criteria. Default: clarity,concision,grammar.",
+        help="Comma-separated editor criteria. Default: clarity,concision,"
+        "grammar — or the reviewer's own, when --reviewer names one that "
+        "sets them.",
     )
     review_grp.add_argument(
         "--check-novelty",
@@ -431,6 +491,14 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     Raises ``SystemExit(1)`` with a friendly message on any violation.
     """
+    if args.list_reviewers:
+        # Also handled in main() before parsing, so the listing works without
+        # an input file or --out. Reaching it here means the run supplied
+        # them anyway: print the listing and stop, rather than reviewing a
+        # document the user did not ask to have reviewed yet.
+        _print_reviewer_listing(document_type=args.document_type)
+        sys.exit(0)
+
     if args.apply_patches is not None:
         _validate_apply_patches_args(args)
         return
@@ -448,6 +516,18 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     if args.mode == "checklist":
         _reject_review_only_flags(args)
+        _reject_the_line_editor_under_checklist(args)
+    if args.mode == "review":
+        _reject_a_review_that_would_review_nothing(args)
+    if args.mode == "panel" and args.reviewer != _default_reviewer_name():
+        # Detected by comparison against the default, matching
+        # _reject_review_only_flags: `--reviewer general` under panel asks for
+        # nothing panel does not already do, so it is tolerated.
+        _die(
+            1,
+            "panel generates its own reviewers; --reviewer applies to review "
+            "and checklist.",
+        )
     if args.mode == "panel" and not (
         args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
     ):
@@ -510,8 +590,83 @@ def _reject_review_only_flags(args: argparse.Namespace) -> None:
             )
 
 
+def _default_reviewer_name() -> str:
+    """The name of the reviewer that runs when none is asked for.
+
+    Read from the profile registry rather than written here, for the reason
+    the comment above ``_REVIEW_ONLY_FLAGS`` gives: the rejections below detect
+    "was this passed" by comparing against the default, which is sound only
+    while there is one definition of it.
+    """
+    from .v3.reviewers import DEFAULT_PROFILE_NAME
+
+    return DEFAULT_PROFILE_NAME
+
+
+def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
+    """The one reviewer checklist mode cannot run.
+
+    The line editor selects no probes — it is a prose pass, and its whole
+    output is tracked changes the editor produces under ``--editor`` in review
+    mode. Running it here would produce a coverage table with no rows, which
+    reads like a document that passed every check rather than like a run that
+    checked nothing.
+    """
+    from .v3.reviewers import PROFILES
+
+    profile = PROFILES[args.reviewer]
+    if profile.probes == ():
+        _die(
+            1,
+            f"the {profile.identity.lower()} runs no checks; use review mode "
+            "with --editor.",
+        )
+
+
+def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None:
+    """A review with no criteria and no editor makes no judgement at all.
+
+    The mirror of :func:`_reject_the_line_editor_under_checklist`, and refused
+    for the same reason: a reviewer that selects no criteria has nothing for
+    the criterion cascade to run and nothing for the gap loop to re-ground, so
+    without ``--editor`` the run does claim extraction, synthesis and
+    self-critique, costs model calls for all three, and produces a report with
+    no findings and no edits — which reads like a draft that passed rather
+    than like a run that examined nothing.
+
+    Stated as "does this run examine anything" rather than as the name of a
+    profile, so a later prose-only reviewer is covered without an edit here.
+    Inline ``--criteria`` and ``--guidelines`` both override a profile's
+    criteria, so either of them makes the run a real review again.
+    """
+    from .v3.reviewers import PROFILES
+
+    profile = PROFILES[args.reviewer]
+    if profile.criteria != ():
+        return
+    if args.criteria or args.guidelines or args.editor:
+        return
+    _die(
+        1,
+        f"the {profile.identity.lower()} runs no review criteria, so without "
+        "--editor this run would examine nothing and report nothing. Add "
+        "--editor to get the tracked changes it exists for, name a reviewer "
+        "that runs checks, or pass --criteria of your own.",
+    )
+
+
 def _validate_apply_patches_args(args: argparse.Namespace) -> None:
     """Validate the patch-only path. ``--apply-patches`` is set."""
+    if args.reviewer != _default_reviewer_name():
+        # apply-patches never calls the review pipeline, so a reviewer here
+        # would configure nothing. Refused rather than ignored: a flag that
+        # silently does nothing is the failure this project treats as worse
+        # than a loud one.
+        _die(
+            1,
+            "--reviewer selects a review configuration; apply-patches applies "
+            "patches you supply.",
+        )
     input_path = Path(args.input)
     if not input_path.exists():
         _die(
@@ -573,18 +728,83 @@ def _validate_author_args(args: argparse.Namespace) -> None:
 
 
 def _resolve_author(args: argparse.Namespace) -> str:
-    """The tracked-change author, and the warning that overriding it earns."""
-    from .renderers.docx import DEFAULT_AI_AUTHOR
+    """The tracked-change author, and the warning that overriding it earns.
 
+    A named reviewer signs its own changes — "Methods reviewer
+    (andamentum-whetstone, AI)" — which is what lets two reviewers' rounds be
+    told apart in Word's reviewing pane. The composition itself lives in
+    ``reviewers.author_for``, which the pipeline calls too, so the report
+    header and the tracked changes cannot name different authors. A profile
+    supplies only the identity half and can never drop the machine-authorship
+    marker; the one path that writes an unmarked name is ``--patch-author``,
+    still gated behind ``--allow-author-override``.
+    """
+    from .v3.reviewers import PROFILES, author_for
+
+    default_author = author_for(profile=PROFILES[args.reviewer])
     if args.patch_author is None:
-        return DEFAULT_AI_AUTHOR
+        return default_author
     print(
         f"WARNING: attributing AI-generated changes to '{args.patch_author}' "
-        f"instead of the default '{DEFAULT_AI_AUTHOR}'. Misrepresenting "
+        f"instead of the default '{default_author}'. Misrepresenting "
         f"AI work as human authorship may constitute research misconduct.",
         file=sys.stderr,
     )
     return args.patch_author
+
+
+_RECOMMENDED_SEQUENCE = """\
+Recommended sequence for a manuscript:
+
+  General first; it is free. Then claims, methods and adversary — the three
+  that change what goes out. Fix. Then reader, before anything leaves the
+  group. Editor last, because prose that will still change is wasted effort
+  to edit. Anything two reviewers raise independently goes to the top of the
+  list."""
+
+
+def _print_reviewer_listing(*, document_type: str = "auto") -> None:
+    """Print every reviewer, one line each, and how to sequence them.
+
+    The fit column appears only when the document type was actually stated.
+    Under ``--document-type auto`` the type is decided by a classifier during
+    the run, and printing a fit marker against a type nobody has determined
+    yet would be an answer to a question that has not been asked.
+    """
+    from .v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES, fits
+
+    known_type = document_type != "auto"
+    labels = {
+        name: name + (" (default)" if name == DEFAULT_PROFILE_NAME else "")
+        for name in PROFILES
+    }
+    width = max(len(label) for label in labels.values())
+    print("Reviewers — pass one to --reviewer NAME:\n")
+    if known_type:
+        print(f"  {'reviewer':<{width}}  suits {document_type}?  what it does")
+    for name, profile in PROFILES.items():
+        fit = ""
+        if known_type:
+            suits = (
+                "yes" if fits(profile=profile, document_type=document_type) else "no"
+            )
+            # Width of the "suits <type>?" heading above, so the column of
+            # answers lines up under the question it answers.
+            fit = f"  {suits:<{len(document_type) + 7}}"
+        print(f"  {labels[name]:<{width}}{fit}  {profile.description}")
+    print()
+    if known_type:
+        print(
+            "A reviewer that does not suit this document type still runs when "
+            "you ask for it.\nIt warns once in the terminal, and the same line "
+            "goes into the report.\n"
+        )
+    else:
+        print(
+            "Pass --document-type TYPE as well to see which reviewers suit "
+            "that kind of document.\n"
+        )
+    print(_RECOMMENDED_SEQUENCE)
 
 
 def _die(code: int, message: str) -> NoReturn:
@@ -629,11 +849,31 @@ def _parse_criteria(values: list[str]) -> list[str]:
     return out
 
 
+def _editor_criteria(args: argparse.Namespace) -> list[str] | None:
+    """The editor criteria the user typed, or ``None`` when they typed none.
+
+    ``None`` is not the same as the default list, and passing the default list
+    on every run would be a bug rather than a convenience: an explicit list is
+    an inline override, so it would replace whatever editor criteria the named
+    reviewer carries — the ``claims`` reviewer's single "hedging", say — with
+    a value the user never asked for. Only what was actually typed is passed
+    on; the fall-through to the reviewer's list and then to the editor's own
+    default happens in ``reviewers.resolve``.
+
+    A flag given as an empty or all-blank string parses to ``None`` too. The
+    editor has no "run with no criteria" state — its prompt substitutes a
+    placeholder for an empty list and it proposes edits anyway — so the honest
+    reading of ``--editor-criteria ""`` is the same as not passing it.
+    """
+    if args.editor_criteria is None:
+        return None
+    parsed = [c.strip() for c in args.editor_criteria.split(",") if c.strip()]
+    return parsed or None
+
+
 async def _run(args: argparse.Namespace, console: Console) -> None:
     """Resolve the input once, then review it and write every output."""
-    editor_criteria = tuple(
-        c.strip() for c in args.editor_criteria.split(",") if c.strip()
-    )
+    editor_criteria = _editor_criteria(args)
 
     # Always-on one-line scope banner — short, unmissable, not gated on
     # --verbose. Goes to stderr so it doesn't pollute piped output.
@@ -678,11 +918,10 @@ async def _review_and_write(
     from .v3 import Criterion, review_document_v3
     from .v3.checklist import checklist_document_v3
     from .v3.panel import run_panel_v3
+    from .v3.reviewers import PROFILES
 
     logger = logging.getLogger(_LOGGER_NAME)
-    editor_criteria = tuple(
-        c.strip() for c in args.editor_criteria.split(",") if c.strip()
-    )
+    editor_criteria = _editor_criteria(args)
     panel_disciplines = tuple(
         d.strip() for d in args.panel_disciplines.split(",") if d.strip()
     )
@@ -721,6 +960,8 @@ async def _review_and_write(
                 model=args.model,
                 document_type=args.document_type,
                 confirm_own_draft=args.confirm_own_draft,
+                reviewer=PROFILES[args.reviewer],
+                patch_author=args.patch_author,
             )
         else:
             # Default review path — Phase C unified criteria/guidelines
@@ -742,9 +983,15 @@ async def _review_and_write(
                 criteria=v3_criteria,
                 guidelines_text=v3_guidelines,
                 editor=args.editor,
-                editor_criteria=list(editor_criteria) if editor_criteria else None,
+                editor_criteria=editor_criteria,
                 check_novelty=args.check_novelty,
                 novelty_search_depth=args.novelty_search_depth,
+                # The profile is resolved inside the pipeline, not here: the
+                # document type it resolves against is only known once the
+                # classifier has run, and classifying twice to learn it early
+                # would be an LLM call spent on a flag.
+                reviewer=PROFILES[args.reviewer],
+                patch_author=args.patch_author,
             )
         result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
@@ -763,6 +1010,8 @@ async def _review_and_write(
             _die(2, f"could not load input {args.input!r}: {exc}")
         else:
             _die(3, f"review pipeline failed: {exc}")
+
+    _print_reviewer_configuration(console, result)
 
     written: list[Path] = []
     # Resolved once: it prints the override warning, and a run asking for two
@@ -812,7 +1061,7 @@ async def _review_and_write(
 def _log_run_config(
     console: Console,
     args: argparse.Namespace,
-    editor_criteria: tuple[str, ...],
+    editor_criteria: list[str] | None,
 ) -> None:
     """Render the input/options panel before the run starts."""
     table = Table.grid(padding=(0, 1))
@@ -821,6 +1070,10 @@ def _log_run_config(
     table.add_row("input:", str(args.input))
     table.add_row("model:", args.model or "")
     table.add_row("document type:", args.document_type)
+    # What the reviewer resolves TO is only known after the run (the document
+    # type decides it), and is printed then — see _print_reviewer_configuration.
+    # This is the name that was asked for.
+    table.add_row("reviewer:", args.reviewer)
     if args.mode == "panel":
         table.add_row("pipeline:", "panel (multi-expert simulated peer review)")
         table.add_row("n_experts:", str(args.n_experts))
@@ -842,11 +1095,45 @@ def _log_run_config(
             table.add_row("guidelines:", guideline_preview)
         table.add_row("editor:", "on" if args.editor else "off")
         if args.editor:
-            table.add_row("editor criteria:", ", ".join(editor_criteria))
+            # Before the run, the only honest answer when the flag was not
+            # given is who decides — the reviewer, then the editor's default.
+            # What it resolves to is printed afterwards, with its source, by
+            # _print_reviewer_configuration.
+            table.add_row(
+                "editor criteria:",
+                ", ".join(editor_criteria)
+                if editor_criteria
+                else f"from reviewer {args.reviewer}",
+            )
         table.add_row("novelty check:", "on" if args.check_novelty else "off")
         table.add_row("gap-loop cap:", str(args.rounds))
     table.add_row("outputs:", ", ".join(str(o) for o in args.out))
     console.print(Panel(table, title="whetstone", border_style="cyan"))
+
+
+def _print_reviewer_configuration(console: Console, result) -> None:
+    """What the named reviewer was actually set to do, and where each value
+    came from.
+
+    Printed after the run because that is when it is known: the document type
+    a profile resolves against is decided inside the pipeline. Nothing is
+    printed for the default reviewer — it carries no header, and a run that
+    named no reviewer has nothing to disclose that the report does not already
+    say.
+    """
+    header = getattr(result, "reviewer_header", None)
+    if header is None:
+        return
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="bold cyan", justify="right")
+    table.add_column()
+    table.add_column(style="dim")
+    table.add_row("reviewer:", header.identity, "")
+    for line in header.configuration:
+        table.add_row(f"{line.label}:", line.value, f"({line.source})")
+    if header.fit_warning:
+        table.add_row("fit:", f"warning: {header.fit_warning}", "")
+    console.print(Panel(table, title="reviewer", border_style="cyan"))
 
 
 def _print_summary(console: Console, result, written: list[Path]) -> None:
@@ -1060,6 +1347,28 @@ def main(argv: Sequence[str] | None = None) -> None:
         # pipeline, no harvest. Short-circuit the main argparse entirely.
         rc = _run_verify_provenance_subcommand(raw[1:])
         raise SystemExit(rc)
+
+    if "--list-reviewers" in raw:
+        # Short-circuited before the main parser, which requires an input file
+        # and at least one --out: listing the reviewers is a question about the
+        # tool, not about a document. --document-type is the only other flag
+        # that changes the answer, so it is the only one read here.
+        listing = argparse.ArgumentParser(
+            prog="andamentum-whetstone --list-reviewers", add_help=False
+        )
+        listing.add_argument("--list-reviewers", action="store_true")
+        # The same choices the main parser enforces, from the same list. Left
+        # open, a mistyped type would reach the fit column as an unknown
+        # value, match no profile's `fits` set and print "no" against every
+        # reviewer including the default one, which fits all six by
+        # construction — a confidently wrong answer where the run itself would
+        # have refused the flag.
+        listing.add_argument(
+            "--document-type", choices=_DOCUMENT_TYPE_CHOICES, default="auto"
+        )
+        parsed, _unused = listing.parse_known_args(raw)
+        _print_reviewer_listing(document_type=parsed.document_type)
+        raise SystemExit(0)
 
     if raw and raw[0] in _KNOWN_SUBCOMMANDS:
         raw = _rewrite_subcommand(raw)

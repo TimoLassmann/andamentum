@@ -60,6 +60,17 @@ def test_snap_criterion_matches_and_falls_back() -> None:
     assert _snap_criterion("nonsense", names) == "Story"  # fallback to first
 
 
+def test_snap_criterion_invents_no_criterion_when_none_were_selected() -> None:
+    """With an empty active set there is nothing to snap to.
+
+    The predecessor filled an empty criterion-name list with the academic set
+    and then snapped to its first entry, so a run with no criteria produced
+    findings titled "Story" — a criterion nobody selected, on an axis the
+    document was never reviewed against. A neutral label is the honest answer.
+    """
+    assert _snap_criterion("anything at all", []) == "Gap"
+
+
 def test_coverage_summary_counts_and_untouched() -> None:
     model = _model("body text here")
     findings = [

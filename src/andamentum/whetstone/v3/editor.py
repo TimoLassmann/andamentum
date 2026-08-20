@@ -37,6 +37,7 @@ from andamentum.core.models import resolve_model
 from ..schemas import Edit
 from .locate import locate
 from .model import Section
+from .prompt_blocks import brief_block
 from .review import Finding
 
 logger = logging.getLogger("andamentum.whetstone.v3")
@@ -355,6 +356,7 @@ def make_edit_validator(
 
     return validator
 
+
 # ── Per-section runner ──────────────────────────────────────────────────────
 
 
@@ -407,6 +409,7 @@ async def _run_editor_on_section(
     findings: list[Finding],
     *,
     agent_model: str,
+    brief: str = "",
 ) -> tuple[list[Edit], list[Declined]]:
     """One LLM call → the edits it proposed and the findings it declined.
 
@@ -414,6 +417,11 @@ async def _run_editor_on_section(
     original_text cannot be located in the section is dropped — the agent
     paraphrased instead of quoting, and a span that is not in the source
     cannot be anchored.
+
+    *brief* is the active reviewer profile's stance, rendered at the top of the
+    user prompt by :func:`~.prompt_blocks.brief_block`. Empty by default and
+    then rendered as nothing, so the default reviewer's editor prompt is
+    byte-identical to the one this function built before profiles existed.
     """
     defn = AgentDefinition(
         name="v3_editor",
@@ -460,6 +468,7 @@ async def _run_editor_on_section(
         )
 
     user_prompt = (
+        f"{brief_block(brief)}"
         f"SECTION TITLE: {section.title}\n"
         f"SECTION ID: {section.id}\n\n"
         f"{findings_block}"
@@ -503,7 +512,9 @@ async def _run_editor_on_section(
     )
 
     for prop in output.edits:
-        addressed = ordered[prop.addresses - 1] if 1 <= prop.addresses <= len(ordered) else None
+        addressed = (
+            ordered[prop.addresses - 1] if 1 <= prop.addresses <= len(ordered) else None
+        )
 
         if addressed is not None:
             answered.add(prop.addresses)
@@ -589,6 +600,7 @@ async def run_editor(
     criteria: list[str],
     agent_model: str,
     findings: list[Finding] | None = None,
+    brief: str = "",
 ) -> tuple[list[Edit], list[Declined]]:
     """Run the editor across every section, bounded by
     ``_MAX_CONCURRENT_EDITORS=5`` parallel calls. Per-section failures are
@@ -599,6 +611,9 @@ async def run_editor(
     the problems raised about the text in front of it and nothing else. A
     finding with no span is never sent: it names something missing, or the
     document as a whole, and inviting a rewrite for it is inviting invention.
+
+    *brief* is the active reviewer profile's stance, passed unchanged to every
+    section's call.
     """
     if not sections:
         return [], []
@@ -627,6 +642,7 @@ async def run_editor(
                     criteria,
                     by_section.get(section.id, []),
                     agent_model=agent_model,
+                    brief=brief,
                 )
             except Exception as exc:
                 logger.warning(

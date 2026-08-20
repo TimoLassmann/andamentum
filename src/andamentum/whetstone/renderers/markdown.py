@@ -40,6 +40,7 @@ from .._watermark import (
     metadata_markdown_comment,
 )
 from ._panel_layout import body_markdown
+from ._reviewer_header import header_markdown
 
 _TITLE = "# Whetstone Review"
 
@@ -146,10 +147,13 @@ def render_markdown(
         # No review content. Be explicit rather than emitting a blank file.
         sections.append("_No findings, edits, or questions — document looks clean._")
 
-    # Prepend prelude: invisible metadata header + visible title + optional banner.
+    # Prepend prelude: invisible metadata header + visible title + optional
+    # banner + the reviewer block, when a reviewer other than the default ran.
     prelude: list[str] = [metadata_markdown_comment(model=model), _TITLE]
     if visible_watermark:
         prelude.append(banner_markdown(model=model))
+    if result.reviewer_header is not None:
+        prelude.append(header_markdown(result.reviewer_header).rstrip())
     output = "\n\n---\n\n".join(prelude + sections) + "\n"
 
     if output_path is not None:
@@ -175,7 +179,6 @@ def _render_questions(qs: Iterable[AuthorQuestion]) -> str:
     return "\n".join(lines)
 
 
-
 def _render_declined(declined: list[DeclinedFinding]) -> str:
     """Findings the editor read and could not answer with a rewrite.
 
@@ -198,6 +201,7 @@ def _render_declined(declined: list[DeclinedFinding]) -> str:
             lines.append(f"  - _Editor:_ {d.why}")
     lines.append("")
     return "\n".join(lines)
+
 
 def _render_edits(edits: Iterable[Edit]) -> str:
     edits = list(edits)

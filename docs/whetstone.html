@@ -416,7 +416,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     <p class="eyebrow">andamentum sub-module</p>
     <h1>andamentum.whetstone</h1>
     <p class="doc-subtitle">Structured review of drafts you wrote yourself — three graphs over one deterministic substrate, rendering to markdown, HTML, or Word with tracked changes.</p>
-    <p class="doc-meta">CLI <code>andamentum-whetstone</code> · six subcommands · depends on <code>core</code>, <code>typeset</code>, <code>chunker</code>, <code>harvest</code> · reference for maintainers and callers</p>
+    <p class="doc-meta">CLI <code>andamentum-whetstone</code> · six subcommands · seven reviewer profiles · depends on <code>core</code>, <code>typeset</code>, <code>chunker</code>, <code>harvest</code> · reference for maintainers and callers</p>
   </header>
 
   <div class="verdict">
@@ -662,6 +662,43 @@ andamentum-whetstone checklist draft.docx --model ollama:gemma4:26b-nvfp4 \
 
 <span class="tok-com"># style only — no model involved</span>
 andamentum-whetstone proofread draft.md</code></pre>
+
+
+  <h3>Reviewer profiles</h3>
+
+  <p>A profile is a named bundle of the values <code>review</code> and <code>checklist</code> already accept — criteria, probe ids, editor criteria, tracked-change author — plus a <em>brief</em>: a stance, the bar a finding must clear, and what the reviewer will not report. <code>--reviewer claims</code> and the equivalent inline flags are the same mechanism, one named and one typed by hand. Anything a profile does stays doable inline.</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Profile</th><th>Asks</th><th>Not suited to</th></tr></thead>
+    <tbody>
+      <tr><td><code>general</code></td><td>The document type's own criteria and probes. The default, and byte-identical to a run before profiles existed.</td><td>&mdash;</td></tr>
+      <tr><td><code>claims</code></td><td>Does any conclusion outrun the evidence stated in the text?</td><td>creative</td></tr>
+      <tr><td><code>methods</code></td><td>Could another group repeat this from the text alone, and is each choice motivated?</td><td>external communication, essay, creative</td></tr>
+      <tr><td><code>framing</code></td><td>Does the body deliver what the opening promises, and can a reader say what the document adds?</td><td>&mdash;</td></tr>
+      <tr><td><code>reader</code></td><td>Where does a capable outsider stop, and what did they need there?</td><td>&mdash;</td></tr>
+      <tr><td><code>adversary</code></td><td>What is the strongest objection the draft does not already answer?</td><td>&mdash;</td></tr>
+      <tr><td><code>editor</code></td><td>Prose only. No commentary on the argument.</td><td>&mdash;</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Reviewers are orthogonal to document type, so each carries the set of types it suits and one predicate decides. A mismatch <strong>warns and proceeds</strong> rather than refusing: the classifier can be wrong, the user wrote the draft and asked for this reviewer, and the failure mode is a page of unhelpful findings rather than damage. The warning is written into the report header, not only into the terminal.</p>
+
+  <p><code>--criteria</code>, <code>--probes</code>, <code>--editor-criteria</code> and <code>--patch-author</code> override a profile field by field, which is how the next profile gets written — start from one, change one thing. The run prints the effective configuration with the source of every value, so what actually ran is never a guess.</p>
+
+  <pre><code><span class="tok-com"># list them, with a fit marker for a given kind of document</span>
+andamentum-whetstone --list-reviewers --document-type academic
+
+<span class="tok-com"># one reviewer</span>
+andamentum-whetstone draft.docx --reviewer claims --model openai:gpt-5.4-nano \
+    --out review.md
+
+<span class="tok-com"># start from a profile, change one field</span>
+andamentum-whetstone draft.docx --reviewer methods \
+    --editor-criteria "precision,hedging" --model openai:gpt-5.4-nano --out review.md</code></pre>
+
+  <p>One reviewer per invocation. Several reviewers in sequence is a shell loop with a different <code>--patch-author</code> each time, which is what makes the tracked changes stack legibly in Word; several in parallel with a synthesis across them is what panel mode is for.</p>
 
   <p>Input may be a path or URL — PDF, DOCX, HTML, Markdown or plain text, detected automatically. Output format is inferred from each <code>--out</code> extension. For <code>.docx</code> output from a non-Word source, a clean baseline document is generated to patch.</p>
 

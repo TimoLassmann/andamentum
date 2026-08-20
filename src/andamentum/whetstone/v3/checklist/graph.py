@@ -63,7 +63,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
-from ...schemas import ReviewResult
+from ...schemas import ReviewerHeader, ReviewResult
 from ..digest import build_document_model
 from ..extract import build_claims
 from ..model import Claim, DocumentModel, Section
@@ -77,6 +77,7 @@ from .verify import verify_probe_findings
 
 if TYPE_CHECKING:
     from ...reviewed_document import ReviewedDocument
+    from ..reviewers import ReviewerProfile
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -89,6 +90,14 @@ class ChecklistDeps:
     # checklist is being run — a caller with a house bank passes it here and
     # every stage downstream behaves identically.
     probes: list[Probe] = field(default_factory=lambda: probe_bank_for("general"))
+    # The active reviewer profile's stance, rendered at the top of every probe
+    # prompt. Empty for the default reviewer, and then rendered as nothing at
+    # all — which is what keeps two default runs comparable row for row with
+    # every run this mode has produced so far.
+    brief: str = ""
+    # What the renderers print about the reviewer, or None when the default
+    # reviewer ran and there is nothing to print.
+    reviewer_header: ReviewerHeader | None = None
 
 
 @dataclass
@@ -196,7 +205,10 @@ class RunProbes(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
             return VerifyProbes()
 
         ctx.state.findings, ctx.state.failed_probe_ids = await run_probes(
-            ctx.deps.probes, model, agent_model=ctx.deps.agent_model
+            ctx.deps.probes,
+            model,
+            agent_model=ctx.deps.agent_model,
+            brief=ctx.deps.brief,
         )
         return VerifyProbes()
 
@@ -255,16 +267,19 @@ class BuildResult(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         model = ctx.state.document_model
         assert model is not None
         counters = current_counters()
-        return End(
-            build_checklist_result(
-                model,
-                ctx.state.findings,
-                ctx.deps.probes,
-                failed_probe_ids=ctx.state.failed_probe_ids,
-                unverifiable_counts=ctx.state.unverifiable_counts,
-                llm_calls=counters.llm_calls if counters else 0,
-            )
+        result = build_checklist_result(
+            model,
+            ctx.state.findings,
+            ctx.deps.probes,
+            failed_probe_ids=ctx.state.failed_probe_ids,
+            unverifiable_counts=ctx.state.unverifiable_counts,
+            llm_calls=counters.llm_calls if counters else 0,
         )
+        # Assigned rather than threaded through build_checklist_result: which
+        # reviewer ran is configuration, not a property of the coverage table
+        # that function computes.
+        result.reviewer_header = ctx.deps.reviewer_header
+        return End(result)
 
 
 # ── Graph + public entry ───────────────────────────────────────────────────
@@ -312,6 +327,8 @@ async def run_checklist_v3(
     document_type: str = "general",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
+    reviewer: "ReviewerProfile | None" = None,
+    patch_author: str | None = None,
 ) -> ReviewResult:
     """Run the checklist bank over already-harvested markdown.
 
@@ -348,6 +365,19 @@ async def run_checklist_v3(
         An explicit bank, bypassing document-type routing entirely. This is the
         supported way to run a house checklist: the machinery is fixed and the
         probe list is data (see :mod:`.bank`).
+    reviewer:
+        The reviewer profile whose probe selection and stance this run uses
+        (see :mod:`..reviewers`). ``None`` means the default reviewer, which
+        selects no probes of its own and therefore leaves the document-type
+        bank in place — the run is then byte-identical to the run the same
+        arguments produced before profiles existed. A profile holds probe
+        **ids**, and the same id names a differently-worded probe on different
+        document types, so the profile is resolved here rather than by the
+        caller: the type has to be known first.
+    patch_author:
+        The tracked-change author the caller will render with, recorded in the
+        reviewer header so the report names the same author the ``.docx`` will
+        carry. It configures nothing else.
     confirm_own_draft:
         Bypasses the confidentiality-marker tripwire. Checklist mode gets the
         same gate review mode has and for the same reason — the tool is for
@@ -369,25 +399,45 @@ async def run_checklist_v3(
 
     start_run()
 
-    if probes is not None:
-        active_probes = probes
-    else:
-        if document_type == "auto":
-            from ..._document_type import classify
+    from ..reviewers import GENERAL_PROFILE, may_misfit, resolve
 
-            # sectionize is deterministic; calling it here AND inside the
-            # graph's first node is cheap (no LLM).
-            titles = [s.title for s in (sections or sectionize(markdown))]
-            document_type = await classify(
-                model=model, section_titles=titles, markdown=markdown
-            )
-            # classify() is one LLM call and does not touch the metrics module
-            # itself (that would couple _document_type.py to v3 internals), so
-            # it is counted here.
-            increment_llm_calls(1)
-        active_probes = probe_bank_for(document_type)
+    profile = reviewer if reviewer is not None else GENERAL_PROFILE
 
-    deps = ChecklistDeps(agent_model=model, probes=active_probes)
+    # Only classify when the answer is consumed. Two things consume it: the
+    # bank — whether it comes from the document type or from the profile's
+    # probe ids, both of which need the type — and the fit check, but only for
+    # a reviewer some document type could fail.
+    if document_type == "auto" and (probes is None or may_misfit(profile=profile)):
+        from ..._document_type import classify
+
+        # sectionize is deterministic; calling it here AND inside the
+        # graph's first node is cheap (no LLM).
+        titles = [s.title for s in (sections or sectionize(markdown))]
+        document_type = await classify(
+            model=model, section_titles=titles, markdown=markdown
+        )
+        # classify() is one LLM call and does not touch the metrics module
+        # itself (that would couple _document_type.py to v3 internals), so
+        # it is counted here.
+        increment_llm_calls(1)
+
+    resolved = resolve(
+        profile=profile,
+        document_type=document_type,
+        probes=probes,
+        patch_author=patch_author,
+    )
+    if resolved.fit_warning:
+        # The run proceeds; the same line goes into the report header. See
+        # ``reviewers.fits`` for why a miss is not a refusal.
+        logger.warning("[v3.checklist] %s", resolved.fit_warning)
+
+    deps = ChecklistDeps(
+        agent_model=model,
+        probes=resolved.probes,
+        brief=resolved.brief,
+        reviewer_header=resolved.header,
+    )
     state = ChecklistState(source=markdown, sections=list(sections or []))
     return await checklist_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
 
@@ -399,6 +449,8 @@ async def checklist_document_v3(
     document_type: str = "general",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
+    reviewer: "ReviewerProfile | None" = None,
+    patch_author: str | None = None,
 ) -> ReviewResult:
     """Checklist entry from a path / URL / markdown blob, or an open document.
 
@@ -423,6 +475,8 @@ async def checklist_document_v3(
             document_type=document_type,
             probes=probes,
             confirm_own_draft=confirm_own_draft,
+            reviewer=reviewer,
+            patch_author=patch_author,
         )
     finally:
         if owned:

@@ -36,6 +36,7 @@ from .prompt_blocks import (
     SEVERITY_RUBRIC,
     TOOL_DISCIPLINE,
     TOOLS_AVAILABLE,
+    brief_block,
     claims_block,
     sections_block,
 )
@@ -288,7 +289,15 @@ async def review_criterion(
     *,
     agent_model: str,
     prior_findings: list[Finding] | None = None,
+    brief: str = "",
 ) -> list[Finding]:
+    """Run ONE criterion against the document.
+
+    *brief* is the active reviewer profile's stance, rendered at the top of the
+    user prompt by :func:`~.prompt_blocks.brief_block`. Empty by default, which
+    renders nothing at all — the default reviewer's prompt is byte-identical to
+    the one this function built before profiles existed.
+    """
     agent = _build_agent(criterion, agent_model)
     # Lock-and-refine validator: fresh per criterion (closure state
     # must reset between criteria). Anchored findings accumulate
@@ -305,6 +314,7 @@ async def review_criterion(
         )
         prior = f"\n\nPRIOR-STAGE FINDINGS (already raised — connect, don't repeat):\n{lines}"
     prompt = (
+        f"{brief_block(brief)}"
         f"CRITERION: {criterion.name}\n\nQUESTIONS:\n{questions}\n\n"
         f"{_project(criterion, model)}{prior}\n\n"
         f"Report real problems for the {criterion.name} criterion."
@@ -335,6 +345,7 @@ async def run_criteria(
     model: DocumentModel,
     *,
     agent_model: str,
+    brief: str = "",
 ) -> tuple[list[Finding], list[str]]:
     """Run the criterion set as a sequential SPECS-style cascade.
 
@@ -353,6 +364,9 @@ async def run_criteria(
     criteria that crashed and contributed nothing — so the caller can surface
     the partial coverage in the result rather than presenting a silently
     incomplete review as complete.
+
+    *brief* is the reviewer profile's stance and is passed unchanged to every
+    criterion in the cascade: one stance per run, not one per question.
     """
     accumulated: list[Finding] = []
     failed: list[str] = []
@@ -367,6 +381,7 @@ async def run_criteria(
                 model,
                 agent_model=agent_model,
                 prior_findings=accumulated,
+                brief=brief,
             )
             logger.info("[v3.review] %s → %d finding(s)", c.name, len(stage))
             accumulated.extend(stage)

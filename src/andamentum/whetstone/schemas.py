@@ -394,6 +394,47 @@ class DeclinedFinding(BaseModel):
     section_id: str = ""
 
 
+class ConfigurationLine(BaseModel):
+    """One resolved configuration value and where it came from.
+
+    The reviewer header prints these so the reader of a review can tell a
+    value the reviewer profile supplied from one the caller typed by hand —
+    which is the whole point of letting inline arguments override a profile
+    field by field. ``source`` is a short phrase written for a human
+    ("reviewer methods", "document type academic", "supplied inline"); the
+    renderers print it verbatim and never parse it.
+    """
+
+    label: str  # "criteria", "probes", "editor criteria", "author"
+    value: str  # already formatted for display; "none" when the list is empty
+    source: str
+
+
+class ReviewerHeader(BaseModel):
+    """The reviewer block a renderer prints at the top of a review.
+
+    Built once by ``andamentum.whetstone.v3.reviewers.resolve`` and formatted
+    by each of the three renderers, so the markdown, HTML and Word reports
+    cannot describe the same run differently.
+
+    ``None`` on a ``ReviewResult`` means the default reviewer ran and there is
+    nothing to say that the report does not already say — every renderer then
+    emits nothing at all, which is what keeps a default run byte-identical to
+    the output it produced before reviewer profiles existed.
+    """
+
+    identity: str
+    description: str
+    brief: str = ""
+    # Non-empty when the reviewer does not fit the document type it ran on.
+    # The run still happened; this says the reader should weigh it knowing so.
+    fit_warning: str = ""
+    configuration: list[ConfigurationLine] = Field(default_factory=list)
+    # The package version, so two reports on the same draft can be compared
+    # knowing whether the questions changed between them.
+    version: str = ""
+
+
 class ReviewResult(BaseModel):
     """What ``review_document`` returns.
 
@@ -442,3 +483,6 @@ class ReviewResult(BaseModel):
     guideline_evaluations: list[GuidelineEvaluation] = Field(default_factory=list)
     # Custom mode (mode="custom") populates this; otherwise empty.
     custom_evaluations: list[CustomEvaluation] = Field(default_factory=list)
+    # Which reviewer profile produced this and how it was configured.
+    # None when the default reviewer ran — see ReviewerHeader.
+    reviewer_header: ReviewerHeader | None = None

@@ -83,6 +83,33 @@ SECTION_IDS_NOTE = (
 )
 
 
+def brief_block(brief: str) -> str:
+    """The reviewer's stance, as the opening of the call's user prompt.
+
+    The one thing a reviewer profile contributes that no argument can express:
+    the stance the questions are read from, the bar a finding has to clear, and
+    what this reviewer will not report. It goes at the top of the *user* prompt
+    rather than into the agent's instructions deliberately — the shared
+    scaffold is the general rule and the brief is the specific one, and the
+    later, more specific statement is the one a model follows.
+
+    Rendered by all three calls a profile can reach (the criterion call, the
+    probe call and the editor call) so a brief means the same thing in each.
+
+    Returns the empty string for an empty brief, and the callers interpolate
+    the result directly — so the default reviewer's prompts are byte-identical
+    to the prompts the same run produced before profiles existed. That is a
+    pinned test, not an aspiration: see ``tests/test_brief_slot.py``.
+    """
+    stripped = brief.strip()
+    if not stripped:
+        return ""
+    return (
+        "REVIEWER BRIEF — the stance this review is written from, and the "
+        f"bar a finding has to clear:\n{stripped}\n\n"
+    )
+
+
 def sections_block(model: DocumentModel) -> str:
     """The table of contents: one line per section, id first.
 

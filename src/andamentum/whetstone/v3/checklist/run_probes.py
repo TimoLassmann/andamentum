@@ -55,6 +55,7 @@ from ..prompt_blocks import (
     SEVERITY_RUBRIC,
     TOOL_DISCIPLINE,
     TOOLS_AVAILABLE,
+    brief_block,
     claims_block,
     sections_block,
 )
@@ -253,9 +254,18 @@ def _tags_clause(probe: Probe) -> str:
     )
 
 
-def _build_prompt(probe: Probe, model: DocumentModel) -> str:
-    """Assemble the per-probe prompt: the check, the quota, the substrate."""
+def _build_prompt(probe: Probe, model: DocumentModel, *, brief: str = "") -> str:
+    """Assemble the per-probe prompt: the stance, the check, the quota, the
+    substrate.
+
+    *brief* is the active reviewer profile's stance and renders nothing when it
+    is empty, which is the default and every run that names no reviewer — the
+    prompt for a given probe and document is then byte-identical to the one
+    this function built before profiles existed, and two such runs stay
+    comparable row for row.
+    """
     return (
+        f"{brief_block(brief)}"
         f"CHECK: {probe.title}\n\n{probe.instruction.strip()}\n\n"
         f"{_quota_clause(probe)}{_tags_clause(probe)}\n\n"
         f"{_project(model)}"
@@ -398,7 +408,7 @@ def _log_probe_start(probe: Probe, *, index: int, total: int) -> None:
 
 
 async def run_probe(
-    probe: Probe, model: DocumentModel, *, agent_model: str
+    probe: Probe, model: DocumentModel, *, agent_model: str, brief: str = ""
 ) -> list[ProbeFinding]:
     """Run ONE probe against the document — a single agent call plus tools.
 
@@ -406,7 +416,7 @@ async def run_probe(
     differ in their output type, and collapsing them behind one loosely-typed
     schema is exactly the thing this design rejects.
     """
-    prompt = _build_prompt(probe, model)
+    prompt = _build_prompt(probe, model, brief=brief)
     deps = DocDeps(document_model=model, label=probe.id)
     limits = UsageLimits(
         request_limit=_REQUEST_LIMIT,
@@ -440,7 +450,7 @@ async def run_probe(
 
 
 async def run_probes(
-    probes: list[Probe], model: DocumentModel, *, agent_model: str
+    probes: list[Probe], model: DocumentModel, *, agent_model: str, brief: str = ""
 ) -> tuple[list[ProbeFinding], list[str]]:
     """Run a whole bank, one probe at a time.
 
@@ -451,6 +461,10 @@ async def run_probes(
 
     Cost is exactly one agent call per probe (plus whatever tool turns each
     one takes), which is what makes a run's price predictable before it starts.
+
+    *brief* is the active reviewer profile's stance, passed unchanged to every
+    probe in the bank — one stance per run, exactly as review mode passes one
+    stance to every criterion.
 
     The three ``except`` arms below mirror ``..review.run_criteria``'s on
     purpose: both loops face the same three failure modes from the same model
@@ -479,7 +493,7 @@ async def run_probes(
         #    forbidden project-wide; Ollama serialises them anyway, so
         #    gathering would buy nothing and break the rule.
         try:
-            found = await run_probe(probe, model, agent_model=agent_model)
+            found = await run_probe(probe, model, agent_model=agent_model, brief=brief)
             logger.info("[v3.checklist] %s → %d finding(s)", probe.id, len(found))
             collected.extend(found)
         except UnexpectedModelBehavior as exc:
