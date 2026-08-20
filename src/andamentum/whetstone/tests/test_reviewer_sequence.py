@@ -1,9 +1,9 @@
 """Several reviewers in one invocation.
 
-``--reviewer claims,methods`` runs them IN SEQUENCE, each reading the previous
-one's edited text. Sequential is not one option among several: two reviewers
-rewriting the same original sentence would collide with no right answer, so it
-is the only shape that works on a Word file, and there is no flag for it.
+``--reviewer claims,methods`` runs them IN SEQUENCE over one unchanged text;
+no round edits. With ``--editor`` (or ``editor`` in the list) one editor pass
+follows the last reviewer and rewrites against all of their findings at once —
+see ``test_final_editor.py``.
 
 A run with more than one reviewer ends with a reconciliation, which is likewise
 not a flag — asking for several opinions and being handed four reports to
@@ -28,8 +28,8 @@ def test_one_name_is_a_list_of_one() -> None:
 
 
 def test_order_is_preserved_because_order_is_significant() -> None:
-    """The list is a SEQUENCE. Each reviewer reads the previous one's edits, so
-    claims,methods and methods,claims do not produce the same document."""
+    """The list is a SEQUENCE: the reports stack in the order the reviewers
+    ran, so claims,methods and methods,claims do not produce the same file."""
     assert cli_mod._parse_reviewers("methods,claims") == ["methods", "claims"]
     assert cli_mod._parse_reviewers("claims,methods") == ["claims", "methods"]
 

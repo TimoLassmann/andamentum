@@ -409,9 +409,10 @@ EDITOR_PROFILE = ReviewerProfile(
     identity="Line editor",
     description=(
         "Prose only. Tracked changes for clarity, concision, grammar, "
-        "precision and hedging; no commentary on the argument. Runs no review "
-        "criteria and no checks, but still costs claim extraction, synthesis "
-        "and self-critique."
+        "precision and hedging; no commentary on the argument. In a list it "
+        "is one pass after the last reviewer, over all of their findings. On "
+        "its own it runs no review criteria and no checks, but still costs "
+        "claim extraction, synthesis and self-critique."
     ),
     # Two sentences, not five: everything else the design gave this profile is
     # already in the editor's own prompt, and a brief that repeats the scaffold

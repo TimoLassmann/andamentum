@@ -16,6 +16,8 @@ Public API:
                                        from v2's editor agent — already
                                        calibrated on small Ollama models)
     run_editor(sections, *, criteria, agent_model) -> list[Edit]
+    edit_findings(sections, findings, *, model, criteria) — one pass over
+                                       several reviewers' findings
 
 Off by default. Wired into the graph via the optional ``editor=True``
 kwarg on :func:`run_review_v3`.
@@ -35,8 +37,9 @@ from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
 from ..schemas import Edit
+from ..schemas import Finding as WFinding
 from .locate import locate
-from .model import Section
+from .model import Section, Span
 from .prompt_blocks import brief_block
 from .review import Finding
 
@@ -678,3 +681,112 @@ async def run_editor(
             entry.why,
         )
     return edits, declined
+
+
+# ── Final editor over several reviewers' findings ───────────────────────────
+
+
+def _disagreement_brief(disagreements: list[str]) -> str:
+    """The part of a reconciliation the editor must act on: by not acting.
+
+    Two reviewers who disagree about a passage cannot both be answered by a
+    rewrite, and choosing between them is the author's judgement. The editor
+    prompt already declines two findings that pull in opposite directions when
+    both are in its list; this names the disagreements the reconciliation
+    found across reviewers, which a per-section list of findings would not
+    make visible on its own.
+    """
+    if not disagreements:
+        return ""
+    listed = "\n".join(f"  • {d}" for d in disagreements)
+    return (
+        "The reviewers DISAGREE on the following points. Do not rewrite a "
+        "passage to settle one of them: set can_fix=false on any finding that "
+        "takes a side, and say that the reviewers disagree. The author "
+        "chooses.\n"
+        f"{listed}"
+    )
+
+
+def _to_editor_finding(finding: WFinding) -> Finding | None:
+    """A rendered finding back into the shape the editor reads.
+
+    The public :class:`~andamentum.whetstone.schemas.Finding` is what a round
+    of review returns; the editor reads the pipeline's own
+    :class:`~.review.Finding`. The mapping is the inverse of
+    :func:`~.synth._to_wfinding` — criterion from the title, issue from the
+    rationale, span from the first quote — and it loses nothing the editor
+    uses. A finding with no quote names something missing or the document as
+    a whole, and :func:`run_editor` would not send it to any section, so it is
+    dropped here with the same reasoning.
+
+    The reviewer's identity is written into the issue, because the editor
+    reads several reviewers' findings in one list and "two reviewers said
+    this" and "one reviewer said this twice" should not look alike.
+    """
+    if not finding.quotes:
+        return None
+    quote = finding.quotes[0]
+    issue = finding.rationale
+    if finding.perspective:
+        issue = f"[{finding.perspective}] {issue}"
+    return Finding(
+        criterion=finding.title,
+        issue=issue,
+        quote=quote.text,
+        severity=finding.severity,
+        span=Span(
+            section_id=quote.section_id, start=quote.char_start, end=quote.char_end
+        ),
+    )
+
+
+async def edit_findings(
+    sections: list[Section],
+    findings: list[WFinding],
+    *,
+    model: str,
+    criteria: list[str],
+    brief: str = "",
+    disagreements: list[str] | None = None,
+) -> tuple[list[Edit], list[Declined]]:
+    """One editor pass over the findings of several reviewers.
+
+    This is the editor a LIST of reviewers gets. Each reviewer in the list
+    reads the document and raises findings; none of them rewrites anything.
+    When the last has finished, this runs once over the unchanged text with
+    every finding in front of it — so two findings on one sentence meet in one
+    call and get one rewrite, two that pull in opposite directions are both
+    declined, and the free-standing style pass happens once, over prose that
+    will not move again. Per-reviewer editing did none of those: five
+    reviewers each rewrote the same abstract, each re-editing the last one's
+    insertions.
+
+    *sections* are the reviewed document's own sections, in its coordinates.
+    That is also why the findings can be pooled at all: with no reviewer
+    editing, every round read the same text, so every finding's offsets
+    address the same document. *findings* are the public findings of all
+    rounds, each tagged with its reviewer through ``perspective``.
+    *disagreements* are the points the reconciliation found the reviewers
+    divided on, rendered into the brief as passages not to settle.
+    """
+    internal = [f for f in (_to_editor_finding(w) for w in findings) if f is not None]
+    skipped = len(findings) - len(internal)
+    if skipped:
+        logger.info(
+            "[v3.editor] %d finding(s) not sent to the editor — they quote no "
+            "passage, so there is nothing to rewrite",
+            skipped,
+        )
+    full_brief = "\n\n".join(
+        part
+        for part in (brief.strip(), _disagreement_brief(disagreements or []))
+        if part
+    )
+    return await run_editor(
+        sections,
+        criteria=criteria,
+        agent_model=model,
+        findings=internal,
+        brief=full_brief,
+    )

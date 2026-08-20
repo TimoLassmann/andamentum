@@ -284,9 +284,11 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="NAME[,NAME...]",
         help=(
             "Who reads the draft. One name, or several separated by commas to "
-            "run them in that order — each reviewer reads the previous one's "
-            "edits, their tracked changes stack by author, and a run with more "
-            "than one ends with a summary reconciling them. Leave it out for "
+            "run them in that order — each reviewer comments on the same "
+            "unchanged text, a run with more than one ends with a summary "
+            "reconciling them, and with --editor (or 'editor' in the list) a "
+            "single editor pass then rewrites against every reviewer's "
+            "findings at once. Leave it out for "
             f"'{DEFAULT_PROFILE_NAME}', the ordinary review: the criteria that "
             "suit this kind of document, which is what ran before reviewers "
             f"were named. Put '{DEFAULT_PROFILE_NAME}' in the list to have that "
@@ -398,7 +400,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--editor",
         action="store_true",
         help="Generate concrete edits (rewrites). Adds one LLM call per "
-        "section. The .docx renderer applies them as tracked changes.",
+        "section. The .docx renderer applies them as tracked changes. With a "
+        "list of reviewers the rewrites come from one editor pass AFTER the "
+        "last reviewer, over all of their findings — not from each reviewer "
+        "in turn.",
     )
     review_grp.add_argument(
         "--editor-criteria",
@@ -529,6 +534,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     # nothing, and by run time the document has been loaded and, for a URL,
     # fetched. The parsed list is kept so the run does not parse it twice.
     args.reviewers = _parse_reviewers(args.reviewer)
+    args.final_editor = _split_off_the_final_editor(args)
     if args.mode == "checklist":
         _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
@@ -649,6 +655,39 @@ def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
             )
 
 
+def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
+    """Whether this run ends with ONE editor pass over every reviewer's findings.
+
+    A list of reviewers does not edit round by round. Each reviewer reads the
+    draft and raises findings; when the last has finished, the line editor
+    runs once over the unchanged text with all of them in front of it (see
+    :func:`~.v3.editor.edit_findings`). Per-round editing gave every reviewer
+    a style quota over the same abstract, and each re-edited the last one's
+    insertions — five colours of tracked changes and no paper underneath.
+
+    Two spellings ask for it and mean the same thing: ``--reviewer
+    claims,methods --editor`` and ``--reviewer claims,methods,editor``. The
+    line editor named in a list is therefore taken OUT of the rounds here —
+    as a round it would run claim extraction, synthesis and self-critique to
+    produce nothing, and its one job is the final pass. ``args.reviewers``
+    is left holding the rounds only.
+
+    A single reviewer keeps its in-graph editor: there is one set of findings
+    and the pass already sees all of it.
+    """
+    from .v3.reviewers import EDITOR_PROFILE
+
+    names: list[str] = args.reviewers
+    if len(names) == 1 or args.mode != "review":
+        # Checklist refuses a list and the line editor on its own terms, and
+        # those refusals read the list as typed.
+        return False
+    if EDITOR_PROFILE.name in names:
+        args.reviewers = [n for n in names if n != EDITOR_PROFILE.name]
+        return True
+    return bool(args.editor)
+
+
 def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None:
     """A review with no criteria and no editor makes no judgement at all.
 
@@ -674,6 +713,8 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     if any(PROFILES[n].criteria != () for n in names):
         return
     if args.criteria or args.guidelines or args.editor:
+        return
+    if getattr(args, "final_editor", False):
         return
     named = ", ".join(PROFILES[n].identity.lower() for n in names)
     _die(
@@ -769,14 +810,19 @@ def _resolve_author(args: argparse.Namespace) -> str:
     marker; the one path that writes an unmarked name is ``--patch-author``,
     still gated behind ``--allow-author-override``.
     """
-    from .v3.reviewers import PROFILES, author_for
+    from .v3.reviewers import EDITOR_PROFILE, PROFILES, author_for
 
     # The LAST reviewer in the list signs the final render. Each earlier round
     # already signed its own pass on the way through (_carry_forward), so this
     # is the one still unwritten — and a list whose final entry is the line
     # editor should be signed by the line editor.
     names = getattr(args, "reviewers", None) or _parse_reviewers(args.reviewer)
-    default_author = author_for(profile=PROFILES[names[-1]])
+    # When a list ends in the single editor pass, the line editor is the one
+    # whose changes the final render writes, so it signs them.
+    signing = (
+        EDITOR_PROFILE if getattr(args, "final_editor", False) else PROFILES[names[-1]]
+    )
+    default_author = author_for(profile=signing)
     if args.patch_author is None:
         return default_author
     print(
@@ -793,9 +839,9 @@ Recommended sequence for a manuscript:
 
   General first; it is free. Then claims, methods and adversary — the three
   that change what goes out. Fix. Then reader, before anything leaves the
-  group. Editor last, because prose that will still change is wasted effort
-  to edit. Anything two reviewers raise independently goes to the top of the
-  list."""
+  group. Editor last: in a list it is one pass over every reviewer's
+  findings after the last has read, so the prose it edits no longer moves.
+  Anything two reviewers raise independently goes to the top of the list."""
 
 
 def _print_reviewer_listing(*, document_type: str = "auto") -> None:
@@ -992,6 +1038,52 @@ def _combine_reviews(reviews: list[tuple[str, Any]], *, reconciliation: Any, las
     return combined
 
 
+async def _edit_after_the_reviewers(
+    combined: Any,
+    *,
+    document: Any,
+    reconciliation: Any,
+    editor_criteria: list[str] | None,
+    model: str,
+) -> tuple[list[Any], list[Any]]:
+    """The single editor pass that ends a list of reviewers.
+
+    *combined* is every round's result as one (:func:`_combine_reviews`), so
+    its findings carry the reviewer that raised each through ``perspective``.
+    *document* is the document the last round reopened. Its text is the text
+    every round read — no round edited — so every finding's offsets address
+    it, which is what lets one call rewrite against all of them.
+
+    Criteria: ``--editor-criteria`` when typed, else the line editor profile's
+    own list. Not the editor default of three — the final pass is the line
+    editor's job, and ``claims,methods --editor`` should edit exactly as
+    ``claims,methods,editor`` does.
+    """
+    from .v3.editor import edit_findings
+    from .v3.reviewers import EDITOR_PROFILE
+    from .schemas import DeclinedFinding
+
+    criteria = editor_criteria or list(EDITOR_PROFILE.editor_criteria or ())
+    disagreements = (
+        [d.about for d in reconciliation.disagreements] if reconciliation is not None else []
+    )
+    edits, declined = await edit_findings(
+        document.sections,
+        list(combined.findings),
+        model=model,
+        criteria=criteria,
+        brief=EDITOR_PROFILE.brief,
+        disagreements=disagreements,
+    )
+    declined_findings = [
+        DeclinedFinding(
+            criterion=d.criterion, issue=d.issue, why=d.why, section_id=d.section_id
+        )
+        for d in declined
+    ]
+    return edits, declined_findings
+
+
 async def _carry_forward(
     result: Any,
     *,
@@ -1186,6 +1278,7 @@ async def _review_and_write(
     # which is what every other path wants. Declared out here because the
     # render loop below is shared by review, checklist and panel.
     docx_result: Any = None
+    reconciliation: Any = None
 
     try:
         _t0 = time.perf_counter()
@@ -1250,6 +1343,7 @@ async def _review_and_write(
             reviewer_names = getattr(args, "reviewers", None) or _parse_reviewers(
                 args.reviewer
             )
+            final_editor = bool(getattr(args, "final_editor", False))
             reviews: list[tuple[str, Any]] = []
             for index, reviewer_name in enumerate(reviewer_names):
                 profile = PROFILES[reviewer_name]
@@ -1266,7 +1360,12 @@ async def _review_and_write(
                     confirm_own_draft=args.confirm_own_draft,
                     criteria=v3_criteria,
                     guidelines_text=v3_guidelines,
-                    editor=args.editor,
+                    # A list never edits round by round: the rounds raise
+                    # findings on one unchanged text, and a single editor pass
+                    # answers all of them afterwards (below). Editing per
+                    # round put five reviewers' style passes over one
+                    # abstract, each rewriting the last one's insertions.
+                    editor=args.editor and not final_editor,
                     editor_criteria=editor_criteria,
                     # Only the first reviewer lists the novelty claims. The
                     # draft's assertions do not change because a second
@@ -1294,6 +1393,7 @@ async def _review_and_write(
                     # document that already carries all N reports — otherwise
                     # the last reviewer's own report is the one the summary
                     # replaces, and it is the only report that goes missing.
+                    text_before = document.text
                     document = await _carry_forward(
                         result,
                         document=document,
@@ -1302,6 +1402,17 @@ async def _review_and_write(
                         workdir=interim_dir,
                         index=index,
                     )
+                    if final_editor and document.text != text_before:
+                        # The final pass pools every round's findings, which
+                        # is sound only because each round read the same
+                        # text. A round that changed it would leave earlier
+                        # offsets addressing a document that no longer
+                        # exists — fail here, not inside Word.
+                        raise RuntimeError(
+                            f"reviewer {index + 1} ({profile.identity}) changed "
+                            "the document text although no round edits; the "
+                            "findings cannot be pooled for the final editor"
+                        )
             result = reviews[-1][1]
 
             # Several reviewers means one place that reconciles them. Not a
@@ -1325,6 +1436,20 @@ async def _review_and_write(
                 result = _combine_reviews(
                     reviews, reconciliation=reconciliation, last=result
                 )
+            if final_editor:
+                console.print("[dim]line editor: one pass over every reviewer's findings[/dim]")
+                edits, declined = await _edit_after_the_reviewers(
+                    result,
+                    document=document,
+                    reconciliation=reconciliation,
+                    editor_criteria=editor_criteria,
+                    model=args.model,
+                )
+                update = {"edits": edits, "declined_findings": declined}
+                result = result.model_copy(update=update)
+                result.metrics.edits_count = len(edits)
+                if docx_result is not None:
+                    docx_result = docx_result.model_copy(update=update)
         result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
