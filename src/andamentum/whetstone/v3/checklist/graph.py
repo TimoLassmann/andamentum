@@ -399,9 +399,9 @@ async def run_checklist_v3(
 
     start_run()
 
-    from ..reviewers import GENERAL_PROFILE, may_misfit, resolve
+    from ..reviewers import DEFAULT_PROFILE, may_misfit, resolve
 
-    profile = reviewer if reviewer is not None else GENERAL_PROFILE
+    profile = reviewer if reviewer is not None else DEFAULT_PROFILE
 
     # Only classify when the answer is consumed. Two things consume it: the
     # bank — whether it comes from the document type or from the profile's

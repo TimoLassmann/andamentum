@@ -38,9 +38,10 @@ import asyncio
 import logging
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import NoReturn, Sequence
+from typing import Any, NoReturn, Sequence
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -270,23 +271,28 @@ def _build_parser() -> argparse.ArgumentParser:
     # apply-patches reject it in _validate_args rather than ignoring it.
     #
     # The choices come from the profile registry, so a profile added there is
-    # offered here with no second list to update — and argparse names every
-    # valid value in its own error message.
-    from .v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES
+    # offered here with no second list to update. Validation is
+    # _parse_reviewers, not argparse choices, because the value may be a list.
+    from .v3.reviewers import DEFAULT_PROFILE_NAME
 
     parser.add_argument(
         "--reviewer",
-        choices=tuple(PROFILES),
+        # NOT argparse choices: the value may be a comma-separated list, which
+        # choices cannot express. Validated by _parse_reviewers, which reports
+        # the unknown name and the full list rather than argparse's one-liner.
         default=DEFAULT_PROFILE_NAME,
-        metavar="NAME",
+        metavar="NAME[,NAME...]",
         help=(
-            "Which reviewer to run: a named bundle of criteria, probes and "
-            "editor criteria, plus a brief that fixes the reviewer's stance "
-            "and the bar a finding has to clear. Default: "
-            f"{DEFAULT_PROFILE_NAME} — the document type's own criteria and "
-            "probes, which is what ran before reviewers were named. Every "
-            "value a reviewer supplies is still overridden by the matching "
-            "flag. Run --list-reviewers to see them all."
+            "Who reads the draft. One name, or several separated by commas to "
+            "run them in that order — each reviewer reads the previous one's "
+            "edits, their tracked changes stack by author, and a run with more "
+            "than one ends with a summary reconciling them. Leave it out for "
+            f"'{DEFAULT_PROFILE_NAME}', the ordinary review: the criteria that "
+            "suit this kind of document, which is what ran before reviewers "
+            f"were named. Put '{DEFAULT_PROFILE_NAME}' in the list to have that "
+            "review as well as a specialist. Every value a reviewer supplies is "
+            "still overridden by the matching flag. Run --list-reviewers to see "
+            "them all."
         ),
     )
     parser.add_argument(
@@ -519,14 +525,28 @@ def _validate_args(args: argparse.Namespace) -> None:
             "  --model openai:gpt-5.4-nano\n"
             "  --model ollama:gemma4:31b-nvfp4",
         )
+    # Parsed here rather than at run time: an unknown reviewer should cost you
+    # nothing, and by run time the document has been loaded and, for a URL,
+    # fetched. The parsed list is kept so the run does not parse it twice.
+    args.reviewers = _parse_reviewers(args.reviewer)
     if args.mode == "checklist":
         _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
+        if len(args.reviewers) > 1:
+            _die(
+                1,
+                "checklist mode takes one reviewer, not a list. Its output is "
+                "a coverage table whose rows come from one probe bank, and two "
+                "banks in one run would produce two tables that cannot be "
+                "compared with each other or with the last run — which is the "
+                "property checklist exists for. Run it once per reviewer, or "
+                "use review mode, which stacks them.",
+            )
     if args.mode == "review":
         _reject_a_review_that_would_review_nothing(args)
     if args.mode == "panel" and args.reviewer != _default_reviewer_name():
         # Detected by comparison against the default, matching
-        # _reject_review_only_flags: `--reviewer general` under panel asks for
+        # _reject_review_only_flags: `--reviewer default` under panel asks for
         # nothing panel does not already do, so it is tolerated.
         _die(
             1,
@@ -619,13 +639,14 @@ def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
     """
     from .v3.reviewers import PROFILES
 
-    profile = PROFILES[args.reviewer]
-    if profile.probes == ():
-        _die(
-            1,
-            f"the {profile.identity.lower()} runs no checks; use review mode "
-            "with --editor.",
-        )
+    for name in getattr(args, "reviewers", None) or [args.reviewer]:
+        profile = PROFILES[name]
+        if profile.probes == ():
+            _die(
+                1,
+                f"the {profile.identity.lower()} runs no checks; use review "
+                "mode with --editor.",
+            )
 
 
 def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None:
@@ -646,17 +667,21 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     """
     from .v3.reviewers import PROFILES
 
-    profile = PROFILES[args.reviewer]
-    if profile.criteria != ():
+    names = getattr(args, "reviewers", None) or [args.reviewer]
+    # A list is a real review as long as ONE of its reviewers examines
+    # something: `default,editor` is a review followed by a prose pass, which
+    # is a sensible thing to ask for.
+    if any(PROFILES[n].criteria != () for n in names):
         return
     if args.criteria or args.guidelines or args.editor:
         return
+    named = ", ".join(PROFILES[n].identity.lower() for n in names)
     _die(
         1,
-        f"the {profile.identity.lower()} runs no review criteria, so without "
-        "--editor this run would examine nothing and report nothing. Add "
-        "--editor to get the tracked changes it exists for, name a reviewer "
-        "that runs checks, or pass --criteria of your own.",
+        f"the {named} runs no review criteria, so without --editor this run "
+        "would examine nothing and report nothing. Add --editor to get the "
+        "tracked changes it exists for, name a reviewer that runs checks, or "
+        "pass --criteria of your own.",
     )
 
 
@@ -746,7 +771,12 @@ def _resolve_author(args: argparse.Namespace) -> str:
     """
     from .v3.reviewers import PROFILES, author_for
 
-    default_author = author_for(profile=PROFILES[args.reviewer])
+    # The LAST reviewer in the list signs the final render. Each earlier round
+    # already signed its own pass on the way through (_carry_forward), so this
+    # is the one still unwritten — and a list whose final entry is the line
+    # editor should be signed by the line editor.
+    names = getattr(args, "reviewers", None) or _parse_reviewers(args.reviewer)
+    default_author = author_for(profile=PROFILES[names[-1]])
     if args.patch_author is None:
         return default_author
     print(
@@ -836,6 +866,212 @@ def _resolve_guidelines(value: str) -> str:
         except OSError as exc:
             _die(2, f"could not read guidelines file {path}: {exc}")
     return value
+
+
+def _reconciliation_markdown(rec: Any) -> str:
+    """The reconciliation as the summary prose of the combined result.
+
+    Rendered as markdown rather than as a new atom kind so all three renderers
+    carry it without knowing it exists — the summary is prose in every one of
+    them already.
+    """
+    out: list[str] = []
+    if rec.verdict:
+        out += [rec.verdict, ""]
+    if rec.agreed:
+        out.append(f"**Raised by more than one reviewer ({len(rec.agreed)})** — "
+                   "independent agreement is the strongest signal here, so "
+                   "these come first.")
+        out.append("")
+        for point in rec.agreed:
+            who = ", ".join(point.raised_by) if point.raised_by else "several reviewers"
+            out.append(f"- {point.issue} *({who})*")
+            if point.quote:
+                # Models often return the passage already quoted; wrapping it
+                # again gives ""like this"".
+                bare = point.quote.strip().strip('"').strip("\u201c\u201d")
+                out.append(f'  - concerning: "{bare}"')
+        out.append("")
+    if rec.disagreements:
+        out.append(f"**Where the reviewers disagree ({len(rec.disagreements)})** — "
+                   "both positions are given because choosing between them is "
+                   "your judgement, not the tool's.")
+        out.append("")
+        for clash in rec.disagreements:
+            out.append(f"- {clash.about}")
+            for position in clash.positions:
+                out.append(f"  - {position}")
+        out.append("")
+    if rec.raised_by_one:
+        out.append(f"**Raised by one reviewer ({len(rec.raised_by_one)})**")
+        out.append("")
+        out += [f"- {line}" for line in rec.raised_by_one]
+        out.append("")
+    return "\n".join(out).strip()
+
+
+def _reconciliation_only(reconciliation: Any, *, like: Any) -> Any:
+    """The reconciliation with nothing else, for the final .docx render.
+
+    Every round already wrote its findings, comments and tracked changes into
+    the document. All that is left to add is the summary across them, so this
+    result carries a summary and no findings, no edits and no refusals —
+    rendering those again would put a second copy of every comment in the file.
+
+    It prepends like any other report, which means it lands ABOVE the N reports
+    already there: the reconciliation is the first thing you read, and each
+    reviewer's own report is underneath in the order they ran.
+    """
+    return like.model_copy(
+        update={
+            "summary": _reconciliation_markdown(reconciliation)
+            if reconciliation is not None
+            else "Several reviewers ran; reconciling them failed. Their "
+            "reports are below, unchanged.",
+            "findings": [],
+            "edits": [],
+            "declined_findings": [],
+            "novelty_claims": [],
+            # The summary is across reviewers, so no single reviewer's block
+            # belongs at the top of it.
+            "reviewer_header": None,
+        }
+    )
+
+
+def _combine_reviews(reviews: list[tuple[str, Any]], *, reconciliation: Any, last: Any) -> Any:
+    """Several reviewers' results as one, for the renderers.
+
+    The .docx does not need this — each round already wrote itself into the
+    file, so the last document carries every reviewer's comments and tracked
+    changes. Markdown and HTML render a single result, though, and rendering
+    only the last reviewer's would silently drop the others.
+
+    So findings, edits, refusals and novelty claims are concatenated, each
+    finding tagged with the reviewer that raised it through the ``perspective``
+    field the panel renderers already read. The summary becomes the
+    reconciliation, which is why it is the first thing in every output.
+
+    Offsets across rounds are NOT comparable — round two's are addresses in
+    round two's document, not round one's. That is harmless here because
+    markdown and HTML display a finding's quote rather than seeking to it, and
+    the .docx path never uses this object.
+    """
+    findings = []
+    edits = []
+    declined = []
+    for identity, res in reviews:
+        for finding in res.findings:
+            findings.append(finding.model_copy(update={"perspective": identity}))
+        edits.extend(res.edits)
+        declined.extend(res.declined_findings)
+
+    summary = (
+        _reconciliation_markdown(reconciliation)
+        if reconciliation is not None
+        else (
+            "Several reviewers ran, and reconciling them failed — their "
+            "reports are below, unchanged."
+        )
+    )
+    combined = last.model_copy(
+        update={
+            "summary": summary,
+            # No single reviewer's block: this result is all of them.
+            "reviewer_header": None,
+            "findings": findings,
+            "edits": edits,
+            "declined_findings": declined,
+            # Claims come from the first reviewer only; the draft's assertions
+            # do not change because a second reviewer read it.
+            "novelty_claims": reviews[0][1].novelty_claims,
+        }
+    )
+    combined.metrics.llm_calls = sum(r.metrics.llm_calls for _, r in reviews)
+    combined.metrics.edits_count = len(edits)
+    return combined
+
+
+async def _carry_forward(
+    result: Any,
+    *,
+    document: Any,
+    profile: Any,
+    args: argparse.Namespace,
+    workdir: Path,
+    index: int,
+) -> Any:
+    """Write one reviewer's pass to disk and reopen it for the next.
+
+    This is the whole of sequential review, and it needs no round counter: the
+    file itself says what has happened to it. Reviewer N+1 reads the projection
+    of this .docx, which excludes deletions and includes insertions — the text
+    as Word shows it with reviewer N's changes accepted — so N+1 reviews the
+    improved draft and, when it edits text N inserted, Word nests the two as
+    ``<w:ins N><w:del N+1>``, its own markup for exactly that.
+
+    The interim file is written into a temporary directory, not beside the
+    user's output. Only the last round's document is theirs; the ones in
+    between are working state, and leaving four numbered .docx files in their
+    folder would be four files to explain and delete.
+    """
+    from .renderers.docx import render_docx
+    from .reviewed_document import open_source
+    from .v3.reviewers import author_for
+
+    interim = workdir / f"round{index + 1}.docx"
+    render_docx(
+        result,
+        document=document,
+        output_path=interim,
+        # The reviewer's own identity, so Word's reviewing pane separates the
+        # passes without the caller naming each one. --patch-author still wins
+        # for a single reviewer; naming one author for several rounds would
+        # make them indistinguishable in the pane, which is the one thing
+        # sequential review exists to avoid.
+        author=author_for(profile=profile),
+        model=args.model,
+        visible_watermark=args.visible_watermark,
+    )
+    return await open_source(str(interim))
+
+
+def _parse_reviewers(value: str) -> list[str]:
+    """``--reviewer`` into a list of profile names, in the order given.
+
+    Order is significant and the list is a SEQUENCE, not a set: each reviewer
+    reads the previous one's edited text, so ``claims,methods`` and
+    ``methods,claims`` do not produce the same document. Duplicates are
+    rejected rather than silently collapsed — asking for the same reviewer
+    twice is a typo every time, and running it twice would cost a full review.
+
+    Validated here rather than by argparse ``choices``, which cannot express a
+    comma-separated list, and which reports an unknown value in a form that
+    does not say what the alternatives mean.
+    """
+    from .v3.reviewers import PROFILES
+
+    names = [chunk.strip() for chunk in value.split(",") if chunk.strip()]
+    if not names:
+        _die(1, "--reviewer needs at least one name. Run --list-reviewers.")
+    unknown = [n for n in names if n not in PROFILES]
+    if unknown:
+        _die(
+            1,
+            f"unknown reviewer(s): {', '.join(unknown)}. "
+            f"Available: {', '.join(PROFILES)}. "
+            f"Run --list-reviewers for what each one asks.",
+        )
+    seen: set[str] = set()
+    repeated = [n for n in names if n in seen or seen.add(n)]  # type: ignore[func-returns-value]
+    if repeated:
+        _die(
+            1,
+            f"reviewer named more than once: {', '.join(sorted(set(repeated)))}. "
+            f"Each reviewer runs a full review, so a repeat is a typo rather "
+            f"than a request.",
+        )
+    return names
 
 
 def _parse_criteria(values: list[str]) -> list[str]:
@@ -932,6 +1168,20 @@ async def _review_and_write(
     )
     guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
 
+    # Where a multi-reviewer run keeps the document between rounds. Temporary
+    # because only the LAST round's file is the user's; the ones in between are
+    # working state, and leaving four numbered .docx files beside their output
+    # would be four files to explain and delete. Held open for the whole run
+    # and cleaned in the finally below, because the final render reads the
+    # document the last round produced.
+    _interim = tempfile.TemporaryDirectory(prefix="whetstone-rounds-")
+    interim_dir = Path(_interim.name)
+
+    # Set only by a multi-reviewer review run. None means "render `result`",
+    # which is what every other path wants. Declared out here because the
+    # render loop below is shared by review, checklist and panel.
+    docx_result: Any = None
+
     try:
         _t0 = time.perf_counter()
         if args.mode == "panel":
@@ -965,7 +1215,9 @@ async def _review_and_write(
                 model=args.model,
                 document_type=args.document_type,
                 confirm_own_draft=args.confirm_own_draft,
-                reviewer=PROFILES[args.reviewer],
+                reviewer=PROFILES[
+                    (getattr(args, "reviewers", None) or [args.reviewer])[0]
+                ],
                 patch_author=args.patch_author,
             )
         else:
@@ -979,25 +1231,89 @@ async def _review_and_write(
             if args.guidelines:
                 v3_guidelines = guidelines_text
 
-            result = await review_document_v3(
-                document,
-                model=args.model,
-                cap=args.rounds,
-                document_type=args.document_type,
-                confirm_own_draft=args.confirm_own_draft,
-                criteria=v3_criteria,
-                guidelines_text=v3_guidelines,
-                editor=args.editor,
-                editor_criteria=editor_criteria,
-                check_novelty=args.check_novelty,
-                novelty_search_depth=args.novelty_search_depth,
-                # The profile is resolved inside the pipeline, not here: the
-                # document type it resolves against is only known once the
-                # classifier has run, and classifying twice to learn it early
-                # would be an LLM call spent on a flag.
-                reviewer=PROFILES[args.reviewer],
-                patch_author=args.patch_author,
+            # One reviewer or several. Several run IN SEQUENCE, each reading
+            # the previous one's edited text — which is the only shape that
+            # works on a Word file, because two reviewers rewriting the same
+            # original sentence would collide with no right answer. So the
+            # loop renders an interim .docx between rounds and reopens it;
+            # reviewer N+1's projection is reviewer N's output with the
+            # changes applied, which is what Word shows a human opening it.
+            # _validate parses this and stores it, so the unknown-name error
+            # costs nothing. Derived again here for a caller that built the
+            # namespace itself (the library tests do), rather than requiring
+            # every such caller to know about a derived attribute.
+            reviewer_names = getattr(args, "reviewers", None) or _parse_reviewers(
+                args.reviewer
             )
+            reviews: list[tuple[str, Any]] = []
+            for index, reviewer_name in enumerate(reviewer_names):
+                profile = PROFILES[reviewer_name]
+                if len(reviewer_names) > 1:
+                    console.print(
+                        f"[dim]reviewer {index + 1} of {len(reviewer_names)}: "
+                        f"{profile.identity}[/dim]"
+                    )
+                result = await review_document_v3(
+                    document,
+                    model=args.model,
+                    cap=args.rounds,
+                    document_type=args.document_type,
+                    confirm_own_draft=args.confirm_own_draft,
+                    criteria=v3_criteria,
+                    guidelines_text=v3_guidelines,
+                    editor=args.editor,
+                    editor_criteria=editor_criteria,
+                    # Only the first reviewer lists the novelty claims. The
+                    # draft's assertions do not change because a second
+                    # reviewer read it, and paying for the same list once per
+                    # reviewer would put four copies of it in one document.
+                    check_novelty=args.check_novelty and index == 0,
+                    novelty_search_depth=args.novelty_search_depth,
+                    # The profile is resolved inside the pipeline, not here:
+                    # the document type it resolves against is only known once
+                    # the classifier has run, and classifying twice to learn it
+                    # early would be an LLM call spent on a flag.
+                    reviewer=profile,
+                    patch_author=args.patch_author,
+                )
+                reviews.append((profile.identity, result))
+                if len(reviewer_names) > 1:
+                    # EVERY round writes its own pass, the last one included.
+                    # The final render then adds the reconciliation on top of a
+                    # document that already carries all N reports — otherwise
+                    # the last reviewer's own report is the one the summary
+                    # replaces, and it is the only report that goes missing.
+                    document = await _carry_forward(
+                        result,
+                        document=document,
+                        profile=profile,
+                        args=args,
+                        workdir=interim_dir,
+                        index=index,
+                    )
+            result = reviews[-1][1]
+
+            # Several reviewers means one place that reconciles them. Not a
+            # flag: asking for several opinions and then being handed four
+            # reports to cross-reference by hand is the problem this solves,
+            # not a preference. A failed reconciliation costs the summary and
+            # nothing else — every reviewer's report is already in the file.
+            if len(reviews) > 1:
+                from .v3.reconcile import reconcile_reviewers
+
+                reconciliation = await reconcile_reviewers(
+                    reviews, model=args.model
+                )
+                # Two shapes, because the two output families need different
+                # things. The .docx already holds every finding, comment and
+                # tracked change from all N rounds, so it needs ONLY the
+                # reconciliation — rendering the findings again would duplicate
+                # every comment in the file. Markdown and HTML render one
+                # result and would otherwise show the last reviewer alone.
+                docx_result = _reconciliation_only(reconciliation, like=result)
+                result = _combine_reviews(
+                    reviews, reconciliation=reconciliation, last=result
+                )
         result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
@@ -1043,7 +1359,10 @@ async def _review_and_write(
             )
         elif ext == ".docx":
             report = render_docx(
-                result,
+                # A multi-reviewer run hands the .docx only the reconciliation:
+                # the document it is written into already carries every round's
+                # findings, comments and tracked changes.
+                docx_result if docx_result is not None else result,
                 document=document,
                 output_path=out,
                 author=author,

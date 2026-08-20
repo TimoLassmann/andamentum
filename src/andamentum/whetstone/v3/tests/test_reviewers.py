@@ -65,7 +65,7 @@ def _registry_criteria_by_identity() -> dict[int, str]:
 
 def test_seven_profiles_in_display_order():
     assert list(PROFILES) == [
-        "general",
+        "default",
         "claims",
         "methods",
         "framing",
@@ -75,8 +75,11 @@ def test_seven_profiles_in_display_order():
     ]
 
 
-def test_general_is_the_default_and_comes_first():
-    assert DEFAULT_PROFILE_NAME == "general"
+def test_the_default_profile_is_named_default_and_comes_first():
+    """Named ``default``, not ``general``, because ``general`` is also a
+    DOCUMENT TYPE — ``--reviewer general --document-type general`` was legal
+    and meant two unrelated things with one word."""
+    assert DEFAULT_PROFILE_NAME == "default"
     assert next(iter(PROFILES)) == DEFAULT_PROFILE_NAME
 
 
@@ -272,7 +275,7 @@ _GOLDEN_FITS_TYPES = (
 # fmt: off
 _GOLDEN_FITS: tuple[tuple[str, bool, bool, bool, bool, bool, bool], ...] = (
     # profile        academic  external_c…  essay   tutorial  creative  general
-    ("general",      True,     True,        True,   True,     True,     True),
+    ("default",      True,     True,        True,   True,     True,     True),
     ("claims",       True,     True,        True,   True,     False,    True),
     ("methods",      True,     False,       False,  True,     False,    True),
     ("framing",      True,     True,        True,   True,     True,     True),
@@ -307,7 +310,7 @@ def test_every_declared_type_is_a_known_document_type():
 
 
 def test_fits_is_false_for_an_unrecognised_document_type():
-    assert not fits(profile=PROFILES["general"], document_type="not-a-type")
+    assert not fits(profile=PROFILES["default"], document_type="not-a-type")
 
 
 # ── resolve: the no-regression case ─────────────────────────────────────────
@@ -328,7 +331,7 @@ def test_general_resolves_to_todays_configuration(document_type: str):
 
 
 def test_general_resolves_criteria_to_the_registry_constants_themselves():
-    resolved = resolve(profile=PROFILES["general"], document_type="academic")
+    resolved = resolve(profile=PROFILES["default"], document_type="academic")
     assert resolved.criteria is not None
     for got, expected in zip(resolved.criteria, criterion_set_for("academic")):
         assert got is expected
@@ -448,7 +451,7 @@ def test_inline_author_replaces_the_profiles():
 
 
 def test_the_default_profile_keeps_the_package_author_verbatim():
-    resolved = resolve(profile=PROFILES["general"], document_type="academic")
+    resolved = resolve(profile=PROFILES["default"], document_type="academic")
     assert resolved.author == DEFAULT_AI_AUTHOR
 
 
@@ -498,7 +501,7 @@ def _line(resolved, label: str):
 
 def test_the_default_reviewer_still_reports_its_configuration():
     """No header in the report, but the command line still has to print it."""
-    resolved = resolve(profile=PROFILES["general"], document_type="academic")
+    resolved = resolve(profile=PROFILES["default"], document_type="academic")
     assert resolved.header is None
     assert [c.label for c in resolved.configuration] == [
         "criteria",
@@ -583,7 +586,7 @@ def test_the_header_repeats_the_profiles_own_words():
 
 def test_an_undetermined_type_yields_no_criteria_and_says_so():
     resolved = resolve(
-        profile=PROFILES["general"], document_type=UNRESOLVED_DOCUMENT_TYPE
+        profile=PROFILES["default"], document_type=UNRESOLVED_DOCUMENT_TYPE
     )
     assert resolved.criteria == []
     assert _line(resolved, "criteria").source == "not determined"
@@ -591,7 +594,7 @@ def test_an_undetermined_type_yields_no_criteria_and_says_so():
 
 def test_an_undetermined_type_yields_no_probes_and_says_so():
     resolved = resolve(
-        profile=PROFILES["general"], document_type=UNRESOLVED_DOCUMENT_TYPE
+        profile=PROFILES["default"], document_type=UNRESOLVED_DOCUMENT_TYPE
     )
     assert resolved.probes == []
     assert _line(resolved, "probes").source == "not determined"
@@ -647,7 +650,7 @@ def test_an_empty_inline_editor_criteria_list_reads_as_not_supplied():
     empty list is not "these".
     """
     assert resolve(
-        profile=PROFILES["general"], document_type="academic", editor_criteria=[]
+        profile=PROFILES["default"], document_type="academic", editor_criteria=[]
     ).editor_criteria == list(DEFAULT_EDITOR_CRITERIA)
 
 

@@ -101,7 +101,7 @@ from .editor import DEFAULT_EDITOR_CRITERIA
 ALL_DOCUMENT_TYPES: frozenset[str] = frozenset(DOCUMENT_TYPES)
 """The six document types a reviewer can be declared to fit."""
 
-DEFAULT_PROFILE_NAME = "general"
+DEFAULT_PROFILE_NAME = "default"
 """The profile that runs when no reviewer is named."""
 
 # Appended to a profile's identity to make the tracked-change author. The
@@ -278,7 +278,7 @@ class ResolvedReviewer:
 # probe, different stance, differently phrased finding — and a defect both of
 # them raise independently is the one to fix first.
 
-GENERAL_PROFILE = ReviewerProfile(
+DEFAULT_PROFILE = ReviewerProfile(
     name=DEFAULT_PROFILE_NAME,
     # Never rendered: the header block is suppressed for this profile and the
     # tracked-change author stays the package default verbatim.
@@ -435,7 +435,7 @@ PROFILES: Mapping[str, ReviewerProfile] = MappingProxyType(
         # still change is wasted effort to edit.
         p.name: p
         for p in (
-            GENERAL_PROFILE,
+            DEFAULT_PROFILE,
             CLAIMS_PROFILE,
             METHODS_PROFILE,
             FRAMING_PROFILE,

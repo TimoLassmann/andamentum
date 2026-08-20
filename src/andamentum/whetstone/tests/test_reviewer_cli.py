@@ -44,7 +44,7 @@ BASE = ["draft.md", "--model", "stub:none", "--out", "review.md"]
 
 
 def test_the_default_reviewer_is_the_general_one() -> None:
-    assert _args(BASE).reviewer == "general"
+    assert _args(BASE).reviewer == "default"
 
 
 def test_every_shipped_profile_is_an_accepted_value() -> None:
@@ -52,10 +52,19 @@ def test_every_shipped_profile_is_an_accepted_value() -> None:
         assert _args([*BASE, "--reviewer", name]).reviewer == name
 
 
-def test_an_unknown_reviewer_is_refused_by_the_parser() -> None:
+def test_an_unknown_reviewer_is_refused_before_anything_is_loaded() -> None:
+    """Exit 1 (configuration), not 2 (argparse), and from _validate.
+
+    --reviewer takes a comma-separated list, which argparse `choices` cannot
+    express, so the check moved into _validate. It stays EARLY on purpose: by
+    run time the document has been loaded and, for a URL, fetched, and a typo
+    should cost neither.
+    """
+    from andamentum.whetstone import cli as cli_mod
+
     with pytest.raises(SystemExit) as exc:
-        _args([*BASE, "--reviewer", "statistician"])
-    assert exc.value.code == 2
+        cli_mod._parse_reviewers("statistician")
+    assert exc.value.code == 1
 
 
 def test_a_reviewer_is_not_a_review_only_flag() -> None:
@@ -83,9 +92,9 @@ def test_panel_refuses_a_reviewer(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_panel_tolerates_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`--reviewer general` under panel asks for nothing panel does not do."""
+    """`--reviewer default` under panel asks for nothing panel does not do."""
     monkeypatch.setenv("ANDAMENTUM_PANEL_OWN_AUTHOR", "1")
-    _validate([*BASE, "--mode", "panel", "--reviewer", "general"])
+    _validate([*BASE, "--mode", "panel", "--reviewer", "default"])
 
 
 def test_apply_patches_refuses_a_reviewer(
@@ -157,7 +166,7 @@ def test_listing_prints_every_profile_once_in_display_order(
 
 def test_listing_marks_the_default(capsys: pytest.CaptureFixture[str]) -> None:
     out = _listing(["--list-reviewers"], capsys)
-    assert "general (default)" in out
+    assert "default (default)" in out
 
 
 def test_listing_carries_the_recommended_sequence(
@@ -576,4 +585,4 @@ def test_the_listing_accepts_every_type_the_run_accepts(
 ) -> None:
     for document_type in cli_mod._DOCUMENT_TYPE_CHOICES:
         out = _listing(["--list-reviewers", "--document-type", document_type], capsys)
-        assert "general (default)" in out
+        assert "default (default)" in out

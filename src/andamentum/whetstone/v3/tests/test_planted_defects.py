@@ -56,7 +56,7 @@ from dotenv import load_dotenv
 from andamentum.whetstone.schemas import ReviewResult
 from andamentum.whetstone.v3.criteria import MISSING_COMPARISON
 from andamentum.whetstone.v3.graph import run_review_v3
-from andamentum.whetstone.v3.reviewers import PROFILES, ReviewerProfile
+from andamentum.whetstone.v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES, ReviewerProfile
 
 load_dotenv()
 
@@ -568,7 +568,7 @@ def test_one_defect_per_specialist() -> None:
     """Every profile that produces findings has exactly one planted defect."""
     planted = [d.profile for d in DEFECTS]
     assert len(planted) == len(set(planted))
-    assert set(planted) == set(PROFILES) - {"general"}
+    assert set(planted) == set(PROFILES) - {DEFAULT_PROFILE_NAME}
 
 
 def test_every_anchor_appears_in_the_draft_exactly_once() -> None:

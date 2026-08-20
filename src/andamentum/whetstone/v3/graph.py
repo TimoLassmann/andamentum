@@ -491,9 +491,9 @@ async def run_review_v3(
 
     start_run()
 
-    from .reviewers import GENERAL_PROFILE, may_misfit, resolve
+    from .reviewers import DEFAULT_PROFILE, may_misfit, resolve
 
-    profile = reviewer if reviewer is not None else GENERAL_PROFILE
+    profile = reviewer if reviewer is not None else DEFAULT_PROFILE
 
     # Only classify when the answer is actually consumed. Two things consume
     # it: the criterion set, when neither the caller nor the profile supplied

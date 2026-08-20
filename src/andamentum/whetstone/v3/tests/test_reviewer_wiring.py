@@ -170,14 +170,14 @@ async def test_no_reviewer_leaves_the_prompts_and_the_result_alone() -> None:
 
 
 async def test_the_default_profile_is_the_same_as_no_reviewer() -> None:
-    """`--reviewer general` must not be a second code path."""
+    """`--reviewer default` must not be a second code path."""
     without: list[str] = []
     with_default: list[str] = []
     await _review(prompts=without, document_type="academic")
     await _review(
         prompts=with_default,
         document_type="academic",
-        reviewer=PROFILES["general"],
+        reviewer=PROFILES["default"],
     )
     assert without == with_default
 

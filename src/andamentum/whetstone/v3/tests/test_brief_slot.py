@@ -34,7 +34,7 @@ from andamentum.whetstone.v3.editor import EditorOutput, _run_editor_on_section
 from andamentum.whetstone.v3.model import Section
 from andamentum.whetstone.v3.prompt_blocks import brief_block
 from andamentum.whetstone.v3.review import _CriterionFindings, review_criterion
-from andamentum.whetstone.v3.reviewers import PROFILES
+from andamentum.whetstone.v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES
 
 BRIEF = PROFILES["methods"].brief
 
@@ -192,10 +192,10 @@ async def test_the_editor_prompt_is_unchanged_by_an_empty_brief() -> None:
 
 
 def test_the_default_reviewer_has_nothing_to_render() -> None:
-    assert brief_block(PROFILES["general"].brief) == ""
+    assert brief_block(PROFILES["default"].brief) == ""
 
 
-@pytest.mark.parametrize("name", [n for n in PROFILES if n != "general"])
+@pytest.mark.parametrize("name", [n for n in PROFILES if n != DEFAULT_PROFILE_NAME])
 def test_every_specialist_renders_exactly_one_block(name: str) -> None:
     block = brief_block(PROFILES[name].brief)
     assert block and block.count("REVIEWER BRIEF") == 1
