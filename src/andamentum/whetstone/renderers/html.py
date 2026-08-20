@@ -16,6 +16,7 @@ from andamentum.typeset import render as typeset_render
 from .._watermark import DISCLAIMER_SHORT, provenance_line
 from ..schemas import (
     DeclinedFinding,
+    NoveltyClaim,
     AuthorQuestion,
     CustomEvaluation,
     Edit,
@@ -132,6 +133,9 @@ def render_html(
     if result.declined_findings:
         atoms.extend(_declined_atoms(result.declined_findings))
 
+    if result.novelty_claims:
+        atoms.extend(_novelty_claim_atoms(result.novelty_claims))
+
     if result.findings:
         atoms.extend(
             _findings_atoms(
@@ -221,6 +225,32 @@ def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
         )
     return out
 
+
+
+def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
+    """What the draft stakes as new — found on every run, verified on none.
+
+    The caveat is a callout rather than a paragraph so it cannot be skimmed
+    past: the one way this section can do harm is by being read as a
+    verification.
+    """
+    out: list[dict[str, Any]] = [
+        {
+            "kind": "heading",
+            "content": f"Claims you are staking as novel ({len(claims)})",
+            "level": 2,
+        },
+        {"kind": "callout", "tone": "note", "content": "These are checked against nothing. This is what the draft asserts, not what the literature says."},
+    ]
+    entries = []
+    for claim in claims:
+        body = f"\u201c{claim.claim_text}\u201d"
+        if claim.why_load_bearing:
+            body += f"\n\n_Why it matters:_ {claim.why_load_bearing}"
+        entries.append({"label": "!", "body": body})
+    out.append({"kind": "items", "entries": entries})
+    out.append({"kind": "prose", "content": "To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine."})
+    return out
 
 def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
     """Findings the editor handed back, with its reason.

@@ -197,6 +197,7 @@ def render_docx(
         # Novelty-check payload (empty string when not used)
         novelty_findings=novelty_findings_text,
         declined_findings=_collect_declined(result),
+        novelty_claims=_collect_novelty_claims(result),
     )
     # Invisible metadata: always on, regardless of visible_watermark.
     stamp_docx_core_properties(Path(output_path), model=model)
@@ -357,6 +358,38 @@ def _collect_declined(result: ReviewResult) -> str:
             lines.append(f"  - *Editor:* {d.why}")
     return "\n".join(lines)
 
+
+
+def _collect_novelty_claims(result: ReviewResult) -> str:
+    """What the draft stakes as new, as markdown for the prepended report.
+
+    Distinct from ``_collect_novelty_findings`` and easy to confuse with it:
+    that one carries the VERDICTS of a literature search that was asked for,
+    this one carries the CLAIMS, found on every run and checked against
+    nothing. Both can appear in one report; the headings and the caveat line
+    are what keep them apart for a reader.
+
+    Empty string when the extractor found no assertion of being first, novel
+    or unique — the ordinary case for a tutorial or a short story, and no
+    reason to put a notice in the report.
+    """
+    if not result.novelty_claims:
+        return ""
+    lines = [
+        "*These are checked against nothing. This is what the draft asserts, "
+        "not what the literature says.*",
+        "",
+    ]
+    for claim in result.novelty_claims:
+        lines.append(f"- \u201c{claim.claim_text}\u201d")
+        if claim.why_load_bearing:
+            lines.append(f"  - *Why it matters:* {claim.why_load_bearing}")
+    lines += [
+        "",
+        "*To check them automatically, re-run with --check-novelty. That sends "
+        "these sentences to a search engine.*",
+    ]
+    return "\n".join(lines)
 
 def _collect_novelty_findings(result: ReviewResult) -> str:
     """Concatenate novelty-category findings into a markdown block.

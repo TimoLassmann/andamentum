@@ -375,6 +375,33 @@ class CustomEvaluation(BaseModel):
     )
 
 
+class NoveltyClaim(BaseModel):
+    """A sentence in which the draft asserts it is first, novel, or unique.
+
+    Found on EVERY run, and checked against nothing. Listing what a draft
+    stakes is not the same as verifying it, and the two must not be confused
+    by a reader — the renderers say so in as many words.
+
+    Why this is unconditional while the verification is not: finding these
+    costs one call to the model that has already read every word of the draft
+    for the review itself, so it discloses nothing new. Verifying them sends
+    the sentences to a search engine, which is a party that was NOT already
+    reading the document — a step nobody should take on an unpublished
+    manuscript without deciding to. Hence ``--check-novelty``, and hence the
+    split.
+
+    The list earns its place without any search. An author rarely notices how
+    many novelty flags a draft plants, or that the abstract says "first" where
+    the results support "among the first". Eight came out of a two-page demo
+    draft, several of them unsupported anywhere in its own text.
+    """
+
+    claim_text: str  # verbatim from the document
+    short_summary: str  # what is claimed novel, as a self-contained sentence
+    why_load_bearing: str  # why verifying this one matters
+    section_id: str = ""
+
+
 class DeclinedFinding(BaseModel):
     """A finding the editor read, could not answer with a rewrite, and said why.
 
@@ -471,6 +498,12 @@ class ReviewResult(BaseModel):
     # Populated only when the editor ran (editor=True); empty otherwise,
     # which is not the same as 'every finding was fixed'.
     declined_findings: list[DeclinedFinding] = Field(default_factory=list)
+    # What the draft claims as new, found on every run and verified on none
+    # of them unless --check-novelty was passed. Empty means the extractor
+    # found no assertion of being first/novel/unique — a short story or a
+    # tutorial produces an empty list naturally, so no document-type rule
+    # is needed.
+    novelty_claims: list[NoveltyClaim] = Field(default_factory=list)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)
     metrics: ReviewMetrics = Field(default_factory=ReviewMetrics)

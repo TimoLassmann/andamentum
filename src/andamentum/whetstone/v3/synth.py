@@ -21,6 +21,7 @@ from ..schemas import Edit
 from ..schemas import Finding as WFinding
 from ..schemas import (
     DeclinedFinding,
+    NoveltyClaim,
     Quote,
     ReviewMetrics,
     ReviewResult,
@@ -228,6 +229,7 @@ def to_review_result(
     review: StructuredReview,
     edits: list[Edit] | None = None,
     declined: list[DeclinedFinding] | None = None,
+    novelty_claims: list[NoveltyClaim] | None = None,
     llm_calls: int = 0,
     gap_rounds_used: int = 0,
     failed_criteria: list[str] | None = None,
@@ -251,6 +253,7 @@ def to_review_result(
         findings=[_to_wfinding(f, model) for f in findings],
         edits=list(edits),
         declined_findings=list(declined or []),
+        novelty_claims=list(novelty_claims or []),
         failed_criteria=failed,
         degraded=bool(degraded_reason),
         degraded_reason=degraded_reason,

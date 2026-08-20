@@ -405,8 +405,13 @@ def _build_parser() -> argparse.ArgumentParser:
     review_grp.add_argument(
         "--check-novelty",
         action="store_true",
-        help="Run the 3-node novelty check against deep_research. Adds 1 "
-        "extractor + N searches + N judge calls. Disabled by default.",
+        help="VERIFY the novelty claims against the literature, by searching "
+        "the web. Every review already LISTS what the draft claims as new — "
+        "that costs one call to the model already reading your draft and "
+        "discloses nothing further. This flag takes those sentences and sends "
+        "them to a search engine, so it is off by default: an unpublished "
+        "manuscript should not reach a third party without you deciding it "
+        "should. Adds N searches + N judge calls over the claims found.",
     )
     review_grp.add_argument(
         "--novelty-search-depth",

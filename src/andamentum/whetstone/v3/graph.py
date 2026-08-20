@@ -18,7 +18,13 @@ from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 
-from ..schemas import DeclinedFinding, Edit, ReviewerHeader, ReviewResult
+from ..schemas import (
+    DeclinedFinding,
+    Edit,
+    NoveltyClaim,
+    ReviewerHeader,
+    ReviewResult,
+)
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
 from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor
@@ -188,12 +194,26 @@ class Consolidate(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
-    """Extract ≤``novelty_target_cap`` novelty claims for verification.
-    No-op when ``check_novelty=False`` (default)."""
+    """List what the draft claims as new. Runs on EVERY review.
+
+    Unconditional, unlike the two nodes after it, and the asymmetry is the
+    whole point of the split. This step costs one call to the model that has
+    already read every word of the draft for the review itself, so it
+    discloses nothing that was not already disclosed. The next step sends
+    those sentences to a search engine — a party that was NOT already reading
+    the document — which is a decision to take deliberately on an unpublished
+    manuscript, not a default to inherit.
+
+    So the claims are always FOUND and never VERIFIED unless asked. The report
+    lists them saying exactly that, which also puts ``--check-novelty`` in
+    front of the reader at the moment it means something, holding the specific
+    sentences that would be sent.
+
+    A crash returns an empty list (see ``flag_novelty_targets``), so novelty
+    being unavailable costs a review nothing.
+    """
 
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "RunNoveltySearches":
-        if not ctx.deps.check_novelty:
-            return RunNoveltySearches()
         ctx.state.novelty_targets = await flag_novelty_targets(
             ctx.state.sections,
             ctx.state.source,
@@ -311,6 +331,15 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                     section_id=d.section_id,
                 )
                 for d in ctx.state.declined_findings
+            ],
+            novelty_claims=[
+                NoveltyClaim(
+                    claim_text=t.claim_text,
+                    short_summary=t.short_summary,
+                    why_load_bearing=t.why_load_bearing,
+                    section_id=t.origin_section_id or "",
+                )
+                for t in ctx.state.novelty_targets
             ],
             llm_calls=counters.llm_calls if counters else 0,
             gap_rounds_used=counters.gap_rounds if counters else 0,

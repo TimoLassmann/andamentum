@@ -26,6 +26,7 @@ from ..schemas import (
     AuthorQuestion,
     CustomEvaluation,
     DeclinedFinding,
+    NoveltyClaim,
     Edit,
     ExpertProfile,
     ExpertReview,
@@ -120,6 +121,9 @@ def render_markdown(
     if result.declined_findings:
         sections.append(_render_declined(result.declined_findings))
 
+    if result.novelty_claims:
+        sections.append(_render_novelty_claims(result.novelty_claims))
+
     llm_findings = list(result.findings)
     if llm_findings:
         sections.append(
@@ -178,6 +182,32 @@ def _render_questions(qs: Iterable[AuthorQuestion]) -> str:
             lines.append(f"  · sections: {', '.join(q.sections_involved)}")
     return "\n".join(lines)
 
+
+
+def _render_novelty_claims(claims: list[NoveltyClaim]) -> str:
+    """What the draft stakes as new — found on every run, verified on none.
+
+    The heading and the first line both say "checked against nothing", because
+    the one way this section can do harm is by being read as a verification.
+    It is a list of the author's own assertions, quoted back.
+
+    Omitted entirely when the list is empty. Silence means the extractor found
+    no assertion of being first, novel or unique, which is the ordinary case
+    for a tutorial or a short story — an explicit "none found" line would put a
+    reassuring notice on every document that never made such a claim.
+    """
+    lines = [
+        f"## Claims you are staking as novel ({len(claims)})",
+        "",
+        "_These are checked against nothing. This is what the draft asserts, not what the literature says._",
+        "",
+    ]
+    for claim in claims:
+        lines.append(f"- \"{claim.claim_text}\"")
+        if claim.why_load_bearing:
+            lines.append(f"  - _Why it matters:_ {claim.why_load_bearing}")
+    lines += ["", "_To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine._", ""]
+    return "\n".join(lines)
 
 def _render_declined(declined: list[DeclinedFinding]) -> str:
     """Findings the editor read and could not answer with a rewrite.

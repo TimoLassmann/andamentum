@@ -1,7 +1,9 @@
 """Novelty 3-node pipeline for v3.
 
 Coverage:
-  - check_novelty=False (default) skips all three nodes
+  - the extractor runs ALWAYS; only search and judge are gated on
+    check_novelty, because only they talk to a party that was not already
+    reading the document
   - check_novelty=True invokes extractor, deep_research, and judge
   - target cap bounds the number of deep_research calls
   - severity scaling: ≥0.7 → major / high, ≥0.4 → moderate / medium,
@@ -135,19 +137,42 @@ def test_verdicts_to_findings_maps_severity_into_finding() -> None:
 # ── Node-level tests (graph wiring) ────────────────────────────────────────
 
 
-async def test_check_novelty_false_skips_extractor() -> None:
-    """When check_novelty=False (default), FlagNoveltyTargets does not
-    call the extractor — it flows straight to RunNoveltySearches."""
-    state = V3State(source="...")
+async def test_the_claims_are_found_even_when_nothing_will_verify_them() -> None:
+    """The extractor runs with check_novelty=False, which is the default.
+
+    This is the split the design turns on. FINDING what a draft claims as new
+    costs one call to the model that has already read every word of it, so it
+    discloses nothing further. VERIFYING those claims sends them to a search
+    engine, which was never reading the document — a step to take deliberately
+    on an unpublished manuscript, not one to inherit from a default.
+
+    So the list is always produced and never checked unless asked, and the
+    report says which of the two it is holding.
+    """
+    state = V3State(source="some markdown")
     deps = V3Deps(agent_model="stub", check_novelty=False)
     with patch(
         "andamentum.whetstone.v3.graph.flag_novelty_targets",
-        new=AsyncMock(side_effect=AssertionError("should not be called")),
+        new=AsyncMock(return_value=[_TARGET]),
     ) as mock_extract:
         result = await FlagNoveltyTargets().run(_Ctx(state, deps))
     assert isinstance(result, RunNoveltySearches)
-    mock_extract.assert_not_called()
-    assert state.novelty_targets == []
+    mock_extract.assert_awaited_once()
+    assert state.novelty_targets == [_TARGET]
+
+
+async def test_nothing_is_searched_unless_asked() -> None:
+    """The guard moved to the node that talks to the outside world, and it is
+    the only thing standing between an unpublished draft and a search engine."""
+    state = V3State(source="x", novelty_targets=[_TARGET])
+    deps = V3Deps(agent_model="stub", check_novelty=False)
+    with patch(
+        "andamentum.whetstone.v3.graph.run_novelty_searches",
+        new=AsyncMock(side_effect=AssertionError("nothing may leave the machine")),
+    ) as mock_search:
+        await RunNoveltySearches().run(_Ctx(state, deps))
+    mock_search.assert_not_called()
+    assert state.novelty_evidence == []
 
 
 async def test_check_novelty_true_invokes_extractor_with_cap() -> None:

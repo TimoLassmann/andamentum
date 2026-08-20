@@ -117,6 +117,7 @@ def finalize_annotated_document(
     generated_experts: Optional[list] = None,
     novelty_findings: str = "",
     declined_findings: str = "",
+    novelty_claims: str = "",
 ) -> tuple[str, Any]:
     """Apply resolved annotations, prepend the report, and save.
 
@@ -157,6 +158,7 @@ def finalize_annotated_document(
                     generated_experts,
                     novelty_findings,
                     declined_findings,
+                    novelty_claims,
                 )
             )
 

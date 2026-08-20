@@ -44,6 +44,7 @@ from .constants import (
     FIELD_LABEL_POSITION,
     FIELD_LABEL_SCORES,
     DECLINED_FINDINGS_HEADER,
+    NOVELTY_CLAIMS_HEADER,
     NOVELTY_FINDINGS_HEADER,
     REPORT_TITLE,
     SECTION_SEPARATOR,
@@ -322,6 +323,7 @@ def _format_review_report(
     generated_experts: Optional[list] = None,
     novelty_findings: str = "",
     declined_findings: str = "",
+    novelty_claims: str = "",
 ) -> str:
     """
     Format review report for prepending to document.
@@ -360,6 +362,20 @@ def _format_review_report(
                 DECLINED_FINDINGS_HEADER,
                 "",
                 declined_findings.strip(),
+                "",
+            ]
+        )
+
+    # What the draft stakes as new. After the findings and the editor's
+    # refusals, because it is not a finding: nothing has judged it.
+    if novelty_claims and novelty_claims.strip():
+        lines.extend(
+            [
+                SECTION_SEPARATOR,
+                "",
+                NOVELTY_CLAIMS_HEADER,
+                "",
+                novelty_claims.strip(),
                 "",
             ]
         )
