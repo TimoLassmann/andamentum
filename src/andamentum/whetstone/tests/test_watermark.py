@@ -21,6 +21,7 @@ from andamentum.whetstone._watermark import (
     DISCLAIMER_SHORT,
     PROVENANCE_NS,
     metadata_markdown_comment,
+    provenance_line,
     read_provenance_markers,
     stamp_docx_core_properties,
     write_provenance_customxml,
@@ -69,6 +70,43 @@ class TestHtmlWatermark:
     def test_clean_document_still_says_so(self) -> None:
         html = render_html(ReviewResult())
         assert "looks clean" in html.lower()
+
+    def test_the_visible_banner_says_what_produced_the_report(self) -> None:
+        """Pinned, because nothing else in the suite reads this sentence.
+
+        The HTML renderer discarded ``model`` outright until this line was
+        written, so an HTML report was the one artefact of the three that did
+        not say which tool, which version and which model made it. The
+        markdown report has carried all three since it was written.
+        """
+        html = render_html(ReviewResult(summary="x"), model="openai:gpt-5.4-nano")
+        assert f"Produced by {provenance_line(model='openai:gpt-5.4-nano')}." in html
+
+    def test_the_provenance_sentence_is_part_of_the_visible_banner(self) -> None:
+        """Not a second callout, and not written when the banner is off.
+
+        ``--no-visible-watermark`` is a supported flag and it means one thing:
+        no visible provenance. The invisible layers are what survive it.
+        """
+        html = render_html(
+            ReviewResult(summary="x"),
+            model="openai:gpt-5.4-nano",
+            visible_watermark=False,
+        )
+        assert "Produced by" not in html
+        assert "openai:gpt-5.4-nano" not in html
+
+    def test_the_three_renderers_agree_on_the_provenance_line(self) -> None:
+        """One sentence, one definition — the markdown banner's.
+
+        The docx renderer prepends the same ``banner_markdown`` text to its
+        executive summary, so pinning markdown and HTML together pins all
+        three against a second wording drifting in.
+        """
+        model = "openai:gpt-5.4-nano"
+        line = provenance_line(model=model)
+        assert line in render_markdown(ReviewResult(summary="x"), model=model)
+        assert line in render_html(ReviewResult(summary="x"), model=model)
 
 
 class TestDocxMetadataStamp:

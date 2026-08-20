@@ -13,7 +13,7 @@ from typing import Any
 
 from andamentum.typeset import render as typeset_render
 
-from .._watermark import DISCLAIMER_SHORT
+from .._watermark import DISCLAIMER_SHORT, provenance_line
 from ..schemas import (
     DeclinedFinding,
     AuthorQuestion,
@@ -70,13 +70,17 @@ def render_html(
                 "content": (
                     "**AI-generated review content.** "
                     "Whetstone is for sharpening your own drafts — not a "
-                    "peer-review tool. See RESPONSIBLE_USE.md."
+                    "peer-review tool. See RESPONSIBLE_USE.md. "
+                    # What produced this, in the same sentence rather than in a
+                    # second callout: the markdown report has carried the tool,
+                    # version and model since it was written and this one
+                    # silently dropped them.
+                    f"*Produced by {provenance_line(model=model)}.*"
                 ),
             }
         )
     else:
         atoms.append({"kind": "callout", "tone": "note", "content": _DISCLAIMER})
-    _ = model  # reserved for future inclusion in the banner text
 
     panel_mode = bool(result.expert_profiles or result.expert_reviews)
 
