@@ -164,9 +164,7 @@ async def test_one_call_over_all_findings_carries_the_disagreements(
         return [], []
 
     monkeypatch.setattr(editor_mod, "run_editor", fake_run_editor)
-    sections = [
-        Section(id="s1", title="Intro", text="x" * 40, start=0, end=40)
-    ]
+    sections = [Section(id="s1", title="Intro", text="x" * 40, start=0, end=40)]
     await edit_findings(
         sections,
         [_finding(), _finding(perspective="Methods reviewer"), _finding(quotes=[])],
@@ -197,9 +195,7 @@ async def test_no_disagreements_adds_nothing_to_the_brief(
         return [], []
 
     monkeypatch.setattr(editor_mod, "run_editor", fake_run_editor)
-    sections = [
-        Section(id="s1", title="Intro", text="x" * 40, start=0, end=40)
-    ]
+    sections = [Section(id="s1", title="Intro", text="x" * 40, start=0, end=40)]
     await edit_findings(
         sections, [], model="stub:none", criteria=["clarity"], brief="Brief."
     )
@@ -311,6 +307,11 @@ async def test_the_rounds_do_not_edit_and_the_editor_runs_once_over_all_of_them(
     # Two rounds, neither editing.
     assert [r["reviewer"].name for r in rounds] == ["claims", "methods"]
     assert all(r["editor"] is False for r in rounds)
+
+    # Only round one flags the draft's novelty claims. The claims do not
+    # change because a second reviewer read the draft, so a later round
+    # spending the flag call would buy a list nobody keeps.
+    assert [r["flag_novelty"] for r in rounds] == [True, False]
 
     # One editor call, with both reviewers' findings, tagged, and the
     # disagreement the reconciliation found.

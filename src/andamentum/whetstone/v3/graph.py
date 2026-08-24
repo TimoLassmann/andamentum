@@ -72,6 +72,13 @@ class V3Deps:
         default_factory=lambda: list(DEFAULT_EDITOR_CRITERIA)
     )
     check_novelty: bool = False
+    # Whether to LIST what the draft claims as new (the always-on half of the
+    # novelty split; see FlagNoveltyTargets). On for every ordinary review.
+    # The CLI turns it off for the second and later rounds of a reviewer
+    # list: the draft's claims do not change because another reviewer read
+    # it, so re-flagging spends a full-draft model call to produce a list
+    # that is discarded.
+    flag_novelty: bool = True
     novelty_target_cap: int = 8
     novelty_search_depth: int = 2
     # The active reviewer profile's stance, rendered at the top of every
@@ -211,9 +218,15 @@ class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
 
     A crash returns an empty list (see ``flag_novelty_targets``), so novelty
     being unavailable costs a review nothing.
+
+    The one exception to "every review" is ``deps.flag_novelty=False`` — the
+    second and later rounds of a reviewer list, where the list already exists
+    from round one and flagging again would be a discarded call.
     """
 
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "RunNoveltySearches":
+        if not ctx.deps.flag_novelty:
+            return RunNoveltySearches()
         ctx.state.novelty_targets = await flag_novelty_targets(
             ctx.state.sections,
             ctx.state.source,
@@ -409,6 +422,7 @@ async def run_review_v3(
     editor: bool = False,
     editor_criteria: list[str] | None = None,
     check_novelty: bool = False,
+    flag_novelty: bool = True,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
     reviewer: "ReviewerProfile | None" = None,
@@ -555,6 +569,7 @@ async def run_review_v3(
         editor_enabled=editor,
         editor_criteria=resolved.editor_criteria,
         check_novelty=check_novelty,
+        flag_novelty=flag_novelty,
         novelty_target_cap=novelty_target_cap,
         novelty_search_depth=novelty_search_depth,
         brief=resolved.brief,
@@ -576,6 +591,7 @@ async def review_document_v3(
     editor: bool = False,
     editor_criteria: list[str] | None = None,
     check_novelty: bool = False,
+    flag_novelty: bool = True,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
     reviewer: "ReviewerProfile | None" = None,
@@ -615,6 +631,7 @@ async def review_document_v3(
             editor=editor,
             editor_criteria=editor_criteria,
             check_novelty=check_novelty,
+            flag_novelty=flag_novelty,
             novelty_target_cap=novelty_target_cap,
             novelty_search_depth=novelty_search_depth,
             reviewer=reviewer,

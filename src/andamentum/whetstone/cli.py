@@ -422,7 +422,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "discloses nothing further. This flag takes those sentences and sends "
         "them to a search engine, so it is off by default: an unpublished "
         "manuscript should not reach a third party without you deciding it "
-        "should. Adds N searches + N judge calls over the claims found.",
+        "should. Adds one search + one judge call per claim found, over at "
+        "most 8 claims. With a list of reviewers this runs once, before the "
+        "second reviewer starts — never once per reviewer.",
     )
     review_grp.add_argument(
         "--novelty-search-depth",
@@ -1367,11 +1369,13 @@ async def _review_and_write(
                     # abstract, each rewriting the last one's insertions.
                     editor=args.editor and not final_editor,
                     editor_criteria=editor_criteria,
-                    # Only the first reviewer lists the novelty claims. The
-                    # draft's assertions do not change because a second
-                    # reviewer read it, and paying for the same list once per
-                    # reviewer would put four copies of it in one document.
+                    # Only the first reviewer lists the novelty claims, and
+                    # only the first can verify them. The draft's assertions
+                    # do not change because a second reviewer read it, so the
+                    # later rounds neither pay the flag call nor put another
+                    # copy of the same list in the document.
                     check_novelty=args.check_novelty and index == 0,
+                    flag_novelty=index == 0,
                     novelty_search_depth=args.novelty_search_depth,
                     # The profile is resolved inside the pipeline, not here:
                     # the document type it resolves against is only known once
@@ -1380,12 +1384,6 @@ async def _review_and_write(
                     reviewer=profile,
                     patch_author=args.patch_author,
                 )
-                if index > 0:
-                    # The draft's novelty claims do not change because a
-                    # second reviewer read it, so only the first reviewer's
-                    # report carries the list. Three reviewers were putting
-                    # three copies of the same eight sentences in one file.
-                    result.novelty_claims = []
                 reviews.append((profile.identity, result))
                 if len(reviewer_names) > 1:
                     # EVERY round writes its own pass, the last one included.

@@ -161,6 +161,26 @@ async def test_the_claims_are_found_even_when_nothing_will_verify_them() -> None
     assert state.novelty_targets == [_TARGET]
 
 
+async def test_a_later_round_of_a_reviewer_list_does_not_flag_again() -> None:
+    """flag_novelty=False skips the extractor call entirely.
+
+    The CLI sets it for the second and later rounds of a reviewer list: the
+    draft's claims do not change because another reviewer read it, and the
+    old behaviour spent one full-draft model call per extra round to produce
+    a list that was discarded.
+    """
+    state = V3State(source="some markdown")
+    deps = V3Deps(agent_model="stub", flag_novelty=False)
+    with patch(
+        "andamentum.whetstone.v3.graph.flag_novelty_targets",
+        new=AsyncMock(side_effect=AssertionError("no call may be spent")),
+    ) as mock_extract:
+        result = await FlagNoveltyTargets().run(_Ctx(state, deps))
+    assert isinstance(result, RunNoveltySearches)
+    mock_extract.assert_not_called()
+    assert state.novelty_targets == []
+
+
 async def test_nothing_is_searched_unless_asked() -> None:
     """The guard moved to the node that talks to the outside world, and it is
     the only thing standing between an unpublished draft and a search engine."""
