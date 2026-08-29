@@ -11,7 +11,7 @@ Usage::
     result = await run_epistemic_graph(
         question="Does metformin reduce cancer risk?",
         database_name="my_research",
-        model="openai:gpt-4o-mini",
+        model="openai:gpt-5.4-nano",
     )
 """
 

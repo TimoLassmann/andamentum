@@ -2,7 +2,7 @@
 
 Model selection:
     CHUNKER_BENCH_MODEL env var, e.g.:
-        export CHUNKER_BENCH_MODEL=openai:gpt-4o-mini
+        export CHUNKER_BENCH_MODEL=openai:gpt-5.4-nano
         export CHUNKER_BENCH_MODEL=ollama:qwen3.5:9b
 
     Default: ollama:gemma4:31b-nvfp4

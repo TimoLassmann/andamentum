@@ -2,7 +2,7 @@
 
 Usage::
 
-    andamentum-chunker INPUT --model openai:gpt-4o-mini --domain academic -o units.json
+    andamentum-chunker INPUT --model openai:gpt-5.4-nano --domain academic -o units.json
 
 Outputs JSON with {units, gaps, coverage, gap_fraction, model_calls}.
 """
@@ -40,7 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help=(
-            "LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o-mini, "
+            "LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-5.4-nano, "
             "ollama:gemma2:31b) — or set $ANDAMENTUM_MAIN_LLM_MODEL"
         ),
     )
