@@ -1,0 +1,126 @@
+# Snakefile — dirichlet_confidence reliability experiments
+# =========================================================
+# Reproduces every result in report.html as a dependency DAG.
+#
+#   cache/band_experiment*.jsonl   (the cached model answers — the substrate)
+#        │
+#        ├─ compare_baselines.py ─► results/baselines.json     (Experiment 2)
+#        ├─ ablation_1v5.py      ─► results/ablation_1v5.json  (Experiment 3)
+#        │
+#        └─ make_figures.py ─► figures/fig1..fig5.png          (Exp 1 & 5 plots)
+#                  │
+#                  └─ build_report.py ─► report.html
+#                     build_code_index.py ─► code_index.html
+#
+# Run from the andamentum repo ROOT (the scripts are invoked as modules):
+#
+#     snakemake -s experiments/dirichlet_confidence/Snakefile --cores 1
+#
+# Everything below `rule all` is PURE RE-ANALYSIS of the committed cache — no
+# API calls, no cost, fully deterministic. The only step that queries a model is
+# `rule gather`, which is NOT part of `all`; run it explicitly only to rebuild
+# the cache from scratch (needs OPENAI_API_KEY in a .env and costs API calls).
+
+EXP     = "experiments/dirichlet_confidence"
+CACHE   = f"{EXP}/cache"
+RESULTS = f"{EXP}/results"
+FIGS    = f"{EXP}/figures"
+
+# The three cached models the report uses (150 claims x 5 calls x 2 arms each).
+MODEL_CACHE = [
+    f"{CACHE}/band_experiment.jsonl",          # gpt-5.4-nano
+    f"{CACHE}/band_experiment_mini.jsonl",     # gpt-5.4-mini
+    f"{CACHE}/band_experiment_4omini.jsonl",   # gpt-4o-mini
+]
+
+FIGURES = [
+    f"{FIGS}/fig1_band_error_detection_scorecard.png",
+    f"{FIGS}/fig2_band_separation_right_vs_wrong.png",
+    f"{FIGS}/fig3_risk_coverage.png",
+    f"{FIGS}/fig4_payoff_by_score.png",
+    f"{FIGS}/fig5_residual_phrasing.png",
+    f"{FIGS}/fig5_residual_temperature.png",
+]
+
+
+rule all:
+    """Default target: the two handover documents and everything they need."""
+    input:
+        f"{EXP}/report.html",
+        f"{EXP}/code_index.html",
+
+
+rule baselines:
+    """Experiment 2 — band vs. self-consistency / semantic entropy / predictive entropy."""
+    input:
+        MODEL_CACHE,
+    output:
+        f"{RESULTS}/baselines.json",
+    shell:
+        "uv run python -m experiments.dirichlet_confidence.compare_baselines "
+        "--out results/baselines.json"
+
+
+rule ablation:
+    """Experiment 3 — one call vs. five calls; the disagreement (mutual-information) term."""
+    input:
+        MODEL_CACHE,
+    output:
+        f"{RESULTS}/ablation_1v5.json",
+    shell:
+        "uv run python -m experiments.dirichlet_confidence.ablation_1v5 "
+        "--out results/ablation_1v5.json"
+
+
+rule figures:
+    """All figures (Exp 1 scorecard/mechanism/payoff, Exp 2 payoff-by-score, Exp 5 residual)."""
+    input:
+        MODEL_CACHE,
+        f"{RESULTS}/baselines.json",
+    output:
+        FIGURES,
+    shell:
+        "uv run python -m experiments.dirichlet_confidence.make_figures"
+
+
+rule report:
+    """The styled, self-contained HTML report (figures base64-embedded)."""
+    input:
+        FIGURES,
+        f"{RESULTS}/baselines.json",
+        f"{RESULTS}/ablation_1v5.json",
+    output:
+        f"{EXP}/report.html",
+    shell:
+        "uv run python -m experiments.dirichlet_confidence.build_report"
+
+
+rule code_index:
+    """The navigable code report linking every file in this folder."""
+    output:
+        f"{EXP}/code_index.html",
+    shell:
+        "uv run python -m experiments.dirichlet_confidence.build_code_index"
+
+
+# ---------------------------------------------------------------------------
+# OPTIONAL — costs API calls. Not a dependency of `all`. Regenerates the cache
+# from scratch by querying each model on 150 SciFact claims x 5 calls x 2 arms.
+# Needs OPENAI_API_KEY (loaded from a .env). Run explicitly, per model:
+#
+#     snakemake -s experiments/dirichlet_confidence/Snakefile gather --cores 1
+#
+# This rule is intentionally left as documentation rather than wired to `all`,
+# so a `snakemake` invocation can never silently spend money.
+# ---------------------------------------------------------------------------
+rule gather:
+    """⚠ COSTS API CALLS. Re-elicit the cached histograms from scratch."""
+    output:
+        touch(f"{CACHE}/.gathered"),  # sentinel; the real outputs are the jsonl files
+    shell:
+        """
+        for M in openai:gpt-5.4-nano openai:gpt-5.4-mini openai:gpt-4o-mini; do
+            uv run python -m experiments.dirichlet_confidence.band_experiment gather \
+                --model "$M" --n-claims 150 ;
+        done
+        """

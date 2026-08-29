@@ -1,0 +1,24 @@
+# WHAT IS DELIBERATELY NOT COMMITTED
+#
+# The code, the plan and the findings prose are tracked; everything a run
+# produces is not. The cache and results are machine-local measurements,
+# re-derivable by re-running gather/analyze against the same claims, and the
+# HTML reports embed the figures and are rebuilt from results/ in one command.
+
+# Model answers (gather appends here) and the scores computed from them.
+cache/
+results/
+
+# Rendered plots — rebuilt by make_figures.py from results/.
+figures/
+
+# SciFact claims/corpus — downloaded, not authored here.
+data/
+
+# Rebuilt by build_report.py / multimodel_report.py / build_code_index.py.
+report.html
+multimodel_report.html
+code_index.html
+
+__pycache__/
+*.pyc
