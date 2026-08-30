@@ -204,6 +204,7 @@ async def run_epistemic_graph(
     start_at: Optional[type] = None,
     output_dir: Optional[Path] = None,
     ibe_agreement_k: Optional[int] = None,
+    use_web_search: bool = True,
 ) -> "PipelineResult":
     """Run a research question through the epistemic graph pipeline.
 
@@ -316,7 +317,8 @@ async def run_epistemic_graph(
 
     evidence_gatherer = (
         get_default_gatherer(
-            model=model, providers=providers, embedding_model=embedding_model
+            model=model, providers=providers, embedding_model=embedding_model,
+            use_web_search=use_web_search,
         )
         if model
         else None
