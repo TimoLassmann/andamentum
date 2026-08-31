@@ -95,20 +95,31 @@ MIN_ACTIVATIONS = {
     # after Stage 2b's reachability fix (plan §5, Stage 2b).
     "agm": 0,
     # Peirce resolution: the inquiry terminated by verdict, not by the cap.
-    # Audit: 52/150 runs adjudicated-with-no-cap on dev30 — nonzero but
-    # unmeasured on this fixture; ratchet to the Stage-0 baseline floor once
-    # the 5-run ledger block exists. Definition-of-done target: >= 3 of 5
-    # (plan §4.6).
+    # Audit: 52/150 runs adjudicated-with-no-cap on dev30. STAGE-0 MEASURED
+    # (2026-08-31): 0/5 on this fixture — the claim never leaves the
+    # Scrutinize->ResolveUncertainties loop, so the floor stays 0 (finding
+    # S0-2 in the ledger). Definition-of-done target: >= 3 of 5 (plan §4.6).
     "peirce_resolution": 0,
     # Peirce cap exhaustion: counted SEPARATELY from resolution so the ratio
-    # is visible (audit: 45/150 runs capped; the audit's 88%-exhaustion
+    # is visible (audit: 45/150 dev30 runs capped; the audit's 88%-exhaustion
     # figure used claims-with-an-active-inquiry as its denominator — state
-    # the denominator when ratcheting). No stage targets MORE capping; this
-    # entry exists so a stage that makes convergence WORSE is caught.
-    "peirce_cap_exhaustion": 0,
-    # Reichenbach corroboration. Fires TODAY via HDBSCAN cluster size — the
-    # one principle whose baseline is nonzero — but what it computes is wrong
-    # on the merits (rewards redundancy; plan §4.4). Stage 1 REDEFINES the
+    # the denominator when ratcheting). STAGE-0 RATCHET (2026-08-31): the
+    # 5-run ledger baseline measured 5/5, and the archived corroborating runs
+    # 4/4 — the cap fired in every genuine run of this fixture, so the armed
+    # floor is RUNS (2 of 2). This is a machinery-presence guard: if the cap
+    # STOPS firing here, the termination path this fixture exercises has
+    # changed, and the stage that changed it must re-register this entry in
+    # the same commit that ratchets its own principle's (Stage 2b will
+    # legitimately move this number if claims start resolving or demoting
+    # before the cap — that is a success, recorded, never a silent pass).
+    "peirce_cap_exhaustion": 2,
+    # Reichenbach corroboration. The audit saw it firing via HDBSCAN cluster
+    # size on decomposed dev30 runs, but what it computes is wrong on the
+    # merits (rewards redundancy; plan §4.4). STAGE-0 MEASURED (2026-08-31):
+    # 0/5 on this fixture — seed-claim verify mode never reaches
+    # select_top_k_evidence, so every evidence row stays "unclustered" and
+    # the signature's denominator is EMPTY here (finding S0-1 in the ledger);
+    # the floor stays 0 accordingly. Stage 1 REDEFINES the
     # signature (corroboration from independence_group membership), and in
     # this single-group fixture the CORRECT post-fix count is 0: one corpus
     # is one source agreeing with itself. Stage 1 therefore ratchets this
@@ -117,6 +128,9 @@ MIN_ACTIVATIONS = {
     "reichenbach": 0,
     # IBE genuine competing candidates. Audit: 81% of claims that reached
     # enumeration scored placeholder candidates; only ~19% had >= 2 genuine.
+    # STAGE-0 MEASURED (2026-08-31): 0/5, with claims_reached_enumeration=0
+    # in every run — the audit's ~1-in-5 is conditioned on a denominator this
+    # fixture never produces (finding S0-3 in the ledger), so the floor stays 0.
     # Target: >= 3 of 5 after Stage 3's candidate-quality gate.
     "ibe_real_candidates": 0,
     # Popper refutation-seeking search. Audit: 0 under corpus mode — the op
