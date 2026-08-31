@@ -1,0 +1,1 @@
+{"id": 1, "claim": "Oral trehalose supplementation improves motor function in patients with Parkinson's disease.", "evidence": {"9001": [{"sentences": [3, 7], "label": "SUPPORT"}], "9002": [{"sentences": [3, 6], "label": "SUPPORT"}], "9003": [{"sentences": [3, 7], "label": "CONTRADICT"}]}, "cited_doc_ids": [9001, 9002, 9003]}
