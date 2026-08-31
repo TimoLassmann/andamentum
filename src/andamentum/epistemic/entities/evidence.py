@@ -178,11 +178,30 @@ class Evidence(EpistemicEntity):
     )
     corroboration_count: int = Field(
         default=1,
-        description="Number of sources confirming this finding (cluster size)",
+        description=(
+            "Number of GENUINELY INDEPENDENT sources (Reichenbach common-cause: "
+            "distinct provider `independence_group`s and/or distinct content "
+            "clusters, never mere near-duplicate volume) confirming this "
+            "finding. Sole writer: operations.claims.select_top_k_evidence. "
+            "NOT a measure of retrieval redundancy — see retrieval_cluster_size "
+            "for how many near-duplicate items were collapsed into this "
+            "representative."
+        ),
     )
     corroborating_sources: list[str] = Field(
         default_factory=list,
         description="Source URLs/refs of corroborating evidence in the same cluster",
+    )
+    retrieval_cluster_size: int = Field(
+        default=1,
+        description=(
+            "How many near-duplicate items (by embedding similarity) HDBSCAN "
+            "collapsed into this representative at retrieval time. Redundancy, "
+            "not independence — do NOT use this to weight a posterior; that is "
+            "what corroboration_count is for. Consumers that describe retrieval "
+            "collapse to an LLM (e.g. the IBE prompt's `cluster_size=N` "
+            "annotation) read this field."
+        ),
     )
 
     def _extra_metadata(self) -> dict[str, Any]:
@@ -216,6 +235,7 @@ class Evidence(EpistemicEntity):
         if self.cluster_id:
             meta["cluster_id"] = self.cluster_id
         meta["corroboration_count"] = self.corroboration_count
+        meta["retrieval_cluster_size"] = self.retrieval_cluster_size
         if self.corroborating_sources:
             meta["corroborating_sources"] = self.corroborating_sources
         return meta
@@ -316,6 +336,7 @@ class Evidence(EpistemicEntity):
             cluster_status=metadata.get("cluster_status", "unclustered"),
             cluster_id=metadata.get("cluster_id"),
             corroboration_count=metadata.get("corroboration_count", 1),
+            retrieval_cluster_size=metadata.get("retrieval_cluster_size", 1),
             corroborating_sources=metadata.get("corroborating_sources", []),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())

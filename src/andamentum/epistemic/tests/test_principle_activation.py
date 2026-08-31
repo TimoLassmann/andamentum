@@ -118,13 +118,28 @@ MIN_ACTIVATIONS = {
     # merits (rewards redundancy; plan §4.4). STAGE-0 MEASURED (2026-08-31):
     # 0/5 on this fixture — seed-claim verify mode never reaches
     # select_top_k_evidence, so every evidence row stays "unclustered" and
-    # the signature's denominator is EMPTY here (finding S0-1 in the ledger);
-    # the floor stays 0 accordingly. Stage 1 REDEFINES the
-    # signature (corroboration from independence_group membership), and in
-    # this single-group fixture the CORRECT post-fix count is 0: one corpus
-    # is one source agreeing with itself. Stage 1 therefore ratchets this
-    # entry by redefining what "fired" means (and extending the fixture with
-    # a second independence group), not by raising this number.
+    # the signature's denominator is EMPTY here (finding S0-1 in the ledger).
+    # STAGE 1 FIX LANDED AND VERIFIED (2026-08-31): corroboration_count is now
+    # computed from (content cluster, independence_group) pairs agreeing per
+    # direction, not raw HDBSCAN cluster size (operations/claims.py); the old
+    # signal survives, honestly renamed, as Evidence.retrieval_cluster_size.
+    # STAGE 1 MEASURED, claim 1, 5/5 runs, ollama:gemma4:31b-cloud,
+    # 2026-08-31: still 0/5 — NOT a computed 0, the SAME empty-denominator
+    # artifact as Stage 0: select_top_k_evidence never executes because
+    # ClusterEvidence only processes stage==SUPPORTED claims, and this claim
+    # is cycle-capped straight out of "hypothesis" without ever promoting
+    # (finding S1-1 in the ledger — also confirmed unchanged on claim 2, the
+    # fixture extension purpose-built to exercise this signature). The fix's
+    # correctness is confirmed separately, on a real-corpus dev30-shaped
+    # diagnostic (5 cases, same date/model, see the ledger): 4 of 5 cases DID
+    # promote and reach select_top_k_evidence, and corroboration_count
+    # demonstrably decoupled from retrieval_cluster_size (e.g.
+    # corroboration_count=7 vs retrieval_cluster_size=1 on several
+    # representatives in one case) — direct proof the old bug is gone. The
+    # floor stays 0 here because the CANARY claim never reaches the code
+    # path, not because the fix doesn't work; Stage 2b's reachability fix
+    # (the same one AGM needs) is the dependency for raising this floor, not
+    # a further Reichenbach change.
     "reichenbach": 0,
     # IBE genuine competing candidates. Audit: 81% of claims that reached
     # enumeration scored placeholder candidates; only ~19% had >= 2 genuine.
@@ -135,9 +150,26 @@ MIN_ACTIVATIONS = {
     "ibe_real_candidates": 0,
     # Popper refutation-seeking search. Audit: 0 under corpus mode — the op
     # is hard-wired to a provider literally named "web_search" and cannot run
-    # when that provider is absent (plan §4.5). An honest zero, not a never-
-    # fires: target >= 3 of 5 after Stage 1's capability query, on a fixture
-    # whose corpus holds the refuter (doc 9003).
+    # when that provider is absent (plan §4.5).
+    # STAGE 1 FIX LANDED AND VERIFIED (2026-08-31): AdversarialSearchOperation
+    # now asks the gatherer a capability question (capable_of("adversarial"))
+    # instead of hard-coding "web_search" (operations/verification.py,
+    # operations/base.py's new CapabilityQueryable protocol).
+    # STAGE 1 MEASURED, claim 1, 5/5 runs, ollama:gemma4:31b-cloud,
+    # 2026-08-31: still 0/5 — adversarial_search appears ZERO times in
+    # operations.jsonl across all 5 runs: the op is never INVOKED, not
+    # invoked-and-declined (capability_decline_reason is never even reached).
+    # Root cause is identical to reichenbach's, above: RunVerification (which
+    # dispatches this op) is reached only via ClusterEvidence, gated on
+    # stage==SUPPORTED, and this claim never promotes (finding S1-2 in the
+    # ledger — also confirmed unchanged on claim 2). The fix's correctness is
+    # confirmed separately, on the same real-corpus dev30-shaped diagnostic:
+    # AdversarialSearchOperation fired successfully in 3 of 5 real cases,
+    # correctly dispatching to the registered corpus provider (not the old
+    # hard-coded "web_search"), gathering and evaluating real
+    # counterarguments with correct provenance. The floor stays 0 here for
+    # the same reason as reichenbach's: Stage 2b's reachability fix is the
+    # dependency, not a further Popper change.
     "popper": 0,
 }
 

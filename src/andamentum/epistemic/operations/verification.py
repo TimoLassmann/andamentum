@@ -10,7 +10,12 @@ Operates on: Claim, Evidence, Uncertainty entities
 
 from typing import Any, Dict, Tuple
 
-from .base import BaseOperation, OperationInput, OperationResult
+from .base import (
+    BaseOperation,
+    CapabilityQueryable,
+    OperationInput,
+    OperationResult,
+)
 
 from ..entities import (
     Claim,
@@ -34,6 +39,12 @@ from ..thresholds import ADVERSARIAL_REFUTED_THRESHOLD
 # coverage.
 MAX_ADVERSARIAL_TEMPLATES = 5
 MAX_ADVERSARIAL_FRAMINGS = 3
+
+#: The capability this operation asks a gatherer for (Principle Fidelity
+#: Plan §4.5) — "can any registered source serve a refutation-seeking
+#: query?" — instead of naming one provider literally. See
+#: ``CapabilityQueryable`` / ``GathererCapability`` in operations/base.py.
+ADVERSARIAL_CAPABILITY = "adversarial"
 
 
 class AdversarialSearchOperation(BaseOperation):
@@ -124,29 +135,71 @@ class AdversarialSearchOperation(BaseOperation):
                 seen.add(normalized)
                 all_queries.append(q)
 
-        # Step 3: Run queries through evidence gatherer (parallel web search).
+        # Step 3: Run queries through the evidence gatherer, routed by a
+        # CAPABILITY query (Principle Fidelity Plan §4.5) rather than a
+        # hard-coded provider name. "web_search" used to be passed to
+        # gather() literally, so under corpus-only evidence mode (no
+        # provider registered under that exact name) this could never
+        # succeed — Popper's search silently could not run. Instead: ask
+        # the gatherer which registered source, if any, answers an
+        # adversarial/refutation-style query. The question is about QUERY
+        # FORM, not network reach — a closed corpus that genuinely holds a
+        # refutation answers "capable" too, because the same retrieval
+        # mechanism that finds supporting evidence finds refuting evidence
+        # when the query is framed to look for one. Only when NOTHING
+        # registered on the gatherer answers capable does this decline —
+        # recorded below (surfaced in the returned message), never a
+        # silent empty result indistinguishable from "searched and found
+        # nothing". Gatherers that don't yet implement the capability
+        # query (e.g. older test doubles) are treated as capable via
+        # "web_search", matching this operation's behaviour before the
+        # capability check existed.
         # Bounded concurrency avoids overwhelming SearXNG / upstream providers
         # while still eliminating serial roundtrip latency.
-        search_hits: list[tuple[str, str]] = []  # (summary_text, source_ref)
+        search_hits: list[
+            tuple[str, str, str]
+        ] = []  # (summary, source_ref, source_type)
         gatherer = self.evidence_gatherer
+        adversarial_source_type = "web_search"
+        capability_decline_reason = ""
         if gatherer is not None and all_queries:
-            queries_to_run = all_queries
-            search_semaphore = asyncio.Semaphore(5)
+            if isinstance(gatherer, CapabilityQueryable):
+                capability = await gatherer.capable_of(ADVERSARIAL_CAPABILITY)
+                if capability.capable and capability.source_types:
+                    adversarial_source_type = capability.source_types[0]
+                else:
+                    capability_decline_reason = (
+                        capability.reason or "no registered source answered capable"
+                    )
+                    logger.info(
+                        "Adversarial search declined for claim %s: %s",
+                        claim.entity_id,
+                        capability_decline_reason,
+                    )
 
-            async def _gather_one(query: str) -> list[tuple[str, str]]:
-                async with search_semaphore:
-                    try:
-                        gathered = await gatherer.gather("web_search", query)
-                        return [(g.content, g.source_ref) for g in gathered]
-                    except Exception as e:
-                        logger.debug("Adversarial search query failed: %s", e)
-                        return []
+            if not capability_decline_reason:
+                queries_to_run = all_queries
+                search_semaphore = asyncio.Semaphore(5)
 
-            gathered_lists = await asyncio.gather(
-                *[_gather_one(q) for q in queries_to_run]
-            )
-            for hits in gathered_lists:
-                search_hits.extend(hits)
+                async def _gather_one(query: str) -> list[tuple[str, str, str]]:
+                    async with search_semaphore:
+                        try:
+                            gathered = await gatherer.gather(
+                                adversarial_source_type, query
+                            )
+                            return [
+                                (g.content, g.source_ref, g.source_type)
+                                for g in gathered
+                            ]
+                        except Exception as e:
+                            logger.debug("Adversarial search query failed: %s", e)
+                            return []
+
+                gathered_lists = await asyncio.gather(
+                    *[_gather_one(q) for q in queries_to_run]
+                )
+                for hits in gathered_lists:
+                    search_hits.extend(hits)
 
         # Step 3.5: Embedding rerank — decouple "which query found this
         # hit" from "which evidence the judge actually evaluates".
@@ -171,7 +224,7 @@ class AdversarialSearchOperation(BaseOperation):
 
             top_k = max(8, math.ceil(len(all_queries) * 2))
             if len(search_hits) > top_k:
-                hit_texts = [text for text, _ref in search_hits]
+                hit_texts = [text for text, _ref, _src in search_hits]
                 # One batch: claim + every candidate hit. Truncation
                 # is handled inside embed_texts (DEFAULT_MAX_EMBED_CHARS).
                 try:
@@ -218,14 +271,18 @@ class AdversarialSearchOperation(BaseOperation):
 
         proper_counterarguments: list[CounterargumentModel] = []
         _justifications: dict[int, str] = {}  # id(ca) → agent justification
+        # id(ca) → the source_type the gatherer actually reported for this
+        # hit (populated below) — replaces a prior hard-coded "web_search"
+        # so persisted Evidence reflects where it really came from.
+        _source_types: dict[int, str] = {}
         balance_score: float | None = None
 
         if self.agent_runner:
             eval_semaphore = asyncio.Semaphore(10)
 
             async def _evaluate_one(
-                summary: str, source_ref: str
-            ) -> tuple[CounterargumentModel, str]:
+                summary: str, source_ref: str, source_type: str
+            ) -> tuple[CounterargumentModel, str, str]:
                 """Evaluate a single search hit. Raises on agent failure —
                 the caller relies on asyncio.gather to propagate."""
                 async with eval_semaphore:
@@ -258,18 +315,19 @@ class AdversarialSearchOperation(BaseOperation):
                         category=category,
                         quality=quality,
                     )
-                    return proper_ca, justification
+                    return proper_ca, justification, source_type
 
             if search_hits:
                 eval_results = await asyncio.gather(
                     *[
-                        _evaluate_one(summary, source_ref)
-                        for summary, source_ref in search_hits
+                        _evaluate_one(summary, source_ref, source_type)
+                        for summary, source_ref, source_type in search_hits
                     ]
                 )
-                for proper_ca, justification in eval_results:
+                for proper_ca, justification, source_type in eval_results:
                     proper_counterarguments.append(proper_ca)
                     _justifications[id(proper_ca)] = justification
+                    _source_types[id(proper_ca)] = source_type
 
             # Step 5: Compute adversarial balance (deterministic)
             supporting_weight = await quality_weighted_evidence_sum(claim, self.repo)
@@ -350,11 +408,12 @@ class AdversarialSearchOperation(BaseOperation):
                 """Run the impartial judge on an adversarial-found item.
                 Raises on judge failure — caller relies on
                 asyncio.gather to propagate (no silent failures)."""
+                source_type = _source_types.get(id(ca), "unknown")
                 judgment = await _judge(
                     claim_statement=claim.statement,
                     claim_scope=claim.scope,
                     evidence_content=ca.summary,
-                    evidence_source=f"web_search: {ca.source_ref}",
+                    evidence_source=f"{source_type}: {ca.source_ref}",
                     runner=judge_runner,
                 )
                 combined_reasoning = (
@@ -372,7 +431,7 @@ class AdversarialSearchOperation(BaseOperation):
             for ca, verdict, combined_reasoning in judged:
                 adv_evidence = Evidence(
                     objective_id=claim.objective_id,
-                    source_type="web_search",
+                    source_type=_source_types.get(id(ca), "unknown"),
                     source_ref=ca.source_ref,
                     extracted_content=ca.summary,
                     extracted=True,
@@ -414,13 +473,31 @@ class AdversarialSearchOperation(BaseOperation):
                 "queries_generated": len(all_queries),
                 "has_evidence_gatherer": self.evidence_gatherer is not None,
                 "adversarial_balance": balance_score,
+                "capability_decline_reason": capability_decline_reason,
             },
         )
+
+        # The eligibility decline (if any) is recorded IN the returned
+        # message — the field the graph writes verbatim into
+        # operations.jsonl (graph/nodes.py:_commit_op) — so "no capable
+        # source" stays visible in the audit trail rather than reading
+        # identically to "searched every capable source and found
+        # nothing" (§4.5: never a silent, hard-coded false).
+        if capability_decline_reason:
+            message = (
+                f"Adversarial search declined: {capability_decline_reason} "
+                f"({len(all_queries)} queries generated, none run)"
+            )
+        else:
+            message = (
+                f"Adversarial search complete ({len(all_queries)} queries, "
+                f"balance={balance_score})"
+            )
 
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"Adversarial search complete ({len(all_queries)} queries, balance={balance_score})",
+            message=message,
         )
 
 

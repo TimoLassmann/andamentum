@@ -10,7 +10,7 @@ Architecture: Layer 1 (framework-agnostic)
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import json as _json
-from typing import Any, Mapping, Optional, Protocol, TYPE_CHECKING
+from typing import Any, Mapping, Optional, Protocol, TYPE_CHECKING, runtime_checkable
 
 from ..adapters import ADAPTERS
 
@@ -150,6 +150,57 @@ class EvidenceGatherer(Protocol):
 
         Returns:
             List of gathered evidence items
+        """
+        ...
+
+
+@dataclass
+class GathererCapability:
+    """Result of asking a gatherer whether it can serve a query style —
+    see ``CapabilityQueryable`` below.
+
+    Attributes:
+        capable: Whether at least one source registered on the gatherer
+            can serve a query framed for this capability.
+        source_types: The ``source_type`` value(s) to pass to
+            ``EvidenceGatherer.gather()`` for the capable source(s), in
+            preference order. Empty when ``capable`` is False.
+        reason: Populated when ``capable`` is False — why nothing
+            registered on the gatherer qualifies. Empty string when
+            ``capable`` is True.
+    """
+
+    capable: bool
+    source_types: list[str] = field(default_factory=list)
+    reason: str = ""
+
+
+@runtime_checkable
+class CapabilityQueryable(Protocol):
+    """Optional companion to ``EvidenceGatherer``: a gatherer that can
+    report which of its registered sources serve a given query style.
+
+    A capability question is about QUERY FORM, not network reach: "can a
+    registered source accept and honestly answer a query phrased this
+    way?" A closed corpus that holds a genuine refutation answers
+    "capable" for an adversarial/refutation-style query, because
+    full-text retrieval doesn't care how the query is framed — the same
+    mechanism that finds supporting evidence finds refuting evidence
+    when the query is written to look for one. Only a gatherer with
+    nothing registered at all is incapable.
+
+    Deliberately NOT folded into ``EvidenceGatherer`` itself, so
+    gatherers (and test doubles) that implement only ``gather()`` keep
+    working unchanged. Callers discover this via ``isinstance(gatherer,
+    CapabilityQueryable)`` and fall back to their prior default routing
+    when it's absent — the same optional-capability idiom
+    ``preflight.HealthCheckable`` uses for ``check_health()``.
+    """
+
+    async def capable_of(self, capability: str) -> GathererCapability:
+        """Report whether any registered source can serve a query of
+        this style, and which source_type(s) to call ``gather()`` with,
+        in preference order.
         """
         ...
 

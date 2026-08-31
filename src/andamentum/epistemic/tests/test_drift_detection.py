@@ -154,7 +154,14 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # than bare strings, so an issue raised about one item stays attached to
     # that item all the way to the ``evidence_corrupted`` destroy gate.
     "Scrutiny evidence loading loop": "3776be9239dded42",
-    "Counterargument evaluation (no fallback)": "7242b31b99fd2632",
+    # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
+    # _evaluate_one now takes/returns a source_type alongside each hit,
+    # threaded from the gatherer's own report rather than a hard-coded
+    # "web_search" written two frames down. Error handling (raise on
+    # agent failure, no fallback) is unchanged — confirmed by
+    # test_adversarial_check_propagates_counterarg_eval_failure still
+    # passing unmodified.
+    "Counterargument evaluation (no fallback)": "4acb469e94efa1f4",
     # 2026-08-09: the loop returns (title, answer) — the writer no longer
     # authors a verdict; the headline is rendered from the run's
     # EpistemicVerdict. Error handling inside the loop is unchanged.
@@ -162,7 +169,13 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     "Prediction generation per-aspect error handling": "fb5787ea93a0df4b",
     "Gate validate_promotion logic": "e87d8901f731e130",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
-    "CompositeGatherer provider error handling": "418013e2910f0263",
+    # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
+    # a new capable_of() method (the optional CapabilityQueryable
+    # companion protocol, operations/base.py) was added inside this
+    # class, ahead of gather(). gather()'s own error handling is
+    # unchanged — confirmed by TestCompositeGathererErrorPaths still
+    # passing unmodified.
+    "CompositeGatherer provider error handling": "91e7be044f32d85a",
     "Adapter registry (agent name → adapter function mapping)": "72c220a7b3f033b3",
 }
 

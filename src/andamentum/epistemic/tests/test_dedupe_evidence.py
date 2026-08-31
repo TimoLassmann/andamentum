@@ -216,16 +216,30 @@ class TestDedupeEvidenceBySourceRef:
         assert n_marked == 0
 
 
-class TestVouchingPropagatesAsCorroborationCount:
-    """Phase B: when N independent providers return the same item, the
-    surviving Evidence's ``corroboration_count`` reflects N. Downstream
-    consumers (compute_posterior, IBE chain) already weight evidence by
-    ``1 + log(corroboration_count)``, so populating it from provider
-    count makes Reichenbach common-cause vouching propagate
-    automatically.
+class TestDedupeDoesNotWriteCorroborationCount:
+    """Superseded 'Phase B' behaviour (principle-fidelity plan §4.4,
+    2026-08-31): this sweep used to bump ``corroboration_count`` from the
+    number of distinct providers that returned an identical (same
+    source_ref) item — e.g. three providers, three "independent" votes.
+
+    That was wrong on the merits, in the same way ``claims.py``'s old
+    HDBSCAN-cluster-size write was: the SAME document indexed by three
+    providers is not three genuinely independent sources — it is one
+    source found three times (and per FINDINGS.md §4.5, two of those
+    providers can even share one ``independence_group``, e.g. bioRxiv +
+    arXiv are both "preprint_archive"). It was also a SECOND writer of a
+    field that must have exactly one (enforced by
+    ``test_field_ownership.py``). ``corroboration_count`` is now computed
+    exclusively by ``operations.claims.select_top_k_evidence`` from
+    genuine independence_group / content-cluster diversity — a dedupe
+    sweep over literal duplicates never reaches it, so this sweep leaves
+    the field alone (at whatever value, if any, that clustering pass has
+    already given each surviving item).
     """
 
-    async def test_three_providers_same_doi_yields_count_three(self, repo):
+    async def test_three_providers_same_doi_leaves_corroboration_count_untouched(
+        self, repo
+    ):
         obj_id = await _make_objective(repo)
         e_pubmed = _make_evidence(obj_id, "pubmed", "10.1234/abc")
         e_openalex = _make_evidence(obj_id, "openalex", "https://doi.org/10.1234/abc")
@@ -237,16 +251,16 @@ class TestVouchingPropagatesAsCorroborationCount:
         await dedupe_evidence_by_source_ref(repo, obj_id)
 
         # Whichever item survived (longest content / oldest tie-break)
-        # should carry corroboration_count=3 and a non-empty
-        # corroborating_sources list.
+        # keeps corroboration_count at its untouched default — this sweep
+        # only invalidates losers, it does not vouch for the winner.
         all_ev = await repo.query("evidence", objective_id=obj_id)
         survivors = [e for e in all_ev if not e.invalidated]
         assert len(survivors) == 1
         winner = survivors[0]
-        assert winner.corroboration_count == 3
-        assert len(winner.corroborating_sources) >= 1
+        assert winner.corroboration_count == 1
+        assert winner.corroborating_sources == []
 
-    async def test_two_providers_yields_count_two(self, repo):
+    async def test_two_providers_leaves_corroboration_count_untouched(self, repo):
         obj_id = await _make_objective(repo)
         e1 = _make_evidence(obj_id, "pubmed", "10.5/y")
         e2 = _make_evidence(obj_id, "openalex", "10.5/y")
@@ -257,7 +271,7 @@ class TestVouchingPropagatesAsCorroborationCount:
 
         all_ev = await repo.query("evidence", objective_id=obj_id)
         winner = next(e for e in all_ev if not e.invalidated)
-        assert winner.corroboration_count == 2
+        assert winner.corroboration_count == 1
 
     async def test_single_provider_unchanged(self, repo):
         obj_id = await _make_objective(repo)
@@ -267,8 +281,24 @@ class TestVouchingPropagatesAsCorroborationCount:
         await dedupe_evidence_by_source_ref(repo, obj_id)
 
         loaded = await repo.get("evidence", e.entity_id)
-        # No duplicates seen → corroboration_count stays at the default
-        # (1). Phase B only INCREASES the count from provider vouching;
-        # it never decreases below an existing value (other paths like
-        # the HDBSCAN cluster sweep can also raise it).
+        # No duplicates seen, and this sweep never writes
+        # corroboration_count anyway → stays at the default (1).
         assert loaded.corroboration_count == 1
+
+    async def test_preexisting_corroboration_count_is_not_overwritten(self, repo):
+        """A prior clustering pass may have already set a genuine,
+        independence-based corroboration_count on an item. The dedupe
+        sweep must not clobber it — it doesn't touch the field at all,
+        in either direction."""
+        obj_id = await _make_objective(repo)
+        e1 = _make_evidence(obj_id, "pubmed", "10.7/w")
+        e1.corroboration_count = 4
+        e2 = _make_evidence(obj_id, "openalex", "10.7/w")
+        await repo.save(e1)
+        await repo.save(e2)
+
+        await dedupe_evidence_by_source_ref(repo, obj_id)
+
+        all_ev = await repo.query("evidence", objective_id=obj_id)
+        winner = next(e for e in all_ev if not e.invalidated)
+        assert winner.corroboration_count == 4

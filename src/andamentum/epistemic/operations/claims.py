@@ -26,6 +26,7 @@ from ..entities import (
 )
 
 if TYPE_CHECKING:
+    from ..dedup import EvidenceCluster
     from ..repository import EpistemicRepository
 
 
@@ -127,6 +128,70 @@ async def top_n_representatives(
     return [ev for ev, _ in scored[:n]]
 
 
+def _independence_group(ev: Evidence) -> str:
+    """The Reichenbach independence class of one evidence item's source.
+
+    This is the existing per-provider ``independence_group`` concept
+    (``providers/*.py`` class attributes — e.g. arXiv and bioRxiv are both
+    ``"preprint_archive"``, so two hits from them are one source, not two;
+    see ``providers/CONTRIBUTING.md`` and FINDINGS.md §4.5), looked up by
+    ``ev.source_type``. Falls back to the raw ``source_type`` when it does
+    not name a registered provider (e.g. an offline benchmark corpus
+    provider), so an unrecognised source is at minimum its own singleton
+    group rather than silently merging into a group it was never shown to
+    share.
+
+    Local import: every provider module does ``from ..operations import
+    GatheredEvidence``, so ``providers`` depends on ``operations`` at
+    import time — a module-level ``from ..providers import ...`` here
+    would be a circular import. Deferred to call time, matching this
+    file's existing pattern for optional/cross-cutting imports (see
+    ``embed_and_group`` and ``judge_evidence`` below).
+    """
+    from ..providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(ev.source_type)
+    group = getattr(provider_cls, "independence_group", None)
+    return group or ev.source_type or "unknown"
+
+
+def _direction_independence_groups(
+    extracted: list[Evidence],
+    clusters: list["EvidenceCluster"],
+    cluster_ids: list[str],
+) -> dict[str, set[tuple[str, str]]]:
+    """For each judged direction, the set of genuinely separate sources.
+
+    A "genuinely separate source" (membership unit) is a
+    ``(cluster_id, independence_group)`` pair: two evidence items count as
+    the SAME source only when they are both near-duplicates by content
+    (HDBSCAN put them in the same cluster) AND from the same provider
+    independence class. Either axis differing — a different content
+    cluster, or a different independence_group — makes them independent
+    in the Reichenbach sense, so each contributes its own membership unit.
+
+    Scoped by ``support_judgment`` (falling back to the literal string
+    ``"unjudged"``) because only evidence agreeing on the SAME direction
+    can corroborate one another — a contradicting cluster is not
+    corroboration. ``ProposeClaimsOperation`` calls this function BEFORE
+    any evidence has been judged (judging happens per-cluster, after claim
+    drafting), so at that call site every item shares the "unjudged"
+    bucket; this is not a regression, since the pre-fix code was equally
+    unable to scope by direction at that point in the pipeline.
+    """
+    groups: dict[str, set[tuple[str, str]]] = {}
+    for cluster, cluster_id in zip(clusters, cluster_ids):
+        by_direction: dict[str, set[str]] = {}
+        for idx in cluster.member_indices:
+            ev = extracted[idx]
+            direction = ev.support_judgment or "unjudged"
+            by_direction.setdefault(direction, set()).add(_independence_group(ev))
+        for direction, indep_groups in by_direction.items():
+            bucket = groups.setdefault(direction, set())
+            bucket.update((cluster_id, group) for group in indep_groups)
+    return groups
+
+
 async def select_top_k_evidence(
     repo: "EpistemicRepository",
     extracted: list[Evidence],
@@ -138,10 +203,22 @@ async def select_top_k_evidence(
     HDBSCAN groups evidence by semantic similarity. Inside each cluster we
     promote the medoid, up to 3 boundary members, and the best-quality
     member to ``cluster_status="representative"``; the rest become
-    ``cluster_status="corroborative"``. ``corroboration_count`` on every
-    representative records its cluster size, which the posterior reads to
-    weight each cluster proportionally to how much redundant support it
-    represents.
+    ``cluster_status="corroborative"``.
+
+    Two DIFFERENT signals get written onto every representative, and they
+    must not be confused (plan: docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md
+    §4.4):
+
+    - ``retrieval_cluster_size`` — the raw HDBSCAN cluster size: how many
+      near-duplicate items were collapsed into this representative. A
+      retrieval/redundancy count, nothing more.
+    - ``corroboration_count`` — the number of GENUINELY INDEPENDENT
+      sources (Reichenbach common-cause) agreeing with this
+      representative's direction: distinct ``(content cluster,
+      independence_group)`` pairs, via ``_direction_independence_groups``.
+      This is what the posterior and scrutiny weight amplify by
+      ``1 + log(n)`` — many near-duplicate documents from one source no
+      longer inflate it; genuinely separate sources do.
 
     No cap on the number of clusters: every cluster contributes
     representatives. Cost-bounded LLM panel operations (convergence
@@ -150,10 +227,14 @@ async def select_top_k_evidence(
     ``LLM_PANEL_CAP`` themselves, sorted by quality, so cost stays comparable
     to the previous top-K behaviour.
 
-    Called from two places:
+    Called from three places:
     - ProposeClaimsOperation: clusters initial evidence before claim proposal
+      (before any evidence-claim judgment exists — see
+      ``_direction_independence_groups``'s "unjudged" bucket)
     - ScrutiniseClaimOperation: clusters investigation-fetched evidence before
-      re-scrutiny
+      re-scrutiny (claim-scoped, judged)
+    - RunVerification (graph/nodes.py): re-clusters a SUPPORTED claim's
+      evidence before verification (claim-scoped, judged)
 
     Args:
         repo: Repository for saving updated evidence entities
@@ -213,8 +294,10 @@ async def select_top_k_evidence(
 
     # Step 3: Mark evidence entities. Every cluster contributes representatives;
     # there is no top-K filter here.
+    cluster_ids: list[str] = []
     for cluster in clusters:
         cluster_id = _uuid.uuid4().hex[:12]
+        cluster_ids.append(cluster_id)
         rep_set = set(cluster.representative_indices)
 
         for idx in cluster.member_indices:
@@ -223,7 +306,9 @@ async def select_top_k_evidence(
 
             if idx in rep_set:
                 ev.cluster_status = "representative"
-                ev.corroboration_count = cluster.count
+                # Retrieval-time redundancy (near-duplicate volume) — NOT
+                # corroboration. See the field's docstring.
+                ev.retrieval_cluster_size = cluster.count
                 ev.corroborating_sources = [
                     extracted[j].source_ref
                     for j in cluster.member_indices
@@ -232,7 +317,21 @@ async def select_top_k_evidence(
             else:
                 ev.cluster_status = "corroborative"
 
-            await repo.save(ev)
+    # Step 4: Reichenbach corroboration — independence, not redundancy
+    # (plan §4.4). corroboration_count is this module's sole write of the
+    # field; a field-ownership guard enforces that (see
+    # tests/test_field_ownership.py).
+    direction_groups = _direction_independence_groups(extracted, clusters, cluster_ids)
+    for cluster in clusters:
+        for idx in cluster.representative_indices:
+            ev = extracted[idx]
+            direction = ev.support_judgment or "unjudged"
+            ev.corroboration_count = len(direction_groups[direction])
+
+    # Persist every touched item once, now that all its fields are final.
+    touched_indices = {idx for cluster in clusters for idx in cluster.member_indices}
+    for idx in touched_indices:
+        await repo.save(extracted[idx])
 
     representatives = [e for e in extracted if e.cluster_status == "representative"]
     total_clusters = len(clusters)

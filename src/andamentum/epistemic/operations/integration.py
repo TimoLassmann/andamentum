@@ -90,11 +90,19 @@ async def _build_evidence_brief(op: BaseOperation, claim: Claim) -> dict[str, ob
     no_bearing_count. Same shape the old monolithic prompt consumed.
 
     Filters to representative evidence, caps at LLM_PANEL_CAP top-quality
-    reps, and annotates each with ``cluster_size`` so the agent can read
-    cluster size as a corroboration signal in its reasoning. (The
-    aggregation, comparison, and difference-method-style reasoning all
-    happen inside the agent prompt, not in this code; we provide the
-    structured input.)
+    reps, and annotates each with ``cluster_size`` — how many near-duplicate
+    items retrieval collapsed into this representative (Evidence.
+    retrieval_cluster_size), NOT the independence-based
+    ``corroboration_count`` — so the agent can read cluster size as a
+    REDUNDANCY signal and discount it per SCORE_LIKELINESS_PROMPT's
+    explicit Mill's-method-of-difference guidance ("independent findings
+    across diverse conditions weigh more than many sources echoing one
+    finding"). Independent corroboration already reaches the posterior
+    numerically via ``1 + log(corroboration_count)`` (confidence.py,
+    scrutiny_weight.py); this annotation is the OTHER signal, so the two
+    must not be conflated. (The aggregation, comparison, and
+    difference-method-style reasoning all happen inside the agent prompt,
+    not in this code; we provide the structured input.)
     """
     from .claims import LLM_PANEL_CAP, top_n_representatives
 
@@ -118,7 +126,7 @@ async def _build_evidence_brief(op: BaseOperation, claim: Claim) -> dict[str, ob
     )
     for ev in selected:
         content = ev.extracted_content or ""
-        cluster_size = max(1, getattr(ev, "corroboration_count", 1) or 1)
+        cluster_size = max(1, getattr(ev, "retrieval_cluster_size", 1) or 1)
         summary = f"[{ev.source_type}, cluster_size={cluster_size}] {content}"
         if ev.support_judgment == "supports":
             supports_items.append(summary)

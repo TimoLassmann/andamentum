@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .preflight import CheckResult
     from andamentum.deep_research.models import PageSummary
 
-from .operations import GatheredEvidence, EvidenceGatherer
+from .operations import GatheredEvidence, EvidenceGatherer, GathererCapability
 from .operations.base import ProviderRegistry
 
 logger = logging.getLogger(__name__)
@@ -144,6 +144,13 @@ class WebSearchGatherer:
             message=f"SearXNG not reachable at {_SEARXNG_URL}",
             elapsed_ms=elapsed,
         )
+
+    async def capable_of(self, capability: str) -> GathererCapability:
+        """A live web search accepts a query framed any way — always
+        capable, regardless of which capability string is asked about.
+        """
+        del capability
+        return GathererCapability(capable=True, source_types=["web_search"])
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
         """Gather evidence via deep_research web search."""
@@ -334,6 +341,31 @@ class CompositeGatherer:
     ):
         self._web_search = web_search
         self._providers: dict[str, Any] = dict(providers) if providers else {}
+
+    async def capable_of(self, capability: str) -> GathererCapability:
+        """Every registered provider and the web-search fallback accept
+        a natural-language query (providers/CONTRIBUTING.md: "the
+        epistemic system passes natural language intent") — capability
+        is about QUERY FORM, not network reach, so any registered
+        source qualifies, including a closed corpus that happens to
+        hold what a refutation-seeking query looks for. Web search
+        stays first when reachable (via ``self._web_search`` or a
+        "web_search"-keyed provider), preserving this gatherer's
+        long-standing default route; other registered providers follow
+        in registration order. Only a gatherer with nothing registered
+        at all is incapable.
+        """
+        del capability
+        source_types: list[str] = []
+        if "web_search" in self._providers or self._web_search is not None:
+            source_types.append("web_search")
+        source_types.extend(k for k in self._providers if k != "web_search")
+        if not source_types:
+            return GathererCapability(
+                capable=False,
+                reason="no evidence sources registered on this gatherer",
+            )
+        return GathererCapability(capable=True, source_types=source_types)
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
         """Gather evidence.

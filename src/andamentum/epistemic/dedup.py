@@ -31,7 +31,12 @@ class EvidenceCluster:
         medoid_index: Index of the most central document (what the cluster is about)
         representative_indices: Medoid, plus best-quality member if different (added by operations layer)
         member_indices: All document indices in this cluster
-        count: Total documents in cluster (= corroboration count)
+        count: Total documents in cluster — a RETRIEVAL/redundancy count
+            (near-duplicates by embedding similarity), not an independence
+            count. ``operations.claims.select_top_k_evidence`` writes this
+            onto ``Evidence.retrieval_cluster_size``, never onto
+            ``corroboration_count`` (which measures genuinely independent
+            corroboration — see that field's docstring).
     """
 
     medoid_index: int

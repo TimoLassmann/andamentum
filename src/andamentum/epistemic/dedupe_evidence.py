@@ -20,8 +20,13 @@ participate in dedupe).
 
 When duplicates are found, the *winner* is the item with the most
 ``extracted_content`` (longest), breaking ties by oldest ``created_at``.
-The winner accumulates ``also_found_by_source_types`` listing the other
+Each loser's ``invalidation_reason`` names the winner and lists the other
 providers that returned the same item, for transparency.
+
+This module does NOT compute ``corroboration_count`` — that field's sole
+writer is ``operations.claims.select_top_k_evidence`` (Reichenbach
+independence, not source_ref-identity or provider-count; plan:
+docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §4.4).
 """
 
 from __future__ import annotations
@@ -141,22 +146,20 @@ async def dedupe_evidence_by_source_ref(
             await repo.save(loser)
             n_marked += 1
 
-        # Phase B (provider redundancy / Reichenbach common-cause at the
-        # retrieval layer). Populate ``corroboration_count`` on the
-        # winner from the *number of distinct providers* that returned
-        # the same item. Downstream consumers (compute_posterior, IBE
-        # chain integration) already weight evidence by
-        # ``1 + log(corroboration_count)`` — populating it here from
-        # provider count means independent vouching propagates
-        # automatically through the posterior and the abductive chain.
-        all_provider_set = {e.source_type for e in group if e.source_type}
-        new_count = max(winner.corroboration_count, len(all_provider_set))
-        if new_count > winner.corroboration_count:
-            winner.corroboration_count = new_count
-            winner.corroborating_sources = sorted(
-                {e.source_ref for e in group if e.source_ref}
-            )
-            await repo.save(winner)
+        # NOTE: this sweep does NOT touch corroboration_count. It used to
+        # (Phase B — bumping the count from the number of distinct
+        # source_types that returned the identical item), but that was a
+        # second writer of a field that must have exactly one (plan:
+        # docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §4.4; enforced by
+        # tests/test_field_ownership.py). It was also wrong on the merits
+        # in the same way claims.py's old cluster-size write was: the
+        # SAME document indexed by two providers (e.g. bioRxiv and arXiv
+        # both carrying one preprint) is not two independent sources —
+        # it is one source found twice, and per FINDINGS.md §4.5 those
+        # two providers even share one `independence_group`
+        # ("preprint_archive"). corroboration_count is now computed
+        # exclusively by operations.claims.select_top_k_evidence from
+        # genuine independence_group / content-cluster diversity.
 
         logger.info(
             "[dedupe_evidence] key=%s kept=%s (%s) marked %d duplicate(s) from %s",

@@ -409,12 +409,17 @@ class TestEvidenceClusterFields:
         ev = EvidenceEntity(objective_id="obj-1")
         assert ev.corroboration_count == 1
 
+    def test_retrieval_cluster_size_defaults_1(self):
+        ev = EvidenceEntity(objective_id="obj-1")
+        assert ev.retrieval_cluster_size == 1
+
     def test_cluster_fields_roundtrip(self):
         ev = EvidenceEntity(
             objective_id="obj-1",
             cluster_status="representative",
             cluster_id="cluster-abc",
             corroboration_count=5,
+            retrieval_cluster_size=12,
             corroborating_sources=["url1", "url2"],
         )
         content, metadata = ev.to_document()
@@ -422,4 +427,5 @@ class TestEvidenceClusterFields:
         assert restored.cluster_status == "representative"
         assert restored.cluster_id == "cluster-abc"
         assert restored.corroboration_count == 5
+        assert restored.retrieval_cluster_size == 12
         assert restored.corroborating_sources == ["url1", "url2"]
