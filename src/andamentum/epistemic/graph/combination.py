@@ -141,6 +141,13 @@ def _claim_posterior(claim: Claim, suspended: bool = False) -> float | None:
     but it carries directional signal worth surfacing rather than
     discarding. See
     docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md.
+
+    For contracted claims (``contraction_count > 0``, certify-before-
+    contract D5), apply ``CONTRACTION_CONFIDENCE_PENALTY`` the same way
+    — the verdict is preserved, not discarded, but weighs less because
+    the stage it was certified at was later revised downward. The two
+    penalties stack multiplicatively when a claim is both capped and
+    contracted.
     """
     if claim.integrated_assessment is None:
         return None
@@ -151,6 +158,10 @@ def _claim_posterior(claim: Claim, suspended: bool = False) -> float | None:
         from ..thresholds import CYCLE_CAP_CONFIDENCE_PENALTY
 
         confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
+    if getattr(claim, "contraction_count", 0) > 0:
+        from ..thresholds import CONTRACTION_CONFIDENCE_PENALTY
+
+        confidence *= CONTRACTION_CONFIDENCE_PENALTY
     if claim.integrated_assessment == "supports":
         return 0.5 + confidence / 2
     if claim.integrated_assessment == "contradicts":

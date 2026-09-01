@@ -778,9 +778,15 @@ async def validate_promotion(
     #
     # Gated on claim.adversarial_checked, not just claim.adversarial_balance
     # is not None: record_demotion() resets adversarial_checked to False on
-    # a TMS demotion but leaves the last-computed adversarial_balance in
-    # place (it is a measurement, not a flag — there is nothing else to
-    # reset it to before a fresh adversarial pass runs). Without this
+    # a scrutiny-driven demotion (DemoteClaimOperation) but leaves the
+    # last-computed adversarial_balance in place (it is a measurement, not
+    # a flag — there is nothing else to reset it to before a fresh
+    # adversarial pass runs). The other downward-stage path — an AGM
+    # contraction via Claim.contract(), certify-before-contract D1 — does
+    # NOT touch adversarial_checked at all; re-promotion after a
+    # contraction is refused instead by promotion_blocked_by_contraction
+    # (D3) unless reset_for_reinquiry() has run, so this comment's stale-
+    # reading trap is about the scrutiny-demotion path only. Without this
     # guard, the FIRST promotion attempt out of HYPOTHESIS re-checks that
     # stale, pre-demotion balance against this same threshold before
     # RunVerification ever gets a chance to re-run the adversarial track —

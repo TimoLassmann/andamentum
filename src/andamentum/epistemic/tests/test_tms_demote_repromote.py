@@ -8,19 +8,22 @@ depended on it). Layer-1 dedup invalidations (duplicate URLs) trigger
 this constantly. Fix: pre-filter no-op cascades and just flip
 ``invalidation_cascaded=True`` directly.
 
-Issue 2 — Demote-can't-repromote trap: ``RevalidateClaimOperation``
-demotes a claim from SUPPORTED to HYPOTHESIS via ``record_demotion``,
-which CLEARS ``scrutiny_verdict`` to None. After the TMS sweep,
-the graph proceeded to IBE / PromoteSupported, which both reject
-HYPOTHESIS claims with ``verdict=None``. The graph never looped back
-to Scrutinize, so the demoted claim sat at HYPOTHESIS forever.
+Issue 2 — Demote-can't-repromote trap (HISTORICAL, superseded): the
+original fix had ``_run_tms_sweep`` revalidate every promoted claim
+after a cascade and, on a failed gate, demote it via ``record_demotion``
+(which clears ``scrutiny_verdict``), adding the demoted claim to
+``state.claims_needing_rescrutiny`` so ``ResolveUncertainties`` would
+route back to Scrutinize before another promotion attempt.
 
-Fix:
-  (a) ``_run_tms_sweep`` step 2 adds demoted claims to
-      ``state.claims_needing_rescrutiny``.
-  (b) ``RunVerification`` A2 short-circuit checks the rescrutiny set
-      first; if non-empty, falls through to ResolveUncertainties (which
-      already routes to Scrutinize when the rescrutiny set is non-empty).
+Certify-before-contract (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md
+D1) removed that revalidate/demote step from ``_run_tms_sweep`` entirely
+— it now does ONLY Step 1 (cascade invalidated evidence). The
+revalidate-then-contract check moved to ``PromoteSupported``, runs once,
+AFTER IBE has already produced a verdict, and REVISES the claim's stage
+via ``Claim.contract`` rather than restarting the inquiry via
+``record_demotion`` — so the verdict IBE already certified survives.
+``TestDemoteAddsToRescrutiny`` below now pins the negative: this
+function no longer touches claim stage or the rescrutiny set at all.
 """
 
 from __future__ import annotations
@@ -192,25 +195,32 @@ class TestNoOpCascadeFastPath:
         assert len(invalidate_ops) == 1
 
 
-# ── Issue 2: demote → rescrutiny → repromote ─────────────────────────
+# ── Issue 2 (historical, superseded): TMS no longer revalidates ──────
 
 
 class TestDemoteAddsToRescrutiny:
-    async def test_demote_adds_claim_to_rescrutiny_set(self, tmp_path: Path) -> None:
-        """When TMS demotes a claim, it must also be added to
-        ``state.claims_needing_rescrutiny`` so ResolveUncertainties
-        routes back to Scrutinize before another promotion attempt."""
+    async def test_sweep_does_not_touch_claim_stage_or_rescrutiny(
+        self, tmp_path: Path
+    ) -> None:
+        """``_run_tms_sweep`` must not revalidate or contract a claim any
+        more — certify-before-contract (D1) moved that check to
+        ``PromoteSupported``, run once, after IBE. Same fixture as the
+        pre-D1 "gets demoted" case (SUPPORTED, no evidence, a cascade to
+        trigger the old Step 2): the claim's stage, ``scrutiny_verdict``,
+        ``claims_needing_rescrutiny``, and ``verification_done`` must all
+        be exactly as they were before the sweep ran.
+        """
         repo = await _setup_repo(tmp_path, "tms_demote_rescrutiny")
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id
         await repo.save(obj)
 
-        # Set up a SUPPORTED claim with NO evidence (gate will fail
-        # on revalidation because the SUPPORTED gate requires
-        # min_evidence_weighted >= 1.0).
+        # SUPPORTED claim with NO evidence — would fail the SUPPORTED gate
+        # if anything revalidated it (the old Step 2 would have demoted
+        # it here).
         claim = Claim(
             objective_id=obj.entity_id,
-            statement="will be demoted",
+            statement="stays as-is",
             scope="s",
             stage=ClaimStage.SUPPORTED,
             scrutiny_verdict="pass",
@@ -219,8 +229,8 @@ class TestDemoteAddsToRescrutiny:
         )
         await repo.save(claim)
 
-        # Trigger TMS sweep with at least one invalidated evidence so
-        # `had_cascades` flips True and revalidation runs.
+        # A cascade-triggering invalidated evidence — used to flip
+        # `had_cascades` and run the (now-removed) revalidation step.
         ev = Evidence(
             objective_id=obj.entity_id,
             source_type="web",
@@ -232,25 +242,31 @@ class TestDemoteAddsToRescrutiny:
         await repo.save(ev)
 
         state = EpistemicGraphState(objective_id=obj.entity_id)
-        # Claim was previously verification-done; TMS should also discard it.
         state.verification_done.add(claim.entity_id)
         deps = EpistemicDeps(repo=repo, agent_runner=None)
         await _run_tms_sweep(deps, state)
 
-        # The fix: TMS demote adds the claim to claims_needing_rescrutiny.
-        assert claim.entity_id in state.claims_needing_rescrutiny
-        # Sanity: also discarded from verification_done.
-        assert claim.entity_id not in state.verification_done
-        # Claim should now be HYPOTHESIS with cleared verdict.
+        assert claim.entity_id not in state.claims_needing_rescrutiny, (
+            "_run_tms_sweep added the claim to claims_needing_rescrutiny — "
+            "it no longer revalidates claims at all, so there is nothing "
+            "to flag."
+        )
+        assert claim.entity_id in state.verification_done, (
+            "_run_tms_sweep discarded the claim from verification_done — "
+            "with no revalidation happening, there is no contraction to "
+            "react to."
+        )
         reloaded = await repo.get("claim", claim.entity_id)
-        assert reloaded.stage == ClaimStage.HYPOTHESIS
-        assert reloaded.scrutiny_verdict is None
+        assert reloaded.stage == ClaimStage.SUPPORTED
+        assert reloaded.scrutiny_verdict == "pass"
+        assert reloaded.contraction_count == 0
 
     async def test_no_demote_does_not_touch_rescrutiny_set(
         self, tmp_path: Path
     ) -> None:
-        """If revalidation finds the gate still passes (no demote), the
-        rescrutiny set stays unchanged."""
+        """A cascade with an unaffected, gate-passing claim leaves the
+        rescrutiny set untouched — true both before and after D1, since
+        there was never a demotion to react to here."""
         repo = await _setup_repo(tmp_path, "tms_no_demote")
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id

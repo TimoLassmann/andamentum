@@ -367,20 +367,27 @@ async def _run_op(
 
 
 async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> None:
-    """Run TMS (Truth Maintenance System) sweep: cascade evidence invalidation
-    and revalidate claims whose evidence foundation changed.
+    """Run TMS (Truth Maintenance System) sweep: cascade evidence invalidation.
 
     This is a reactive correctness check, not a graph node. It runs after
     operations that can invalidate evidence (adversarial search, investigation,
     evidence extraction).
 
+    Certify-before-contract (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md
+    D1): this sweep used to also revalidate — and, on a failed gate,
+    contract — every promoted claim (former Steps 2 and 3) immediately
+    after any cascade, racing that contraction against IBE for the same
+    claim in the same pass. That revalidate/contract check now runs
+    exactly once, in ``PromoteSupported``, after ``SelectBestExplanation``
+    has already produced a verdict — so a claim is certified before it is
+    ever contracted. This sweep is left with only cascade: mark evidence
+    invalidated by an upstream operation as such on every claim that
+    references it.
+
     No LLM calls — purely structural graph maintenance.
     """
     from ..entities import Evidence, Claim
-    from ..operations.belief_maintenance import (
-        InvalidateEvidenceOperation,
-        RevalidateClaimOperation,
-    )
+    from ..operations.belief_maintenance import InvalidateEvidenceOperation
 
     # Step 1: Cascade invalidated evidence → affected claims
     #
@@ -394,7 +401,6 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
     # full op + execution_step trace per item. This was a 7×-amplification
     # in a 3-evidence run.
     all_evidence = await deps.repo.query("evidence", objective_id=state.objective_id)
-    had_cascades = False
     pending: list[Evidence] = []
     for ev in all_evidence:
         if isinstance(ev, Evidence) and ev.invalidated and not ev.invalidation_cascaded:
@@ -417,7 +423,6 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
         if no_claim_ref and no_derived:
             ev.invalidation_cascaded = True
             await deps.repo.save(ev)
-            had_cascades = True
             continue
         await _run_op(
             InvalidateEvidenceOperation,
@@ -427,96 +432,6 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
             "evidence",
             "invalidate_evidence",
         )
-        had_cascades = True
-
-    # Step 2: Revalidate all non-abandoned claims above HYPOTHESIS after cascade.
-    # RevalidateClaimOperation checks the gate and only demotes if it fails,
-    # so running it on unaffected claims is a safe no-op.
-    if had_cascades:
-        from ..entities.claim import ClaimStage
-
-        all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
-        for claim in all_claims:
-            if (
-                isinstance(claim, Claim)
-                and not claim.abandoned
-                and claim.stage != ClaimStage.HYPOTHESIS
-            ):
-                result = await _run_op(
-                    RevalidateClaimOperation,
-                    deps,
-                    state,
-                    claim.entity_id,
-                    "claim",
-                    "revalidate_claim",
-                )
-                # If TMS demoted the claim:
-                # - Remove from verification_done so PromoteToSupported
-                #   re-routes it through verification.
-                # - ALSO add to claims_needing_rescrutiny so the demoted
-                #   claim is re-scrutinised before the next promotion
-                #   attempt. ``record_demotion`` clears
-                #   ``scrutiny_verdict`` to None; without rescrutiny,
-                #   PromoteClaimOperation rejects the claim with
-                #   "Scrutiny not passed (verdict: None)" and the claim
-                #   stays stuck at HYPOTHESIS forever (the
-                #   demote-can't-repromote trap). ResolveUncertainties
-                #   reads claims_needing_rescrutiny and routes back to
-                #   Scrutinize when non-empty, restoring the verdict.
-                #
-                # COUPLING NOTE (defense-in-depth): the TMS-induced
-                # demote→re-promote→adversarial→demote loop is bounded
-                # only INDIRECTLY by ``SCRUTINY_RESOLVE_CYCLE_CAP``. Each
-                # demote routes the claim back through Scrutinize via
-                # the rescrutiny set, where ``state.scrutiny_resolve_cycles``
-                # increments. After CAP rounds the claim is cycle_capped
-                # → terminal. If a future refactor ever bypasses
-                # Scrutinize on the demote→re-promote path (e.g. a
-                # "fast revalidation" optimization that goes straight
-                # back to verification), this loop loses its bound.
-                # Either keep all TMS-demote paths going through
-                # Scrutinize, or add a per-claim ``tms_demotion_counts``
-                # state field with its own cap.
-                if result.success and "demoted" in (result.message or "").lower():
-                    state.verification_done.discard(claim.entity_id)
-                    state.claims_needing_rescrutiny.add(claim.entity_id)
-
-    # Step 3: Process claims flagged for TMS by graph nodes.
-    #
-    # Stage 2b (docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §5, "2b — the
-    # reachability fix"): this loop already existed and was already
-    # unconditional (unlike Step 2, which only runs when Step 1 found
-    # evidence to cascade) — it just had no producer that could ever fire
-    # for a promoted claim. RunVerification now populates
-    # claims_needing_tms when a claim's adversarial track actually
-    # dispatches (see the "adversarial" branch there); this is the first
-    # real consumer this step has ever had.
-    #
-    # A successful demotion here needs the SAME consequence-handling
-    # Step 2 already has (verification_done discarded,
-    # claims_needing_rescrutiny added) — Step 2 got this right when it
-    # was written; Step 3 never did, because nothing ever exercised it.
-    # Without it, a claim demoted through THIS step would be stranded:
-    # RevalidateClaimOperation's demotion clears scrutiny_verdict via
-    # record_demotion, but nothing would route the claim back through
-    # Scrutinize to re-establish it, and PromoteClaimOperation rejects a
-    # None-verdict claim forever — the same demote-can't-repromote trap
-    # Step 2's bookkeeping exists to avoid (see the COUPLING NOTE above).
-    for cid in list(state.claims_needing_tms):
-        claim = await deps.repo.get("claim", cid)
-        if isinstance(claim, Claim) and not claim.abandoned:
-            result = await _run_op(
-                RevalidateClaimOperation,
-                deps,
-                state,
-                cid,
-                "claim",
-                "revalidate_claim",
-            )
-            if result.success and "demoted" in (result.message or "").lower():
-                state.verification_done.discard(cid)
-                state.claims_needing_rescrutiny.add(cid)
-    state.claims_needing_tms.clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1691,20 +1606,26 @@ class RunVerification(Node):
 
     Phase 4 of the Move-3 plan. Operations metadata covers the direct
     ``_run_op`` dispatches in the body; the TMS sweep helper
-    (``_run_tms_sweep``) dispatches InvalidateEvidence / RevalidateClaim
-    operations indirectly — those are side effects via a helper function
-    and would require inter-procedural AST analysis to validate. For
-    now the validator only sees direct dispatches.
+    (``_run_tms_sweep``) dispatches InvalidateEvidence operations
+    indirectly — those are side effects via a helper function and would
+    require inter-procedural AST analysis to validate. For now the
+    validator only sees direct dispatches.
 
-    ``writes`` includes ``claims_needing_tms``: Stage 2b's reachability
-    fix (docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §5) has this node add
-    a claim to it directly when the adversarial track dispatches, so
-    ``_run_tms_sweep``'s Step 3 revalidates it — see the "adversarial"
-    branch in the body.
+    Certify-before-contract (docs/epistemic/
+    CERTIFY_BEFORE_CONTRACT_PLAN.md D1): this node no longer flags claims
+    into ``claims_needing_tms`` after the adversarial track, and
+    ``_run_tms_sweep`` no longer revalidates or contracts claims — that
+    check moved to ``PromoteSupported``, which runs it once, after IBE
+    has already produced a verdict, instead of racing IBE for the same
+    claim mid-verification. The ``claims_needing_rescrutiny`` guard below
+    is unreachable from this path now (nothing here populates that set);
+    it stays because two other nodes still populate it independently:
+    ``Investigate`` (new evidence) and ``CheckSynthesisDemand`` (synthesis
+    demand loop-back).
     """
 
     reads = frozenset({"objective_id", "question_type", "claims_needing_rescrutiny"})
-    writes = frozenset({"claims_needing_tms"})
+    writes = frozenset()
     operations = frozenset()  # populated below
     post_invariants = ()
 
@@ -1847,61 +1768,6 @@ class RunVerification(Node):
                     op_name,
                 )
 
-                if track_name == "adversarial":
-                    # Stage 2b reachability fix (docs/epistemic/
-                    # PRINCIPLE_FIDELITY_PLAN.md §5, "2b — the
-                    # reachability fix"). §2's defect: Investigate (which
-                    # grows a claim's evidence) only ever runs on
-                    # HYPOTHESIS claims, so the ONE thing that grows a
-                    # PROMOTED claim's evidence — this adversarial track,
-                    # right here — was never wired to the TMS sweep that
-                    # would let RevalidateClaimOperation see the change.
-                    #
-                    # AdversarialSearchOperation is the only verification
-                    # track that writes fields validate_current_stage
-                    # (gates.py) reads on a SUPPORTED claim:
-                    # claim.adversarial_balance directly, and
-                    # support_judgment on any counter-evidence it appends
-                    # to claim.evidence_ids — and it does both WITHOUT
-                    # ever setting evidence.invalidated=True. The sweep's
-                    # Step 2 (revalidate every promoted claim) only runs
-                    # when Step 1 found invalidated evidence to cascade,
-                    # so a claim whose adversarial_balance just crossed
-                    # ADVERSARIAL_REFUTED_THRESHOLD was invisible to it —
-                    # the two other verification tracks that create new
-                    # judged evidence (none do) don't exist, and nothing
-                    # else in this pass invalidates anything.
-                    #
-                    # Step 3 below ("claims flagged for TMS by graph
-                    # nodes") already existed for exactly this purpose
-                    # and is unconditional — it just had no real
-                    # producer. This is that producer. (Investigate's own
-                    # attempt at populating claims_needing_tms, a few
-                    # hundred lines up, can never fire for a promoted
-                    # claim: reaching that loop body requires
-                    # scrutiny_verdict in ("needs_resolution", "fail"),
-                    # and Scrutinize routes ANY such claim with
-                    # stage != HYPOTHESIS to AbandonOrDemote instead of
-                    # Investigate — so a claim Investigate actually
-                    # touches is structurally always still HYPOTHESIS.
-                    # Not touched here: restructuring Scrutinize's
-                    # all-or-nothing routing to make that path reachable
-                    # too is a materially bigger, riskier change than
-                    # this stage's own scope, and is not needed — this
-                    # producer is the one that is actually reachable on
-                    # a promoted claim.)
-                    #
-                    # Whether this claim's gate actually now fails is
-                    # RevalidateClaimOperation's decision (via
-                    # validate_current_stage), not this node's — flagging
-                    # unconditionally on dispatch, rather than
-                    # re-deriving the gate's threshold logic here, keeps
-                    # that decision in the one place it's already made
-                    # (P1) and costs nothing extra: RevalidateClaimOperation
-                    # is a deterministic, no-LLM DB check that is a safe
-                    # no-op on a claim nothing actually changed.
-                    state.claims_needing_tms.add(claim.entity_id)
-
         # TMS sweep: adversarial search may have created contradicting
         # evidence that invalidates existing evidence or triggers claim
         # revalidation.
@@ -1943,13 +1809,12 @@ class RunVerification(Node):
             and not c.cycle_capped
             and c.stage == ClaimStage.SUPPORTED
         ]
-        # If TMS just demoted any claims and added them to the rescrutiny
-        # set, don't fast-path to IBE — those claims need their scrutiny
-        # verdict re-established first. Falling through to
-        # ResolveUncertainties routes us back to Scrutinize via the
-        # rescrutiny set, restoring the verdict. Without this guard, the
-        # demote-can't-repromote trap kicks in (record_demotion cleared
-        # scrutiny_verdict; PromoteClaim rejects None-verdict claims).
+        # Certify-before-contract (D1): nothing in this path populates
+        # claims_needing_rescrutiny any more — the set is populated by
+        # Investigate (new evidence) and by CheckSynthesisDemand (synthesis
+        # demand loop-back). This guard stays so a claim either of those
+        # flagged for rescrutiny isn't fast-pathed to IBE before Scrutinize
+        # re-establishes its scrutiny verdict.
         if state.claims_needing_rescrutiny:
             return ResolveUncertainties()
         if active_supported:
@@ -1996,14 +1861,18 @@ class ResolveUncertainties(Node):
     higher priority than promote and ran first whenever blocking
     uncertainties existed.
 
-    Phase 3 of the Move-3 plan. This node is one of the routing hubs
-    where the IBE-skip path may live (per the Phase 2 benchmark
-    investigation): when adversarial evidence challenges a claim,
-    revalidation may demote it back to HYPOTHESIS, and the resulting
-    re-cycle through Scrutinize → AbandonOrDemote can leave claims
-    cycle-capped and terminate via CheckCompletion before the IBE
-    chain ever runs. Making the contracts explicit here is the first
-    step toward catching that.
+    Phase 3 of the Move-3 plan. This node is one of the routing hubs the
+    IBE-skip investigation (Phase 2 benchmark) made explicit: a claim
+    flagged via ``claims_needing_rescrutiny`` — by ``Investigate`` (new
+    evidence, stale scrutiny verdict) or by ``CheckSynthesisDemand``
+    (synthesis demand loop-back) — must route back through Scrutinize
+    before the subsequent EnumerateCandidates / PromoteToSupported
+    filters see it, or it is stranded pre-IBE. Certify-before-contract
+    (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1) moved the OTHER
+    historical source of this stranding — TMS revalidation demoting a
+    verified claim back to HYPOTHESIS before IBE ever ran on it — out of
+    this path entirely: that revalidation now runs once, in
+    ``PromoteSupported``, after IBE has already produced a verdict.
 
     post_invariants is empty: this node is mid-flight; the cycle-cap
     invariant lives at terminal nodes.
@@ -2048,15 +1917,14 @@ class ResolveUncertainties(Node):
         if not blocking:
             # Rescrutiny check FIRST — must run before the early return
             # to EnumerateCandidates / PromoteToSupported. Without this
-            # ordering, claims that TMS demoted (e.g. soft-promoted
-            # claim → adversarial counter-evidence → revalidate demote
-            # → claims_needing_rescrutiny.add()) are stranded: the
-            # subsequent EnumerateCandidates / PromoteToSupported
-            # filters require ``stage == SUPPORTED``, which the demoted
-            # claim no longer satisfies. The claim never re-enters the
-            # inquiry cycle, never gets re-promoted, and the IBE chain
-            # never runs on it. This is the IBE-skip bug surfaced in
-            # the Phase 2 benchmark of the Move-3 graph contracts work.
+            # ordering, a claim Investigate flagged for rescrutiny (new
+            # evidence extracted, scrutiny_verdict stale) is stranded:
+            # the subsequent EnumerateCandidates / PromoteToSupported
+            # filters require ``stage == SUPPORTED`` with a fresh
+            # scrutiny verdict, which the claim no longer satisfies
+            # until Scrutinize re-establishes it. This is the IBE-skip
+            # bug surfaced in the Phase 2 benchmark of the Move-3 graph
+            # contracts work.
             if state.claims_needing_rescrutiny:
                 return Scrutinize()
             if self.next_on_clear == "promote":
@@ -2428,6 +2296,15 @@ class PromoteSupported(Node):
     Phase 4 of the Move-3 plan. Marks each processed claim as
     verification_done so PromoteToSupported's idempotency check
     short-circuits on re-entry.
+
+    Certify-before-contract (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md
+    D1): the contraction check that used to live in the TMS sweep
+    (``_run_tms_sweep``, racing IBE for the same claim mid-verification)
+    runs here instead, once, AFTER ``SelectBestExplanation`` has already
+    produced this run's IBE verdict — so a claim whose evidence
+    contradicts its stage is revised, not restarted, and never loses the
+    verdict IBE already certified for it (S1, S8). A contracted claim
+    does not climb the ladder this pass; its verdict stands as-is.
     """
 
     reads = frozenset({"objective_id"})
@@ -2443,6 +2320,7 @@ class PromoteSupported(Node):
             GeneratePredictionOperation,
             RecordDecisionOperation,
         )
+        from ..operations.belief_maintenance import RevalidateClaimOperation
         from ..entities.claim import ClaimStage
         from ..gates import get_next_stage
 
@@ -2451,8 +2329,36 @@ class PromoteSupported(Node):
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
 
+        # Certification-before-contraction: revalidate every eligible
+        # claim's current stage gate BEFORE attempting to climb the
+        # ladder. A claim whose gate now fails is contracted (verdict
+        # preserved) and excluded from this pass's ladder climb — see
+        # the class docstring.
+        contracted_ids: set[str] = set()
+        for claim in all_claims:
+            if claim.abandoned or claim.cycle_capped:
+                continue
+            if claim.stage == ClaimStage.HYPOTHESIS:
+                continue
+
+            result = await _run_op(
+                RevalidateClaimOperation,
+                deps,
+                state,
+                claim.entity_id,
+                "claim",
+                "revalidate_claim",
+            )
+            if result.success and (result.message or "").startswith(
+                "AGM contracted from"
+            ):
+                contracted_ids.add(claim.entity_id)
+                state.verification_done.add(claim.entity_id)
+
         for claim in all_claims:
             if claim.abandoned:
+                continue
+            if claim.entity_id in contracted_ids:
                 continue
 
             # Try each promotion step once (S->P, P->R, R->A). The bound
@@ -3564,6 +3470,7 @@ epistemic_graph: Graph[EpistemicGraphState, EpistemicDeps, Node, EpistemicResult
 
 from ..operations.cleanup import AbandonStaleClaimOperation  # noqa: E402
 from ..operations.belief_maintenance import (  # noqa: E402
+    RevalidateClaimOperation,
     SetRoutingDefaultsOperation,
 )
 from ..operations.concerns import (  # noqa: E402
@@ -3679,6 +3586,7 @@ SelectBestExplanation.operations = frozenset({SelectBestExplanationOperation})
 
 PromoteSupported.operations = frozenset(
     {
+        RevalidateClaimOperation,
         PromoteClaimOperation,
         GeneratePredictionOperation,
         RecordDecisionOperation,

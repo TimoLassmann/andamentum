@@ -53,6 +53,7 @@ from .repository import EpistemicRepository
 # constants module). Re-exported here so existing callers that imported
 # them from ``confidence`` keep working.
 from .thresholds import (
+    CONTRACTION_CONFIDENCE_PENALTY,
     CYCLE_CAP_CONFIDENCE_PENALTY,
     JUDGMENT_DOUBT_ESCALATION_THRESHOLD,
     RETRIEVAL_FAILED_CONFIDENCE_PENALTY,
@@ -371,6 +372,9 @@ async def compute_posterior(
     # docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md.
     capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
     n_capped_partial = len(capped)
+    n_contracted_partial = sum(
+        1 for c in active_claims if getattr(c, "contraction_count", 0) > 0
+    )
 
     # No-certified-verdict gate (mirrors CheckCompletion's
     # no_certified_verdict exit, commit 761a5d9).
@@ -595,6 +599,13 @@ async def compute_posterior(
             # reflect the non-converged inquiry that produced it.
             if getattr(c, "cycle_capped", False):
                 confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
+            # Contraction penalty (certify-before-contract, D5): a
+            # contracted claim's IBE verdict is preserved rather than
+            # discarded, but the stage it was certified at has since
+            # been revised downward — weigh it less. Stacks with the
+            # cycle-cap penalty when a claim is both.
+            if getattr(c, "contraction_count", 0) > 0:
+                confidence *= CONTRACTION_CONFIDENCE_PENALTY
             confidence_sum += confidence
 
             if verdict == "supports":
@@ -746,6 +757,13 @@ async def compute_posterior(
             f"cycle cap; their signal is included with confidence penalty "
             f"{CYCLE_CAP_CONFIDENCE_PENALTY} ({applied_at}; verdict acquired "
             "under non-converged inquiry — provisional but directional)."
+        )
+    if n_contracted_partial:
+        parts.append(
+            f"NOTE: {n_contracted_partial} claim(s) were AGM-contracted "
+            "(evidence-driven stage revision) after their verdict was "
+            "certified; the verdict is preserved with confidence penalty "
+            f"{CONTRACTION_CONFIDENCE_PENALTY} rather than being discarded."
         )
     if mode == "abductive":
         parts.append(
@@ -936,6 +954,9 @@ async def build_verdict(
         n_active_claims=len(active),
         n_abandoned=sum(1 for c in claims if c.abandoned),
         n_cycle_capped=sum(1 for c in active if getattr(c, "cycle_capped", False)),
+        n_contracted=sum(
+            1 for c in active if getattr(c, "contraction_count", 0) > 0
+        ),
         n_adjudicated=n_adjudicated,
         n_no_verdict=n_no_verdict,
         n_orphan=n_orphan,

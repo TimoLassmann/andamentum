@@ -457,6 +457,16 @@ class VerdictProvenance(BaseModel):
     n_active_claims: int = 0
     n_abandoned: int = 0
     n_cycle_capped: int = 0
+    n_contracted: int = Field(
+        default=0,
+        description=(
+            "Active claims AGM-contracted at least once "
+            "(``claim.contraction_count > 0``) — certify-before-contract D5 "
+            "(docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md). A contracted "
+            "claim's ``integrated_assessment`` (when it has one) carries "
+            "CONTRACTION_CONFIDENCE_PENALTY on its confidence."
+        ),
+    )
     n_adjudicated: int = Field(
         default=0,
         description=(
@@ -620,6 +630,8 @@ def _verdict_detail_parts(verdict: EpistemicVerdict) -> list[str]:
     parts.append(f"{prov.n_adjudicated} of {prov.n_active_claims} {noun} adjudicated")
     if prov.n_cycle_capped:
         parts.append(f"{prov.n_cycle_capped} cycle-capped")
+    if prov.n_contracted:
+        parts.append(f"{prov.n_contracted} contracted")
     if prov.retrieval_failed:
         # A CAVEAT, not a verdict. ``display_label`` deliberately no
         # longer suppresses the direction for a non-completed terminal

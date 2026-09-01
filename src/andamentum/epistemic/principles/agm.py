@@ -2,23 +2,27 @@
 
 Thin by design: this module does not relocate the operations it dispatches.
 Both stay exactly where they already live — two dispatch sites for one
-belief-contraction mechanism (both call ``Claim.record_demotion``, per
-``entities/claim.py``'s own docstring: "Both DemoteClaimOperation and
-RevalidateClaimOperation call this to ensure consistent behavior regardless
-of demotion cause"):
+belief-contraction FAMILY that has, since certify-before-contract (docs/
+epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1), split into two DISTINCT
+mechanisms:
 
 * ``RevalidateClaimOperation`` (``operations/belief_maintenance.py``) — plan
   §2's own words, "the only AGM-shaped gate in the system": dispatched from
-  the TMS sweep (``graph/nodes.py:_run_tms_sweep``) when invalidated
-  evidence cascades onto an already-promoted claim. This is the operation
-  the fidelity canary counts as the ``agm`` signature firing
+  ``graph/nodes.py:PromoteSupported``, once, AFTER
+  ``SelectBestExplanation`` has already produced this run's IBE verdict, for
+  every non-abandoned, non-cycle-capped claim past HYPOTHESIS. On a failed
+  gate it calls ``Claim.contract`` — a REVISION that preserves the verdict
+  IBE already certified, not a restart. This is the operation the fidelity
+  canary counts as the ``agm`` signature firing
   (``docs/epistemic/FIDELITY_LEDGER.md``), and the one this module's
   ``ACTIVATION_NAME`` names.
 * ``DemoteClaimOperation`` (``operations/stage_management.py``) —
   dispatched from ``graph/nodes.py:AbandonOrDemote`` when a promoted
   claim's most recent scrutiny comes back failing and nothing protects it
   (i.e. Peirce's cap has not already claimed the claim — see
-  ``principles/adjudicate.py``).
+  ``principles/adjudicate.py``). Unlike ``RevalidateClaimOperation``, this
+  path still calls ``Claim.record_demotion`` — a genuine "scrutiny failed on
+  a promoted claim, start over" restart, not a revision.
 
 Both are re-exported here so "what does AGM own" has one answer, per §4.1 —
 neither import is moved; ``AbandonOrDemote`` keeps dispatching
@@ -47,15 +51,15 @@ from .eligibility import EligibilityVerdict
 
 #: The exact operation-log name this principle's firing shows up as in
 #: ``operations.jsonl``'s ``operation`` field — ``RevalidateClaimOperation``'s
-#: dispatch string at its ``_run_tms_sweep`` call site (``graph/nodes.py``),
+#: dispatch string at its ``PromoteSupported`` call site (``graph/nodes.py``),
 #: which is what the firing-rate canary counts as ``agm``
 #: (``FIDELITY_LEDGER.md``: "a `revalidate_claim` operations row whose
-#: message contains 'TMS demoted from'"). ``DemoteClaimOperation``'s own
+#: message contains 'AGM contracted from'"). ``DemoteClaimOperation``'s own
 #: dispatch string, ``"demote_claim"``, is explicitly EXCLUDED from that
 #: canary signature ("NOT the scrutiny-driven `demote_claim`") — the two
-#: operations are both AGM-shaped contraction, but only the TMS-sweep
-#: instance is the one plan §2 identifies as starved by construction, so it
-#: is the one this constant names.
+#: operations are both AGM-shaped contraction, but only the certify-before-
+#: contract instance is the one plan §2 identifies as starved by
+#: construction, so it is the one this constant names.
 ACTIVATION_NAME: str = "revalidate_claim"
 
 #: Scrutiny verdicts that indicate a claim's current stage is no longer

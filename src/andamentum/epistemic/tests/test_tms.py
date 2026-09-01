@@ -218,9 +218,10 @@ class TestRevalidateClaimOperation:
 
     @pytest.mark.asyncio
     async def test_claim_fails_gate_demoted(self, repo):
-        """Claim without enough evidence gets demoted."""
+        """Claim without enough evidence gets contracted (AGM revision,
+        not a modification-counted demotion)."""
         # SUPPORTED needs min_evidence=1 and min_quality_sum=0.3
-        # Claim has no evidence — should be demoted to HYPOTHESIS
+        # Claim has no evidence — should be contracted to HYPOTHESIS
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.SUPPORTED,
@@ -236,11 +237,14 @@ class TestRevalidateClaimOperation:
         result = await op.execute(work)
 
         assert result.success
-        assert "demoted" in result.message.lower()
+        assert "AGM contracted from" in result.message
 
         updated = await repo.get("claim", "cl-1")
         assert updated.stage == ClaimStage.HYPOTHESIS
-        assert updated.modification_count == 1
+        # contract() does NOT call record_modification (S9: in-process
+        # AGM contractions must not trip the Lakatos burst brake).
+        assert updated.modification_count == 0
+        assert updated.contraction_count == 1
 
     @pytest.mark.asyncio
     async def test_demotion_cascades_to_derived_evidence(self, repo):
@@ -299,7 +303,7 @@ class TestRevalidateClaimOperation:
 
     @pytest.mark.asyncio
     async def test_demotion_records_promotion_history(self, repo):
-        """TMS demotion is recorded in promotion_history."""
+        """AGM contraction is recorded in promotion_history."""
         claim = _make_claim(
             evidence_ids=[],
             stage=ClaimStage.SUPPORTED,
@@ -319,7 +323,7 @@ class TestRevalidateClaimOperation:
         entry = updated.promotion_history[0]
         assert entry.from_stage == ClaimStage.SUPPORTED
         assert entry.to_stage == ClaimStage.HYPOTHESIS
-        assert "TMS demotion" in entry.justification
+        assert "AGM contraction" in entry.justification
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -534,7 +538,7 @@ class TestInvestigationStubDependency:
         result = await op.execute(work)
 
         assert result.success
-        assert "demoted" in result.message.lower() or "HYPOTHESIS" in result.message
+        assert "AGM contracted from" in result.message
 
         # Derived evidence should now be invalidated
         ev_updated = await repo.get("evidence", "ev-derived")

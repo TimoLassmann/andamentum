@@ -1147,9 +1147,7 @@ class ReportGenerator:
             if strong_counter > 0:
                 parts.append(
                     f"{strong_counter} were found to have strong counter-evidence "
-                    f"(adversarial balance < {ADVERSARIAL_REFUTED_THRESHOLD}) "
-                    f"and were automatically demoted "
-                    f"by the Truth Maintenance System."
+                    f"(adversarial balance < {ADVERSARIAL_REFUTED_THRESHOLD})."
                 )
             if survived > 0:
                 parts.append(
@@ -1157,7 +1155,15 @@ class ReportGenerator:
                     f"(balance >= {ADVERSARIAL_SURVIVED_THRESHOLD})."
                 )
 
-        # TMS demotions (from promotion_history)
+        # Downward stage movements (from promotion_history) — split into
+        # scrutiny-driven demotions (DemoteClaimOperation, via
+        # record_demotion — a genuine "start over" that clears the
+        # claim's verdict/checked flags) and AGM contractions
+        # (RevalidateClaimOperation, via Claim.contract — certify-
+        # before-contract, docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md
+        # D1: a revision that runs AFTER IBE has certified a verdict and
+        # preserves it). Neither is "the Truth Maintenance System" any
+        # more — _run_tms_sweep only cascades evidence invalidation now.
         _STAGE_ORDER = {
             "hypothesis": 0,
             "supported": 1,
@@ -1166,19 +1172,45 @@ class ReportGenerator:
             "actionable": 4,
         }
         demotion_count = 0
+        contraction_count = 0
         for claim in all_claims:
             for entry in claim.promotion_history:
-                # A demotion is when the target stage is lower.
+                # A downward movement is when the target stage is lower.
                 # ClaimStage is a str-enum so its values double as the
                 # _STAGE_ORDER keys.
                 if _STAGE_ORDER.get(entry.to_stage.value, 0) < _STAGE_ORDER.get(
                     entry.from_stage.value, 0
                 ):
-                    demotion_count += 1
+                    if entry.justification.startswith("AGM contraction:"):
+                        contraction_count += 1
+                    else:
+                        demotion_count += 1
         if demotion_count > 0:
             parts.append(
                 f"\n{demotion_count} claim demotion{'s' if demotion_count != 1 else ''} "
-                f"were triggered by the Truth Maintenance System after evidence changes."
+                f"were triggered by scrutiny after evidence changes."
+            )
+        if contraction_count > 0:
+            # This is a promotion_history event count (a claim contracted
+            # twice counts twice), matched against
+            # VerdictProvenance.n_contracted's claim count (each
+            # contracted claim counts once) via claim.contraction_count —
+            # the same entity field ``build_verdict`` sums over, so the
+            # two numbers describe the same claims even though they
+            # aggregate differently. This static method builds the
+            # narrative from entity state alone (no verdict object
+            # threaded through), matching the rest of this narrative.
+            n_contracted_claims = sum(
+                1
+                for c in all_claims
+                if not c.abandoned and getattr(c, "contraction_count", 0) > 0
+            )
+            parts.append(
+                f"\n{n_contracted_claims} claim"
+                f"{'s' if n_contracted_claims != 1 else ''} "
+                f"{'were' if n_contracted_claims != 1 else 'was'} AGM-contracted "
+                f"to a lower stage after certification — the verdict IBE had "
+                f"already written for each was preserved, not erased."
             )
 
         # Peirce inquiry cycling

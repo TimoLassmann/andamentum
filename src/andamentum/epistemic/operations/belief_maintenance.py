@@ -93,12 +93,14 @@ class InvalidateEvidenceOperation(BaseOperation):
 class RevalidateClaimOperation(BaseOperation):
     """Re-validate a claim's current stage gate after evidence changes.
 
-    Called by the graph's TMS sweep when a claim's evidence foundation
-    has changed. This operation:
+    Called by ``PromoteSupported`` (before its ladder loop) for every
+    non-abandoned, non-cycle-capped claim past HYPOTHESIS. This operation:
     1. Checks if the claim still meets its current stage gate
     2. If yes: no action needed
-    3. If no: demotes one stage, resets verification flags (Peirce cycling),
-       and invalidates any evidence derived from this claim (cascade)
+    3. If no: contracts one stage via ``Claim.contract`` — a REVISION that
+       preserves any verdict this run already certified (certify-before-
+       contract, docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1) — and
+       invalidates any evidence derived from this claim (cascade)
 
     No LLM calls — purely structural graph maintenance.
     """
@@ -106,7 +108,11 @@ class RevalidateClaimOperation(BaseOperation):
     entity_type = "claim"
 
     async def execute(self, work: OperationInput) -> OperationResult:
-        from ..gates import validate_current_stage, get_previous_stage
+        from ..gates import (
+            validate_current_stage,
+            get_previous_stage,
+            claim_evidence_fingerprint,
+        )
 
         claim = await self.repo.get("claim", work.entity_id)
 
@@ -126,22 +132,23 @@ class RevalidateClaimOperation(BaseOperation):
                 message="Claim still meets current stage gate",
             )
 
-        # Gate failed — demote one stage
+        # Gate failed — contract one stage
         old_stage = claim.stage
         target_stage = get_previous_stage(claim.stage)
 
         if not target_stage:
-            # At HYPOTHESIS — can't demote further
+            # At HYPOTHESIS — can't contract further
             return OperationResult(
                 success=True,
                 entity_id=claim.entity_id,
                 message="At HYPOTHESIS, cannot demote further",
             )
 
-        # Demote via shared helper (same flags as DemoteClaimOperation)
-        claim.record_demotion(
+        fingerprint = await claim_evidence_fingerprint(claim, self.repo)
+        claim.contract(
             target_stage,
-            justification=f"TMS demotion: {gate_result.reason or 'stage gate failed after evidence invalidation'}",
+            justification=f"AGM contraction: {gate_result.reason or 'stage gate failed after evidence invalidation'}",
+            fingerprint=fingerprint,
         )
 
         await self.repo.save(claim)
@@ -157,13 +164,13 @@ class RevalidateClaimOperation(BaseOperation):
                 continue
             if ev.depends_on_claim_id == claim.entity_id and not ev.invalidated:
                 ev.invalidated = True
-                ev.invalidation_reason = f"Dependent claim {claim.entity_id} demoted from {old_stage.value} to {target_stage.value}"
+                ev.invalidation_reason = f"Dependent claim {claim.entity_id} contracted from {old_stage.value} to {target_stage.value}"
                 ev.invalidation_cascaded = False
                 await self.repo.save(ev)
                 cascaded_evidence_ids.append(ev.entity_id)
 
         await self.log_event(
-            "claim_tms_demoted",
+            "claim_agm_contracted",
             claim.entity_id,
             {
                 "from": old_stage.value,
@@ -176,7 +183,11 @@ class RevalidateClaimOperation(BaseOperation):
         return OperationResult(
             success=True,
             entity_id=claim.entity_id,
-            message=f"TMS demoted from {old_stage.value} to {target_stage.value}, cascaded to {len(cascaded_evidence_ids)} derived evidence",
+            message=(
+                f"AGM contracted from {old_stage.value} to {target_stage.value}, "
+                f"verdict preserved ({gate_result.reason}), cascaded to "
+                f"{len(cascaded_evidence_ids)} derived evidence"
+            ),
         )
 
 

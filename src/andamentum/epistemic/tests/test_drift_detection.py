@@ -184,7 +184,16 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # contracted once cannot re-promote on an unchanged evidence fingerprint.
     # Every other check in this function is unchanged — confirmed by
     # TestValidatePromotionFailure's three tests still passing unmodified.
-    "Gate validate_promotion logic": "51ffbef8653422e1",
+    # Updated 2026-09-02 (Certify Before Contract Plan D1, phase-review fix):
+    # the adversarial-balance comment now attributes the stale-reading trap
+    # to record_demotion() / scrutiny-driven demotion (DemoteClaimOperation)
+    # specifically, not to "a TMS demotion" — Claim.contract() (the AGM
+    # contraction path) does not touch adversarial_checked, and re-promotion
+    # after a contraction is refused by promotion_blocked_by_contraction
+    # instead. Comment-only change; every check in this function is
+    # unchanged — confirmed by TestValidatePromotionFailure's three tests
+    # still passing unmodified.
+    "Gate validate_promotion logic": "7b3222b58b908640",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
     # a new capable_of() method (the optional CapabilityQueryable

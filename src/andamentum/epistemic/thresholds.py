@@ -195,6 +195,21 @@ CYCLE_CAP_CONFIDENCE_PENALTY (the two stack multiplicatively when
 both apply: a doubly-provisional verdict gets 0.7 × 0.7 = 0.49 on
 distance from 0.5)."""
 
+CONTRACTION_CONFIDENCE_PENALTY: float = 0.7
+"""Multiplier applied to a claim's ``integrated_confidence`` when it has
+been AGM-contracted at least once (``claim.contraction_count > 0``).
+
+Same value as ``CYCLE_CAP_CONFIDENCE_PENALTY``, untuned, pre-registered
+(docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D5) — for the same
+reason those two penalties already share a value: a contracted claim's
+IBE verdict is real signal (certify-before-contract preserves it rather
+than discarding it), but the stage it was certified at has since been
+revised downward by evidence the inquiry found afterward, so the
+verdict should weigh less than one from a claim never contracted. If a
+claim is BOTH cycle-capped and contracted, the two penalties multiply
+(0.7 × 0.7 = 0.49 on distance from neutral), applied at the same
+per-claim site as ``CYCLE_CAP_CONFIDENCE_PENALTY``."""
+
 # A verdict may also be derived *mechanically* — directly from the
 # directional balance of the evidence, without the IBE chain's holistic
 # deliberation (loveliness / likeliness / contrastive selection). Such a
@@ -529,6 +544,7 @@ __all__ = [
     "IBE_AGREEMENT_K_DEFAULT",
     "CYCLE_CAP_CONFIDENCE_PENALTY",
     "RETRIEVAL_FAILED_CONFIDENCE_PENALTY",
+    "CONTRACTION_CONFIDENCE_PENALTY",
     "MECHANICAL_VERDICT_MAX_CONFIDENCE",
     "POSTERIOR_DIRECTIONAL_BREAKPOINT",
     "POSTERIOR_DECISIVE_THRESHOLD",
