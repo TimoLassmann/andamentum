@@ -134,9 +134,34 @@ class PubMedProvider:
     independence_group = "biomedical_literature"
     provider_contract_version = 1
 
-    def __init__(self, max_results: int = 10):
+    def __init__(self, max_results: int = 10, *, ncbi_api_key: str | None = None):
+        """
+        Parameters
+        ----------
+        max_results:
+            Cap on records fetched per query.
+        ncbi_api_key:
+            NCBI E-utilities key. Raises the rate limit from 3 to 10
+            requests/second. Optional — without one the provider works, just
+            slower.
+
+            Precedence is the repo's usual one for a credential (compare
+            ``core.models.resolve_model_from_args``): an explicit argument
+            wins, and ``NCBI_API_KEY`` in the environment is the fallback,
+            which is what the ``.env`` workflow fills. Kept as an environment
+            fallback ON PURPOSE — a key passed on a command line lands in
+            shell history and in ``ps`` output, so this is one of the few
+            settings that should NOT become a CLI flag.
+        """
         self.max_results = max_results
-        self.api_key = os.getenv("NCBI_API_KEY")
+        self.api_key = ncbi_api_key or os.getenv("NCBI_API_KEY")
+        # Which rate limit a run got is part of what happened in that run.
+        # Log the fact, never the value.
+        logger.debug(
+            "PubMedProvider: NCBI api key %s (rate limit ~%s req/s)",
+            "in use" if self.api_key else "absent",
+            10 if self.api_key else 3,
+        )
 
     async def check_health(self) -> "CheckResult":
         """Test PubMed E-utilities reachability."""
