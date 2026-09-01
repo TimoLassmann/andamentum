@@ -48,7 +48,18 @@ dependencies = [
     "scipy>=1.10.0,<2",              # document-store
     "rank-bm25>=0.2.2,<1",           # document-store, epistemic[search]
     "httpx>=0.28.1,<1",              # deep-research, document-store
-    "docling>=2.54.0,<3",            # harvest (PDF / DOCX / PPTX / HTML fallback)
+    # harvest (PDF / DOCX / PPTX / HTML fallback). The floor is 2.121.0 and it
+    # is load-bearing, not just "the version we tested": the `vlm` extra below
+    # pulls mlx-vlm, and mlx-vlm 0.6.16+ requires transformers>=5.14 while
+    # docling 2.97+ requires transformers<5.9. Without a docling floor the
+    # resolver settles that clash by silently DOWNGRADING docling to 2.96.1.
+    # This floor makes the incompatible mlx-vlm versions unsatisfiable instead,
+    # so the resolver picks mlx-vlm 0.6.4 and docling stays current.
+    "docling>=2.121.0,<3",
+    # docling's own PDF backend. harvest.pdf_probe uses it directly to ask
+    # whether a PDF has a text layer without importing docling (and torch).
+    # Declared because we import it, not merely inherit it.
+    "pypdfium2>=5.10,<6",            # harvest text-layer probe
     # torch/torchvision are docling's (transitive) ML backend. Declared here
     # only so the CPU-index pin in [tool.uv.sources] binds — uv applies sources
     # to declared deps, not transitive ones. Ranges stay open; docling narrows.
@@ -107,6 +118,28 @@ html-articles = [
 # deps are heavy. Install `andamentum[pdf]` to enable it.
 pdf = [
     "weasyprint>=60,<67",
+]
+# `andamentum.harvest` mode="accurate": docling's VLM pipeline. One model
+# (granite-docling-258M) replaces the layout + OCR + TableFormer stack and
+# emits DocTags, and SmolVLM-256M writes a description for every figure.
+# Kept optional because the model weights run to several hundred MB and
+# mode="fast" needs none of it; harvest raises a clear ImportError naming
+# this extra when mode="accurate" is asked for without it.
+#
+# mlx-vlm is Apple-silicon only, and there it is load-bearing rather than a
+# nicety: docling's own benchmark puts SmolDocling at 6.2 s/page under MLX
+# against 102 s/page under Transformers on an M3 Max. Elsewhere docling's
+# AUTO_INLINE engine selects Transformers, which the `transformers` pin
+# below covers. Pinned to the minor (pre-1.0 API).
+vlm = [
+    "docling[vlm]>=2.54.0,<3",
+    "transformers>=4.45,<6",
+    # Lower bound deliberately LOW. mlx-vlm 0.6.16+ requires transformers>=5.14,
+    # which docling 2.97+ forbids (it needs <5.9), so a high floor here forces
+    # docling down to 2.96.1. Leaving room for 0.6.4 lets the resolver satisfy
+    # both and keep docling current. Raise this only together with a check that
+    # docling still resolves to its own floor above.
+    "mlx-vlm>=0.6.4,<0.7; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 dev = [
     "pytest>=8.0.0,<9",
@@ -204,7 +237,8 @@ markers = [
     "benchmark: long-running accuracy or performance benchmark",
     "cloud: test calls a real cloud LLM (costs tokens, needs API key)",
     "live_provider: test calls a live evidence provider API (PubMed, OpenAlex, etc.) — needs internet, no auth typically required",
+    "vlm: harvest test that imports docling (~1 GB of torch) and/or runs a local vision-language model for mode='accurate'. Deselected so the default suite stays runnable while other models hold the machine's memory",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker
 # overrides this.
-addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider'"
+addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider and not vlm'"
