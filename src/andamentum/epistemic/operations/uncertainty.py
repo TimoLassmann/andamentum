@@ -85,6 +85,14 @@ class ResolveUncertaintyOperation(BaseOperation):
                 if sim >= DEDUP_SIMILARITY_THRESHOLD:
                     similar_siblings.append(sibling)
 
+        # Whether this call produced a change that should re-trigger
+        # downstream rescrutiny (ResolveUncertainties reads this via
+        # OperationResult.did_work). True is the default — it covers the
+        # genuine-resolution path below and the no-agent-runner
+        # passthrough; the unresolvable branch below overrides it to
+        # False.
+        did_work = True
+
         if self.agent_runner:
             # Gather context: affected claims and their evidence
             affected_claims_text: list[str] = []
@@ -172,6 +180,19 @@ class ResolveUncertaintyOperation(BaseOperation):
                 # because model_post_init recomputes it from uncertainty_type on reload.
                 uncertainty.resolve("Unresolvable: acknowledged limitation")
 
+                # A declined resolution is a terminal assessment for this
+                # pass, not new information the affected claim needs
+                # re-scrutinised over — the model looked at the
+                # uncertainty and concluded nothing more can be said.
+                # Reporting did_work=True here (the old behaviour) told
+                # ResolveUncertainties "something changed, re-scrutinise",
+                # which regenerates a structurally identical unresolvable
+                # concern and loops Scrutinize -> ResolveUncertainties
+                # until the cycle cap fires — the claim never reaches
+                # PromoteToSupported. did_work=False lets the claim
+                # proceed once no OTHER blocking uncertainty remains.
+                did_work = False
+
                 # Also mark similar siblings as unresolvable
                 for sibling in similar_siblings:
                     if sibling.resolution is None:
@@ -184,4 +205,5 @@ class ResolveUncertaintyOperation(BaseOperation):
             success=True,
             entity_id=uncertainty.entity_id,
             message=f"Resolution: {uncertainty.resolution or 'assessed as unresolvable'}",
+            did_work=did_work,
         )

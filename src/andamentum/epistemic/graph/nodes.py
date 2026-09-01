@@ -481,11 +481,31 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                     state.verification_done.discard(claim.entity_id)
                     state.claims_needing_rescrutiny.add(claim.entity_id)
 
-    # Step 3: Process claims flagged for TMS by graph nodes
+    # Step 3: Process claims flagged for TMS by graph nodes.
+    #
+    # Stage 2b (docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §5, "2b — the
+    # reachability fix"): this loop already existed and was already
+    # unconditional (unlike Step 2, which only runs when Step 1 found
+    # evidence to cascade) — it just had no producer that could ever fire
+    # for a promoted claim. RunVerification now populates
+    # claims_needing_tms when a claim's adversarial track actually
+    # dispatches (see the "adversarial" branch there); this is the first
+    # real consumer this step has ever had.
+    #
+    # A successful demotion here needs the SAME consequence-handling
+    # Step 2 already has (verification_done discarded,
+    # claims_needing_rescrutiny added) — Step 2 got this right when it
+    # was written; Step 3 never did, because nothing ever exercised it.
+    # Without it, a claim demoted through THIS step would be stranded:
+    # RevalidateClaimOperation's demotion clears scrutiny_verdict via
+    # record_demotion, but nothing would route the claim back through
+    # Scrutinize to re-establish it, and PromoteClaimOperation rejects a
+    # None-verdict claim forever — the same demote-can't-repromote trap
+    # Step 2's bookkeeping exists to avoid (see the COUPLING NOTE above).
     for cid in list(state.claims_needing_tms):
         claim = await deps.repo.get("claim", cid)
         if isinstance(claim, Claim) and not claim.abandoned:
-            await _run_op(
+            result = await _run_op(
                 RevalidateClaimOperation,
                 deps,
                 state,
@@ -493,6 +513,9 @@ async def _run_tms_sweep(deps: EpistemicDeps, state: EpistemicGraphState) -> Non
                 "claim",
                 "revalidate_claim",
             )
+            if result.success and "demoted" in (result.message or "").lower():
+                state.verification_done.discard(cid)
+                state.claims_needing_rescrutiny.add(cid)
     state.claims_needing_tms.clear()
 
 
@@ -1256,6 +1279,7 @@ class AbandonOrDemote(Node):
             PromoteAsRefutedOperation,
             SoftPromoteOperation,
         )
+        from ..principles.adjudicate import adjudicate
         from ..entities.claim import ClaimStage
 
         state = ctx.state
@@ -1339,49 +1363,75 @@ class AbandonOrDemote(Node):
                     )
                     state.terminal_claims.add(claim.entity_id)
                 elif claim.stage != ClaimStage.HYPOTHESIS:
-                    if claim.cycle_capped:
-                        # NEVER demote a cycle-capped claim. Two independent
-                        # reasons, either alone sufficient:
-                        #
-                        # 1. Demotion IS Peirce cycling — record_demotion
-                        #    resets scrutiny_verdict and every track flag so
-                        #    the claim re-enters the loop. That is precisely
-                        #    what the cap exists to stop.
-                        # 2. record_demotion also nulls
-                        #    integrated_assessment / _confidence /
-                        #    _reasoning. For a capped claim those hold the
-                        #    terminal verdict ConcludeAtCycleCapOperation
-                        #    derived from the evidence, so demotion restores
-                        #    the false "insufficient" that verdict exists to
-                        #    remove — and leaves cap_evaluation behind, so
-                        #    the record and the verdict then disagree.
-                        #
-                        # The reachable sequence is: cap fires at HYPOTHESIS
-                        # → this node refute- or soft-promotes the claim to
-                        # SUPPORTED (neither path filters cycle_capped) →
-                        # the next Scrutinize visit sees a SUPPORTED claim
-                        # with scrutiny_verdict="fail" and routes back here.
-                        # Skipping is safe: the claim is left terminal,
-                        # PromoteToSupported already filters capped claims,
-                        # and nothing re-scrutinises it, so there is no loop.
+                    # Named adjudication (plan §4.2,
+                    # docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md) instead of
+                    # a buried conditional: ask every principle whether it
+                    # wants this claim, in a fixed declared order, and act
+                    # on the winner. The declared order (Peirce before AGM
+                    # — principles/adjudicate.py) IS the "cap wins over
+                    # demotion" policy below, encoded as data rather than
+                    # changed:
+                    #
+                    # NEVER demote a cycle-capped claim. Two independent
+                    # reasons, either alone sufficient:
+                    #
+                    # 1. Demotion IS Peirce cycling — record_demotion
+                    #    resets scrutiny_verdict and every track flag so
+                    #    the claim re-enters the loop. That is precisely
+                    #    what the cap exists to stop.
+                    # 2. record_demotion also nulls
+                    #    integrated_assessment / _confidence /
+                    #    _reasoning. For a capped claim those hold the
+                    #    terminal verdict ConcludeAtCycleCapOperation
+                    #    derived from the evidence, so demotion restores
+                    #    the false "insufficient" that verdict exists to
+                    #    remove — and leaves cap_evaluation behind, so
+                    #    the record and the verdict then disagree.
+                    #
+                    # The reachable sequence is: cap fires at HYPOTHESIS
+                    # → this node refute- or soft-promotes the claim to
+                    # SUPPORTED (neither path filters cycle_capped) →
+                    # the next Scrutinize visit sees a SUPPORTED claim
+                    # with scrutiny_verdict="fail" and routes back here.
+                    # Skipping is safe: the claim is left terminal,
+                    # PromoteToSupported already filters capped claims,
+                    # and nothing re-scrutinises it, so there is no loop.
+                    decision = adjudicate(claim, state)
+                    if decision.winner == "peirce":
                         logger.warning(
                             "Claim %s is cycle-capped at %s; skipping demotion "
-                            "so its cap-derived verdict is not erased",
+                            "so its cap-derived verdict is not erased (%s)",
                             claim.entity_id[:12],
                             claim.stage.value,
+                            decision.reason,
                         )
                         state.terminal_claims.add(claim.entity_id)
                         continue
-                    # Demote SUPPORTED+ claims
-                    await _run_op(
-                        DemoteClaimOperation,
-                        deps,
-                        state,
-                        claim.entity_id,
-                        "claim",
-                        "demote_claim",
-                    )
-                    demoted_any = True
+                    if decision.winner == "agm":
+                        # Demote SUPPORTED+ claims
+                        await _run_op(
+                            DemoteClaimOperation,
+                            deps,
+                            state,
+                            claim.entity_id,
+                            "claim",
+                            "demote_claim",
+                        )
+                        demoted_any = True
+                    else:
+                        # Unreachable given this branch's own guard (scrutiny
+                        # failing + stage != HYPOTHESIS is exactly AGM's own
+                        # eligibility condition — see principles/agm.py), but
+                        # fail loud rather than silently doing nothing to a
+                        # claim scrutiny already flagged, per the repo's
+                        # no-silent-failures rule.
+                        raise RuntimeError(
+                            f"adjudicate() returned no winner for claim "
+                            f"{claim.entity_id[:12]} (stage="
+                            f"{claim.stage.value}, scrutiny_verdict="
+                            f"{claim.scrutiny_verdict!r}): {decision.reason}. "
+                            f"considered={decision.considered!r}"
+                        )
 
         if demoted_any:
             # Re-scrutinise demoted claims.
@@ -1600,10 +1650,16 @@ class RunVerification(Node):
     operations indirectly — those are side effects via a helper function
     and would require inter-procedural AST analysis to validate. For
     now the validator only sees direct dispatches.
+
+    ``writes`` includes ``claims_needing_tms``: Stage 2b's reachability
+    fix (docs/epistemic/PRINCIPLE_FIDELITY_PLAN.md §5) has this node add
+    a claim to it directly when the adversarial track dispatches, so
+    ``_run_tms_sweep``'s Step 3 revalidates it — see the "adversarial"
+    branch in the body.
     """
 
     reads = frozenset({"objective_id", "question_type", "claims_needing_rescrutiny"})
-    writes = frozenset()
+    writes = frozenset({"claims_needing_tms"})
     operations = frozenset()  # populated below
     post_invariants = ()
 
@@ -1745,6 +1801,61 @@ class RunVerification(Node):
                     "claim",
                     op_name,
                 )
+
+                if track_name == "adversarial":
+                    # Stage 2b reachability fix (docs/epistemic/
+                    # PRINCIPLE_FIDELITY_PLAN.md §5, "2b — the
+                    # reachability fix"). §2's defect: Investigate (which
+                    # grows a claim's evidence) only ever runs on
+                    # HYPOTHESIS claims, so the ONE thing that grows a
+                    # PROMOTED claim's evidence — this adversarial track,
+                    # right here — was never wired to the TMS sweep that
+                    # would let RevalidateClaimOperation see the change.
+                    #
+                    # AdversarialSearchOperation is the only verification
+                    # track that writes fields validate_current_stage
+                    # (gates.py) reads on a SUPPORTED claim:
+                    # claim.adversarial_balance directly, and
+                    # support_judgment on any counter-evidence it appends
+                    # to claim.evidence_ids — and it does both WITHOUT
+                    # ever setting evidence.invalidated=True. The sweep's
+                    # Step 2 (revalidate every promoted claim) only runs
+                    # when Step 1 found invalidated evidence to cascade,
+                    # so a claim whose adversarial_balance just crossed
+                    # ADVERSARIAL_REFUTED_THRESHOLD was invisible to it —
+                    # the two other verification tracks that create new
+                    # judged evidence (none do) don't exist, and nothing
+                    # else in this pass invalidates anything.
+                    #
+                    # Step 3 below ("claims flagged for TMS by graph
+                    # nodes") already existed for exactly this purpose
+                    # and is unconditional — it just had no real
+                    # producer. This is that producer. (Investigate's own
+                    # attempt at populating claims_needing_tms, a few
+                    # hundred lines up, can never fire for a promoted
+                    # claim: reaching that loop body requires
+                    # scrutiny_verdict in ("needs_resolution", "fail"),
+                    # and Scrutinize routes ANY such claim with
+                    # stage != HYPOTHESIS to AbandonOrDemote instead of
+                    # Investigate — so a claim Investigate actually
+                    # touches is structurally always still HYPOTHESIS.
+                    # Not touched here: restructuring Scrutinize's
+                    # all-or-nothing routing to make that path reachable
+                    # too is a materially bigger, riskier change than
+                    # this stage's own scope, and is not needed — this
+                    # producer is the one that is actually reachable on
+                    # a promoted claim.)
+                    #
+                    # Whether this claim's gate actually now fails is
+                    # RevalidateClaimOperation's decision (via
+                    # validate_current_stage), not this node's — flagging
+                    # unconditionally on dispatch, rather than
+                    # re-deriving the gate's threshold logic here, keeps
+                    # that decision in the one place it's already made
+                    # (P1) and costs nothing extra: RevalidateClaimOperation
+                    # is a deterministic, no-LLM DB check that is a safe
+                    # no-op on a claim nothing actually changed.
+                    state.claims_needing_tms.add(claim.entity_id)
 
         # TMS sweep: adversarial search may have created contradicting
         # evidence that invalidates existing evidence or triggers claim
@@ -1997,6 +2108,23 @@ class EnumerateCandidates(Node):
     Generative role (Peirce). Iterative single-candidate calls with the
     running list as priors so each call diversifies away from prior
     candidates. Idempotent — skips claims that already have candidates.
+
+    Exception, by design (Stage 3, PRINCIPLE_FIDELITY_PLAN.md §5): a
+    claim whose enumeration surfaced fewer than 2 genuine candidates
+    ends this node with `integration_candidates` still empty (the
+    "insufficient explanatory diversity" decline —
+    ``EnumerateCandidatesOperation``). Idempotency for THAT claim is not
+    "already have candidates" but "already verification_done"
+    (``PromoteSupported`` marks it unconditionally once the run reaches
+    that far), which prevents re-ENTRY into ``ClusterEvidence`` on a
+    later pass. Within a single already-in-progress
+    ``ClusterEvidence → ... → EnumerateCandidates`` traversal triggered
+    by a SIBLING claim on the same multi-claim objective, this node's
+    own per-claim filter would still re-submit a declined claim for
+    another enumeration attempt (a retry, not a re-selection of stale
+    output — never incorrect, just occasionally redundant LLM cost).
+    Not reachable at all in single-claim seed-verify mode, where every
+    objective has exactly one claim.
 
     Phase 4 of the Move-3 plan.
     """
@@ -2665,6 +2793,27 @@ class CheckSynthesisDemand(Node):
         # ``confidence.build_verdict`` for why widening it here would be
         # an unbenchmarked routing/LLM-cost change of the same kind Gate 1
         # above declines to make.
+        #
+        # KNOWN, DEFERRED interaction with Stage 3 (PRINCIPLE_FIDELITY_
+        # PLAN.md §5): this node is reached only when ``n_adjudicated >
+        # 0`` (CheckCompletion routes n_adjudicated==0 to
+        # SynthesizeInsufficient instead), so Gate 3 only fires on a
+        # MULTI-claim objective where at least one claim adjudicated and
+        # at least one other did not. Since Stage 3, a claim can
+        # legitimately be in the latter set via
+        # EnumerateCandidatesOperation's "insufficient explanatory
+        # diversity" decline — not only via the routing regression this
+        # gate's comment describes. The demand below still loops back to
+        # Scrutinize for such a claim (bounded by PEIRCE_CYCLE_CAP, so
+        # it cannot loop forever — worst case the claim eventually
+        # cycle-caps and gets a deterministic terminal verdict from
+        # ConcludeAtCycleCapOperation), but the ``target_hint`` below
+        # ("likely a routing regression") is misleading for that specific
+        # cause. Not reachable at all in single-claim seed-verify mode
+        # (SciFact-shaped runs), which is this task's own verification
+        # scope; distinguishing the two causes for multi-claim runs is
+        # flagged here as a real, open follow-up rather than fixed
+        # unilaterally in this pass.
         elif prov.n_no_verdict > 0:
             demand = Demand.needs(
                 justification=(
