@@ -7,12 +7,15 @@ per agent across three files:
 1. The agent is registered under exactly the name callers pass to
    ``get_agent``. A mismatch is invisible until a pipeline asks for an
    agent that is not there.
-2. Its output model declares exactly the expected fields — no more, no
+2. The registered agent carries the output model this table names. A
+   registration wired to the wrong model type-checks and passes every
+   field test, then produces the wrong shape at run time.
+3. Its output model declares exactly the expected fields — no more, no
    fewer. Small local models fill these schemas, so a field silently
    added or renamed changes what the model is asked to produce.
 
 Adding an agent is a new row in ``AGENT_CONTRACTS``, not a new copied
-class, so a new agent cannot be added without the same two checks.
+class, so a new agent cannot be added without the same three checks.
 
 Behaviour specific to one agent — adapter normalisation, Literal
 vocabularies, whitespace stripping — stays in the file that owns that
@@ -110,6 +113,19 @@ AGENT_CONTRACTS: list[AgentContract] = [
 def test_agent_registered(contract: AgentContract) -> None:
     agent = get_agent(contract.name)
     assert agent.name == contract.name
+
+
+@pytest.mark.parametrize("contract", AGENT_CONTRACTS, ids=lambda c: c.name)
+def test_agent_carries_its_declared_output_model(contract: AgentContract) -> None:
+    """The registry entry points at the model this table names.
+
+    Only `epistemic_classify_question` checked this before; the table
+    already pairs every agent with its model, so the other nine cost
+    nothing. A mismatch here is invisible to the field test — a wrong
+    model with the right field names would pass that one.
+    """
+    agent = get_agent(contract.name)
+    assert agent.output_model is contract.output_model
 
 
 @pytest.mark.parametrize("contract", AGENT_CONTRACTS, ids=lambda c: c.name)

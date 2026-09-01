@@ -69,15 +69,10 @@ class TestObjectiveQuestionType:
         assert restored.question_type is None
 
 
-from ..agents import get_agent  # noqa: E402
 from ..agents.output_models import ClassifyQuestionOutput  # noqa: E402
 
 
 class TestClassifyQuestionAgent:
-
-    def test_output_model_is_correct(self):
-        agent = get_agent("epistemic_classify_question")
-        assert agent.output_model is ClassifyQuestionOutput
 
     def test_output_model_accepts_valid_type(self):
         # Pass the enum value directly — pydantic coerces the str to the
