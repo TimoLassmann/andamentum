@@ -93,6 +93,43 @@ MIN_ACTIVATIONS = {
     # runs — starved by construction (Investigate only runs on HYPOTHESIS
     # claims, revalidation requires stage != HYPOTHESIS). Target: >= 3 of 5
     # after Stage 2b's reachability fix (plan §5, Stage 2b).
+    # STAGE 2B MEASURED (2026-09-01, ollama:gemma4:31b-cloud, both canary
+    # claims, 5 runs each, fresh dirs — docs/epistemic/FIDELITY_LEDGER.md
+    # "Stage 2" block, finding S2-2): claim 2 (vitamin D/mortality) 5/5 —
+    # agm fires EVERY run, exceeding the >= 3/5 target on first
+    # measurement. This is the first genuine AGM contraction observed
+    # anywhere in this project (audit: 0/150; every prior canary
+    # measurement on both claims: 0/5). Mechanism, traced end to end: the
+    # claim promotes to SUPPORTED, RunVerification's adversarial track
+    # finds real counter-evidence (adversarial_balance ~0.26-0.27, below
+    # ADVERSARIAL_REFUTED_THRESHOLD=0.3), Stage 2b's fix routes that into
+    # the TMS sweep, RevalidateClaimOperation correctly demotes.
+    # promotion_history is identical in shape across all 5 runs — exactly
+    # one promote, one demote, no further cycling — so the new demote
+    # path terminates cleanly (L5 exercised for real, not just
+    # unit-tested). claim 1 (Parkinson's/trehalose) stays 0/5 —
+    # UNCHANGED from every prior measurement (2a, 2b-pre) — because it
+    # never reaches SUPPORTED at all: it cycle-caps directly out of
+    # HYPOTHESIS via genuine scrutiny/uncertainty exhaustion, a defect
+    # ORTHOGONAL to the Stage 2b reachability fix and not diagnosed in
+    # this session (ledger finding S2-1). A 30-case real-dev30 diagnostic
+    # (same date/model) additionally found the reachability fix wired
+    # correctly in every one of 12/30 real cases that reach it (verified
+    # 1:1 correlation between adversarial_search and revalidate_claim
+    # dispatch), but agm fired 0/30 there — real evidence pools rarely
+    # push adversarial_balance under the threshold the way the
+    # purpose-built canary fixture does (ledger finding S2-4; a rarity
+    # finding, not a reachability failure).
+    # FLOOR STAYS 0, DELIBERATELY, DESPITE THE PROVEN FIX: this file's
+    # own RUNNER invocation below passes no --claim-id, so
+    # load_claims(...)[0] (claim 1) is what THIS test actually exercises
+    # — never claim 2. A floor above 0 here would assert a rate claim 1's
+    # own canary run can never produce, i.e. a permanently-red gate, not
+    # an honest measured floor. Widening this test to also cover claim 2
+    # (the fixture purpose-built to exercise this signature) is a real,
+    # open follow-up — flagged, not silently done here (out of this
+    # task's stated scope; see the ledger's "MIN_ACTIVATIONS decision"
+    # note under Stage 2).
     "agm": 0,
     # Peirce resolution: the inquiry terminated by verdict, not by the cap.
     # Audit: 52/150 runs adjudicated-with-no-cap on dev30. STAGE-0 MEASURED
@@ -140,6 +177,20 @@ MIN_ACTIVATIONS = {
     # path, not because the fix doesn't work; Stage 2b's reachability fix
     # (the same one AGM needs) is the dependency for raising this floor, not
     # a further Reichenbach change.
+    # STAGE 2B MEASURED (2026-09-01, ollama:gemma4:31b-cloud): claim 2,
+    # 5/5 runs — reichenbach fires EVERY run once Stage 2b's reachability
+    # fix is in place (docs/epistemic/FIDELITY_LEDGER.md "Stage 2" block),
+    # exceeding the >= 3/5 target. claim 1 stays 0/5 (still the same
+    # empty-denominator artifact — see the agm entry's Stage 2b note for
+    # why claim 1 never reaches SUPPORTED). A 30-case real-dev30
+    # diagnostic (same date/model) independently corroborates the fix on
+    # real data: reichenbach fires in 21/30 cases — strong and
+    # consistent with Stage 1's own real-corpus proof. FLOOR STAYS 0 for
+    # the same reason as agm's: this file's RUNNER invocation exercises
+    # only claim 1 by default (no --claim-id), and claim 1 never reaches
+    # select_top_k_evidence, so a floor above 0 would be unmeetable by
+    # this specific test as written — see the agm entry and the ledger's
+    # "MIN_ACTIVATIONS decision" note under Stage 2 for the full picture.
     "reichenbach": 0,
     # IBE genuine competing candidates. Audit: 81% of claims that reached
     # enumeration scored placeholder candidates; only ~19% had >= 2 genuine.
@@ -147,6 +198,44 @@ MIN_ACTIVATIONS = {
     # in every run — the audit's ~1-in-5 is conditioned on a denominator this
     # fixture never produces (finding S0-3 in the ledger), so the floor stays 0.
     # Target: >= 3 of 5 after Stage 3's candidate-quality gate.
+    # STAGE 3 FIX LANDED AND VERIFIED (2026-09-01):
+    # EnumerateCandidatesOperation now routes a claim with < 2 genuine
+    # candidates to an explicit "insufficient explanatory diversity" decline
+    # (docs/epistemic/FIDELITY_LEDGER.md "Stage 3" block) instead of seeding
+    # 3 synthetic defaults and scoring them as rivals.
+    # STAGE 3 MEASURED, both canary claims, 5 runs each, ollama:gemma4:31b-
+    # cloud, 2026-09-01: claim 1 1/5 (0.2), claim 2 0/5 (0.0) — **MISS vs
+    # the >= 3/5 target on BOTH claims** (finding S3-1/S3-2). Root cause is
+    # reachability, not the fix: claim 1 escapes the cycle cap into
+    # enumeration in only 1/5 runs (the same S2-1 pre-promotion defect that
+    # already gates agm/reichenbach/popper on this claim) and fires
+    # correctly in that one run; claim 2 now never reaches enumeration at
+    # all (0/5) because Stage 2b's OWN AGM fix demotes it via TMS before the
+    # run reaches the integration stage, consuming its only promotion
+    # window (S2-3's oscillation_detected consequence, unchanged from Stage
+    # 2 — not a new Stage-3 regression). The fix's own correctness is proven
+    # directly on real data instead: a 30-case dev30 diagnostic (same
+    # date/model) measured the PLACEHOLDER-SELECTION rate — the actual
+    # defect the audit found — at 0/11 (0.0%) among cases that reached
+    # enumeration (3 declined correctly with exactly 1 genuine candidate; 8
+    # reached full IBE selection and every one chose a genuine candidate
+    # over any seeded default sitting alongside it), against the audit's
+    # measured 81%. `ibe_real_candidates` itself fired 8/30 (vs Stage 2's
+    # 10/30 — within this project's documented 10-27% run-to-run
+    # stochasticity, not a regression; Stage 3 does not change how a
+    # >=2-genuine claim is counted, only what happens to the <2-genuine
+    # ones).
+    # FLOOR STAYS 0, DELIBERATELY: unlike agm/reichenbach/popper (0/5 on
+    # claim 1, an empty-denominator artifact), claim 1's true rate here is a
+    # real but infrequent ~1-in-5 (1/5 measured). This file's RUNNER
+    # invocation exercises only claim 1, RUNS=2 — at a true rate of ~20%, a
+    # 2-run gate has roughly a 64% chance of observing zero fires by chance
+    # alone even when the fix works exactly as measured. Raising the floor
+    # to even 1 would make the gate flaky against a correct system, not an
+    # honest measured floor. Same open follow-up as agm/reichenbach/popper:
+    # widening the pre-merge canary to cover claim 2, or raising RUNS, is
+    # available and unaddressed — see the ledger's Stage 3 "MIN_ACTIVATIONS
+    # decision" note for the full picture.
     "ibe_real_candidates": 0,
     # Popper refutation-seeking search. Audit: 0 under corpus mode — the op
     # is hard-wired to a provider literally named "web_search" and cannot run
@@ -170,6 +259,21 @@ MIN_ACTIVATIONS = {
     # counterarguments with correct provenance. The floor stays 0 here for
     # the same reason as reichenbach's: Stage 2b's reachability fix is the
     # dependency, not a further Popper change.
+    # STAGE 2B MEASURED (2026-09-01, ollama:gemma4:31b-cloud): claim 2,
+    # 5/5 runs — popper fires EVERY run once Stage 2b's reachability fix
+    # is in place (docs/epistemic/FIDELITY_LEDGER.md "Stage 2" block),
+    # exceeding the >= 3/5 target; claim 1 stays 0/5 (same root cause as
+    # agm/reichenbach — see the agm entry's note). A 30-case real-dev30
+    # diagnostic (same date/model) corroborates on real data: popper
+    # fires in 12/30 cases, and raw operations.jsonl shows the
+    # reachability wiring itself is correct in EVERY case that reaches it
+    # (adversarial_search and revalidate_claim dispatch together, 1:1,
+    # in all 12) — the other 18/30 cases never reach RunVerification at
+    # all (claim didn't promote), not a capability-query decline.
+    # FLOOR STAYS 0 for the same structural reason as agm/reichenbach:
+    # this file's RUNNER invocation exercises only claim 1 by default —
+    # see the agm entry and the ledger's "MIN_ACTIVATIONS decision" note
+    # under Stage 2 for the full picture and the open follow-up.
     "popper": 0,
 }
 
