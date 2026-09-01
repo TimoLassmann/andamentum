@@ -187,7 +187,11 @@ class PromoteAsRefutedOperation(BaseOperation):
     entity_type = "claim"
 
     async def execute(self, work: OperationInput) -> OperationResult:
-        from ..gates import count_support_contradict, is_refuted_by_evidence
+        from ..gates import (
+            count_support_contradict,
+            is_refuted_by_evidence,
+            promotion_blocked_by_contraction,
+        )
 
         claim = await self.repo.get("claim", work.entity_id)
         if not isinstance(claim, Claim):
@@ -201,6 +205,13 @@ class PromoteAsRefutedOperation(BaseOperation):
                 success=False,
                 entity_id=claim.entity_id,
                 message=f"Refuted-promotion only runs on HYPOTHESIS, not {claim.stage.value}",
+            )
+        contraction_reason = await promotion_blocked_by_contraction(claim, self.repo)
+        if contraction_reason:
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message=contraction_reason,
             )
         if not await is_refuted_by_evidence(claim, self.repo):
             return OperationResult(
@@ -535,7 +546,7 @@ class SoftPromoteOperation(BaseOperation):
     entity_type = "claim"
 
     async def execute(self, work: OperationInput) -> OperationResult:
-        from ..gates import count_support_contradict
+        from ..gates import count_support_contradict, promotion_blocked_by_contraction
 
         claim = await self.repo.get("claim", work.entity_id)
         if not isinstance(claim, Claim):
@@ -550,6 +561,14 @@ class SoftPromoteOperation(BaseOperation):
                 success=False,
                 entity_id=claim.entity_id,
                 message=f"Soft-promote only runs on HYPOTHESIS, not {claim.stage.value}",
+                did_work=False,
+            )
+        contraction_reason = await promotion_blocked_by_contraction(claim, self.repo)
+        if contraction_reason:
+            return OperationResult(
+                success=False,
+                entity_id=claim.entity_id,
+                message=contraction_reason,
                 did_work=False,
             )
 

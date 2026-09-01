@@ -150,6 +150,45 @@ class TestSerializationRoundTrip:
         assert "scrutiny_doubt" not in meta2
         assert Claim.from_document(_c2, meta2).scrutiny_doubt is None
 
+    def test_claim_contraction_and_cap_fingerprint_round_trip_through_metadata(self):
+        """AGM contraction provenance must survive a save/load (D2/D7).
+
+        PINS: ``contraction_count``, ``contraction_fingerprint``, and
+        ``cap_fingerprint`` all reach ``_extra_metadata`` and are read back
+        by ``_from_metadata`` — a future edit dropping any of the three
+        keys would silently reset the field to its default on reload,
+        which would re-open a re-promotion or a repeat cap conclusion the
+        fingerprint was recorded to prevent.
+        """
+        contracted = Claim(
+            objective_id="obj-1",
+            statement="c",
+            contraction_count=2,
+            contraction_fingerprint="fp-contraction",
+            cap_fingerprint="fp-cap",
+        )
+        content, metadata = contracted.to_document()
+        assert metadata["contraction_count"] == 2
+        assert metadata["contraction_fingerprint"] == "fp-contraction"
+        assert metadata["cap_fingerprint"] == "fp-cap"
+
+        restored = Claim.from_document(content, metadata)
+        assert restored.contraction_count == 2
+        assert restored.contraction_fingerprint == "fp-contraction"
+        assert restored.cap_fingerprint == "fp-cap"
+
+        # Defaults round-trip too: absence of a contraction is not
+        # confusable with an empty-string fingerprint.
+        untouched = Claim(objective_id="obj-1", statement="c")
+        c2, meta2 = untouched.to_document()
+        assert meta2["contraction_count"] == 0
+        assert meta2["contraction_fingerprint"] is None
+        assert meta2["cap_fingerprint"] is None
+        restored2 = Claim.from_document(c2, meta2)
+        assert restored2.contraction_count == 0
+        assert restored2.contraction_fingerprint is None
+        assert restored2.cap_fingerprint is None
+
     def test_evidence_quality_distribution_round_trips_and_derives_doubt(self):
         """Store the distribution, DERIVE the signals.
 

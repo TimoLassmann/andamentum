@@ -15,8 +15,9 @@ Architecture: Layer 1 (framework-agnostic)
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import hashlib
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Optional
 
 from .entities import Claim, ClaimStage, Evidence
 from .thresholds import (
@@ -525,6 +526,73 @@ async def is_refuted_by_evidence(claim: "Claim", repo: "EpistemicRepository") ->
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# EVIDENCE FINGERPRINT — certify-before-contract re-promotion rule
+# (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D3)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def evidence_fingerprint(rows: Iterable[tuple[str, Optional[str], bool]]) -> str:
+    """SHA-256 hex over a claim's evidence identity: id, judgment, invalidated.
+
+    Pure function: takes the already-loaded ``(evidence_id,
+    support_judgment, invalidated)`` rows so it can be tested without a
+    repository. Order-independent — the rows are sorted before hashing —
+    so two claims (or two readings of one claim) with the same evidence
+    set in a different load order fingerprint identically.
+
+    This is the "did the evidence actually change" test the re-promotion
+    rule is built on (S3): a claim contracted once should not be allowed
+    to re-promote and contract again on literally the same evidence.
+    """
+    normalized = sorted((eid, judgment or "", invalidated) for eid, judgment, invalidated in rows)
+    blob = "\n".join(f"{eid}\t{judgment}\t{invalidated}" for eid, judgment, invalidated in normalized)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+async def claim_evidence_fingerprint(claim: "Claim", repo: "EpistemicRepository") -> str:
+    """Load a claim's evidence and fingerprint it via ``evidence_fingerprint``.
+
+    Loads ALL of ``claim.evidence_ids`` — unlike
+    ``eligible_representative_evidence`` or ``count_support_contradict``,
+    this fingerprint exists to detect ANY change to the evidence set
+    (an item added, invalidated, or re-judged), not to filter which
+    evidence counts toward a verdict.
+    """
+    rows: list[tuple[str, Optional[str], bool]] = []
+    for eid in claim.evidence_ids:
+        ev = await repo.get("evidence", eid)
+        if not isinstance(ev, Evidence):
+            continue
+        rows.append((eid, ev.support_judgment, ev.invalidated))
+    return evidence_fingerprint(rows)
+
+
+async def promotion_blocked_by_contraction(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> Optional[str]:
+    """Refuse a re-promotion attempt on evidence unchanged since a contraction.
+
+    Returns a blocking reason string when ``claim.contraction_fingerprint``
+    is set (the claim was contracted at least once) AND the claim's
+    current evidence fingerprint is IDENTICAL to the fingerprint recorded
+    at that contraction — i.e. nothing about the evidence has moved since,
+    so re-running the verification tracks and re-promoting would just
+    re-derive the same contraction (S3). Returns ``None`` (not blocked)
+    once the fingerprint has changed, or when the claim has never been
+    contracted.
+    """
+    if claim.contraction_fingerprint is None:
+        return None
+    current = await claim_evidence_fingerprint(claim, repo)
+    if current == claim.contraction_fingerprint:
+        return (
+            "No new evidence since contraction (fingerprint unchanged); "
+            "re-promotion refused"
+        )
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CONFIDENCE SCORE COMPUTATION
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -774,6 +842,15 @@ async def validate_promotion(
     for dw in degeneracy_warnings:
         # Degeneracy warnings are blocking for promotions
         reasons.append(dw)
+
+    # Contraction re-promotion rule (D3): a claim contracted at least
+    # once cannot re-promote on the same, unchanged evidence set — that
+    # would just re-derive the contraction it already went through.
+    # Applies to ANY target stage, not just the stage it was contracted
+    # from/to.
+    contraction_reason = await promotion_blocked_by_contraction(claim, repo)
+    if contraction_reason:
+        reasons.append(contraction_reason)
 
     # Custom check
     if gate.custom_check:

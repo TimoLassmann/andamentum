@@ -146,6 +146,43 @@ class Claim(EpistemicEntity):
         default_factory=list, description="ISO timestamps of each modification"
     )
 
+    # AGM contraction (certify-before-contract, docs/epistemic/
+    # CERTIFY_BEFORE_CONTRACT_PLAN.md D2). A contraction is a stage
+    # REVISION that preserves whatever verdict is already on the claim —
+    # deliberately NOT a Lakatos-tracked modification (see ``contract()``)
+    # and NOT the "start over" reset ``record_demotion`` performs.
+    contraction_count: int = Field(
+        default=0,
+        description=(
+            "Number of times this claim has been contracted (AGM stage "
+            "revision via ``contract()``) rather than demoted "
+            "(``record_demotion()``). Contractions preserve "
+            "integrated_assessment / confidence / reasoning / candidates "
+            "and scrutiny_verdict; demotions reset them."
+        ),
+    )
+    contraction_fingerprint: Optional[str] = Field(
+        default=None,
+        description=(
+            "The evidence fingerprint (gates.evidence_fingerprint) at the "
+            "moment of the last contraction. gates.promotion_blocked_by_"
+            "contraction compares it against the claim's current "
+            "fingerprint to refuse re-promotion on an unchanged evidence "
+            "set. Cleared by reset_for_reinquiry() once new evidence "
+            "genuinely arrives."
+        ),
+    )
+    cap_fingerprint: Optional[str] = Field(
+        default=None,
+        description=(
+            "The evidence fingerprint at the moment of the last cycle-cap "
+            "conclusion (ConcludeAtCycleCapOperation). Lets "
+            "_mark_cycle_capped tell a repeat firing on unchanged evidence "
+            "apart from one where the evidence genuinely moved, so the "
+            "mechanical conclusion re-runs only on the latter."
+        ),
+    )
+
     # State fields for pattern matching
     scrutiny_verdict: Optional[str] = Field(
         default=None,
@@ -492,8 +529,11 @@ class Claim(EpistemicEntity):
         - Promotion history
         - Verification flag reset for Peirce cycling
 
-        Both DemoteClaimOperation and RevalidateClaimOperation call this
-        to ensure consistent behavior regardless of demotion cause.
+        DemoteClaimOperation (scrutiny-driven demotion: "scrutiny failed
+        on a promoted claim, start over") calls this. It is NOT called on
+        an AGM contraction any more — see ``contract()``, which preserves
+        the verdict instead of restarting the inquiry
+        (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1/D2).
         """
         old_stage = self.stage
 
@@ -507,17 +547,66 @@ class Claim(EpistemicEntity):
         # routing must re-run.
         if target_stage in [ClaimStage.HYPOTHESIS, ClaimStage.SUPPORTED]:
             self.scrutiny_verdict = None
-            self.adversarial_checked = False
-            self.convergence_checked = False
-            self.convergence_verdict = None
-            self.deductive_checked = False
-            self.computational_checked = False
-            self.contrastive_checked = False
-            self.consistency_checked = False
-            self.integrated_assessment = None
-            self.integrated_confidence = None
-            self.integrated_reasoning = None
-            self.integration_candidates = []
+            self.reset_for_reinquiry()
+
+    def contract(
+        self, target_stage: ClaimStage, *, justification: str, fingerprint: str
+    ) -> None:
+        """Revise this claim's stage without restarting the inquiry (AGM).
+
+        Called by ``RevalidateClaimOperation`` when the TMS cascade or a
+        fresh revalidation demands a stage revision. Unlike
+        ``record_demotion``, this is a REVISION, not a restart: it does
+        NOT reset ``scrutiny_verdict``, any ``*_checked`` flag,
+        ``adversarial_balance``, or any ``integrated_*`` /
+        ``integration_candidates`` field — a verdict this run already
+        certified stays on the claim (S8). It also deliberately does NOT
+        call ``record_modification()``: an AGM contraction driven by a
+        genuine evidence change is not the kind of degeneracy
+        DEGEN_001/DEGEN_003 exist to catch, so in-process contractions
+        cannot trip the Lakatos burst brake (S9; ledger item A-3).
+
+        ``fingerprint`` is the evidence fingerprint
+        (``gates.evidence_fingerprint``) at the moment of this
+        contraction, recorded so ``gates.promotion_blocked_by_
+        contraction`` can refuse a re-promotion attempt on the same,
+        unchanged evidence set.
+        """
+        old_stage = self.stage
+        self.record_promotion(old_stage, target_stage, justification)
+        self.contraction_count += 1
+        self.contraction_fingerprint = fingerprint
+
+    def reset_for_reinquiry(self) -> None:
+        """Reset verification-track flags and verdict fields for a fresh inquiry.
+
+        Single source of truth for the "start over" reset list (S8),
+        extracted out of ``record_demotion`` so it exists in exactly one
+        place. Two callers:
+
+        - ``record_demotion`` (scrutiny-driven demotion), which also
+          nulls ``scrutiny_verdict`` and ``stage`` itself — both left
+          untouched here.
+        - The re-promotion path, on a claim previously contracted whose
+          evidence fingerprint has since changed — i.e. only on a
+          genuine re-promotion after new evidence, never on an unchanged
+          evidence set (that path is refused before this is called).
+
+        Does NOT touch ``scrutiny_verdict``, ``stage``, or
+        ``promotion_history``.
+        """
+        self.adversarial_checked = False
+        self.convergence_checked = False
+        self.convergence_verdict = None
+        self.deductive_checked = False
+        self.computational_checked = False
+        self.contrastive_checked = False
+        self.consistency_checked = False
+        self.integrated_assessment = None
+        self.integrated_confidence = None
+        self.integrated_reasoning = None
+        self.integration_candidates = []
+        self.contraction_fingerprint = None
 
     def _extra_metadata(self) -> dict[str, Any]:
         """Add claim-specific metadata for filtering."""
@@ -546,6 +635,9 @@ class Claim(EpistemicEntity):
             "supersedes_id": self.supersedes_id,
             "superseded_by_id": self.superseded_by_id,
             "modification_count": self.modification_count,
+            "contraction_count": self.contraction_count,
+            "contraction_fingerprint": self.contraction_fingerprint,
+            "cap_fingerprint": self.cap_fingerprint,
             "investigation_count": self.investigation_count,
             "investigation_intents": [
                 r.model_dump() for r in self.investigation_intents
@@ -616,6 +708,9 @@ class Claim(EpistemicEntity):
             superseded_by_id=metadata.get("superseded_by_id"),
             modification_count=metadata.get("modification_count", 0),
             modification_timestamps=metadata.get("modification_timestamps", []),
+            contraction_count=metadata.get("contraction_count", 0),
+            contraction_fingerprint=metadata.get("contraction_fingerprint"),
+            cap_fingerprint=metadata.get("cap_fingerprint"),
             investigation_count=metadata.get("investigation_count", 0),
             investigation_intents=[
                 IntentRecord.from_dict(r)

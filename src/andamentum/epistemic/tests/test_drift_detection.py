@@ -178,7 +178,13 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # number being tested. Every other check in this function is
     # unchanged — confirmed by TestValidatePromotionFailure's three tests
     # still passing unmodified.
-    "Gate validate_promotion logic": "3d5638547df3258a",
+    # Updated 2026-09-02 (Certify Before Contract Plan D3): validate_promotion
+    # now also calls gates.promotion_blocked_by_contraction and appends its
+    # reason to the blocking reasons, for any target stage — a claim
+    # contracted once cannot re-promote on an unchanged evidence fingerprint.
+    # Every other check in this function is unchanged — confirmed by
+    # TestValidatePromotionFailure's three tests still passing unmodified.
+    "Gate validate_promotion logic": "51ffbef8653422e1",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
     # a new capable_of() method (the optional CapabilityQueryable

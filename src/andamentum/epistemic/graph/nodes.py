@@ -1299,6 +1299,28 @@ class AbandonOrDemote(Node):
                     claim.stage == ClaimStage.HYPOTHESIS
                     and inv_count >= PEIRCE_CYCLE_CAP
                 ):
+                    if claim.contraction_count > 0:
+                        # This claim was contracted at least once (AGM
+                        # revision, ``Claim.contract()``): it already
+                        # carries a verdict this run certified, preserved
+                        # through the contraction (D2/S8). Re-attempting
+                        # refute-promotion or soft-promotion here would
+                        # either be refused by
+                        # ``gates.promotion_blocked_by_contraction`` on
+                        # unchanged evidence, or — worse — abandonment
+                        # would erase a verdict that is still correct.
+                        # The claim is terminal for this run unless new
+                        # evidence arrives (S3/S4); skip the whole
+                        # refute/soft/abandon fork.
+                        logger.info(
+                            "Claim %s was contracted (count=%d); skipping "
+                            "refute/soft-promote/abandon fork so its "
+                            "preserved verdict is not erased",
+                            claim.entity_id[:12],
+                            claim.contraction_count,
+                        )
+                        continue
+
                     # First try refute-promotion: if evidence overwhelmingly
                     # contradicts, promote to SUPPORTED with
                     # integrated_assessment="contradicts" instead of abandoning.
@@ -1503,7 +1525,7 @@ class PromoteToSupported(Node):
     """
 
     reads = frozenset({"objective_id", "verification_done"})
-    writes = frozenset({"terminal_claims"})
+    writes = frozenset({"terminal_claims", "verification_done"})
     operations = frozenset()  # populated below after operations imports resolve
     post_invariants = ()
 
@@ -1513,6 +1535,7 @@ class PromoteToSupported(Node):
         from ..operations.stage_management import PromoteClaimOperation
         from ..operations.belief_maintenance import SetRoutingDefaultsOperation
         from ..entities.claim import ClaimStage
+        from ..gates import claim_evidence_fingerprint
 
         state = ctx.state
         deps = ctx.deps
@@ -1538,6 +1561,28 @@ class PromoteToSupported(Node):
                 claim.stage == ClaimStage.HYPOTHESIS
                 and claim.scrutiny_verdict == "pass"
             ):
+                if claim.contraction_count > 0:
+                    # Certify-before-contract D3: this claim was
+                    # contracted back to HYPOTHESIS while keeping its
+                    # verdict. Re-promoting it is only warranted if the
+                    # evidence actually changed since that contraction —
+                    # otherwise the verification tracks would just
+                    # re-derive the same contraction (S3).
+                    current_fp = await claim_evidence_fingerprint(
+                        claim, deps.repo
+                    )
+                    if current_fp == claim.contraction_fingerprint:
+                        logger.info(
+                            "Claim %s: evidence unchanged since contraction; "
+                            "terminal for this run, not re-promoting",
+                            claim.entity_id[:12],
+                        )
+                        state.terminal_claims.add(claim.entity_id)
+                        continue
+                    claim.reset_for_reinquiry()
+                    await deps.repo.save(claim)
+                    state.verification_done.discard(claim.entity_id)
+
                 result = await _run_op(
                     PromoteClaimOperation,
                     deps,
