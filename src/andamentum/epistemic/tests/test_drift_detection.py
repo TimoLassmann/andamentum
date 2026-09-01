@@ -167,7 +167,18 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # EpistemicVerdict. Error handling inside the loop is unchanged.
     "Writer-validator loop": "ecf515424526f4f1",
     "Prediction generation per-aspect error handling": "fb5787ea93a0df4b",
-    "Gate validate_promotion logic": "e87d8901f731e130",
+    # Updated 2026-09-01: the adversarial-balance threshold check now
+    # requires claim.adversarial_checked (a fresh reading), not just
+    # claim.adversarial_balance is not None. record_demotion() resets
+    # adversarial_checked to False on a TMS demotion but leaves the
+    # last-computed balance in place, so the un-gated check re-tested the
+    # SAME stale, pre-demotion number on the claim's next promotion
+    # attempt — a claim demoted for a low balance could never re-promote,
+    # since nothing between demotion and this gate could change the
+    # number being tested. Every other check in this function is
+    # unchanged — confirmed by TestValidatePromotionFailure's three tests
+    # still passing unmodified.
+    "Gate validate_promotion logic": "3d5638547df3258a",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
     # a new capable_of() method (the optional CapabilityQueryable

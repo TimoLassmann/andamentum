@@ -706,13 +706,32 @@ async def validate_promotion(
             if gate_required and not getattr(claim, claim_field, False):
                 reasons.append(_TRACK_TO_LABEL[track_name])
 
-    # Adversarial balance threshold — use override if available
+    # Adversarial balance threshold — use override if available.
+    #
+    # Gated on claim.adversarial_checked, not just claim.adversarial_balance
+    # is not None: record_demotion() resets adversarial_checked to False on
+    # a TMS demotion but leaves the last-computed adversarial_balance in
+    # place (it is a measurement, not a flag — there is nothing else to
+    # reset it to before a fresh adversarial pass runs). Without this
+    # guard, the FIRST promotion attempt out of HYPOTHESIS re-checks that
+    # stale, pre-demotion balance against this same threshold before
+    # RunVerification ever gets a chance to re-run the adversarial track —
+    # so a claim demoted for a low balance can never re-promote, because
+    # nothing between demotion and this gate check can change the number
+    # being tested. Confirmed on real data (canary claim2, Stage 2b): a
+    # claim demoted at balance 0.26-0.27 failed this exact check on every
+    # re-promotion attempt in 5/5 runs, always on the SAME reading that
+    # caused the demotion, never a fresh one. Once adversarial_checked is
+    # False, this check has nothing current to say and must not block —
+    # ClusterEvidence/RunVerification (reachable once the claim is back at
+    # SUPPORTED) will recompute the balance and this gate re-applies next
+    # promotion attempt with a genuine number.
     balance_threshold = float(  # type: ignore[arg-type]
         overrides.get("min_adversarial_balance", gate.adversarial_balance_threshold)  # type: ignore[arg-type]
     )
     if balance_threshold > 0:
         balance = claim.adversarial_balance
-        if balance is not None and balance < balance_threshold:
+        if claim.adversarial_checked and balance is not None and balance < balance_threshold:
             reasons.append(
                 f"Adversarial balance {balance:.2f} < {balance_threshold} required"
             )
