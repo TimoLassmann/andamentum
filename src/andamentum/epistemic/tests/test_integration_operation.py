@@ -47,9 +47,56 @@ async def _run_full_ibe(repo, fake_runner, claim_id: str = "cl-1") -> Claim:
     return await repo.get("claim", claim_id)
 
 
+def _genuine_supports_runner(**extra_overrides: object):
+    """A FakeAgentRunner whose enumeration always proposes >= 2 genuine
+    candidates, for tests that exercise the REST of the IBE pipeline
+    (scoring, selection, K-agreement) rather than the enumeration step
+    itself.
+
+    The shared ``fake_runner`` fixture's default
+    ``epistemic_propose_one_candidate`` response is ``done=True`` on
+    the very first call — zero genuine candidates — which now
+    correctly triggers Stage 3's (PRINCIPLE_FIDELITY_PLAN.md §5)
+    "insufficient explanatory diversity" decline instead of the old
+    padded-with-3-defaults fallback. Tests that want to exercise
+    anything DOWNSTREAM of enumeration need a runner that actually
+    proposes candidates; this one always answers ``done=False`` with a
+    'supports' framing, so the loop runs all 5 slots and produces 5
+    genuine 'supports' candidates. Balanced enumeration then adds
+    'contradicts' and 'insufficient' defaults for the missing
+    canonical verdicts (unchanged Stage-3 behaviour), giving a
+    realistic 7-candidate set with every candidate at the same
+    (uniform, static-mock) loveliness/likeliness — which is also
+    exactly what ``TestSelectBestExplanationAppliesCap`` needs for its
+    framing-tie-cap assertions.
+    """
+    from .conftest import FakeAgentRunner
+
+    overrides: dict[str, object] = {
+        "epistemic_propose_one_candidate": {
+            "done": False,
+            "verdict": "supports",
+            "description": "Genuine test candidate: evidence supports the claim",
+        },
+        **extra_overrides,
+    }
+    return FakeAgentRunner(overrides=overrides)
+
+
 class TestIBEIntegrationPipeline:
-    async def test_full_pipeline_sets_integrated_fields(self, repo, fake_runner):
-        """End-to-end IBE produces verdict + confidence + reasoning + candidate trace."""
+    async def test_full_pipeline_sets_integrated_fields(self, repo):
+        """End-to-end IBE produces verdict + confidence + reasoning + candidate trace.
+
+        Uses an explicit ``epistemic_propose_one_candidate`` override
+        (not the shared ``fake_runner`` fixture) rather than its default
+        ``done=True`` response. Post-Stage-3
+        (PRINCIPLE_FIDELITY_PLAN.md §5), zero LLM-genuine candidates
+        would correctly hit the new "insufficient explanatory diversity"
+        decline instead of exercising the full 4-stage pipeline this
+        test is about — see
+        ``test_enumerate_declines_with_default_fake_runner`` below for
+        that decline path specifically.
+        """
         await repo.save(_make_objective())
         ev = Evidence(
             entity_id="ev-1",
@@ -72,7 +119,7 @@ class TestIBEIntegrationPipeline:
         )
         await repo.save(claim)
 
-        updated = await _run_full_ibe(repo, fake_runner)
+        updated = await _run_full_ibe(repo, _genuine_supports_runner())
 
         # Integrated fields are populated by Stage 4
         assert updated.integrated_assessment in (
@@ -153,8 +200,148 @@ class TestIBEIntegrationPipeline:
         verdicts = {c.verdict for c in updated.integration_candidates}
         assert verdicts == {"supports", "contradicts", "insufficient"}
 
-    async def test_pipeline_handles_no_evidence(self, repo, fake_runner):
-        """A claim with no evidence still completes IBE (defaults + scoring)."""
+    async def test_enumerate_declines_with_default_fake_runner(self, repo, fake_runner):
+        """Stage 3 (PRINCIPLE_FIDELITY_PLAN.md §5): a real agent runner
+        that surfaces < 2 genuine candidates gets an explicit
+        "insufficient explanatory diversity" decline, NOT the old
+        padded-with-3-defaults fallback. The shared ``fake_runner``
+        fixture's default ``epistemic_propose_one_candidate`` response
+        is ``done=True`` on the first call — zero genuine candidates —
+        making it the natural fixture for this outcome (distinct from
+        ``test_enumerate_seeds_defaults_without_agent_runner`` above,
+        which is the different ``agent_runner=None`` case and is
+        unaffected by this change)."""
+        from ..operations.integration import INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX
+
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        op = EnumerateCandidatesOperation(
+            repo=repo, agent_runner=fake_runner, embedding_model="test"
+        )
+        result = await op.execute(
+            OperationInput(
+                entity_id="cl-1",
+                entity_type="claim",
+                operation="enumerate_candidates",
+            )
+        )
+        assert result.success
+        assert INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX in result.message
+
+        updated = await repo.get("claim", "cl-1")
+        # No placeholders persisted — an empty candidate set, not 3
+        # synthetic ones, is what stops ScoreLoveliness et al. from
+        # scoring them (their own eligibility requires
+        # `integration_candidates` to be truthy).
+        assert updated.integration_candidates == []
+        # An explicit non-verdict, not a fabricated "insufficient" —
+        # the same signal every other honest-abstention path in the
+        # system produces (compute_posterior's no-certified-verdict
+        # gate, ConcludeAtCycleCapOperation's non-directional clear
+        # branch).
+        assert updated.integrated_assessment is None
+        assert updated.integrated_confidence is None
+        # But the decline itself is recorded, not silent.
+        assert updated.integrated_reasoning is not None
+        assert "declines to certify a verdict" in updated.integrated_reasoning.lower()
+
+    async def test_enumerate_declines_on_exactly_one_genuine_candidate(self, repo):
+        """The boundary case: exactly 1 genuine candidate (not 0) still
+        declines — `_MIN_VIABLE_CANDIDATES` is 2, so 1 is insufficient
+        too. A test-local subclass (not a new FakeAgentRunner feature)
+        proposes one candidate then signals done, mirroring the
+        call-counting pattern already used elsewhere in this file
+        (e.g. AlternatingSelectRunner below)."""
+        from .conftest import FakeAgentRunner
+        from ..operations.integration import INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX
+
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        call_idx = [0]
+
+        class OneCandidateRunner(FakeAgentRunner):
+            async def run(self, agent_name, **kwargs):
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_propose_one_candidate":
+                    from types import SimpleNamespace
+
+                    idx = call_idx[0]
+                    call_idx[0] += 1
+                    if idx == 0:
+                        return SimpleNamespace(
+                            done=False,
+                            verdict="supports",
+                            description="The one genuine candidate produced",
+                        )
+                    return SimpleNamespace(done=True, verdict=None, description=None)
+                return await super().run(agent_name, **kwargs)
+
+        op = EnumerateCandidatesOperation(
+            repo=repo, agent_runner=OneCandidateRunner(), embedding_model="test"
+        )
+        result = await op.execute(
+            OperationInput(
+                entity_id="cl-1",
+                entity_type="claim",
+                operation="enumerate_candidates",
+            )
+        )
+        assert result.success
+        assert INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX in result.message
+        assert "1 genuine candidate" in result.message
+
+        updated = await repo.get("claim", "cl-1")
+        assert updated.integration_candidates == []
+        assert updated.integrated_assessment is None
+
+    async def test_declined_claim_stays_verdict_less_through_full_pipeline(
+        self, repo, fake_runner
+    ):
+        """End-to-end: running all 4 IBE stages (not just Enumerate)
+        over a claim whose enumeration declines leaves it with NO
+        verdict at the end — ScoreLoveliness / ScoreLikeliness /
+        SelectBestExplanation each see an empty `integration_candidates`
+        and correctly do nothing, with no graph routing change needed
+        (their existing eligibility guards already require candidates
+        to be present)."""
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        updated = await _run_full_ibe(repo, fake_runner)
+
+        assert updated.integration_candidates == []
+        assert updated.integrated_assessment is None
+        assert updated.integrated_confidence is None
+        assert updated.integrated_reasoning is not None
+
+    async def test_pipeline_handles_no_evidence(self, repo):
+        """A claim with no evidence still completes IBE when enumeration
+        surfaces >= 2 genuine candidates (balanced-enumeration defaults
+        fill in any missing canonical verdicts, scoring proceeds
+        normally). Uses an explicit override for the same reason as
+        ``test_full_pipeline_sets_integrated_fields`` above — the
+        shared ``fake_runner`` fixture's default ``done=True`` response
+        now correctly triggers the Stage-3 decline instead."""
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -166,7 +353,7 @@ class TestIBEIntegrationPipeline:
         )
         await repo.save(claim)
 
-        updated = await _run_full_ibe(repo, fake_runner)
+        updated = await _run_full_ibe(repo, _genuine_supports_runner())
         assert updated.integrated_assessment is not None
         assert len(updated.integration_candidates) >= 2
 
@@ -264,9 +451,7 @@ class TestSelectBestExplanationAppliesCap:
     tied-loveliness limitation.
     """
 
-    async def test_survived_balance_only_framing_tie_clips(
-        self, repo, fake_runner
-    ) -> None:
+    async def test_survived_balance_only_framing_tie_clips(self, repo) -> None:
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -280,14 +465,20 @@ class TestSelectBestExplanationAppliesCap:
         )
         await repo.save(claim)
 
-        updated = await _run_full_ibe(repo, fake_runner)
+        # _genuine_supports_runner (not the shared fake_runner fixture,
+        # whose default now correctly hits the Stage-3 decline): 5
+        # genuine 'supports' candidates + balanced-enumeration
+        # 'contradicts'/'insufficient' defaults, all at the same
+        # (uniform, static-mock) loveliness — the tied loveliness this
+        # test's framing-tie-cap assertion depends on.
+        updated = await _run_full_ibe(repo, _genuine_supports_runner())
         # Adv cap doesn't fire. Framing-tie cap fires (tied loveliness
         # in fake runner) → cap=0.5. min(1.0, 0.5) clips 0.75 → 0.5.
         assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" not in (updated.integrated_reasoning or "")
         assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
-    async def test_contested_balance_both_caps_fire(self, repo, fake_runner) -> None:
+    async def test_contested_balance_both_caps_fire(self, repo) -> None:
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -301,13 +492,13 @@ class TestSelectBestExplanationAppliesCap:
         )
         await repo.save(claim)
 
-        updated = await _run_full_ibe(repo, fake_runner)
+        updated = await _run_full_ibe(repo, _genuine_supports_runner())
         # adv_cap=0.625, ft_cap=0.5; min=0.5 clips 0.75 → 0.5.
         assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
         assert "Framing-tie cap applied" in (updated.integrated_reasoning or "")
 
-    async def test_refuted_balance_hard_caps(self, repo, fake_runner) -> None:
+    async def test_refuted_balance_hard_caps(self, repo) -> None:
         await repo.save(_make_objective())
         claim = Claim(
             entity_id="cl-1",
@@ -321,7 +512,7 @@ class TestSelectBestExplanationAppliesCap:
         )
         await repo.save(claim)
 
-        updated = await _run_full_ibe(repo, fake_runner)
+        updated = await _run_full_ibe(repo, _genuine_supports_runner())
         # Both caps land at 0.5 here.
         assert updated.integrated_confidence == 0.5
         assert "Adversarial cap applied" in (updated.integrated_reasoning or "")
@@ -714,11 +905,12 @@ class TestKAgreement:
         await select_op.execute(select_work)
         return await repo.get("claim", "cl-1")
 
-    async def test_k_equals_1_no_additional_runs(self, repo, fake_runner) -> None:
+    async def test_k_equals_1_no_additional_runs(self, repo) -> None:
         """K=1 disables the agreement check; no additional IBE chain runs."""
         await self._setup_claim(repo)
-        baseline_calls = len(fake_runner.calls)
-        updated = await self._run_chain_with_k(repo, fake_runner, k=1)
+        runner = _genuine_supports_runner()
+        baseline_calls = len(runner.calls)
+        updated = await self._run_chain_with_k(repo, runner, k=1)
         assert updated.integrated_assessment in (
             "supports",
             "contradicts",
@@ -729,22 +921,24 @@ class TestKAgreement:
         # And no additional propose-one-candidate calls beyond run 1.
         propose_calls = [
             c
-            for c in fake_runner.calls[baseline_calls:]
+            for c in runner.calls[baseline_calls:]
             if c[0] == "epistemic_propose_one_candidate"
         ]
         # Run 1 enumeration is the only set; the count is bounded by
         # _CANDIDATE_IDS (= 5) but doesn't double or triple under K=1.
         assert len(propose_calls) <= 5
 
-    async def test_k_equals_2_all_agree_commits_verdict(
-        self, repo, fake_runner
-    ) -> None:
+    async def test_k_equals_2_all_agree_commits_verdict(self, repo) -> None:
         """K=2 with agreeing runs preserves the verdict and confidence
         falls to min across runs."""
         await self._setup_claim(repo)
-        updated = await self._run_chain_with_k(repo, fake_runner, k=2)
-        # Default fake_runner returns the same select-best response on
-        # every call → both runs agree.
+        # _genuine_supports_runner (not the shared fake_runner fixture,
+        # whose default now correctly hits the Stage-3 decline on BOTH
+        # the persisted run and the K-agreement in-memory re-run):
+        # every enumeration attempt always proposes the same genuine
+        # 'supports' framing, and epistemic_select_best_explanation's
+        # static mock always picks candidate 'A' → both runs agree.
+        updated = await self._run_chain_with_k(repo, _genuine_supports_runner(), k=2)
         assert updated.integrated_assessment in (
             "supports",
             "contradicts",
@@ -761,21 +955,49 @@ class TestKAgreement:
         await self._setup_claim(repo)
 
         # Custom runner: alternates the chosen-candidate-id on each
-        # select-best call. With balanced enumeration, candidates
-        # have ids A/B/C with verdicts supports/contradicts/insufficient.
-        # First select picks A (supports), second picks B (contradicts).
+        # select-best call, AND proposes three genuine, distinct-verdict
+        # candidates (ids A/B/C = supports/contradicts/insufficient,
+        # covering all three canonicals so balanced enumeration adds
+        # nothing) on EVERY enumeration attempt — both the persisted run
+        # and the K-agreement in-memory re-run each get their own fresh
+        # 3-candidate set (detected via the `already_proposed` sentinel
+        # EnumerateCandidatesOperation / _run_enumerate_inline both send
+        # on the first call of a new attempt, not a shared/exhausted
+        # call counter). First select picks A (supports), second picks
+        # B (contradicts) — a genuine disagreement, not the old
+        # `_default_candidates()` fallback shape.
         select_call_idx = [0]
         chosen_sequence = ["A", "B"]
+        propose_idx = [0]
+        propose_sequence = [
+            ("supports", "Genuine candidate: supports framing"),
+            ("contradicts", "Genuine candidate: contradicts framing"),
+            ("insufficient", "Genuine candidate: insufficient framing"),
+        ]
 
         class AlternatingSelectRunner(FakeAgentRunner):
             async def run(self, agent_name, **kwargs):
                 self.calls.append((agent_name, kwargs))
+                from types import SimpleNamespace
+
+                if agent_name == "epistemic_propose_one_candidate":
+                    if (
+                        kwargs.get("already_proposed")
+                        == "(none yet — propose the first candidate)"
+                    ):
+                        propose_idx[0] = 0
+                    idx = propose_idx[0]
+                    propose_idx[0] += 1
+                    if idx < len(propose_sequence):
+                        verdict, description = propose_sequence[idx]
+                        return SimpleNamespace(
+                            done=False, verdict=verdict, description=description
+                        )
+                    return SimpleNamespace(done=True, verdict=None, description=None)
                 if agent_name == "epistemic_select_best_explanation":
                     chosen = chosen_sequence[select_call_idx[0] % len(chosen_sequence)]
                     select_call_idx[0] += 1
                     runner_up = "C" if chosen != "C" else "A"
-                    from types import SimpleNamespace
-
                     return SimpleNamespace(
                         chosen_candidate_id=chosen,
                         runner_up_candidate_id=runner_up,
@@ -792,10 +1014,10 @@ class TestKAgreement:
         assert "K-agreement" in (updated.integrated_reasoning or "")
         assert "disagreed" in (updated.integrated_reasoning or "").lower()
 
-    async def test_k_equals_3_all_agree(self, repo, fake_runner) -> None:
+    async def test_k_equals_3_all_agree(self, repo) -> None:
         """K=3 with three agreeing runs preserves the verdict."""
         await self._setup_claim(repo)
-        updated = await self._run_chain_with_k(repo, fake_runner, k=3)
+        updated = await self._run_chain_with_k(repo, _genuine_supports_runner(), k=3)
         assert updated.integrated_assessment in (
             "supports",
             "contradicts",

@@ -8,8 +8,18 @@ incrementally into ``Claim.integration_candidates``:
 1. ``EnumerateCandidatesOperation`` (Peirce, generative). Iteratively
    calls ``epistemic_propose_one_candidate`` with the running list of
    already-proposed candidates as context. Stops when the agent signals
-   ``done`` or a hard cap is reached. Falls back to a default three-
-   candidate set if fewer than 2 distinct candidates were produced.
+   ``done`` or a hard cap is reached. When >= 2 genuine candidates ARE
+   produced but they don't cover all three canonical verdicts, balanced
+   enumeration seeds default candidates for the missing framings so the
+   comparison has rivals to consider (Lipton). When fewer than 2
+   genuine candidates are produced at all, the claim gets an explicit
+   "insufficient explanatory diversity" outcome instead — no defaults
+   are seeded, and stages 2-4 never run on it (Stage 3,
+   PRINCIPLE_FIDELITY_PLAN.md §5; see ``INSUFFICIENT_DIVERSITY_
+   MESSAGE_PREFIX`` and the ``EnumerateCandidatesOperation`` docstring
+   for the full rationale — the previous behaviour of padding with 3
+   fully-synthetic candidates and scoring them as rivals is what the
+   audit measured as an 81% placeholder-selection rate).
 
 2. ``ScoreLovelinessOperation`` (Lipton, evaluative). For each candidate
    on the claim, calls ``epistemic_score_candidate_loveliness`` with
@@ -204,6 +214,22 @@ _MAX_LLM_ENUM_CANDIDATES = 5
 _CANDIDATE_IDS = _CANDIDATE_ID_POOL[:_MAX_LLM_ENUM_CANDIDATES]
 _MIN_VIABLE_CANDIDATES = 2
 
+#: Stage 3 of PRINCIPLE_FIDELITY_PLAN.md §5 ("IBE candidate-quality
+#: gate"). The audit (FINDINGS.md §9) measured IBE selecting among
+#: default-placeholder candidates in 81% of claims that reached
+#: enumeration — the OLD behaviour of this module was to paper over a
+#: thin enumeration with three fully-synthetic candidates
+#: (``_default_candidates()``) and let Loveliness/Likeliness/Select
+#: score and compare them as if they were rival explanations, producing
+#: a confident-sounding verdict with no real deliberation behind it.
+#: This is the exact message prefix ``EnumerateCandidatesOperation``
+#: now returns instead — stable and greppable in ``operations.jsonl``
+#: (the message becomes an ``enumerate_candidates`` execution-step row)
+#: so a canary or benchmark pass can measure the decline rate directly
+#: from the artifacts, the same discipline every other principle
+#: signature in this codebase already uses.
+INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX = "Insufficient explanatory diversity"
+
 
 def _default_candidates() -> list[CandidateRecord]:
     """Fallback set when the enumerator fails to produce >=2 candidates.
@@ -247,9 +273,17 @@ class EnumerateCandidatesOperation(BaseOperation):
 
     Each agent call sees the running list of already-proposed candidates
     so it can diversify. Generative role; priors REQUIRED. Stops on
-    ``done=true`` or after ``_MAX_CANDIDATES`` calls. Falls back to the
-    default three-verdict set when enumeration fails to surface >=2
-    distinct candidates.
+    ``done=true`` or after ``_MAX_CANDIDATES`` calls. When enumeration
+    fails to surface >= ``_MIN_VIABLE_CANDIDATES`` (2) GENUINE
+    candidates, the claim gets an explicit "insufficient explanatory
+    diversity" outcome instead — no defaults are seeded and no verdict
+    is scored (Stage 3, PRINCIPLE_FIDELITY_PLAN.md §5; see the ``len(
+    proposed) < _MIN_VIABLE_CANDIDATES`` branch below for the full
+    rationale). When >= 2 genuine candidates ARE produced but they
+    don't cover all three canonical verdicts, balanced enumeration
+    still seeds default candidates for the missing framings so the
+    comparison has rivals to consider (Lipton) — that path is
+    unchanged from before Stage 3.
     """
 
     entity_type = "claim"
@@ -317,10 +351,62 @@ class EnumerateCandidatesOperation(BaseOperation):
             )
 
         if len(proposed) < _MIN_VIABLE_CANDIDATES:
-            proposed = _default_candidates()
+            # Stage 3 fix (PRINCIPLE_FIDELITY_PLAN.md §5): route to an
+            # explicit "insufficient explanatory diversity" outcome
+            # instead of scoring placeholders. The OLD code seeded
+            # ``_default_candidates()`` here and let the claim proceed
+            # through Loveliness/Likeliness/Select exactly as if those
+            # three synthetic candidates were genuine rivals — IBE's
+            # comparative-selection step (Lipton) presupposes real
+            # competing explanations, and scoring boilerplate against
+            # boilerplate is precisely the defect the audit measured
+            # (81% of claims reaching enumeration selected among
+            # placeholders).
+            #
+            # `claim.integration_candidates` is left EMPTY (not the <2
+            # genuine proposals) — that is what makes ScoreLoveliness's
+            # own eligibility filter (`c.integration_candidates` must be
+            # truthy) exclude this claim rather than scoring 0 or 1
+            # candidates in isolation; no graph routing change is
+            # needed, the existing per-claim filters already gate on
+            # exactly this field (P1/P2: the operation decides the
+            # entity's own state, the graph's pre-existing filters do
+            # the routing). `claim.integrated_assessment` stays
+            # explicitly None — not a fabricated "insufficient" — so
+            # this claim reads as "IBE did not certify a verdict here",
+            # the same signal every other honest-abstention path in the
+            # system already produces and every downstream reader
+            # (confidence.py's no-certified-verdict gate,
+            # graph/combination.py's _claim_posterior,
+            # entities/verdict.py's ClaimVerdict.direction) already
+            # handles: a claim with no verdict, not a false "insufficient"
+            # verdict about the evidence. `integrated_reasoning` still
+            # records why, since it is the one place left to say so —
+            # nothing else changed on the claim for a reader to consult.
             message = (
-                f"Enumeration produced <{_MIN_VIABLE_CANDIDATES} candidates; "
-                f"seeded {len(proposed)} defaults"
+                f"{INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX}: enumeration "
+                f"produced {len(proposed)} genuine candidate(s), fewer "
+                f"than the {_MIN_VIABLE_CANDIDATES} required for IBE's "
+                "comparative selection (Lipton) — declining to score "
+                "placeholders; no integrated_assessment written."
+            )
+            claim.integrated_reasoning = (
+                f"Enumeration produced {len(proposed)} genuine candidate"
+                f"{'s' if len(proposed) != 1 else ''} for this claim, "
+                f"fewer than the {_MIN_VIABLE_CANDIDATES} required for "
+                "IBE's comparative selection to mean anything (Lipton: "
+                "inference-to-best-explanation requires rival "
+                "explanations to compare). Rather than padding the "
+                "candidate set with synthetic placeholders and scoring "
+                "them as if they were genuine rivals, the system "
+                "declines to certify a verdict for this claim from "
+                "abductive integration."
+            )
+            await self.repo.save(claim)
+            return OperationResult(
+                success=True,
+                entity_id=claim.entity_id,
+                message=message,
             )
         else:
             # Balanced enumeration (Phase D — Lipton). IBE selects the
@@ -664,7 +750,20 @@ async def _run_enumerate_inline(
     brief: dict[str, object],
 ) -> list[CandidateRecord]:
     """Generate a fresh candidate list. Mirrors EnumerateCandidatesOperation
-    but does not mutate the claim or persist."""
+    but does not mutate the claim or persist.
+
+    Returns an EMPTY list (not ``_default_candidates()``) when fewer
+    than ``_MIN_VIABLE_CANDIDATES`` genuine candidates were produced —
+    the Stage 3 fix mirrored into the K-agreement path. An empty
+    candidate list makes ``_run_select_inline``'s own "no candidates"
+    guard return ``None``, which the K-agreement loop in
+    ``SelectBestExplanationOperation.execute`` already treats as a
+    missing/failed additional run (skipped from the tally) rather than
+    a vote — so a K-agreement re-run that hits insufficient diversity
+    contributes no fabricated verdict to the agreement check, instead
+    of silently scoring three synthetic candidates as if they were a
+    second independent deliberation.
+    """
     if not op.agent_runner:
         return _default_candidates()
 
@@ -699,7 +798,7 @@ async def _run_enumerate_inline(
         )
 
     if len(proposed) < _MIN_VIABLE_CANDIDATES:
-        return _default_candidates()
+        return []
 
     # Balanced enumeration — ensure all three canonical verdicts are
     # represented. See EnumerateCandidatesOperation for the full

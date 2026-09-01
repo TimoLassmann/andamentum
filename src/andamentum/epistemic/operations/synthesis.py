@@ -690,6 +690,29 @@ class SynthesizeReportOperation(BaseOperation):
                         "not read strongly enough either way to adjudicate. "
                         "This claim has no verdict; do not write one for it."
                     )
+            elif (
+                not c.abandoned
+                and c.stage != ClaimStage.HYPOTHESIS
+                and not c.integrated_assessment
+            ):
+                # Stage 3 (PRINCIPLE_FIDELITY_PLAN.md §5): a SUPPORTED+
+                # claim can now legitimately carry no integration verdict
+                # for a reason other than the cycle cap — IBE's own
+                # enumeration step declined to certify one because it
+                # could not surface >= 2 genuine competing explanations
+                # (EnumerateCandidatesOperation's "insufficient
+                # explanatory diversity" outcome). Mirrors the cap's own
+                # undecided branch above so the writer is told the same
+                # thing: no verdict exists for this claim, do not invent
+                # one — the omitted "Adjudicated:" line alone (see above)
+                # is silence a writer could otherwise read either way.
+                parts.append(
+                    "  STATUS: NO INTEGRATION VERDICT. The evidence did not "
+                    "support >= 2 genuinely distinct candidate explanations "
+                    "for abductive comparison, so the system declined to "
+                    "score placeholder candidates and certify a verdict. "
+                    "This claim has no verdict; do not write one for it."
+                )
 
             claim_summaries.append("\n".join(parts))
 

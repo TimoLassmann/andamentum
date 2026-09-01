@@ -413,6 +413,18 @@ class Claim(EpistemicEntity):
     # Writers (2) and (3) share the MECHANICAL_VERDICT_MAX_CONFIDENCE
     # ceiling but derive their number differently, deliberately — see
     # ConcludeAtCycleCapOperation's docstring for why.
+    #
+    # A fourth operation touches this field WITHOUT writing it:
+    # EnumerateCandidatesOperation (Stage 3, PRINCIPLE_FIDELITY_PLAN.md
+    # §5) leaves it explicitly None when enumeration surfaces fewer
+    # than 2 genuine candidates — an "insufficient explanatory
+    # diversity" decline, not a fabricated "insufficient" verdict about
+    # the evidence. A SUPPORTED, non-abandoned, non-cycle-capped claim
+    # reaching a terminal with this field still None is therefore no
+    # longer proof of a routing bug on its own (compute_posterior's
+    # no-certified-verdict gate and every other reader already treats
+    # None as "not adjudicated" and produces an honest abstention
+    # rather than crashing or inventing a direction).
     integrated_assessment: Optional[str] = Field(
         default=None,
         description="Holistic evidence verdict: 'supports', 'contradicts', 'insufficient'",

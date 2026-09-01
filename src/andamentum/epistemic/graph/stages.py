@@ -146,9 +146,27 @@ async def _check_integration(state: Any, repo: Any) -> bool:
     # the invariant, for every run shape rather than only decomposed ones.
     # (Was ``obj.decomposition.combined_verdict is not None``, a field that
     # no longer exists and that verify-mode runs could never populate.)
+    #
+    # ``integrated_assessment is not None`` used to be required for every
+    # active claim, full stop — before Stage 3 (PRINCIPLE_FIDELITY_PLAN.md
+    # §5) IBE always produced SOME verdict once a claim reached
+    # EnumerateCandidatesOperation, even a fabricated one scored over
+    # placeholder candidates. Stage 3 added a legitimate way for that not
+    # to happen: a claim whose enumeration surfaced fewer than 2 genuine
+    # candidates gets an explicit non-verdict (integrated_assessment stays
+    # None) instead of a scored placeholder. Requiring non-None here
+    # unconditionally would make this stage boundary crash on that
+    # correct, intended outcome. The same distinction ``no_stranded_claims``
+    # (graph/invariants.py) already draws — a claim IS allowed to reach a
+    # terminal with no verdict, as long as it was actually processed
+    # (``verification_done``) rather than skipped by a routing bug — is
+    # reused here rather than invented twice.
     verdict_ok = state.verdict is not None
     active = [c for c in claims if not c.cycle_capped and not c.abandoned]
-    return verdict_ok and all(c.integrated_assessment is not None for c in active)
+    return verdict_ok and all(
+        c.integrated_assessment is not None or c.entity_id in state.verification_done
+        for c in active
+    )
 
 
 async def _check_synthesis(state: Any, repo: Any) -> bool:

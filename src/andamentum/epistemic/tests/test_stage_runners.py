@@ -349,3 +349,101 @@ async def test_chain_preplanning_then_resume_from_decompose(
 # (the default), so the no-change path is tested by every other
 # call site implicitly. Adding a redundant 60s end-to-end run here
 # would burn iteration time for no extra signal.
+
+
+# ── _check_integration (the "integration" stage's exit invariant) ────
+#
+# No existing call site anywhere in the suite runs
+# ``stop_after=CombineClaimVerdicts`` (confirmed by grep before writing
+# these), so the predicate itself was previously untested in isolation
+# — only exercised transitively by whatever integration test happened
+# to hit a stage boundary elsewhere. Stage 3 (PRINCIPLE_FIDELITY_
+# PLAN.md §5) changed its logic (graph/stages.py:_check_integration),
+# so it gets direct unit coverage here rather than relying on an
+# end-to-end run to notice a regression.
+
+
+class TestCheckIntegrationInvariant:
+    """Unit tests for the predicate directly — no graph run needed.
+
+    Before Stage 3, every active (non-abandoned, non-cycle-capped)
+    claim reaching CombineClaimVerdicts was REQUIRED to carry a
+    non-None ``integrated_assessment`` — IBE always produced some
+    verdict, even a fabricated one scored over placeholder candidates.
+    Stage 3 added a legitimate way for that not to happen (enumeration
+    declining for insufficient explanatory diversity), so the
+    invariant now also accepts a claim with no verdict AS LONG AS it
+    was actually processed (``state.verification_done``) — the same
+    distinction ``no_stranded_claims`` (graph/invariants.py) already
+    draws for exactly this reason.
+    """
+
+    async def test_still_fails_on_a_genuinely_stranded_claim(self, repo) -> None:
+        """A claim with no verdict and NOT in verification_done is
+        exactly the routing-bug shape this invariant exists to catch.
+        The Stage-3 relaxation must not silence that."""
+        from ..entities import Claim, ClaimStage
+        from ..entities.verdict import EpistemicVerdict
+        from ..graph.stages import _check_integration
+        from ..graph.state import EpistemicGraphState
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        state = EpistemicGraphState(
+            objective_id="obj-1",
+            verdict=EpistemicVerdict(objective_id="obj-1"),
+        )
+        assert await _check_integration(state, repo) is False
+
+    async def test_passes_on_a_legitimately_declined_claim(self, repo) -> None:
+        """Stage 3's new case: no verdict, but verification_done — the
+        claim WAS processed and IBE declined via insufficient
+        explanatory diversity, not a routing bug that skipped it."""
+        from ..entities import Claim, ClaimStage
+        from ..entities.verdict import EpistemicVerdict
+        from ..graph.stages import _check_integration
+        from ..graph.state import EpistemicGraphState
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        state = EpistemicGraphState(
+            objective_id="obj-1",
+            verdict=EpistemicVerdict(objective_id="obj-1"),
+            verification_done={"cl-1"},
+        )
+        assert await _check_integration(state, repo) is True
+
+    async def test_still_fails_when_verdict_is_missing_entirely(self, repo) -> None:
+        """verdict_ok is a separate, unrelaxed condition — a claim in
+        verification_done does not paper over a missing verdict
+        object."""
+        from ..entities import Claim, ClaimStage
+        from ..graph.stages import _check_integration
+        from ..graph.state import EpistemicGraphState
+
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        state = EpistemicGraphState(
+            objective_id="obj-1",
+            verdict=None,
+            verification_done={"cl-1"},
+        )
+        assert await _check_integration(state, repo) is False
