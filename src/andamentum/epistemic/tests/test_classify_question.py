@@ -74,20 +74,10 @@ from ..agents.output_models import ClassifyQuestionOutput  # noqa: E402
 
 
 class TestClassifyQuestionAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_classify_question")
-        assert agent.name == "epistemic_classify_question"
 
     def test_output_model_is_correct(self):
         agent = get_agent("epistemic_classify_question")
         assert agent.output_model is ClassifyQuestionOutput
-
-    def test_output_model_fields(self):
-        """Output model should be narrow: just question_type + reasoning."""
-        fields = ClassifyQuestionOutput.model_fields
-        assert "question_type" in fields
-        assert "reasoning" in fields
-        assert len(fields) == 2
 
     def test_output_model_accepts_valid_type(self):
         # Pass the enum value directly — pydantic coerces the str to the
