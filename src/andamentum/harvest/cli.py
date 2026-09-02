@@ -8,6 +8,7 @@ Exit codes:
     1 — argument error
     2 — fetch / unsupported-format error (FetchError, UnsupportedFormatError)
     3 — extraction failed (ExtractionError, other HarvestError)
+    4 — --mode accurate requested without the optional `vlm` extra installed
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import NoReturn, Sequence
 
 from .api import extract
+from .backends.docling_backend import DEFAULT_FIGURE_MODEL
 from .errors import ExtractionError, FetchError, HarvestError, UnsupportedFormatError
 
 
@@ -55,10 +57,46 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output markdown file path. Default: '-' (stdout).",
     )
     parser.add_argument(
+        "--mode",
+        choices=("fast", "accurate"),
+        default="fast",
+        help=(
+            "Extraction mode. 'fast' (default) runs docling's standard "
+            "pipeline on its stock settings. 'accurate' runs the VLM "
+            "pipeline: one model reads the page layout, and figures get a "
+            "written description. PDF only; roughly an order of magnitude "
+            "slower per page; needs 'uv sync --extra vlm'."
+        ),
+    )
+    parser.add_argument(
+        "--no-ocr",
+        dest="ocr",
+        action="store_false",
+        help=(
+            "Skip OCR in --mode fast. For a born-digital PDF the text layer "
+            "is already there and OCR is the expensive stage, so this is the "
+            "fastest correct path. A scan read with --no-ocr yields no text "
+            "and fails loudly. No effect on --mode accurate."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Print progress to stderr.",
+    )
+    parser.add_argument(
+        "--figure-model",
+        default=DEFAULT_FIGURE_MODEL,
+        metavar="MODEL",
+        help=(
+            "Which model writes the figure descriptions under --mode accurate "
+            f"(default: {DEFAULT_FIGURE_MODEL}). A docling preset id "
+            "(smolvlm / granite_vision / qwen / pixtral) downloads weights and "
+            "runs them in-process. 'ollama:<model>' instead uses a vision "
+            "model your local Ollama already serves, downloading nothing — "
+            "e.g. --figure-model ollama:minicpm-v4.6:1b. Ignored by --mode fast."
+        ),
     )
     parser.add_argument(
         "--tdm-host",
@@ -82,7 +120,16 @@ def _die(code: int, message: str) -> NoReturn:
 async def _run(args: argparse.Namespace) -> int:
     tdm_hosts = frozenset(h.strip().lower() for h in args.tdm_host if h.strip())
     try:
-        markdown = await extract(args.source, tdm_allowed_hosts=tdm_hosts)
+        markdown = await extract(
+            args.source,
+            mode=args.mode,
+            ocr=args.ocr,
+            figure_model=args.figure_model,
+            tdm_allowed_hosts=tdm_hosts,
+        )
+    except ImportError as exc:
+        # mode="accurate" without the optional VLM extra installed.
+        _die(4, str(exc))
     except FetchError as exc:
         _die(2, f"could not fetch {args.source!r}: {exc}")
     except UnsupportedFormatError as exc:

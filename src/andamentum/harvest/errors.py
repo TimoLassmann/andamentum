@@ -43,3 +43,8 @@ class ExtractionError(HarvestError):
                 f"{k}: {v}" for k, v in self.diagnostics.items()
             )
         super().__init__(f"{message}{detail}" if detail else message)
+
+
+# `OllamaUnavailableError` is defined in backends/docling_backend.py, next to
+# the check that raises it, and subclasses ExtractionError — a caller matching
+# on ExtractionError keeps working unchanged.

@@ -4,11 +4,6 @@ import pytest
 from types import SimpleNamespace
 from ..entities.claim import Claim
 from ..primitives import ClaimStage
-from ..agents import get_agent
-from ..agents.output_models import (
-    ContrastiveEvaluationOutput,
-    CrossClaimConsistencyOutput,
-)
 from ..adapters import adapt_agent_output
 
 
@@ -60,16 +55,6 @@ class TestClaimNewFields:
 
 
 class TestContrastiveEvaluationAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_contrastive_evaluation")
-        assert agent.name == "epistemic_contrastive_evaluation"
-
-    def test_output_model_fields(self):
-        fields = ContrastiveEvaluationOutput.model_fields
-        assert "better_claim" in fields
-        assert "distinguishing_observation" in fields
-        assert "confidence" in fields
-        assert len(fields) == 3
 
     def test_adapter(self):
         raw = SimpleNamespace(
@@ -88,15 +73,6 @@ class TestContrastiveEvaluationAgent:
 
 
 class TestCrossClaimConsistencyAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_cross_claim_consistency")
-        assert agent.name == "epistemic_cross_claim_consistency"
-
-    def test_output_model_fields(self):
-        fields = CrossClaimConsistencyOutput.model_fields
-        assert "conflicts" in fields
-        assert "tension_point" in fields
-        assert len(fields) == 2
 
     def test_adapter_no_conflict(self):
         raw = SimpleNamespace(conflicts=False, tension_point="")

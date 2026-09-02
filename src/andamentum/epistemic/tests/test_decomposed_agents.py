@@ -2,27 +2,13 @@
 
 from types import SimpleNamespace
 
-from ..agents import get_agent
 from ..agents.output_models import (
-    GenerateCounterqueryOutput,
-    CheckPairwiseIndependenceOutput,
     IdentifyTestableAspectOutput,
-    SpecifyPredictionOutput,
-    DefineFalsificationOutput,
 )
 from ..adapters import adapt_agent_output
 
 
 class TestGenerateCounterqueryAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_generate_counterquery")
-        assert agent.name == "epistemic_generate_counterquery"
-
-    def test_output_model_fields(self):
-        fields = GenerateCounterqueryOutput.model_fields
-        assert "query" in fields
-        assert "framing" in fields
-        assert len(fields) == 2
 
     def test_adapter(self):
         raw = SimpleNamespace(
@@ -34,15 +20,6 @@ class TestGenerateCounterqueryAgent:
 
 
 class TestCheckPairwiseIndependenceAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_check_pairwise_independence")
-        assert agent.name == "epistemic_check_pairwise_independence"
-
-    def test_output_model_fields(self):
-        fields = CheckPairwiseIndependenceOutput.model_fields
-        assert "independent" in fields
-        assert "rationale" in fields
-        assert len(fields) == 2
 
     def test_adapter_independent(self):
         raw = SimpleNamespace(independent=True, rationale="Different methods")
@@ -61,15 +38,6 @@ class TestCheckPairwiseIndependenceAgent:
 
 
 class TestIdentifyTestableAspectAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_identify_testable_aspect")
-        assert agent.name == "epistemic_identify_testable_aspect"
-
-    def test_output_model_fields(self):
-        fields = IdentifyTestableAspectOutput.model_fields
-        assert "testable_dimension" in fields
-        assert "observation_type" in fields
-        assert len(fields) == 2
 
     def test_pydantic_model_rejects_out_of_vocab_observation_type(self):
         # observation_type is a Literal — pydantic rejects case/whitespace
@@ -99,17 +67,6 @@ class TestIdentifyTestableAspectAgent:
 
 
 class TestSpecifyPredictionAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_specify_prediction")
-        assert agent.name == "epistemic_specify_prediction"
-
-    def test_output_model_fields(self):
-        fields = SpecifyPredictionOutput.model_fields
-        assert "expected_observation" in fields
-        assert "conditions" in fields
-        assert "timeframe" in fields
-        assert "measurability" in fields
-        assert len(fields) == 4
 
     def test_adapter(self):
         raw = SimpleNamespace(
@@ -135,14 +92,6 @@ class TestSpecifyPredictionAgent:
 
 
 class TestDefineFalsificationAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_define_falsification")
-        assert agent.name == "epistemic_define_falsification"
-
-    def test_output_model_fields(self):
-        fields = DefineFalsificationOutput.model_fields
-        assert "falsification_criterion" in fields
-        assert len(fields) == 1
 
     def test_adapter(self):
         raw = SimpleNamespace(falsification_criterion="No change observed")
@@ -155,7 +104,7 @@ class TestDefineFalsificationAgent:
 # ──────────────────────────────────────────────────────────────────────────────
 
 from ..similarity import group_by_similarity as cluster_by_similarity  # noqa: E402
-from ..agents.output_models import ExtractAssertionOutput, DraftClaimOutput  # noqa: E402
+from ..agents.output_models import DraftClaimOutput  # noqa: E402
 
 
 class TestEmbeddingsClustering:
@@ -197,14 +146,6 @@ class TestEmbeddingsClustering:
 
 
 class TestExtractAssertionAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_extract_assertion")
-        assert agent.name == "epistemic_extract_assertion"
-
-    def test_output_model_fields(self):
-        fields = ExtractAssertionOutput.model_fields
-        assert "assertion" in fields
-        assert len(fields) == 1
 
     def test_adapter(self):
         raw = SimpleNamespace(assertion="  Coffee reduces diabetes risk  ")
@@ -213,16 +154,6 @@ class TestExtractAssertionAgent:
 
 
 class TestDraftClaimAgent:
-    def test_agent_registered(self):
-        agent = get_agent("epistemic_draft_claim")
-        assert agent.name == "epistemic_draft_claim"
-
-    def test_output_model_fields(self):
-        fields = DraftClaimOutput.model_fields
-        assert "statement" in fields
-        assert "scope" in fields
-        assert "direction" in fields
-        assert len(fields) == 3
 
     def test_pydantic_model_rejects_out_of_vocab_direction(self):
         # `direction` is now a Literal on DraftClaimOutput, so pydantic

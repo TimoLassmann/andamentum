@@ -18,12 +18,14 @@ from .backends import (
     extract_with_docling,
     extract_with_trafilatura,
 )
+from .backends.docling_backend import DEFAULT_FIGURE_MODEL
 from .errors import ExtractionError, HarvestError, UnsupportedFormatError
 from .fetch import Fetched, resolve
 from .metadata import sniff_html_metadata
 from .scoring import score_markdown
 
 Format = Literal["pdf", "html", "docx", "pptx", "markdown", "plain"]
+ExtractionMode = Literal["fast", "accurate"]
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,9 @@ logger = logging.getLogger(__name__)
 async def extract(
     source: str | Path,
     *,
+    mode: ExtractionMode = "fast",
+    ocr: bool = True,
+    figure_model: str = DEFAULT_FIGURE_MODEL,
     tdm_allowed_hosts: frozenset[str] = frozenset(),
 ) -> str:
     """Convert any document source to clean markdown.
@@ -40,6 +45,41 @@ async def extract(
     source:
         A URL string ("http://..." / "https://...") OR a local file path
         (str or pathlib.Path). "file://" URIs are also accepted.
+    mode:
+        ``"fast"`` (default) runs docling's standard pipeline on its stock
+        settings, so it behaves as calling docling with no options did.
+        Use ``ocr=False`` for the born-digital speed path.
+
+        ``"accurate"`` runs docling's VLM pipeline: one model replaces the
+        whole layout + OCR + table stack, and figures get a written
+        description marked as such in the output. PDF only — every other
+        format runs the standard pipeline either way. It needs the optional
+        ``vlm`` extra (``uv sync --extra vlm``) and is roughly an order of
+        magnitude slower per page.
+    ocr:
+        Fast mode only — the accurate pipeline has no OCR stage to switch.
+        Defaults to True, which is docling's own default, so an unchanged
+        call behaves exactly as it did before this parameter existed.
+
+        Pass False for the born-digital speed path: a PDF that already has
+        a text layer gains nothing from OCR and OCR is the expensive stage.
+        A scan read with ``ocr=False`` produces no text and raises
+        `ExtractionError` naming the remedy.
+    figure_model:
+        Which model writes the figure descriptions in accurate mode.
+        Ignored by ``mode="fast"``, which describes nothing.
+
+        A docling picture-description preset id — ``"smolvlm"`` (256M,
+        default), ``"granite_vision"`` (2B), ``"qwen"`` (3B),
+        ``"pixtral"`` (12B) — downloads weights and runs them in-process.
+
+        ``"ollama:<model>"`` instead reaches a vision model already served
+        by a local Ollama, downloading nothing and loading nothing into this
+        process (e.g. ``"ollama:minicpm-v4.6:1b"``). The model must report
+        the ``vision`` capability; ``ollama show <model>`` lists it.
+
+        Every option is asked the same question, so changing this compares
+        models rather than prompts.
     tdm_allowed_hosts:
         Hostnames the caller attests they hold a text-and-data-mining
         licence for. Disarms the paywalled-publisher tripwire for those
@@ -62,9 +102,13 @@ async def extract(
         Source format detected but no backend can handle it.
     ExtractionError
         Every applicable backend failed (or returned empty content).
+    ImportError
+        ``mode="accurate"`` without the optional ``vlm`` extra installed.
     """
     fetched = await resolve(source, tdm_allowed_hosts=tdm_allowed_hosts)
-    return await _dispatch(fetched)
+    return await _dispatch(
+        fetched, mode=mode, ocr=ocr, figure_model=figure_model
+    )
 
 
 async def extract_from_bytes(
@@ -72,6 +116,9 @@ async def extract_from_bytes(
     *,
     format: Format,
     source_url: str = "",
+    mode: ExtractionMode = "fast",
+    ocr: bool = True,
+    figure_model: str = DEFAULT_FIGURE_MODEL,
 ) -> str:
     """Run the same extraction pipeline as `extract`, but on bytes you already have.
 
@@ -90,21 +137,36 @@ async def extract_from_bytes(
     source_url:
         Optional URL or filename for diagnostics + link resolution
         (trafilatura uses it to resolve relative links in HTML).
+    mode:
+        ``"fast"`` or ``"accurate"`` — see `extract`.
+    ocr:
+        Whether fast mode runs OCR — see `extract`.
+    figure_model:
+        Which model describes figures in accurate mode — see `extract`.
     """
     fetched = Fetched(data=data, format=format, source_url=source_url)
-    return await _dispatch(fetched)
+    return await _dispatch(
+        fetched, mode=mode, ocr=ocr, figure_model=figure_model
+    )
 
 
-async def _dispatch(fetched: Fetched) -> str:
+async def _dispatch(
+    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+) -> str:
     """Format-specific routing — shared by ``extract`` and ``extract_from_bytes``."""
     if fetched.format == "html":
-        return await _extract_html(fetched)
-    if fetched.format == "pdf":
-        return await extract_with_docling(fetched.data, fetched.source_url, fmt="pdf")
-    if fetched.format == "docx":
-        return await extract_with_docling(fetched.data, fetched.source_url, fmt="docx")
-    if fetched.format == "pptx":
-        return await extract_with_docling(fetched.data, fetched.source_url, fmt="pptx")
+        return await _extract_html(
+            fetched, mode=mode, ocr=ocr, figure_model=figure_model
+        )
+    if fetched.format in ("pdf", "docx", "pptx"):
+        return await extract_with_docling(
+            fetched.data,
+            source_url=fetched.source_url,
+            fmt=fetched.format,
+            mode=mode,
+            ocr=ocr,
+            figure_model=figure_model,
+        )
     if fetched.format in ("markdown", "plain"):
         return await extract_passthrough(fetched.data, fetched.source_url)
 
@@ -113,8 +175,15 @@ async def _dispatch(fetched: Fetched) -> str:
     raise UnsupportedFormatError(f"no backend for format {fetched.format!r}")
 
 
-async def _extract_html(fetched: Fetched) -> str:
-    """HTML-specific dispatch: sniff metadata, then route or race."""
+async def _extract_html(
+    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+) -> str:
+    """HTML-specific dispatch: sniff metadata, then route or race.
+
+    ``mode`` is carried through for completeness, but docling's HTML backend
+    is not paginated, so the VLM pipeline has no page images to read and both
+    modes run the same extraction.
+    """
     meta = sniff_html_metadata(fetched.data)
     logger.debug(
         "html metadata sniff: verdict=%s reason=%s og_type=%s ld_type=%s",
@@ -134,24 +203,48 @@ async def _extract_html(fetched: Fetched) -> str:
                 "trafilatura failed on article-tagged page; falling back: %s", exc
             )
             return await extract_with_docling(
-                fetched.data, fetched.source_url, fmt="html"
+                fetched.data,
+                source_url=fetched.source_url,
+                fmt="html",
+                mode=mode,
+                ocr=ocr,
+                figure_model=figure_model,
             )
 
     if meta.verdict == "not_article":
         # Index/listing/homepage → docling preserves card structure.
-        return await extract_with_docling(fetched.data, fetched.source_url, fmt="html")
+        return await extract_with_docling(
+            fetched.data,
+            source_url=fetched.source_url,
+            fmt="html",
+            mode=mode,
+            ocr=ocr,
+            figure_model=figure_model,
+        )
 
     # Ambiguous → race both, score, pick winner.
-    return await _race_html_backends(fetched)
+    return await _race_html_backends(
+        fetched, mode=mode, ocr=ocr, figure_model=figure_model
+    )
 
 
-async def _race_html_backends(fetched: Fetched) -> str:
+async def _race_html_backends(
+    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+) -> str:
     """Run trafilatura and docling concurrently, score, return the better one."""
     traf_task = asyncio.create_task(
         _safe_call(extract_with_trafilatura, fetched.data, fetched.source_url)
     )
     docl_task = asyncio.create_task(
-        _safe_call(extract_with_docling, fetched.data, fetched.source_url, fmt="html")
+        _safe_call(
+            extract_with_docling,
+            fetched.data,
+            source_url=fetched.source_url,
+            fmt="html",
+            mode=mode,
+            ocr=ocr,
+            figure_model=figure_model,
+        )
     )
     traf_md, traf_err = await traf_task
     docl_md, docl_err = await docl_task

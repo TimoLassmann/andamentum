@@ -48,6 +48,8 @@ def patched_backends(monkeypatch):
         "docling_md": "## Layout\n\nbody\n",
         "docling_calls": 0,
         "docling_raises": None,
+        "docling_modes": [],
+        "docling_formats": [],
         "plain_md": "plain text",
         "plain_calls": 0,
     }
@@ -58,8 +60,10 @@ def patched_backends(monkeypatch):
             raise state["trafilatura_raises"]
         return state["trafilatura_md"]
 
-    async def fake_docl(data, source_url, fmt="html"):
+    async def fake_docl(data, *, source_url, fmt="html", mode="fast", **_kwargs):
         state["docling_calls"] += 1
+        state["docling_modes"].append(mode)
+        state["docling_formats"].append(fmt)
         if state["docling_raises"]:
             raise state["docling_raises"]
         return state["docling_md"]
