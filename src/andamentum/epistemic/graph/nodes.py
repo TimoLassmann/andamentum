@@ -95,12 +95,19 @@ async def _mark_cycle_capped(
     (cluster-dedup vs reformulation). Subsequent cap firings on the same
     claim leave the snapshot alone.
 
-    The conclude half runs on **every** firing:
+    The conclude half runs on the **first** firing, and on a later
+    firing only when the claim's evidence fingerprint
+    (``gates.claim_evidence_fingerprint``) differs from the one
+    recorded at the last conclusion (``Claim.cap_fingerprint``):
     ``ConcludeAtCycleCapOperation`` re-reads the claim's eligible
     evidence deterministically (no LLM) and revises its own record. That
     is what stops a capped claim from reporting a false "insufficient"
     when the evidence it already gathered was decisive — a cap stops
-    further LLM work; it must not zero out signal already acquired.
+    further LLM work; it must not zero out signal already acquired. A
+    repeat firing on unchanged evidence would just re-derive the same
+    reading, so it is skipped entirely (certify-before-contract D7): the
+    cap is terminal, and a terminal claim consumes no further work of
+    any kind, mechanical or LLM.
 
     The cap fires from two sites — ResolveUncertainties (primary
     loop-breaker, blocks the rescrutiny add) and Scrutinize (defense
@@ -113,12 +120,14 @@ async def _mark_cycle_capped(
     confusable-parameter rule exists to catch.
     """
     from ..entities import Claim, Uncertainty
+    from ..gates import claim_evidence_fingerprint
     from ..operations.stage_management import ConcludeAtCycleCapOperation
 
     claim = await deps.repo.get("claim", claim_id)
     if not isinstance(claim, Claim):
         return
-    if not claim.cycle_capped:
+    first_firing = not claim.cycle_capped
+    if first_firing:
         claim.cycle_capped = True
         # Snapshot the currently-blocking uncertainties on this claim, if any.
         # Used post-hoc to decide whether the cycle was driven by persistent
@@ -148,6 +157,16 @@ async def _mark_cycle_capped(
             len(snapshot),
         )
 
+    fingerprint = await claim_evidence_fingerprint(claim, deps.repo)
+    if not first_firing and claim.cap_fingerprint == fingerprint:
+        logger.info(
+            "Claim %s cycle cap re-fired on unchanged evidence "
+            "(fingerprint matches the last conclusion); skipping the "
+            "mechanical re-conclusion",
+            claim_id[:12],
+        )
+        return
+
     await _run_op(
         ConcludeAtCycleCapOperation,
         deps,
@@ -156,6 +175,66 @@ async def _mark_cycle_capped(
         "claim",
         "conclude_at_cycle_cap",
     )
+
+    # Reload: ConcludeAtCycleCapOperation loaded and saved its own copy of
+    # the claim, so the local ``claim`` object is stale on the fields it
+    # wrote. Stamp the fingerprint onto the current record rather than the
+    # stale one, or this save would clobber the operation's own writes.
+    claim = await deps.repo.get("claim", claim_id)
+    if isinstance(claim, Claim):
+        claim.cap_fingerprint = fingerprint
+        await deps.repo.save(claim)
+
+
+async def _uncertainty_is_terminal_only(unc: Any, repo: Any) -> bool:
+    """True when every claim ``unc`` affects is cycle-capped or abandoned.
+
+    Certify-before-contract D7: a cycle-capped or abandoned claim is
+    terminal for this run — it consumes no further LLM work of any
+    kind. An uncertainty whose every affected claim is already terminal
+    has no live claim left to resolve anything FOR, so resolving it
+    would spend an LLM call to inform claims that can no longer act on
+    it, and it must not count as still-blocking for routing either —
+    otherwise the graph loops forever between ``ResolveUncertainties``
+    and ``Scrutinize`` re-dispatching a terminal-only uncertainty with
+    no live claim ever advancing. An uncertainty with an empty
+    ``affected_claim_ids`` returns False (nothing to check against,
+    treated exactly as before D7).
+    """
+    from ..entities import Claim
+
+    if not unc.affected_claim_ids:
+        return False
+    affected_claims = [await repo.get("claim", cid) for cid in unc.affected_claim_ids]
+    return all(
+        isinstance(c, Claim) and (c.cycle_capped or c.abandoned) for c in affected_claims
+    )
+
+
+async def _live_blocking(uncertainties: list[Any], repo: Any) -> list[Any]:
+    """Blocking uncertainties with at least one non-terminal affected claim.
+
+    Certify-before-contract D7: an uncertainty whose every affected claim
+    is cycle-capped or abandoned is skipped — logged at info, no
+    ``resolve_uncertainty`` operation row — rather than routed for
+    resolution. This is the single site that both filters and logs that
+    skip, so the two call sites in ``ResolveUncertainties.run`` (the
+    initial gather and the post-resolution re-check) cannot drift apart.
+    """
+    live = []
+    for u in uncertainties:
+        if not u.is_blocking:
+            continue
+        if await _uncertainty_is_terminal_only(u, repo):
+            logger.info(
+                "Uncertainty %s skipped: all %d affected claim(s) "
+                "are cycle-capped or abandoned",
+                u.entity_id[:12],
+                len(u.affected_claim_ids),
+            )
+            continue
+        live.append(u)
+    return live
 
 
 async def _evaluate_retrieval_health(
@@ -1912,7 +1991,7 @@ class ResolveUncertainties(Node):
             objective_id=state.objective_id,
             resolution=None,
         )
-        blocking = [u for u in all_uncertainties if u.is_blocking]
+        blocking = await _live_blocking(all_uncertainties, deps.repo)
 
         if not blocking:
             # Rescrutiny check FIRST — must run before the early return
@@ -1932,6 +2011,25 @@ class ResolveUncertainties(Node):
             return EnumerateCandidates()
 
         for unc in blocking:
+            # Certify-before-contract D7: a cycle-capped or abandoned
+            # claim is terminal for this run — it consumes no further
+            # LLM work of any kind. An uncertainty whose every affected
+            # claim is already terminal has no live claim left to
+            # resolve anything FOR, so resolving it would spend an LLM
+            # call to inform claims that can no longer act on it. `blocking`
+            # was already filtered by `_live_blocking` above, but this
+            # re-check is load-bearing, not defensive: an earlier
+            # iteration of THIS loop can cap an affected claim (via
+            # `_mark_cycle_capped` below) after `blocking` was built, so a
+            # later `unc` in the same pass can turn terminal-only mid-loop.
+            if await _uncertainty_is_terminal_only(unc, deps.repo):
+                logger.info(
+                    "Uncertainty %s skipped: all %d affected claim(s) "
+                    "are cycle-capped or abandoned",
+                    unc.entity_id[:12],
+                    len(unc.affected_claim_ids),
+                )
+                continue
             result = await _run_op(
                 ResolveUncertaintyOperation,
                 deps,
@@ -1991,7 +2089,7 @@ class ResolveUncertainties(Node):
             objective_id=state.objective_id,
             resolution=None,
         )
-        new_blocking = [u for u in remaining if u.is_blocking]
+        new_blocking = await _live_blocking(remaining, deps.repo)
 
         if new_blocking and self.depth < PEIRCE_CYCLE_CAP:
             return ResolveUncertainties(

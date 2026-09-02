@@ -94,11 +94,14 @@ def capped_claims_carry_a_cap_evaluation(
     """Invariant: every cycle-capped claim carries a ``cap_evaluation``.
 
     ``_mark_cycle_capped`` is the single funnel both cap-firing sites go
-    through, and it unconditionally dispatches
-    ``ConcludeAtCycleCapOperation``, which always writes the record. So a
-    capped claim reaching a terminal *without* one means some site set
-    ``cycle_capped=True`` while bypassing the funnel — exactly the
-    regression shape this guards.
+    through. It dispatches ``ConcludeAtCycleCapOperation`` on the first
+    cap firing unconditionally, and on a later firing only when the
+    claim's evidence fingerprint has moved since the last conclusion
+    (``Claim.cap_fingerprint``) — a repeat firing on unchanged evidence
+    would just re-derive the same mechanical reading. The first firing
+    always writes the record, so a capped claim reaching a terminal
+    *without* one means some site set ``cycle_capped=True`` while
+    bypassing the funnel — exactly the regression shape this guards.
 
     This is a DIFFERENT guarantee from ``no_stranded_claims``. That one
     asks "should this claim have entered the IBE chain and didn't?", and

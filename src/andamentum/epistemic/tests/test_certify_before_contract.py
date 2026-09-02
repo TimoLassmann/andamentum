@@ -19,6 +19,12 @@ Covers, at the node level (model on ``test_post_verification_demotion.py``):
   ``Scrutinize`` for this run: ``scrutiny_verdict`` and
   ``claims_needing_rescrutiny`` are exactly what ``Claim.contract``
   leaves them (untouched / not added), so ``Scrutinize`` skips it.
+* S5 — a cycle-capped claim is terminal: ``ResolveUncertainties`` does
+  not dispatch ``resolve_uncertainty`` for a blocking uncertainty whose
+  every affected claim is already cycle-capped or abandoned, and
+  ``conclude_at_cycle_cap`` (via ``_mark_cycle_capped``) fires once per
+  genuine cap firing plus once per evidence change afterwards — never
+  once per re-entry on unchanged evidence.
 
 No LLM calls anywhere in this file: ``AdversarialSearchOperation``
 degrades to a clean structural no-op with ``agent_runner=None`` (marks
@@ -35,13 +41,17 @@ from pathlib import Path
 from typing import Any
 
 from andamentum.document_store import DocumentStore
-from andamentum.epistemic.entities import Claim, Evidence, Objective
+from andamentum.epistemic.entities import Claim, Evidence, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
+from andamentum.epistemic.entities.uncertainty import UncertaintyType
 from andamentum.epistemic.gates import claim_evidence_fingerprint
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import (
+    SCRUTINY_RESOLVE_CYCLE_CAP,
+    EnumerateCandidates,
     PromoteSupported,
     PromoteToSupported,
+    ResolveUncertainties,
     RunVerification,
     Scrutinize,
 )
@@ -577,3 +587,264 @@ async def test_contracted_claim_is_terminal_not_routed_back_to_scrutinize(
     from andamentum.epistemic.graph.nodes import ResolveUncertainties
 
     assert isinstance(next_node, ResolveUncertainties)
+
+
+# ── S5 ────────────────────────────────────────────────────────────────
+
+
+async def _make_claim_and_repo(
+    tmp_path: Path, db_name: str, **claim_kwargs: Any
+) -> tuple[Claim, EpistemicRepository]:
+    repo = await _make_repo(tmp_path, db_name)
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim under S5 test",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        **claim_kwargs,
+    )
+    await repo.save(claim)
+    return claim, repo
+
+
+async def test_resolve_uncertainties_skips_an_uncertainty_whose_claims_are_all_terminal(
+    tmp_path: Path, fake_runner
+) -> None:
+    """A blocking uncertainty whose every affected claim is cycle-capped
+    or abandoned gets no ``resolve_uncertainty`` op — dispatching one
+    would spend an LLM call informing claims that can no longer act on
+    the resolution. The uncertainty itself is left untouched (still
+    unresolved), so nothing here manufactures a false resolution either.
+    """
+    capped, repo = await _make_claim_and_repo(tmp_path, "s5_all_terminal", cycle_capped=True)
+    obj_id = capped.objective_id
+    abandoned = Claim(
+        objective_id=obj_id,
+        statement="second claim, abandoned",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        abandoned=True,
+    )
+    await repo.save(abandoned)
+
+    unc = Uncertainty(
+        description="Concern affecting only terminal claims.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj_id,
+        affected_claim_ids=[capped.entity_id, abandoned.entity_id],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
+    node = await ResolveUncertainties().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert _ops(state, "resolve_uncertainty") == [], (
+        "resolve_uncertainty dispatched for an uncertainty whose every "
+        "affected claim is cycle-capped or abandoned."
+    )
+    reloaded_unc = await repo.get("uncertainty", unc.entity_id)
+    assert reloaded_unc.resolution is None
+    # A terminal-only uncertainty must not count as still-blocking for
+    # routing either, or the graph would loop forever re-entering
+    # ResolveUncertainties on an uncertainty it will never resolve. With
+    # no blocking uncertainty left and nothing queued for rescrutiny,
+    # the node proceeds to its default next_on_clear.
+    assert isinstance(node, EnumerateCandidates)
+
+
+async def test_resolve_uncertainties_terminal_only_uncertainty_routes_to_promote(
+    tmp_path: Path, fake_runner
+) -> None:
+    """A single cycle-capped claim with ``scrutiny_verdict == "pass"`` and
+    one blocking uncertainty affecting only it: the uncertainty is
+    terminal-only, so it must neither be dispatched nor count as
+    still-blocking for routing. With ``next_on_clear="promote"`` the
+    node proceeds straight to ``PromoteToSupported`` — the pre-fix
+    routing instead recursed ``ResolveUncertainties`` indefinitely
+    because the terminal-only uncertainty kept reading as blocking.
+    """
+    capped, repo = await _make_claim_and_repo(
+        tmp_path,
+        "s5_terminal_only_promote",
+        cycle_capped=True,
+        scrutiny_verdict="pass",
+    )
+    obj_id = capped.objective_id
+
+    unc = Uncertainty(
+        description="Concern affecting only the capped claim.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj_id,
+        affected_claim_ids=[capped.entity_id],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
+    node = await ResolveUncertainties(next_on_clear="promote").run(
+        _FakeRunContext(state, deps)  # type: ignore[arg-type]
+    )
+
+    assert _ops(state, "resolve_uncertainty") == [], (
+        "resolve_uncertainty dispatched for a terminal-only uncertainty."
+    )
+    assert isinstance(node, PromoteToSupported)
+
+
+async def test_resolve_uncertainties_still_resolves_when_one_affected_claim_is_live(
+    tmp_path: Path, fake_runner
+) -> None:
+    """Sanity: the skip requires ALL affected claims to be terminal. One
+    live (non-capped, non-abandoned) affected claim among several is
+    enough to resolve normally."""
+    capped, repo = await _make_claim_and_repo(tmp_path, "s5_one_live", cycle_capped=True)
+    obj_id = capped.objective_id
+    live = Claim(
+        objective_id=obj_id,
+        statement="second claim, still live",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+    )
+    await repo.save(live)
+
+    unc = Uncertainty(
+        description="Concern affecting one terminal and one live claim.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj_id,
+        affected_claim_ids=[capped.entity_id, live.entity_id],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
+    await ResolveUncertainties().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert len(_ops(state, "resolve_uncertainty")) == 1
+
+
+async def test_resolve_uncertainties_dispatches_when_no_affected_claims_recorded(
+    tmp_path: Path, fake_runner
+) -> None:
+    """Sanity: an uncertainty with an empty ``affected_claim_ids`` is
+    treated exactly as before the D7 change — there is nothing to check
+    the terminal condition against, so it is dispatched normally."""
+    repo = await _make_repo(tmp_path, "s5_no_affected")
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    unc = Uncertainty(
+        description="Objective-scope concern, no specific claim.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj.entity_id,
+        affected_claim_ids=[],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=fake_runner, embedding_model="t")
+    await ResolveUncertainties().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert len(_ops(state, "resolve_uncertainty")) == 1
+
+
+async def test_conclude_at_cycle_cap_once_per_firing_not_per_reentry_on_unchanged_evidence(
+    tmp_path: Path,
+) -> None:
+    """``conclude_at_cycle_cap`` fires on the FIRST cap firing, and on a
+    later firing only when the claim's evidence fingerprint has moved
+    since the last conclusion. Drives the cap from its two real call
+    sites: ``ResolveUncertainties`` (primary) for the first firing, then
+    ``Scrutinize`` (defense in depth) for two later firings — one on the
+    SAME evidence (must add no row) and one after the evidence has
+    actually changed (must add exactly one more row).
+    """
+    repo = await _make_repo(tmp_path, "s5_cap_firing_once")
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+    ev = Evidence(
+        objective_id=obj.entity_id,
+        source_type="web",
+        source_ref="https://ex.com/s5",
+        extracted_content="some evidence",
+        extracted=True,
+        support_judgment="supports",
+        quality_score=0.5,
+    )
+    await repo.save(ev)
+
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim driven to the cycle cap three times",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        scrutiny_verdict="pass",
+        evidence_ids=[ev.entity_id],
+        evidence_count=1,
+    )
+    await repo.save(claim)
+
+    unc = Uncertainty(
+        description="Blocking concern, resolved but the claim is already spent.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj.entity_id,
+        affected_claim_ids=[claim.entity_id],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    state.scrutiny_resolve_cycles[claim.entity_id] = SCRUTINY_RESOLVE_CYCLE_CAP
+    from .conftest import FakeAgentRunner
+
+    deps = EpistemicDeps(
+        repo=repo, agent_runner=FakeAgentRunner(), embedding_model="t"
+    )
+
+    # ── Firing 1 (ResolveUncertainties, primary loop-breaker) ──
+    await ResolveUncertainties().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert len(_ops(state, "conclude_at_cycle_cap")) == 1
+    after_1 = await repo.get("claim", claim.entity_id)
+    assert after_1.cycle_capped is True
+    fp_at_firing_1 = await claim_evidence_fingerprint(after_1, repo)
+    assert after_1.cap_fingerprint == fp_at_firing_1
+
+    # ── Firing 2 (Scrutinize, defense in depth), SAME evidence ──
+    state.claims_needing_rescrutiny.add(claim.entity_id)
+    await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert len(_ops(state, "conclude_at_cycle_cap")) == 1, (
+        "conclude_at_cycle_cap re-ran on a re-entry with unchanged "
+        "evidence — the cap is terminal and must not redo mechanical "
+        "work it already did."
+    )
+
+    # ── Evidence actually changes ──
+    ev_reloaded = await repo.get("evidence", ev.entity_id)
+    ev_reloaded.support_judgment = "contradicts"
+    await repo.save(ev_reloaded)
+
+    # ── Firing 3 (Scrutinize again), evidence has moved ──
+    state.claims_needing_rescrutiny.add(claim.entity_id)
+    await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+    assert len(_ops(state, "conclude_at_cycle_cap")) == 2, (
+        "conclude_at_cycle_cap did not re-run after the evidence set "
+        "actually changed."
+    )
+    after_3 = await repo.get("claim", claim.entity_id)
+    fp_at_firing_3 = await claim_evidence_fingerprint(after_3, repo)
+    assert after_3.cap_fingerprint == fp_at_firing_3
+    assert fp_at_firing_3 != fp_at_firing_1
