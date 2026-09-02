@@ -4,8 +4,10 @@ Bug context: under multi-seed-claim, ONE Objective hosts N Claims. The
 previous oscillation short-circuit fired if ANY claim was cycle_capped,
 discarding healthy verdicts on sibling claims. The fix:
 
-* All N claims capped → emit ``terminal_state="oscillation_detected"``
-  with posterior=0.5 (honest: no signal to aggregate).
+* All N claims capped → emit ``terminal_state="uncertified"`` with
+  posterior=0.5 (honest: no signal to aggregate). Certify-before-contract
+  (D8) later split this terminal name from ``"oscillation_detected"``,
+  reserved for the narrower all-capped-AND-balanced condition.
 * Some capped, some healthy → drop the capped from aggregation, compute
   posterior on the healthy subset, surface the partial-cap count in
   the explanation. The combiner / consumer sees a real posterior with
@@ -120,12 +122,18 @@ class TestPartialCapAggregates:
 
 
 class TestAllCappedShortCircuits:
-    async def test_all_active_capped_emits_oscillation_detected(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_all_active_capped_emits_uncertified(self, tmp_path: Path) -> None:
         """When EVERY active claim is capped, there's nothing to
-        aggregate — posterior=0.5 with terminal_state oscillation_detected
-        is the honest report."""
+        aggregate — posterior=0.5 with terminal_state="uncertified" is
+        the honest report. All-capped without IA fires the
+        no-certified-verdict gate (added 2026-05-05, renamed to its own
+        terminal name "uncertified" by certify-before-contract D8): the
+        all-capped path is structurally a subset of the broader "no IBE
+        certification" condition, which the gate catches first —
+        "oscillation_detected" is reserved for the narrower
+        all-capped-AND-balanced condition (see TestGenuineOscillation),
+        which this shape never reaches because the broader gate always
+        fires first."""
         obj, repo = await _setup_with_mixed_capped_claims(
             tmp_path,
             "all_capped",
@@ -135,10 +143,7 @@ class TestAllCappedShortCircuits:
         report = await compute_posterior(repo, obj.entity_id)
         assert report is not None
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
-        # All-capped without IA fires the no-certified-verdict gate
-        # (added 2026-05-05). The all-capped path is structurally a
-        # subset of the broader "no IBE certification" condition.
+        assert report.terminal_state == "uncertified"
         assert "IBE certification" in report.explanation
 
 
@@ -357,13 +362,14 @@ class TestSciFactCase957Shape:
         #    strength → posterior ≈ 1.0 (writer-vs-aggregator gap).
         # 3) Counting-path-cap-penalty (705155d): counting × 0.7 →
         #    posterior ≈ 0.85 (still committed, still gap).
-        # 4) No-certified-verdict gate (this commit): no IA on any
-        #    active claim → posterior=0.5, terminal=oscillation_detected.
+        # 4) No-certified-verdict gate: no IA on any active claim →
+        #    posterior=0.5, terminal="uncertified" (its own name since
+        #    certify-before-contract D8; previously "oscillation_detected").
         #    Counts surface as diagnostics only.
         # The system now refuses to commit on uncertified evidence —
         # mirrors the synthesis writer's SynthesizeInsufficient route.
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         assert report.mode == "counting_only"
         # Diagnostic counts are still exposed in the report.
         assert report.supporting_count > report.contradicting_count
@@ -436,7 +442,7 @@ class TestSciFactCase439V15Shape:
         # longer the driver. The diagnostic counts are still exposed
         # so a reader can see WHAT counting WOULD have said.
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         assert report.mode == "counting_only"
         # The diagnostic counting posterior would have been ≈0.985
         # (cluster weighting amplifies 2 supports to weighted ~4.2).
@@ -448,9 +454,15 @@ class TestGenuineOscillation:
     """Single capped claim with NO integrated_assessment AND essentially
     balanced counting (or empty evidence) is the case the original
     all-capped → 0.5 rule was trying to catch. The three-way rule still
-    fires oscillation_detected here, just on much narrower grounds."""
+    catches this shape via the no-certified-verdict gate — which fires
+    first and reports terminal_state="uncertified" (certify-before-
+    contract, D8) — never reaching the narrower ``all_capped_no_signal``
+    check that would emit "oscillation_detected" (see the class comment
+    it stands next to in ``confidence.py``: the broader "no active claim
+    certified" condition subsumes this narrower one, so the latter is
+    presently unreachable through this shape)."""
 
-    async def test_capped_no_verdict_no_evidence_emits_oscillation(
+    async def test_capped_no_verdict_no_evidence_emits_uncertified(
         self, tmp_path: Path
     ) -> None:
         store = DocumentStore.for_database("genuine_osc", db_dir=tmp_path)
@@ -478,13 +490,13 @@ class TestGenuineOscillation:
         report = await compute_posterior(repo, obj.entity_id)
         assert report is not None
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         # The no-certified-verdict gate (added 2026-05-05) handles
         # this case (claim has no integrated_assessment) BEFORE the
-        # all-capped-balanced check fires, so the explanation now
-        # references IBE certification rather than oscillation.
-        # Same terminal_state, same posterior — just a different
-        # diagnostic.
+        # all-capped-balanced check fires, so the explanation
+        # references IBE certification rather than oscillation, and
+        # the terminal name is "uncertified" rather than
+        # "oscillation_detected" (certify-before-contract, D8).
         assert "No certified verdict" in report.explanation
 
 

@@ -496,7 +496,7 @@ class TestQAPanel:
         assert DIRECTIONAL_LO == 1.0 - POSTERIOR_DIRECTIONAL_BREAKPOINT
 
     def test_confidence_surfaces_terminal_when_not_completed(self):
-        data = _make_report_data(terminal_state="oscillation_detected")
+        data = _make_report_data(terminal_state="uncertified")
         atoms = build_audit_report(data)
         items_atoms = _atoms_of_kind(atoms, "items")
         conf = next(

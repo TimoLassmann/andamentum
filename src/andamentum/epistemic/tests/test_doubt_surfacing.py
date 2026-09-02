@@ -291,7 +291,7 @@ class TestAuditReportSurfacesDoubt:
         """
         data = _report_data(
             verdict=_verdict(
-                terminal_state="oscillation_detected",
+                terminal_state="uncertified",
                 claims=[_claim()],
                 n_doubt_unmeasured_claims=1,
             ),

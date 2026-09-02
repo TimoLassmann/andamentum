@@ -118,9 +118,10 @@ def display_label(direction: str, *, has_supports_refined: bool = False) -> str:
     The terminal state is still reported — as a CAVEAT rather than as a
     verdict: ``render_verdict_line`` appends "retrieval failed" to the
     same line, and ``audit_report._confidence_body`` renders the state
-    explicitly. For ``oscillation_detected`` the override was redundant
-    anyway: ``compute_posterior`` forces the posterior to 0.5 in that
-    state, so the direction is already "insufficient".
+    explicitly. For ``uncertified`` and ``oscillation_detected`` the
+    override was redundant anyway: ``compute_posterior`` forces the
+    posterior to 0.5 in both states, so the direction is already
+    "insufficient".
 
     Directions and their labels:
 
@@ -205,18 +206,22 @@ class PosteriorReport(BaseModel):
             "weighted counts."
         ),
     )
-    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
-        Field(
-            default="completed",
-            description=(
-                "How the investigation terminated. 'completed' for normal runs; "
-                "'retrieval_failed' when evidence extraction kept returning empty "
-                "content, meaning the posterior is based on insufficient data; "
-                "'oscillation_detected' when one or more claims hit the "
-                "scrutinise/resolve cycle cap before converging — the posterior "
-                "is 0.5 (genuinely uncertain) and the inquiry did not fix belief."
-            ),
-        )
+    terminal_state: Literal[
+        "completed", "retrieval_failed", "uncertified", "oscillation_detected"
+    ] = Field(
+        default="completed",
+        description=(
+            "How the investigation terminated. 'completed' for normal runs; "
+            "'retrieval_failed' when evidence extraction kept returning empty "
+            "content, meaning the posterior is based on insufficient data; "
+            "'uncertified' when no active claim reached IBE certification "
+            "(no claim carries an integrated_assessment) — the posterior "
+            "suspends at 0.5 because the certifier never fired; "
+            "'oscillation_detected' when EVERY active claim hit the "
+            "scrutinise/resolve cycle cap, none produced an integration "
+            "verdict, AND the counting signal is balanced — a narrower "
+            "condition than 'uncertified' (certify-before-contract, D8)."
+        ),
     )
     suspended_claim_ids: list[str] = Field(
         default_factory=list,

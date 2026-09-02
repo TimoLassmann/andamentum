@@ -28,10 +28,12 @@ The fix has two parts:
    that moment. ``PromoteToSupported`` skips cycle-capped claims, so
    the IBE chain doesn't fabricate a verdict for a claim whose inquiry
    didn't converge. ``compute_posterior`` detects cycle-capped active
-   claims and emits ``terminal_state="oscillation_detected"`` with
-   posterior=0.5 — a distinct terminal state from
-   ``"completed"`` and ``"retrieval_failed"``. The decomposed combiner
-   propagates this terminal state.
+   claims with no IBE certification and emits
+   ``terminal_state="uncertified"`` with posterior=0.5 — a distinct
+   terminal state from ``"completed"`` and ``"retrieval_failed"``
+   (and, since certify-before-contract D8, from the narrower
+   all-capped-AND-balanced ``"oscillation_detected"``). The decomposed
+   combiner propagates this terminal state.
 """
 
 from __future__ import annotations
@@ -385,15 +387,17 @@ class TestPromoteToSupportedSkipsCycleCapped:
         assert claim.entity_id not in state.terminal_claims
 
 
-class TestComputePosteriorOscillationDetected:
+class TestComputePosteriorUncertified:
     async def test_cycle_capped_claim_with_no_ia_suspends_via_no_certified_gate(
         self, tmp_path: Path
     ) -> None:
         """Cycle-capped + no integrated_assessment ⇒ the no-certified-verdict
         gate (added 2026-05-05) suspends the posterior to 0.5 with
-        ``terminal_state="oscillation_detected"``. The cycle-capped flag
-        is informational provenance — the substantive epistemic state is
-        "no IBE certification", which is the gate's general condition."""
+        ``terminal_state="uncertified"`` (its own name since
+        certify-before-contract D8; previously "oscillation_detected").
+        The cycle-capped flag is informational provenance — the
+        substantive epistemic state is "no IBE certification", which is
+        the gate's general condition."""
         claim, repo = await _setup_objective_and_claim(
             tmp_path, "posterior_oscillation"
         )
@@ -403,7 +407,7 @@ class TestComputePosteriorOscillationDetected:
 
         report = await compute_posterior(repo, claim.objective_id)
         assert report is not None
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         assert report.posterior == 0.5
         assert report.mode == "counting_only"
         assert "IBE certification" in report.explanation

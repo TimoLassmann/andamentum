@@ -315,7 +315,7 @@ class TestComputePosteriorRetrievalFailed:
         (writer prose, posterior number) suspend rather than commit.
         Terminal state is ``retrieval_failed`` (the more specific
         diagnostic) when the retrieval flag is set; would be
-        ``oscillation_detected`` otherwise."""
+        ``uncertified`` otherwise (certify-before-contract, D8)."""
         from andamentum.epistemic.entities import Claim
         from andamentum.epistemic.entities.claim import ClaimStage
 
@@ -359,7 +359,7 @@ class TestComputePosteriorRetrievalFailed:
         assert report is not None
         # No-certified-verdict gate fires; posterior suspends.
         # retrieval_failed wins precedence over the default
-        # oscillation_detected terminal because it's more specific.
+        # uncertified terminal because it's more specific.
         assert report.posterior == 0.5
         assert report.terminal_state == "retrieval_failed"
         assert report.mode == "counting_only"
@@ -388,7 +388,12 @@ def _posterior_report(terminal_state: str) -> PosteriorReport:
     a future confidence.py adds without a matching renderer case, and a
     validated constructor cannot express that state.
     """
-    if terminal_state in ("completed", "retrieval_failed", "oscillation_detected"):
+    if terminal_state in (
+        "completed",
+        "retrieval_failed",
+        "uncertified",
+        "oscillation_detected",
+    ):
         return PosteriorReport(
             posterior=0.5,
             log_odds=0,
@@ -445,8 +450,9 @@ def _make_report_data(terminal_state: str = "completed") -> ReportData:
 class TestAuditReportTerminalState:
     """Confidence body for the Q&A panel handles every terminal_state
     branch from ``confidence.py``: completed → directional posterior;
-    retrieval_failed / oscillation_detected → named warnings without
-    posterior; unknown → defensive surface of the raw state name.
+    retrieval_failed / uncertified / oscillation_detected → named
+    warnings without posterior; unknown → defensive surface of the raw
+    state name.
 
     These tests are the v2 equivalent of the v1 typeset_report tests —
     same invariant (no silent fall-through to a posterior interpretation
@@ -490,11 +496,23 @@ class TestAuditReportTerminalState:
         assert "Probability the claim is true" not in body
         assert "P(YES)" not in body
 
+    def test_uncertified_suppresses_posterior(self) -> None:
+        body = self._confidence_body_text(
+            _make_report_data(terminal_state="uncertified")
+        )
+        assert "IBE-certified verdict" in body
+        assert "No posterior" in body
+        assert "Probability the claim is true" not in body
+        assert "P(YES)" not in body
+
     def test_oscillation_detected_suppresses_posterior(self) -> None:
+        """oscillation_detected is now its own, narrower terminal
+        (certify-before-contract, D8) — a different message from
+        uncertified's, both suppressing the directional posterior."""
         body = self._confidence_body_text(
             _make_report_data(terminal_state="oscillation_detected")
         )
-        assert "IBE-certified verdict" in body
+        assert "scrutiny-resolve cycle cap" in body
         assert "No posterior" in body
         assert "Probability the claim is true" not in body
         assert "P(YES)" not in body

@@ -701,7 +701,7 @@ cap = 0.5 + (loveliness_gap / FRAMING_TIE_SATURATION_GAP) × 0.5
 
 <ul>
 <li><strong>Integration path (the headline)</strong> — each integrated claim maps its verdict to a probability: <code>supports</code> at confidence <em>c</em> → 0.5 + c/2, <code>contradicts</code> → 0.5 − c/2, <code>insufficient</code> → 0.5. Decomposed runs aggregate rule-aware via <code>combine_claim_verdicts</code> (AND → min, OR → max, WEIGHTED_AND → weighted mean); open-research and seed-claim runs use a confidence-weighted average.</li>
-<li><strong>No-certified-verdict gate</strong> — when active claims exist but none reached IBE certification, the posterior is forced to 0.5 with <code>terminal_state="oscillation_detected"</code> (or <code>retrieval_failed</code>), mirroring <code>CheckCompletion</code>'s routing to <code>SynthesizeInsufficient</code> under the same condition.</li>
+<li><strong>No-certified-verdict gate</strong> — when active claims exist but none reached IBE certification, the posterior is forced to 0.5 with <code>terminal_state="uncertified"</code> (or <code>retrieval_failed</code>), mirroring <code>CheckCompletion</code>'s routing to <code>SynthesizeInsufficient</code> under the same condition. <code>terminal_state="oscillation_detected"</code> is a separate, narrower state (certify-before-contract, D8): every active claim capped, none directional, counting balanced.</li>
 <li><strong>Counting posterior (diagnostic + narrow fallback)</strong> — a soft-vote count of supporting vs contradicting evidence, <code>sigmoid(Σ supporting − Σ contradicting)</code>. Always reported for inspection; it carries the headline only when a UNION combination rule leaves no scalar verdict or the run produced no claims.</li>
 </ul>
 

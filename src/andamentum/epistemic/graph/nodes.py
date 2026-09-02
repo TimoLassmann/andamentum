@@ -2403,6 +2403,12 @@ class PromoteSupported(Node):
     contradicts its stage is revised, not restarted, and never loses the
     verdict IBE already certified for it (S1, S8). A contracted claim
     does not climb the ladder this pass; its verdict stands as-is.
+
+    D8: the ladder itself follows the verdict — only a claim IBE
+    certified as ``integrated_assessment == "supports"`` attempts a
+    ``promote_claim``. A claim with no verdict, or one certified
+    ``contradicts``/``insufficient``, is marked ``verification_done``
+    with no promotion attempt this pass (S6).
     """
 
     reads = frozenset({"objective_id"})
@@ -2457,6 +2463,17 @@ class PromoteSupported(Node):
             if claim.abandoned:
                 continue
             if claim.entity_id in contracted_ids:
+                continue
+
+            # Ladder follows the verdict (certify-before-contract, D8):
+            # only a claim IBE certified as "supports" climbs. A claim
+            # with no verdict, or one IBE certified as "contradicts" /
+            # "insufficient", is done for this pass without a
+            # promote_claim attempt — climbing the stage ladder on a
+            # claim IBE did not certify as supported would let the
+            # ladder outrun the verdict it's supposed to follow.
+            if claim.integrated_assessment != "supports":
+                state.verification_done.add(claim.entity_id)
                 continue
 
             # Try each promotion step once (S->P, P->R, R->A). The bound

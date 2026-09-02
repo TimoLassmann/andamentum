@@ -349,8 +349,16 @@ async def compute_posterior(
     #      a confidence penalty (CYCLE_CAP_CONFIDENCE_PENALTY).
     #   2. capped + no IA, evidence one-sided → counting path surfaces
     #      it (no special handling needed; we just stop filtering).
-    #   3. capped + no IA, balanced → terminal_state="oscillation_detected"
-    #      via the no-signal terminal at the end of this function.
+    #   3. capped + no IA, balanced → terminal_state="uncertified" via
+    #      the no-certified-verdict gate directly below (when this
+    #      claim's objective has no other IBE-certified claim), NOT the
+    #      all-capped-balanced check at the end of this function —
+    #      "no active claim has an integrated_assessment" is a strictly
+    #      broader condition than "every active claim is capped with a
+    #      balanced count", so the earlier gate always fires first. The
+    #      end-of-function ``all_capped_no_signal`` branch keeps its own
+    #      name, ``oscillation_detected``, reserved for that narrower
+    #      condition should it ever become reachable again.
     #
     # Branch 2 was dead code as written: the no-certified-verdict gate
     # below returns before the counting path can surface anything for a
@@ -401,8 +409,11 @@ async def compute_posterior(
     # When this gate fires, the diagnostic counting fields are still
     # reported (so downstream readers can see WHAT the counting WOULD
     # have said) but the headline posterior is 0.5 with
-    # ``terminal_state="oscillation_detected"``. The system says: "the
-    # IBE chain didn't certify; we suspend judgment."
+    # ``terminal_state="uncertified"`` (certify-before-contract, D8 —
+    # its own name, distinct from ``oscillation_detected``, so a reader
+    # can tell "nothing was certified" apart from "everything capped and
+    # balanced"). The system says: "the IBE chain didn't certify; we
+    # suspend judgment."
     if active_claims and not any(
         c.integrated_assessment is not None for c in active_claims
     ):
@@ -427,19 +438,21 @@ async def compute_posterior(
         # it's the more specific diagnostic (the inquiry was *prevented*
         # from gathering more evidence). Without retrieval_failed, the
         # default "we did not converge on a verdict" terminal is
-        # oscillation_detected. Same precedence as
+        # ``uncertified`` (certify-before-contract, D8 — distinct from
+        # ``oscillation_detected``, which is reserved for the
+        # all-capped-and-balanced case below). Same precedence as
         # CheckCompletion's exit ordering.
         if retrieval_failed:
-            ts: Literal["completed", "retrieval_failed", "oscillation_detected"] = (
-                "retrieval_failed"
-            )
+            ts: Literal[
+                "completed", "retrieval_failed", "uncertified", "oscillation_detected"
+            ] = "retrieval_failed"
             reason_prefix = (
                 "Retrieval failed AND no certified verdict: evidence "
                 "extraction returned empty content for several "
                 "consecutive attempts, and "
             )
         else:
-            ts = "oscillation_detected"
+            ts = "uncertified"
             reason_prefix = "No certified verdict: "
 
         return PosteriorReport(
@@ -696,10 +709,16 @@ async def compute_posterior(
 
     # 7. Decide terminal_state.
     #
-    # Precedence: retrieval_failed > oscillation_detected > completed.
-    # retrieval_failed wins because it's a process-level signal about
-    # the inquiry's evidence base, not a statement about the verdict's
-    # stability — the verdict itself may still be directional (case 54).
+    # Full precedence across the function: retrieval_failed > uncertified
+    # > oscillation_detected > completed (certify-before-contract, D8).
+    # ``uncertified`` is decided earlier, at the no-certified-verdict
+    # gate (step 2) — by the time control reaches here, either that gate
+    # already returned or at least one active claim carries an
+    # integrated_assessment, so only retrieval_failed / oscillation /
+    # completed remain live below. retrieval_failed wins because it's a
+    # process-level signal about the inquiry's evidence base, not a
+    # statement about the verdict's stability — the verdict itself may
+    # still be directional (case 54).
     #
     # Genuine oscillation = ALL active claims are capped AND none have
     # an integrated_assessment AND the counting signal is essentially
@@ -714,7 +733,9 @@ async def compute_posterior(
         and not integrated_claims
         and is_balanced_count
     )
-    terminal_state: Literal["completed", "retrieval_failed", "oscillation_detected"]
+    terminal_state: Literal[
+        "completed", "retrieval_failed", "uncertified", "oscillation_detected"
+    ]
     if retrieval_failed:
         terminal_state = "retrieval_failed"
     elif all_capped_no_signal:

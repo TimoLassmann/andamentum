@@ -116,7 +116,7 @@ class TestPosteriorEvidenceDirection:
         assert report is not None
         # Headline posterior suspends — no IBE certification.
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         # Diagnostic counts still computed and exposed.
         assert report.supporting_count == 3
         assert report.contradicting_count == 0
@@ -142,7 +142,7 @@ class TestPosteriorEvidenceDirection:
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         assert report.supporting_count == 0
         assert report.contradicting_count == 3
         assert report.counting_posterior < 0.5
@@ -891,7 +891,7 @@ class TestPosteriorIntegrationSynthesis:
         report = await compute_posterior(repo, OBJ_ID)
         assert report is not None
         assert report.posterior == 0.5
-        assert report.terminal_state == "oscillation_detected"
+        assert report.terminal_state == "uncertified"
         assert report.mode == "counting_only"
         # Diagnostic counting still exposed for reader inspection.
         assert report.counting_posterior > 0.5  # 2 supports, 0 contradicts

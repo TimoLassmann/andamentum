@@ -352,12 +352,19 @@ class Claim(EpistemicEntity):
     # cap_evaluation provenance record below. "Insufficient" must be a
     # conclusion ABOUT THE EVIDENCE, never a side effect of scheduling.
     #
-    # Consequence: terminal_state="oscillation_detected" is reached only
-    # when the cap reading was NOT directional (conflicting, or too thin)
-    # and the counting signal is balanced — compute_posterior's
-    # all_capped_no_signal condition. A capped claim with a cap-derived
-    # verdict yields a directional posterior at reduced weight
-    # (CYCLE_CAP_CONFIDENCE_PENALTY, applied exactly once downstream).
+    # Consequence: a capped claim whose cap reading was NOT directional
+    # (conflicting, or too thin) leaves no active claim with an
+    # integrated_assessment when it's the only one — so
+    # compute_posterior's no-certified-verdict gate fires and
+    # terminal_state="uncertified" (certify-before-contract, D8).
+    # terminal_state="oscillation_detected" is reserved for the
+    # narrower all_capped_no_signal condition (every active claim
+    # capped, none directional, AND counting balanced) — distinct from
+    # "uncertified" so a reader can tell "nothing was certified" apart
+    # from "everything capped and balanced". A capped claim with a
+    # cap-derived verdict yields a directional posterior at reduced
+    # weight (CYCLE_CAP_CONFIDENCE_PENALTY, applied exactly once
+    # downstream).
     #
     # This is downstream of the runtime cap in graph state — the cap
     # bounds work; these fields communicate the consequence honestly.
@@ -368,9 +375,10 @@ class Claim(EpistemicEntity):
             "Cycle-capped claims terminate at HYPOTHESIS without entering "
             "the IBE chain, but receive a deterministic terminal verdict "
             "at the cap when the evidence reading is directional (see "
-            "cap_evaluation). compute_posterior surfaces them via "
-            "terminal_state='oscillation_detected' only when the reading "
-            "was not directional and counting is balanced."
+            "cap_evaluation). compute_posterior surfaces a non-directional "
+            "cap reading via terminal_state='uncertified' (no active claim "
+            "certified) or, in the narrower all-capped-and-balanced case, "
+            "'oscillation_detected'."
         ),
     )
     cap_evaluation: Optional[CapEvaluation] = Field(

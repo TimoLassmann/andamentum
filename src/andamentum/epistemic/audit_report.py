@@ -226,8 +226,13 @@ def _posterior_body(data: ReportData) -> str:
     ts = v.terminal_state
     if ts == "retrieval_failed":
         return "No posterior — retrieval failed before evidence converged."
-    if ts == "oscillation_detected":
+    if ts == "uncertified":
         return "No posterior — no IBE-certified verdict."
+    if ts == "oscillation_detected":
+        return (
+            "No posterior — all active claims hit the scrutiny-resolve "
+            "cycle cap with no directional signal."
+        )
     if ts != "completed":
         return f"No posterior — inquiry terminated: {ts}."
     if v.direction in ("no_data", "union"):

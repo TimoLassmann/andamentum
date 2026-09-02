@@ -25,6 +25,11 @@ Covers, at the node level (model on ``test_post_verification_demotion.py``):
   ``conclude_at_cycle_cap`` (via ``_mark_cycle_capped``) fires once per
   genuine cap firing plus once per evidence change afterwards — never
   once per re-entry on unchanged evidence.
+* S6 — ``PromoteSupported``'s ladder follows the verdict (D8): a claim
+  with no ``integrated_assessment``, or one certified
+  ``contradicts``/``insufficient``, gets no ``promote_claim`` attempt
+  and is simply marked ``verification_done``; only a claim certified
+  ``supports`` climbs.
 
 No LLM calls anywhere in this file: ``AdversarialSearchOperation``
 degrades to a clean structural no-op with ``agent_runner=None`` (marks
@@ -848,3 +853,126 @@ async def test_conclude_at_cycle_cap_once_per_firing_not_per_reentry_on_unchange
     fp_at_firing_3 = await claim_evidence_fingerprint(after_3, repo)
     assert after_3.cap_fingerprint == fp_at_firing_3
     assert fp_at_firing_3 != fp_at_firing_1
+
+
+# ── S6 ────────────────────────────────────────────────────────────────
+
+
+async def _s6_claim(
+    *,
+    repo: EpistemicRepository,
+    objective_id: str,
+    entity_id: str,
+    integrated_assessment: str | None,
+    n_evidence: int = 1,
+) -> Claim:
+    """A SUPPORTED claim with clean evidence — the gate
+    RevalidateClaimOperation checks (``validate_current_stage``) passes
+    unconditionally (no adversarial data, no judged support/contradict
+    pair), so this claim is never contracted and the S6 ladder-follows-
+    the-verdict check is isolated from D1's contraction check.
+    ``n_evidence=2`` also clears the PROVISIONAL gate (min_evidence=2,
+    min_quality_sum=0.5), for the one claim this test expects to
+    actually climb."""
+    evidence_ids = []
+    for i in range(n_evidence):
+        ev = Evidence(
+            objective_id=objective_id,
+            source_type="web",
+            source_ref=f"https://ex.com/{entity_id}-{i}",
+            extracted_content="clean supporting item",
+            extracted=True,
+            quality_score=0.5,
+        )
+        await repo.save(ev)
+        evidence_ids.append(ev.entity_id)
+    claim = Claim(
+        entity_id=entity_id,
+        objective_id=objective_id,
+        statement=f"S6 claim {entity_id}",
+        scope="x",
+        stage=ClaimStage.SUPPORTED,
+        scrutiny_verdict="pass",
+        evidence_ids=evidence_ids,
+        evidence_count=n_evidence,
+        integrated_assessment=integrated_assessment,
+        integrated_confidence=0.8 if integrated_assessment else None,
+    )
+    await repo.save(claim)
+    return claim
+
+
+async def test_promote_supported_ladder_follows_the_verdict(
+    tmp_path: Path,
+) -> None:
+    """``PromoteSupported`` (D8): only a claim IBE-certified ``supports``
+    climbs the ladder. A claim with no verdict, or one certified
+    ``contradicts``/``insufficient``, gets zero ``promote_claim``
+    attempts and is simply marked ``verification_done`` (S6)."""
+    repo = await _make_repo(tmp_path, "certify_s6")
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    supports_claim = await _s6_claim(
+        repo=repo,
+        objective_id=obj.entity_id,
+        entity_id="s6-supports",
+        integrated_assessment="supports",
+        n_evidence=2,
+    )
+    contradicts_claim = await _s6_claim(
+        repo=repo,
+        objective_id=obj.entity_id,
+        entity_id="s6-contradicts",
+        integrated_assessment="contradicts",
+    )
+    insufficient_claim = await _s6_claim(
+        repo=repo,
+        objective_id=obj.entity_id,
+        entity_id="s6-insufficient",
+        integrated_assessment="insufficient",
+    )
+    no_verdict_claim = await _s6_claim(
+        repo=repo,
+        objective_id=obj.entity_id,
+        entity_id="s6-no-verdict",
+        integrated_assessment=None,
+    )
+
+    state = EpistemicGraphState(objective_id=obj.entity_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
+
+    next_node = await PromoteSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
+
+    assert isinstance(next_node, CombineClaimVerdicts)
+
+    promote_ops = _ops(state, "promote_claim")
+    promoted_ids = {op.entity_id for op in promote_ops}
+    assert promoted_ids == {supports_claim.entity_id}, (
+        "Only the 'supports'-certified claim should have a promote_claim "
+        f"attempt; got attempts for {promoted_ids!r}."
+    )
+
+    # Every claim is marked verification_done regardless of verdict —
+    # PromoteToSupported's idempotency check must short-circuit on all
+    # four next re-entry.
+    for claim in (
+        supports_claim,
+        contradicts_claim,
+        insufficient_claim,
+        no_verdict_claim,
+    ):
+        assert claim.entity_id in state.verification_done
+
+    # The non-'supports' claims did not move off SUPPORTED — the ladder
+    # never touched them (no promote_claim attempt was made for them at
+    # all, per the assertion above; whether an attempted promotion for
+    # the 'supports' claim actually succeeds is a gate-validation
+    # question PromoteClaimOperation's own test suite covers, not S6's
+    # concern here).
+    for claim in (contradicts_claim, insufficient_claim, no_verdict_claim):
+        reloaded = await repo.get("claim", claim.entity_id)
+        assert reloaded.stage == ClaimStage.SUPPORTED
