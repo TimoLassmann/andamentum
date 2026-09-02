@@ -1019,7 +1019,6 @@ class Investigate(Node):
         {
             "investigation_counts",
             "claims_needing_rescrutiny",
-            "claims_needing_tms",
         }
     )
     operations = frozenset()  # populated below
@@ -1043,15 +1042,6 @@ class Investigate(Node):
                     state.investigation_counts[claim.entity_id] = inv_count + 1
                     if result.success:
                         state.claims_needing_rescrutiny.add(claim.entity_id)
-                        # TMS: if claim is promoted and new evidence was created
-                        if result.created_entities:
-                            from ..entities.claim import ClaimStage
-
-                            claim_updated = await deps.repo.get(
-                                "claim", claim.entity_id
-                            )
-                            if claim_updated.stage != ClaimStage.HYPOTHESIS:
-                                state.claims_needing_tms.add(claim.entity_id)
 
         return ExtractNewEvidence()
 
@@ -1555,13 +1545,16 @@ class PromoteToSupported(Node):
                 claim.stage == ClaimStage.HYPOTHESIS
                 and claim.scrutiny_verdict == "pass"
             ):
-                if claim.contraction_count > 0:
+                was_contracted = claim.contraction_count > 0
+                if was_contracted:
                     # Certify-before-contract D3: this claim was
                     # contracted back to HYPOTHESIS while keeping its
                     # verdict. Re-promoting it is only warranted if the
                     # evidence actually changed since that contraction —
                     # otherwise the verification tracks would just
-                    # re-derive the same contraction (S3).
+                    # re-derive the same contraction (S3). On an
+                    # unchanged fingerprint, skip the promotion attempt
+                    # entirely — the claim stays terminal for this run.
                     current_fp = await claim_evidence_fingerprint(
                         claim, deps.repo
                     )
@@ -1573,9 +1566,18 @@ class PromoteToSupported(Node):
                         )
                         state.terminal_claims.add(claim.entity_id)
                         continue
-                    claim.reset_for_reinquiry()
-                    await deps.repo.save(claim)
-                    state.verification_done.discard(claim.entity_id)
+                    # G1: the fingerprint changed, so a re-promotion
+                    # attempt is warranted — but `reset_for_reinquiry()`
+                    # nulls the verdict that survived the contraction
+                    # (D2/S8), so it must NOT run before we know the
+                    # attempt succeeds. Attempt promotion first; only on
+                    # success does the claim actually start a fresh
+                    # inquiry cycle worth resetting for. On refusal (e.g.
+                    # a blocking uncertainty) the claim keeps its stage,
+                    # its verdict, and its contraction_fingerprint, and
+                    # stays terminal for this run — re-promotion can be
+                    # attempted again on a later pass if the evidence
+                    # moves further.
 
                 result = await _run_op(
                     PromoteClaimOperation,
@@ -1586,6 +1588,13 @@ class PromoteToSupported(Node):
                     "promote_claim",
                 )
                 if result.success:
+                    if was_contracted:
+                        promoted_claim = await deps.repo.get(
+                            "claim", claim.entity_id
+                        )
+                        promoted_claim.reset_for_reinquiry()
+                        await deps.repo.save(promoted_claim)
+                        state.verification_done.discard(claim.entity_id)
                     await _run_op(
                         SetRoutingDefaultsOperation,
                         deps,
@@ -1594,6 +1603,8 @@ class PromoteToSupported(Node):
                         "claim",
                         "set_routing_defaults",
                     )
+                elif was_contracted:
+                    state.terminal_claims.add(claim.entity_id)
 
         # Step 2: Check if any SUPPORTED claims need verification
         # Re-read after promotions.
@@ -1691,12 +1702,13 @@ class RunVerification(Node):
     validator only sees direct dispatches.
 
     Certify-before-contract (docs/epistemic/
-    CERTIFY_BEFORE_CONTRACT_PLAN.md D1): this node no longer flags claims
-    into ``claims_needing_tms`` after the adversarial track, and
-    ``_run_tms_sweep`` no longer revalidates or contracts claims — that
-    check moved to ``PromoteSupported``, which runs it once, after IBE
-    has already produced a verdict, instead of racing IBE for the same
-    claim mid-verification. The ``claims_needing_rescrutiny`` guard below
+    CERTIFY_BEFORE_CONTRACT_PLAN.md D1): this node no longer flags a
+    claim for TMS revalidation after the adversarial track, and
+    ``_run_tms_sweep`` no longer revalidates or demotes/contracts
+    claims — that check moved to ``PromoteSupported``, which runs it
+    once, after IBE has already produced a verdict, instead of racing
+    IBE for the same claim mid-verification. The
+    ``claims_needing_rescrutiny`` guard below
     is unreachable from this path now (nothing here populates that set);
     it stays because two other nodes still populate it independently:
     ``Investigate`` (new evidence) and ``CheckSynthesisDemand`` (synthesis

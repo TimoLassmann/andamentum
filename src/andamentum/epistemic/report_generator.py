@@ -1203,7 +1203,7 @@ class ReportGenerator:
             n_contracted_claims = sum(
                 1
                 for c in all_claims
-                if not c.abandoned and getattr(c, "contraction_count", 0) > 0
+                if not c.abandoned and c.contraction_count > 0
             )
             parts.append(
                 f"\n{n_contracted_claims} claim"

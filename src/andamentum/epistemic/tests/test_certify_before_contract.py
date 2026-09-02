@@ -317,10 +317,11 @@ async def test_soft_promoted_claim_reaches_ibe_before_any_revalidation(
         # routing property under test (whether validate_current_stage runs
         # before IBE) from the tracks themselves — same isolation trick as
         # test_post_verification_demotion.py. adversarial_checked is
-        # deliberately left False: the adversarial track is the pre-phase
-        # trigger for claims_needing_tms, so it must actually dispatch
-        # under the fake runner for this test to be evidence that nothing
-        # in RunVerification (nor _run_tms_sweep) revalidates the claim.
+        # deliberately left False: pre-G3, the adversarial track was the
+        # trigger that flagged claims_needing_tms (since removed — G3);
+        # it must still actually dispatch under the fake runner for this
+        # test to be evidence that nothing in RunVerification (nor
+        # _run_tms_sweep) revalidates the claim.
         adversarial_checked=False,
         convergence_checked=True,
         deductive_checked=True,
@@ -976,3 +977,178 @@ async def test_promote_supported_ladder_follows_the_verdict(
     for claim in (contradicts_claim, insufficient_claim, no_verdict_claim):
         reloaded = await repo.get("claim", claim.entity_id)
         assert reloaded.stage == ClaimStage.SUPPORTED
+
+
+# ── G1 (final alignment review, docs/epistemic/
+# CERTIFY_BEFORE_CONTRACT_PLAN.md §6) ────────────────────────────────────
+#
+# The fingerprint-changed re-promotion branch of PromoteToSupported Step 1
+# used to call claim.reset_for_reinquiry() BEFORE attempting
+# PromoteClaimOperation. A refused promotion (for any reason other than
+# the fingerprint check itself — e.g. a blocking uncertainty) therefore
+# left the claim at HYPOTHESIS with its verdict already erased. G1
+# reorders: attempt promotion first, reset only on success.
+
+
+async def _g1_contracted_claim_and_repo(
+    tmp_path: Path, db_name: str
+) -> tuple[Claim, Evidence, EpistemicRepository]:
+    """A HYPOTHESIS claim already contracted once, with its fingerprint
+    recorded against a ONE-evidence-item state. The caller adds a second
+    evidence item to change the fingerprint before driving the node."""
+    repo = await _make_repo(tmp_path, db_name)
+    obj = Objective(description="parent", question_type="verificatory")
+    obj.objective_id = obj.entity_id
+    await repo.save(obj)
+
+    ev1 = Evidence(
+        objective_id=obj.entity_id,
+        source_type="web",
+        source_ref="https://ex.com/first",
+        extracted_content="first supporting item",
+        extracted=True,
+        support_judgment="supports",
+        quality_score=0.5,
+    )
+    await repo.save(ev1)
+
+    claim = Claim(
+        objective_id=obj.entity_id,
+        statement="claim contracted once, evidence about to change",
+        scope="x",
+        stage=ClaimStage.HYPOTHESIS,
+        scrutiny_verdict="pass",
+        evidence_ids=[ev1.entity_id],
+        evidence_count=1,
+        contraction_count=1,
+        # A verdict IBE certified before the contraction — this is what
+        # must survive a REFUSED re-promotion (G1) and must be nulled by
+        # reset_for_reinquiry() only on a SUCCESSFUL one.
+        integrated_assessment="insufficient",
+        integrated_confidence=0.6,
+    )
+    old_fingerprint = await claim_evidence_fingerprint(claim, repo)
+    claim.contraction_fingerprint = old_fingerprint
+    await repo.save(claim)
+    return claim, ev1, repo
+
+
+async def test_g1_changed_fingerprint_promotable_resets_only_on_success(
+    tmp_path: Path,
+) -> None:
+    """(a) Changed fingerprint + promotable: the claim is promoted,
+    verification flags/verdict are reset, and routing defaults are set —
+    all AFTER the successful promote_claim."""
+    claim, ev1, repo = await _g1_contracted_claim_and_repo(
+        tmp_path, "g1_promotable"
+    )
+    obj_id = claim.objective_id
+
+    # New evidence changes the fingerprint and gives the claim a second
+    # supporting source (min_supporting_sources=1 is already met by ev1
+    # alone, but a second item makes the fingerprint change unambiguous).
+    ev2 = Evidence(
+        objective_id=obj_id,
+        source_type="web",
+        source_ref="https://ex.com/second",
+        extracted_content="second supporting item",
+        extracted=True,
+        support_judgment="supports",
+        quality_score=0.5,
+    )
+    await repo.save(ev2)
+    claim.evidence_ids = [ev1.entity_id, ev2.entity_id]
+    claim.evidence_count = 2
+    await repo.save(claim)
+
+    new_fingerprint = await claim_evidence_fingerprint(claim, repo)
+    assert new_fingerprint != claim.contraction_fingerprint, (
+        "test setup error: the fingerprint must actually change"
+    )
+
+    state = EpistemicGraphState(objective_id=obj_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
+
+    await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    assert _ops(state, "promote_claim") != [], (
+        "the re-promotion attempt must actually be made when the "
+        "fingerprint has changed."
+    )
+    assert _ops(state, "set_routing_defaults") != []
+
+    promoted = await repo.get("claim", claim.entity_id)
+    assert promoted.stage == ClaimStage.SUPPORTED
+    # reset_for_reinquiry() ran — the pre-contraction verdict is gone,
+    # a fresh inquiry cycle owns this claim now.
+    assert promoted.integrated_assessment is None
+    assert promoted.integrated_confidence is None
+    assert promoted.contraction_fingerprint is None
+    assert claim.entity_id not in state.verification_done
+
+
+async def test_g1_changed_fingerprint_refused_promotion_keeps_verdict(
+    tmp_path: Path,
+) -> None:
+    """(b) Changed fingerprint + promotion refused (a blocking
+    uncertainty): the claim stays at HYPOTHESIS, its pre-contraction
+    verdict is untouched, and contraction_fingerprint is unchanged — the
+    reorder must not erase state on a refusal that has nothing to do
+    with the fingerprint check itself."""
+    claim, ev1, repo = await _g1_contracted_claim_and_repo(
+        tmp_path, "g1_refused"
+    )
+    obj_id = claim.objective_id
+
+    ev2 = Evidence(
+        objective_id=obj_id,
+        source_type="web",
+        source_ref="https://ex.com/second",
+        extracted_content="second supporting item",
+        extracted=True,
+        support_judgment="supports",
+        quality_score=0.5,
+    )
+    await repo.save(ev2)
+    claim.evidence_ids = [ev1.entity_id, ev2.entity_id]
+    claim.evidence_count = 2
+    await repo.save(claim)
+
+    new_fingerprint = await claim_evidence_fingerprint(claim, repo)
+    assert new_fingerprint != claim.contraction_fingerprint
+
+    unc = Uncertainty(
+        description="Blocking concern raised after the contraction.",
+        uncertainty_type=UncertaintyType.UNKNOWN,
+        objective_id=obj_id,
+        affected_claim_ids=[claim.entity_id],
+        is_blocking=True,
+        resolution=None,
+    )
+    await repo.save(unc)
+
+    state = EpistemicGraphState(objective_id=obj_id)
+    deps = EpistemicDeps(repo=repo, agent_runner=None, embedding_model="t")
+
+    await PromoteToSupported().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
+
+    promote_ops = _ops(state, "promote_claim")
+    assert promote_ops != [], "the attempt must still be made"
+    assert not promote_ops[-1].success, (
+        "test setup error: the blocking uncertainty must actually refuse "
+        "the promotion for this test to exercise the refusal branch."
+    )
+
+    refused = await repo.get("claim", claim.entity_id)
+    assert refused.stage == ClaimStage.HYPOTHESIS, (
+        "a refused promotion must not leave the claim mid-transition."
+    )
+    assert refused.integrated_assessment == "insufficient", (
+        "reset_for_reinquiry() ran on a REFUSED promotion — the verdict "
+        "that survived the contraction was erased for nothing (the G1 bug)."
+    )
+    assert refused.integrated_confidence == 0.6
+    assert refused.contraction_fingerprint == claim.contraction_fingerprint, (
+        "contraction_fingerprint must be untouched by a refused attempt."
+    )
+    assert claim.entity_id in state.terminal_claims

@@ -214,8 +214,9 @@ async def test_resolve_uncertainties_routes_to_scrutiny_on_rescrutiny_flag(
 # contracts a claim mid-verification ──────────────────────────────────
 #
 # docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1. Before this stage,
-# RunVerification flagged a claim into state.claims_needing_tms the
-# moment its adversarial track dispatched, and _run_tms_sweep's Step 3
+# RunVerification flagged a claim into a now-deleted
+# `claims_needing_tms` state set (G3) the moment its adversarial track
+# dispatched, and _run_tms_sweep's Step 3
 # then revalidated (and could contract) it in the SAME pass — racing
 # IBE, which had not run yet, for that claim's verdict. That flagging
 # and Step 3's consumption of it are both gone: the revalidate-then-

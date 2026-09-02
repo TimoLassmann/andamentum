@@ -325,6 +325,58 @@ class TestRevalidateClaimOperation:
         assert entry.to_stage == ClaimStage.HYPOTHESIS
         assert "AGM contraction" in entry.justification
 
+    @pytest.mark.asyncio
+    async def test_multi_stage_shortfall_contracts_past_the_intermediate_stage_in_one_firing(
+        self, repo
+    ):
+        """certify-before-contract G2: a claim whose evidence fails BOTH
+        its current stage's gate AND the next stage down's gate is
+        contracted straight to the first stage whose OWN gate passes —
+        skipping the intermediate stage — in a SINGLE operation call:
+        one promotion_history entry, one contraction_count increment,
+        one op row.
+
+        ROBUST needs min_evidence=3; PROVISIONAL needs min_evidence=2;
+        SUPPORTED needs min_evidence=1. One evidence item fails both
+        ROBUST and PROVISIONAL but satisfies SUPPORTED.
+        """
+        ev = _make_evidence(eid="ev-1", quality_score=0.5)
+        await repo.save(ev)
+
+        claim = _make_claim(
+            evidence_ids=["ev-1"],
+            stage=ClaimStage.ROBUST,
+        )
+        await repo.save(claim)
+
+        op = RevalidateClaimOperation(repo=repo, agent_runner=None)
+        from andamentum.epistemic.operations.base import OperationInput
+
+        work = OperationInput(
+            entity_id="cl-1", entity_type="claim", operation="revalidate_claim"
+        )
+        result = await op.execute(work)
+
+        assert result.success
+        assert "AGM contracted from robust to supported" in result.message, (
+            f"expected a direct ROBUST -> SUPPORTED contraction skipping "
+            f"PROVISIONAL, got: {result.message!r}"
+        )
+        assert "fingerprint=" in result.message
+
+        updated = await repo.get("claim", "cl-1")
+        assert updated.stage == ClaimStage.SUPPORTED
+        assert updated.contraction_count == 1, (
+            "the multi-stage fall-through must be ONE contraction, not one "
+            "per stage crossed."
+        )
+        assert len(updated.promotion_history) == 1, (
+            "exactly one promotion_history entry for the whole fall-through."
+        )
+        entry = updated.promotion_history[0]
+        assert entry.from_stage == ClaimStage.ROBUST
+        assert entry.to_stage == ClaimStage.SUPPORTED
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TestValidateCurrentStage

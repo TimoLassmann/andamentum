@@ -14,6 +14,7 @@ from ..entities import (
     Claim,
     Evidence,
 )
+from ..entities.claim import ClaimStage
 
 
 class InvalidateEvidenceOperation(BaseOperation):
@@ -97,10 +98,23 @@ class RevalidateClaimOperation(BaseOperation):
     non-abandoned, non-cycle-capped claim past HYPOTHESIS. This operation:
     1. Checks if the claim still meets its current stage gate
     2. If yes: no action needed
-    3. If no: contracts one stage via ``Claim.contract`` — a REVISION that
-       preserves any verdict this run already certified (certify-before-
-       contract, docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md D1) — and
+    3. If no: contracts to the HIGHEST stage whose own gate currently
+       passes, in ONE operation (certify-before-contract G2, docs/
+       epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md §6) — a REVISION that
+       preserves any verdict this run already certified (D1) — and
        invalidates any evidence derived from this claim (cascade)
+
+    Contracting to the highest PASSING stage rather than one stage per
+    firing matters for a stage-independent check (adversarial balance,
+    contradict-majority): those checks fire identically at every stage
+    above HYPOTHESIS, so a claim above SUPPORTED that fails one of them
+    would otherwise contract one stage per pass on the SAME evidence
+    fingerprint — which ``run_canary.py``'s D9(b) integrity check reads
+    as a second, independent contraction with no intervening evidence
+    change. Looping down in one operation call makes the whole fall-
+    through — however many stages it spans — exactly one
+    ``promotion_history`` entry, one ``contraction_count`` increment, and
+    one op row.
 
     No LLM calls — purely structural graph maintenance.
     """
@@ -132,11 +146,12 @@ class RevalidateClaimOperation(BaseOperation):
                 message="Claim still meets current stage gate",
             )
 
-        # Gate failed — contract one stage
         old_stage = claim.stage
-        target_stage = get_previous_stage(claim.stage)
+        first_failing_reason = (
+            gate_result.reason or "stage gate failed after evidence invalidation"
+        )
 
-        if not target_stage:
+        if not get_previous_stage(old_stage):
             # At HYPOTHESIS — can't contract further
             return OperationResult(
                 success=True,
@@ -144,10 +159,27 @@ class RevalidateClaimOperation(BaseOperation):
                 message="At HYPOTHESIS, cannot demote further",
             )
 
+        # Walk down the stage ladder, checking each CANDIDATE stage's own
+        # gate (not old_stage's), until one passes. HYPOTHESIS has no
+        # gate and always passes, so this terminates. claim.stage is
+        # mutated only to drive validate_current_stage's gate lookup for
+        # each candidate; it is restored below before Claim.contract
+        # computes its own old_stage from claim.stage.
+        target_stage = ClaimStage.HYPOTHESIS
+        candidate = get_previous_stage(old_stage)
+        while candidate is not None:
+            claim.stage = candidate
+            candidate_result = await validate_current_stage(claim, self.repo)
+            if candidate_result.passed:
+                target_stage = candidate
+                break
+            candidate = get_previous_stage(candidate)
+        claim.stage = old_stage
+
         fingerprint = await claim_evidence_fingerprint(claim, self.repo)
         claim.contract(
             target_stage,
-            justification=f"AGM contraction: {gate_result.reason or 'stage gate failed after evidence invalidation'}",
+            justification=f"AGM contraction: {first_failing_reason}",
             fingerprint=fingerprint,
         )
 
@@ -175,7 +207,7 @@ class RevalidateClaimOperation(BaseOperation):
             {
                 "from": old_stage.value,
                 "to": target_stage.value,
-                "reason": gate_result.reason,
+                "reason": first_failing_reason,
                 "cascaded_evidence": cascaded_evidence_ids,
             },
         )
@@ -185,8 +217,9 @@ class RevalidateClaimOperation(BaseOperation):
             entity_id=claim.entity_id,
             message=(
                 f"AGM contracted from {old_stage.value} to {target_stage.value}, "
-                f"verdict preserved ({gate_result.reason}), cascaded to "
-                f"{len(cascaded_evidence_ids)} derived evidence"
+                f"verdict preserved ({first_failing_reason}), cascaded to "
+                f"{len(cascaded_evidence_ids)} derived evidence, "
+                f"fingerprint={fingerprint[:12]}"
             ),
         )
 

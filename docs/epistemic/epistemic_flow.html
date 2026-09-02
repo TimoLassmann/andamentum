@@ -406,7 +406,7 @@ flowchart TD
 
 <tr class="section-separator"><td colspan="4">Inquiry cycle</td></tr>
 <tr><td><strong>Scrutinize</strong></td><td><code>claims_needing_rescrutiny</code>, <code>investigation_counts</code>, <code>objective_id</code>, <code>scrutiny_resolve_cycles</code></td><td><code>claims_needing_rescrutiny</code>, <code>scrutiny_resolve_cycles</code></td><td>ScrutiniseClaim</td></tr>
-<tr><td><strong>Investigate</strong></td><td><code>investigation_counts</code>, <code>objective_id</code></td><td><code>claims_needing_rescrutiny</code>, <code>claims_needing_tms</code>, <code>investigation_counts</code></td><td>InvestigateClaim</td></tr>
+<tr><td><strong>Investigate</strong></td><td><code>investigation_counts</code>, <code>objective_id</code></td><td><code>claims_needing_rescrutiny</code>, <code>investigation_counts</code></td><td>InvestigateClaim</td></tr>
 <tr><td><strong>AbandonOrDemote</strong></td><td><code>investigation_counts</code>, <code>objective_id</code></td><td><code>terminal_claims</code>, <code>verification_done</code></td><td>AbandonStaleClaim · DemoteClaim · PromoteAsRefuted · SoftPromote</td></tr>
 <tr><td><strong>ResolveUncertainties</strong></td><td><code>claims_needing_rescrutiny</code>, <code>objective_id</code>, <code>scrutiny_resolve_cycles</code></td><td><code>claims_needing_rescrutiny</code>, <code>scrutiny_resolve_cycles</code></td><td>DeduplicateConcerns · ResolveUncertainty</td></tr>
 <tr><td><strong>PromoteToSupported</strong></td><td><code>objective_id</code>, <code>verification_done</code></td><td><code>terminal_claims</code></td><td>PromoteClaim · SetRoutingDefaults</td></tr>

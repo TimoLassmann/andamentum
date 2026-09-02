@@ -120,15 +120,6 @@ class EpistemicGraphState:
     # per-claim by SCRUTINY_RESOLVE_CYCLE_CAP.
     judgment_doubt_escalated: bool = False
 
-    # Claims needing TMS revalidation after evidence changes.
-    # Certify-before-contract (docs/epistemic/CERTIFY_BEFORE_CONTRACT_PLAN.md
-    # D1) removed _run_tms_sweep's Steps 2/3 (revalidate/contract) — the
-    # only consumer of this field. It currently has no consumer;
-    # Investigate (graph/nodes.py) still writes it. Removing the field
-    # and that write is a decision left for the Phase F alignment review,
-    # not decided here.
-    claims_needing_tms: set[str] = field(default_factory=set)
-
     # Set by CheckSynthesisDemand when it routes to SynthesizeInsufficient
     # (demand=needs_more, no eligible claims for loop-back). Carries the
     # structural diagnosis from the gate to the deterministic synthesis

@@ -158,7 +158,7 @@ def _claim_posterior(claim: Claim, suspended: bool = False) -> float | None:
         from ..thresholds import CYCLE_CAP_CONFIDENCE_PENALTY
 
         confidence *= CYCLE_CAP_CONFIDENCE_PENALTY
-    if getattr(claim, "contraction_count", 0) > 0:
+    if claim.contraction_count > 0:
         from ..thresholds import CONTRACTION_CONFIDENCE_PENALTY
 
         confidence *= CONTRACTION_CONFIDENCE_PENALTY

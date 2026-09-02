@@ -166,7 +166,7 @@ SynthesizeInsufficient   → (terminal)
   - ops: `ScrutiniseClaim`, `ConcludeAtCycleCap`
 - **Investigate**
   - reads: `investigation_counts`, `objective_id`
-  - writes: `claims_needing_rescrutiny`, `claims_needing_tms`, `investigation_counts`
+  - writes: `claims_needing_rescrutiny`, `investigation_counts`
   - ops: `InvestigateClaim`
 - **AbandonOrDemote**
   - reads: `investigation_counts`, `objective_id`
