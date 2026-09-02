@@ -115,7 +115,7 @@ async def run_research_question(
             as a single claim and skips decomposition.
         verbose: Print detailed output
         skip_preplanning: Skip CLARIFY_QUESTION and CONCEPTUAL_ANALYSIS
-        model: Optional LLM model to use (e.g., "openai:gpt-4o-mini")
+        model: Optional LLM model to use (e.g., "openai:gpt-5.4-nano")
         progress_callback: Optional callback for progress updates.
             Signature: (operation_type, entity_id, success, message, outputs) -> None
         provider: Evidence provider to use: "web_search" or "all"

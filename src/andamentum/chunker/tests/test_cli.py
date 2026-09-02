@@ -24,5 +24,5 @@ def test_help_lists_required_args():
 
 def test_missing_input_file_exits_nonzero(tmp_path):
     env = os.environ.copy()
-    result = _run(["/nonexistent/file.txt", "--model", "openai:gpt-4o-mini"], env=env)
+    result = _run(["/nonexistent/file.txt", "--model", "openai:gpt-5.4-nano"], env=env)
     assert result.returncode != 0

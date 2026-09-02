@@ -15,7 +15,7 @@ uv run python -m benchmarks.chunker.cli --output report.md
 uv run python -m benchmarks.chunker.cli --case academic_short
 
 # Compare two models
-uv run python -m benchmarks.chunker.cli --model openai:gpt-4o-mini --output gpt.md
+uv run python -m benchmarks.chunker.cli --model openai:gpt-5.4-nano --output gpt.md
 uv run python -m benchmarks.chunker.cli --model ollama:gemma4:31b-nvfp4 --output gemma.md
 
 # Visual case-authoring helper (FastAPI app at http://127.0.0.1:8765)

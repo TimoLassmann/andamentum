@@ -895,7 +895,7 @@ async def handle_ask(
     Args:
         question: Research question to investigate
         name: Project name (auto-generated if not specified)
-        model: LLM model to use (e.g., "anthropic:claude-haiku-4-5", "openai:gpt-4o-mini")
+        model: LLM model to use (e.g., "anthropic:claude-haiku-4-5", "openai:gpt-5.4-nano")
         keep: Keep project database after completion
         verbose: Print detailed progress
         trace: Trace visualization mode (timeline, flow, claims, all, none)

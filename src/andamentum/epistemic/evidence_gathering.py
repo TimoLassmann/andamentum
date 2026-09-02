@@ -406,14 +406,20 @@ class CompositeGatherer:
                         e,
                     )
                     failures.append((name, e))
-            try:
-                web_results = await self._web_search.gather(source_type, query)
-                all_results.extend(web_results)
-            except Exception as e:
-                logger.warning(
-                    "[CompositeGatherer] Web search failed during 'all': %s", e
-                )
-                failures.append(("web_search", e))
+            # `None` means the caller asked for providers ONLY (see
+            # get_default_gatherer's use_web_search). Skipped, not failed: a
+            # source that was deliberately not consulted must not appear in
+            # `failures`, or a clean offline run would report an error it did
+            # not have.
+            if self._web_search is not None:
+                try:
+                    web_results = await self._web_search.gather(source_type, query)
+                    all_results.extend(web_results)
+                except Exception as e:
+                    logger.warning(
+                        "[CompositeGatherer] Web search failed during 'all': %s", e
+                    )
+                    failures.append(("web_search", e))
 
             if not all_results and failures:
                 raise RuntimeError(
@@ -432,7 +438,18 @@ class CompositeGatherer:
             )
             return results
 
-        # Unknown source_type → explicit web-search default route
+        # Unknown source_type → explicit web-search default route.
+        # With web search opted out there is no fallback route, and an empty
+        # list is the honest answer: no configured source covers this
+        # source_type. Reaching for the web here would silently defeat the
+        # opt-out the caller asked for.
+        if self._web_search is None:
+            logger.info(
+                "[CompositeGatherer] no provider for source_type %r and web "
+                "search is disabled — returning no results",
+                source_type,
+            )
+            return []
         return await self._web_search.gather(source_type, query)
 
 
@@ -441,6 +458,7 @@ def get_default_gatherer(
     model: str,
     providers: Optional[ProviderRegistry] = None,
     embedding_model: Optional[str] = None,
+    use_web_search: bool = True,
 ) -> Optional[EvidenceGatherer]:
     """Create a default evidence gatherer if deep_research is available.
 
@@ -455,6 +473,27 @@ def get_default_gatherer(
     Returns None if deep_research is not installed, allowing callers
     to fall back gracefully.
     """
+    # WEB SEARCH IS OPT-OUT, NOT ABSENT-BY-DEFAULT.
+    #
+    # Passing `providers` used to ADD to web search rather than replace it, so
+    # there was no way to say "these sources and nothing else". A caller running
+    # a closed, reproducible corpus therefore still made live network calls:
+    # measured 2026-08-30 on a benchmark run that believed itself fully offline,
+    # 6 of 2,696 evidence rows came from the web. 99.8% offline is not offline —
+    # it is an unrepeatable run that looks repeatable.
+    #
+    # `use_web_search=False` requires `providers`, because a gatherer with
+    # neither web search nor providers can gather nothing at all, and silently
+    # returning such a thing would be the same class of failure one layer down.
+    if not use_web_search:
+        if not providers:
+            raise ValueError(
+                "use_web_search=False requires providers — a gatherer with "
+                "neither web search nor any provider can gather nothing, and "
+                "would report an empty pool as though it had searched."
+            )
+        return CompositeGatherer(None, providers)  # type: ignore[return-value]
+
     try:
         import andamentum.deep_research.orchestrator  # noqa: F401
 
