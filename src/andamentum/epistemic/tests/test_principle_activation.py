@@ -278,12 +278,14 @@ MIN_ACTIVATIONS = {
 }
 
 
-def test_every_principle_meets_its_activation_floor() -> None:
-    """Run the canary over the fixture corpus and check every floor.
+def _run_canary(claim_id: int, out_dir: Path) -> dict:
+    """Invoke the canary runner for one claim id and return its counts.json.
 
     Fail-loud end to end: a nonzero runner exit (any run raised, produced no
-    verdict, hit retrieval_failed, gathered nothing, or leaked a non-corpus
-    evidence row) fails this test rather than being read as a green baseline.
+    verdict, hit retrieval_failed, gathered nothing, leaked a non-corpus
+    evidence row, or tripped one of the D9 structural checks — DEGEN_003 or
+    a contraction-bookkeeping violation) fails the calling test rather than
+    being read as a green baseline.
     """
     # sys.executable, not "uv run python": this test already runs INSIDE the
     # project venv (uv run pytest), so the interpreter is the same one the
@@ -293,7 +295,8 @@ def test_every_principle_meets_its_activation_floor() -> None:
         sys.executable, str(RUNNER),
         "--runs", str(RUNS),
         "--model", MODEL,
-        "--out-dir", str(TEST_OUT_DIR),
+        "--claim-id", str(claim_id),
+        "--out-dir", str(out_dir),
     ]
     proc = subprocess.run(
         cmd,
@@ -303,21 +306,23 @@ def test_every_principle_meets_its_activation_floor() -> None:
         text=True,
     )
     assert proc.returncode == 0, (
-        "canary runner exited nonzero — a run errored, was invalid, or "
-        "violated the offline guarantee.\n"
+        f"canary runner exited nonzero for claim {claim_id} — a run "
+        "errored, was invalid, or violated the offline guarantee.\n"
         f"stderr tail:\n{proc.stderr[-4000:]}"
     )
 
-    counts_path = TEST_OUT_DIR / "counts.json"
+    counts_path = out_dir / "counts.json"
     assert counts_path.exists(), f"runner produced no counts.json at {counts_path}"
     counts = json.loads(counts_path.read_text())
 
     totals = counts["totals"]
     assert totals["n_valid_runs"] == RUNS, (
-        f"expected {RUNS} valid runs, got {totals['n_valid_runs']} "
-        f"(errors: {counts['errors']})"
+        f"claim {claim_id}: expected {RUNS} valid runs, got "
+        f"{totals['n_valid_runs']} (errors: {counts['errors']})"
     )
-    assert not counts["errors"], f"error runs recorded: {counts['errors']}"
+    assert not counts["errors"], (
+        f"claim {claim_id}: error runs recorded: {counts['errors']}"
+    )
 
     # The offline guarantee is re-checked by the CONSUMER, not just trusted
     # from the runner's own gate: under corpus mode every evidence row of
@@ -325,16 +330,30 @@ def test_every_principle_meets_its_activation_floor() -> None:
     for run in counts["per_run"]:
         offending = set(run["evidence_source_types"]) - {"scifact_corpus"}
         assert not offending, (
-            f"run {run['run']} leaked live evidence ({offending}) — the "
-            "offline wiring in run_canary.py is broken"
+            f"claim {claim_id}: run {run['run']} leaked live evidence "
+            f"({offending}) — the offline wiring in run_canary.py is broken"
         )
 
     # Every signature must be present and counted — schema drift between the
     # runner and this test must fail loud, not silently pass.
     assert set(totals["signatures"]) == set(SIGNATURES), (
-        f"counts.json signature set drifted: {sorted(totals['signatures'])} "
-        f"vs expected {sorted(SIGNATURES)}"
+        f"claim {claim_id}: counts.json signature set drifted: "
+        f"{sorted(totals['signatures'])} vs expected {sorted(SIGNATURES)}"
     )
+
+    return counts
+
+
+def test_every_principle_meets_its_activation_floor() -> None:
+    """Claim 1: run the canary over the fixture corpus and check every floor.
+
+    ``MIN_ACTIVATIONS`` was measured against claim 1 specifically (see the
+    per-entry comments) — the floors stay keyed to that claim's own runs
+    (CERTIFY_BEFORE_CONTRACT_PLAN.md D9: "MIN_ACTIVATIONS floors stay as
+    they are — the user did not authorise a rate measurement in this plan").
+    """
+    counts = _run_canary(1, TEST_OUT_DIR / "claim_1")
+    totals = counts["totals"]
 
     for name in SIGNATURES:
         fired_runs = totals["signatures"][name]["fired_runs"]
@@ -346,3 +365,20 @@ def test_every_principle_meets_its_activation_floor() -> None:
             "MIN_ACTIVATIONS' ratchet semantics and the Stage-0 baseline "
             "block in docs/epistemic/FIDELITY_LEDGER.md."
         )
+
+
+def test_claim_2_runs_are_structurally_valid() -> None:
+    """Claim 2: the AGM-contraction fixture, exercised for D9's own checks.
+
+    Claim 2 is the fixture purpose-built to exercise repeated AGM
+    contraction (FIDELITY_LEDGER.md "Stage 2" block: agm/reichenbach/popper
+    all fire 5/5 on this claim). No MIN_ACTIVATIONS floor is asserted here —
+    only claim 1's rates are pre-registered (see the test above); this test
+    exists so the D9 structural checks in ``run_canary.py:_validate_run``
+    (DEGEN_003 presence, contraction-bookkeeping consistency) run against a
+    claim that actually contracts, which is what makes them capable of
+    catching an S3/S9 regression at all. A validity failure here — the
+    runner's nonzero exit, propagated by ``_run_canary`` — IS the S3/S9
+    regression signal; no further assertion is needed.
+    """
+    _run_canary(2, TEST_OUT_DIR / "claim_2")
