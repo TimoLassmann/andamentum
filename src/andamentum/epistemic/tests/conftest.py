@@ -223,6 +223,7 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
     "epistemic_resolve_uncertainty": {
         "resolution": "Resolved through additional evidence",
         "can_resolve": True,
+        "bearing": None,
         "remaining_concerns": [],
     },
     # No "verdict" key: WriteAnswerOutput has no such field. The

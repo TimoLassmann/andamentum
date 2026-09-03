@@ -98,6 +98,16 @@ class EpistemicGraphState:
     # claims with scrutiny_verdict=None.
     claims_needing_rescrutiny: set[str] = field(default_factory=set)
 
+    # Claims PromoteToSupported found refused ONLY for too few
+    # corroborating sources, still under their investigation cap (D4,
+    # self-feeding-loop plan). Investigate checks this set IN ADDITION to
+    # its scrutiny-verdict filter. The demand lives here, on graph state
+    # (P4), rather than on `Claim.scrutiny_verdict` (P3) — scrutiny never
+    # produced "needs_resolution" for these claims, so writing that value
+    # onto the entity would misrepresent what scrutiny actually found to
+    # every other reader of that field.
+    claims_needing_investigation: set[str] = field(default_factory=set)
+
     # Per-claim counter for the Scrutinize ↔ ResolveUncertainties
     # oscillation. Each pass through Scrutinize on a claim that was
     # marked for rescrutiny increments this. Once a claim's count hits

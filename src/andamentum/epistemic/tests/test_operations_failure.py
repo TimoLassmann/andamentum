@@ -1085,6 +1085,7 @@ class TestResolveUncertaintyFailure:
                 "epistemic_resolve_uncertainty": {
                     "can_resolve": False,
                     "resolution": "",
+                    "bearing": None,
                     "remaining_concerns": [],
                 },
             }

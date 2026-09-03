@@ -20,10 +20,10 @@ from .base import (
 from ..entities import (
     Claim,
     Evidence,
-    Uncertainty,
     UncertaintyType,
 )
 from ..thresholds import ADVERSARIAL_REFUTED_THRESHOLD
+from ..uncertainty_raising import raise_uncertainty
 
 
 # Adversarial-search query budget: total = MAX_ADVERSARIAL_TEMPLATES
@@ -447,7 +447,8 @@ class AdversarialSearchOperation(BaseOperation):
             # adversarial finding. The balance score on the claim is what
             # gates use — not individual uncertainties.
             if balance_score < ADVERSARIAL_REFUTED_THRESHOLD:
-                uncertainty = Uncertainty(
+                await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.SCOPE_DIFFERENCE,
                     description=(
@@ -456,8 +457,9 @@ class AdversarialSearchOperation(BaseOperation):
                         f"{adversarial_result.explanation}"
                     ),
                     affected_claim_ids=[claim.entity_id],
+                    created_by="adversarial_search",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
 
             # NOTE: Do NOT touch scrutiny_verdict here. Adversarial search and
             # scrutiny are independent verification tracks. The adversarial balance
@@ -667,7 +669,8 @@ class AssessConvergenceOperation(BaseOperation):
 
         # Create WEAK_CONVERGENCE uncertainty if convergence is weak
         if not convergence.convergence_detected:
-            uncertainty = Uncertainty(
+            await raise_uncertainty(
+                self.repo,
                 objective_id=claim.objective_id,
                 uncertainty_type=UncertaintyType.WEAK_CONVERGENCE,
                 description=(
@@ -676,8 +679,9 @@ class AssessConvergenceOperation(BaseOperation):
                     f"independence_score={convergence.independence_score:.2f})"
                 ),
                 affected_claim_ids=[claim.entity_id],
+                created_by="convergence_assessment",
+                embedding_model=self.embedding_model,
             )
-            await self.repo.save(uncertainty)
 
         claim.convergence_checked = True
         claim.convergence_verdict = convergence.verdict
@@ -764,13 +768,15 @@ class ValidateDeductivelyOperation(BaseOperation):
                             issue_type = UncertaintyType(result.issue_types[i])
                         except ValueError:
                             pass  # Keep default
-                    uncertainty = Uncertainty(
+                    await raise_uncertainty(
+                        self.repo,
                         objective_id=claim.objective_id,
                         uncertainty_type=issue_type,
                         description=issue,
                         affected_claim_ids=[claim.entity_id],
+                        created_by="deductive_validation",
+                        embedding_model=self.embedding_model,
                     )
-                    await self.repo.save(uncertainty)
 
         claim.deductive_checked = True
         await self.repo.save(claim)
@@ -846,13 +852,15 @@ class VerifyComputationallyOperation(BaseOperation):
             # Agent generates verification CODE, not execution results.
             # If no code was generated, record an uncertainty.
             if not result.verification_code:
-                uncertainty = Uncertainty(
+                await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.COMPUTATIONAL_DISAGREEMENT,
                     description="Could not generate verification code for this claim",
                     affected_claim_ids=[claim.entity_id],
+                    created_by="computational_verification",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
 
         claim.computational_checked = True
         await self.repo.save(claim)

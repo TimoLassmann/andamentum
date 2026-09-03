@@ -97,17 +97,30 @@ async def _mark_cycle_capped(
 
     The conclude half runs on the **first** firing, and on a later
     firing only when the claim's evidence fingerprint
-    (``gates.claim_evidence_fingerprint``) differs from the one
-    recorded at the last conclusion (``Claim.cap_fingerprint``):
-    ``ConcludeAtCycleCapOperation`` re-reads the claim's eligible
-    evidence deterministically (no LLM) and revises its own record. That
-    is what stops a capped claim from reporting a false "insufficient"
-    when the evidence it already gathered was decisive — a cap stops
-    further LLM work; it must not zero out signal already acquired. A
-    repeat firing on unchanged evidence would just re-derive the same
+    (``gates.claim_evidence_fingerprint``) OR its resolution-bearing
+    fingerprint (``gates.claim_resolution_bearing_fingerprint``) differs
+    from the one recorded at the last conclusion (``Claim.cap_fingerprint``
+    / ``Claim.cap_bearing_fingerprint``): ``ConcludeAtCycleCapOperation``
+    re-reads the claim's eligible evidence deterministically (no LLM) and
+    revises its own record. That is what stops a capped claim from
+    reporting a false "insufficient" when the evidence it already
+    gathered was decisive — a cap stops further LLM work; it must not
+    zero out signal already acquired. A repeat firing on unchanged
+    evidence AND unchanged bearings would just re-derive the same
     reading, so it is skipped entirely (certify-before-contract D7): the
     cap is terminal, and a terminal claim consumes no further work of
     any kind, mechanical or LLM.
+
+    The bearing half of that comparison is self-feeding-loop plan D3: a
+    RESOLVED, BLOCKING uncertainty's ``resolution_bearing`` can arrive
+    (or change) after the evidence set has stopped moving — a sibling
+    claim sharing the uncertainty can keep it live well past this
+    claim's first cap firing — so gating the skip on evidence identity
+    alone would leave a cap-owned verdict standing against a resolution
+    that has since spoken against it. Re-running
+    ``ConcludeAtCycleCapOperation`` on a bearing change costs no LLM
+    call (D6): the operation's own veto (see its docstring) is what
+    actually clears the stale verdict.
 
     The cap fires from two sites — ResolveUncertainties (primary
     loop-breaker, blocks the rescrutiny add) and Scrutinize (defense
@@ -120,7 +133,7 @@ async def _mark_cycle_capped(
     confusable-parameter rule exists to catch.
     """
     from ..entities import Claim, Uncertainty
-    from ..gates import claim_evidence_fingerprint
+    from ..gates import claim_evidence_fingerprint, claim_resolution_bearing_fingerprint
     from ..operations.stage_management import ConcludeAtCycleCapOperation
 
     claim = await deps.repo.get("claim", claim_id)
@@ -158,11 +171,16 @@ async def _mark_cycle_capped(
         )
 
     fingerprint = await claim_evidence_fingerprint(claim, deps.repo)
-    if not first_firing and claim.cap_fingerprint == fingerprint:
+    bearing_fingerprint = await claim_resolution_bearing_fingerprint(claim, deps.repo)
+    if (
+        not first_firing
+        and claim.cap_fingerprint == fingerprint
+        and claim.cap_bearing_fingerprint == bearing_fingerprint
+    ):
         logger.info(
-            "Claim %s cycle cap re-fired on unchanged evidence "
-            "(fingerprint matches the last conclusion); skipping the "
-            "mechanical re-conclusion",
+            "Claim %s cycle cap re-fired on unchanged evidence and "
+            "unchanged resolution bearings (both fingerprints match the "
+            "last conclusion); skipping the mechanical re-conclusion",
             claim_id[:12],
         )
         return
@@ -178,11 +196,12 @@ async def _mark_cycle_capped(
 
     # Reload: ConcludeAtCycleCapOperation loaded and saved its own copy of
     # the claim, so the local ``claim`` object is stale on the fields it
-    # wrote. Stamp the fingerprint onto the current record rather than the
-    # stale one, or this save would clobber the operation's own writes.
+    # wrote. Stamp both fingerprints onto the current record rather than
+    # the stale one, or this save would clobber the operation's own writes.
     claim = await deps.repo.get("claim", claim_id)
     if isinstance(claim, Claim):
         claim.cap_fingerprint = fingerprint
+        claim.cap_bearing_fingerprint = bearing_fingerprint
         await deps.repo.save(claim)
 
 
@@ -1014,11 +1033,14 @@ class Investigate(Node):
     node is mid-flight, not terminal.
     """
 
-    reads = frozenset({"objective_id", "investigation_counts"})
+    reads = frozenset(
+        {"objective_id", "investigation_counts", "claims_needing_investigation"}
+    )
     writes = frozenset(
         {
             "investigation_counts",
             "claims_needing_rescrutiny",
+            "claims_needing_investigation",
         }
     )
     operations = frozenset()  # populated below
@@ -1035,7 +1057,20 @@ class Investigate(Node):
         for claim in all_claims:
             if claim.abandoned:
                 continue
-            if claim.scrutiny_verdict in ("needs_resolution", "fail"):
+            # D4 (self-feeding-loop plan): a claim can ask for
+            # investigation two ways — the pre-existing scrutiny-verdict
+            # filter (rescrutiny requested a fresh look), or
+            # ``claims_needing_investigation`` (PromoteToSupported found
+            # the claim refused ONLY for too few supporting sources,
+            # scrutiny_verdict left untouched at "pass" — P3/P4: the
+            # demand lives on graph state, not fabricated onto the
+            # entity). Either way this node re-derives its own cap check
+            # from ``investigation_counts`` before doing any work (D5:
+            # one backstop, not duplicated at the call site).
+            requested = claim.entity_id in state.claims_needing_investigation
+            if requested:
+                state.claims_needing_investigation.discard(claim.entity_id)
+            if requested or claim.scrutiny_verdict in ("needs_resolution", "fail"):
                 inv_count = state.investigation_counts.get(claim.entity_id, 0)
                 if inv_count < PEIRCE_CYCLE_CAP:
                     result = await self._run_investigate(state, deps, claim.entity_id)
@@ -1474,6 +1509,10 @@ class PromoteToSupported(Node):
 
     This is a routing hub that checks actual claim state:
     1. HYPOTHESIS with pass → promote to SUPPORTED, set routing defaults
+    1b. HYPOTHESIS refused ONLY for too few supporting sources, still
+        under its investigation cap → Investigate (D4, self-feeding-loop
+        plan; lazy escalation, P7 — the claim is asking for more
+        evidence, not stuck)
     2. SUPPORTED without verification done → route to ClusterEvidence
     3. Everything at PROVISIONAL+ or abandoned → CombineClaimVerdicts
 
@@ -1508,23 +1547,39 @@ class PromoteToSupported(Node):
     this node directly.
     """
 
-    reads = frozenset({"objective_id", "verification_done"})
-    writes = frozenset({"terminal_claims", "verification_done"})
+    reads = frozenset(
+        {
+            "objective_id",
+            "verification_done",
+            "investigation_counts",
+            "scrutiny_resolve_cycles",
+        }
+    )
+    writes = frozenset(
+        {"terminal_claims", "verification_done", "claims_needing_investigation"}
+    )
     operations = frozenset()  # populated below after operations imports resolve
     post_invariants = ()
 
     async def run(
         self, ctx: GraphRunContext[EpistemicGraphState, EpistemicDeps]
-    ) -> Union["ClusterEvidence", "CombineClaimVerdicts"]:
+    ) -> Union["ClusterEvidence", "CombineClaimVerdicts", "Investigate"]:
         from ..operations.stage_management import PromoteClaimOperation
         from ..operations.belief_maintenance import SetRoutingDefaultsOperation
         from ..entities.claim import ClaimStage
-        from ..gates import claim_evidence_fingerprint
+        from ..gates import claim_evidence_fingerprint, refused_only_for_min_supporting_sources
 
         state = ctx.state
         deps = ctx.deps
 
         all_claims = await deps.repo.query("claim", objective_id=state.objective_id)
+
+        # D4 (self-feeding-loop plan): set when a HYPOTHESIS claim was
+        # refused promotion for insufficient supporting sources alone and
+        # is still under its investigation cap. Checked after the whole
+        # loop so every claim in this batch gets its Step-1 pass before we
+        # decide routing.
+        needs_investigation = False
 
         # Step 1: Promote any HYPOTHESIS claims with passing scrutiny
         for claim in all_claims:
@@ -1603,8 +1658,72 @@ class PromoteToSupported(Node):
                         "claim",
                         "set_routing_defaults",
                     )
+                elif (
+                    refused_only_for_min_supporting_sources(result.validation_errors)
+                    and state.investigation_counts.get(claim.entity_id, 0)
+                    < PEIRCE_CYCLE_CAP
+                    and _loopback_eligible(claim, state)
+                ):
+                    # D4 (self-feeding-loop plan): the ONLY thing blocking
+                    # this HYPOTHESIS claim is too few corroborating
+                    # sources — not scrutiny, not a verification track,
+                    # nothing else. That is exactly the shape lazy
+                    # escalation (P7) exists for: the claim itself is
+                    # asking for more evidence, so route it back through
+                    # the existing Investigate/rescrutiny loop instead of
+                    # leaving it stranded at HYPOTHESIS for this run.
+                    #
+                    # Both caps have to clear, not just the investigation
+                    # one: `Investigate`'s own success path adds the claim
+                    # to `claims_needing_rescrutiny`, and the rescrutiny
+                    # that satisfies is gated separately by
+                    # `scrutiny_resolve_cycles`
+                    # (`SCRUTINY_RESOLVE_CYCLE_CAP`, checked in Scrutinize).
+                    # A claim that reached here with its resolve-cycle
+                    # count already at cap would get investigated, come
+                    # back with a rescrutiny request Scrutinize refuses,
+                    # and be cap-decided or abandoned on evidence that
+                    # never got a chance to be re-read — the outcome §0/S9
+                    # exist to reduce. `_loopback_eligible` is the single
+                    # predicate `CheckSynthesisDemand` already uses for
+                    # this exact "could another round plausibly change
+                    # anything" question; reusing it keeps one source of
+                    # truth for both caps instead of duplicating the
+                    # resolve-cycle comparison here.
+                    #
+                    # The demand lives on graph state
+                    # (`claims_needing_investigation`), not on the entity:
+                    # scrutiny never produced "needs_resolution" for this
+                    # claim, so fabricating that value onto
+                    # `Claim.scrutiny_verdict` would misrepresent what
+                    # scrutiny actually found (P3) to every downstream
+                    # reader of that field — `ClaimVerdict.scrutiny_verdict`,
+                    # the report generator's needs-resolution count, and
+                    # `InvestigateClaimOperation`'s own cap branch — and
+                    # would strand a claim whose verdict is "pass" at
+                    # "needs_resolution" if the investigation that follows
+                    # is quarantined or fails. `Investigate` reads this set
+                    # (P4: graph state tracks what needs doing) alongside
+                    # its existing scrutiny-verdict filter and re-derives
+                    # its own cap check against `investigation_counts`
+                    # (D5: the cap is the one backstop, not duplicated
+                    # here).
+                    state.claims_needing_investigation.add(claim.entity_id)
+                    needs_investigation = True
                 elif was_contracted:
                     state.terminal_claims.add(claim.entity_id)
+
+        if needs_investigation:
+            # D4/S5: route straight to Investigate rather than falling
+            # through to the verification/completion checks below — those
+            # claims aren't stuck, they're asking for more evidence
+            # (P7 lazy escalation), and Investigate re-derives its own
+            # per-claim cap check from `investigation_counts` before doing
+            # any work. Other claims that also need verification this
+            # pass simply get their turn on the next arrival here, once
+            # this loop's Investigate → ExtractNewEvidence → Scrutinize
+            # cycle completes.
+            return Investigate()
 
         # Step 2: Check if any SUPPORTED claims need verification
         # Re-read after promotions.

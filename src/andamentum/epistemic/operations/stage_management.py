@@ -13,7 +13,7 @@ from typing import Literal, cast
 
 from .base import BaseOperation, OperationInput, OperationResult
 
-from ..entities import CapEvaluation, Claim
+from ..entities import CapEvaluation, Claim, Uncertainty
 from ..entities.claim import ClaimStage
 from ..thresholds import (
     MECHANICAL_VERDICT_MAX_CONFIDENCE,
@@ -362,6 +362,29 @@ class ConcludeAtCycleCapOperation(BaseOperation):
     capped claim is not ``_loopback_eligible``, which is the whole point
     of the cap.
 
+    THE CAP YIELDS TO AN OPPOSING RESOLUTION (self-feeding-loop plan D3).
+    Before trusting the mass reading's own direction, this operation reads
+    every RESOLVED, BLOCKING ``Uncertainty`` affecting the claim
+    (``Uncertainty.resolution_bearing``, plan D2) — non-blocking
+    uncertainties are advisory by construction and never veto a verdict.
+    If any resolved blocking uncertainty's bearing is the opposite of the
+    direction the mass reading would write —
+    ``refutes_claim`` against a would-be ``supports``, or
+    ``supports_claim`` against a would-be ``contradicts`` — the cap does
+    NOT write that direction: ``weight_label`` is downgraded to
+    ``conflicting``, ``verdict``/``confidence`` are cleared to ``None``,
+    and the opposing uncertainty ids are recorded on
+    ``CapEvaluation.yielded_to_resolutions``. This is the conservative
+    form: a confidently wrong mechanical answer becomes an abstention,
+    never a verdict flipped BY the resolution (that would make free-text
+    reasoning into evidence by the back door — a deliberate non-goal).
+    Because the veto only ever turns a would-be verdict into no verdict,
+    it composes with the existing ownership rules below without any
+    special case: when a PREVIOUS cap firing owned the live verdict
+    (``cap_owns_live_verdict``) and THIS firing yields, the ordinary
+    "non-directional reading + cap owns the verdict" branch clears it —
+    correctly, since the reading it rested on is now contested.
+
     WHAT IT DELIBERATELY DOES NOT DO:
 
     * It does not change ``claim.stage``. A capped claim is one whose
@@ -431,6 +454,37 @@ class ConcludeAtCycleCapOperation(BaseOperation):
             mass_adequacy = min(1.0, dominant / SCRUTINY_STRONG_MASS_THRESHOLD)
             confidence = min(MECHANICAL_VERDICT_MAX_CONFIDENCE, purity * mass_adequacy)
 
+        # D3 (self-feeding-loop plan): the cap's mechanical mass reading
+        # cannot outrank a resolved uncertainty that already spoke to the
+        # claim's truth in the opposite direction. "supports" opposes a
+        # resolution that reads refutes_claim, and vice versa; "neutral"
+        # and unassessed (None) resolutions never oppose anything. This is
+        # the conservative form: the cap abstains rather than writing a
+        # confidently wrong direction. It never manufactures a verdict
+        # FROM the resolutions — it only vetoes the mass reading's own.
+        yielded_to_resolutions: list[str] = []
+        if verdict is not None:
+            opposing_bearing = (
+                "refutes_claim" if verdict == "supports" else "supports_claim"
+            )
+            affecting = await self.repo.query(
+                "uncertainty",
+                objective_id=claim.objective_id,
+                affected_claim_ids__contains=claim.entity_id,
+            )
+            yielded_to_resolutions = [
+                u.entity_id
+                for u in affecting
+                if isinstance(u, Uncertainty)
+                and u.is_blocking
+                and u.is_resolved
+                and u.resolution_bearing == opposing_bearing
+            ]
+            if yielded_to_resolutions:
+                weight_label = "conflicting"
+                verdict = None
+                confidence = None
+
         wrote_verdict = verdict is not None and may_write
         claim.cap_evaluation = CapEvaluation(
             weight_label=weight_label,
@@ -441,6 +495,7 @@ class ConcludeAtCycleCapOperation(BaseOperation):
             confidence=confidence,
             doubt=weight.doubt,
             wrote_live_verdict=wrote_verdict,
+            yielded_to_resolutions=yielded_to_resolutions,
         )
 
         if wrote_verdict:
@@ -479,6 +534,7 @@ class ConcludeAtCycleCapOperation(BaseOperation):
                 "confidence": confidence,
                 "wrote_live_verdict": wrote_verdict,
                 "cap_owns_live_verdict": cap_owns_live_verdict,
+                "yielded_to_resolutions": yielded_to_resolutions,
             },
         )
 

@@ -19,7 +19,7 @@ import hashlib
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Optional
 
-from .entities import Claim, ClaimStage, Evidence
+from .entities import Claim, ClaimStage, Evidence, Uncertainty
 from .thresholds import (
     ADVERSARIAL_REFUTED_THRESHOLD,
     ADVERSARIAL_SURVIVED_THRESHOLD,
@@ -142,6 +142,38 @@ class GateResult:
 
     def __bool__(self) -> bool:
         return self.passed
+
+
+# Marker substring shared between the reason `validate_promotion` appends for
+# an insufficient-supporting-sources refusal and the D4 check below that
+# recognises it — one source of truth for what that refusal text looks like,
+# so the check can never drift from the message.
+_SUPPORTING_SOURCES_MARKER = " supporting sources, have "
+
+
+def _min_supporting_sources_reason(*, required: int, have: int) -> str:
+    """Build the blocking reason for an insufficient-supporting-sources gate.
+
+    The sole place this exact text is constructed; `validate_promotion` uses
+    it to append the reason and `refused_only_for_min_supporting_sources`
+    below recognises it by the same marker.
+    """
+    return f"Need {required}{_SUPPORTING_SOURCES_MARKER}{have}"
+
+
+def refused_only_for_min_supporting_sources(blocking_reasons: list[str]) -> bool:
+    """True iff a promotion refusal's blocking reasons are exactly the
+    insufficient-supporting-sources reason and nothing else.
+
+    D4 (self-feeding-loop plan): `PromoteToSupported` uses this to decide
+    whether a refused HYPOTHESIS promotion should route to `Investigate`
+    (lazy escalation, P7) rather than fall through — but only when too few
+    supporting sources is the ENTIRE reason for the refusal, not one of
+    several. Recomputes nothing about the underlying gate condition; it
+    only recognises the reason text `validate_promotion` already produced,
+    so there is one source of truth for the threshold logic itself.
+    """
+    return len(blocking_reasons) == 1 and _SUPPORTING_SOURCES_MARKER in blocking_reasons[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -567,6 +599,39 @@ async def claim_evidence_fingerprint(claim: "Claim", repo: "EpistemicRepository"
     return evidence_fingerprint(rows)
 
 
+async def claim_resolution_bearing_fingerprint(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> str:
+    """SHA-256 hex over the RESOLVED, BLOCKING resolution bearings affecting a claim.
+
+    Companion to ``claim_evidence_fingerprint`` (self-feeding-loop plan D3).
+    ``ConcludeAtCycleCapOperation``'s veto (a resolved blocking uncertainty
+    whose bearing opposes the mass reading's direction) depends on a second
+    input the evidence fingerprint cannot see: a bearing can be recorded on
+    an uncertainty *after* the evidence set has stopped changing, so a
+    repeat cap firing gated only on evidence identity would skip the
+    mechanical re-conclusion and leave a cap-owned verdict standing against
+    a resolution that has since spoken against it. Hashing
+    ``(uncertainty_id, resolution_bearing)`` pairs — sorted, so load order
+    never matters — over every RESOLVED, BLOCKING uncertainty with
+    ``claim.entity_id`` in ``affected_claim_ids`` gives ``_mark_cycle_capped``
+    a second, independent "did anything relevant change" signal to combine
+    with the evidence fingerprint.
+    """
+    affecting = await repo.query(
+        "uncertainty",
+        objective_id=claim.objective_id,
+        affected_claim_ids__contains=claim.entity_id,
+    )
+    rows = sorted(
+        (u.entity_id, u.resolution_bearing or "")
+        for u in affecting
+        if isinstance(u, Uncertainty) and u.is_blocking and u.is_resolved
+    )
+    blob = "\n".join(f"{uid}\t{bearing}" for uid, bearing in rows)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 async def promotion_blocked_by_contraction(
     claim: "Claim", repo: "EpistemicRepository"
 ) -> Optional[str]:
@@ -725,7 +790,9 @@ async def validate_promotion(
                 and not adversarial_survived
             ):
                 reasons.append(
-                    f"Need {gate.min_supporting_sources} supporting sources, have {supporting}"
+                    _min_supporting_sources_reason(
+                        required=gate.min_supporting_sources, have=supporting
+                    )
                 )
         except Exception as e:
             warnings.append(f"Could not count supporting sources: {e}")

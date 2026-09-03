@@ -135,12 +135,12 @@ class ResolveUncertaintyOperation(BaseOperation):
             )
 
             if result.can_resolve:
-                uncertainty.resolve(result.resolution)
+                uncertainty.resolve(result.resolution, bearing=result.bearing)
 
                 # Apply same resolution to similar siblings
                 for sibling in similar_siblings:
                     if sibling.resolution is None:
-                        sibling.resolve(result.resolution)
+                        sibling.resolve(result.resolution, bearing=result.bearing)
                         await self.repo.save(sibling)
 
                 # Buffer remaining concerns on objective for batch dedup.
