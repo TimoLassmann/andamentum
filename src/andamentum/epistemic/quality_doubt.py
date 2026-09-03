@@ -131,7 +131,7 @@ QUALITY_CRITERIA: list[Criterion] = [
         name="substantive_content",
         description=(
             "The text contains substantive, checkable content that could bear "
-            "on a scientific claim — rather than being empty, boilerplate, an "
+            "on a claim — rather than being empty, boilerplate, an "
             "error or paywall page, or navigation chrome."
         ),
     )
@@ -242,7 +242,7 @@ async def confirm_low_quality(
         content: The extracted source text the agent scored near zero.
         source_ref: The source identifier, surfaced to the judge as context.
         claim_statement: The claim this evidence was gathered for, so
-            "could bear on a scientific claim" is asked about the right claim.
+            "could bear on a claim" is asked about the right claim.
         agent_score: The agent's blended quality score, included in the
             context purely as provenance — the judge is NOT told to agree
             with it, only what prompted the second look.

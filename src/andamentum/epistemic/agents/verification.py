@@ -662,7 +662,7 @@ register_agent(
 EVALUATE_COUNTERARGUMENT_PROMPT = """\
 # Counterargument Quality Evaluator
 
-You are evaluating the quality of a counterargument against a scientific claim.
+You are evaluating the quality of a counterargument against a claim.
 
 ## Your Task
 
@@ -700,7 +700,7 @@ replication scores high on evidence_backed.
 - generalization: the claim over-extends from the supporting evidence
 - interpretation: the data is misread or misinterpreted
 - theoretical: conflict with established theory or mechanism
-- fringe: outside mainstream scientific consensus
+- fringe: outside mainstream expert consensus
 - ad_hominem: attacks the author, not the argument
 """
 
@@ -785,8 +785,8 @@ Read the evidence content and source metadata, then assess quality along four di
 ## Scoring Guide
 
 **source_credibility** (0.0-1.0): How authoritative and reliable is this source?
-- 1.0: Peer-reviewed journal, curated expert database (ClinVar, UniProt, OMIM)
-- 0.7: Reputable institution, government health agency, established news outlet
+- 1.0: Peer-reviewed journal, curated expert database (ClinVar, UniProt, OMIM), primary official record (official statistics, court filing, published transcript)
+- 0.7: Reputable institution, government agency, established news outlet
 - 0.4: General news, Wikipedia, established blog
 - 0.1: Anonymous source, social media, known unreliable
 

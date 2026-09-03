@@ -41,7 +41,7 @@ INTEGRATE_EVIDENCE_PROMPT = """\
 # Abductive Evidence Integration
 
 You assess whether the TOTALITY of gathered evidence supports, contradicts, \
-or is insufficient to judge a scientific claim. This is NOT about individual \
+or is insufficient to judge a claim. This is NOT about individual \
 pieces — it's about what the evidence collectively implies.
 
 ## What you receive

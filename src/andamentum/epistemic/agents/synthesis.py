@@ -380,7 +380,7 @@ register_agent(
 CLASSIFY_PREDICTION_PROMPT = """\
 # Prediction Classifier
 
-You are classifying a prediction derived from a scientific claim. Your classification helps determine how \
+You are classifying a prediction derived from a claim. Your classification helps determine how \
 testable and specific the prediction is.
 
 ## Your Task
