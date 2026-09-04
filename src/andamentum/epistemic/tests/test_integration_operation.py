@@ -308,6 +308,84 @@ class TestIBEIntegrationPipeline:
         assert updated.integration_candidates == []
         assert updated.integrated_assessment is None
 
+    async def test_balanced_enumeration_default_does_not_rescue_thin_enumeration(
+        self, repo
+    ):
+        """D6/S5 (REFUTATION_FIRST_PLAN.md §3): balanced enumeration is a
+        Lipton fix for a candidate set that already has >= 2 genuine
+        rivals but is missing a canonical framing — it is not a rescue
+        for an enumeration that produced too FEW genuine candidates in
+        the first place. `ibe_real_candidates`/`_MIN_VIABLE_CANDIDATES`
+        keeps its current definition (D6): the check in
+        ``EnumerateCandidatesOperation.execute`` runs on ``proposed``
+        (the LLM-genuine list) BEFORE the balanced-enumeration branch,
+        so a claim with exactly 1 genuine candidate is declined and its
+        `integration_candidates` stays empty — it is never padded to 3
+        by adding 2 balanced-enumeration defaults, even though the
+        balanced-enumeration machinery could mechanically produce
+        exactly that 3-candidate, all-canonical-verdicts shape. If this
+        test starts asserting 3 candidates, the genuine-candidate count
+        has silently started counting defaults."""
+        from .conftest import FakeAgentRunner
+        from ..operations.integration import (
+            INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX,
+            _MIN_VIABLE_CANDIDATES,
+        )
+
+        assert _MIN_VIABLE_CANDIDATES == 2  # pin the current definition
+
+        await repo.save(_make_objective())
+        claim = Claim(
+            entity_id="cl-1",
+            objective_id="obj-1",
+            statement="Test claim",
+            stage=ClaimStage.SUPPORTED,
+        )
+        await repo.save(claim)
+
+        call_idx = [0]
+
+        class OneCandidateRunner(FakeAgentRunner):
+            async def run(self, agent_name, **kwargs):
+                self.calls.append((agent_name, kwargs))
+                if agent_name == "epistemic_propose_one_candidate":
+                    from types import SimpleNamespace
+
+                    idx = call_idx[0]
+                    call_idx[0] += 1
+                    if idx == 0:
+                        return SimpleNamespace(
+                            done=False,
+                            verdict="supports",
+                            description="The one genuine candidate produced",
+                        )
+                    return SimpleNamespace(done=True, verdict=None, description=None)
+                return await super().run(agent_name, **kwargs)
+
+        op = EnumerateCandidatesOperation(
+            repo=repo, agent_runner=OneCandidateRunner(), embedding_model="test"
+        )
+        result = await op.execute(
+            OperationInput(
+                entity_id="cl-1",
+                entity_type="claim",
+                operation="enumerate_candidates",
+            )
+        )
+
+        # Declined, not balanced up to 3 (1 genuine + contradicts default
+        # + insufficient default) — a balanced-enumeration default alone
+        # does not satisfy the genuine-candidate count.
+        assert INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX in result.message
+        assert "balanced" not in result.message.lower()
+
+        updated = await repo.get("claim", "cl-1")
+        assert updated.integration_candidates == []
+        assert not any(
+            "balanced" in c.description.lower()
+            for c in updated.integration_candidates
+        )
+
     async def test_declined_claim_stays_verdict_less_through_full_pipeline(
         self, repo, fake_runner
     ):
