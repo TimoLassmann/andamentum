@@ -13,7 +13,7 @@ Architecture: Layer 1 (framework-agnostic)
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from pydantic import Field, model_validator
 
 from .base import EpistemicEntity
@@ -125,6 +125,23 @@ class Uncertainty(EpistemicEntity):
     )
     resolved_at: Optional[datetime] = Field(default=None)
 
+    # Self-feeding-loop plan D2: which direction, if any, the resolution
+    # bears on the affected claim's truth. None means "not assessed" —
+    # either still unresolved, or resolved by a path that predates this
+    # field (an older prompt, or a PromptedOutput fallback that omitted
+    # the field, both of which default to None upstream in
+    # ResolveUncertaintyOutput; the entity's own default matches so a
+    # bare `Uncertainty()` round-trips unchanged).
+    resolution_bearing: Optional[Literal["supports_claim", "refutes_claim", "neutral"]] = (
+        Field(
+            default=None,
+            description=(
+                "Direction the resolution bears on the affected claim's truth: "
+                "supports_claim, refutes_claim, or neutral. None = not assessed."
+            ),
+        )
+    )
+
     # Denormalized for pattern matching (set on save)
     is_blocking: bool = Field(
         default=True, description="Whether this blocks promotion (computed from type)"
@@ -139,6 +156,14 @@ class Uncertainty(EpistemicEntity):
     # Provenance
     created_by: str = Field(default="system")
 
+    # Idempotent-raise tracking (self-feeding-loop plan, D1): incremented by
+    # `uncertainty_raising.raise_uncertainty` each time a near-duplicate is
+    # raised instead of creating a new entity.
+    raise_count: int = Field(
+        default=1,
+        description="Number of times this uncertainty (or a near-duplicate) was raised",
+    )
+
     def model_post_init(self, __context: Any) -> None:
         """Update denormalized fields after initialization."""
         self.is_blocking = self.uncertainty_type in BLOCKING_TYPES
@@ -148,9 +173,21 @@ class Uncertainty(EpistemicEntity):
         """Check if this uncertainty has been resolved."""
         return self.resolved_at is not None
 
-    def resolve(self, resolution: str) -> None:
-        """Mark this uncertainty as resolved."""
+    def resolve(
+        self,
+        resolution: str,
+        *,
+        bearing: Optional[Literal["supports_claim", "refutes_claim", "neutral"]] = None,
+    ) -> None:
+        """Mark this uncertainty as resolved.
+
+        ``bearing`` is optional and keyword-only (self-feeding-loop plan
+        D2): existing call sites that resolve without a bearing (dedup,
+        "unresolvable", legacy tests) are unaffected and leave
+        ``resolution_bearing`` at its default of None.
+        """
         self.resolution = resolution
+        self.resolution_bearing = bearing
         self.resolved_at = datetime.now()
         self.touch()
 
@@ -161,10 +198,12 @@ class Uncertainty(EpistemicEntity):
             "affected_claim_ids": self.affected_claim_ids,
             "scope": self.scope.value,
             "resolution": self.resolution,
+            "resolution_bearing": self.resolution_bearing,
             "is_resolved": self.is_resolved,
             "is_blocking": self.is_blocking,
             "spawned_from_id": self.spawned_from_id,
             "created_by": self.created_by,
+            "raise_count": self.raise_count,
         }
         return meta
 
@@ -198,9 +237,11 @@ class Uncertainty(EpistemicEntity):
             affected_claim_ids=metadata.get("affected_claim_ids", []),
             scope=UncertaintyScope(metadata.get("scope", "claim")),
             resolution=metadata.get("resolution"),
+            resolution_bearing=metadata.get("resolution_bearing"),
             resolved_at=resolved_at,
             spawned_from_id=metadata.get("spawned_from_id"),
             created_by=metadata.get("created_by", "system"),
+            raise_count=metadata.get("raise_count", 1),
             created_at=datetime.fromisoformat(
                 metadata.get("created_at", datetime.now().isoformat())
             ),

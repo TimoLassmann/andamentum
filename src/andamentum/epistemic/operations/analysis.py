@@ -13,9 +13,9 @@ from .base import BaseOperation, OperationInput, OperationResult
 
 from ..entities import (
     Claim,
-    Uncertainty,
     UncertaintyType,
 )
+from ..uncertainty_raising import raise_uncertainty
 
 
 class AnalyzeArgumentOperation(BaseOperation):
@@ -57,13 +57,15 @@ class AnalyzeArgumentOperation(BaseOperation):
 
             # Create uncertainties for detected fallacies
             for fallacy in result.fallacies:
-                uncertainty = Uncertainty(
+                await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.MISSING_PREMISE,
                     description=str(fallacy),
                     affected_claim_ids=[claim.entity_id],
+                    created_by="analyze_argument",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
 
         claim.argument_analyzed = True
         await self.repo.save(claim)
@@ -142,30 +144,30 @@ class ContrastiveEvaluationOperation(BaseOperation):
             # If this claim is clearly inferior (result says B is better with high confidence)
             if result.better_claim == "B" and result.confidence >= 0.7:
                 inferior_count += 1
-                uncertainty = Uncertainty(
+                uncertainty, _created = await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.SCOPE_DIFFERENCE,
                     description=f"Contrastive evaluation: claim is inferior to '{sibling.statement[:80]}'. Distinguishing observation: {result.distinguishing_observation}",
                     affected_claim_ids=[claim.entity_id],
-                    is_blocking=True,
                     created_by="contrastive_evaluation",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
                 created_entities.append(uncertainty.entity_id)
 
             # When claims are equally supported, preserve the distinguishing
             # observation as a non-blocking caveat. This surfaces what evidence
             # WOULD separate them — valuable for the report and future work.
             elif result.better_claim == "neither" and result.distinguishing_observation:
-                uncertainty = Uncertainty(
+                uncertainty, _created = await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.SCOPE_DIFFERENCE,
                     description=f"Contrastive parity with '{sibling.statement[:80]}': {result.distinguishing_observation}",
                     affected_claim_ids=[claim.entity_id, sibling.entity_id],
-                    is_blocking=False,
                     created_by="contrastive_evaluation",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
                 created_entities.append(uncertainty.entity_id)
 
         claim.contrastive_checked = True
@@ -235,15 +237,15 @@ class CrossClaimConsistencyOperation(BaseOperation):
             if result.conflicts:
                 conflict_count += 1
                 # Create blocking uncertainty on THIS claim
-                uncertainty = Uncertainty(
+                uncertainty, _created = await raise_uncertainty(
+                    self.repo,
                     objective_id=claim.objective_id,
                     uncertainty_type=UncertaintyType.CONTRADICTION,
                     description=f"Cross-claim conflict with '{sibling.statement[:80]}': {result.tension_point}",
                     affected_claim_ids=[claim.entity_id, sibling.entity_id],
-                    is_blocking=True,
                     created_by="cross_claim_consistency",
+                    embedding_model=self.embedding_model,
                 )
-                await self.repo.save(uncertainty)
                 created_entities.append(uncertainty.entity_id)
 
         claim.consistency_checked = True

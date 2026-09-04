@@ -41,7 +41,7 @@ INTEGRATE_EVIDENCE_PROMPT = """\
 # Abductive Evidence Integration
 
 You assess whether the TOTALITY of gathered evidence supports, contradicts, \
-or is insufficient to judge a scientific claim. This is NOT about individual \
+or is insufficient to judge a claim. This is NOT about individual \
 pieces — it's about what the evidence collectively implies.
 
 ## What you receive
@@ -126,8 +126,21 @@ INTEGRATE_EVIDENCE = register_agent(
 
 # ── epistemic_propose_one_candidate (Peirce, generative) ──────────────
 
-PROPOSE_ONE_CANDIDATE_PROMPT = """\
-# Candidate Verdict Generator (Peircean Enumeration)
+#: Prompt version, embedded in the prompt's own header line below so it is
+#: part of the text sent to the model — greppable in a raw-prompt capture
+#: the same way ``INSUFFICIENT_DIVERSITY_MESSAGE_PREFIX`` is greppable in
+#: ``operations.jsonl``. Bump this whenever the prompt's instructions
+#: change, so runs before and after a change are distinguishable.
+#: v2 (REFUTATION_FIRST_PLAN.md §3, D5 with §7 A7-6 applied): asks the
+#: enumerator to take the claim's negation seriously — how the evidence
+#: could look exactly as it does while the claim is false — naming the
+#: general shapes as prompts for that question rather than a menu, with
+#: no quota, so a rival is proposed only where it is a genuine reading.
+#: The two-genuine-rival gate itself is unchanged (D6).
+PROPOSE_ONE_CANDIDATE_PROMPT_VERSION = 2
+
+PROPOSE_ONE_CANDIDATE_PROMPT = f"""\
+# Candidate Verdict Generator (Peircean Enumeration) [v{PROPOSE_ONE_CANDIDATE_PROMPT_VERSION}]
 
 You produce ONE candidate verdict at a time as part of an iterative \
 enumeration over possible explanations of an evidence pattern. The \
@@ -163,6 +176,17 @@ than stated (e.g. "true for one drug class only", "true under \
 condition X but not Y"). Use when a directional verdict requires \
 qualifying the claim's stated scope.
 - **"contradicts_refined"**: same shape, opposite direction.
+
+## The negation-explanation
+
+Take the claim's negation seriously: if the claim is FALSE, how would \
+the evidence still end up looking exactly as it does? The shapes below \
+are prompts for that question, not a menu to pick from — judge which, \
+if any, fits this evidence: a quotation misattributed or read out of \
+context, a different referent or time period than the claim states, a \
+later correction or retraction the evidence predates, or outright \
+fabrication. Propose it only where it is a genuine reading of THIS \
+evidence, not a rote addition.
 
 ## Decision: propose or stop
 

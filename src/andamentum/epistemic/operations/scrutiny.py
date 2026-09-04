@@ -20,10 +20,10 @@ from ..entities import (
     Claim,
     Evidence,
     JudgeOpinion,
-    Uncertainty,
     UncertaintyType,
 )
 from ..scrutiny_weight import EvidenceWeight, compute_evidence_weight
+from ..uncertainty_raising import raise_uncertainty
 
 logger = logging.getLogger(__name__)
 
@@ -401,13 +401,15 @@ class ScrutiniseClaimOperation(BaseOperation):
             except ValueError:
                 uncertainty_type = UncertaintyType.UNKNOWN
 
-            uncertainty = Uncertainty(
+            await raise_uncertainty(
+                self.repo,
                 objective_id=claim.objective_id,
                 uncertainty_type=uncertainty_type,
                 description=str(description),
                 affected_claim_ids=[claim.entity_id],
+                created_by="scrutiny",
+                embedding_model=self.embedding_model,
             )
-            await self.repo.save(uncertainty)
 
     MAX_ISSUES = 5  # Maximum per-evidence calls (caps cost for large evidence sets)
 

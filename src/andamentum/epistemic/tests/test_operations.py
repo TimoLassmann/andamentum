@@ -1211,6 +1211,7 @@ class TestResolveUncertaintyDedup:
                 "epistemic_resolve_uncertainty": {
                     "can_resolve": True,
                     "resolution": "Resolved",
+                    "bearing": None,
                     "remaining_concerns": [concern_text],
                 }
             }
@@ -1294,6 +1295,7 @@ class TestResolveUncertaintyDedup:
                 "epistemic_resolve_uncertainty": {
                     "can_resolve": True,
                     "resolution": "Resolved",
+                    "bearing": None,
                     "remaining_concerns": [concern_text],
                 }
             }

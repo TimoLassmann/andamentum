@@ -16,6 +16,7 @@ from ..gates import (
     quality_weighted_evidence_sum,
     compute_confidence_score,
     count_modifications_in_window,
+    refused_only_for_min_supporting_sources,
 )
 
 
@@ -193,6 +194,52 @@ class TestValidatePromotion:
         c = Claim(entity_id="c-1", objective_id="o", statement="Test")
         result = await validate_promotion(c, ClaimStage.HYPOTHESIS, repo)
         assert not result.passed
+
+    async def test_refused_only_for_supporting_sources(self, repo):
+        """D4 precondition: a claim with judged-but-not-supporting evidence,
+        otherwise gate-clean, is refused with exactly the min_supporting_sources
+        reason — the shape PromoteToSupported checks to route to Investigate."""
+        e = Evidence(
+            entity_id="e-1",
+            objective_id="o",
+            quality_score=0.5,
+            support_judgment="no_bearing",
+        )
+        await repo.save(e)
+        c = Claim(
+            entity_id="c-1",
+            objective_id="o",
+            statement="Test",
+            evidence_ids=["e-1"],
+            scrutiny_verdict="pass",
+        )
+        await repo.save(c)
+        result = await validate_promotion(c, ClaimStage.SUPPORTED, repo)
+        assert not result.passed
+        assert refused_only_for_min_supporting_sources(result.blocking_reasons)
+
+
+class TestRefusedOnlyForMinSupportingSources:
+    def test_true_when_sole_reason(self):
+        assert refused_only_for_min_supporting_sources(
+            ["Need 1 supporting sources, have 0"]
+        )
+
+    def test_false_when_combined_with_another_reason(self):
+        assert not refused_only_for_min_supporting_sources(
+            [
+                "Scrutiny not passed (verdict: None)",
+                "Need 1 supporting sources, have 0",
+            ]
+        )
+
+    def test_false_when_empty(self):
+        assert not refused_only_for_min_supporting_sources([])
+
+    def test_false_when_unrelated_reason(self):
+        assert not refused_only_for_min_supporting_sources(
+            ["Scrutiny not passed (verdict: None)"]
+        )
 
 
 class TestDegeneracy:

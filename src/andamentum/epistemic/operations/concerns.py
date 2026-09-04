@@ -24,6 +24,7 @@ from .base import (
     OperationResult,
 )
 from ..thresholds import PEIRCE_CYCLE_CAP
+from ..uncertainty_raising import raise_uncertainty
 
 from ..entities import (
     Objective,
@@ -124,23 +125,30 @@ class DeduplicateConcernsOperation(BaseOperation):
             if not is_dup:
                 survivors.append(rep)
 
-        # Create uncertainty entities for survivors only
+        # Create uncertainty entities for survivors only, deduplicating
+        # against existing uncertainties (same type + shared affected claim)
+        # via the shared idempotent-raise helper (D1) rather than saving
+        # directly.
         created_ids: list[str] = []
         for s in survivors:
-            new_uncertainty = Uncertainty(
+            new_uncertainty, created = await raise_uncertainty(
+                self.repo,
                 objective_id=objective.entity_id,
                 uncertainty_type=UncertaintyType.UNKNOWN,
                 description=s["text"],
                 affected_claim_ids=s.get("affected_claim_ids", []),
+                created_by="deduplicate_concerns",
+                embedding_model=self.embedding_model,
                 spawned_from_id=s.get("parent_id"),
             )
-            await self.repo.save(new_uncertainty)
 
-            # Depth-based demotion: deep children become non-blocking.
+            # Depth-based demotion: deep children become non-blocking. Only
+            # applies to a genuinely new entity — a raise that matched an
+            # existing uncertainty leaves that entity's own state alone.
             # Must change uncertainty_type (not just is_blocking) because
             # model_post_init recomputes is_blocking from type on every load.
             child_depth = s.get("depth", 0)
-            if child_depth >= PEIRCE_CYCLE_CAP and new_uncertainty.is_blocking:
+            if created and child_depth >= PEIRCE_CYCLE_CAP and new_uncertainty.is_blocking:
                 new_uncertainty.uncertainty_type = UncertaintyType.EVIDENCE_GAP
                 new_uncertainty.is_blocking = False
                 await self.repo.save(new_uncertainty)

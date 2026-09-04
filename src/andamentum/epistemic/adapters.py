@@ -11,7 +11,7 @@ Architecture: Layer 1 (framework-agnostic)
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 from .primitives import (
     CausalRole,
@@ -112,11 +112,13 @@ class ConceptualAnalysisResult:
 class ResolveUncertaintyResult:
     """Result from uncertainty resolution.
 
-    Manifest fields: uncertainty_id, can_resolve, resolution, remaining_concerns.
+    Manifest fields: uncertainty_id, can_resolve, resolution, bearing,
+    remaining_concerns.
     """
 
     resolution: str = ""
     can_resolve: bool = False
+    bearing: Literal["supports_claim", "refutes_claim", "neutral"] | None = None
     remaining_concerns: list[str] = field(default_factory=list)
 
 
@@ -389,6 +391,7 @@ def adapt_resolve_uncertainty(raw: Any) -> ResolveUncertaintyResult:
     return ResolveUncertaintyResult(
         resolution=raw.resolution,
         can_resolve=raw.can_resolve,
+        bearing=raw.bearing,
         remaining_concerns=raw.remaining_concerns,
     )
 

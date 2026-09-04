@@ -182,6 +182,21 @@ class Claim(EpistemicEntity):
             "mechanical conclusion re-runs only on the latter."
         ),
     )
+    cap_bearing_fingerprint: Optional[str] = Field(
+        default=None,
+        description=(
+            "The resolution-bearing fingerprint (gates."
+            "claim_resolution_bearing_fingerprint) at the moment of the "
+            "last cycle-cap conclusion. A resolved uncertainty's bearing "
+            "can change after the evidence set has stopped moving, so "
+            "_mark_cycle_capped compares this alongside cap_fingerprint: a "
+            "repeat firing re-runs the mechanical conclusion whenever "
+            "EITHER the evidence or the affecting resolved-blocking "
+            "bearings have moved, so an opposing resolution that arrives "
+            "after the cap already wrote a verdict is not left standing "
+            "(self-feeding-loop plan D3)."
+        ),
+    )
 
     # State fields for pattern matching
     scrutiny_verdict: Optional[str] = Field(
@@ -646,6 +661,7 @@ class Claim(EpistemicEntity):
             "contraction_count": self.contraction_count,
             "contraction_fingerprint": self.contraction_fingerprint,
             "cap_fingerprint": self.cap_fingerprint,
+            "cap_bearing_fingerprint": self.cap_bearing_fingerprint,
             "investigation_count": self.investigation_count,
             "investigation_intents": [
                 r.model_dump() for r in self.investigation_intents
@@ -719,6 +735,7 @@ class Claim(EpistemicEntity):
             contraction_count=metadata.get("contraction_count", 0),
             contraction_fingerprint=metadata.get("contraction_fingerprint"),
             cap_fingerprint=metadata.get("cap_fingerprint"),
+            cap_bearing_fingerprint=metadata.get("cap_bearing_fingerprint"),
             investigation_count=metadata.get("investigation_count", 0),
             investigation_intents=[
                 IntentRecord.from_dict(r)

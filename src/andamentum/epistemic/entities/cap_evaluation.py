@@ -114,6 +114,17 @@ class CapEvaluation(BaseModel):
             "live verdict."
         ),
     )
+    yielded_to_resolutions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "IDs of RESOLVED uncertainties, affecting this claim, whose "
+            "recorded bearing opposed the direction the mass reading would "
+            "otherwise have written (self-feeding-loop plan D3). Non-empty "
+            "only when the cap downgraded a would-be directional reading "
+            "to weight_label='conflicting' rather than write a verdict a "
+            "resolution already disputed. Empty is the normal case."
+        ),
+    )
 
     @model_validator(mode="after")
     def _verdict_and_confidence_are_coherent(self) -> "CapEvaluation":

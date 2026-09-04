@@ -193,7 +193,16 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # instead. Comment-only change; every check in this function is
     # unchanged — confirmed by TestValidatePromotionFailure's three tests
     # still passing unmodified.
-    "Gate validate_promotion logic": "7b3222b58b908640",
+    # Updated 2026-09-03 (self-feeding-loop plan, D4): the
+    # min_supporting_sources refusal message is now built by
+    # gates._min_supporting_sources_reason(required, have) instead of an
+    # inline f-string, so PromoteToSupported's
+    # refused_only_for_min_supporting_sources() check and the message text
+    # share one source of truth. The condition that appends the reason —
+    # any_judged and supporting < gate.min_supporting_sources and not
+    # adversarial_survived — is byte-identical; only the message-string
+    # construction moved into a helper.
+    "Gate validate_promotion logic": "35028a6320c84335",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
     # a new capable_of() method (the optional CapabilityQueryable

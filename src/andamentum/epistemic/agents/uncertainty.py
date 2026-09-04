@@ -51,6 +51,7 @@ You will receive:
 - `uncertainty_id`: ID of the uncertainty
 - `can_resolve`: true/false
 - `resolution`: How it was resolved (if can_resolve is true)
+- `bearing`: does this resolution make the claim more likely TRUE ("supports_claim"), more likely FALSE ("refutes_claim"), or neither ("neutral")?
 - `remaining_concerns`: Genuinely NEW concerns only (see rules below)
 
 ## Rules for remaining_concerns
@@ -78,6 +79,7 @@ or acknowledge it as a limitation. Remaining concerns are the exception, not the
   "uncertainty_id": "unc_abc123",
   "can_resolve": true,
   "resolution": "The sample size concern (n=50) was addressed by the new meta-analysis which aggregates 15 studies with total n=2,340. Effect size remains consistent at d=0.4-0.6.",
+  "bearing": "supports_claim",
   "remaining_concerns": []
 }
 ```
@@ -89,6 +91,7 @@ or acknowledge it as a limitation. Remaining concerns are the exception, not the
   "uncertainty_id": "unc_abc123",
   "can_resolve": true,
   "resolution": "The sample size concern was addressed by the meta-analysis (total n=2,340).",
+  "bearing": "supports_claim",
   "remaining_concerns": [
     "The meta-analysis reveals significant heterogeneity (I²=78%) not mentioned in original studies"
   ]
@@ -105,6 +108,7 @@ of the original sample size concern.
   "uncertainty_id": "unc_def456",
   "can_resolve": false,
   "resolution": "",
+  "bearing": "neutral",
   "remaining_concerns": []
 }
 ```

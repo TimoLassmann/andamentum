@@ -217,6 +217,13 @@ class ResolveUncertaintyOutput(BaseModel):
     resolution: str = Field(
         description="How the uncertainty was resolved, if can_resolve is true"
     )
+    bearing: Literal["supports_claim", "refutes_claim", "neutral"] | None = Field(
+        default=None,
+        description="Does this resolution, on balance, make the claim more likely TRUE "
+        "(supports_claim), more likely FALSE (refutes_claim), or neither "
+        "(neutral)? Pick neutral if the resolution does not speak to the claim's truth. "
+        "Omit only if you cannot assess this.",
+    )
     remaining_concerns: list[str] = Field(
         description="Genuinely NEW concerns revealed by the evidence that are DIFFERENT from the "
         "original uncertainty. Do not restate the original limitation in different words. "
