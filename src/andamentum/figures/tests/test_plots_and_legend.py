@@ -20,6 +20,7 @@ from andamentum.figures.plots import (
     line_plot,
     line_with_ci,
     scatter_plot,
+    stacked_bar,
     strip_plot,
     swarm_plot,
     violin_plot,
@@ -67,6 +68,40 @@ class TestGroupedBar:
         grouped_bar(ax, {"Series A": [1, 2, 3], "Series B": [3, 2, 1]}, ["X", "Y", "Z"])
         savefig(fig, tmp_path / "gbar.png")
         assert (tmp_path / "gbar.png").exists()
+
+    def test_horizontal(self, tmp_path):
+        fig, ax = plt.subplots()
+        grouped_bar(
+            ax, {"A": [1, 2], "B": [3, 4]}, ["X", "Y"], horizontal=True, ylabel="v"
+        )
+        assert ax.get_xlabel() == "v"
+        assert [t.get_text() for t in ax.get_yticklabels()] == ["X", "Y"]
+        savefig(fig, tmp_path / "gbar_h.png")
+        assert (tmp_path / "gbar_h.png").exists()
+
+
+class TestStackedBar:
+    def test_basic(self, tmp_path):
+        fig, ax = plt.subplots()
+        totals = stacked_bar(ax, {"a": [1, 2], "b": [3, 4]}, ["X", "Y"], ylabel="n")
+        assert totals == [4.0, 6.0]
+        savefig(fig, tmp_path / "stacked.png")
+        assert (tmp_path / "stacked.png").exists()
+
+    def test_horizontal_normalized(self, tmp_path):
+        fig, ax = plt.subplots()
+        stacked_bar(
+            ax, {"a": [1, 2], "b": [3, 4]}, ["X", "Y"], horizontal=True, normalize=True
+        )
+        assert ax.get_xlim()[1] == pytest.approx(1.12)
+        savefig(fig, tmp_path / "stacked_h.png")
+        assert (tmp_path / "stacked_h.png").exists()
+
+    def test_negative_refused(self):
+        fig, ax = plt.subplots()
+        with pytest.raises(ValueError, match="negative"):
+            stacked_bar(ax, {"a": [1, -1]}, ["X", "Y"])
+        plt.close(fig)
 
 
 # ── Line plot ────────────────────────────────────────────────────────────────
@@ -324,3 +359,24 @@ class TestLegend:
         legend = generate_legend("bar")
         assert "Bar chart" in legend
         assert legend.endswith(".")
+
+    def test_stacked_equal_totals(self):
+        legend = generate_legend(
+            "stacked",
+            x_label="Arm",
+            y_label="Claims",
+            segment_label="Outcome",
+            series_names=["wrong", "refused", "right"],
+            category_totals=[153, 153, 153],
+        )
+        assert legend == (
+            "Stacked bar chart of Claims by Arm, segmented by Outcome "
+            "(wrong, refused, right). Each bar sums to the total for its Arm (n = 153)."
+        )
+
+    def test_stacked_range_of_totals(self):
+        legend = generate_legend(
+            "stacked", x_label="Arm", y_label="Claims", category_totals=[148, 153]
+        )
+        assert "(n = 148 to 153)" in legend
+        assert "segmented by series" in legend

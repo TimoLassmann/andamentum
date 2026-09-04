@@ -7,13 +7,19 @@ and directly by users building custom multi-panel figures.
 
 from __future__ import annotations
 
+import math
 from typing import Any, cast
 
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 
 from .palettes import get_palette
 from .stats import compute_mean_error
+
+# The design system's paper, used for labels on dark segments. The light
+# alternative is the preset ink, passed in by the caller.
+PAPER = "#f9f7f4"
 
 
 def bar_plot(
@@ -27,6 +33,7 @@ def bar_plot(
     horizontal: bool = False,
     alpha: float = 0.8,
     sort_by_value: bool = False,
+    error_color: str = "black",
 ) -> None:
     """Simple bar chart for pre-aggregated data.
 
@@ -40,21 +47,27 @@ def bar_plot(
         horizontal: If True, draw horizontal bars.
         alpha: Bar transparency.
         sort_by_value: Sort bars by value (descending).
+        error_color: Colour of the error bars and their caps.
     """
+    resolved_colors = (
+        colors if colors is not None else get_palette("npg", len(categories))
+    )
+    resolved_colors = [
+        resolved_colors[i % len(resolved_colors)] for i in range(len(categories))
+    ]
+
     if sort_by_value:
         paired = sorted(zip(values, categories, range(len(values))), reverse=True)
         values = [p[0] for p in paired]
         categories = [p[1] for p in paired]
+        idx = [p[2] for p in paired]
+        # Colours belong to categories, so they follow the sort.
+        resolved_colors = [resolved_colors[i] for i in idx]
         if error_values is not None:
-            idx = [p[2] for p in paired]
             error_values = [error_values[i] for i in idx]
 
-    resolved_colors = (
-        colors if colors is not None else get_palette("npg", len(categories))
-    )
-
     x = np.arange(len(categories))
-    err_kw = {"capsize": 3, "capthick": 0.8, "elinewidth": 0.8, "color": "black"}
+    err_kw = {"capsize": 3, "capthick": 0.8, "elinewidth": 0.8, "color": error_color}
 
     if horizontal:
         ax.barh(
@@ -92,6 +105,7 @@ def grouped_bar(
     colors: list[str] | None = None,
     ylabel: str | None = None,
     alpha: float = 0.8,
+    horizontal: bool = False,
 ) -> None:
     """Grouped bar chart with multiple series per category.
 
@@ -102,6 +116,8 @@ def grouped_bar(
         colors: Color per series.
         ylabel: Y-axis label.
         alpha: Bar transparency.
+        horizontal: If True, draw horizontal bars (series stacked top to
+            bottom within each category).
     """
     series_names = list(data.keys())
     n_series = len(series_names)
@@ -114,20 +130,239 @@ def grouped_bar(
 
     for i, name in enumerate(series_names):
         offset = (i - n_series / 2 + 0.5) * width
-        ax.bar(
-            x + offset,
-            data[name],
-            width,
-            label=name,
-            color=resolved_colors[i % len(resolved_colors)],
-            alpha=alpha,
-        )
+        color = resolved_colors[i % len(resolved_colors)]
+        if horizontal:
+            # Negate so the first series sits on top, reading order preserved.
+            ax.barh(x - offset, data[name], width, label=name, color=color, alpha=alpha)
+        else:
+            ax.bar(x + offset, data[name], width, label=name, color=color, alpha=alpha)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(categories)
-    if ylabel:
-        ax.set_ylabel(ylabel)
+    if horizontal:
+        ax.set_yticks(x)
+        ax.set_yticklabels(categories)
+        if ylabel:
+            ax.set_xlabel(ylabel)
+    else:
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories)
+        if ylabel:
+            ax.set_ylabel(ylabel)
     ax.legend()
+
+
+def stacked_bar(
+    ax: Axes,
+    data: dict[str, list[float]],
+    categories: list[str],
+    *,
+    colors: list[str] | None = None,
+    ylabel: str | None = None,
+    horizontal: bool = False,
+    normalize: bool = False,
+    ink: str = "#000000",
+    alpha: float = 1.0,
+    label_min_font_heights: float = 2.5,
+) -> list[float]:
+    """Stacked bar chart: one bar per category, one segment per series.
+
+    Segments are stacked in the order of ``data``'s keys. Each segment
+    carries its value as a direct label when the segment is tall enough
+    (at least ``label_min_font_heights`` times the body font height in
+    axis units); the category total sits at the end of each bar. Label
+    colour is the ink or the paper, whichever contrasts more with the
+    segment (WCAG relative luminance). The series key goes in one row
+    above the axes, never to the right of them, and wraps to two rows
+    when it would be wider than the axes.
+
+    Args:
+        ax: Matplotlib axes.
+        data: {series_name: [value_per_category]}. Every list has one value
+            per category. Values must be non-negative.
+        categories: Category labels, in bar order.
+        colors: Color per series.
+        ylabel: Value-axis label.
+        horizontal: If True, bars run left to right.
+        normalize: If True, segments are fractions of the category total
+            and the value axis runs 0 to 1. Totals are still labelled as
+            the raw counts.
+        ink: Text colour for labels on light segments and for the totals.
+        alpha: Segment opacity. Defaults to 1.0 because labels sit inside
+            the segments and their contrast is computed on the pure hex.
+        label_min_font_heights: A segment shorter than this many body-font
+            heights gets no inside label.
+
+    Returns:
+        The category totals, in category order.
+
+    Raises:
+        ValueError: If a value is negative, or a series has the wrong
+            number of values.
+    """
+    series_names = list(data.keys())
+    n_series = len(series_names)
+    n_cats = len(categories)
+    for name in series_names:
+        vals = data[name]
+        if len(vals) != n_cats:
+            raise ValueError(
+                f"Series '{name}' has {len(vals)} values for {n_cats} categories"
+            )
+        negative = [v for v in vals if v < 0]
+        if negative:
+            raise ValueError(
+                f"Series '{name}' has a negative value ({negative[0]}); "
+                "stacking is undefined for negative values."
+            )
+
+    resolved_colors = colors if colors is not None else get_palette("npg", n_series)
+    totals = [float(sum(data[name][i] for name in series_names)) for i in range(n_cats)]
+
+    matrix = np.array([[float(v) for v in data[name]] for name in series_names])
+    if normalize:
+        denom = np.array([t if t > 0 else 1.0 for t in totals])
+        plotted = matrix / denom
+    else:
+        plotted = matrix
+
+    positions = np.arange(n_cats)
+    base = np.zeros(n_cats)
+    segments: list[
+        tuple[int, int, float, float, str]
+    ] = []  # (series, cat, start, size, color)
+    for i, name in enumerate(series_names):
+        color = resolved_colors[i % len(resolved_colors)]
+        sizes = plotted[i]
+        if horizontal:
+            ax.barh(positions, sizes, left=base, label=name, color=color, alpha=alpha)
+        else:
+            ax.bar(positions, sizes, bottom=base, label=name, color=color, alpha=alpha)
+        for j in range(n_cats):
+            segments.append((i, j, float(base[j]), float(sizes[j]), color))
+        base = base + sizes
+
+    stack_max = float(base.max()) if n_cats else 1.0
+    headroom = 1.0 if normalize else stack_max
+    limit = (headroom or 1.0) * 1.12
+
+    if horizontal:
+        ax.set_yticks(positions)
+        ax.set_yticklabels(categories)
+        ax.set_xlim(0, limit)
+        if ylabel:
+            ax.set_xlabel(ylabel)
+    else:
+        ax.set_xticks(positions)
+        ax.set_xticklabels(categories)
+        ax.set_ylim(0, limit)
+        if ylabel:
+            ax.set_ylabel(ylabel)
+
+    # ── Direct labels ────────────────────────────────────────────────────
+    font_pt = float(plt.rcParams["font.size"])
+    min_size = label_min_font_heights * font_pt / _points_per_unit(ax, horizontal)
+    for i, j, start, size, color in segments:
+        if size < min_size:
+            continue
+        raw = matrix[i][j]
+        text = _format_value(raw)
+        mid = start + size / 2
+        label_color = ink if _contrast(color, ink) >= _contrast(color, PAPER) else PAPER
+        if horizontal:
+            ax.text(
+                mid, positions[j], text, ha="center", va="center", color=label_color
+            )
+        else:
+            ax.text(
+                positions[j], mid, text, ha="center", va="center", color=label_color
+            )
+
+    offset = (1.0 if normalize else stack_max) * 0.02
+    for j in range(n_cats):
+        end = float(base[j])
+        text = _format_value(totals[j])
+        if horizontal:
+            ax.text(end + offset, positions[j], text, ha="left", va="center", color=ink)
+        else:
+            ax.text(
+                positions[j], end + offset, text, ha="center", va="bottom", color=ink
+            )
+
+    # ── Series key: one row above the axes, wrap to two if too wide ──────
+    _legend_above(ax, n_series)
+    return totals
+
+
+def _legend_above(ax: Axes, n_entries: int) -> None:
+    """Place the legend in one row above the axes; two rows if wider than the axes."""
+    legend = ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=n_entries,
+        frameon=False,
+        handlelength=1.0,
+        columnspacing=1.2,
+    )
+    fig = ax.figure
+    if n_entries > 1 and fig is not None:
+        renderer = _renderer(fig)
+        if renderer is not None:
+            legend_w = legend.get_window_extent(renderer).width
+            axes_w = ax.get_window_extent(renderer).width
+            if legend_w > axes_w:
+                ax.legend(
+                    loc="lower center",
+                    bbox_to_anchor=(0.5, 1.0),
+                    ncol=math.ceil(n_entries / 2),
+                    frameon=False,
+                    handlelength=1.0,
+                    columnspacing=1.2,
+                )
+
+
+def _renderer(fig: Any) -> Any:
+    canvas = fig.canvas
+    get = getattr(canvas, "get_renderer", None)
+    if get is None:
+        return None
+    return get()
+
+
+def _points_per_unit(ax: Axes, horizontal: bool) -> float:
+    """Points of drawn length per data unit along the value axis."""
+    fig = ax.figure
+    w_in, h_in = fig.get_size_inches()  # type: ignore[union-attr]
+    pos = ax.get_position()
+    if horizontal:
+        lo, hi = ax.get_xlim()
+        extent_pt = pos.width * w_in * 72.0
+    else:
+        lo, hi = ax.get_ylim()
+        extent_pt = pos.height * h_in * 72.0
+    span = float(hi - lo) or 1.0
+    return extent_pt / span
+
+
+def _format_value(v: float) -> str:
+    if float(v).is_integer():
+        return str(int(v))
+    return f"{v:.3g}"
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """WCAG 2.x relative luminance of a #rrggbb colour."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    la, lb = _relative_luminance(a), _relative_luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
 
 
 def line_plot(

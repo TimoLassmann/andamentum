@@ -35,7 +35,14 @@ For plot primitives, import from submodules::
 from .palettes import get_palette, list_palettes
 from .render import figure
 from .standards import get_preset, list_presets, resolve_width
-from .style import despine, panel_label, savefig, setup_style, shared_legend
+from .style import (
+    despine,
+    inline_svg,
+    panel_label,
+    savefig,
+    setup_style,
+    shared_legend,
+)
 
 # === Result/data types (returned by the above; not tools themselves) ===
 from .types import DataTable, FigureMode, FigureResult, PlotKind
@@ -47,6 +54,7 @@ __all__ = [
     "get_palette",
     "panel_label",
     "savefig",
+    "inline_svg",
     "shared_legend",
     "despine",
     "get_preset",

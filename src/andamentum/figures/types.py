@@ -23,6 +23,7 @@ class PlotKind(str, Enum):
     HEATMAP = "heatmap"
     STRIP = "strip"
     SWARM = "swarm"
+    STACKED = "stacked"
 
 
 # Explicitly banned kinds — raise ValueError with explanation
@@ -183,4 +184,12 @@ class FigureResult(BaseModel):
     )
     aggregation: str | None = Field(
         default=None, description="Aggregation applied, e.g. 'mean ± SEM'"
+    )
+    series_names: list[str] | None = Field(
+        default=None,
+        description=(
+            "Series names in plot order for multi-series kinds (stacked, grouped "
+            "bar, multi-line), so a caller can write the caption without "
+            "re-parsing the data. None for single-series kinds."
+        ),
     )

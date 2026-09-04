@@ -122,6 +122,8 @@ def validate_kind(
     table: DataTable,
     x: str | None,
     y: str | list[str] | None,
+    *,
+    group: str | None = None,
 ) -> list[str]:
     """Validate a chosen chart type and return warnings if suboptimal.
 
@@ -133,6 +135,10 @@ def validate_kind(
         table: Normalized data table.
         x: X-axis column.
         y: Y-axis column(s).
+        group: Series column, if any. A bar chart with a series column has
+            one row per (category, series) on purpose, so the "hides
+            distribution" note does not apply. The same holds for
+            ``stacked``, which never aggregates.
 
     Returns:
         List of warning strings. Empty if choice is fine.
@@ -146,7 +152,7 @@ def validate_kind(
         y_cols = list(y)
 
     # Bar chart for continuous distributions
-    if kind == PlotKind.BAR.value and x and y_cols:
+    if kind == PlotKind.BAR.value and x and y_cols and group is None:
         if table.is_categorical(x):
             y_col = y_cols[0]
             if table.is_numeric(y_col):
@@ -188,6 +194,34 @@ def validate_kind(
                     )
 
     return warnings
+
+
+def stacked_totals_note(totals: list[float]) -> str | None:
+    """Note when stacked-bar category totals differ and the chart is not normalised.
+
+    Segments of a stacked bar are compared by eye across bars; when the
+    totals differ the comparison is of counts on different bases. The
+    caption has to say so, or the chart has to be normalised.
+
+    Args:
+        totals: Category totals in bar order.
+
+    Returns:
+        A note string, or None when every total is the same.
+    """
+    if not totals:
+        return None
+    lo, hi = min(totals), max(totals)
+    if lo == hi:
+        return None
+
+    def fmt(v: float) -> str:
+        return str(int(v)) if float(v).is_integer() else f"{v:.3g}"
+
+    return (
+        f"Category totals differ (min {fmt(lo)}, max {fmt(hi)}). "
+        "State the totals in the caption or use --normalize."
+    )
 
 
 def recommend_horizontal_bars(categories: list[str]) -> tuple[bool, str]:

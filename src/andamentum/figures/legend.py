@@ -19,6 +19,7 @@ _KIND_DESCRIPTIONS = {
     "heatmap": "Heatmap",
     "strip": "Strip plot",
     "swarm": "Beeswarm plot",
+    "stacked": "Stacked bar chart",
 }
 
 # Error type descriptions
@@ -46,6 +47,8 @@ def generate_legend(
     log_scale: str | None = None,
     aggregation: str | None = None,
     sort_description: str | None = None,
+    segment_label: str | None = None,
+    category_totals: list[float] | None = None,
 ) -> str:
     """Generate a template-based figure legend.
 
@@ -63,10 +66,25 @@ def generate_legend(
         log_scale: Which axes use log scale.
         aggregation: Aggregation description (e.g., "mean ± SEM").
         sort_description: How data was sorted.
+        segment_label: For ``stacked``: the name of the column whose values
+            are the segments (the series column), or "series" for wide data.
+        category_totals: For ``stacked``: the total of each bar, in bar
+            order. Reported as one n when equal, else as a range.
 
     Returns:
         Legend text string.
     """
+    if kind == "stacked":
+        return _stacked_legend(
+            x_label=x_label,
+            y_label=y_label,
+            segment_label=segment_label,
+            series_names=series_names,
+            category_totals=category_totals,
+            log_scale=log_scale,
+            title=title,
+        )
+
     parts: list[str] = []
 
     # Opening: chart type + what it shows
@@ -150,3 +168,48 @@ def generate_legend(
         text += "."
 
     return text
+
+
+def _stacked_legend(
+    *,
+    x_label: str | None,
+    y_label: str | None,
+    segment_label: str | None,
+    series_names: list[str] | None,
+    category_totals: list[float] | None,
+    log_scale: str | None,
+    title: str | None,
+) -> str:
+    """Legend for a stacked bar: what is segmented by what, and what each bar sums to."""
+    y = y_label or "values"
+    x = x_label or "category"
+    seg = segment_label or "series"
+    opening = f"Stacked bar chart of {y} by {x}, segmented by {seg}"
+    if series_names:
+        opening += f" ({', '.join(series_names)})"
+    if title and not (x_label or y_label):
+        opening = f"Stacked bar chart: {title}"
+    parts = [opening]
+
+    if category_totals:
+        lo, hi = min(category_totals), max(category_totals)
+        if lo == hi:
+            parts.append(f"Each bar sums to the total for its {x} (n = {_num(lo)})")
+        else:
+            parts.append(
+                f"Each bar sums to the total for its {x} (n = {_num(lo)} to {_num(hi)})"
+            )
+    else:
+        parts.append(f"Each bar sums to the total for its {x}")
+
+    if log_scale:
+        parts.append("Value axis uses logarithmic scale")
+
+    text = ". ".join(parts)
+    if not text.endswith("."):
+        text += "."
+    return text
+
+
+def _num(v: float) -> str:
+    return str(int(v)) if float(v).is_integer() else f"{v:.3g}"

@@ -68,6 +68,10 @@ These are earth-toned on purpose — they share a family with the cream paper an
 
 **The rule of thumb:** when a component can carry tone in only the *type* (title colour, eyebrow label, italic word) rather than in a *shape* (left bar, full-bg fill, border tint), prefer the typographic option. Andamentum is a typesetting system; let the type carry the load.
 
+### Charts.
+
+Data charts rendered by `andamentum.figures` (`--style andamentum --journal report`) draw from the same ink set, in this order: slate (`--am-info-accent`), ochre (`--am-warn-accent`), olive (`--am-success-accent`), rust (`--am-danger-accent`), then `--am-ink-3` and `--am-ink-5` for series with no tone. Charts use the tones as ordinary categorical colours; where the data carries a meaning — a wrong outcome, a confirmed result — the caller maps the series to its tone by name (`--series-colors wrong=rust,right=olive`). Four tones is the ceiling before a chart stops reading as one ink set; past that, merge or facet. Text is `--am-ink`, spines are `--am-rule-3`, the background is transparent so the figure sits on the paper in either theme. Nothing else in the design system changes for charts.
+
 ### The link colour.
 
 `--am-link` is the brown of an underlined word in an old book. It's andamentum's *only* warm accent that isn't earth-neutral or semantic. Reserve it for interactive text and for accenting things you genuinely want the reader to walk toward — the artefact card's left border, focus rings, the source-citation underline.
