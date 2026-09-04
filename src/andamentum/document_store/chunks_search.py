@@ -42,6 +42,13 @@ class SearchResult:
     end_char: int
     token_count: Optional[int] = None
 
+    # Position of this chunk within its document, and the value the public
+    # chunk id is derived from (see :mod:`.chunk_hits`). ``None`` on results
+    # from a document-level signal such as FTS5, which matched a document and
+    # never looked at a chunk — the absence is the honest report of that, not
+    # a missing field to be filled in with a plausible 0.
+    chunk_index: Optional[int] = None
+
     # Document metadata
     dc_title: Optional[str] = None
     dc_format: Optional[str] = None
@@ -99,6 +106,7 @@ def reciprocal_rank_fusion(
                     start_char=result.start_char,
                     end_char=result.end_char,
                     token_count=result.token_count,
+                    chunk_index=result.chunk_index,
                     dc_title=result.dc_title,
                     dc_format=result.dc_format,
                     dc_creator=result.dc_creator,
@@ -187,6 +195,7 @@ def semantic_search(
                 start_char=result["start_char"],
                 end_char=result["end_char"],
                 token_count=result.get("token_count"),
+                chunk_index=result.get("chunk_index"),
                 dc_title=result.get("dc_title"),
                 dc_format=result.get("dc_format"),
                 dc_creator=result.get("dc_creator"),

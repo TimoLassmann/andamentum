@@ -5,11 +5,13 @@ with automatic chunking and embedding — no LLM. Searches
 using 4-signal Reciprocal Rank Fusion (FTS5 keyword, chunk embeddings,
 doc embeddings, DHP temporal clustering).
 
-Public API (11 functions — all you need):
+Public API:
 
     from andamentum.document_store import (
         ingest,            # Store content with auto-chunking + embedding (no LLM)
         search,            # Natural language search with LLM query planning
+        get_chunks,        # Every chunk of one document, in order (no LLM)
+        get_chunk,         # Resolve one chunk id back to its passage (no LLM)
         find_by_metadata,  # Structured query by metadata fields (exact or set-membership)
         describe_metadata, # Discover the metadata schema (fields + value distributions)
         update_metadata,   # Update metadata on a document (with change history)
@@ -20,6 +22,24 @@ Public API (11 functions — all you need):
         repair,            # Fix incomplete ingestions after crashes
         find_duplicates,   # Detect near-duplicate documents via embeddings
     )
+
+Two-stage retrieval. ``search`` ranks DOCUMENTS by a Reciprocal Rank Fusion
+sum — an ordering, not a calibrated relevance, and not comparable between
+queries. When a caller needs to know which PASSAGE to read, or how many
+results are actually relevant rather than merely highest-ranked, it takes a
+second, deliberate step:
+
+    from andamentum.document_store import get_chunks, rerank, select_relevant
+
+    hits = [c for r in await search(...) for c in await get_chunks(db, doc_id=r.doc_id)]
+    scores = await rerank(question, [h.content for h in hits], reranker_model=...)
+    best = select_relevant(list(zip(hits, scores, strict=True)),
+                           min_relevance=..., buffer=5)
+
+``search`` never does this for you. ``rerank`` needs the optional ``rerank``
+extra and loads a 0.6B cross-encoder into this process; making it a default
+would charge every caller that memory and that load time, and would change
+what ``search`` returns depending on which extras happen to be installed.
 
 Quick start:
 
@@ -62,6 +82,8 @@ from .public import (
     describe_metadata,
     find_by_metadata,
     find_duplicates,
+    get_chunk,
+    get_chunks,
     ingest,
     ingest_source,
     list_deleted,
@@ -74,6 +96,12 @@ from .public import (
     retry_failed,
     search,
     update_metadata,
+)
+from .reranking import (
+    SUGGESTED_RERANKER_MODEL,
+    rerank,
+    reset_reranker_cache,
+    select_relevant,
 )
 from .search import search_multi_database, search_unified
 
@@ -89,6 +117,7 @@ from .models import (
     ReembedResult,
     UpdateResult,
 )
+from .chunk_hits import ChunkHit, chunk_id_for, parse_chunk_id
 from .public import (
     ConvertFn,
     DuplicateGroup,
@@ -117,6 +146,8 @@ __all__ = [
     "extract_document_metadata",
     "find_by_metadata",
     "find_duplicates",
+    "get_chunk",
+    "get_chunks",
     "get_databases_dir",
     "get_db_path",
     "ingest",
@@ -128,15 +159,21 @@ __all__ = [
     "purge",
     "reembed_document",
     "repair",
+    "rerank",
+    "reset_reranker_cache",
     "restore",
     "retry_failed",
     "search",
+    "select_relevant",
     "search_multi_database",
     "search_unified",
     "update_metadata",
     # Data types
+    "SUGGESTED_RERANKER_MODEL",
+    "ChunkHit",
     "ChunkMetadataFields",
     "ConvertFn",
+    "chunk_id_for",
     "Document",
     "DocumentLLMFields",
     "DocumentMetadata",
@@ -155,4 +192,5 @@ __all__ = [
     "SearchResultMetadata",
     "UnifiedSearchResult",
     "UpdateResult",
+    "parse_chunk_id",
 ]

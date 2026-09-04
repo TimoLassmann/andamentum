@@ -16,6 +16,7 @@ from typing import Any, Mapping, Optional
 
 import aiosqlite
 
+from .chunk_hits import ChunkHit, chunk_id_for
 from .connection import get_connection
 from .models import DocumentMetadata
 
@@ -839,3 +840,69 @@ async def count_doc_embeddings(db_path: str) -> int:
             return row[0] if row else 0
 
     return await asyncio.to_thread(_count)
+
+
+def _row_to_chunk_hit(row: "aiosqlite.Row") -> ChunkHit:
+    """Build a :class:`ChunkHit` from a chunks-joined-documents row."""
+    raw_metadata = row["metadata"]
+    return ChunkHit(
+        chunk_id=chunk_id_for(doc_id=row["doc_id"], chunk_index=row["chunk_index"]),
+        doc_id=row["doc_id"],
+        chunk_index=row["chunk_index"],
+        content=row["content"],
+        start_char=row["start_char"],
+        end_char=row["end_char"],
+        score=None,
+        token_count=row["token_count"],
+        metadata=json.loads(raw_metadata) if raw_metadata else {},
+    )
+
+
+_CHUNK_COLUMNS = """
+    c.chunk_index, c.content, c.start_char, c.end_char,
+    c.metadata, c.token_count, d.doc_uuid AS doc_id
+"""
+
+
+async def get_chunks_for_document(db_path: str, doc_id: str) -> list[ChunkHit]:
+    """Every chunk of ``doc_id``, in document order, unscored.
+
+    Returns an empty list for a document that is soft-deleted, absent, or
+    still in the deferred ingestion queue — chunks are written by the second
+    ingest phase, so a ``pending_*`` document genuinely has none yet. An empty
+    list is therefore not proof that the document has no text; check the
+    document's ``ingest_status`` when the difference matters.
+    """
+    async with get_async_connection(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT {_CHUNK_COLUMNS}
+            FROM chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE d.doc_uuid = ? AND d.deleted_at IS NULL
+            ORDER BY c.chunk_index
+            """,
+            (doc_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_chunk_hit(row) for row in rows]
+
+
+async def get_chunk_by_index(
+    db_path: str, *, doc_id: str, chunk_index: int
+) -> ChunkHit | None:
+    """One chunk by its document and position, or ``None`` if there is none."""
+    async with get_async_connection(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT {_CHUNK_COLUMNS}
+            FROM chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE d.doc_uuid = ? AND c.chunk_index = ? AND d.deleted_at IS NULL
+            """,
+            (doc_id, chunk_index),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_chunk_hit(row) if row is not None else None

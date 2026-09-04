@@ -64,6 +64,7 @@ from andamentum.core.embeddings import make_ollama_embedder
 
 from . import queue as _queue
 from .api import DocumentStore
+from .chunk_hits import ChunkHit, parse_chunk_id
 from .chunker_adapter import units_to_chunks
 
 logger = logging.getLogger(__name__)
@@ -190,7 +191,21 @@ async def _auto_repair(database: str, embedding_model: str) -> None:
 
 @dataclass
 class SearchResult:
-    """A search result from the knowledge base."""
+    """A search result from the knowledge base.
+
+    ``score`` is a Reciprocal Rank Fusion sum. It orders THIS query's results
+    and nothing else: it is built from ranks, so it has no absolute meaning and
+    two queries' scores are not comparable. Do not threshold on it. A number
+    that answers "is this actually relevant" is what
+    :func:`~.reranking.rerank` produces.
+
+    ``chunks`` carries the passages the chunk signal matched, best first, each
+    with an id that resolves again through :func:`get_chunk`. It is empty when
+    the document was matched only by a document-level signal, which is the
+    common case for a keyword hit — see
+    :class:`~.search.UnifiedSearchResult`. Call :func:`get_chunks` to
+    enumerate a document's passages regardless of how it was matched.
+    """
 
     doc_id: str
     title: str
@@ -199,6 +214,7 @@ class SearchResult:
     metadata: dict = field(default_factory=dict)
     match_type: str = ""
     warning: str = ""
+    chunks: list[ChunkHit] = field(default_factory=list)
 
 
 @dataclass
@@ -1126,10 +1142,67 @@ async def search(
                 metadata=doc_metadata,
                 match_type=r.tier,
                 warning=_result_warning(r.tier, warning),
+                chunks=r.chunks,
             )
         )
 
     return results
+
+
+async def get_chunks(database: str, *, doc_id: str) -> list[ChunkHit]:
+    """Every chunk of one document, in document order.
+
+    The companion to :func:`search`, which narrows a corpus to documents but
+    cannot say which passage inside one is worth reading. Enumerate a
+    document's chunks with this, score them with
+    :func:`~.reranking.rerank`, and pick with
+    :func:`~.reranking.select_relevant`.
+
+    Every hit carries ``score=None``: this function ranks nothing, and a 0.0
+    would read as "scored, and scored badly".
+
+    Returns an empty list when the document is absent, soft-deleted, or still
+    in the deferred ingestion queue — chunks are written by the second ingest
+    phase, so a queued document genuinely has none yet. An empty list is not
+    proof that the document has no text; :func:`pending_status` is where the
+    queue is visible.
+
+    ``doc_id`` is keyword-only. It and ``database`` are both plain strings
+    that a caller holds at the same time, and transposing them is invisible to
+    a type checker.
+    """
+    from .database import get_chunks_for_document
+
+    store = await _get_store(database)
+    return await get_chunks_for_document(str(store.db_path), doc_id)
+
+
+async def get_chunk(database: str, *, chunk_id: str) -> ChunkHit | None:
+    """Resolve one chunk id back to its chunk, or ``None`` if it is gone.
+
+    This is the provenance path: record a :attr:`ChunkHit.chunk_id` alongside
+    whatever you derived from that passage, and come back to it later. Read
+    :mod:`.chunk_hits` for exactly what the id does and does not promise — in
+    short, it is a coordinate that survives re-embedding and does not survive
+    re-chunking, so a caller who must detect a changed passage compares the
+    content it kept against :attr:`ChunkHit.content`.
+
+    ``None`` means the coordinate names nothing today: the document was
+    deleted, or it was re-ingested into fewer chunks. It never means "the id
+    was malformed" — a malformed id raises :class:`ValueError`, because
+    silently returning ``None`` for a caller bug would hide it inside a
+    perfectly ordinary "not found" branch.
+
+    Raises:
+        ValueError: if ``chunk_id`` is not of the form ``'<doc_id>:<index>'``.
+    """
+    from .database import get_chunk_by_index
+
+    doc_id, chunk_index = parse_chunk_id(chunk_id)
+    store = await _get_store(database)
+    return await get_chunk_by_index(
+        str(store.db_path), doc_id=doc_id, chunk_index=chunk_index
+    )
 
 
 def _result_warning(tier: str, base: str) -> str:

@@ -139,7 +139,11 @@ def search_chunks(
         db_path: Path to database file (uses default if None)
 
     Returns:
-        List of dicts with keys: chunk_id, content, distance, file_path, dc_title, metadata
+        List of dicts with keys: chunk_id, chunk_index, content, distance,
+        file_path, dc_title, metadata. ``chunk_index`` is the chunk's position
+        within its document and is what the public chunk id is built from
+        (see :mod:`.chunk_hits`); ``chunk_id`` here is the raw AUTOINCREMENT
+        row id, which is NOT the public id.
     """
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -149,6 +153,7 @@ def search_chunks(
         query = """
             SELECT
                 c.id as chunk_id,
+                c.chunk_index,
                 c.content,
                 c.start_char,
                 c.end_char,
@@ -178,6 +183,7 @@ def search_chunks(
             results.append(
                 {
                     "chunk_id": row["chunk_id"],
+                    "chunk_index": row["chunk_index"],
                     "content": row["content"],
                     "start_char": row["start_char"],
                     "end_char": row["end_char"],

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 import aiosqlite
 
+from .chunk_hits import ChunkHit, chunk_id_for
 from .chunks_search import RRF_K, SearchConfig
 from .database import get_async_connection
 from .fts import extract_snippet
@@ -51,6 +52,16 @@ class UnifiedSearchResult:
 
     For chunk-based signals ("chunks"), snippet contains the matching chunk text.
     For other signals, snippet is empty — call DocumentStore.read(doc_id) for full content.
+
+    ``chunks`` carries every chunk of this document that the chunk signal
+    actually matched, best-scoring first, each with the id needed to resolve it
+    again (see :mod:`.chunk_hits`). It is EMPTY for a document that reached the
+    fused list only through a document-level signal — keyword, document
+    embedding, or temporal cluster — because those signals never looked at a
+    chunk and have no passage to report. An empty list therefore means "this
+    signal found no passage", never "this document has no chunks"; to enumerate
+    a document's chunks regardless of how it was matched, call
+    :func:`~.public.get_chunks`.
     """
 
     doc_id: str
@@ -58,6 +69,7 @@ class UnifiedSearchResult:
     tier: str  # "fts5", "chunks", "doc_semantic", or "cluster"
     snippet: str = ""
     metadata: SearchResultMetadata = field(default_factory=SearchResultMetadata)
+    chunks: list[ChunkHit] = field(default_factory=list)
 
 
 @dataclass
@@ -488,6 +500,26 @@ async def _run_chunk_search(
                     if r.metadata
                     else [],
                 )
+                # A chunk that came back without an index cannot be named,
+                # so it ships as a snippet only rather than as a resolvable
+                # ChunkHit carrying an id that would not resolve.
+                hits: list[ChunkHit] = []
+                if r.chunk_index is not None:
+                    hits.append(
+                        ChunkHit(
+                            chunk_id=chunk_id_for(
+                                doc_id=r.doc_id, chunk_index=r.chunk_index
+                            ),
+                            doc_id=r.doc_id,
+                            chunk_index=r.chunk_index,
+                            content=r.content,
+                            start_char=r.start_char,
+                            end_char=r.end_char,
+                            score=r.similarity_score,
+                            token_count=r.token_count,
+                            metadata=dict(r.metadata) if r.metadata else {},
+                        )
+                    )
                 chunk_results.append(
                     UnifiedSearchResult(
                         doc_id=r.doc_id,
@@ -495,6 +527,7 @@ async def _run_chunk_search(
                         tier="chunks",
                         snippet=r.content,
                         metadata=metadata,
+                        chunks=hits,
                     )
                 )
             logger.debug(f"Chunk search returned {len(chunk_results)} results")
@@ -658,6 +691,13 @@ async def search_unified(
     # RRF fusion across all signals (k=60, industry standard)
     doc_lookup: dict[str, UnifiedSearchResult] = {}
     rrf_scores: dict[str, float] = {}
+    # Chunk hits accumulate per document instead of collapsing with it. The
+    # chunk signal emits one result per matching CHUNK, so a document with
+    # three good passages arrives here three times; fusion is document-level
+    # and keeps one of those rows, which would silently discard two real
+    # passages. Keyed by chunk id so the same chunk arriving from two signals
+    # is one hit, keeping the better score.
+    chunks_by_doc: dict[str, dict[str, ChunkHit]] = {}
 
     for _, signal_results_list in all_results:
         for rank, result in enumerate(signal_results_list):
@@ -667,6 +707,12 @@ async def search_unified(
             rrf_scores[result.doc_id] = rrf_scores.get(result.doc_id, 0.0) + 1.0 / (
                 rank + RRF_K
             )
+            if result.chunks:
+                seen = chunks_by_doc.setdefault(result.doc_id, {})
+                for hit in result.chunks:
+                    previous = seen.get(hit.chunk_id)
+                    if previous is None or (hit.score or 0.0) > (previous.score or 0.0):
+                        seen[hit.chunk_id] = hit
             existing = doc_lookup.get(result.doc_id)
             if existing is None or _tier_priority(result.tier) > _tier_priority(
                 existing.tier
@@ -680,6 +726,11 @@ async def search_unified(
     final_results: list[UnifiedSearchResult] = []
     for doc_id, score in fused_results[:limit]:
         original = doc_lookup[doc_id]
+        hits = sorted(
+            chunks_by_doc.get(doc_id, {}).values(),
+            key=lambda hit: hit.score or 0.0,
+            reverse=True,
+        )
         final_results.append(
             UnifiedSearchResult(
                 doc_id=doc_id,
@@ -687,6 +738,7 @@ async def search_unified(
                 tier=original.tier,
                 snippet=original.snippet,
                 metadata=original.metadata,
+                chunks=hits,
             )
         )
 

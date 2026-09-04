@@ -169,7 +169,7 @@ def _tag_based_search(
             cursor.execute(
                 f"""
                 SELECT
-                    c.content, c.start_char, c.end_char,
+                    c.content, c.chunk_index, c.start_char, c.end_char,
                     c.metadata, c.token_count,
                     d.doc_uuid as doc_id, d.file_path,
                     d.dc_title, d.dc_format, d.dc_creator, d.dc_subject,
@@ -204,6 +204,7 @@ def _tag_based_search(
                         start_char=row["start_char"],
                         end_char=row["end_char"],
                         token_count=row["token_count"],
+                        chunk_index=row["chunk_index"],
                         dc_title=row["dc_title"],
                         dc_format=row["dc_format"],
                         dc_creator=row["dc_creator"],
@@ -223,7 +224,7 @@ def _tag_based_search(
         cursor.execute(
             f"""
             SELECT
-                c.content, c.start_char, c.end_char,
+                c.content, c.chunk_index, c.start_char, c.end_char,
                 c.metadata, c.token_count,
                 d.doc_uuid as doc_id, d.file_path,
                 d.dc_title, d.dc_format, d.dc_creator, d.dc_subject,
@@ -256,6 +257,7 @@ def _tag_based_search(
                     start_char=row["start_char"],
                     end_char=row["end_char"],
                     token_count=row["token_count"],
+                    chunk_index=row["chunk_index"],
                     dc_title=row["dc_title"],
                     dc_format=row["dc_format"],
                     dc_creator=row["dc_creator"],
