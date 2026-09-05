@@ -11,9 +11,11 @@ Two layers:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from andamentum.vision_critique import FigureCritique, critique_figure
@@ -158,21 +160,104 @@ def test_has_issues_false_on_clean_figure() -> None:
 # ── integration: real model on calibration fixture ────────────────────
 
 
+# Every model here must flag the committed broken-bar fixture. A model is
+# not recommendable as a vision-critique default until it is on this list
+# and passing. ``gemma4:e2b`` is deliberately absent — it fails the
+# fixture, confidently reporting that the figure is fine.
+CALIBRATION_MODELS = ("ollama:qwen3.8:27b-mlx",)
+
+
+def _ollama_serves(model_id: str) -> bool:
+    """True when the local Ollama already serves ``model_id``.
+
+    A calibration model that is not pulled on this machine skips rather
+    than fails: the list records which models are certified, and any one
+    box holds a subset of them. Uses ``/api/tags`` directly — the module
+    must not import ``harvest`` (layering), and this is cheaper than a
+    model load either way.
+    """
+    name = model_id.removeprefix("ollama:")
+    try:
+        response = httpx.get("http://localhost:11434/api/tags", timeout=5.0)
+        response.raise_for_status()
+    except Exception:
+        return False
+    return any(m.get("name") == name for m in response.json().get("models", []))
+
+
 @pytest.mark.ollama
-async def test_critique_flags_broken_bar_chart() -> None:
+@pytest.mark.parametrize("model_id", CALIBRATION_MODELS)
+async def test_critique_flags_broken_bar_chart(model_id: str) -> None:
     """The committed broken-bar fixture MUST be flagged by any candidate model.
 
-    This is the calibration test from the architecture work — gemma4:e2b
-    fails it (confidently says "fine"); gemma4:e4b-it-q4_K_M passes it
-    (flags label_overlap=True). Any new default vision model must pass
-    this before being recommended.
+    This is the calibration test from the architecture work. Any new
+    default vision model must pass it before being recommended.
     """
-    critique = await critique_figure(
-        BROKEN_BAR,
-        model="ollama:gemma4:e4b-it-q4_K_M",
-    )
+    if not _ollama_serves(model_id):
+        pytest.skip(f"local Ollama does not serve {model_id}")
+
+    critique = await critique_figure(BROKEN_BAR, model=model_id)
     assert critique.label_overlap is True, (
-        f"vision model failed calibration: {critique.model_dump_json(indent=2)}"
+        f"{model_id} failed calibration: {critique.model_dump_json(indent=2)}"
     )
     assert critique.labels_legible is False
     assert critique.has_issues is True
+
+
+def test_has_issues_is_serialised_when_true() -> None:
+    c = FigureCritique(
+        label_overlap=True,
+        labels_legible=True,
+        legend_blocks_data=False,
+        aspect_ratio_issue="ok",
+        suggested_fixes=["no_change_needed"],
+        confidence=0.9,
+        one_line_summary="overlap",
+    )
+    payload = json.loads(c.model_dump_json())
+    assert payload["has_issues"] is True
+
+
+def test_has_issues_is_serialised_when_false() -> None:
+    c = FigureCritique(
+        label_overlap=False,
+        labels_legible=True,
+        legend_blocks_data=False,
+        aspect_ratio_issue="ok",
+        suggested_fixes=["no_change_needed"],
+        confidence=0.95,
+        one_line_summary="figure is fine",
+    )
+    payload = json.loads(c.model_dump_json())
+    assert payload["has_issues"] is False
+
+
+def test_has_issues_stays_out_of_the_validation_schema() -> None:
+    """The safety property: pydantic-ai must never ask the model for it.
+
+    ``FigureCritique`` is used as a pydantic-ai ``output_type``. A computed
+    field that leaked into the validation schema would make the vision
+    model produce ``has_issues`` itself, which changes model behaviour.
+    """
+    schema = FigureCritique.model_json_schema(mode="validation")
+    assert "has_issues" not in schema["properties"]
+
+
+def test_has_issues_is_in_the_serialization_schema() -> None:
+    schema = FigureCritique.model_json_schema(mode="serialization")
+    assert "has_issues" in schema["properties"]
+
+
+def test_round_trips_json_that_carries_has_issues() -> None:
+    c = FigureCritique(
+        label_overlap=True,
+        labels_legible=False,
+        legend_blocks_data=False,
+        aspect_ratio_issue="too_wide",
+        suggested_fixes=["rotate_x_labels"],
+        confidence=0.8,
+        one_line_summary="labels collide",
+    )
+    restored = FigureCritique.model_validate_json(c.model_dump_json())
+    assert restored == c
+    assert restored.has_issues is True

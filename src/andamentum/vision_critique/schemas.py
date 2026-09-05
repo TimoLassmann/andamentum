@@ -3,7 +3,7 @@
 Critique schemas are deliberately tight: enums for any "what's wrong"
 field, fixed-set ``Literal`` lists for any "suggested fix" field. This
 serves two purposes — small local vision models reliably fill bounded
-schemas (validated against ``ollama:gemma4:e4b-it-q4_K_M`` on the
+schemas (validated against ``ollama:qwen3.8:27b-mlx`` on the
 ``broken_bar.png`` calibration fixture), and downstream callers get a
 predictable action surface to map to render-parameter changes.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 AspectIssue = Literal["too_tall", "too_wide", "ok"]
@@ -84,6 +84,10 @@ class FigureCritique(BaseModel):
         )
     )
 
+    # Computed, not model-filled: it appears in the serialization schema
+    # only, so ``model_dump_json`` carries it while pydantic-ai still asks
+    # the vision model for the seven real fields alone.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_issues(self) -> bool:
         """True when at least one flag is set or a real fix is suggested."""

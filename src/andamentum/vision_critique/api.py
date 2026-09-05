@@ -45,7 +45,7 @@ async def critique_figure(
         an ``http(s)://`` URL. URLs are fetched once via httpx; local
         paths are read; bytes pass straight through.
     model:
-        pydantic-ai model id — e.g. ``ollama:gemma4:e4b-it-q4_K_M``,
+        pydantic-ai model id — e.g. ``ollama:qwen3.8:27b-mlx``,
         ``anthropic:claude-haiku-4-5``, ``openai:gpt-5.4-nano``. Must be
         a multimodal model. No default — caller picks.
     schema:

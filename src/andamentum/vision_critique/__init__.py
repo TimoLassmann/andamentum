@@ -17,7 +17,7 @@ Example::
 
     critique = await critique_figure(
         "fig.png",
-        model="ollama:gemma4:e4b-it-q4_K_M",
+        model="ollama:qwen3.8:27b-mlx",
     )
     if critique.has_issues:
         print(critique.one_line_summary)

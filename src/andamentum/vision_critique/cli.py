@@ -51,7 +51,7 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="MODEL",
         help=(
             "Required. pydantic-ai multimodal model id. "
-            "Validated default for local use: ollama:gemma4:e4b-it-q4_K_M. "
+            "Validated model for local use: ollama:qwen3.8:27b-mlx. "
             "Cloud examples: anthropic:claude-haiku-4-5, openai:gpt-5.4-nano."
         ),
     )

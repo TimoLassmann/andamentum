@@ -12,7 +12,7 @@ class TestIsCloudModel:
         "model",
         [
             "ollama:llama3",
-            "ollama:gemma4:e4b-it-q4_K_M",
+            "ollama:qwen3.8:27b-mlx",
             "passthrough:test:anything",
             "OLLAMA:LLAMA3",  # case insensitive
         ],
@@ -60,4 +60,4 @@ class TestProviderName:
         assert provider_name("just-a-name") == "just-a-name"
 
     def test_multi_colon(self) -> None:
-        assert provider_name("ollama:gemma4:e4b-it-q4_K_M") == "ollama"
+        assert provider_name("ollama:qwen3.8:27b-mlx") == "ollama"
