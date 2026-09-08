@@ -24,7 +24,7 @@ class EmbeddingService:
     ):
         self.model = model
         self.base_url = base_url
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=300.0)
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
     def _format_text(
