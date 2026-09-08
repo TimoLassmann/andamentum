@@ -275,6 +275,123 @@ async def test_ollama_embedder_truncates_oversized_text_before_batch_call(
     assert seen_inputs[0] == ["short", "x" * 10]
 
 
+def _recording_client(seen_inputs: list[list[str]]) -> type:
+    """Fake AsyncClient that records each ``/api/embed`` input list.
+
+    Each returned vector carries the length and the first digit of the text
+    it was made from, so a test can check that vectors come back in input
+    order across several requests.
+    """
+
+    class _FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def post(self, url: str, json: dict) -> object:
+            texts: list[str] = json["input"]
+            seen_inputs.append(texts)
+
+            class _Resp:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {"embeddings": [[float(len(t)), float(t[0])] for t in texts]}
+
+            return _Resp()
+
+    return _FakeAsyncClient
+
+
+async def test_ollama_embedder_splits_large_batch_by_item_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Many chunks must go out as several requests, in order.
+
+    A 1,238-chunk document sent as ONE ``/api/embed`` request made a
+    single-slot local Ollama drop the connection (raw EOF, no status code),
+    independent of any single chunk's length. The cap has to sit on this
+    side, and the vectors must still land at the index of their text.
+    """
+    seen_inputs: list[list[str]] = []
+    monkeypatch.setattr(httpx, "AsyncClient", _recording_client(seen_inputs))
+    embedder = OllamaEmbedder(
+        model="fakemodel:latest", input_budget_chars=1000, max_batch_items=64
+    )
+
+    texts = [str(i % 10) * (i + 1) for i in range(150)]
+    result = await embedder.embed_batch(texts)
+
+    assert [len(g) for g in seen_inputs] == [64, 64, 22]
+    assert [g for group in seen_inputs for g in group] == texts
+    assert [(int(v[0]), int(v[1])) for v in result] == [
+        (len(t), int(t[0])) for t in texts
+    ]
+
+
+async def test_ollama_embedder_splits_large_batch_by_char_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A few long texts must also split when their total passes the char cap."""
+    seen_inputs: list[list[str]] = []
+    monkeypatch.setattr(httpx, "AsyncClient", _recording_client(seen_inputs))
+    embedder = OllamaEmbedder(
+        model="fakemodel:latest",
+        input_budget_chars=100,
+        max_batch_items=64,
+        max_batch_chars=100,
+    )
+
+    texts = ["1" * 60, "2" * 60, "3" * 60]
+    result = await embedder.embed_batch(texts)
+
+    assert [len(g) for g in seen_inputs] == [1, 1, 1]
+    assert len(result) == 3
+    assert [int(v[1]) for v in result] == [1, 2, 3]
+
+
+async def test_ollama_embedder_one_text_over_char_budget_still_goes_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single text longer than ``max_batch_chars`` forms its own group."""
+    seen_inputs: list[list[str]] = []
+    monkeypatch.setattr(httpx, "AsyncClient", _recording_client(seen_inputs))
+    embedder = OllamaEmbedder(
+        model="fakemodel:latest", input_budget_chars=100, max_batch_chars=10
+    )
+
+    result = await embedder.embed_batch(["7" * 50])
+
+    assert seen_inputs == [["7" * 50]]
+    assert len(result) == 1
+
+
+async def test_ollama_embedder_short_response_is_loud(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fewer vectors than inputs must raise, not misalign chunks silently."""
+
+    class _FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def post(self, url: str, json: dict) -> object:
+            class _Resp:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {"embeddings": [[1.0]]}
+
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    embedder = OllamaEmbedder(model="fakemodel:latest", input_budget_chars=100)
+
+    with pytest.raises(RuntimeError, match="1 vectors for 2 inputs"):
+        await embedder.embed_batch(["a", "b"])
+
+
 async def test_ollama_embedder_embed_text_and_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

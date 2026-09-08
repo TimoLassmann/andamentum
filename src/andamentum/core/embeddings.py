@@ -232,6 +232,8 @@ class OllamaEmbedder:
         base_url: str = DEFAULT_OLLAMA_URL,
         timeout: float = 300.0,
         input_budget_chars: int | None = None,
+        max_batch_items: int = 64,
+        max_batch_chars: int = 100_000,
     ) -> None:
         self.model = model
         self.base_url = base_url
@@ -241,22 +243,59 @@ class OllamaEmbedder:
             if input_budget_chars is not None
             else discover_input_budget_chars(model, base_url=base_url)
         )
+        self.max_batch_items = max_batch_items
+        self.max_batch_chars = max_batch_chars
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed many texts in a single ``/api/embed`` request.
+        """Embed many texts in as many ``/api/embed`` requests as needed.
 
-        Each text is truncated to ``input_budget_chars`` first. Returns
-        vectors in the same order as ``texts``; ``[]`` for empty input.
+        Each text is truncated to ``input_budget_chars`` first. Texts are
+        then sent in groups: a group closes when it holds
+        ``max_batch_items`` texts or when the next text would push it past
+        ``max_batch_chars``. A single-slot local server falls over when a
+        1,000-chunk document arrives as one request, and the failure is a
+        raw EOF rather than a status code, so the cap has to sit on this
+        side. Groups go out one after the other; Ollama serialises
+        same-model requests anyway. Returns vectors in the same order as
+        ``texts``; ``[]`` for empty input.
         """
         if not texts:
             return []
         capped = [t[: self.input_budget_chars] for t in texts]
-        response = await self._client.post(
-            f"{self.base_url}/api/embed",
-            json={"model": self.model, "input": capped},
-        )
-        response.raise_for_status()
-        return response.json()["embeddings"]
+        out: list[list[float]] = []
+        for group in self._groups(capped):
+            response = await self._client.post(
+                f"{self.base_url}/api/embed",
+                json={"model": self.model, "input": group},
+            )
+            response.raise_for_status()
+            vectors = response.json()["embeddings"]
+            if len(vectors) != len(group):
+                raise RuntimeError(
+                    f"Ollama /api/embed returned {len(vectors)} vectors for "
+                    f"{len(group)} inputs (model={self.model!r})."
+                )
+            out.extend(vectors)
+        return out
+
+    def _groups(self, texts: list[str]) -> list[list[str]]:
+        """Split ``texts`` into request-sized groups, order preserved."""
+        groups: list[list[str]] = []
+        current: list[str] = []
+        current_chars = 0
+        for text in texts:
+            too_many = len(current) >= self.max_batch_items
+            too_long = (
+                bool(current) and current_chars + len(text) > self.max_batch_chars
+            )
+            if too_many or too_long:
+                groups.append(current)
+                current, current_chars = [], 0
+            current.append(text)
+            current_chars += len(text)
+        if current:
+            groups.append(current)
+        return groups
 
     async def embed_text(self, text: str) -> list[float]:
         """Embed a single text (one ``/api/embed`` call)."""
