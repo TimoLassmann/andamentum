@@ -22,12 +22,13 @@ if TYPE_CHECKING:
 
 import aiosqlite
 
+from andamentum.core.embeddings import OllamaEmbedder
+
 from .chunk_hits import ChunkHit, chunk_id_for
 from .chunks_search import RRF_K, SearchConfig
 from .database import get_async_connection
 from .fts import extract_snippet
 from .fts_query import prepare_fts_query
-from .embeddings import EmbeddingService
 from .hybrid_search import multi_strategy_search
 
 logger = logging.getLogger(__name__)
@@ -651,9 +652,9 @@ async def search_unified(
     # Generate embedding first — gates signals 2-4
     if query_embedding is None and embedding_model is not None:
         try:
-            embed_svc = EmbeddingService(model=embedding_model)
+            embed_svc = OllamaEmbedder(model=embedding_model)
             try:
-                query_embedding = await embed_svc.embed_text(query, text_type="query")
+                query_embedding = await embed_svc.embed_text(query)
             finally:
                 await embed_svc.close()
             logger.debug(f"Generated embedding with {len(query_embedding)} dimensions")

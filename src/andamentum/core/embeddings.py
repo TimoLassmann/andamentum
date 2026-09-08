@@ -207,6 +207,66 @@ def make_ollama_embedder(
     return embed
 
 
+class OllamaEmbedder:
+    """Batch-embedding client bound to one model, for a document's lifetime.
+
+    Discovers the model's context length once (the same mechanism
+    ``make_ollama_embedder`` uses) and truncates every text to that char
+    budget before it reaches Ollama's ``/api/embed`` batch endpoint. A batch
+    request fails as one unit, so a single oversized text — an OCR'd table
+    that tokenizes far denser than prose, say — used to take the whole
+    batch down with it; truncating up front removes that failure mode
+    instead of catching it after the fact.
+
+    This is the reference client for callers that embed a bounded, known
+    list of texts in one round trip and then tear the client down (ingestion,
+    reembedding, a single query embedding). ``make_ollama_embedder`` remains
+    the reference client for callers that issue many small embed calls over
+    a long-lived session (the chunker's per-paragraph semantic split).
+    """
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        base_url: str = DEFAULT_OLLAMA_URL,
+        timeout: float = 300.0,
+        input_budget_chars: int | None = None,
+    ) -> None:
+        self.model = model
+        self.base_url = base_url
+        self._client = httpx.AsyncClient(timeout=timeout)
+        self.input_budget_chars = (
+            input_budget_chars
+            if input_budget_chars is not None
+            else discover_input_budget_chars(model, base_url=base_url)
+        )
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed many texts in a single ``/api/embed`` request.
+
+        Each text is truncated to ``input_budget_chars`` first. Returns
+        vectors in the same order as ``texts``; ``[]`` for empty input.
+        """
+        if not texts:
+            return []
+        capped = [t[: self.input_budget_chars] for t in texts]
+        response = await self._client.post(
+            f"{self.base_url}/api/embed",
+            json={"model": self.model, "input": capped},
+        )
+        response.raise_for_status()
+        return response.json()["embeddings"]
+
+    async def embed_text(self, text: str) -> list[float]:
+        """Embed a single text (one ``/api/embed`` call)."""
+        embeddings = await self.embed_batch([text])
+        return embeddings[0]
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+
 async def embed_texts(
     texts: list[str],
     *,

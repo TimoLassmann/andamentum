@@ -612,8 +612,9 @@ class DocumentStore:
         Returns:
             ReembedResult with counts and duration
         """
+        from andamentum.core.embeddings import OllamaEmbedder
+
         from .database import count_doc_embeddings, docs_missing_doc_embedding
-        from .embeddings import EmbeddingService
 
         model = embedding_model or self.embedding_model
         start_time = time.monotonic()
@@ -641,15 +642,13 @@ class DocumentStore:
 
         if not model:
             raise ValueError("embedding_model is required for reembed_all")
-        embedding_service = EmbeddingService(model=model)
+        embedding_service = OllamaEmbedder(model=model)
         try:
             for i in range(0, len(docs_to_embed), batch_size):
                 batch = docs_to_embed[i : i + batch_size]
                 for doc_uuid, title, content in batch:
                     try:
-                        doc_embedding = await embedding_service.embed_text(
-                            content, text_type="document", title=title
-                        )
+                        doc_embedding = await embedding_service.embed_text(content)
                         await store_doc_embedding(
                             str(self.db_path), doc_uuid, doc_embedding
                         )

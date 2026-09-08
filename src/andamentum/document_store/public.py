@@ -60,7 +60,7 @@ from typing import Awaitable, Callable, Literal, Mapping, Optional
 
 
 from andamentum.chunker import extract_units
-from andamentum.core.embeddings import make_ollama_embedder
+from andamentum.core.embeddings import OllamaEmbedder, make_ollama_embedder
 
 from . import queue as _queue
 from .api import DocumentStore
@@ -129,11 +129,9 @@ async def _preflight(
     if cache_key in _preflight_done:
         return
 
-    from .embeddings import EmbeddingService
-
-    embed_svc = EmbeddingService(model=embedding_model)
+    embed_svc = OllamaEmbedder(model=embedding_model)
     try:
-        await embed_svc.embed_text("preflight", text_type="query")
+        await embed_svc.embed_text("preflight")
     except Exception as e:
         raise RuntimeError(
             f"Embedding service unavailable (model={embedding_model}). Is Ollama running? Error: {e}"
@@ -518,7 +516,6 @@ async def _run_phase2(
     it through ``ingest(metadata=...)`` / ``update_metadata()``.
     """
     from .chunker_adapter import Chunk
-    from .embeddings import EmbeddingService
     from .metadata_models import ChunkMetadataFields
 
     # Delete any existing chunks (idempotent for repair)
@@ -550,7 +547,12 @@ async def _run_phase2(
     # calls, and measurement put its benefit at 1.05x anyway, because Ollama
     # serialises same-model requests. Removing it also settles the project's
     # one-inference-at-a-time rule, which that fan-out quietly broke.
-    embed_svc = EmbeddingService(model=embedding_model)
+    #
+    # OllamaEmbedder truncates every chunk to the model's discovered context
+    # budget before the batch call, so one dense OCR'd table (which tokenizes
+    # far denser than prose) can no longer overflow the model's context and
+    # fail the whole batch.
+    embed_svc = OllamaEmbedder(model=embedding_model)
     try:
 
         def _chunk_meta(chunk) -> ChunkMetadataFields:  # type: ignore[no-untyped-def]
@@ -572,9 +574,7 @@ async def _run_phase2(
             warning anywhere. Log at WARNING and name the real cause instead.
             """
             try:
-                doc_emb = await embed_svc.embed_text(
-                    content, text_type="document", title=title
-                )
+                doc_emb = await embed_svc.embed_text(content)
                 await store.store_doc_embedding(doc_id, doc_emb)
             except Exception as e:
                 logger.warning(
@@ -586,9 +586,7 @@ async def _run_phase2(
                     "any other cause is a real fault worth fixing."
                 )
 
-        chunk_embeddings = await embed_svc.embed_batch(
-            [c.text for c in chunks], text_type="document"
-        )
+        chunk_embeddings = await embed_svc.embed_batch([c.text for c in chunks])
         await _embed_doc_level()
         chunk_metas = [_chunk_meta(c) for c in chunks]
 
@@ -1064,13 +1062,9 @@ async def search(
     # 3. Run search
     query_embedding: Optional[list[float]] = None
     if plan.needs_semantic_search and plan.semantic_query.strip():
-        from .embeddings import EmbeddingService
-
-        embed_svc = EmbeddingService(model=embedding_model)
+        embed_svc = OllamaEmbedder(model=embedding_model)
         try:
-            query_embedding = await embed_svc.embed_text(
-                plan.semantic_query, text_type="query"
-            )
+            query_embedding = await embed_svc.embed_text(plan.semantic_query)
         finally:
             await embed_svc.close()
 

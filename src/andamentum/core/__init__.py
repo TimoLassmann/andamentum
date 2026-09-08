@@ -21,6 +21,7 @@ from .embeddings import (
     DEFAULT_OLLAMA_URL,
     DEFAULT_OVERLAP_CHARS,
     EmbeddingFn,
+    OllamaEmbedder,
     chunk_text,
     cosine_similarity,
     discover_input_budget_chars,
@@ -42,6 +43,7 @@ __all__ = [
     "resolve_model_from_args",
     # Embeddings
     "EmbeddingFn",
+    "OllamaEmbedder",
     "chunk_text",
     "cosine_similarity",
     "discover_input_budget_chars",

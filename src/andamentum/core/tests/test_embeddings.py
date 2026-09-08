@@ -15,6 +15,7 @@ import pytest
 
 from andamentum.core.embeddings import (
     DEFAULT_MAX_EMBED_CHARS,
+    OllamaEmbedder,
     discover_input_budget_chars,
     infer_input_budget_chars,
     make_ollama_embedder,
@@ -233,3 +234,73 @@ async def test_embedder_halves_on_context_length_overflow(
     assert seen_lengths.count(400) == 1
     assert seen_lengths.count(200) == 2
     assert seen_lengths.count(100) == 4
+
+
+async def test_ollama_embedder_truncates_oversized_text_before_batch_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single dense chunk must not be able to take the whole batch down.
+
+    document_store used to send a chunk's full, untruncated text into a
+    batch ``/api/embed`` call; a dense OCR'd table tokenizing far past the
+    char:token estimate would make Ollama reject the whole batch. The fix is
+    to cap every text to the discovered budget before it goes out.
+    """
+    seen_inputs: list[list[str]] = []
+
+    class _FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def post(self, url: str, json: dict) -> object:
+            texts: list[str] = json["input"]
+            seen_inputs.append(texts)
+
+            class _Resp:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {"embeddings": [[1.0, 2.0] for _ in texts]}
+
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    embedder = OllamaEmbedder(model="fakemodel:latest", input_budget_chars=10)
+
+    result = await embedder.embed_batch(["short", "x" * 500])
+
+    assert len(result) == 2
+    # The oversized text was capped to the budget before it left this process.
+    assert seen_inputs[0] == ["short", "x" * 10]
+
+
+async def test_ollama_embedder_embed_text_and_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = False
+
+    class _FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def post(self, url: str, json: dict) -> object:
+            class _Resp:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict:
+                    return {"embeddings": [[3.0, 4.0]]}
+
+            return _Resp()
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    embedder = OllamaEmbedder(model="fakemodel:latest", input_budget_chars=100)
+
+    assert await embedder.embed_text("hello") == [3.0, 4.0]
+    await embedder.close()
+    assert closed

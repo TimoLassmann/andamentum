@@ -98,7 +98,6 @@ class TestDegradedSignalsAreVisible:
         doc-level signal is genuinely optional — and (b) the failure is visible
         at WARNING rather than mislabelled at INFO.
         """
-        from andamentum.document_store import embeddings as embeddings_mod
         from andamentum.document_store import public
         from andamentum.document_store.api import DocumentStore
 
@@ -121,9 +120,7 @@ class TestDegradedSignalsAreVisible:
             async def close(self):
                 return None
 
-        monkeypatch.setattr(
-            embeddings_mod, "EmbeddingService", _PartlyBrokenEmbeddingService
-        )
+        monkeypatch.setattr(public, "OllamaEmbedder", _PartlyBrokenEmbeddingService)
         monkeypatch.setattr(public, "make_ollama_embedder", lambda **k: None)
 
         with caplog.at_level(
