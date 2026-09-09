@@ -172,15 +172,24 @@ class ResponseTooLarge(Exception):
 _REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
 
 
-async def _read_body_capped(resp: httpx.Response, max_bytes: int | None) -> bytes:
-    """Stream ``resp``'s body into memory, raising if it exceeds ``max_bytes``.
+async def _load_body_capped(resp: httpx.Response, max_bytes: int | None) -> None:
+    """Read ``resp``'s streamed body into memory, raising if it exceeds
+    ``max_bytes``, and leave ``resp`` usable exactly like a non-streaming
+    ``client.get`` response.
 
     A declared ``Content-Length`` over the cap is rejected before reading; the
-    streamed total is also checked hop-by-hop so a lying / chunked sender can't
-    slip past the header check.
+    streamed total is also checked chunk-by-chunk so a lying / chunked sender
+    can't slip past the header check.
+
+    The cap counts DECODED bytes. ``aiter_bytes`` runs httpx's content decoder,
+    so a compressed body is measured at the size it actually occupies in
+    memory and a decompression bomb is refused mid-stream. Reading raw bytes
+    instead would cap the compressed size and let a 50 MiB gzip body expand to
+    gigabytes after the check — the memory exhaustion this cap exists to stop.
     """
     if max_bytes is None:
-        return await resp.aread()
+        await resp.aread()
+        return
 
     declared = resp.headers.get("content-length")
     if declared is not None and declared.isdigit() and int(declared) > max_bytes:
@@ -195,19 +204,23 @@ async def _read_body_capped(resp: httpx.Response, max_bytes: int | None) -> byte
         if total > max_bytes:
             raise ResponseTooLarge(f"response body exceeds cap of {max_bytes} bytes")
         chunks.append(chunk)
-    return b"".join(chunks)
 
-
-def _materialise(resp: httpx.Response, body: bytes) -> httpx.Response:
-    """Return a non-streaming Response carrying *body*, preserving status,
-    headers and URL so callers can use ``.content`` / ``.text`` / ``.url`` /
-    ``.raise_for_status()`` exactly as with a normal ``client.get``."""
-    return httpx.Response(
-        status_code=resp.status_code,
-        headers=resp.headers,
-        content=body,
-        request=resp.request,
-    )
+    # The assignment ``Response.aread()`` makes, made here because the cap
+    # forced us to consume the stream chunk-by-chunk instead of calling it.
+    # Recording the body on the response is what turns a streamed response back
+    # into a normal one: ``.content``, ``.text`` and ``.iter_bytes()`` all serve
+    # these bytes and never run the content decoder a second time.
+    #
+    # Do NOT replace this with a rebuilt ``httpx.Response(headers=resp.headers,
+    # content=body)``. That constructor decodes ``content`` according to the
+    # headers it is given, so a body already decoded above was decoded twice —
+    # every gzip response in the wild died on
+    # ``DecodingError: Error -3 while decompressing data: incorrect header
+    # check``. Keeping one response object also keeps its headers honest: a
+    # rebuilt one would have to shed ``Content-Encoding`` and ``Content-Length``
+    # to survive, and would then report neither what the server sent nor what a
+    # plain ``client.get`` reports.
+    resp._content = b"".join(chunks)
 
 
 async def fetch_with_safe_redirects(
@@ -258,9 +271,9 @@ async def fetch_with_safe_redirects(
                 # Resolve relative redirects against the URL that produced them.
                 current = str(resp.url.join(location))
                 continue
-            body = await _read_body_capped(resp, max_bytes)
+            await _load_body_capped(resp, max_bytes)
         finally:
             await resp.aclose()
-        return _materialise(resp, body)
+        return resp
 
     raise SsrfBlocked(f"too many redirects (>{max_redirects}) starting at {url}")

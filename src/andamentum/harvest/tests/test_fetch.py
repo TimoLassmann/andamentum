@@ -1,5 +1,6 @@
 """Tests for fetch.resolve and the format-detection chain."""
 
+import gzip
 from pathlib import Path
 
 import httpx
@@ -233,3 +234,93 @@ async def test_response_within_size_cap_is_returned():
         )
     assert resp.status_code == 200
     assert resp.content == b"x" * 500
+
+
+# ---------- content-encoding: the body must be decoded exactly once ---------
+#
+# fetch_with_safe_redirects streams the body itself to enforce the size cap.
+# ``aiter_bytes`` already runs httpx's content decoder, so the bytes it yields
+# are plain text. A rebuilt ``httpx.Response(headers=..., content=body)`` would
+# decode them a SECOND time against the surviving ``Content-Encoding: gzip``
+# header and raise ``DecodingError: Error -3 while decompressing data:
+# incorrect header check`` — which is what every gzip page on the web hit.
+
+
+def _gzip_client(payload: bytes, *, encoding: str = "gzip") -> httpx.AsyncClient:
+    """A client that serves *payload* compressed, exactly as a real server
+    does: a streamed body plus a ``Content-Encoding`` header."""
+    body = gzip.compress(payload)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers=[
+                ("content-encoding", encoding),
+                ("content-length", str(len(body))),
+                ("content-type", "text/html; charset=utf-8"),
+            ],
+            stream=httpx.ByteStream(body),
+        )
+
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=False
+    )
+
+
+async def test_gzip_body_is_decoded_once_under_the_size_cap():
+    """The capped read path returns the decoded body, not a decode error."""
+    payload = b"<html><body>hello gzip</body></html>" * 50
+    async with _gzip_client(payload) as client:
+        resp = await fetch_with_safe_redirects(
+            client, "http://8.8.8.8/page", max_bytes=1_000_000
+        )
+    assert resp.content == payload
+    assert resp.text == payload.decode()
+
+
+async def test_gzip_body_is_decoded_once_without_a_size_cap():
+    """The uncapped read path (max_bytes=None) behaves the same way."""
+    payload = b"<html><body>hello gzip</body></html>" * 50
+    async with _gzip_client(payload) as client:
+        resp = await fetch_with_safe_redirects(
+            client, "http://8.8.8.8/page", max_bytes=None
+        )
+    assert resp.content == payload
+
+
+async def test_gzip_response_keeps_the_headers_the_server_sent():
+    """The returned response reports what the server sent, exactly as a plain
+    ``client.get`` does — decoded ``.content`` alongside the original
+    ``Content-Encoding``."""
+    payload = b"<html><body>hello gzip</body></html>" * 50
+    async with _gzip_client(payload) as client:
+        resp = await fetch_with_safe_redirects(client, "http://8.8.8.8/page")
+    assert resp.headers["content-encoding"] == "gzip"
+    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    assert str(resp.url) == "http://8.8.8.8/page"
+    assert resp.content == payload
+
+
+async def test_size_cap_counts_decoded_bytes_not_compressed_bytes():
+    """A small compressed body that expands past the cap is refused.
+
+    The cap bounds the memory the body occupies. Capping the compressed size
+    instead would let a decompression bomb through the check and blow up
+    afterwards.
+    """
+    payload = b"\x00" * 5_000_000  # compresses to a few kilobytes
+    async with _gzip_client(payload) as client:
+        with pytest.raises(ResponseTooLarge):
+            await fetch_with_safe_redirects(
+                client, "http://8.8.8.8/bomb", max_bytes=100_000
+            )
+
+
+async def test_undecodable_content_encoding_is_left_alone():
+    """httpx does not decode an encoding it has no decoder for. The body stays
+    encoded and the header saying so must survive to describe it."""
+    payload = b"<html>brotli</html>"
+    async with _gzip_client(payload, encoding="br-unsupported") as client:
+        resp = await fetch_with_safe_redirects(client, "http://8.8.8.8/page")
+    assert resp.headers["content-encoding"] == "br-unsupported"
+    assert resp.content == gzip.compress(payload)
