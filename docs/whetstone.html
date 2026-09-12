@@ -416,7 +416,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     <p class="eyebrow">andamentum sub-module</p>
     <h1>andamentum.whetstone</h1>
     <p class="doc-subtitle">Structured review of drafts you wrote yourself, out to Word with tracked changes and comments.</p>
-    <p class="doc-meta">CLI <code>andamentum-whetstone</code> · start at section 01 · sections 06 onward are internals</p>
+    <p class="doc-meta">CLI <code>andamentum-whetstone</code> · start at section 01 · sections 07 onward are internals</p>
   </header>
 
   <div class="verdict">
@@ -638,7 +638,82 @@ andamentum-whetstone proofread draft.md</code></pre>
 
   <p><code>--document-type</code> defaults to <code>auto</code> on the CLI, which spends one classifier call; the Python API defaults to <code>general</code> to keep the default path free of it. Pass the type explicitly to skip the call.</p>
 
-  <h2><span class="n">06</span>The shared substrate</h2>
+  <h2><span class="n">06</span>The goal loop — review until it holds</h2>
+
+  <p>Every mode above runs once. <code>--goal</code> instead sets a win condition and reviews, edits, and re-reviews the same draft until it holds — <strong>twice in a row</strong>, so the next round's ordinary edits cannot have quietly undone it — or the loop stops and says why.</p>
+
+  <pre><code><span class="tok-com"># loop until a model judge agrees the flow is correct</span>
+andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
+    --reviewer reader --goal "the flow is correct" \
+    --out draft.reviewed.docx</code></pre>
+
+  <p>What checks the goal is a separate question from what the review reads. <code>--goal-check</code> picks the check; <code>--reviewer</code>, <code>--criteria</code> and <code>--document-type</code> still pick what every round reviews against, exactly as in section 02.</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th><code>--goal-check</code></th><th>What holds the goal</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>judged</code> <span class="badge badge--info">default</span></td>
+        <td>A separate model call scores your goal text as one criterion, every round — never the pass that wrote the edit.</td>
+      </tr>
+      <tr>
+        <td><code>structure</code></td>
+        <td>The active review criteria raise nothing major or moderate. Pair with <code>--reviewer reader</code> for "the flow is correct".</td>
+      </tr>
+      <tr>
+        <td><code>citations</code></td>
+        <td>Every in-text citation marker has a matching reference-list entry, and every entry is cited. Structural only — never whether a citation says what the sentence claims.</td>
+      </tr>
+      <tr>
+        <td><code>figures</code></td>
+        <td>Each named figure's image matches its caption and the sentences that mention it. Needs <code>--goal-figure</code> and <code>--goal-figure-model</code> below.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Flags</h3>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Flag</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>--goal TEXT</code></td><td>Turns the loop on. The win condition, in your own words.</td></tr>
+      <tr><td><code>--goal-check KIND</code></td><td>One of the four above. Default <code>judged</code>.</td></tr>
+      <tr><td><code>--max-rounds N</code></td><td>Hard cap on review-edit-review rounds. Default 4. Not the same flag as <code>--rounds</code>, which caps the gap loop inside one review pass.</td></tr>
+      <tr><td><code>--goal-figure LABEL=PATH</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--goal-check figures</code>.</td></tr>
+      <tr><td><code>--goal-figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8:27b-mlx</code>. Required with <code>--goal-check figures</code>.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><code>--goal</code> takes one reviewer, not a list, and it runs the editor every round whether or not <code>--editor</code> is also passed — a round with nothing left to fix is what the loop is trying to confirm, not a step it should quietly skip.</p>
+
+  <h3>How it stops</h3>
+
+  <p>Never with an exception, and never by pretending. The run always finishes, writes real output, and reports a <strong>typed reason</strong>:</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Stops with</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>goal_met</code></td><td>The check passed twice running. That round's own edits are discarded — a pass that already meets the goal gets no further unrequested rewrite.</td></tr>
+      <tr><td><code>no_progress</code></td><td>A round with nothing to edit while the goal is still unmet, an edit with no net effect on the text, or the draft alternating between two earlier states.</td></tr>
+      <tr><td><code>cap_reached</code></td><td><code>--max-rounds</code> was reached with the goal still unmet.</td></tr>
+      <tr><td><code>unresolvable</code></td><td>Checked once, before spending a round: no reference list for <code>citations</code>, or a named figure never mentioned in the text for <code>figures</code>. Zero rounds run.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>A run that stops without meeting the goal still writes a real, usable review. The CLI exits with code <strong>4</strong> instead of the usual 0, and one author question in the report names what it could not settle.</p>
+
+  <div class="callout tone-info">
+    <p class="eyebrow">Figures need naming</p>
+    <p>Whetstone does not find figures in your document on its own. <code>--goal-figure "Figure 1=fig1.png"</code> names the label to look for and the image file to check it against — the label only needs the figure's number, so <code>"Figure 1"</code> also matches <code>"Fig. 1"</code> in the text. Locating and describing figures automatically is on the list, not yet built.</p>
+  </div>
+
+  <h2><span class="n">07</span>The shared substrate</h2>
 
   <p>All three review graphs stand on the same deterministic ground, and only one step in it uses a model.</p>
 
@@ -659,7 +734,7 @@ andamentum-whetstone proofread draft.md</code></pre>
 
   <p>Review stages do not receive the whole document. They get a sections table-of-contents with gists, the claims, and two tools — <code>read_section</code> and <code>search_paper</code> — and fetch what they need. That is what keeps the design document-type agnostic: nothing in the model knows which section is “Methods”, and a blog post has none.</p>
 
-  <h2><span class="n">07</span>Review mode — the criterion cascade</h2>
+  <h2><span class="n">08</span>Review mode — the criterion cascade</h2>
 
   <p>One agent call per criterion, run in sequence, each seeing what the earlier ones found. That threading is the point: a later criterion can say <em>the evaluation is weak for the same reason the introduction overclaims</em>, which is a judgment about the document as a whole and the kind of finding that changes how an author revises.</p>
 
@@ -683,7 +758,7 @@ andamentum-whetstone proofread draft.md</code></pre>
 
   <p>Criteria are data. Pass <code>criteria=[Criterion(...)]</code> to supply your own, or <code>guidelines_text="…"</code> to have a set of reviewer guidelines decomposed into criteria in one call.</p>
 
-  <h2><span class="n">08</span>Checklist mode — the probe bank</h2>
+  <h2><span class="n">09</span>Checklist mode — the probe bank</h2>
 
   <p>The cascade asks evaluative questions: <em>“are claimed results backed by evidence?”</em> A small model answers “yes, broadly” and produces nothing. A probe asks for extraction under a quota: <em>“find the 3 claims the reported results support least well.”</em> That is a task a 20B local model does reliably, and it returns the same shape every run.</p>
 
@@ -754,13 +829,13 @@ andamentum-whetstone proofread draft.md</code></pre>
   </div>
   <p class="table-note">Conflating the last two with a bare <code>0</code> is the single failure this mode is built to avoid: it reports a clean bill of health for a check that established nothing.</p>
 
-  <h2><span class="n">09</span>Panel mode</h2>
+  <h2><span class="n">10</span>Panel mode</h2>
 
   <p>A different shape again — N expert biosketches are generated from the document's own subject matter, each writes an independent scored review, and a synthesis reconciles them. Its own graph, invoked by its own subcommand.</p>
 
   <p>Panel requires <code>--i-am-the-author</code>. Simulating peer review of someone else's manuscript is exactly the use the tool refuses, so the gate is explicit rather than implied.</p>
 
-  <h2><span class="n">10</span>Anchoring, and how it is measured</h2>
+  <h2><span class="n">11</span>Anchoring, and how it is measured</h2>
 
   <p>A finding's quote comes from harvested markdown; a Word comment has to be pinned back into the original <code>.docx</code>. Those are two different texts. The converter reshapes tables into rows, invents list numbering Word generates from styles, and Word stores tabs as structure rather than characters — so the pin is a search, and a search can miss or hit the wrong place.</p>
 
@@ -782,7 +857,7 @@ andamentum-whetstone proofread draft.md</code></pre>
   </div>
   <p class="table-note">Anchor rate alone is a bad target because guessing maximises it. <code>wrong</code> is the number that must stay zero, and a test fails if it does not. The two remaining misses are genuinely repeated sentences, correctly refused.</p>
 
-  <h2><span class="n">11</span>Python</h2>
+  <h2><span class="n">12</span>Python</h2>
 
   <pre><code><span class="tok-kw">from</span> andamentum.whetstone <span class="tok-kw">import</span> (
     review_document, run_checklist, run_panel,
@@ -801,7 +876,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</s
 
   <p>Every function that calls a model takes <code>model</code> as a keyword-only argument. There is no shared config, no ambient default, and no silent fallback.</p>
 
-  <h2><span class="n">12</span>Provenance</h2>
+  <h2><span class="n">13</span>Provenance</h2>
 
   <p>Output is marked as AI-generated in three places at once, and the markers are not decorative.</p>
 
