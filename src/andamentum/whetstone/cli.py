@@ -121,6 +121,19 @@ EXAMPLES
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
         --reviewer methods --out review.md
 
+    # Loop review-edit-review until a win condition holds (or gives up
+    # honestly): here, a model judge checks "the flow is correct" every
+    # round, separately from the pass that wrote the edit
+    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+        --reviewer reader --goal "the flow is correct" \\
+        --out draft.reviewed.docx
+
+    # The same loop with a structural, no-LLM-judge check: stop once the
+    # active review criteria raise nothing major or moderate, twice running
+    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+        --goal "every reference is consistent" --goal-check citations \\
+        --out draft.reviewed.docx
+
     # Which reviewers exist, and which suit this kind of document
     andamentum-whetstone --list-reviewers --document-type academic
 
@@ -157,6 +170,7 @@ EXIT CODES
     1  configuration / argument error
     2  input could not be loaded (harvest failure, file not found)
     3  review pipeline failed
+    4  --goal run completed and wrote its output, but the goal was not met
 """
 
 
@@ -178,6 +192,7 @@ _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 # .DEFAULT_EDITOR_CRITERIA`, and the run falls through to it.
 _DEFAULT_NOVELTY_SEARCH_DEPTH = 2
 _DEFAULT_ROUNDS = 3
+_DEFAULT_GOAL_MAX_ROUNDS = 4
 
 # One list of document types, read by the main parser and by the
 # --list-reviewers short-circuit in main(), which builds a parser of its own.
@@ -442,6 +457,63 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
         "The loop typically exits earlier when no demands remain.",
     )
+    review_grp.add_argument(
+        "--goal",
+        default=None,
+        metavar="TEXT",
+        help="A win condition. Turns on the goal loop: review, edit, and "
+        "re-review the same reviewer's own findings until the goal holds "
+        "for two rounds running, no round changes anything, or --max-rounds "
+        "is reached. Implies the editor runs every round, whether or not "
+        "--editor is also passed. Takes one reviewer, not a list "
+        "(see --goal-check).",
+    )
+    review_grp.add_argument(
+        "--goal-check",
+        choices=("judged", "structure", "citations", "figures"),
+        default="judged",
+        metavar="KIND",
+        help="How --goal is checked each round. 'judged' (default): a "
+        "separate model call scores --goal as one criterion — never the "
+        "same pass that wrote the edit. 'structure': the active review "
+        "criteria (see --reviewer / --criteria) raise no major or moderate "
+        "finding; for \"the flow is correct\", pair with --reviewer reader. "
+        "'citations': every in-text citation marker has a matching "
+        "reference-list entry and vice versa — structural only, never "
+        "whether a citation says what the sentence claims. 'figures': each "
+        "--goal-figure's image is checked against its caption and the "
+        "sentences that mention it. Has no effect without --goal.",
+    )
+    review_grp.add_argument(
+        "--max-rounds",
+        type=int,
+        default=_DEFAULT_GOAL_MAX_ROUNDS,
+        metavar="N",
+        help="Hard cap on --goal's review-edit-review rounds. Default: 4. "
+        "Distinct from --rounds, which caps the gap-loop's re-examination "
+        "WITHIN one review pass. Has no effect without --goal.",
+    )
+    review_grp.add_argument(
+        "--goal-figure",
+        action="append",
+        default=None,
+        metavar="LABEL=PATH",
+        help="A figure to check under --goal-check figures, e.g. "
+        "'Figure 1=fig1.png'. LABEL is matched against \"Figure N\" / "
+        "\"Fig. N\" mentions in the text, not required to be the literal "
+        "caption. Repeat for more than one figure. Required, at least "
+        "once, with --goal-check figures; refused otherwise. Does not "
+        "discover embedded images on its own — name each figure you want "
+        "checked.",
+    )
+    review_grp.add_argument(
+        "--goal-figure-model",
+        default=None,
+        metavar="MODEL",
+        help="A multimodal pydantic-ai model id for --goal-check figures "
+        "(e.g. ollama:qwen3.8:27b-mlx). Required with --goal-check "
+        "figures; refused otherwise.",
+    )
 
     # ── Panel options ──────────────────────────────────────────────────
     panel_grp = parser.add_argument_group(
@@ -585,6 +657,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     if args.rounds < 1:
         _die(1, "--rounds must be at least 1.")
+    _validate_goal_args(args)
     if args.n_experts < 1:
         _die(1, "--n-experts must be at least 1.")
     for out in args.out:
@@ -634,6 +707,105 @@ def _default_reviewer_name() -> str:
     from .v3.reviewers import DEFAULT_PROFILE_NAME
 
     return DEFAULT_PROFILE_NAME
+
+
+# (namespace attribute, user-facing flag, value meaning "not set") — mirrors
+# _REVIEW_ONLY_FLAGS, for the same reason: a goal flag left at its own
+# default is tolerated (that run genuinely is the run asked for), but a
+# non-default value with no --goal to attach to is refused rather than
+# silently ignored.
+_GOAL_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
+    ("goal_check", "--goal-check", "judged"),
+    ("max_rounds", "--max-rounds", _DEFAULT_GOAL_MAX_ROUNDS),
+    ("goal_figure", "--goal-figure", None),
+    ("goal_figure_model", "--goal-figure-model", None),
+)
+
+
+def _parse_goal_figures(values: list[str]) -> list[tuple[str, Path]]:
+    """``--goal-figure LABEL=PATH`` (repeatable) into ``(label, path)`` pairs.
+
+    Refused here, not left to crash later opening the file: a typo in a
+    figure path should cost nothing (exit 2, matching every other
+    could-not-load-input case), not run three rounds first.
+    """
+    parsed: list[tuple[str, Path]] = []
+    for value in values:
+        label, sep, raw_path = value.partition("=")
+        if not sep or not label.strip() or not raw_path.strip():
+            _die(
+                2,
+                f"--goal-figure {value!r} is not LABEL=PATH. Example: "
+                "--goal-figure 'Figure 1=fig1.png'.",
+            )
+        path = Path(raw_path.strip())
+        if not path.exists():
+            _die(2, f"--goal-figure {value!r}: no such file {raw_path.strip()!r}.")
+        parsed.append((label.strip(), path))
+    return parsed
+
+
+def _validate_goal_args(args: argparse.Namespace) -> None:
+    """Refuse a goal-loop flag with no --goal, and an unworkable --goal.
+
+    Called only once ``args.reviewers`` exists (see ``_validate_args``), and
+    only reached for the review/checklist/panel modes handled above it —
+    ``apply_patches`` and ``--list-reviewers`` both return earlier.
+    """
+    if args.goal is None:
+        for dest, flag, unset_value in _GOAL_ONLY_FLAGS:
+            if getattr(args, dest) != unset_value:
+                _die(
+                    1,
+                    f"{flag} has no effect without --goal. Drop the flag, "
+                    "or add --goal to turn the loop on.",
+                )
+        return
+    if args.mode != "review":
+        _die(
+            1,
+            "--goal only applies to review mode. Panel generates its own "
+            "reviewers and checklist compares against a fixed probe bank; "
+            "neither has a round to loop.",
+        )
+    if len(args.reviewers) > 1:
+        _die(
+            1,
+            "--goal takes one reviewer, not a list: the loop reviews with "
+            "the same reviewer every round, and reconciling several "
+            "reviewers' findings every round is not what this loop does. "
+            "Drop --reviewer to use the default, or name one reviewer.",
+        )
+    if args.max_rounds < 1:
+        _die(1, "--max-rounds must be at least 1.")
+    if args.goal_check == "figures":
+        if not args.goal_figure:
+            _die(
+                1,
+                "--goal-check figures needs at least one --goal-figure "
+                "(e.g. --goal-figure 'Figure 1=fig1.png').",
+            )
+        if not args.goal_figure_model:
+            _die(
+                1,
+                "--goal-check figures needs --goal-figure-model (a "
+                "multimodal pydantic-ai model id, e.g. "
+                "ollama:qwen3.8:27b-mlx).",
+            )
+        args.goal_figures = _parse_goal_figures(args.goal_figure)
+    else:
+        if args.goal_figure:
+            _die(
+                1,
+                "--goal-figure only applies to --goal-check figures. Drop "
+                "the flag, or set --goal-check figures.",
+            )
+        if args.goal_figure_model:
+            _die(
+                1,
+                "--goal-figure-model only applies to --goal-check figures. "
+                "Drop the flag, or set --goal-check figures.",
+            )
 
 
 def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
@@ -714,7 +886,10 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     # is a sensible thing to ask for.
     if any(PROFILES[n].criteria != () for n in names):
         return
-    if args.criteria or args.guidelines or args.editor:
+    # --goal forces the editor to run every round regardless of --editor
+    # (see _validate_goal_args / run_goal_loop) — the same "does this run
+    # examine anything" question, answered the same way.
+    if args.criteria or args.guidelines or args.editor or args.goal is not None:
         return
     if getattr(args, "final_editor", False):
         return
@@ -1108,13 +1283,16 @@ async def _carry_forward(
     user's output. Only the last round's document is theirs; the ones in
     between are working state, and leaving four numbered .docx files in their
     folder would be four files to explain and delete.
+
+    The write-then-reopen mechanism itself is
+    :func:`~.reviewed_document.carry_forward_edits`; this wrapper only picks
+    the interim path and this round's author name.
     """
-    from .renderers.docx import render_docx
-    from .reviewed_document import open_source
+    from .reviewed_document import carry_forward_edits
     from .v3.reviewers import author_for
 
     interim = workdir / f"round{index + 1}.docx"
-    render_docx(
+    return await carry_forward_edits(
         result,
         document=document,
         output_path=interim,
@@ -1132,7 +1310,6 @@ async def _carry_forward(
         # where a reader meets the document.
         visible_watermark=False,
     )
-    return await open_source(str(interim))
 
 
 def _parse_reviewers(value: str) -> list[str]:
@@ -1281,6 +1458,9 @@ async def _review_and_write(
     # render loop below is shared by review, checklist and panel.
     docx_result: Any = None
     reconciliation: Any = None
+    # Set only by a --goal run; read after the write loop to decide the exit
+    # code (4: pipeline ran, output was written, but the goal was not met).
+    goal_run_result: Any = None
 
     try:
         _t0 = time.perf_counter()
@@ -1331,123 +1511,174 @@ async def _review_and_write(
             if args.guidelines:
                 v3_guidelines = guidelines_text
 
-            # One reviewer or several. Several run IN SEQUENCE, each reading
-            # the previous one's edited text — which is the only shape that
-            # works on a Word file, because two reviewers rewriting the same
-            # original sentence would collide with no right answer. So the
-            # loop renders an interim .docx between rounds and reopens it;
-            # reviewer N+1's projection is reviewer N's output with the
-            # changes applied, which is what Word shows a human opening it.
-            # _validate parses this and stores it, so the unknown-name error
-            # costs nothing. Derived again here for a caller that built the
-            # namespace itself (the library tests do), rather than requiring
-            # every such caller to know about a derived attribute.
-            reviewer_names = getattr(args, "reviewers", None) or _parse_reviewers(
-                args.reviewer
-            )
-            final_editor = bool(getattr(args, "final_editor", False))
-            reviews: list[tuple[str, Any]] = []
-            for index, reviewer_name in enumerate(reviewer_names):
-                profile = PROFILES[reviewer_name]
-                if len(reviewer_names) > 1:
-                    console.print(
-                        f"[dim]reviewer {index + 1} of {len(reviewer_names)}: "
-                        f"{profile.identity}[/dim]"
-                    )
-                result = await review_document_v3(
+            if args.goal is not None:
+                # --goal takes one reviewer (_validate_goal_args refuses a
+                # list), and it reviews-edits-re-reviews that reviewer's own
+                # findings until the goal holds — a different shape from the
+                # reviewer-list loop below, not an extension of it.
+                from .goal import FigureRef, GoalSpec, run_goal_loop
+
+                reviewer_name = (
+                    getattr(args, "reviewers", None) or _parse_reviewers(args.reviewer)
+                )[0]
+                goal_figures = tuple(
+                    FigureRef(label=label, path=path)
+                    for label, path in getattr(args, "goal_figures", [])
+                )
+                goal_run_result = await run_goal_loop(
                     document,
+                    GoalSpec(
+                        text=args.goal,
+                        check=args.goal_check,
+                        max_rounds=args.max_rounds,
+                        figures=goal_figures,
+                        figure_model=args.goal_figure_model,
+                    ),
                     model=args.model,
-                    cap=args.rounds,
-                    document_type=args.document_type,
-                    confirm_own_draft=args.confirm_own_draft,
+                    reviewer=PROFILES[reviewer_name],
                     criteria=v3_criteria,
                     guidelines_text=v3_guidelines,
-                    # A list never edits round by round: the rounds raise
-                    # findings on one unchanged text, and a single editor pass
-                    # answers all of them afterwards (below). Editing per
-                    # round put five reviewers' style passes over one
-                    # abstract, each rewriting the last one's insertions.
-                    editor=args.editor and not final_editor,
+                    document_type=args.document_type,
+                    confirm_own_draft=args.confirm_own_draft,
                     editor_criteria=editor_criteria,
-                    # Only the first reviewer lists the novelty claims, and
-                    # only the first can verify them. The draft's assertions
-                    # do not change because a second reviewer read it, so the
-                    # later rounds neither pay the flag call nor put another
-                    # copy of the same list in the document.
-                    check_novelty=args.check_novelty and index == 0,
-                    flag_novelty=index == 0,
+                    check_novelty=args.check_novelty,
                     novelty_search_depth=args.novelty_search_depth,
-                    # The profile is resolved inside the pipeline, not here:
-                    # the document type it resolves against is only known once
-                    # the classifier has run, and classifying twice to learn it
-                    # early would be an LLM call spent on a flag.
-                    reviewer=profile,
                     patch_author=args.patch_author,
+                    workdir=interim_dir,
                 )
-                reviews.append((profile.identity, result))
-                if len(reviewer_names) > 1:
-                    # EVERY round writes its own pass, the last one included.
-                    # The final render then adds the reconciliation on top of a
-                    # document that already carries all N reports — otherwise
-                    # the last reviewer's own report is the one the summary
-                    # replaces, and it is the only report that goes missing.
-                    text_before = document.text
-                    document = await _carry_forward(
+                result = goal_run_result.final_review
+                document = goal_run_result.final_document
+            else:
+                # One reviewer or several. Several run IN SEQUENCE, each
+                # reading the previous one's edited text — which is the only
+                # shape that works on a Word file, because two reviewers
+                # rewriting the same original sentence would collide with no
+                # right answer. So the loop renders an interim .docx between
+                # rounds and reopens it; reviewer N+1's projection is
+                # reviewer N's output with the changes applied, which is
+                # what Word shows a human opening it. _validate parses this
+                # and stores it, so the unknown-name error costs nothing.
+                # Derived again here for a caller that built the namespace
+                # itself (the library tests do), rather than requiring every
+                # such caller to know about a derived attribute.
+                reviewer_names = getattr(args, "reviewers", None) or _parse_reviewers(
+                    args.reviewer
+                )
+                final_editor = bool(getattr(args, "final_editor", False))
+                reviews: list[tuple[str, Any]] = []
+                for index, reviewer_name in enumerate(reviewer_names):
+                    profile = PROFILES[reviewer_name]
+                    if len(reviewer_names) > 1:
+                        console.print(
+                            f"[dim]reviewer {index + 1} of {len(reviewer_names)}: "
+                            f"{profile.identity}[/dim]"
+                        )
+                    result = await review_document_v3(
+                        document,
+                        model=args.model,
+                        cap=args.rounds,
+                        document_type=args.document_type,
+                        confirm_own_draft=args.confirm_own_draft,
+                        criteria=v3_criteria,
+                        guidelines_text=v3_guidelines,
+                        # A list never edits round by round: the rounds raise
+                        # findings on one unchanged text, and a single editor
+                        # pass answers all of them afterwards (below).
+                        # Editing per round put five reviewers' style passes
+                        # over one abstract, each rewriting the last one's
+                        # insertions.
+                        editor=args.editor and not final_editor,
+                        editor_criteria=editor_criteria,
+                        # Only the first reviewer lists the novelty claims,
+                        # and only the first can verify them. The draft's
+                        # assertions do not change because a second reviewer
+                        # read it, so the later rounds neither pay the flag
+                        # call nor put another copy of the same list in the
+                        # document.
+                        check_novelty=args.check_novelty and index == 0,
+                        flag_novelty=index == 0,
+                        novelty_search_depth=args.novelty_search_depth,
+                        # The profile is resolved inside the pipeline, not
+                        # here: the document type it resolves against is
+                        # only known once the classifier has run, and
+                        # classifying twice to learn it early would be an
+                        # LLM call spent on a flag.
+                        reviewer=profile,
+                        patch_author=args.patch_author,
+                    )
+                    reviews.append((profile.identity, result))
+                    if len(reviewer_names) > 1:
+                        # EVERY round writes its own pass, the last one
+                        # included. The final render then adds the
+                        # reconciliation on top of a document that already
+                        # carries all N reports — otherwise the last
+                        # reviewer's own report is the one the summary
+                        # replaces, and it is the only report that goes
+                        # missing.
+                        text_before = document.text
+                        document = await _carry_forward(
+                            result,
+                            document=document,
+                            profile=profile,
+                            args=args,
+                            workdir=interim_dir,
+                            index=index,
+                        )
+                        if final_editor and document.text != text_before:
+                            # The final pass pools every round's findings,
+                            # which is sound only because each round read
+                            # the same text. A round that changed it would
+                            # leave earlier offsets addressing a document
+                            # that no longer exists — fail here, not inside
+                            # Word.
+                            raise RuntimeError(
+                                f"reviewer {index + 1} ({profile.identity}) "
+                                "changed the document text although no "
+                                "round edits; the findings cannot be pooled "
+                                "for the final editor"
+                            )
+                result = reviews[-1][1]
+
+                # Several reviewers means one place that reconciles them.
+                # Not a flag: asking for several opinions and then being
+                # handed four reports to cross-reference by hand is the
+                # problem this solves, not a preference. A failed
+                # reconciliation costs the summary and nothing else — every
+                # reviewer's report is already in the file.
+                if len(reviews) > 1:
+                    from .v3.reconcile import reconcile_reviewers
+
+                    reconciliation = await reconcile_reviewers(
+                        reviews, model=args.model
+                    )
+                    # Two shapes, because the two output families need
+                    # different things. The .docx already holds every
+                    # finding, comment and tracked change from all N rounds,
+                    # so it needs ONLY the reconciliation — rendering the
+                    # findings again would duplicate every comment in the
+                    # file. Markdown and HTML render one result and would
+                    # otherwise show the last reviewer alone.
+                    docx_result = _reconciliation_only(reconciliation, like=result)
+                    result = _combine_reviews(
+                        reviews, reconciliation=reconciliation, last=result
+                    )
+                if final_editor:
+                    console.print(
+                        "[dim]line editor: one pass over every reviewer's "
+                        "findings[/dim]"
+                    )
+                    edits, declined = await _edit_after_the_reviewers(
                         result,
                         document=document,
-                        profile=profile,
-                        args=args,
-                        workdir=interim_dir,
-                        index=index,
+                        reconciliation=reconciliation,
+                        editor_criteria=editor_criteria,
+                        model=args.model,
                     )
-                    if final_editor and document.text != text_before:
-                        # The final pass pools every round's findings, which
-                        # is sound only because each round read the same
-                        # text. A round that changed it would leave earlier
-                        # offsets addressing a document that no longer
-                        # exists — fail here, not inside Word.
-                        raise RuntimeError(
-                            f"reviewer {index + 1} ({profile.identity}) changed "
-                            "the document text although no round edits; the "
-                            "findings cannot be pooled for the final editor"
-                        )
-            result = reviews[-1][1]
-
-            # Several reviewers means one place that reconciles them. Not a
-            # flag: asking for several opinions and then being handed four
-            # reports to cross-reference by hand is the problem this solves,
-            # not a preference. A failed reconciliation costs the summary and
-            # nothing else — every reviewer's report is already in the file.
-            if len(reviews) > 1:
-                from .v3.reconcile import reconcile_reviewers
-
-                reconciliation = await reconcile_reviewers(
-                    reviews, model=args.model
-                )
-                # Two shapes, because the two output families need different
-                # things. The .docx already holds every finding, comment and
-                # tracked change from all N rounds, so it needs ONLY the
-                # reconciliation — rendering the findings again would duplicate
-                # every comment in the file. Markdown and HTML render one
-                # result and would otherwise show the last reviewer alone.
-                docx_result = _reconciliation_only(reconciliation, like=result)
-                result = _combine_reviews(
-                    reviews, reconciliation=reconciliation, last=result
-                )
-            if final_editor:
-                console.print("[dim]line editor: one pass over every reviewer's findings[/dim]")
-                edits, declined = await _edit_after_the_reviewers(
-                    result,
-                    document=document,
-                    reconciliation=reconciliation,
-                    editor_criteria=editor_criteria,
-                    model=args.model,
-                )
-                update = {"edits": edits, "declined_findings": declined}
-                result = result.model_copy(update=update)
-                result.metrics.edits_count = len(edits)
-                if docx_result is not None:
-                    docx_result = docx_result.model_copy(update=update)
+                    update = {"edits": edits, "declined_findings": declined}
+                    result = result.model_copy(update=update)
+                    result.metrics.edits_count = len(edits)
+                    if docx_result is not None:
+                        docx_result = docx_result.model_copy(update=update)
         result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
@@ -1514,6 +1745,16 @@ async def _review_and_write(
     from ._watermark import DISCLOSURE_REMINDER
 
     print(f"\nNote: {DISCLOSURE_REMINDER}", file=sys.stderr)
+
+    # A --goal run's own outcome, printed after everything else is written:
+    # the output above is real and usable regardless of whether the goal
+    # was met, so the note comes last rather than pre-empting it. Exit 4
+    # says "the pipeline ran and wrote its output, but the goal was not
+    # met" — distinct from exit 3 (the pipeline itself crashed).
+    if goal_run_result is not None:
+        _print_goal_outcome(console, goal_run_result)
+        if not goal_run_result.goal_met:
+            sys.exit(4)
 
 
 def _log_run_config(
@@ -1615,6 +1856,32 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
         table.add_row("gap-loop rounds:", str(m.reflection_rounds_used))
     table.add_row("outputs:", "\n".join(str(p) for p in written))
     console.print(Panel(table, title="review complete", border_style="green"))
+
+
+def _print_goal_outcome(console: Console, goal_run_result: Any) -> None:
+    """What a --goal run decided, and why — always shown, met or not."""
+    rounds = len(goal_run_result.rounds)
+    if goal_run_result.goal_met:
+        console.print(
+            Panel(
+                f'Goal met after {rounds} round(s): "{goal_run_result.goal.text}"\n'
+                f"{goal_run_result.reason}",
+                title="goal met",
+                border_style="green",
+            )
+        )
+        return
+    console.print(
+        Panel(
+            f'Goal not met: "{goal_run_result.goal.text}"\n'
+            f"Stopped ({goal_run_result.stopped_reason}) after {rounds} "
+            f"round(s): {goal_run_result.reason}\n"
+            "The output above is the last round's real review — see its "
+            "author question for what still needs you.",
+            title="goal not met",
+            border_style="yellow",
+        )
+    )
 
 
 # ── Subcommand front-end (Phase F) ──────────────────────────────────────────

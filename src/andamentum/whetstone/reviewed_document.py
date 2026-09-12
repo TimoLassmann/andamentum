@@ -40,6 +40,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .schemas import ReviewResult
+
 logger = logging.getLogger("andamentum.whetstone")
 
 # Extensions that make a bare string look like a file the caller meant us to
@@ -116,6 +118,43 @@ async def open_source(source: str) -> ReviewedDocument:
         baseline,
     )
     return _open_docx(baseline, is_temp=True)
+
+
+async def carry_forward_edits(
+    result: ReviewResult,
+    *,
+    document: ReviewedDocument,
+    output_path: str | Path,
+    author: str,
+    model: str,
+    visible_watermark: bool = False,
+) -> ReviewedDocument:
+    """Write *result*'s edits into *output_path* and reopen it.
+
+    This is the whole of "revise, then re-review": *output_path*'s projection
+    excludes deletions and includes insertions (see the module docstring), so
+    reopening it hands back the text as Word shows it with these edits
+    accepted — ready for another round, with no round counter and no separate
+    accept-changes step. Editing text this round itself inserted, in a later
+    round, nests as Word's own ``<w:ins author><w:del later-author>`` markup —
+    its own representation of exactly that.
+
+    *author* names this round's edits in Word's reviewing pane. Two rounds
+    sharing one name are valid but indistinguishable there, so give each round
+    its own (see :func:`~.v3.reviewers.author_for`). *output_path* is working
+    state the caller owns: only the last round's file is meant for a reader.
+    """
+    from .renderers.docx import render_docx
+
+    render_docx(
+        result,
+        document=document,
+        output_path=output_path,
+        author=author,
+        model=model,
+        visible_watermark=visible_watermark,
+    )
+    return await open_source(str(output_path))
 
 
 def _open_docx(path: Path, *, is_temp: bool) -> ReviewedDocument:
