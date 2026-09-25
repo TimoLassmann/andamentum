@@ -7,6 +7,7 @@ docx-writing machinery is v1's, well-tested elsewhere).
 """
 
 from pathlib import Path
+from typing import Any
 
 
 from andamentum.whetstone import (
@@ -119,7 +120,8 @@ def test_markdown_renders_every_section():
     assert "# Whetstone Review" in md
     assert "Executive Summary" in md
     assert "Author questions" in md
-    assert "Edits (1)" in md
+    # The sample's edit answers no finding, so it is one of the editor's own.
+    assert "Other edits (1)" in md
     # Heading was "Findings (LLM-investigated)" pre-consolidation; v3
     # drops the (LLM-investigated) parenthetical since there's only the
     # one criterion-cascade source of LLM findings now.
@@ -147,16 +149,16 @@ def test_markdown_clean_document_says_so():
 
 def test_markdown_findings_grouped_by_priority():
     md = render_markdown(_sample_result())
-    # MUST FIX appears before CONSIDER inside the LLM findings section.
+    # Must fix appears before Consider inside the LLM findings section.
     findings_section = md.split("## Findings")[1].split("---")[0]
-    assert findings_section.index("### MUST FIX") < findings_section.index(
-        "### CONSIDER"
+    assert findings_section.index("### Must fix") < findings_section.index(
+        "### Consider"
     )
 
 
 def test_markdown_persona_shown_for_panel_findings():
     md = render_markdown(_sample_result())
-    assert "_rigorous_" in md  # the perspective tag
+    assert "_rigorous" in md  # the perspective tag, first in the tag line
 
 
 # ── HTML ───────────────────────────────────────────────────────────────
@@ -323,54 +325,44 @@ def test_docx_every_finding_reaches_the_report_body():
     assert captured.get("issues_count") == len(issues)  # header matches body
 
 
-def test_docx_corroboration_named_in_comment_body():
-    """A single co-detector is enough — checklist records one probe id."""
+def _corroborated(source: Any) -> Finding:
+    return Finding(
+        title="Unmotivated choice",
+        severity="moderate",
+        confidence="high",
+        rationale="No reason given for the threshold.",
+        quotes=[
+            Quote(section_id="sec_001", char_start=0, char_end=12, text="we used 0.05")
+        ],
+        source=source,
+        category="unmotivated_choice",
+        corroborated_by=["Methods reviewer"],
+    )
+
+
+def test_every_format_names_who_else_raised_a_finding():
+    """Panel experts and multi-reviewer rounds record the other parties that
+    made the same point, and every format says so in the same words."""
     from andamentum.whetstone.renderers.docx import _to_annotations
 
-    result = ReviewResult(
-        findings=[
-            Finding(
-                title="Unmotivated choice",
-                severity="moderate",
-                confidence="high",
-                rationale="No reason given for the threshold.",
-                quotes=[
-                    Quote(
-                        section_id="sec_001",
-                        char_start=0,
-                        char_end=12,
-                        text="we used 0.05",
-                    )
-                ],
-                source="checklist",
-                category="unmotivated_choice",
-                corroborated_by=["unsupported_claim"],
-            ),
-        ],
-    )
+    result = ReviewResult(findings=[_corroborated("investigate")])
     _, notes = _to_annotations(result, author="t")
-    assert len(notes) == 1
-    assert "Independently raised by: unsupported_claim." in notes[0].body
+    assert "Also raised by: Methods reviewer." in notes[0].body
+    assert "Also raised by: Methods reviewer." in render_markdown(result)
+    assert "Also raised by: Methods reviewer." in render_html(result)
 
 
-def test_markdown_and_html_name_corroborating_producers():
-    result = ReviewResult(
-        findings=[
-            Finding(
-                title="Unmotivated choice",
-                severity="moderate",
-                confidence="high",
-                rationale="No reason given for the threshold.",
-                quotes=[],
-                sections_involved=["sec_001"],
-                source="checklist",
-                category="unmotivated_choice",
-                corroborated_by=["unsupported_claim"],
-            ),
-        ],
-    )
-    assert "Independently raised by: unsupported_claim." in render_markdown(result)
-    assert "Independently raised by: unsupported_claim." in render_html(result)
+def test_a_checklist_overlap_is_not_restated_as_agreement():
+    """A checklist finding's rationale already says which other checks landed
+    on the passage. The renderers used to add a second sentence claiming the
+    probes 'independently raised' it, which contradicted the first: two probes
+    on one sentence usually report two different defects."""
+    from andamentum.whetstone.renderers.docx import _to_annotations
+
+    result = ReviewResult(findings=[_corroborated("checklist")])
+    _, notes = _to_annotations(result, author="t")
+    for text in (notes[0].body, render_markdown(result), render_html(result)):
+        assert "raised by" not in text.lower()
 
 
 def test_docx_adapter_skips_a_zero_width_quote():

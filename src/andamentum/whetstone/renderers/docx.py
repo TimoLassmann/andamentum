@@ -67,7 +67,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 from .._watermark import (
     BANNER_TITLE,
@@ -75,7 +75,19 @@ from .._watermark import (
     provenance_line,
     stamp_docx_core_properties,
 )
-from ..schemas import Finding, Quote, ReviewResult
+from ..schemas import Edit, Finding, Quote, ReviewResult
+from ._finding_text import (
+    PRIORITY_LABEL,
+    confidence_label,
+    corroboration_clause,
+    coverage_warning,
+    declined_line,
+    editor_answers,
+    fix_line,
+    reading_order,
+    snippet,
+    summary_body,
+)
 from ._panel_layout import body_markdown
 from ._reviewer_header import configuration_markdown, header_markdown
 
@@ -100,6 +112,7 @@ def render_docx(
     document: "ReviewedDocument",
     output_path: str | Path,
     author: str = DEFAULT_AI_AUTHOR,
+    comment_authors: Mapping[str, str] | None = None,
     model: str | None = None,
     visible_watermark: bool = True,
 ) -> Any:
@@ -135,6 +148,12 @@ def render_docx(
         the first round's output a different name and Word shows two
         reviewers. See the module docstring for what the same name twice
         costs.
+    comment_authors:
+        Who signs a finding's comment, by the finding's ``perspective``. A
+        multi-reviewer run passes one entry per reviewer, so each reviewer's
+        comments are grouped under its own name in Word's reviewing pane. A
+        finding whose perspective is not in the map — or every finding, when
+        the map is ``None`` — is signed by *author*.
 
     Returns
     -------
@@ -145,12 +164,22 @@ def render_docx(
     # we want the renderers importable without dragging it in by default.
     from andamentum.whetstone.docx.finalization import finalize_annotated_document
 
-    rewrites, notes = _to_annotations(result, author=author)
+    rewrites, notes = _to_annotations(
+        result, author=author, comment_authors=comment_authors
+    )
     findings = list(result.findings) + list(result.deterministic_findings)
 
-    review_summary = _strip_leading_exec_heading(
-        result.summary or _fallback_summary(result)
+    review_summary = summary_body(
+        _strip_leading_exec_heading(result.summary or _fallback_summary(result))
     )
+    # Said at the top of the report, not only in the markdown output: a Word
+    # reader of a run where checks crashed otherwise saw a complete review.
+    warning = coverage_warning(result)
+    if warning:
+        review_summary = f"{warning}\n\n{review_summary}"
+    questions = _collect_author_questions(result)
+    if questions:
+        review_summary = f"{review_summary}\n\n{questions}"
     if result.panel_synthesis is not None:
         # Panel mode: the synthesis is the authoritative summary. ``result.summary``
         # is intentionally empty (see panel_synthesise.py); render the synthesis
@@ -197,6 +226,7 @@ def render_docx(
         # Novelty-check payload (empty string when not used)
         novelty_findings=novelty_findings_text,
         declined_findings=_collect_declined(result),
+        other_edits=_collect_own_edits(result),
         configuration=(
             configuration_markdown(result.reviewer_header)
             if result.reviewer_header is not None
@@ -213,7 +243,10 @@ def render_docx(
 
 
 def _to_annotations(
-    result: ReviewResult, *, author: str
+    result: ReviewResult,
+    *,
+    author: str,
+    comment_authors: Mapping[str, str] | None = None,
 ) -> tuple[list["Rewrite"], list["Note"]]:
     """Turn the review into annotations addressed at their own coordinates.
 
@@ -222,6 +255,14 @@ def _to_annotations(
     annotation, and reaching for its text again would be the deleted
     coordinate system growing back. What the docx layer receives is two
     integers, a body, and an author.
+
+    One comment per finding, and the editor's answer rides IN it: a rewrite
+    that answers a finding is announced in that finding's comment, and a
+    refusal is stated there as what is left to the author. A tracked change
+    that answers nothing (the editor's own edit) gets no comment: on one real
+    manuscript a comment per such edit was 51 of 81 comments, and the findings
+    were lost among them. Their reasons are listed once in the report instead
+    (:func:`_collect_own_edits`).
     """
     from andamentum.whetstone.docx.annotate import Note, Rewrite
 
@@ -236,6 +277,7 @@ def _to_annotations(
         for edit in result.edits
         if edit.new_text
     ]
+    answers = editor_answers(result)
 
     notes: list[Note] = []
     for finding in list(result.findings) + list(result.deterministic_findings):
@@ -250,8 +292,13 @@ def _to_annotations(
             Note(
                 start=anchor.char_start,
                 end=anchor.char_end,
-                body=_comment_body(finding),
-                author=author,
+                body=_comment_body(
+                    finding,
+                    anchor=anchor,
+                    edits=answers.edits_by_finding.get(finding.id, []),
+                    declined_why=answers.declined_by_finding.get(finding.id, ""),
+                ),
+                author=(comment_authors or {}).get(finding.perspective or "", author),
                 label=finding.title,
             )
         )
@@ -276,30 +323,46 @@ def _anchor_quote(finding: Finding) -> Quote | None:
     return None
 
 
-def _comment_body(finding: Finding) -> str:
-    body = finding.title
-    if finding.rationale:
-        body = f"{finding.title}\n\n{finding.rationale}"
-    # Corroboration recorded upstream (panel consolidation, or checklist
-    # co-detection): surface it so the author sees the comment is not a
-    # lone opinion.
+def _comment_body(
+    finding: Finding,
+    *,
+    anchor: Quote | None = None,
+    edits: list[Edit] | None = None,
+    declined_why: str = "",
+) -> str:
+    """The text of one Word comment, readable on its own.
+
+    A margin comment is read beside the sentence, without the report open, so
+    it carries everything the author needs to act: how urgent it is, the
+    problem, the fix, what the editor did about it, and who else raised it. It
+    used to open with the criterion's name and carry no severity at all.
+    """
+    parts = [f"{PRIORITY_LABEL.get(finding.priority, 'Consider')}: {finding.title}"]
+    if finding.rationale.strip():
+        parts.append(finding.rationale.strip())
+    if fix_line(finding):
+        parts.append(fix_line(finding))
+    for edit in edits or []:
+        overlaps = anchor is not None and (
+            edit.char_start < anchor.char_end and anchor.char_start < edit.char_end
+        )
+        if overlaps:
+            parts.append("Suggested rewrite: the tracked change here.")
+        else:
+            parts.append(
+                "Suggested rewrite: the tracked change at "
+                f"\u201c{snippet(edit.original_text, limit=60)}\u201d."
+            )
+    if declined_why:
+        parts.append(declined_line(declined_why))
     clause = _corroboration_clause(finding)
     if clause:
-        body = f"{body}\n\n{clause}"
-    return body
+        parts.append(clause)
+    return "\n\n".join(parts)
 
 
 def _corroboration_clause(finding: Finding) -> str:
-    """One clause naming the other producers that independently raised this.
-
-    ``corroborated_by`` holds panel perspective names or checklist probe ids
-    depending on which pipeline built the finding, so the wording names
-    neither: agreement between two independent producers is the signal, and
-    the reader can see from the names which kind they are.
-    """
-    if not finding.corroborated_by:
-        return ""
-    return f"Independently raised by: {', '.join(finding.corroborated_by)}."
+    return corroboration_clause(finding)
 
 
 def _strip_leading_exec_heading(summary: str) -> str:
@@ -336,17 +399,19 @@ def _fallback_summary(result: ReviewResult) -> str:
 
 
 def _collect_declined(result: ReviewResult) -> str:
-    """The editor's refusals, as markdown for the prepended report.
+    """The editor's refusals that name no listed finding, as report markdown.
 
-    A finding the editor could not answer with a rewrite has no tracked change
-    and no comment of its own — the rewrite it would have carried does not
-    exist. Without this block it leaves the .docx with no trace at all, and the
-    author cannot tell it from a finding nobody looked at.
+    A refusal that names a finding is stated WITH that finding — in its
+    comment and in its report entry — so listing it here as well gave the
+    author the same item three times. What remains is a refusal whose finding
+    is not in this result, which should not happen and is shown rather than
+    dropped if it does.
 
     Empty string when the editor did not run, which is NOT the same as "every
     finding was fixed"; the report simply has nothing to say about edits.
     """
-    if not result.declined_findings:
+    declined = editor_answers(result).unlinked_declined
+    if not declined:
         return ""
     # Asterisks, not underscores: the markdown-to-Word renderer in
     # review_report.py recognises *italic* and leaves _italic_ as literal
@@ -356,11 +421,13 @@ def _collect_declined(result: ReviewResult) -> str:
         "answer them. Each needs a decision, new content, or a restructure.*",
         "",
     ]
-    for d in result.declined_findings:
-        label = f"**[{d.criterion}]** " if d.criterion else ""
-        lines.append(f"- {label}{d.issue}")
+    for d in declined:
+        line = f"- {d.issue}"
         if d.why:
-            lines.append(f"  - *Editor:* {d.why}")
+            # One line: the report's markdown reader has no nested lists, and a
+            # "  - " sub-bullet reached Word as literal characters.
+            line += f" *{declined_line(d.why)}*"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -386,9 +453,11 @@ def _collect_novelty_claims(result: ReviewResult) -> str:
         "",
     ]
     for claim in result.novelty_claims:
-        lines.append(f"- \u201c{claim.claim_text}\u201d")
+        line = f"- \u201c{claim.claim_text}\u201d"
         if claim.why_load_bearing:
-            lines.append(f"  - *Why it matters:* {claim.why_load_bearing}")
+            # One line, for the same reason as in _collect_declined.
+            line += f" *Why it matters:* {claim.why_load_bearing}"
+        lines.append(line)
     lines += [
         "",
         "*To check them automatically, re-run with --check-novelty. That sends "
@@ -418,7 +487,8 @@ def _collect_novelty_findings(result: ReviewResult) -> str:
         "",
     ]
     for f in novelty:
-        lines.append(f"- **{f.title}** ({f.severity}, {f.confidence} confidence)")
+        confidence = confidence_label(f)
+        lines.append(f"- **{f.title}** ({f.severity}{', ' + confidence if confidence else ''})")
         if f.rationale:
             # Indent rationale under its bullet
             for ln in f.rationale.splitlines():
@@ -427,42 +497,82 @@ def _collect_novelty_findings(result: ReviewResult) -> str:
     return "\n".join(lines)
 
 
-def _finding_location(finding: Finding) -> str:
+def _collect_own_edits(result: ReviewResult) -> str:
+    """The editor's own edits with their reasons, as report markdown, or ``""``.
+
+    Each is a tracked change in the text already; this list is where its
+    reason is, since ``Rewrite.label`` reaches only the logs. One line each —
+    the report's markdown reader has no nested lists.
+    """
+    edits = editor_answers(result).own_edits
+    if not edits:
+        return ""
+    section_titles = {c.section_id: c.title for c in result.document_map}
+    lines = [
+        "*Tracked changes the editor made on its own, answering no finding. "
+        "Each is marked in the text; this is why.*",
+        "",
+    ]
+    for edit in sorted(edits, key=lambda e: e.char_start):
+        where = section_titles.get(edit.section_id, edit.section_id)
+        reason = edit.rationale.strip() or edit.title
+        lines.append(
+            f"- *{where}*, \u201c{snippet(edit.original_text, limit=60)}\u201d: {reason}"
+        )
+    return "\n".join(lines)
+
+
+def _collect_author_questions(result: ReviewResult) -> str:
+    """Questions only the author can answer, as report markdown, or ``""``.
+
+    The .docx used to drop them — so a goal-loop run that stopped with a
+    question for the author said so only in the markdown and HTML outputs.
+    """
+    if not result.author_questions:
+        return ""
+    lines = ["**Questions only you can answer**", ""]
+    for q in result.author_questions:
+        line = f"- {q.question}"
+        if q.why:
+            line += f" *{q.why}*"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _finding_location(finding: Finding, *, section_titles: Mapping[str, str]) -> str:
     """Where the reader should look for this finding, in prose.
 
     The report list has to stand on its own: a Word comment sits beside the
-    text, but a finding whose anchor failed to place has nothing pointing at
-    it, and a quote-less finding never had anywhere to point.
+    text, but a quote-less finding never had anywhere to point. Sections are
+    named by their title — the id ("s3") is the pipeline's address, not the
+    author's.
     """
-    sections = ", ".join(finding.sections_involved)
+    sections = ", ".join(
+        section_titles.get(sid, sid) for sid in finding.sections_involved
+    )
     anchor = _anchor_quote(finding)
     quote = anchor.text.strip() if anchor is not None else ""
     if quote:
-        snippet = quote if len(quote) <= 80 else quote[:79].rstrip() + "…"
-        return f"{sections} — “{snippet}”" if sections else f"“{snippet}”"
-    return sections or "document-level (no single passage)"
+        return (
+            f"{sections} — \u201c{snippet(quote)}\u201d"
+            if sections
+            else f"\u201c{snippet(quote)}\u201d"
+        )
+    return sections or "the document as a whole"
 
 
 def _findings_as_issues(result: ReviewResult) -> list[dict[str, Any]]:
     """Every finding, as the issue records the .docx report body renders.
 
-    The report previously listed NOTHING: ``render_docx`` announced
-    ``Critical Issues: N`` and passed no issue list, so the formatter fell
-    through to its "See detailed reviews below." placeholder and the findings
-    existed only as Word comments in the margin.
+    The report is the complete record and the comments are the convenience:
+    a comment is invisible in any viewer that does not render docx markup
+    (Preview, Quick Look, Word with markup hidden), and a finding with no quote
+    has no comment at all. So every finding is listed — in the order the
+    author works through them: most urgent first, then down the document.
 
-    That made the .docx the one output format where findings could vanish, in
-    two ways at once. A comment is invisible in any viewer that does not render
-    docx markup (Preview, Quick Look, Word with markup hidden). And a comment
-    is only placed if its quote anchors: quotes come from the harvested
-    markdown, but Word text that Docling reconstructed — table cells, captions,
-    fields — need not exist as contiguous runs, so the anchor legitimately
-    misses. Measured on a real manuscript: 7 findings, 2 comments placed, 5
-    silently gone.
-
-    Listing all of them here makes the body the complete record and the
-    comments the convenience, so no finding depends on anchoring having
-    worked. Novelty findings are excluded — ``_collect_novelty_findings``
+    Each entry carries its fix and what the editor did about it, so a finding
+    is one item here rather than an issue in one list and a refusal in
+    another. Novelty findings are excluded — ``_collect_novelty_findings``
     already gives them their own subsection.
     """
     findings = [
@@ -470,20 +580,30 @@ def _findings_as_issues(result: ReviewResult) -> list[dict[str, Any]]:
         for f in (list(result.findings) + list(result.deterministic_findings))
         if f.category != "novelty"
     ]
+    section_titles = {c.section_id: c.title for c in result.document_map}
+    answers = editor_answers(result)
     issues: list[dict[str, Any]] = []
-    for finding in findings:
-        description = finding.rationale
+    for finding in reading_order(findings):
+        notes = [finding.rationale.strip()] if finding.rationale.strip() else []
+        if answers.edits_by_finding.get(finding.id):
+            notes.append("Suggested rewrite: shown as a tracked change.")
+        why = answers.declined_by_finding.get(finding.id, "")
+        if why:
+            notes.append(declined_line(why))
         clause = _corroboration_clause(finding)
         if clause:
-            description = f"{description}\n\n{clause}" if description else clause
+            notes.append(clause)
         issues.append(
             {
                 "title": finding.title,
-                "description": description,
-                "severity": finding.severity,
-                "location": _finding_location(finding),
-                # Panel mode names the expert who raised it; every other mode
-                # has no second party to credit and leaves this unset.
+                "description": "\n\n".join(notes),
+                # The same urgency words the comments and the other two formats
+                # use; the report formatter upper-cases them.
+                "severity": PRIORITY_LABEL.get(finding.priority, "Consider"),
+                "location": _finding_location(finding, section_titles=section_titles),
+                "recommendation": finding.fix.strip(),
+                # The reviewer that raised it, in panel mode and in a
+                # multi-reviewer run; empty otherwise.
                 "source_reviewers": [finding.perspective]
                 if finding.perspective
                 else [],

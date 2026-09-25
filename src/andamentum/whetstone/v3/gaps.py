@@ -22,6 +22,16 @@ from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
 from .model import DocumentModel
+from .prompt_blocks import (
+    ACTIONABILITY_BAR,
+    FIX_FIELD,
+    HEADLINE_FIELD,
+    ISSUE_FIELD,
+    QUOTE_FIELD,
+    SEVERITY_RUBRIC,
+    WRITING_RULES,
+    split_fix,
+)
 from .review import Finding, Severity, make_anchor_validator, verify_findings
 
 logger = logging.getLogger("andamentum.whetstone.v3")
@@ -61,8 +71,17 @@ class _Holds(BaseModel):
 
 
 class _ReexamineFinding(BaseModel):
-    issue: str = Field(description="Short description of the problem (1-2 sentences).")
-    quote: str = Field(description="A VERBATIM span from the section it concerns.")
+    """The cascade's finding shape plus the criterion to file it under.
+
+    The field descriptions are the cascade's own, from ``prompt_blocks``: a finding the gap loop adds reaches the author in the same
+    margin as a cascade finding, and was once held to a lower bar there —
+    no actionability rule, no severity rubric, a one-line issue field.
+    """
+
+    quote: str = Field(description=QUOTE_FIELD)
+    issue: str = Field(description=ISSUE_FIELD)
+    fix: str = Field(default="", description=FIX_FIELD)
+    headline: str = Field(default="", description=HEADLINE_FIELD)
     severity: Severity = "moderate"
     criterion: str = Field(
         description="Which review criterion this problem falls under "
@@ -187,7 +206,8 @@ async def _satisfy_reexamine(
             "and the PRIOR FINDINGS block lists issues there, do NOT re-raise "
             "those — only surface NEW issues the cascade missed. If everything "
             "worth flagging in this section is already in PRIOR FINDINGS, "
-            "return an empty list."
+            "return an empty list.\n\n"
+            f"{ACTIONABILITY_BAR}\n\n{WRITING_RULES}\n\n{SEVERITY_RUBRIC}"
         ),
         output_model=_ReexamineFindings,
         retries=2,
@@ -225,15 +245,20 @@ async def _satisfy_reexamine(
 
     bump_from_result(res)
     raw = cast(_ReexamineFindings, res.output).findings
-    return [
-        Finding(
-            criterion=_snap_criterion(r.criterion, criterion_names),
-            issue=r.issue,
-            quote=r.quote,
-            severity=r.severity,
+    findings: list[Finding] = []
+    for r in raw:
+        issue, fix = split_fix(r.issue, r.fix)
+        findings.append(
+            Finding(
+                criterion=_snap_criterion(r.criterion, criterion_names),
+                issue=issue,
+                quote=r.quote,
+                severity=r.severity,
+                headline=r.headline,
+                fix=fix,
+            )
         )
-        for r in raw
-    ]
+    return findings
 
 
 async def _satisfy_recheck(
@@ -335,13 +360,15 @@ async def gap_loop(
                     # Pass the accumulated findings as prior context so the
                     # reexamine agent doesn't re-flag known issues
                     # (audit 8A found strong cross-run topical overlap on
-                    # the same section issues).
+                    # the same section issues). `new` is included: two
+                    # demands in one round often point at the same section,
+                    # and the second must see what the first just raised.
                     new += await _satisfy_reexamine(
                         d,
                         model,
                         agent_model=agent_model,
                         criterion_names=names,
-                        prior_findings=current,
+                        prior_findings=current + new,
                     )
                 elif d.kind == "recheck":
                     keep = await _satisfy_recheck(

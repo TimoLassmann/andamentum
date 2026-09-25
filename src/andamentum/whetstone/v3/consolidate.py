@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
 
+from .prompt_blocks import split_fix
 from .review import Finding
 
 logger = logging.getLogger("andamentum.whetstone.v3")
@@ -35,8 +36,17 @@ class _Group(BaseModel):
         "same underlying point. Only include groups of two or more."
     )
     merged_issue: str = Field(
-        description="One issue statement capturing the shared point, noting that "
-        "it recurs across the document where relevant."
+        description="What is wrong, in one or two plain sentences written to the "
+        "author, covering every member. Where the problem recurs, say where."
+    )
+    merged_fix: str = Field(
+        default="",
+        description="One action, starting with a verb, that fixes it in every "
+        "place the members point at.",
+    )
+    merged_headline: str = Field(
+        default="",
+        description="The shared problem in at most eight plain words.",
     )
 
 
@@ -79,8 +89,14 @@ point in one sentence that covers ALL members' quotes, the findings probably \
 aren't duplicates.
 
 You return only the group structure (which indices belong together) and the \
-merged issue statement. You do NOT pick or rewrite quotes — the system anchors \
-the merged finding on the most-severe member's quote deterministically."""
+merged finding's text: its issue, its fix and a short headline. You do NOT pick \
+or rewrite quotes — the system anchors the merged finding on the most-severe \
+member's quote deterministically.
+
+Write the merged text for the author, who reads it as one comment in the margin \
+of their own draft: "you", plain words, no criterion names. The fix must cover \
+every member — if the members' fixes differ, write the one action that answers \
+all of them. Do not drop a member's fix without replacing it."""
 
 
 def _severity_of(f: Finding) -> int:
@@ -107,7 +123,7 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
     # an exact-match anchor — silently breaks if the quote changes).
     numbered = "\n".join(
         f"  [{i}] ({f.criterion}/{f.severity}, section={f.span.section_id if f.span else '?'}) "
-        f"{f.issue}\n      quote: {f.quote!r}"
+        f"{f.issue}" + (f" Fix: {f.fix}" if f.fix else "") + f"\n      quote: {f.quote!r}"
         for i, f in enumerate(findings)
     )
     try:
@@ -133,10 +149,16 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
         used.update(idxs)
         # Anchor the merged comment on the most-severe member.
         primary = max(members, key=_severity_of)
+        issue, fix = split_fix(
+            g.merged_issue.strip() or primary.issue, g.merged_fix.strip() or primary.fix
+        )
         merged.append(
             Finding(
+                id=primary.id,
                 criterion=primary.criterion,
-                issue=g.merged_issue.strip() or primary.issue,
+                issue=issue,
+                fix=fix,
+                headline=g.merged_headline.strip() or primary.headline,
                 quote=primary.quote,
                 severity=primary.severity,
                 span=primary.span,

@@ -6,9 +6,10 @@ consume it unchanged. Where the two modes differ, and why:
 
 - ``summary`` is the deterministic coverage table (see :mod:`.summary`), not
   LLM-written prose. Two runs of the same bank therefore produce summaries you
-  can diff, which is the entire reason this mode exists beside review mode. The
-  absence-findings block appended here (see :func:`_missing_block`) rides in the
-  same field for the reason given at that function.
+  can diff, which is the entire reason this mode exists beside review mode.
+  Absence findings used to be restated under the table, because the .docx once
+  listed only quoted findings and they had nowhere else to appear. Every format
+  now lists every finding, so the restatement only showed each one twice.
 - ``source`` on each finding is ``"checklist"``, so a consumer holding a mixed
   pile of findings can tell a quota-driven probe hit from a criterion-cascade
   observation without inspecting anything else.
@@ -107,11 +108,13 @@ def _to_public_finding(
     adjust is an address you have lost.
 
     ``corroborator_titles`` names the OTHER checks that landed on this same
-    passage. It is written into ``corroborated_by`` for machine consumers *and*
-    stated as a sentence in the rationale, because the field alone is not
-    reliably surfaced: the markdown and HTML renderers ignore it and the docx
-    renderer only prints it from two partners up, which a two-check overlap
-    never reaches. A sentence in the rationale reaches every format.
+    passage. It is written into ``corroborated_by`` (as probe ids) for machine
+    consumers, and stated as a sentence in the rationale (as probe titles) for
+    the reader. The sentence is the ONLY place a reader sees it: the renderers
+    deliberately print no corroboration clause for a checklist finding (see
+    ``renderers._finding_text.corroboration_clause``), because theirs claims
+    that the other party raised the same point, and here it only flagged the
+    same passage.
 
     The sentence says the checks flagged the same passage, not that they agree.
     They have different instructions, so the ordinary case is one passage
@@ -162,6 +165,7 @@ def _to_public_finding(
         # ``corroborated_by`` and the rationale sentence above.
         confidence="medium",
         rationale=rationale,
+        fix=finding.fix.strip(),
         quotes=quotes,
         sections_involved=[finding.span.section_id] if finding.span else [],
         source="checklist",
@@ -171,38 +175,6 @@ def _to_public_finding(
         category=finding.probe_id,
         corroborated_by=list(finding.corroborated_by),
     )
-
-
-def _missing_block(findings: list[ProbeFinding], *, title_by_id: dict[str, str]) -> str:
-    """The absence findings, restated in the summary. ``""`` when there are none.
-
-    This looks redundant with ``ReviewResult.findings`` and is not. An absence
-    finding carries no ``Quote`` — correctly, since there is nothing in the
-    document to point at — and the docx renderer builds its comments from
-    quotes, dropping any finding that has none. So in a ``.docx`` the text of
-    these findings appears nowhere at all: the only other channel is
-    ``summary``, which is otherwise the coverage table, and a table cell is a
-    count, never the finding. Restating them here puts them in front of the
-    reader in all three formats, and the two probes that produce them are the
-    highest-value ones in the bank.
-    """
-    absent = [f for f in findings if f.shape == "absence"]
-    if not absent:
-        return ""
-    lines = [
-        "## Checks reporting something missing",
-        "",
-        "These checks report that something is not in the document. There is no "
-        "sentence to attach them to, so they are listed here rather than as an "
-        "annotation in the text.",
-        "",
-    ]
-    lines.extend(
-        f"- **{' '.join(title_by_id.get(f.probe_id, f.probe_id).split())}** — "
-        f"{' '.join(_rationale(f).split())}"
-        for f in absent
-    )
-    return "\n".join(lines)
 
 
 def build_checklist_result(
@@ -271,9 +243,6 @@ def build_checklist_result(
         failed_probe_ids=failed,
         unverifiable_counts=unverifiable_counts,
     )
-    missing_block = _missing_block(findings, title_by_id=title_by_id)
-    if missing_block:
-        summary = f"{summary}\n\n{missing_block}"
 
     return ReviewResult(
         summary=summary,

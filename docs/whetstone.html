@@ -513,18 +513,18 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h3>Several reviewers at once</h3>
 
-  <p>Give <code>--reviewer</code> a comma-separated list and they run <strong>in that order</strong>, each reading the same unchanged text. No reviewer in a list rewrites anything; they comment. Order matters for the reports, which stack in the order the reviewers ran.</p>
+  <p>Give <code>--reviewer</code> a comma-separated list and they run <strong>in that order</strong>, each reading the same unchanged text. No reviewer in a list rewrites anything; they comment. Order matters in two small ways: findings are listed in the order the reviewers ran, and when two reviewers raise the same point at the same severity, the merged comment keeps the earlier reviewer's wording.</p>
 
   <pre><code>andamentum-whetstone draft.docx --reviewer claims,methods,adversary --editor \
     --model openai:gpt-5.4-mini --out draft.reviewed.docx</code></pre>
 
-  <p>Each reviewer signs its own comments, so Word's reviewing pane separates the passes without you naming anyone. Their comments accumulate, their reports stack, and nothing is overwritten.</p>
+  <p>Each reviewer signs its own comments, so Word's reviewing pane separates them without you naming anyone. <strong>A point more than one reviewer raised is one comment, not one per reviewer</strong>: it keeps the most severe reviewer's wording and names the others ("Also raised by: Claims reviewer"). There is one report, not one per reviewer.</p>
 
   <p>The rewrites come from <strong>one editor pass at the end</strong>. With <code>--editor</code>, or with <code>editor</code> anywhere in the list (the two spellings are the same run), the line editor reads every reviewer's findings at once after the last one has finished and writes one set of tracked changes, signed by the line editor. Two findings on one sentence get one rewrite; two that pull in opposite directions are both declined and left to you; and where the reconciliation found the reviewers disagreeing, the editor is told not to settle it. The earlier design ran the editor inside every round, and five reviewers each rewriting the same abstract — each re-editing the last one's insertions — produced tracked changes with no paper underneath.</p>
 
   <p>The novelty machinery runs once, in the first round. Later reviewers neither list the draft's claims again nor search for them — the claims do not change because another reviewer read the draft — so <code>--check-novelty</code> on a list costs the same as on a single review.</p>
 
-  <p>A run with more than one reviewer ends with a <strong>reconciliation</strong> — not a flag, because being handed four reports to cross-reference by hand is the problem it solves. It says what more than one reviewer raised, where they disagreed, and what only one of them saw, and it is prepended last so it is the first thing you read. It does not restate every finding; the per-reviewer reports are underneath for that.</p>
+  <p>A run with more than one reviewer ends with a <strong>reconciliation</strong> — not a flag, because being handed four reports to cross-reference by hand is the problem it solves. It groups the findings that make the same point — each such group becomes the one merged comment above — and says where the reviewers disagreed, with both positions, because choosing between them is your call. The report opens with it, then one line per reviewer on how it read the draft, then every finding once. If the reconciliation fails, nothing is merged and the report says a point may appear more than once.</p>
 
   <div class="callout tone-info">
     <p class="eyebrow">Cost</p>
@@ -600,11 +600,11 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h3>What a report contains</h3>
 
-  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths, the weaknesses, and each finding with the passage it concerns. Then what the editor handed back with its reason, and what the draft claims as new.</p>
+  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths and the weaknesses. Then the findings — must fix, should fix, consider, and within each group in the order they occur in the draft — each with the passage it concerns, what is wrong, one fix, and what the editor did about it: the suggested rewrite, or what is left to you. A finding and its answer are one item: in Word the comment says "Suggested rewrite: the tracked change here" or "Left to you: …", instead of a comment, a tracked change with no reason, and a separate list saying the same thing again. Then what the draft claims as new.</p>
 
   <p>Last and quiet: one italic line naming the exact criteria, probes, editor criteria and author, each with where it came from, and the package version. It is provenance — worth having when you want to check what ran or compare two reports, and not worth the weight of a heading and a bulleted list at the top of the page.</p>
 
-  <p class="table-note">Several reviewers stack the same way, newest first: the reconciliation, then each reviewer's own report in reverse order of running, then your manuscript with every reviewer's comments and the editor's tracked changes in it.</p>
+  <p class="table-note">Several reviewers give one report in the same shape: the reconciliation first, then each finding once, then your manuscript with every reviewer's comments and the editor's tracked changes in it. Reports still stack when you run whetstone again on a file it already reviewed — the earlier report is the earlier reviewer's record.</p>
 
   <h2><span class="n">05</span>Command line</h2>
 

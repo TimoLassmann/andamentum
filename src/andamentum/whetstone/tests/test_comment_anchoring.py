@@ -217,7 +217,7 @@ def test_comment_text_not_duplicated(tmp_path: Path) -> None:
     ``explanation`` — and the patch editor appended the second under a
     "Note:" heading unless they were set equal. A ``Note`` has one body
     field, so the duplication is not expressible; this pins that the body is
-    still the whole title + rationale.
+    still the whole title + rationale, headed by how urgent it is.
     """
     from andamentum.whetstone.renderers.docx import _to_annotations
     from andamentum.whetstone.schemas import Finding, Quote, ReviewResult
@@ -234,5 +234,5 @@ def test_comment_text_not_duplicated(tmp_path: Path) -> None:
     result = ReviewResult(summary="", findings=[], deterministic_findings=[finding])
     _, notes = _to_annotations(result, author="t")
     assert len(notes) == 1
-    assert notes[0].body.startswith("Passive voice")
+    assert notes[0].body.startswith("Consider: Passive voice")
     assert notes[0].body.count("Detected passive-voice construction") == 1

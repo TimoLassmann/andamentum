@@ -84,13 +84,13 @@ def test_html_emits_single_combined_top_banner() -> None:
     assert "peer-review" in prelude.lower()
 
 
-def test_html_document_map_appears_before_findings() -> None:
-    """Orientation before findings — the map tells the reader what
-    section ids like `s1` mean before they see them in a finding header."""
+def test_html_document_map_follows_the_findings() -> None:
+    """Finding headers name sections by title now, so the map is no longer
+    needed to decode them first; it is reference, after the findings."""
     html = render_html(_result_with_one_finding())
     map_pos = html.find("Document map")
     findings_pos = html.find("Findings")
-    assert 0 < map_pos < findings_pos
+    assert 0 < findings_pos < map_pos
 
 
 def test_html_finding_emits_quote_callout_followed_by_comment_callout() -> None:
@@ -106,9 +106,10 @@ def test_html_finding_emits_quote_callout_followed_by_comment_callout() -> None:
     quote_pos = html.find("typeset-callout tone-quote")
     comment_pos = html.find("typeset-callout tone-warning", quote_pos)
     assert comment_pos > quote_pos
-    # Severity + confidence render as typeset-badge chips.
-    assert '<span class="typeset-badge">major</span>' in html
-    assert '<span class="typeset-badge">medium confidence</span>' in html
+    # No severity or confidence chips: the group heading gives the urgency,
+    # and every v3 finding is medium confidence.
+    assert '<span class="typeset-badge">major</span>' not in html
+    assert "medium confidence" not in html
 
 
 def test_html_finding_has_no_collapsed_details_block() -> None:
@@ -129,17 +130,18 @@ def test_html_per_finding_header_includes_section_title_not_just_id() -> None:
     """The per-finding header must surface the section TITLE from the
     document map, not just the section_id. `s1` alone is opaque."""
     html = render_html(_result_with_one_finding())
-    # The section title shows up as a header near the finding.
+    # The section title shows up as a header near the finding, and the
+    # pipeline's id does not — the author navigates by section names.
     assert "Methods" in html
-    # And the section_id appears alongside in <code> for navigation.
-    assert "<code>s1</code>" in html
+    assert "<code>s1</code>" not in html
 
 
 def test_html_minor_severity_uses_tone_note_not_warning() -> None:
-    """Visual weight should match severity: tone-warning for major,
-    tone-note for moderate / minor."""
+    """Visual weight should match urgency: tone-warning for must fix,
+    tone-note for should fix / consider."""
     r = _result_with_one_finding()
     r.findings[0].severity = "minor"
+    r.findings[0].priority = "consider"
     html = render_html(r)
     # The finding comment is tone-note (since severity is minor).
     # The single prelude banner remains tone-warning.
@@ -150,11 +152,13 @@ def test_html_minor_severity_uses_tone_note_not_warning() -> None:
 # ── Markdown ───────────────────────────────────────────────────────────────
 
 
-def test_markdown_document_map_appears_before_findings() -> None:
+def test_markdown_document_map_follows_the_findings() -> None:
+    """The map is reference: the reader meets the findings first, and the
+    map is there to look up a section a finding names."""
     md = render_markdown(_result_with_one_finding())
     map_pos = md.find("Document map")
     findings_pos = md.find("## Findings")
-    assert 0 < map_pos < findings_pos
+    assert 0 < findings_pos < map_pos
 
 
 def test_markdown_finding_emits_blockquote_passage_then_paragraph_comment() -> None:
@@ -166,10 +170,11 @@ def test_markdown_finding_emits_blockquote_passage_then_paragraph_comment() -> N
     assert "#### Methods" in md
     # The passage renders as a blockquote.
     assert "> We trained a small transformer on synthetic data." in md
-    # Title row uses chips bracketed for plain-markdown legibility.
+    # Title row: the headline. No severity chip (the group heading says it)
+    # and no "medium confidence" chip (every v3 finding is medium).
     assert "**Clarity of methods**" in md
-    assert "[major]" in md
-    assert "[medium confidence]" in md
+    assert "[major]" not in md
+    assert "medium confidence" not in md
 
 
 def test_markdown_finding_renders_rationale_inline() -> None:

@@ -379,3 +379,60 @@ async def test_editor_criteria_typed_on_the_command_line_win(
     )
     await cli_mod._run(args, Console(stderr=True))
     assert editor_calls[0]["criteria"] == ["voice", "tone"]
+
+
+async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end through the command line into a real .docx: two reviewers
+    on the same passage making the same point leave ONE comment, signed by the
+    reviewer whose finding was kept, naming the other. Each round used to write
+    its own comments into the file, so the author read the point twice."""
+    import zipfile
+
+    from andamentum.whetstone.v3.reconcile import AgreedPoint, ReviewerReconciliation
+
+    source = tmp_path / "draft.docx"
+    _draft(source)
+
+    async def fake_review(_source: Any, **kwargs: Any) -> ReviewResult:
+        name = kwargs["reviewer"].identity
+        severity = "major" if name == "Methods reviewer" else "moderate"
+        return ReviewResult(
+            summary=f"## Summary\n\n{name} stub.",
+            findings=[
+                Finding(
+                    title=f"{name} point",
+                    severity=severity,
+                    confidence="medium",
+                    rationale=f"{name} says the goal is not shown.",
+                    quotes=[
+                        Quote(section_id="s1", char_start=8, char_end=16, text="x")
+                    ],
+                )
+            ],
+        )
+
+    async def fake_reconcile(reviews: Any, *, model: str) -> Any:
+        return ReviewerReconciliation(
+            verdict="One shared point.",
+            agreed=[AgreedPoint(issue="The goal is not shown", finding_ids=["R1.1", "R2.1"])],
+        )
+
+    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
+    monkeypatch.setattr(
+        "andamentum.whetstone.v3.reconcile.reconcile_reviewers", fake_reconcile
+    )
+    out = tmp_path / "review.docx"
+    args = _args(
+        [str(source), "--model", "stub:none", "--out", str(out), "--reviewer", "claims,methods"]
+    )
+    await cli_mod._run(args, Console(stderr=True))
+
+    with zipfile.ZipFile(out) as z:
+        comments = z.read("word/comments.xml").decode()
+    assert comments.count("<w:comment ") == 1
+    assert author_for(profile=PROFILES["methods"]) in comments
+    assert "Methods reviewer says the goal is not shown." in comments
+    assert "Also raised by: Claims reviewer." in comments
+    assert "Claims reviewer says" not in comments

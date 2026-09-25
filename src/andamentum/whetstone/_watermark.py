@@ -82,78 +82,94 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
 
     Visible in Word's File→Info pane and recoverable by any docx-reading
     tool. Stamps three Dublin Core fields:
-      - ``author`` (creator) — appends an AI contributor entry
-      - ``keywords`` — appends ``andamentum:ai-generated`` for searchable detection
-      - ``comments`` — short AI-provenance line (kept under 255 chars per
-        python-docx's enforced limit for that field)
+      - ``dc:creator`` (author) — appends an AI contributor entry
+      - ``cp:keywords`` — appends ``andamentum:ai-generated`` for detection
+      - ``dc:description`` (comments) — short AI-provenance line, under 255
+        characters (the limit python-docx enforces for that field)
 
     Idempotent: re-running on a stamped file produces the same result.
     Failure to open / save the docx is best-effort and never raises.
-    """
-    try:
-        from docx import Document as DocxDocument
-    except ImportError:
-        logger.warning(
-            "python-docx not available; cannot stamp AI provenance into %s",
-            docx_path,
-        )
-        return
 
+    **The part is edited where it is, never added beside it.** This used to go
+    through python-docx, which finds the core-properties part only by the
+    standard relationship type
+    (``…/package/2006/relationships/metadata/core-properties``). A Word file
+    can register it under the variant ``…/officedocument/2006/relationships/
+    metadata/core-properties`` — Word opens that happily — and python-docx,
+    finding no part, created a new one at the same name. The saved file held
+    two ``docProps/core.xml`` entries, and Word refused to open it. Here the
+    part is found through ANY relationship whose type ends in
+    ``/metadata/core-properties``, and a new part is created only when the
+    package has none at all.
+    """
+    import zipfile
+    from io import BytesIO
+
+    path = Path(docx_path)
     try:
-        doc = DocxDocument(str(docx_path))
-    except Exception as exc:
+        original = path.read_bytes()
+    except OSError as exc:
         logger.warning(
-            "could not open %s to stamp AI provenance (%s); "
-            "artifact ships WITHOUT a core-properties watermark",
+            "could not read %s to stamp AI provenance (%s); artifact ships "
+            "WITHOUT a core-properties watermark",
             docx_path,
             exc,
         )
         return
+    if not _looks_like_zip(original):
+        logger.warning(
+            "%s is not a zip; artifact ships WITHOUT a core-properties watermark",
+            docx_path,
+        )
+        return
+
     prov = provenance_line(model=model)
-
-    # Author: append, don't clobber.
+    buf = BytesIO()
     try:
-        existing_contrib = doc.core_properties.author or ""
-        if "andamentum-whetstone" not in existing_contrib:
-            ai_contrib = f"andamentum-whetstone (AI; {prov})"
-            doc.core_properties.author = (
-                f"{existing_contrib}; {ai_contrib}" if existing_contrib else ai_contrib
-            )
-    except Exception as exc:
-        logger.warning("could not stamp AI-provenance author on %s: %s", docx_path, exc)
-
-    # Keywords: append, don't clobber. This is where most detection
-    # tooling will look.
-    try:
-        existing_kw = (doc.core_properties.keywords or "").strip()
-        ai_keyword = "andamentum:ai-generated"
-        if ai_keyword not in existing_kw:
-            doc.core_properties.keywords = (
-                f"{existing_kw}, {ai_keyword}" if existing_kw else ai_keyword
-            )
+        with (
+            zipfile.ZipFile(BytesIO(original), "r") as src,
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst,
+        ):
+            names = src.namelist()
+            rels = src.read("_rels/.rels") if "_rels/.rels" in names else b""
+            core_name = _core_part_name(rels)
+            created = core_name is None or core_name not in names
+            if core_name is None:
+                core_name = "docProps/core.xml"
+            core_xml = b"" if created else src.read(core_name)
+            stamped = _stamp_core_xml(core_xml, prov=prov)
+            for item in src.infolist():
+                if item.filename == core_name:
+                    continue
+                data = src.read(item.filename)
+                if created and item.filename == "[Content_Types].xml":
+                    data = _ensure_content_type_override(
+                        data,
+                        f'<Override PartName="/{core_name}" '
+                        f'ContentType="{_CORE_CONTENT_TYPE}"/>',
+                    )
+                elif created and item.filename == "_rels/.rels":
+                    data = _ensure_package_relationship(
+                        data,
+                        f'<Relationship Id="rIdAndamentumCore" '
+                        f'Type="{_CORE_REL_TYPE}" Target="{core_name}"/>',
+                    )
+                dst.writestr(item, data)
+            dst.writestr(core_name, stamped)
     except Exception as exc:
         logger.warning(
-            "could not stamp AI-provenance keyword on %s: %s", docx_path, exc
+            "could not stamp AI provenance into %s (%s); artifact ships "
+            "WITHOUT a core-properties watermark",
+            docx_path,
+            exc,
         )
-
-    # Comments: SHORT line — python-docx enforces a 255-char limit.
-    # The full disclaimer lives in the visible banner / RESPONSIBLE_USE.md.
+        return
     try:
-        ai_desc = f"AI-generated review content. Produced by {prov}."
-        existing_desc = (doc.core_properties.comments or "").strip()
-        if "andamentum-whetstone" not in existing_desc and len(ai_desc) <= 255:
-            doc.core_properties.comments = ai_desc
-    except Exception as exc:
+        path.write_bytes(buf.getvalue())
+    except OSError as exc:
         logger.warning(
-            "could not stamp AI-provenance comment on %s: %s", docx_path, exc
-        )
-
-    try:
-        doc.save(str(docx_path))
-    except Exception as exc:
-        logger.warning(
-            "could not save AI-provenance watermark to %s (%s); "
-            "artifact may ship WITHOUT a core-properties watermark",
+            "could not save AI-provenance watermark to %s (%s); artifact may "
+            "ship WITHOUT a core-properties watermark",
             docx_path,
             exc,
         )
@@ -169,6 +185,84 @@ def stamp_docx_core_properties(docx_path: str | Path, *, model: str | None) -> N
             "could not write customXml provenance part to %s: %s", docx_path, exc
         )
         return
+
+
+# ── Layer 1: core properties, edited in place ───────────────────────────
+
+_CORE_REL_TYPE = (
+    "http://schemas.openxmlformats.org/package/2006/relationships/"
+    "metadata/core-properties"
+)
+_CORE_CONTENT_TYPE = "application/vnd.openxmlformats-package.core-properties+xml"
+_CP_NS = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+_DC_NS = "http://purl.org/dc/elements/1.1/"
+_AI_KEYWORD = "andamentum:ai-generated"
+
+
+def _core_part_name(rels_xml: bytes) -> str | None:
+    """The package's core-properties part, by ANY core-properties type.
+
+    Matches the standard type and the ``officedocument`` variant alike — see
+    :func:`stamp_docx_core_properties` for why the difference matters.
+    """
+    if not rels_xml:
+        return None
+    from lxml import etree  # type: ignore
+
+    root = etree.fromstring(rels_xml, _safe_parser())
+    for rel in root:
+        if str(rel.get("Type", "")).endswith("/metadata/core-properties"):
+            target = str(rel.get("Target", "")).lstrip("/")
+            return target or None
+    return None
+
+
+def _safe_parser():
+    from lxml import etree  # type: ignore
+
+    # No entity expansion, no network: the input is a user's file.
+    return etree.XMLParser(resolve_entities=False, no_network=True)
+
+
+def _stamp_core_xml(core_xml: bytes, *, prov: str) -> bytes:
+    """The core-properties XML with the three markers added, idempotently.
+
+    Author and keywords are appended to, never replaced. The description is
+    set only when it does not already carry the marker — the same rule the
+    python-docx implementation followed.
+    """
+    from lxml import etree  # type: ignore
+
+    if core_xml.strip():
+        root = etree.fromstring(core_xml, _safe_parser())
+    else:
+        root = etree.Element(
+            f"{{{_CP_NS}}}coreProperties", nsmap={"cp": _CP_NS, "dc": _DC_NS}
+        )
+
+    def field(ns: str, name: str):
+        found = root.find(f"{{{ns}}}{name}")
+        if found is None:
+            found = etree.SubElement(root, f"{{{ns}}}{name}")
+        return found
+
+    creator = field(_DC_NS, "creator")
+    existing = (creator.text or "").strip()
+    if "andamentum-whetstone" not in existing:
+        contributor = f"andamentum-whetstone (AI; {prov})"
+        creator.text = f"{existing}; {contributor}" if existing else contributor
+
+    keywords = field(_CP_NS, "keywords")
+    existing = (keywords.text or "").strip()
+    if _AI_KEYWORD not in existing:
+        keywords.text = f"{existing}, {_AI_KEYWORD}" if existing else _AI_KEYWORD
+
+    description = field(_DC_NS, "description")
+    ai_desc = f"AI-generated review content. Produced by {prov}."
+    if "andamentum-whetstone" not in (description.text or "") and len(ai_desc) <= 255:
+        description.text = ai_desc
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 # ── Layer 2: customXml provenance part ──────────────────────────────────

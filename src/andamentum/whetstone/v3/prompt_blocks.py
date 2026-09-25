@@ -1,7 +1,7 @@
 """Prompt text and substrate blocks shared by review mode and checklist mode.
 
-The paragraphs here — the author-actionability bar, the severity rubric, the
-tool menu and the tool-use discipline — were tuned against real drafts, and they
+The paragraphs here — the author-actionability bar, the writing rules, the
+severity rubric, the tool menu and the tool-use discipline — were tuned against real drafts, and they
 are most of what makes a small model return usable findings instead of generic
 commentary. They are also the text most likely to need another round of tuning.
 
@@ -37,14 +37,90 @@ the shared prompt text never drags a pipeline module in behind it.
 
 from __future__ import annotations
 
+import re
+
 from .model import DocumentModel
 
-ACTIONABILITY_BAR = """Every finding must be author-actionable: the issue \
-description should name what the author would change, add, or verify to \
-resolve it. If you cannot say what a fix would look like — even abstractly \
-("add a power-analysis sentence", "reconcile the n=50 vs n=48 mismatch", \
-"drop the 'first-ever' claim or cite a prior-art search") — the finding is \
-too vague to keep; either sharpen it or omit it."""
+ACTIONABILITY_BAR = """Every finding must be author-actionable: its fix names \
+what the author would change, add, cut, or check to resolve it. If you cannot \
+write a concrete fix — even a short one ("add a power-analysis sentence", \
+"reconcile the n=50 vs n=48 mismatch", "drop 'first-ever' or cite a prior-art \
+search") — the finding is too vague to keep; either sharpen it or omit it."""
+
+# How a finding is WORDED, as distinct from whether it is worth keeping (the
+# bar above). The author reads every finding as a comment in the margin of
+# their own draft, so it is written to them, in their terms. Measured on a real
+# run before this block existed: comments headed by the criterion's name
+# over a complaint, problem and fix run together after a semicolon, a menu of
+# five fixes where one was wanted, "may overstate", "validation/quantitative".
+# The two examples carry no field names beyond `issue` and `fix`, which both
+# modes' schemas have, so the block reads the same in each.
+WRITING_RULES = """How to write each finding — the author reads it as a \
+comment in the margin of their own draft:
+  - Write to the author as "you", in plain words. No review jargon, and never \
+the name of the criterion.
+  - issue: what is wrong in this passage and what it costs a reader. Do not \
+restate the quoted text; the author can see it.
+  - fix: ONE action, starting with a verb. One fix, not a list of options. \
+Size it to the kind of document — a cover letter does not need confidence \
+intervals.
+  - Write "may" or "might" only when you are genuinely unsure, and then say \
+what would settle it.
+  - Pick one word; do not join alternatives with a slash.
+
+Weak:
+  issue: "The performance claim may lack supporting details such as \
+confidence intervals, absolute counts, evaluation metric or comparator versions."
+  fix: "Consider adding more detail/context."
+Strong:
+  issue: "You give a 12-18% improvement but not where it comes from, so a \
+reader cannot check it."
+  fix: "Point to the table that reports it, e.g. '(Table 2)'."
+"""
+
+# Field descriptions for a finding's schema, shared by the review cascade, the
+# gap loop and (``ISSUE_FIELD`` aside, which checklist words per shape) the
+# checklist probes. A field description is read more reliably by a small model
+# than the same sentence in the prompt, so these carry the wording rules to
+# the slot they govern.
+QUOTE_FIELD = "A VERBATIM span from the document it concerns."
+ISSUE_FIELD = (
+    "What is wrong in this passage and what it costs a reader, in one or two "
+    "plain sentences written to the author. Do not restate the quote, and do "
+    "not put the fix here — it has its own field."
+)
+FIX_FIELD = (
+    "One concrete action, starting with a verb: what the author should "
+    "change, add, cut or check. One fix, not a list of options."
+)
+HEADLINE_FIELD = (
+    "The problem in at most eight plain words, as the heading of a margin "
+    "comment — e.g. '\"The bulk\" overstates the judge result'. Never the "
+    "criterion's name."
+)
+
+_FIX_MARKER = re.compile(r"\s*\bFix:\s*", re.IGNORECASE)
+
+
+def split_fix(issue: str, fix: str) -> tuple[str, str]:
+    """Hold a finding to its two fields when the model ran them together.
+
+    ``ISSUE_FIELD`` says the fix does not go in the issue, and a small model
+    puts it there anyway — measured on a real manuscript with gpt-5.4-nano:
+    issues ending "… Fix: State the precise metric …", followed by the fix
+    field saying the same thing, so the comment gave the fix twice. The text
+    after a ``Fix:`` marker is cut from the issue. It becomes the fix only if
+    the fix field is empty; otherwise the fix field wins, since it is the slot
+    the model was asked to fill.
+
+    Returns ``(issue, fix)``, both stripped.
+    """
+    parts = _FIX_MARKER.split(issue, maxsplit=1)
+    if len(parts) == 1:
+        return issue.strip(), fix.strip()
+    head, tail = parts[0].strip(), parts[1].strip()
+    return (head or issue.strip()), (fix.strip() or tail)
+
 
 SEVERITY_RUBRIC = """Severity rubric — pick the level by what the author would \
 have to do:

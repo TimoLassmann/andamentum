@@ -502,8 +502,34 @@ async def test_an_edit_answering_a_finding_says_which_one() -> None:
         sections=[section],
     )
     assert len(edits) == 1
-    assert "addresses: this phrasing overclaims" in edits[0].rationale
+    # By id, not by copying the finding into the rationale: the renderers show
+    # the rewrite under its finding, and the copy said the same thing twice.
+    assert edits[0].finding_id == finding.id
+    assert edits[0].rationale == "softens an overstated verb"
     assert declined == []
+
+
+async def test_a_declined_finding_names_the_finding_it_declined() -> None:
+    section = SECTIONS[0]
+    finding = _finding(section.id, section.start, section.start + 5)
+    _edits, declined, _fake = await _run(
+        [
+            EditorOutput(
+                edits=[
+                    EditProposal(
+                        addresses=1,
+                        can_fix=False,
+                        title="needs data",
+                        rationale="",
+                        why="Report the sample size per group.",
+                    )
+                ]
+            )
+        ],
+        [finding],
+        sections=[section],
+    )
+    assert [d.finding_id for d in declined] == [finding.id]
 
 
 async def test_a_rewrite_that_did_not_quote_the_document_leaves_it_unanswered() -> None:

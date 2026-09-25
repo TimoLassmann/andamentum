@@ -342,6 +342,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                     issue=d.issue,
                     why=d.why,
                     section_id=d.section_id,
+                    finding_id=d.finding_id,
                 )
                 for d in ctx.state.declined_findings
             ],

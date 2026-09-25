@@ -61,10 +61,19 @@ class Finding(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
+    # The problem in a few words — the heading of the margin comment. In
+    # review mode the reviewer writes it; the criterion that raised the finding
+    # is in ``category``, not here, because a criterion's name ("Evidence
+    # support") heads every one of its findings alike and says nothing about
+    # this one.
     title: str
     severity: Literal["minor", "moderate", "major"]
     confidence: Literal["low", "medium", "high"]
-    rationale: str  # 2-3 sentences explaining the issue
+    rationale: str  # what is wrong here and what it costs a reader
+    # One action for the author, starting with a verb. Empty when the producer
+    # wrote none (panel mode, older callers); renderers then show no fix line
+    # rather than an empty one.
+    fix: str = ""
     quotes: list[Quote] = Field(default_factory=list)
     sections_involved: list[str] = Field(default_factory=list)  # section_id list
     # "checklist" marks a finding produced by a quota-driven probe in
@@ -107,8 +116,8 @@ class Finding(BaseModel):
 class Edit(BaseModel):
     """A concrete proposed rewrite at a specific span in the source.
 
-    Where ``Finding`` says "this is wrong" without a fix, ``Edit`` says
-    "change THIS to THAT". Renderers turn each Edit into:
+    Where ``Finding`` says what is wrong and what to do about it, ``Edit``
+    says "change THIS to THAT". Renderers turn each Edit into:
       • Word: a tracked-change (deletion of original_text + insertion of new_text)
       • Markdown: a unified-diff-style block
       • HTML: a side-by-side card with old → new
@@ -124,6 +133,11 @@ class Edit(BaseModel):
     original_text: str  # what's there now (verbatim)
     new_text: str  # what to replace it with
     perspective: Optional[str] = None
+    # The ``Finding.id`` this rewrite answers, or None for an edit of the
+    # editor's own. The link is what lets a renderer show a finding and the
+    # rewrite that answers it as one item, instead of a comment and a tracked
+    # change that each say the same thing in a different place.
+    finding_id: Optional[str] = None
 
 
 class AuthorQuestion(BaseModel):
@@ -417,8 +431,11 @@ class DeclinedFinding(BaseModel):
 
     criterion: str
     issue: str
-    why: str  # one sentence: what it needs that a rewrite cannot give
+    why: str  # a few words: what a rewrite cannot supply (not the fix again)
     section_id: str = ""
+    # The ``Finding.id`` the editor declined. Renderers attach ``why`` to that
+    # finding rather than listing the refusal a second time on its own.
+    finding_id: str = ""
 
 
 class ConfigurationLine(BaseModel):

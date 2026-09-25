@@ -67,7 +67,7 @@ def test_markdown_renders_must_fix_heading_when_present():
         deterministic_findings=[_f("major", title="Critical issue")],
     )
     out = render_markdown(result)
-    assert "MUST FIX" in out
+    assert "Must fix" in out
     assert "Critical issue" in out
 
 
@@ -80,9 +80,9 @@ def test_markdown_renders_three_buckets_in_order():
         ],
     )
     out = render_markdown(result)
-    must_idx = out.find("MUST FIX")
-    should_idx = out.find("SHOULD FIX")
-    consider_idx = out.find("CONSIDER")
+    must_idx = out.find("Must fix")
+    should_idx = out.find("Should fix")
+    consider_idx = out.find("Consider (")
     assert 0 < must_idx < should_idx < consider_idx
 
 
@@ -91,21 +91,20 @@ def test_markdown_omits_empty_buckets():
         deterministic_findings=[_f("minor", title="Only a small thing")],
     )
     out = render_markdown(result)
-    assert "CONSIDER" in out
-    assert "MUST FIX" not in out
-    assert "SHOULD FIX" not in out
+    assert "Consider (" in out
+    assert "Must fix" not in out
+    assert "Should fix" not in out
 
 
-def test_markdown_keeps_severity_label_alongside_priority():
-    result = ReviewResult(
-        deterministic_findings=[_f("major", title="Important")],
-    )
-    out = render_markdown(result)
-    # Severity still appears as a tag alongside the priority bucket
-    # so reviewers can see both axes. After the Proposal-A layout
-    # rework the tag renders as a bracketed chip (`[major]`) rather
-    # than italic prose (`_major_`); the substance is unchanged.
-    assert "[major]" in out
+def test_markdown_shows_severity_only_when_it_differs_from_the_group():
+    """Priority is derived from severity, so a severity tag on every entry
+    repeated its group heading. When a caller sets priority on its own the
+    two axes differ, and then both are shown."""
+    same = render_markdown(ReviewResult(deterministic_findings=[_f("major", title="A")]))
+    assert "major severity" not in same
+    overridden = _f("major", title="B").model_copy(update={"priority": "consider"})
+    differs = render_markdown(ReviewResult(deterministic_findings=[overridden]))
+    assert "major severity" in differs
 
 
 def test_markdown_clean_document_message():

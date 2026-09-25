@@ -150,3 +150,39 @@ async def test_short_list_skips_agent() -> None:
     # No patch needed — should return before building an agent.
     out = await consolidate(findings, agent_model="stub")
     assert out == findings
+
+
+async def test_a_merged_finding_carries_one_fix_headline_and_its_members_id() -> None:
+    """The merged finding is what the author reads, so it needs the fix the
+    members had; and it keeps the kept member's id, so nothing that already
+    names that finding loses it."""
+    a = _f("Correctness", "step A vague", "qa", severity="minor")
+    b = _f("Correctness", "step C vague", "qc", severity="major")
+    b.fix = "Name the solver and its tolerance."
+    grouped = _Consolidation(
+        groups=[
+            _Group(
+                member_indices=[0, 1],
+                merged_issue="Two steps give no settings.",
+                merged_fix="State the settings for steps A and C.",
+                merged_headline="Method steps give no settings",
+            )
+        ]
+    )
+    p1, p2 = _route(grouped)
+    with p1, p2:
+        (merged,) = await consolidate([a, b], agent_model="stub")
+    assert merged.fix == "State the settings for steps A and C."
+    assert merged.headline == "Method steps give no settings"
+    assert merged.id == b.id
+
+
+async def test_a_merge_without_a_fix_keeps_the_kept_members_fix() -> None:
+    a = _f("Correctness", "x", "qa", severity="minor")
+    b = _f("Correctness", "y", "qc", severity="major")
+    b.fix = "Name the solver."
+    grouped = _Consolidation(groups=[_Group(member_indices=[0, 1], merged_issue="z")])
+    p1, p2 = _route(grouped)
+    with p1, p2:
+        (merged,) = await consolidate([a, b], agent_model="stub")
+    assert merged.fix == "Name the solver."

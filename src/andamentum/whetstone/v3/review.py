@@ -17,6 +17,7 @@ and drops any that can't be anchored (the hallucination gate).
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Protocol, cast
 
 from pydantic import BaseModel, Field
@@ -32,11 +33,17 @@ from .locate import anchor_span
 from .model import DocumentModel, Severity, Span
 from .prompt_blocks import (
     ACTIONABILITY_BAR,
+    FIX_FIELD,
+    HEADLINE_FIELD,
+    ISSUE_FIELD,
+    QUOTE_FIELD,
     SECTION_IDS_NOTE,
     SEVERITY_RUBRIC,
     TOOL_DISCIPLINE,
     TOOLS_AVAILABLE,
+    WRITING_RULES,
     brief_block,
+    split_fix,
     claims_block,
     sections_block,
 )
@@ -60,15 +67,27 @@ _TOTAL_TOKENS_LIMIT = 1_000_000
 
 class Finding(BaseModel):
     criterion: str
-    issue: str
+    issue: str  # what is wrong here and what it costs a reader
     quote: str
     severity: Severity = "moderate"
     span: Span | None = None  # filled by verify_findings
+    # The problem in a few words, for the comment's heading. Empty when the
+    # producer wrote none; the public finding then falls back to the criterion.
+    headline: str = ""
+    fix: str = ""  # one action for the author, starting with a verb
+    # Stable through the pipeline, and reused as the public ``Finding.id``, so
+    # the editor's answer to a finding can name it after synthesis has run.
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
 
 
+# Field order is generation order: the passage first, then what is wrong with
+# it and what to do, and the headline LAST — a heading written before the
+# problem is worked out summarises a guess.
 class _RawFinding(BaseModel):
-    issue: str = Field(description="Short description of the problem (1-2 sentences).")
-    quote: str = Field(description="A VERBATIM span from the document it concerns.")
+    quote: str = Field(description=QUOTE_FIELD)
+    issue: str = Field(description=ISSUE_FIELD)
+    fix: str = Field(default="", description=FIX_FIELD)
+    headline: str = Field(default="", description=HEADLINE_FIELD)
     severity: Severity = "moderate"
 
 
@@ -97,11 +116,13 @@ fewer if the document is genuinely sound on this axis, more if real issues \
 stack up. Don't artificially limit yourself; the consolidation step downstream \
 will merge any near-duplicates.
 
-For each problem: a short issue description, a VERBATIM quote from the document \
-it concerns (copied exactly — non-verbatim quotes are dropped), and a severity \
-(minor / moderate / major).
+For each problem: a VERBATIM quote from the document it concerns (copied \
+exactly — non-verbatim quotes are dropped), the issue, the fix, a short \
+headline, and a severity (minor / moderate / major).
 
 {ACTIONABILITY_BAR}
+
+{WRITING_RULES}
 
 {SEVERITY_RUBRIC}
 
@@ -159,9 +180,11 @@ _VALIDATOR_REQUOTE_ATTEMPTS = 2
 class _QuotedFinding(Protocol):
     """Structural type for the items in an anchor-validated output's
     ``findings`` list — ``_RawFinding`` and ``_ReexamineFinding`` both
-    satisfy it. All the validator needs is the verbatim quote."""
+    satisfy it. The validator needs the verbatim quote to anchor, and the
+    issue to tell two findings on one passage apart."""
 
     quote: str
+    issue: str
 
 
 def make_anchor_validator(
@@ -184,7 +207,13 @@ def make_anchor_validator(
     attempt:
 
     1. Findings with a quote that anchors in ``source`` get added to the
-       lock (keyed by quote text — duplicates are ignored).
+       lock. The lock is keyed by quote text ACROSS attempts and by
+       ``(quote, issue)`` WITHIN one: a quote locked on an earlier attempt
+       is the model re-emitting what it was told to leave alone, and its
+       re-emission (usually reworded) is skipped; two findings on one quote
+       in the same attempt are two observations about one passage, and
+       both are kept. Keying by quote alone dropped the second of those
+       silently — a lost finding, not a removed duplicate.
     2. If any quote in the current attempt is still unanchored AND
        ``ctx.retry < max_attempts``, raise ``ModelRetry`` with the
        count of locked findings and the verbatim text of the unanchored
@@ -203,34 +232,42 @@ def make_anchor_validator(
     the gap loop). Items in its ``findings`` list must have a
     ``.quote: str`` attribute.
     """
-    locked: dict[str, _QuotedFinding] = {}  # closure state: quote → finding
+    # Closure state: quote → the findings locked on it, in arrival order.
+    locked: dict[str, list[_QuotedFinding]] = {}
 
     async def validator(ctx: RunContext[Any], output: Any) -> Any:
         if ctx.partial_output:
             return output
 
-        # Add newly-anchored findings to the lock. Key by quote text so
-        # a model that re-emits a previously-locked finding doesn't
-        # double-count.
+        # Newly-anchored findings from THIS attempt, grouped by quote. They
+        # join the lock only after the loop, so a quote first seen in this
+        # attempt can carry several distinct findings, while a quote locked on
+        # an earlier attempt admits nothing more (see step 1 above).
+        arrived: dict[str, list[_QuotedFinding]] = {}
         for f in output.findings:
             if f.quote in locked:
                 continue
-            if find_span(f.quote, source) is not None:
-                locked[f.quote] = f
+            if find_span(f.quote, source) is None:
+                continue
+            same_quote = arrived.setdefault(f.quote, [])
+            if all(g.issue.strip() != f.issue.strip() for g in same_quote):
+                same_quote.append(f)
+        locked.update(arrived)
 
         # What's in the model's current attempt that didn't anchor?
         unanchored = [f.quote for f in output.findings if f.quote not in locked]
+        n_locked = sum(len(group) for group in locked.values())
 
         if unanchored and ctx.retry < max_attempts:
             preview = "\n".join(f"  - {q!r}" for q in unanchored[:5])
             logger.info(
                 "[v3.validator] %d locked, %d unanchored on attempt %d — refining bad ones",
-                len(locked),
+                n_locked,
                 len(unanchored),
                 ctx.retry,
             )
             raise ModelRetry(
-                f"LOCKED FINDINGS ({len(locked)} already verified verbatim "
+                f"LOCKED FINDINGS ({n_locked} already verified verbatim "
                 f"in the source — these will be preserved). DO NOT re-emit "
                 f"or rewrite them in your next output; the system already "
                 f"has them.\n\n"
@@ -242,10 +279,12 @@ def make_anchor_validator(
         if unanchored:
             logger.info(
                 "[v3.validator] attempts exhausted; keeping %d locked, dropping %d unanchored",
-                len(locked),
+                n_locked,
                 len(unanchored),
             )
-        return output_class(findings=list(locked.values()))
+        return output_class(
+            findings=[f for group in locked.values() for f in group]
+        )
 
     return validator
 
@@ -332,12 +371,20 @@ async def review_criterion(
 
     bump_from_result(result)
     raw = cast(_CriterionFindings, result.output).findings
-    return [
-        Finding(
-            criterion=criterion.name, issue=r.issue, quote=r.quote, severity=r.severity
+    findings: list[Finding] = []
+    for r in raw:
+        issue, fix = split_fix(r.issue, r.fix)
+        findings.append(
+            Finding(
+                criterion=criterion.name,
+                issue=issue,
+                quote=r.quote,
+                severity=r.severity,
+                headline=r.headline,
+                fix=fix,
+            )
         )
-        for r in raw
-    ]
+    return findings
 
 
 async def run_criteria(

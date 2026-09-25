@@ -28,6 +28,20 @@ from ..schemas import (
     ReviewResult,
     SectionCard,
 )
+from ._finding_text import (
+    PRIORITY_LABEL,
+    PRIORITY_ORDER,
+    EditorAnswers,
+    confidence_label,
+    corroboration_clause,
+    coverage_warning,
+    declined_line,
+    editor_answers,
+    fix_line,
+    reading_order,
+    severity_note,
+    summary_body,
+)
 from ._reviewer_header import configuration_atoms, header_atoms
 from ._panel_layout import (
     criterion_summary,
@@ -100,9 +114,10 @@ def render_html(
     if result.summary.strip():
         atoms.extend(_summary_atoms(result.summary))
 
-    # ── Document map at the TOP — orientation before findings ──────
-    if result.document_map and not panel_mode:
-        atoms.extend(_document_map_atoms(result.document_map))
+    # ── Partial-coverage notice — a check crashed and reviewed nothing ──
+    warning = coverage_warning(result)
+    if warning:
+        atoms.append({"kind": "callout", "tone": "warning", "content": warning})
 
     # ── Panel-mode atoms (priority order) ───────────────────────────
     if result.panel_synthesis is not None:
@@ -127,23 +142,24 @@ def render_html(
     if result.author_questions:
         atoms.extend(_questions_atoms(result.author_questions))
 
-    if result.edits:
-        atoms.extend(_edits_atoms(result.edits))
-
-    if result.declined_findings:
-        atoms.extend(_declined_atoms(result.declined_findings))
-
-    if result.novelty_claims:
-        atoms.extend(_novelty_claim_atoms(result.novelty_claims))
-
+    # Findings before edits, each rewrite under the finding it answers — the
+    # same order and grouping as the markdown report.
+    answers = editor_answers(result)
     if result.findings:
         atoms.extend(
             _findings_atoms(
                 result.findings,
                 heading="Findings",
                 section_titles=section_titles,
+                answers=answers,
             )
         )
+
+    if answers.own_edits:
+        atoms.extend(_edits_atoms(answers.own_edits, section_titles=section_titles))
+
+    if answers.unlinked_declined:
+        atoms.extend(_declined_atoms(answers.unlinked_declined))
 
     if result.deterministic_findings:
         atoms.extend(
@@ -151,8 +167,16 @@ def render_html(
                 result.deterministic_findings,
                 heading="Deterministic findings (structural)",
                 section_titles=section_titles,
+                answers=answers,
             )
         )
+
+    if result.novelty_claims:
+        atoms.extend(_novelty_claim_atoms(result.novelty_claims))
+
+    # ── Document map — reference, after the findings it helps locate ──
+    if result.document_map and not panel_mode:
+        atoms.extend(_document_map_atoms(result.document_map))
 
     # The prelude count was taken above rather than written as a literal: it
     # is the heading, one banner, and however many atoms the reviewer block
@@ -190,7 +214,9 @@ def _summary_atoms(summary: str) -> list[dict[str, Any]]:
     """Synthesised review prose. Already markdown-ish; wrap as prose."""
     return [
         {"kind": "heading", "content": "Summary", "level": 2},
-        {"kind": "prose", "content": summary},
+        # The heading above is the only one: a synthesised summary opens with
+        # its own "## Summary", which printed the word twice.
+        {"kind": "prose", "content": summary_body(summary)},
     ]
 
 
@@ -209,28 +235,33 @@ def _questions_atoms(qs: list[AuthorQuestion]) -> list[dict[str, Any]]:
     ]
 
 
-def _edits_atoms(edits: list[Edit]) -> list[dict[str, Any]]:
+def _rewrite_text(edit: Edit) -> str:
+    return (
+        f"_Suggested rewrite:_ replace \u201c{edit.original_text}\u201d with "
+        f"\u201c{edit.new_text}\u201d."
+    )
+
+
+def _edits_atoms(
+    edits: list[Edit], *, section_titles: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
+    """The editor's own edits — the ones that answer no finding.
+
+    Shown open, by section title. They used to sit in collapsed cards labelled
+    "document chars 180–193", so the change itself took a click to see and its
+    place was the pipeline's address rather than a section name.
+    """
+    section_titles = section_titles or {}
     out: list[dict[str, Any]] = [
-        {"kind": "heading", "content": f"Edits ({len(edits)})", "level": 2}
+        {"kind": "heading", "content": f"Other edits ({len(edits)})", "level": 2}
     ]
     for e in edits:
-        details = (
-            f"_Original ({e.section_id}, document chars {e.char_start}–{e.char_end}):_\n\n"
-            f"`{e.original_text}`\n\n"
-            f"_Proposed:_\n\n"
-            f"`{e.new_text}`"
-        )
+        where = section_titles.get(e.section_id, e.section_id)
+        body = f"**{e.title}** &nbsp; _{where}_\n\n{_rewrite_text(e)}"
         if e.rationale:
-            details += f"\n\n{e.rationale}"
-        out.append(
-            {
-                "kind": "card",
-                "content": f"**{e.title}** — {e.severity}, {e.confidence} confidence",
-                "details": details,
-            }
-        )
+            body += f"\n\n{e.rationale}"
+        out.append({"kind": "callout", "tone": "note", "content": body})
     return out
-
 
 
 def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
@@ -283,17 +314,10 @@ def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
     for d in declined:
         body = d.issue
         if d.why:
-            body += f" — _{d.why}_"
-        entries.append({"label": d.criterion or "—", "body": body})
+            body += f" — _{declined_line(d.why)}_"
+        entries.append({"label": "—", "body": body})
     out.append({"kind": "items", "entries": entries})
     return out
-
-
-_PRIORITY_HEADINGS = {
-    "must_fix": "MUST FIX",
-    "should_fix": "SHOULD FIX",
-    "consider": "CONSIDER",
-}
 
 
 def _findings_atoms(
@@ -301,10 +325,11 @@ def _findings_atoms(
     *,
     heading: str,
     section_titles: dict[str, str] | None = None,
+    answers: EditorAnswers | None = None,
 ) -> list[dict[str, Any]]:
     """Editorial-annotation layout: per-finding section header →
-    ``tone-quote`` callout with the verbatim passage → ``tone-warning``
-    callout with the comment body. Mirrors the markdown renderer.
+    ``tone-quote`` callout with the verbatim passage → a callout with the
+    problem, the fix, and the editor's answer. Mirrors the markdown renderer.
 
     No collapsed ``<details>``: everything is visible at first read.
     The visual separation between the quote (serif italic, left rule,
@@ -312,22 +337,16 @@ def _findings_atoms(
     background) carries the "passage → annotation" reading direction
     without literal indentation.
     """
+    findings = reading_order(list(findings))
     section_titles = section_titles or {}
-    by_priority: dict[str, list[Finding]] = {
-        "must_fix": [],
-        "should_fix": [],
-        "consider": [],
-    }
+    answers = answers or EditorAnswers()
+    by_priority: dict[str, list[Finding]] = {p: [] for p in PRIORITY_ORDER}
     for f in findings:
         by_priority.setdefault(f.priority, []).append(f)
 
     counts = [
-        f"{len(by_priority.get(p, []))} {label}"
-        for p, label in (
-            ("must_fix", "must-fix"),
-            ("should_fix", "should-fix"),
-            ("consider", "consider"),
-        )
+        f"{len(by_priority[p])} {PRIORITY_LABEL[p].lower()}"
+        for p in PRIORITY_ORDER
         if by_priority.get(p)
     ]
     counts_line = " · ".join(counts) if counts else "0 findings"
@@ -340,14 +359,14 @@ def _findings_atoms(
         }
     ]
 
-    for priority in ("must_fix", "should_fix", "consider"):
+    for priority in PRIORITY_ORDER:
         group = by_priority.get(priority, [])
         if not group:
             continue
         out.append(
             {
                 "kind": "prose",
-                "content": f"### {_PRIORITY_HEADINGS[priority]} ({len(group)})",
+                "content": f"### {PRIORITY_LABEL[priority]} ({len(group)})",
             }
         )
         for f in group:
@@ -356,45 +375,40 @@ def _findings_atoms(
                 if f.quotes
                 else (f.sections_involved[0] if f.sections_involved else "")
             )
-            section_title = section_titles.get(section_id, "(no section)")
-            loc = f"#### {section_title}" + (
-                f" &nbsp; <code>{section_id}</code>" if section_id else ""
-            )
-            out.append({"kind": "prose", "content": loc})
+            title = section_titles.get(section_id, section_id or "The document as a whole")
+            out.append({"kind": "prose", "content": f"#### {title}"})
 
             # Verbatim passage (serif italic with left rule via
             # tone-quote — the existing typeset atom for "this is the
             # author's text, set apart from review prose").
             for q in f.quotes[:1]:
                 preview = q.text.replace("\n", " ").strip()
-                out.append(
-                    {
-                        "kind": "callout",
-                        "tone": "quote",
-                        "content": preview,
-                    }
-                )
+                out.append({"kind": "callout", "tone": "quote", "content": preview})
 
-            # Comment block. Severity / confidence ride as neutral
-            # typeset-badge chips inline. tone-warning for major,
-            # tone-note for everything else (keeps the visual weight
-            # proportional to the severity).
-            tone = "warning" if f.severity == "major" else "note"
-            persona = f" · <em>{f.perspective}</em>" if f.perspective else ""
-            chips = (
-                f'<span class="typeset-badge">{f.severity}</span>'
-                f' <span class="typeset-badge">{f.confidence} confidence</span>'
-            )
-            title_line = f"**{f.title}** &nbsp; {chips}{persona}"
-            body = title_line + (f"\n\n{f.rationale}" if f.rationale else "")
-            # Corroboration: the names are panel perspectives or checklist
-            # probe ids depending on the pipeline, so the clause names
-            # neither — two independent producers agreeing is the signal.
-            if f.corroborated_by:
-                body += (
-                    f"\n\n_Independently raised by: {', '.join(f.corroborated_by)}._"
-                )
-            out.append({"kind": "callout", "tone": tone, "content": body})
+            # Comment block: tone-warning for must fix, tone-note otherwise,
+            # so the visual weight follows the urgency. Tags only where they
+            # carry information — see severity_note and confidence_label.
+            tone = "warning" if f.priority == "must_fix" else "note"
+            tags = [
+                t
+                for t in (f.perspective or "", severity_note(f), confidence_label(f))
+                if t
+            ]
+            tag_part = f" &nbsp; <em>{' · '.join(tags)}</em>" if tags else ""
+            parts = [f"**{f.title}**{tag_part}"]
+            if f.rationale:
+                parts.append(f.rationale)
+            if fix_line(f):
+                parts.append(f"**Fix:** {f.fix.strip()}")
+            for edit in answers.edits_by_finding.get(f.id, []):
+                parts.append(_rewrite_text(edit))
+            why = answers.declined_by_finding.get(f.id, "")
+            if why:
+                parts.append(f"_{declined_line(why)}_")
+            clause = corroboration_clause(f)
+            if clause:
+                parts.append(f"_{clause}_")
+            out.append({"kind": "callout", "tone": tone, "content": "\n\n".join(parts)})
 
     return out
 

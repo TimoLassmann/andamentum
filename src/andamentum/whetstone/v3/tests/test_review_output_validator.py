@@ -246,26 +246,55 @@ async def test_partial_output_returns_input_untouched() -> None:
     assert result is output
 
 
-async def test_locked_set_dedupes_same_quote_emitted_twice() -> None:
-    """The lock is keyed by quote text. If the model re-emits an
-    already-locked finding, the second one doesn't double-count."""
+async def test_two_different_findings_on_one_quote_are_both_kept() -> None:
+    """Two issues about one passage in the same attempt are two observations.
+    Keying the lock by quote alone kept the first and silently dropped the
+    second — a lost finding, not a removed duplicate."""
     model = _model()
     validator = make_anchor_validator(model.source, _CriterionFindings)
-    duplicate = _CriterionFindings(
+    output = _CriterionFindings(
         findings=[
             _RawFinding(
                 issue="a", quote="Adam combines AdaGrad and RMSProp.", severity="major"
             ),
             _RawFinding(
-                issue="a-again",
+                issue="b",
                 quote="Adam combines AdaGrad and RMSProp.",  # same quote
                 severity="minor",
             ),
         ]
     )
-    result = await validator(_ctx(retry=0), duplicate)
-    # Only ONE locked entry for that quote
+    result = await validator(_ctx(retry=0), output)
+    assert [f.issue for f in result.findings] == ["a", "b"]
+
+
+async def test_the_same_finding_twice_in_one_attempt_counts_once() -> None:
+    model = _model()
+    validator = make_anchor_validator(model.source, _CriterionFindings)
+    finding = _RawFinding(
+        issue="a", quote="Adam combines AdaGrad and RMSProp.", severity="major"
+    )
+    result = await validator(
+        _ctx(retry=0), _CriterionFindings(findings=[finding, finding.model_copy()])
+    )
     assert len(result.findings) == 1
+
+
+async def test_a_locked_quote_re_emitted_on_a_retry_does_not_double_count() -> None:
+    """On a retry the model is told not to re-emit what is locked, and often
+    does anyway, reworded. The quote was locked on an earlier attempt, so the
+    re-emission is the same finding and is skipped."""
+    model = _model()
+    validator = make_anchor_validator(model.source, _CriterionFindings)
+    good = _RawFinding(
+        issue="a", quote="Adam combines AdaGrad and RMSProp.", severity="major"
+    )
+    bad = _RawFinding(issue="x", quote="not in the source at all", severity="minor")
+    with pytest.raises(ModelRetry):
+        await validator(_ctx(retry=0), _CriterionFindings(findings=[good, bad]))
+    reworded = good.model_copy(update={"issue": "a, said differently"})
+    result = await validator(_ctx(retry=1), _CriterionFindings(findings=[reworded]))
+    assert [f.issue for f in result.findings] == ["a"]
 
 
 async def test_preview_capped_at_five_quotes() -> None:

@@ -235,6 +235,52 @@ async def test_per_round_demand_cap_truncates_chatty_round() -> None:
     assert len(out) == 3
 
 
+async def test_a_second_demand_in_one_round_sees_the_first_ones_findings() -> None:
+    """Two demands in one round often point at the same section. The second
+    must be told what the first just raised, or it raises it again — the
+    accumulated list used to be refreshed only at the end of the round."""
+    src = "Some text with the method described."
+    model = _model(src)
+    demands = [
+        Demand(kind="reexamine", detail=f"angle {i}", target_section_id="s1")
+        for i in range(2)
+    ]
+    reexamine = [
+        _ReexamineFinding(
+            issue="the first demand's point",
+            quote="the method described",
+            severity="minor",
+            criterion="Story",
+        )
+    ]
+    prompts: list[str] = []
+
+    def factory(defn, _model_obj):
+        class A:
+            def output_validator(self, fn):
+                return fn
+
+            async def run(self, prompt):
+                if defn.name == "v3_gap_analysis":
+                    return types.SimpleNamespace(output=_DemandList(demands=demands))
+                prompts.append(prompt)
+                return types.SimpleNamespace(
+                    output=_ReexamineFindings(findings=reexamine)
+                )
+
+        return A()
+
+    with (
+        patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
+    ):
+        await gap_loop(model, [], agent_model="stub", cap=1, per_round_demand_cap=2)
+
+    assert len(prompts) == 2
+    assert "the first demand's point" not in prompts[0]
+    assert "the first demand's point" in prompts[1]
+
+
 async def test_loop_terminates_via_demand_memory() -> None:
     # The same demand is returned every round; memory must filter it so the
     # loop exits at round 2 rather than running forever.

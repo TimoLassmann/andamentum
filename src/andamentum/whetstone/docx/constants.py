@@ -14,10 +14,13 @@ STRUCTURED_FIELDS = {"strengths", "weaknesses", "recommendation", "overall_asses
 REPORT_TITLE = "# Whetstone Review"
 SECTION_SEPARATOR = "---"
 EXECUTIVE_SUMMARY_HEADER = "## Executive Summary"
-CRITICAL_ISSUES_HEADER = "## Critical Issues"
+# "Findings", not "Critical Issues": the list holds every finding, minor ones
+# included, and calling a typo "critical" taught readers to discount the word.
+CRITICAL_ISSUES_HEADER = "## Findings"
 EXPERT_REVIEWS_HEADER = "## Expert Reviews"
 NOVELTY_FINDINGS_HEADER = "## Novelty Assessment"
 DECLINED_FINDINGS_HEADER = "## Left to the Author"
+OTHER_EDITS_HEADER = "## Other Edits"
 NOVELTY_CLAIMS_HEADER = "## Claims You Are Staking as Novel"
 
 # Field labels

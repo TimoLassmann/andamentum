@@ -6,12 +6,14 @@ document_map). Output is a single markdown string ready to write to a
 ``.md`` file or paste into any markdown-capable surface.
 
 Section order (each separated by ``---``):
-  1. Title + executive summary (from ``ReviewResult.summary``)
-  2. Author questions (when present — most actionable)
-  3. Edits (one per Edit, as ```diff``` blocks with rationale)
-  4. Findings, grouped by severity (major / moderate / minor)
-  5. Deterministic findings (high-confidence structural issues)
-  6. Document map (so the reader can locate any referenced section_id)
+  1. Title, then the summary and any partial-review warning
+  2. Author questions (when present — only the author can answer them)
+  3. Findings, grouped must fix / should fix / consider and in document order
+     within each group. Each finding carries its fix, and the editor's answer
+     to it: the rewrite as a ```diff``` block, or what is left to the author.
+  4. Other edits — the editor's own, which answer no finding
+  5. Deterministic findings (structural)
+  6. Novelty claims, the document map (reference), and the configuration
 
 Empty sections are omitted so a clean document produces a clean report.
 """
@@ -39,6 +41,20 @@ from ..schemas import (
 from .._watermark import (
     banner_markdown,
     metadata_markdown_comment,
+)
+from ._finding_text import (
+    PRIORITY_LABEL,
+    PRIORITY_ORDER,
+    EditorAnswers,
+    confidence_label,
+    corroboration_clause,
+    coverage_warning,
+    declined_line,
+    editor_answers,
+    fix_line,
+    reading_order,
+    severity_note,
+    summary_body,
 )
 from ._panel_layout import body_markdown
 from ._reviewer_header import configuration_markdown, header_markdown
@@ -76,21 +92,12 @@ def render_markdown(
     section_titles = {c.section_id: c.title for c in result.document_map}
 
     if result.summary.strip():
-        sections.append(result.summary.strip())
+        sections.append(f"## Summary\n\n{summary_body(result.summary)}")
 
-    # ── Partial-coverage notice — a criterion crashed and reviewed nothing ──
-    if result.failed_criteria:
-        names = ", ".join(result.failed_criteria)
-        sections.append(
-            "> ⚠️ **Partial review.** The following "
-            f"{'criterion' if len(result.failed_criteria) == 1 else 'criteria'} "
-            f"failed to run and contributed no findings: {names}. "
-            "Treat the coverage below as incomplete."
-        )
-
-    # ── Document map at the TOP — orientation before findings ──────
-    if result.document_map and not panel_mode:
-        sections.append(_render_document_map(result.document_map))
+    # ── Partial-coverage notice — a check crashed and reviewed nothing ──
+    warning = coverage_warning(result)
+    if warning:
+        sections.append(f"> {warning}")
 
     # ── Panel-mode sections (priority order) ─────────────────────────
     if result.panel_synthesis is not None:
@@ -115,20 +122,10 @@ def render_markdown(
     if result.author_questions:
         sections.append(_render_questions(result.author_questions))
 
-    if result.edits:
-        sections.append(_render_edits(result.edits))
-
-    if result.declined_findings:
-        sections.append(_render_declined(result.declined_findings))
-
-    if result.novelty_claims:
-        sections.append(_render_novelty_claims(result.novelty_claims))
-
-    # Provenance, last and quiet. See configuration_markdown for why it is not
-    # at the top with the reviewer's identity and brief.
-    if result.reviewer_header is not None:
-        sections.append(configuration_markdown(result.reviewer_header))
-
+    # Findings come before edits: an edit is an answer, and it is shown under
+    # the finding it answers rather than in a list of its own that the reader
+    # had to match back by hand.
+    answers = editor_answers(result)
     llm_findings = list(result.findings)
     if llm_findings:
         sections.append(
@@ -136,8 +133,15 @@ def render_markdown(
                 llm_findings,
                 heading="Findings",
                 section_titles=section_titles,
+                answers=answers,
             )
         )
+
+    if answers.own_edits:
+        sections.append(_render_edits(answers.own_edits, section_titles=section_titles))
+
+    if answers.unlinked_declined:
+        sections.append(_render_declined(answers.unlinked_declined))
 
     if result.deterministic_findings:
         sections.append(
@@ -145,8 +149,21 @@ def render_markdown(
                 result.deterministic_findings,
                 heading="Deterministic findings (structural)",
                 section_titles=section_titles,
+                answers=answers,
             )
         )
+
+    if result.novelty_claims:
+        sections.append(_render_novelty_claims(result.novelty_claims))
+
+    # ── Document map — reference, after the findings it helps locate ──
+    if result.document_map and not panel_mode:
+        sections.append(_render_document_map(result.document_map))
+
+    # Provenance, last and quiet. See configuration_markdown for why it is not
+    # at the top with the reviewer's identity and brief.
+    if result.reviewer_header is not None:
+        sections.append(configuration_markdown(result.reviewer_header))
 
     # Fallback: if there's nothing but a panel, still emit the doc map.
     if result.document_map and panel_mode and not sections:
@@ -230,38 +247,43 @@ def _render_declined(declined: list[DeclinedFinding]) -> str:
         "",
     ]
     for d in declined:
-        label = f"**[{d.criterion}]**" if d.criterion else "**Finding**"
-        lines.append(f"- {label} {d.issue}")
+        lines.append(f"- {d.issue}")
         if d.why:
-            lines.append(f"  - _Editor:_ {d.why}")
+            lines.append(f"  - _{declined_line(d.why)}_")
     lines.append("")
     return "\n".join(lines)
 
 
-def _render_edits(edits: Iterable[Edit]) -> str:
+def _diff_block(edit: Edit) -> list[str]:
+    lines = ["```diff"]
+    lines.extend(f"- {ln}" for ln in edit.original_text.splitlines() or [""])
+    lines.extend(f"+ {ln}" for ln in edit.new_text.splitlines() or [""])
+    lines.append("```")
+    return lines
+
+
+def _render_edits(
+    edits: Iterable[Edit], *, section_titles: dict[str, str] | None = None
+) -> str:
+    """The editor's own edits — the ones that answer no finding.
+
+    Placed by section title, not by character offsets: "s3 (180–193)" is the
+    pipeline's address, and the author reads section names.
+    """
     edits = list(edits)
-    lines = [f"## Edits ({len(edits)})", ""]
+    section_titles = section_titles or {}
+    lines = [f"## Other edits ({len(edits)})", ""]
     for e in edits:
-        sev = e.severity[0].upper() + e.severity[1:]
-        lines.append(f"### {e.title}  · {sev} · {e.confidence} confidence")
+        where = section_titles.get(e.section_id, e.section_id)
+        lines.append(f"### {e.title}")
         lines.append("")
-        lines.append(f"_{e.section_id} ({e.char_start}–{e.char_end})_")
+        lines.append(f"_{where}_")
         lines.append("")
-        lines.append("```diff")
-        lines.extend(f"- {ln}" for ln in e.original_text.splitlines() or [""])
-        lines.extend(f"+ {ln}" for ln in e.new_text.splitlines() or [""])
-        lines.append("```")
+        lines.extend(_diff_block(e))
         if e.rationale:
             lines.append(f"> {e.rationale}")
         lines.append("")
     return "\n".join(lines).rstrip()
-
-
-_PRIORITY_HEADINGS = {
-    "must_fix": "MUST FIX",
-    "should_fix": "SHOULD FIX",
-    "consider": "CONSIDER",
-}
 
 
 def _render_findings(
@@ -269,50 +291,46 @@ def _render_findings(
     *,
     heading: str,
     section_titles: dict[str, str] | None = None,
+    answers: EditorAnswers | None = None,
 ) -> str:
     """Editorial-annotation layout: per-finding section header → quoted
-    passage (blockquote) → comment paragraph.
+    passage (blockquote) → the problem → the fix → the editor's answer.
 
     Mirrors the HTML renderer's layout so the two outputs read the same.
     The section_titles map (section_id → title) comes from the document
-    map; missing ids render with a question-mark placeholder.
+    map; missing ids render with the id itself.
     """
-    findings = list(findings)
+    findings = reading_order(list(findings))
     section_titles = section_titles or {}
+    answers = answers or EditorAnswers()
     by_priority: dict[str, list[Finding]] = defaultdict(list)
     for f in findings:
         by_priority[f.priority].append(f)
 
     counts = [
-        f"{len(by_priority.get(p, []))} {label}"
-        for p, label in (
-            ("must_fix", "must-fix"),
-            ("should_fix", "should-fix"),
-            ("consider", "consider"),
-        )
+        f"{len(by_priority[p])} {PRIORITY_LABEL[p].lower()}"
+        for p in PRIORITY_ORDER
         if by_priority.get(p)
     ]
     counts_line = " · ".join(counts) if counts else "0 findings"
     lines = [f"## {heading} ({len(findings)})", "", f"_{counts_line}_", ""]
 
-    for priority in ("must_fix", "should_fix", "consider"):
+    for priority in PRIORITY_ORDER:
         group = by_priority.get(priority, [])
         if not group:
             continue
-        lines.append(f"### {_PRIORITY_HEADINGS[priority]} ({len(group)})")
+        lines.append(f"### {PRIORITY_LABEL[priority]} ({len(group)})")
         lines.append("")
         for f in group:
-            # Per-finding location header — pulls the section title from
-            # the document map so the reader sees "Methods · s1" rather
-            # than an opaque "s1".
+            # Per-finding location header, by the section's title.
             section_id = (
                 f.quotes[0].section_id
                 if f.quotes
                 else (f.sections_involved[0] if f.sections_involved else "")
             )
-            section_title = section_titles.get(section_id, "(no section)")
-            loc = f"#### {section_title}" + (f" · `{section_id}`" if section_id else "")
-            lines.append(loc)
+            lines.append(
+                f"#### {section_titles.get(section_id, section_id or 'The document as a whole')}"
+            )
             lines.append("")
 
             # Quoted passage — the thing being commented on. Verbatim
@@ -323,23 +341,32 @@ def _render_findings(
                 lines.append(f"> {preview}")
                 lines.append("")
 
-            # Comment — title row with severity / confidence chips,
-            # then body. Severity / confidence ride as bracketed
-            # markers so plain-markdown readers see them as text.
-            persona = f" · _{f.perspective}_" if f.perspective else ""
-            chips = f"[{f.severity}] [{f.confidence} confidence]{persona}"
-            lines.append(f"**{f.title}** &nbsp; {chips}")
+            tags = [
+                t
+                for t in (f.perspective or "", severity_note(f), confidence_label(f))
+                if t
+            ]
+            tag_part = f" &nbsp; _{' · '.join(tags)}_" if tags else ""
+            lines.append(f"**{f.title}**{tag_part}")
             if f.rationale:
                 lines.append("")
                 lines.append(f.rationale)
-            # Corroboration: the names are panel perspectives or checklist
-            # probe ids depending on the pipeline, so the clause names
-            # neither — two independent producers agreeing is the signal.
-            if f.corroborated_by:
+            if fix_line(f):
                 lines.append("")
-                lines.append(
-                    f"_Independently raised by: {', '.join(f.corroborated_by)}._"
-                )
+                lines.append(f"**Fix:** {f.fix.strip()}")
+            for edit in answers.edits_by_finding.get(f.id, []):
+                lines.append("")
+                lines.append("Suggested rewrite:")
+                lines.append("")
+                lines.extend(_diff_block(edit))
+            why = answers.declined_by_finding.get(f.id, "")
+            if why:
+                lines.append("")
+                lines.append(f"_{declined_line(why)}_")
+            clause = corroboration_clause(f)
+            if clause:
+                lines.append("")
+                lines.append(f"_{clause}_")
             lines.append("")
     return "\n".join(lines).rstrip()
 

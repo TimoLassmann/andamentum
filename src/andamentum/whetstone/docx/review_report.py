@@ -44,6 +44,7 @@ from .constants import (
     FIELD_LABEL_POSITION,
     FIELD_LABEL_SCORES,
     DECLINED_FINDINGS_HEADER,
+    OTHER_EDITS_HEADER,
     NOVELTY_CLAIMS_HEADER,
     NOVELTY_FINDINGS_HEADER,
     REPORT_TITLE,
@@ -60,7 +61,7 @@ from .model_utils import categorize_review_fields, extract_fields, normalize_to_
 def _build_report_header(summary: str, issues_count: int) -> List[str]:
     """Title, executive summary, and the issue count — when there are issues.
 
-    ``Critical Issues: 0`` is omitted rather than printed. A report that
+    ``Findings (0)`` is omitted rather than printed. A report that
     carries only a summary is the shape a multi-reviewer run's reconciliation
     takes — the findings themselves are in the per-reviewer reports below it
     and in the margin — and heading that with a zero reads as "nothing was
@@ -80,7 +81,7 @@ def _build_report_header(summary: str, issues_count: int) -> List[str]:
         lines += [
             SECTION_SEPARATOR,
             "",
-            f"{CRITICAL_ISSUES_HEADER}: {issues_count}",
+            f"{CRITICAL_ISSUES_HEADER} ({issues_count})",
             "",
         ]
     return lines
@@ -126,7 +127,7 @@ def _format_critical_issue(issue: Any, index: int) -> List[str]:
 
     if recommendation:
         lines.append("")
-        lines.append(f"**Recommendation:** {recommendation}")
+        lines.append(f"**Fix:** {recommendation}")
 
     lines.append("")
 
@@ -339,6 +340,7 @@ def _format_review_report(
     declined_findings: str = "",
     novelty_claims: str = "",
     configuration: str = "",
+    other_edits: str = "",
 ) -> str:
     """
     Format review report for prepending to document.
@@ -379,6 +381,14 @@ def _format_review_report(
                 declined_findings.strip(),
                 "",
             ]
+        )
+
+    # The editor's own edits, each with its reason, once. They answer no
+    # finding, so a margin comment on each put more comments in the file than
+    # there were findings — 51 of 81 on one real manuscript.
+    if other_edits and other_edits.strip():
+        lines.extend(
+            [SECTION_SEPARATOR, "", OTHER_EDITS_HEADER, "", other_edits.strip(), ""]
         )
 
     # What the draft stakes as new. After the findings and the editor's

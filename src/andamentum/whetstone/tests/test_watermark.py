@@ -294,3 +294,81 @@ class TestReadProvenanceMarkers:
         path.write_text("hello")
         markers = read_provenance_markers(path)
         assert markers["readable"] is False
+
+
+def _with_variant_core_rel(path: Path) -> None:
+    """Rewrite a docx so its core-properties relationship uses the
+    ``officedocument`` variant type, as the manuscript that exposed this did."""
+    import zipfile
+    from io import BytesIO
+
+    data = path.read_bytes()
+    buf = BytesIO()
+    with (
+        zipfile.ZipFile(BytesIO(data)) as src,
+        zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst,
+    ):
+        for item in src.infolist():
+            body = src.read(item.filename)
+            if item.filename == "_rels/.rels":
+                body = body.replace(
+                    b"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                    b"http://schemas.openxmlformats.org/officedocument/2006/relationships/metadata/core-properties",
+                )
+            dst.writestr(item, body)
+    path.write_bytes(buf.getvalue())
+
+
+def test_a_variant_core_relationship_is_stamped_in_place_not_duplicated(
+    tmp_path: Path,
+) -> None:
+    """Word accepts a core-properties relationship of the variant type;
+    python-docx did not find it, created a second docProps/core.xml, and the
+    stamped file would not open in Word."""
+    import collections
+    import zipfile
+
+    path = tmp_path / "variant.docx"
+    doc = DocxDocument()
+    doc.core_properties.author = "Dr Smith"
+    doc.save(str(path))
+    _with_variant_core_rel(path)
+
+    stamp_docx_core_properties(path, model="openai:gpt-5.4-nano")
+
+    with zipfile.ZipFile(path) as z:
+        counts = collections.Counter(i.filename for i in z.infolist())
+        rels = z.read("_rels/.rels").decode()
+    assert [n for n, c in counts.items() if c > 1] == []
+    assert rels.count("metadata/core-properties") == 1
+    core = zipfile.ZipFile(path).read("docProps/core.xml").decode()
+    assert "Dr Smith; andamentum-whetstone" in core
+    assert "andamentum:ai-generated" in core
+
+
+def test_a_package_without_core_properties_gets_one(tmp_path: Path) -> None:
+    import zipfile
+    from io import BytesIO
+
+    path = tmp_path / "bare.docx"
+    DocxDocument().save(str(path))
+    buf = BytesIO()
+    with (
+        zipfile.ZipFile(path) as src,
+        zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst,
+    ):
+        for item in src.infolist():
+            if item.filename == "docProps/core.xml":
+                continue
+            body = src.read(item.filename)
+            if item.filename == "_rels/.rels":
+                import re
+
+                body = re.sub(rb"<Relationship [^>]*core-properties[^>]*/>", b"", body)
+            dst.writestr(item, body)
+    path.write_bytes(buf.getvalue())
+
+    stamp_docx_core_properties(path, model=None)
+
+    reopened = DocxDocument(str(path))
+    assert "andamentum-whetstone" in (reopened.core_properties.author or "")

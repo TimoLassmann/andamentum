@@ -29,7 +29,7 @@ def test_markdown_reports_what_the_editor_handed_back() -> None:
     assert "Left to the author (2)" in out
     assert "issue 1 that a rewrite cannot answer" in out
     assert "needs a restructure, reason 1" in out   # the REASON, not just the issue
-    assert "Criterion 2" in out
+    assert "Left to you:" in out
 
 
 def test_html_reports_what_the_editor_handed_back() -> None:

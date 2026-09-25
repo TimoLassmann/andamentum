@@ -51,11 +51,14 @@ from .._metrics import bump_from_result
 from ..model import DocumentModel, Severity
 from ..prompt_blocks import (
     ACTIONABILITY_BAR,
+    FIX_FIELD,
     SECTION_IDS_NOTE,
     SEVERITY_RUBRIC,
     TOOL_DISCIPLINE,
     TOOLS_AVAILABLE,
+    WRITING_RULES,
     brief_block,
+    split_fix,
     claims_block,
     sections_block,
 )
@@ -92,9 +95,11 @@ class _PresenceFinding(BaseModel):
     """One instance of a defect that is present in the text."""
 
     issue: str = Field(
-        description="What is wrong, in 1-2 sentences. Name what the author "
-        "would change, add, or verify to resolve it."
+        description="What is wrong in this passage and what it costs a "
+        "reader, in 1-2 plain sentences written to the author. Do not "
+        "restate the quote."
     )
+    fix: str = Field(default="", description=FIX_FIELD)
     quote: str = Field(
         description="A VERBATIM span copied exactly from the document — the "
         "text the defect sits in. Copy it character-for-character; a quote "
@@ -112,9 +117,10 @@ class _AbsenceFinding(BaseModel):
     """One instance of something the document should contain and does not."""
 
     issue: str = Field(
-        description="What is wrong, in 1-2 sentences. Name what the author "
-        "would add to resolve it."
+        description="What is missing and what its absence costs a reader, in "
+        "1-2 plain sentences written to the author."
     )
+    fix: str = Field(default="", description=FIX_FIELD)
     missing_item: str = Field(
         description="The specific thing that is absent, named concretely — "
         "'a justification for the n=50 sample size', not 'methodological "
@@ -156,6 +162,8 @@ cover those.
 
 {ACTIONABILITY_BAR}
 
+{WRITING_RULES}
+
 {SEVERITY_RUBRIC}
 
 {TOOLS_AVAILABLE}
@@ -171,16 +179,16 @@ first.
 {SECTION_IDS_NOTE}"""
 
 _PRESENCE_TAIL = """
-For each instance report: the issue, a VERBATIM quote copied exactly from the \
-document, and a severity. The quote is how the finding is anchored back to the \
+For each instance report: the issue, the fix, a VERBATIM quote copied exactly \
+from the document, and a severity. The quote is how the finding is anchored back to the \
 draft — a quote that is not present in the source character-for-character is \
 discarded, along with the finding attached to it, so copy rather than \
 paraphrase."""
 
 _ABSENCE_TAIL = """
 This check is about something that is MISSING, so there is nothing to quote. \
-For each instance report: the issue, the missing item itself, 2 to 4 search \
-terms, and a severity. The search terms are how the finding is checked: the \
+For each instance report: the issue, the fix, the missing item itself, 2 to 4 \
+search terms, and a severity. The search terms are how the finding is checked: the \
 document is searched for them, and if ANY of them appears the finding is \
 discarded as mistaken. Choose terms you are confident would appear if the item \
 were present, and search the document yourself before reporting."""
@@ -325,11 +333,13 @@ def _finalise(
         # measurement the drop rate exists to provide.
         if probe.tags and item.tag.strip() and not tag:
             dropped_tags += 1
+        issue, fix = split_fix(item.issue, item.fix)
         try:
             if isinstance(item, _PresenceFinding):
                 finding = ProbeFinding(
                     probe_id=probe.id,
-                    issue=item.issue,
+                    issue=issue,
+                    fix=fix,
                     severity=item.severity,
                     tag=tag,
                     quote=item.quote,
@@ -337,7 +347,8 @@ def _finalise(
             else:
                 finding = ProbeFinding(
                     probe_id=probe.id,
-                    issue=item.issue,
+                    issue=issue,
+                    fix=fix,
                     severity=item.severity,
                     tag=tag,
                     missing_item=item.missing_item,

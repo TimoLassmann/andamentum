@@ -106,6 +106,7 @@ class ProbeFinding(BaseModel):
     probe_id: str
     issue: str
     severity: Severity = "moderate"
+    fix: str = ""  # one action for the author, starting with a verb
     tag: str = ""
 
     # presence findings only — the verbatim span the defect sits in.

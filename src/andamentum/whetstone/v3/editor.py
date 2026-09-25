@@ -102,8 +102,9 @@ Apply these checks as you read, scaled to the criteria in your input:
     shorter, but should fit naturally in the surrounding prose.
   • One edit = one focused change. Don't bundle multiple unrelated rewrites
     into one EditProposal — split them.
-  • Rationale: ONE short sentence per edit explaining why your version
-    is better, citing the criterion it addresses.
+  • Rationale: ONE short, plain sentence per edit, written to the author,
+    saying what was wrong with the original ("'Significantly' gave no size;
+    the number does"). Do not name an editorial criterion.
   • severity: minor (cosmetic), moderate (clarity/correctness), major
     (changes meaning, removes ambiguity, fixes an error).
   • confidence: low (judgement call), medium (clearly better), high
@@ -134,7 +135,10 @@ job is to answer them where a rewrite can, and to say plainly where it cannot.
     finding names a problem in two SEPARATE places that need two rewrites.
   • Set can_fix=false when rewriting a span cannot answer the finding — it
     needs data you do not have, a new paragraph, a restructure, or a decision
-    only the author can make. Give one sentence in `why`. THIS IS THE RIGHT
+    only the author can make. In `why`, say in a few plain words what a
+    rewrite cannot supply ("the value is not in the text", "the reviewers
+    disagree"). Do NOT restate the finding's fix — the author already has it.
+    THIS IS THE RIGHT
     ANSWER FOR MOST STRUCTURAL FINDINGS, and it is more useful than a
     cosmetic change that leaves the problem in place while looking addressed.
   • When you can fix it, the rewrite must actually answer the finding. If your
@@ -196,13 +200,19 @@ class EditProposal(BaseModel):
     title: str = Field(
         description="Short label for this edit, e.g. 'Tighten sentence'."
     )
-    rationale: str = Field(description="One sentence: why your version is better.")
+    rationale: str = Field(
+        description=(
+            "One plain sentence to the author: what was wrong with the "
+            "original. Do not name an editorial criterion."
+        )
+    )
     why: str = Field(
         default="",
         description=(
-            "When can_fix is false: one sentence on what the finding needs "
-            "that a rewrite cannot give — data, a new paragraph, a "
-            "restructure, or a decision only the author can make."
+            "When can_fix is false: a few plain words on what a rewrite "
+            "cannot supply — e.g. 'the value is not in the text', 'needs a "
+            "new paragraph', 'the reviewers disagree'. Not the fix; the "
+            "author already has that."
         ),
     )
     severity: Literal["minor", "moderate", "major"] = Field(
@@ -377,6 +387,7 @@ class Declined:
     criterion: str
     issue: str
     why: str
+    finding_id: str = ""  # the id of the finding declined, for the renderers
 
 
 def _passage(finding: Finding, section: Section) -> str:
@@ -453,8 +464,9 @@ async def _run_editor_on_section(
         # Showing the transcription invites the editor to echo it back and
         # rewrite text the document does not contain.
         listed = "\n".join(
-            f"{number}. [{finding.criterion}/{finding.severity}] {finding.issue}\n"
-            f'   concerning: "{_passage(finding, section)}"'
+            f"{number}. [{finding.criterion}/{finding.severity}] {finding.issue}"
+            + (f" Suggested fix: {finding.fix}" if finding.fix else "")
+            + f'\n   concerning: "{_passage(finding, section)}"'
             for number, finding in enumerate(ordered, start=1)
         )
         findings_block = (
@@ -530,6 +542,7 @@ async def _run_editor_on_section(
                         criterion=addressed.criterion,
                         issue=addressed.issue,
                         why=prop.why or prop.rationale or "no reason given",
+                        finding_id=addressed.id,
                     )
                 )
             continue
@@ -550,14 +563,12 @@ async def _run_editor_on_section(
                         criterion=addressed.criterion,
                         issue=addressed.issue,
                         why="the proposed rewrite did not quote the document verbatim",
+                        finding_id=addressed.id,
                     )
                 )
             continue
 
         start, end = span
-        rationale = prop.rationale
-        if addressed is not None:
-            rationale = f"{rationale} (addresses: {addressed.issue})"
         # The agent read one section, so `locate` answers in section
         # coordinates; `Edit` records document coordinates, because that is
         # what the docx renderer hands to the surgery layer as a span. The
@@ -569,12 +580,16 @@ async def _run_editor_on_section(
                 title=prop.title or "(untitled edit)",
                 severity=prop.severity,
                 confidence=prop.confidence,
-                rationale=rationale,
+                rationale=prop.rationale,
                 section_id=section.id,
                 char_start=section.start + start,
                 char_end=section.start + end,
                 original_text=section.text[start:end],
                 new_text=prop.new_text,
+                # The link, not a copy of the finding's text: the renderers
+                # show the rewrite with the finding it answers. Appending the
+                # finding to the rationale said the same thing twice.
+                finding_id=addressed.id if addressed is not None else None,
             )
         )
 
@@ -588,6 +603,7 @@ async def _run_editor_on_section(
                     criterion=finding.criterion,
                     issue=finding.issue,
                     why="the editor did not respond to this finding",
+                    finding_id=finding.id,
                 )
             )
 
@@ -662,7 +678,7 @@ async def run_editor(
         edits.extend(section_edits)
         declined.extend(section_declined)
 
-    directed = sum(1 for e in edits if "(addresses:" in e.rationale)
+    directed = sum(1 for e in edits if e.finding_id is not None)
     logger.info(
         "[v3.editor] %d edit(s) across %d section(s) — %d answering a finding, "
         "%d of the editor's own; %d finding(s) need the author (criteria: %s)",
@@ -714,11 +730,13 @@ def _to_editor_finding(finding: WFinding) -> Finding | None:
     The public :class:`~andamentum.whetstone.schemas.Finding` is what a round
     of review returns; the editor reads the pipeline's own
     :class:`~.review.Finding`. The mapping is the inverse of
-    :func:`~.synth._to_wfinding` — criterion from the title, issue from the
-    rationale, span from the first quote — and it loses nothing the editor
-    uses. A finding with no quote names something missing or the document as
-    a whole, and :func:`run_editor` would not send it to any section, so it is
-    dropped here with the same reasoning.
+    :func:`~.synth._to_wfinding` — criterion from the category, headline from
+    the title, issue from the rationale, span from the first quote — and it
+    loses nothing the editor uses. The id is carried across, so the edits it
+    produces link back to the finding the reader sees. A finding with no quote
+    names something missing or the document as a whole, and
+    :func:`run_editor` would not send it to any section, so it is dropped here
+    with the same reasoning.
 
     The reviewer's identity is written into the issue, because the editor
     reads several reviewers' findings in one list and "two reviewers said
@@ -731,8 +749,11 @@ def _to_editor_finding(finding: WFinding) -> Finding | None:
     if finding.perspective:
         issue = f"[{finding.perspective}] {issue}"
     return Finding(
-        criterion=finding.title,
+        id=finding.id,
+        criterion=finding.category or finding.title,
+        headline=finding.title,
         issue=issue,
+        fix=finding.fix,
         quote=quote.text,
         severity=finding.severity,
         span=Span(

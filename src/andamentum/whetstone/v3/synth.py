@@ -42,7 +42,9 @@ class StructuredReview(BaseModel):
 def _findings_block(findings: list[Finding]) -> str:
     return (
         "\n".join(
-            f"  - ({f.criterion}/{f.severity}) {f.issue} — quote: {f.quote!r}"
+            f"  - ({f.criterion}/{f.severity}) {f.issue}"
+            + (f" Fix: {f.fix}" if f.fix else "")
+            + f" — quote: {f.quote!r}"
             for f in findings
         )
         or "  (no findings)"
@@ -81,9 +83,12 @@ async def synthesise(
             f"Write one concise structured review of a document from the findings "
             f"and section gists. synopsis: {synopsis_length} on what the document "
             f"is and its overall state — name where the issues cluster if there "
-            f"are several, not just the global stance. strengths / weaknesses: "
-            f"short bullet points; weaknesses should reflect the findings, most "
-            f"important first. Do not invent issues beyond the findings."
+            f"are several, not just the global stance. strengths: short bullet "
+            f"points. weaknesses: short bullet points that reflect the findings, "
+            f"most important first, each one plain sentence telling the author "
+            f"what to fix and where. Write to the author as 'you', in plain "
+            f"words, without the names of review criteria. Do not invent issues "
+            f"beyond the findings."
         ),
         output_model=StructuredReview,
         retries=2,
@@ -180,6 +185,20 @@ async def critique_and_revise(
 # ── Adapter → whetstone ReviewResult (renderer contract) ────────────────────
 
 
+def synopsis_of(summary: str) -> str:
+    """The synopsis paragraph of a summary :func:`_flatten` wrote, or ``""``.
+
+    The inverse of the first part of :func:`_flatten`, kept beside it so the
+    format has one owner. A multi-reviewer summary quotes each reviewer's
+    synopsis; its strengths and weaknesses stay out, because the weaknesses
+    restate findings that the combined report already lists.
+    """
+    text = summary.strip()
+    if text.startswith("## Summary"):
+        text = text[len("## Summary") :].lstrip()
+    return text.split("\n## ", 1)[0].strip()
+
+
 def _flatten(review: StructuredReview) -> str:
     parts = [f"## Summary\n\n{review.synopsis}".rstrip()]
     if review.strengths:
@@ -206,16 +225,21 @@ def _to_wfinding(f: Finding, model: DocumentModel) -> WFinding:
                 text=f.quote,
             )
         )
-    # A v3 Finding carries one `issue` statement — no separate title/rationale.
-    # The criterion is the short label; the issue is the body. Mapping the same
-    # text into both fields duplicates it, because every renderer shows title
-    # AND rationale (docx concatenates them, markdown/html stack them).
-    title = f.criterion or "Finding"
+    # The headline is the reviewer's own few words for the problem. The
+    # criterion stays out of the title: it headed every finding it raised
+    # alike, so three comments on one document all carried the same criterion
+    # name as their heading, over three different complaints.
+    # It is kept in ``category``. A finding with no headline (an older caller,
+    # or a model that left it empty) falls back to the criterion rather than
+    # repeating the issue text, which every renderer already shows as the body.
+    title = f.headline.strip() or f.criterion or "Finding"
     return WFinding(
+        id=f.id,
         title=title,
         severity=f.severity,
         confidence="medium",
         rationale=f.issue,
+        fix=f.fix.strip(),
         quotes=quotes,
         sections_involved=[f.span.section_id] if f.span else [],
         source="investigate",
