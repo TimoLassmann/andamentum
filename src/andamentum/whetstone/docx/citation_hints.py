@@ -16,18 +16,28 @@ result — "(Smith et al., 2020)" or "12". The projection keeps only the result
 result and what its instruction says, so the checker knows exactly which
 spans are citations without judging them.
 
+*Footnotes and endnotes.* In a notes style (Chicago notes and bibliography)
+the citations ARE the notes. A note's mark in the body is a
+``<w:footnoteReference>`` with no text of its own, so the projection does not
+show it at all; its text lives in ``footnotes.xml`` / ``endnotes.xml``. This
+recovers where each mark sits — counted with exactly the rules the projection
+uses — and what the note says.
+
 Nothing here decides anything. It reports formatting; the reference checker
 weighs it.
 """
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 from typing import Any
 
+from lxml import etree  # type: ignore
+
 from andamentum.references import Hint
 
-from .atoms import document_atoms, projection, qn
+from .atoms import AtomKind, document_atoms, paragraph_atoms, projection, qn
 from .reading import read_docx
 
 _CITATION_FIELD_MARKERS = (
@@ -83,8 +93,84 @@ def citation_hints(path: str | Path, *, expected_text: str) -> list[Hint]:
                 payload=instructions[field_index][:4000],
             )
         )
+    hints += _note_hints(path, parts.paragraphs, length=len(atoms))
     hints.sort(key=lambda h: (h.start, h.kind))
     return hints
+
+
+_NOTE_REFERENCES = {qn("footnoteReference"): "footnotes", qn("endnoteReference"): "endnotes"}
+_SKIPPED_NOTE_TYPES = frozenset({"separator", "continuationSeparator", "continuationNotice"})
+
+
+def _note_hints(path: str | Path, paragraphs: list[Any], *, length: int) -> list[Hint]:
+    """A ``note`` hint at each footnote or endnote mark, carrying its text."""
+    marks = _note_marks(paragraphs)
+    if not marks:
+        return []
+    texts = _note_texts(path)
+    return [
+        Hint(kind="note", start=offset, end=offset, payload=texts[(part, note_id)])
+        for offset, part, note_id in marks
+        if (part, note_id) in texts and offset <= length
+    ]
+
+
+def _note_marks(paragraphs: list[Any]) -> list[tuple[int, str, str]]:
+    """``(offset, part, id)`` for each note mark.
+
+    The offset is counted in ATOMS — the single text representation
+    (:mod:`.atoms`) — not re-derived here: walking a paragraph in document
+    order, each element contributes the atoms it produced, so whatever the
+    projection counts or skips (a deletion, a break) this counts or skips
+    identically, by construction.
+    """
+    atoms = document_atoms(paragraphs)
+    per_element: dict[int, int] = {}
+    per_paragraph: dict[int, int] = {}
+    for atom in atoms:
+        if atom.kind is AtomKind.PARAGRAPH_BREAK:
+            continue
+        per_paragraph[id(atom.paragraph)] = per_paragraph.get(id(atom.paragraph), 0) + 1
+        if atom.element is not None:
+            per_element[id(atom.element)] = per_element.get(id(atom.element), 0) + 1
+
+    marks: list[tuple[int, str, str]] = []
+    position = 0
+    for index, paragraph in enumerate(paragraphs):
+        if index:
+            position += 1  # the paragraph break between them
+        offset = position
+        for element in paragraph.iter():
+            if element.tag in _NOTE_REFERENCES:
+                marks.append((offset, _NOTE_REFERENCES[element.tag], element.get(qn("id")) or ""))
+            offset += per_element.get(id(element), 0)
+        position += per_paragraph.get(id(paragraph), 0)
+    return marks
+
+
+def _note_texts(path: str | Path) -> dict[tuple[str, str], str]:
+    """``(part, id) → text`` for every real note in the file."""
+    out: dict[tuple[str, str], str] = {}
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+            for part in ("footnotes", "endnotes"):
+                name = f"word/{part}.xml"
+                if name not in names:
+                    continue
+                root = etree.fromstring(archive.read(name))
+                for note in root.iter(qn(part[:-1])):
+                    if note.get(qn("type")) in _SKIPPED_NOTE_TYPES:
+                        continue
+                    paragraphs = [
+                        projection(list(paragraph_atoms(p))) for p in note.iter(qn("p"))
+                    ]
+                    out[(part, note.get(qn("id")) or "")] = " ".join(
+                        " ".join(p.split()) for p in paragraphs if p.strip()
+                    )
+    except (zipfile.BadZipFile, etree.XMLSyntaxError):
+        return {}
+    return out
 
 
 def _is_raised(run: Any, raised_styles: frozenset[str]) -> bool:

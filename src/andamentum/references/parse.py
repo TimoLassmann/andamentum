@@ -40,7 +40,7 @@ _HEADING_LINE = re.compile(
 _ENTRY_NUMBER = re.compile(
     r"^[ \t]*(?:[-*•][ \t]*)?\[?(\d{1,3})(?:[\].)][ \t]*|[ \t]+)(?=[^\d\s])"
 )
-_DOI = re.compile(r"\b(10\.\d{4,9}/[^\s\"<>]+)", re.IGNORECASE)
+DOI = re.compile(r"\b(10\.\d{4,9}/[^\s\"<>]+)", re.IGNORECASE)
 YEAR = re.compile(r"(?<![\d.])(1[89]\d\d|20\d\d)([a-z]?)(?![\d])")
 
 
@@ -108,12 +108,12 @@ def split_entries(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
 
 
 def _looks_like_entry(line: str) -> bool:
-    return bool(YEAR.search(line) or _DOI.search(line))
+    return bool(YEAR.search(line) or DOI.search(line))
 
 
 def _entry(text: str, raw: dict) -> ReferenceEntry:
     stripped = text[raw["start"] : raw["end"]].rstrip()
-    doi = _DOI.search(stripped)
+    doi = DOI.search(stripped)
     first_year = YEAR.search(stripped)
     lead = stripped[: first_year.start()] if first_year else stripped[:120]
     return ReferenceEntry(

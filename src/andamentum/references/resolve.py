@@ -74,3 +74,32 @@ def numbered(entries: list[ReferenceEntry]) -> dict[int, list[ReferenceEntry]]:
         if e.number is not None:
             out.setdefault(e.number, []).append(e)
     return out
+
+
+def resolve_note_work(work: CitedWork, entries: list[ReferenceEntry]) -> WorkResolution:
+    """A work named in a note, against the bibliography.
+
+    By first-author surname, then by title: one author often has several
+    works in a bibliography, and a note's short form names the title, not the
+    year. The title is matched fuzzily (a short form shortens it; quotation
+    marks and capitals differ between note and entry).
+    """
+    from rapidfuzz import fuzz
+
+    by_author = [e for e in entries if first_author_is(work.surname, e)]
+    if not by_author:
+        return WorkResolution("missing")
+    title = normalise(work.title)
+    if title:
+        titled = [
+            e for e in by_author if fuzz.partial_ratio(title, normalise(e.text)) >= 85
+        ]
+        if not titled:
+            return WorkResolution("missing", by_author)
+        by_author = titled
+    if len(by_author) > 1:
+        return WorkResolution("ambiguous", by_author)
+    entry = by_author[0]
+    if work.year is not None and entry.year is not None and work.year != entry.year:
+        return WorkResolution("year_mismatch", [entry])
+    return WorkResolution("match", [entry])

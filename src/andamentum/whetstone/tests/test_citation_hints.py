@@ -85,3 +85,52 @@ def _fld(kind: str):
     element = etree.Element(qn("w:fldChar"))
     element.set(qn("w:fldCharType"), kind)
     return element
+
+
+async def test_a_footnote_mark_is_a_note_hint_at_its_position(tmp_path: Path) -> None:
+    """The mark has no character of its own; its hint sits where it falls in
+    the text, and carries the note's text from footnotes.xml."""
+    import re
+    import zipfile
+    from io import BytesIO
+
+    doc = Document()
+    doc.add_paragraph("Introduction")
+    p = doc.add_paragraph()
+    p.add_run("Rare diseases are common.")
+    p.add_run("MARK")
+    p.add_run(" More text.")
+    path = tmp_path / "notes.docx"
+    doc.save(str(path))
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    out = BytesIO()
+    with zipfile.ZipFile(path) as src, zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            body = src.read(item.filename)
+            if item.filename == "word/document.xml":
+                body = re.sub(
+                    rb"<w:r><w:t>MARK</w:t></w:r>",
+                    b'<w:r><w:footnoteReference w:id="1"/></w:r>',
+                    body,
+                )
+            elif item.filename == "word/_rels/document.xml.rels":
+                body = body.replace(
+                    b"</Relationships>",
+                    b'<Relationship Id="rIdFn" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>',
+                )
+            dst.writestr(item, body)
+        dst.writestr(
+            "word/footnotes.xml",
+            f'<w:footnotes xmlns:w="{w}">'
+            '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+            '<w:footnote w:id="1"><w:p><w:r><w:t>Michael Pollan, The Omnivore’s Dilemma (2006), 3.</w:t></w:r></w:p></w:footnote>'
+            "</w:footnotes>",
+        )
+    path.write_bytes(out.getvalue())
+
+    text, hints = await _hints(path)
+    notes = [h for h in hints if h.kind == "note"]
+    assert len(notes) == 1
+    assert text[: notes[0].start].endswith("common.")
+    assert notes[0].payload == "Michael Pollan, The Omnivore’s Dilemma (2006), 3."

@@ -196,3 +196,22 @@ async def test_a_reference_manager_field_settles_the_style() -> None:
     assert report.style is not None
     assert (report.style.style, report.style.decided_by) == ("author_year", "evidence")
     assert [j.reason for j in report.judged] == ["rule: a reference-manager field"]
+
+
+async def test_the_model_cannot_name_a_style_whose_only_candidates_were_ruled_out(monkeypatch) -> None:
+    """MLA cites author and title with no year, so nothing points at an entry.
+    Its only raised numbers are an affiliation and an exponent — a local model
+    named "superscript" from them."""
+
+    async def says_superscript(prompt: str, *, model: str):
+        return llm_mod.StyleAnswer(style="numeric_superscript", reason="stub")
+
+    monkeypatch.setattr(llm_mod, "ask_style", says_superscript)
+    text = (
+        "A study\nAda Lovelace1\nIntroduction\n"
+        "Claims were made (Smith, “A Title”). We grew 105 cells.\n"
+        "Works Cited\nSmith, John. “A Title.” Journal, vol. 1, 2020, pp. 1-2.\n"
+    )
+    hints = [_hint_after(text, "Ada Lovelace", "1"), _hint_after(text, "We grew 10", "5")]
+    report = await _read(text, hints=hints, model="stub:model")
+    assert report.style is not None and report.style.style == "undecided"

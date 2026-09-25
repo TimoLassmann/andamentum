@@ -40,6 +40,8 @@ _OFFLINE_KINDS = frozenset(
         "out_of_order",
         "year_mismatch",
         "ambiguous_citation",
+        "ibid_unclear",
+        "short_before_full",
     }
 )
 
@@ -138,23 +140,30 @@ _STYLE_NAMES = {
     "numeric_superscript": "superscript numbers",
     "numeric_parentheses": "numbers in parentheses, like (3)",
     "author_year": "author and year, like (Smith et al., 2020)",
+    "notes": "footnotes or endnotes",
 }
 
 
 def _summary(report: "ReferenceReport") -> str:
-    if not report.found_list:
+    notes_only = not report.found_list and report.style is not None
+    if not report.found_list and not notes_only:
         return (
             "No reference list was found, so nothing was checked. The checker "
             "looks for a section headed References, Bibliography, Works cited "
             "or Literature cited."
         )
-    if not report.entries:
+    if not report.entries and not notes_only:
         return (
             "A reference list was found, but no entries could be read from it "
             "(entries need a year, a DOI or a number), so nothing was checked."
         )
     style = report.style
-    lines = [f"Checked {len(report.entries)} references."]
+    lines = [
+        "No bibliography: the notes were checked on their own, and their full "
+        "citations stand in for its entries."
+        if notes_only
+        else f"Checked {len(report.entries)} references."
+    ]
     if style is None or style.style == "undecided":
         lines += [
             "",
@@ -175,18 +184,22 @@ def _summary(report: "ReferenceReport") -> str:
         by_model = sum(1 for j in report.judged if j.reason == "model")
         lines.append(
             f"- **Citations read:** {len(accepted)}"
-            + (f"; {len(rejected)} numbers set aside as not citations ({_reasons(rejected)})" if rejected else "")
+            + (f"; {len(rejected)} set aside as not citations ({_reasons(rejected)})" if rejected else "")
             + (f"; {by_model} judged by the model" if by_model else "")
             + (f"; {len(unjudged)} left unjudged — pass --model to judge them" if unjudged else "")
             + "."
         )
         offline = [p for p in report.problems if p.kind in _OFFLINE_KINDS]
         lines.append(
-            "- **Citations against the list:** "
+            ("- **The notes, checked in order:** " if notes_only else "- **Citations against the list:** ")
             + (
                 f"{len(offline)} problem{'s' if len(offline) != 1 else ''}."
                 if offline
-                else "every citation points to an entry, and every entry is cited."
+                else (
+                    "every short form and Ibid. has a source to point to."
+                    if notes_only
+                    else "every citation points to an entry, and every entry is cited."
+                )
             )
         )
     if report.looked_up:

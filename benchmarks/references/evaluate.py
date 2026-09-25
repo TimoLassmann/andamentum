@@ -42,21 +42,17 @@ async def score(case: dict, directory: Path, model: str | None) -> dict:
     accepted = [(c.start, c.end) for c in report.citations]
     found = sum(1 for t in truth if any(_overlaps(t, a) for a in accepted))
     real = sum(1 for a in accepted if any(_overlaps(a, t) for t in truth))
-    planted = case["planted"]
-    hits: dict[str, bool] = {}
+    # Each planted problem is found when a problem of its kind lands on its
+    # span; every other problem is a false alarm.
+    found_planted = 0
     explained: set[int] = set()
-    for index, problem in enumerate(report.problems):
-        span = (problem.start, problem.end)
-        if "missing_citation" in planted and problem.kind == "cited_not_listed" and _overlaps(span, tuple(planted["missing_citation"])):
-            hits["missing"] = True
-            explained.add(index)
-        if "uncited_entry_start" in planted and problem.kind == "listed_not_cited" and problem.start <= planted["uncited_entry_start"] + 8 and problem.end > planted["uncited_entry_start"]:
-            hits["uncited"] = True
-            explained.add(index)
-        if "year_mismatch_citation" in planted and problem.kind == "year_mismatch":
-            hits["year"] = True
-            explained.add(index)
-    expected = ["missing", "uncited"] + (["year"] if "year_mismatch_citation" in planted else [])
+    for expected in case["planted"]:
+        span = (expected["start"], expected["end"])
+        for index, problem in enumerate(report.problems):
+            if index not in explained and problem.kind == expected["kind"] and _overlaps((problem.start, problem.end), span):
+                explained.add(index)
+                found_planted += 1
+                break
     by_model = sum(1 for j in report.judged if j.reason == "model")
     unjudged = sum(1 for j in report.judged if j.reason.startswith("not judged"))
     return {
@@ -66,7 +62,7 @@ async def score(case: dict, directory: Path, model: str | None) -> dict:
         "decided_by": report.style.decided_by if report.style else "none",
         "recall": f"{found}/{len(truth)}",
         "precision": f"{real}/{len(accepted)}",
-        "planted": f"{sum(hits.get(k, False) for k in expected)}/{len(expected)}",
+        "planted": f"{found_planted}/{len(case['planted'])}",
         "false_alarms": [p.kind for i, p in enumerate(report.problems) if i not in explained],
         "model_judged": by_model,
         "unjudged": unjudged,
@@ -77,8 +73,11 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("corpus", type=Path)
     parser.add_argument("--model", default=None)
+    parser.add_argument("--only", nargs="*", default=None, help="Style names to score.")
     args = parser.parse_args()
     cases = json.loads((args.corpus / "manifest.json").read_text())
+    if args.only:
+        cases = [c for c in cases if c["style"] in args.only]
     rows = []
     for case in cases:  # sequential: never two model calls at once
         rows.append(await score(case, args.corpus, args.model))

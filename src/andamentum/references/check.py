@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from .models import Candidate, Problem, ReferenceEntry, Style
-from .resolve import normalise, numbered, resolve_work
+from .resolve import normalise, numbered, resolve_note_work, resolve_work
 
 
 def check_citations(
@@ -20,6 +20,7 @@ def check_citations(
     *,
     style: Style,
     complete: bool = True,
+    notes: list[Candidate] | None = None,
 ) -> list[Problem]:
     """Every mismatch between the accepted citations and the list.
 
@@ -27,7 +28,9 @@ def check_citations(
     was given for them). An entry then may be cited by one of those, so
     "never cited" is not reported at all rather than reported wrongly.
     """
-    if style == "author_year":
+    if style == "notes":
+        problems, cited = _notes(entries, notes if notes is not None else citations)
+    elif style == "author_year":
         problems, cited = _author_year(entries, citations)
     else:
         problems, cited = _numeric(entries, citations)
@@ -37,9 +40,139 @@ def check_citations(
     if citations and complete:
         problems += _never_cited(entries, cited)
     problems += _duplicate_works(entries)
-    if style != "author_year":
+    if style not in ("author_year", "notes"):
         problems += _out_of_order(entries, citations)
     return problems
+
+
+# ── notes documents ─────────────────────────────────────────────────────────
+
+
+def _notes(
+    entries: list[ReferenceEntry], notes: list[Candidate]
+) -> tuple[list[Problem], set[int]]:
+    """Notes in document order, every note — comments included, because an
+    "Ibid." refers to whatever note came just before it."""
+    from rapidfuzz import fuzz
+
+    problems: list[Problem] = []
+    cited: set[int] = set()
+    previous_works: list | None = None  # what the note before cited
+    full_seen: list = []  # works whose full citation has appeared
+    reported: set[tuple[str, str]] = set()
+    for note in notes:
+        form = note.note_form
+        if form == "ibid":
+            if previous_works is None or len(previous_works) != 1:
+                what = (
+                    "is the first note"
+                    if previous_works is None and note is notes[0]
+                    else "follows a note that cites "
+                    + ("no source" if not previous_works else f"{len(previous_works)} sources")
+                )
+                problems.append(
+                    Problem(
+                        kind="ibid_unclear",
+                        severity="moderate",
+                        headline="“Ibid.” has no single source to refer to",
+                        issue=(
+                            f"This note says “Ibid.”, but it {what}, so a reader "
+                            f"cannot tell which work it means."
+                        ),
+                        fix="Replace “Ibid.” with a short form naming the author and title.",
+                        start=note.start,
+                        end=note.end,
+                    )
+                )
+            # previous_works carries forward: Ibid. after Ibid. is the same source.
+            continue
+        if form not in ("full", "short"):
+            previous_works = [] if form == "comment" else previous_works
+            continue
+        previous_works = list(note.works)
+        for work in note.works:
+            key = (normalise(work.surname), normalise(work.title)[:40])
+            if not entries:
+                # No bibliography: the first citation of a work must be full.
+                if form == "full":
+                    full_seen.append(work)
+                elif not any(
+                    normalise(f.surname) == normalise(work.surname)
+                    and fuzz.partial_ratio(normalise(work.title), normalise(f.title)) >= 85
+                    for f in full_seen
+                ) and key not in reported:
+                    reported.add(key)
+                    problems.append(
+                        Problem(
+                            kind="short_before_full",
+                            severity="moderate",
+                            headline=f"Short note for {work.surname} before the full one",
+                            issue=(
+                                f"This note cites {work.surname}, “{work.title}” in "
+                                f"short form, but no earlier note gives the full "
+                                f"citation, and there is no bibliography to find it in."
+                            ),
+                            fix="Give the full citation the first time this work is cited.",
+                            start=note.start,
+                            end=note.end,
+                        )
+                    )
+                continue
+            resolution = resolve_note_work(work, entries)
+            cited.update(id(e) for e in resolution.entries if resolution.status in ("match", "year_mismatch"))
+            if resolution.status == "match" or key in reported:
+                continue
+            reported.add(key)
+            label = f"{work.surname}, “{work.title}”"
+            if resolution.status == "missing":
+                problems.append(
+                    Problem(
+                        kind="cited_not_listed",
+                        severity="major",
+                        headline=f"{work.surname} is not in the bibliography",
+                        issue=(
+                            f"This note cites {label}, but the bibliography has "
+                            f"no entry for it"
+                            + (" (it has other works by this author)" if resolution.entries else "")
+                            + "."
+                        ),
+                        fix="Add the work to the bibliography, or correct the note.",
+                        start=note.start,
+                        end=note.end,
+                    )
+                )
+            elif resolution.status == "year_mismatch":
+                entry = resolution.entries[0]
+                problems.append(
+                    Problem(
+                        kind="year_mismatch",
+                        severity="moderate",
+                        headline=f"Year differs from the bibliography ({work.year} vs {entry.year})",
+                        issue=(
+                            f"This note gives {work.year} for {label}, but the "
+                            f"bibliography entry says {entry.year}."
+                        ),
+                        fix="Correct the year in the note or in the entry.",
+                        start=note.start,
+                        end=note.end,
+                    )
+                )
+            else:
+                problems.append(
+                    Problem(
+                        kind="ambiguous_citation",
+                        severity="moderate",
+                        headline=f"{label} fits {len(resolution.entries)} entries",
+                        issue=(
+                            f"The bibliography has {len(resolution.entries)} "
+                            f"entries this note could mean."
+                        ),
+                        fix="Use enough of the title in the note to tell them apart.",
+                        start=note.start,
+                        end=note.end,
+                    )
+                )
+    return problems, cited
 
 
 # ── numbered documents ──────────────────────────────────────────────────────
@@ -153,7 +286,7 @@ def _author_year(
 ) -> tuple[list[Problem], set[int]]:
     problems: list[Problem] = []
     cited: set[int] = set()
-    reported: set[tuple[str, int, str]] = set()
+    reported: set[tuple[str, int | None, str]] = set()
     for citation in citations:
         for work in citation.works:
             resolution = resolve_work(work, entries)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 
 from .models import Candidate, CitedWork, Hint
+from .notes import read_note
 
 _NUMBER_LIST = r"\d{1,4}(?:[ \t]*[,;–—-][ \t]*\d{1,4})*"
 _BRACKETS = re.compile(rf"\[({_NUMBER_LIST})\]")
@@ -60,6 +61,43 @@ _NOT_NAMES = frozenset(
 )
 
 
+_PANDOC_NOTE_MARK = re.compile(r"\[\^([^\]\s]+)\](?!:)")
+_PANDOC_NOTE_DEF = re.compile(r"^\[\^([^\]\s]+)\]:[ \t]*(.+)$", re.MULTILINE)
+
+
+def note_anchor(text: str, offset: int) -> tuple[int, int]:
+    """The word just before a note mark — where a comment about the note
+    goes, since the mark itself is not a character of the text. The word
+    after, when the mark opens a paragraph."""
+    line_start = text.rfind("\n", 0, offset) + 1
+    before = text[line_start:offset].rstrip()
+    if before:
+        word = re.search(r"\S+$", before)
+        assert word is not None
+        return line_start + word.start(), line_start + len(before)
+    after = re.match(r"\s*(\S+)", text[offset:])
+    if after:
+        return offset + after.start(1), offset + after.end(1)
+    return max(0, offset - 1), max(1, offset)
+
+
+def pandoc_notes(text: str) -> tuple[list[Hint], list[tuple[int, int]]]:
+    """Markdown footnotes: ``[^1]`` marks with ``[^1]: text`` definitions.
+
+    Returns note hints at the marks and the definitions' spans, which belong
+    to the notes and are not scanned as body text.
+    """
+    definitions = {m.group(1): m for m in _PANDOC_NOTE_DEF.finditer(text)}
+    if not definitions:
+        return [], []
+    hints = [
+        Hint(kind="note", start=m.start(), end=m.start(), payload=definitions[m.group(1)].group(2))
+        for m in _PANDOC_NOTE_MARK.finditer(text)
+        if m.group(1) in definitions
+    ]
+    return hints, [(m.start(), m.end()) for m in definitions.values()]
+
+
 def scan(
     text: str,
     *,
@@ -70,10 +108,13 @@ def scan(
 ) -> list[Candidate]:
     """All candidates in ``text[start:end]``, in document order."""
     found: list[Candidate] = []
-    hints = hints or []
-    covered: list[tuple[int, int]] = []  # spans a field or superscript owns
+    hints = list(hints or [])
+    covered: list[tuple[int, int]] = []  # spans a field, superscript or note owns
+    markdown_notes, definitions = pandoc_notes(text)
+    hints += markdown_notes
+    covered += definitions
 
-    def add(source, span_start, span_end, *, numbers=(), works=()) -> None:
+    def add(source, span_start, span_end, *, numbers=(), works=(), note_text="", note_form=None) -> None:
         found.append(
             Candidate(
                 id=0,
@@ -83,8 +124,17 @@ def scan(
                 end=span_end,
                 numbers=list(numbers),
                 works=list(works),
+                note_text=note_text,
+                note_form=note_form,
             )
         )
+
+    for hint in hints:
+        if hint.kind != "note" or not (start <= hint.start <= end):
+            continue
+        form, works = read_note(hint.payload)
+        anchor_start, anchor_end = note_anchor(text, hint.start)
+        add("note", anchor_start, anchor_end, works=works, note_text=hint.payload, note_form=form)
 
     for hint in hints:
         if not (start <= hint.start < end):

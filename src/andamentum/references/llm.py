@@ -33,6 +33,7 @@ class StyleAnswer(BaseModel):
         "numeric_superscript",
         "numeric_parentheses",
         "author_year",
+        "notes",
         "undecided",
     ] = Field(description="How this document cites its references.")
     reason: str = Field(default="", description="One short sentence.")
@@ -56,6 +57,7 @@ Answer with ONE style:
 - numeric_superscript: citations are raised numbers after a word, like disease³.
 - numeric_parentheses: citations are numbers in parentheses, like (3).
 - author_year: citations name an author and a year, like (Smith et al., 2020).
+- notes: the citations are in footnotes or endnotes.
 - undecided: none of these clearly fits.
 
 Numbers can also be footnote marks, exponents, units, affiliations, list items
@@ -69,7 +71,8 @@ between ⟦ and ⟧.
 The document cites its references in this style: {style}.
 {list_line}
 
-A marked item is a citation when it points to an entry in the reference list.
+A marked item is a citation when it points to an entry in the reference list,
+or — for a note — when the note names a published source.
 It is NOT a citation when it is an exponent or unit (m², 10⁵), a footnote mark,
 an author affiliation mark, a chemical or gene name, a label with a number
 (exon2, day3, chr11, trial1), a list or equation number, or part of a date or
@@ -83,6 +86,7 @@ STYLE_WORDS = {
     "numeric_superscript": "raised (superscript) numbers after a word",
     "numeric_parentheses": "numbers in parentheses, like (3)",
     "author_year": "an author and a year, like (Smith et al., 2020)",
+    "notes": "footnotes or endnotes that name the source",
 }
 
 

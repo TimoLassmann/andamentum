@@ -20,6 +20,8 @@ ProblemKind = Literal[
     "out_of_order",
     "year_mismatch",
     "ambiguous_citation",
+    "ibid_unclear",
+    "short_before_full",
     "not_found",
     "doi_not_found",
     "details_differ",
@@ -31,6 +33,7 @@ Style = Literal[
     "numeric_superscript",  # a raised 3 after the word
     "numeric_parentheses",  # (3), (4, 5)
     "author_year",  # (Smith et al., 2020), Smith and Lee (2019)
+    "notes",  # footnotes or endnotes that carry the citations (Chicago notes)
     "undecided",
 ]
 
@@ -43,7 +46,11 @@ CandidateSource = Literal[
     "parenthetical",  # (Smith et al., 2020; Lee 2019)
     "narrative",  # Smith et al. (2020)
     "field",  # a reference manager's citation field (Zotero, EndNote, ...)
+    "note",  # a footnote or endnote; its text is in ``note_text``
 ]
+
+# What a note says, by its form. "comment" is prose that cites nothing.
+NoteForm = Literal["full", "short", "ibid", "comment", "unclear"]
 
 
 class Hint(BaseModel):
@@ -54,11 +61,11 @@ class Hint(BaseModel):
     text that is checked.
     """
 
-    kind: Literal["superscript", "field_citation"]
+    kind: Literal["superscript", "field_citation", "note"]
     start: int
-    end: int
-    # For a field citation: the field instruction, e.g. "ADDIN ZOTERO_ITEM
-    # CSL_CITATION {...}". Empty for a superscript run.
+    end: int  # equal to start for a note: its mark is not a character
+    # A field citation's instruction ("ADDIN ZOTERO_ITEM CSL_CITATION {...}"),
+    # or a note's own text. Empty for a superscript run.
     payload: str = ""
 
 
@@ -66,8 +73,9 @@ class CitedWork(BaseModel):
     """One work inside an author-year citation."""
 
     surname: str  # first author's family name, as written
-    year: int
+    year: int | None = None  # None in a note's short form
     suffix: str = ""  # the "a" of 2020a
+    title: str = ""  # a note's title words, which tell one author's works apart
 
 
 class Candidate(BaseModel):
@@ -79,7 +87,9 @@ class Candidate(BaseModel):
     start: int
     end: int
     numbers: list[int] = Field(default_factory=list)  # numeric sources
-    works: list[CitedWork] = Field(default_factory=list)  # author-year sources
+    works: list[CitedWork] = Field(default_factory=list)  # author-year and note sources
+    note_text: str = ""  # a note's own text
+    note_form: NoteForm | None = None
 
 
 class Judged(BaseModel):

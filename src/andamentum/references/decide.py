@@ -39,7 +39,10 @@ _FAMILY: dict[str, Style] = {
     "parentheses": "numeric_parentheses",
     "parenthetical": "author_year",
     "narrative": "author_year",
+    "note": "notes",
 }
+_CITING_FORMS = frozenset({"full", "short", "ibid"})
+NOTE_CHARS = 300  # of a note's text, shown to the model
 _LEAD, _RATIO = 3, 3.0
 # A raised number right after one of these is an exponent or a unit.
 _UNIT_BEFORE = re.compile(
@@ -51,6 +54,10 @@ _NOT_CITATION_BEFORE = re.compile(
 
 
 def _supported(candidate: Candidate, entries: list[ReferenceEntry]) -> bool:
+    if candidate.source == "note":
+        # A note that reads as a citation is evidence for the notes style
+        # whether or not a bibliography exists: notes-only documents have none.
+        return candidate.note_form in _CITING_FORMS
     if candidate.works:
         return any(resolve_work(w, entries).status != "missing" for w in candidate.works)
     listed = numbered(entries)
@@ -103,7 +110,7 @@ async def decide_style(
         # A numbered list goes with numeric citations, an unnumbered one with
         # author-year. Anything else (a numbered list cited by author and
         # year exists, but rarely) is left to the model.
-        agrees = (best == "author_year") != list_numbered
+        agrees = best == "notes" or (best == "author_year") != list_numbered
         # A short document may have one or two citations. When every
         # candidate it has is of the same kind, there is nothing to weigh.
         alone = all(_FAMILY.get(c.source) == best for c in usable)
@@ -113,8 +120,12 @@ async def decide_style(
                 style=best,
                 decided_by="evidence",
                 reason=(
-                    f"{lead} {_describe(best)} point to entries in the "
-                    f"{'numbered' if list_numbered else 'unnumbered'} list"
+                    (
+                        f"{lead} notes read as citations"
+                        if best == "notes"
+                        else f"{lead} {_describe(best)} point to entries in the "
+                        f"{'numbered' if list_numbered else 'unnumbered'} list"
+                    )
                     + (f", against {runner_up} of the next kind" if runner_up else "")
                     + "."
                 ),
@@ -143,8 +154,12 @@ async def decide_style(
             reason=f"The model call to decide the style failed ({type(exc).__name__}).",
             support=counts,
         )
-    has_candidates = any(_FAMILY.get(c.source) == answer.style for c in candidates)
-    if answer.style == "undecided" or not has_candidates:
+    # The model may only name a style the evidence supports at all: one with
+    # candidates that survive the rules and point at a real entry. Merely
+    # having candidates is not enough — in an MLA document the only raised
+    # numbers are distractors the rules already set aside (affiliations,
+    # "10⁵"), and a local model named "superscript" from them.
+    if answer.style == "undecided" or counts.get(answer.style, 0) == 0:
         return StyleDecision(
             style="undecided",
             decided_by="model",
@@ -160,6 +175,7 @@ def _describe(style: str) -> str:
         "numeric_superscript": "superscript numbers",
         "numeric_parentheses": "numbers in parentheses",
         "author_year": "author-year citations",
+        "notes": "notes",
     }.get(style, style)
 
 
@@ -192,7 +208,7 @@ def _style_prompt(
     for e in entries[: llm.ENTRIES_SHOWN]:
         prefix = f"{e.number}. " if e.number is not None else ""
         lines.append(f"  {prefix}{e.text[: llm.ENTRY_CHARS]}")
-    for source in ("brackets", "superscript", "glued", "parentheses", "parenthetical", "narrative"):
+    for source in ("brackets", "superscript", "glued", "parentheses", "parenthetical", "narrative", "note"):
         of_kind = [c for c in candidates if c.source == source]
         if not of_kind:
             continue
@@ -202,7 +218,7 @@ def _style_prompt(
         )
         step = max(1, len(of_kind) // llm.SAMPLES_PER_KIND)
         for c in of_kind[::step][: llm.SAMPLES_PER_KIND]:
-            lines.append(f"  {llm.in_context(text, c.start, c.end)}")
+            lines.append(f"  {_shown(c, text)}")
     return "\n".join(lines)
 
 
@@ -220,6 +236,13 @@ def _rule(
     source = candidate.source
     if source == "field":
         return True, "rule: a reference-manager field"
+    if source == "note":
+        form = candidate.note_form
+        if form in _CITING_FORMS:
+            return True, f"rule: a note that cites ({'Ibid.' if form == 'ibid' else f'{form} form'})"
+        if form == "comment":
+            return False, "rule: a note of commentary"
+        return None, "a note the rules cannot read"
     if candidate.works:
         # In an author-year document, a well-formed author-year citation is a
         # citation whether or not its author is in the list — one that is not
@@ -263,6 +286,15 @@ def _rule(
     if source == "superscript" and re.search(r"(?:[a-z]{2}|[.,;:)\]’”\"'])\s?$", before):
         return True, "rule: a raised number after a word or punctuation"
     return None, "the rules cannot tell"
+
+
+def _shown(candidate: Candidate, text: str) -> str:
+    """What the model sees of one candidate: a note's own text, or the
+    candidate marked in its context."""
+    if candidate.source == "note":
+        body = " ".join(candidate.note_text.split())[:NOTE_CHARS]
+        return f"a note reading: ⟦{body}⟧"
+    return llm.in_context(text, candidate.start, candidate.end)
 
 
 def _list_line(entries: list[ReferenceEntry]) -> str:
@@ -320,7 +352,7 @@ async def judge_candidates(
     elif open_ and model is not None:
         for i in range(0, len(open_), llm.BATCH_SIZE):
             batch = open_[i : i + llm.BATCH_SIZE]
-            items = "\n".join(f"{c.id}: {llm.in_context(text, c.start, c.end)}" for c, _ in batch)
+            items = "\n".join(f"{c.id}: {_shown(c, text)}" for c, _ in batch)
             try:
                 answer = await llm.ask_citations(
                     items, style=style, model=model, list_line=_list_line(entries)

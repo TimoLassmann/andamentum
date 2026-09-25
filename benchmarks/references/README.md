@@ -20,6 +20,14 @@ numbered step list, and in the superscript styles `chr11`, `exon2`, `day3`
 and a repeated citation). Superscript styles are also written as `*.flat.docx`
 with the formatting stripped — what a converted PDF gives.
 
+Two notes documents use Chicago notes-and-bibliography with real Word
+footnotes (`chicago-notes.docx`, and `chicago-notes.nobib.docx` without a
+bibliography): full notes, short forms, `Ibid.` after a single source and
+after a note citing two (planted), a note citing a work missing from the
+bibliography (planted), a short form before its full note (planted without a
+bibliography), commentary, and two notes the rules cannot read — an interview
+(not a source) and a report by an organisation (a source).
+
 Columns: whether the style was read correctly and how (evidence or model);
 recall and precision of citations against the known spans; planted errors
 found; other problems reported (false alarms); candidates judged by the model;
