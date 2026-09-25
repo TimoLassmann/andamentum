@@ -83,9 +83,12 @@ class Finding(BaseModel):
     # was verified deterministically against the source — so the provenance is
     # narrower and more mechanical than an "investigate" finding, and
     # ``category`` carries the probe id it came from.
-    source: Literal["deterministic", "investigate", "challenged", "checklist"] = (
-        "deterministic"
-    )
+    # "lookup" marks a finding that rests on an online lookup of the draft's
+    # references (andamentum.references via ``references_check``): the claim
+    # is about one service's record of a work, not about the draft's text.
+    source: Literal[
+        "deterministic", "investigate", "challenged", "checklist", "lookup"
+    ] = "deterministic"
     perspective: Optional[str] = None  # for panel mode; None for single-perspective
     category: str = ""  # short clustering tag picked by the lens
     priority: Literal["must_fix", "should_fix", "consider"] = "consider"

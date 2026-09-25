@@ -1,0 +1,307 @@
+"""The reference checker, with Crossref replaced by a stub transport."""
+
+from __future__ import annotations
+
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+
+from andamentum.references import check_references
+from andamentum.references.parse import find_reference_list, split_entries
+from andamentum.references.scan import scan
+
+DRAFT = """Introduction
+Rare diseases are common [1]. Diagnosis is slow [2, 3]. Costs are high [5].
+Sequencing helps [3-4].
+
+References
+1. Nguengang Wakap S, Lambert DM (2020) Estimating cumulative point prevalence of rare diseases. Eur J Hum Genet 28:165-173
+2. Zurynski Y, Deverell M (2017) Australian children living with rare diseases: experiences of diagnosis. Orphanet J Rare Dis 12:68
+3. Yang G, Cintina I (2022) The national economic burden of rare disease in the United States in 2019. Orphanet J Rare Dis 17:163
+4. Nisar H, Wajid B (2021) Whole-genome sequencing as a first-tier diagnostic framework. Front Genet 12:1
+4. Smith J (2019) An unrelated duplicate number. J Test 1:1
+6. Nguengang Wakap S, Lambert DM (2020) Estimating cumulative point prevalence of rare diseases. Eur J Hum Genet 28:165-173
+"""
+
+
+async def _offline(text: str = DRAFT):
+    return await check_references(text, lookup=False)
+
+
+# ── parsing ─────────────────────────────────────────────────────────────────
+
+
+def test_the_list_starts_after_the_last_references_heading() -> None:
+    text = "See the References below.\nBody.\nReferences\n1. A (2020) T. J\n"
+    span = find_reference_list(text)
+    assert span is not None and text[span[0] :].lstrip().startswith("1. A")
+
+
+def test_entries_keep_their_numbers_and_offsets() -> None:
+    start, end = find_reference_list(DRAFT) or (0, 0)
+    entries = split_entries(DRAFT, start=start, end=end)
+    assert [e.number for e in entries] == [1, 2, 3, 4, 4, 6]
+    assert DRAFT[entries[0].start : entries[0].end] == entries[0].text
+
+
+def test_a_converter_list_item_and_a_wrapped_entry_are_one_entry() -> None:
+    text = "References\n- [1] Author A (2020) A long title\n  that wraps. J 1:2\n- [2] B (2021) T. J\n"
+    start, end = find_reference_list(text) or (0, 0)
+    entries = split_entries(text, start=start, end=end)
+    assert [e.number for e in entries] == [1, 2]
+    assert entries[0].text.endswith("that wraps. J 1:2")
+
+
+def test_markers_expand_ranges_and_skip_implausible_ones() -> None:
+    text = "a [2–4, 8] b [1-400] c [9]"
+    assert [m.numbers for m in scan(text, start=0, end=len(text)) if m.source == "brackets"] == [
+        [2, 3, 4, 8],
+        [9],
+    ]
+
+
+# ── the offline checks ──────────────────────────────────────────────────────
+
+
+async def test_every_number_problem_is_found_and_located() -> None:
+    report = await _offline()
+    kinds = sorted(p.kind for p in report.problems)
+    assert kinds == [
+        "cited_not_listed",  # [5]
+        "duplicate_entry",  # 6 is the same work as 1
+        "duplicate_number",  # two 4s
+        "listed_not_cited",  # 6
+    ]
+    missing = next(p for p in report.problems if p.kind == "cited_not_listed")
+    assert DRAFT[missing.start : missing.end] == "[5]"
+    assert missing.fix
+
+
+async def test_a_citation_out_of_first_citation_order_is_reported_once() -> None:
+    text = (
+        "a [1] b [2] c [4] d [3] e [5]\n\nReferences\n"
+        + "".join(f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6))
+    )
+    report = await check_references(text, lookup=False)
+    order = [p for p in report.problems if p.kind == "out_of_order"]
+    assert len(order) == 1
+    assert text[order[0].start : order[0].end] == "[4]"
+
+
+async def test_an_alphabetical_list_is_not_checked_for_order() -> None:
+    text = (
+        "a [4] b [2] c [5] d [1] e [3]\n\nReferences\n"
+        + "".join(f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6))
+    )
+    report = await check_references(text, lookup=False)
+    assert not [p for p in report.problems if p.kind == "out_of_order"]
+
+
+async def test_no_list_means_nothing_is_checked_and_it_says_so() -> None:
+    report = await check_references("A draft with no reference list [1].", lookup=False)
+    assert report.found_list is False
+    assert report.problems == []
+
+
+# ── the lookup ──────────────────────────────────────────────────────────────
+
+
+def _item(title: str, year: int, family: str, kind: str = "journal-article", doi: str = "10.1/x"):
+    return {
+        "title": [title],
+        "issued": {"date-parts": [[year]]},
+        "author": [{"family": family}],
+        "type": kind,
+        "DOI": doi,
+    }
+
+
+def _crossref(route):
+    """A transport answering like Crossref; *route* maps a request to a
+    (status, json) pair. Records every request for inspection."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        status, body = route(request)
+        return httpx.Response(status, json=body)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+def _query(request: httpx.Request) -> str:
+    return parse_qs(urlparse(str(request.url)).query).get("query.bibliographic", [""])[0]
+
+
+async def _lookup(text: str, route):
+    client, seen = _crossref(route)
+    async with client:
+        report = await check_references(text, client=client)
+    return report, seen
+
+
+ONE = "Body [1].\n\nReferences\n1. Yang G, Cintina I (2022) The national economic burden of rare disease in the United States in 2019. Orphanet J Rare Dis 17:163\n"
+
+
+async def test_a_matching_work_is_found_and_only_the_entry_is_sent() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+    report, seen = await _lookup(
+        ONE, lambda r: (200, {"message": {"items": [_item(title, 2022, "Yang")]}})
+    )
+    assert [r.status for r in report.lookups] == ["found"]
+    assert report.problems == []
+    # What left the machine is the entry, not the draft.
+    assert "Body" not in _query(seen[0])
+    assert "national economic burden" in _query(seen[0])
+
+
+async def test_an_unrelated_nearest_work_is_not_a_match() -> None:
+    """Crossref always returns something; the nearest work to an invented
+    reference is an unrelated one."""
+    report, _ = await _lookup(
+        ONE,
+        lambda r: (
+            200,
+            {"message": {"items": [_item("This jellyfish makes glowing proteins", 2020, "Doe")]}},
+        ),
+    )
+    assert [p.kind for p in report.problems] == ["not_found"]
+    assert report.problems[0].severity == "moderate"
+
+
+async def test_a_different_year_on_the_published_version_is_reported() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+    report, _ = await _lookup(
+        ONE, lambda r: (200, {"message": {"items": [_item(title, 2021, "Yang")]}})
+    )
+    assert [p.kind for p in report.problems] == ["details_differ"]
+    assert "2021" in report.problems[0].issue
+
+
+async def test_a_later_repost_does_not_contradict_the_year() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+    report, _ = await _lookup(
+        ONE,
+        lambda r: (200, {"message": {"items": [_item(title, 2025, "Yang", kind="posted-content")]}}),
+    )
+    assert [r.status for r in report.lookups] == ["found"]
+    assert report.problems == []
+
+
+async def test_a_different_first_author_is_reported_when_the_numbers_tie_it() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+    item = _item(title, 2022, "Brown")
+    item.update(volume="17", page="163")
+    report, _ = await _lookup(ONE, lambda r: (200, {"message": {"items": [item]}}))
+    assert "Brown" in report.problems[0].issue
+
+
+async def test_a_same_year_namesake_with_other_numbers_is_not_the_entry() -> None:
+    """Measured: two 2016 papers titled "Squamous cell carcinoma of the
+    conjunctiva", by different authors in different journals."""
+    title = "The national economic burden of rare disease in the United States in 2019"
+    item = _item(title, 2022, "Liu")
+    item.update(volume="88", page="901")
+    report, _ = await _lookup(ONE, lambda r: (200, {"message": {"items": [item]}}))
+    assert [p.kind for p in report.problems] == ["not_found"]
+
+
+DOI_ENTRY = "Body [1].\n\nReferences\n1. Lee K (2021) A study of variants. Hum Mutat 42:1 doi:10.1002/humu.24380\n"
+
+
+async def test_a_doi_that_does_not_resolve_is_major() -> None:
+    report, seen = await _lookup(DOI_ENTRY, lambda r: (404, {}))
+    assert "/works/10.1002/humu.24380" in str(seen[0].url)
+    assert [(p.kind, p.severity) for p in report.problems] == [("doi_not_found", "major")]
+
+
+async def test_a_doi_for_a_different_work_is_major() -> None:
+    report, _ = await _lookup(
+        DOI_ENTRY,
+        lambda r: (200, {"message": _item("Something else entirely here", 2019, "Nobody")}),
+    )
+    assert [(p.kind, p.severity) for p in report.problems] == [("details_differ", "major")]
+
+
+async def test_a_service_failure_is_unchecked_not_wrong(monkeypatch) -> None:
+    import andamentum.references.lookup as lookup_mod
+
+    async def no_wait(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(lookup_mod.asyncio, "sleep", no_wait)
+    report, seen = await _lookup(ONE, lambda r: (503, {}))
+    assert [r.status for r in report.lookups] == ["service_error"]
+    assert report.problems == []
+    assert len(seen) == 2  # one retry
+
+
+def test_the_module_is_a_leaf() -> None:
+    """It must not import another andamentum sub-module but core (for the
+    model calls)."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).parents[1]
+    for path in root.glob("*.py"):
+        imports = re.findall(r"^\s*(?:from|import)\s+andamentum\.(\w+)", path.read_text(), re.M)
+        assert not [m for m in imports if m not in ("references", "core")], path.name
+
+
+async def test_the_print_year_counts_as_well_as_the_online_year() -> None:
+    """Online in 2019, in the 2020 issue: a list that says 2020 is right."""
+    title = "The national economic burden of rare disease in the United States in 2019"
+    item = _item(title, 2021, "Yang")
+    item["published-print"] = {"date-parts": [[2022, 3]]}
+    report, _ = await _lookup(ONE, lambda r: (200, {"message": {"items": [item]}}))
+    assert [r.status for r in report.lookups] == ["found"]
+
+
+async def test_a_title_search_finds_what_the_whole_entry_search_missed() -> None:
+    """Crossref ranked two Nature/Science papers out of the first page for
+    the whole-entry search; the field search by title found them first."""
+    title = "The national economic burden of rare disease in the United States in 2019"
+
+    def route(request: httpx.Request):
+        params = parse_qs(urlparse(str(request.url)).query)
+        if "query.title" in params:
+            assert params["query.title"] == [title]
+            return 200, {"message": {"items": [_item(title, 2022, "Yang")]}}
+        return 200, {"message": {"items": [_item("Something unrelated", 2022, "X")]}}
+
+    report, seen = await _lookup(ONE, route)
+    assert [r.status for r in report.lookups] == ["found"]
+    assert len(seen) == 2
+
+
+async def test_a_consortium_author_is_not_compared() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+    item = _item(title, 2022, "")
+    item["author"] = [{"name": "The Rare Disease Consortium"}]
+    report, _ = await _lookup(ONE, lambda r: (200, {"message": {"items": [item]}}))
+    assert report.problems == []
+
+
+async def test_a_same_titled_work_by_other_authors_in_another_year_is_not_the_entry() -> None:
+    """Generic titles repeat. A record with the entry's title but another
+    year AND another first author is a namesake, and must not be reported as
+    the entry's details being wrong."""
+    title = "The national economic burden of rare disease in the United States in 2019"
+    report, _ = await _lookup(
+        ONE, lambda r: (200, {"message": {"items": [_item(title, 2016, "Liu")]}})
+    )
+    assert [p.kind for p in report.problems] == ["not_found"]
+
+
+async def test_an_exact_match_in_a_later_search_beats_a_partial_one_earlier() -> None:
+    title = "The national economic burden of rare disease in the United States in 2019"
+
+    def route(request: httpx.Request):
+        params = parse_qs(urlparse(str(request.url)).query)
+        if "query.title" in params:
+            return 200, {"message": {"items": [_item(title, 2022, "Yang")]}}
+        # First search: right title and year, wrong author.
+        return 200, {"message": {"items": [_item(title, 2022, "Liu")]}}
+
+    report, _ = await _lookup(ONE, route)
+    assert [r.status for r in report.lookups] == ["found"]

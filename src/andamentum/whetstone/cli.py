@@ -1854,6 +1854,119 @@ def _run_verify_provenance_subcommand(argv: list[str]) -> int:
     return 0 if found_any else 2
 
 
+def _run_references_subcommand(argv: list[str]) -> int:
+    """Check a draft's references and write the problems as a review.
+
+    Usage:
+        andamentum-whetstone references INPUT --out OUT [--out OUT ...]
+            [--no-lookup] [--lookup-email ADDRESS] [--confirm-own-draft]
+
+    No model. The citation numbers are checked against the reference list
+    offline; each entry is then looked up in Crossref unless --no-lookup is
+    given. Only the entries' text is sent — never the draft.
+
+    Exit codes: 0 — ran (problems or not); 1 — configuration or
+    confidentiality refusal; 2 — the input could not be read.
+    """
+    sub = argparse.ArgumentParser(
+        prog="andamentum-whetstone references",
+        description=(
+            "Check a draft's references: citation numbers against the list "
+            "(offline), then each entry against Crossref — does the work exist, "
+            "and do its title, year and first author match? Writes the "
+            "problems as comments (.docx) or a report (.md / .html). No model "
+            "is used. The lookup sends each reference entry's text to "
+            "Crossref, never the draft's own text; --no-lookup keeps "
+            "everything offline."
+        ),
+    )
+    sub.add_argument("input", help="The draft: .docx, .pdf, .md, .html or a URL.")
+    sub.add_argument(
+        "--out",
+        action="append",
+        required=True,
+        type=Path,
+        help="Output file; .docx, .md or .html. Repeat for several.",
+    )
+    sub.add_argument(
+        "--no-lookup",
+        action="store_true",
+        help="Check citations against the list only; send nothing to Crossref.",
+    )
+    sub.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "A model to settle what the text leaves open: how the document "
+            "cites, and whether an ambiguous number is a citation. Used only "
+            "then, with short excerpts; a local model (ollama:...) keeps them "
+            "local. Without it, such cases are reported as undecided."
+        ),
+    )
+    sub.add_argument(
+        "--lookup-email",
+        default=None,
+        help=(
+            "An email address sent to Crossref with each lookup, which puts "
+            "the requests in its faster 'polite pool'. Optional."
+        ),
+    )
+    sub.add_argument(
+        "--confirm-own-draft",
+        action="store_true",
+        help="Bypass the confidentiality check for a draft that is yours.",
+    )
+    parsed = sub.parse_args(argv)
+    for out in parsed.out:
+        if out.suffix.lower() not in (".docx", ".md", ".html"):
+            _die(1, f"--out {out}: use a .docx, .md or .html file name.")
+
+    console = Console(stderr=True)
+    _configure_logging(console, False)
+
+    from ._confidentiality import ConfidentialityMarkerError
+    from .references_check import REFERENCE_CHECKER_AUTHOR, check_document_references
+    from .renderers import render_docx, render_html, render_markdown
+
+    try:
+        result, document = asyncio.run(
+            check_document_references(
+                parsed.input,
+                model=parsed.model,
+                lookup=not parsed.no_lookup,
+                mailto=parsed.lookup_email,
+                confirm_own_draft=parsed.confirm_own_draft,
+            )
+        )
+    except ConfidentialityMarkerError as exc:
+        _die(1, str(exc))
+    except (OSError, ValueError) as exc:
+        _die(2, f"could not read {parsed.input!r}: {exc}")
+
+    for out in parsed.out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        ext = out.suffix.lower()
+        if ext == ".md":
+            render_markdown(result, out)
+        elif ext == ".html":
+            render_html(result, out)
+        else:
+            report = render_docx(
+                result,
+                document=document,
+                output_path=out,
+                author=REFERENCE_CHECKER_AUTHOR,
+            )
+            _warn_on_dropped_annotations(console, report)
+        console.print(f"wrote {out}")
+
+    console.print(
+        f"{len(result.findings)} reference problem(s)."
+        + (f" [yellow]{result.degraded_reason}.[/yellow]" if result.degraded else "")
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Entry point — invoked by the ``andamentum-whetstone`` script.
 
@@ -1861,11 +1974,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     --model X --out r.md``) or the subcommand form (``andamentum-whetstone
     review draft.md ...`` / ``... panel ...`` / ``... checklist ...`` /
     ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
-    p.json --out r.docx`` / ``... verify-provenance reviewed.docx``)."""
+    p.json --out r.docx`` / ``... verify-provenance reviewed.docx`` /
+    ``... references draft.docx --out r.docx``)."""
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "proofread":
         # proofread short-circuits the whetstone pipeline entirely
         rc = _run_proofread_subcommand(raw[1:])
+        raise SystemExit(rc)
+    if raw and raw[0] == "references":
+        # No model and none of the review flags: its own small parser.
+        rc = _run_references_subcommand(raw[1:])
         raise SystemExit(rc)
     if raw and raw[0] == "verify-provenance":
         # verify-provenance is a read-only inspection: no LLM, no
