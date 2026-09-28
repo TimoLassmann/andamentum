@@ -25,6 +25,11 @@ from ..schemas import (
 )
 
 PRIORITY_ORDER = ("must_fix", "should_fix", "consider")
+
+# Section headings every renderer uses. "Reference check", not "References":
+# the draft has a section of that name, and the report sits inside the draft.
+REFERENCE_CHECK_HEADING = "Reference check"
+NEXT_STEP_HEADING = "Next step"
 PRIORITY_LABEL = {
     "must_fix": "Must fix",
     "should_fix": "Should fix",

@@ -524,6 +524,15 @@ class ReviewResult(BaseModel):
     # tutorial produces an empty list naturally, so no document-type rule
     # is needed.
     novelty_claims: list[NoveltyClaim] = Field(default_factory=list)
+    # The reference check's own summary (how the draft cites, the counts, the
+    # Crossref result), as markdown. Empty when no reference check ran. Its
+    # problems are ordinary findings; this is what they do not say — that the
+    # check ran, and what it found to be fine.
+    reference_summary: str = ""
+    # What to run next, as markdown lines, when a follow-up would help — the
+    # goal loop with the exact command, when problems remain. Filled by the
+    # caller that knows the command line; empty from the library.
+    next_steps: list[str] = Field(default_factory=list)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)
     metrics: ReviewMetrics = Field(default_factory=ReviewMetrics)

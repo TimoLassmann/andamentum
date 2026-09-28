@@ -43,6 +43,8 @@ from .._watermark import (
     metadata_markdown_comment,
 )
 from ._finding_text import (
+    NEXT_STEP_HEADING,
+    REFERENCE_CHECK_HEADING,
     PRIORITY_LABEL,
     PRIORITY_ORDER,
     EditorAnswers,
@@ -155,6 +157,12 @@ def render_markdown(
 
     if result.novelty_claims:
         sections.append(_render_novelty_claims(result.novelty_claims))
+
+    if result.reference_summary:
+        sections.append(f"## {REFERENCE_CHECK_HEADING}\n\n{result.reference_summary}")
+
+    if result.next_steps:
+        sections.append(f"## {NEXT_STEP_HEADING}\n\n" + "\n\n".join(result.next_steps))
 
     # ── Document map — reference, after the findings it helps locate ──
     if result.document_map and not panel_mode:

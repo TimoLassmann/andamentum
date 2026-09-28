@@ -77,6 +77,8 @@ from .._watermark import (
 )
 from ..schemas import Edit, Finding, Quote, ReviewResult
 from ._finding_text import (
+    NEXT_STEP_HEADING,
+    REFERENCE_CHECK_HEADING,
     PRIORITY_LABEL,
     confidence_label,
     corroboration_clause,
@@ -180,6 +182,13 @@ def render_docx(
     questions = _collect_author_questions(result)
     if questions:
         review_summary = f"{review_summary}\n\n{questions}"
+    # In the summary block, which is where the report's own text goes: a
+    # section of its own would mean a keyword through two builder signatures
+    # (see the reviewer block below for the same trade).
+    if result.reference_summary:
+        review_summary += f"\n\n**{REFERENCE_CHECK_HEADING}**\n\n{result.reference_summary}"
+    if result.next_steps:
+        review_summary += f"\n\n**{NEXT_STEP_HEADING}**\n\n" + "\n\n".join(result.next_steps)
     if result.panel_synthesis is not None:
         # Panel mode: the synthesis is the authoritative summary. ``result.summary``
         # is intentionally empty (see panel_synthesise.py); render the synthesis

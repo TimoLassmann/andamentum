@@ -125,8 +125,13 @@ machine-checkable via grep and are enforced by code review.
 - **`typeset`** is a leaf. Used by `whetstone`, `scribe`,
   `deep_research` for HTML/PDF output.
 - **`whetstone`** depends on `core`, `typeset`, `chunker`, `harvest`,
-  and (opt-in only) `deep_research`. MUST NOT depend on
+  `references` (its only citation reader — the review's citation
+  summary, the default reference check and the goal loop's `citations`
+  check), and (opt-in only) `deep_research`. MUST NOT depend on
   `document_store`.
+- **`references`** depends on `pydantic`, `httpx`, `rapidfuzz` and —
+  for its two model calls only — `core`. It imports no other
+  sub-module.
 - **`scribe`** depends only on `typeset` and stdlib `sqlite3`. MUST
   NOT depend on `whetstone`, `figures`, or `core`.
 - **`figures`** depends on `matplotlib`, `numpy`, `pydantic`. The
@@ -150,7 +155,8 @@ src/andamentum/
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── scribe/           — block-based document authoring → .docx
 ├── figures/          — publication-quality figure rendering
-├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist)
+├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist, goal loop)
+├── references/       — reference checking in any citation style, with a Crossref lookup
 ├── proofread/        — deterministic readability + style checking
 └── vision_critique/  — bounded LLM critique of rendered figures
 ```

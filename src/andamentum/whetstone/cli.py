@@ -37,6 +37,7 @@ import argparse
 import asyncio
 import logging
 import os
+import shlex
 import sys
 import tempfile
 import time
@@ -63,9 +64,12 @@ with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 Which one do I want? (first positional, optional — defaults to
 `review`):
 
-  review     "help me improve this draft" — criterion cascade,
-             connected findings, synthesised prose. Mid-draft.
-             (default)
+  review     "help me improve this draft" — the default, and most of
+             what you need in one run: findings as comments, rewrites
+             as tracked changes, the reference check, and a list of
+             what the draft claims as new. --no-editor, --no-references
+             and --no-lookup turn parts off. --goal loops until a
+             condition you state holds.
   checklist  "run the standard check" — fixed probe bank, same shape
              every run, deterministic coverage table. Pre-submission,
              draft-vs-draft, CI. The output centres on that table;
@@ -93,23 +97,24 @@ Either way a quote's offsets are already an address in the output.
 _HELP_EXAMPLES = """\
 EXAMPLES
 
-    # Default review (criterion cascade + gap loop)
-    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
-        --out review.md
+    # The default run: review, rewrites as tracked changes, and the
+    # reference check with its Crossref lookup — one Word file, one report
+    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+        --out draft.reviewed.docx
 
-    # Same review, multiple output formats in one pass
+    # Turn parts off: comments only, and references checked offline
+    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+        --no-editor --no-lookup --out draft.reviewed.docx
+
+    # Several output formats in one pass
     andamentum-whetstone paper.pdf --model openai:gpt-5.4-nano \\
         --out review.md --out review.html --out paper.reviewed.docx
-
-    # Review with concrete edits as tracked-changes in Word
-    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
-        --editor --out draft.reviewed.docx
 
     # A second round over the first round's output. No round flag: the input
     # file carries round one's changes, and the review reads them as accepted.
     # Give it its own name or Word shows both rounds as one reviewer.
     andamentum-whetstone draft.reviewed.docx --model openai:gpt-5.4-nano \\
-        --editor --patch-author "Second pass (AI)" --allow-author-override \\
+        --patch-author "Second pass (AI)" --allow-author-override \\
         --out draft.reviewed2.docx
 
     # Review with caller-supplied criteria
@@ -213,7 +218,9 @@ _DOCUMENT_TYPE_CHOICES: tuple[str, ...] = (
 _REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("criteria", "--criteria", None),
     ("guidelines", "--guidelines", ""),
-    ("editor", "--editor", False),
+    ("editor", "--no-editor", True),
+    ("references", "--no-references", True),
+    ("lookup", "--no-lookup", True),
     ("editor_criteria", "--editor-criteria", None),
     ("check_novelty", "--check-novelty", False),
     ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
@@ -302,9 +309,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "Who reads the draft. One name, or several separated by commas to "
             "run them in that order — each reviewer comments on the same "
             "unchanged text, a run with more than one ends with a summary "
-            "reconciling them, and with --editor (or 'editor' in the list) a "
-            "single editor pass then rewrites against every reviewer's "
-            "findings at once. Leave it out for "
+            "reconciling them, and a single editor pass then rewrites against "
+            "every reviewer's findings at once (unless --no-editor). Leave it "
+            "out for "
             f"'{DEFAULT_PROFILE_NAME}', the ordinary review: the criteria that "
             "suit this kind of document, which is what ran before reviewers "
             f"were named. Put '{DEFAULT_PROFILE_NAME}' in the list to have that "
@@ -414,12 +421,31 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     review_grp.add_argument(
         "--editor",
-        action="store_true",
-        help="Generate concrete edits (rewrites). Adds one LLM call per "
-        "section. The .docx renderer applies them as tracked changes. With a "
-        "list of reviewers the rewrites come from one editor pass AFTER the "
-        "last reviewer, over all of their findings — not from each reviewer "
-        "in turn.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Concrete rewrites, as tracked changes in the .docx. On by "
+        "default; --no-editor gives comments only. Adds one LLM call per "
+        "section. With a list of reviewers the rewrites come from one editor "
+        "pass AFTER the last reviewer, over all of their findings — not from "
+        "each reviewer in turn.",
+    )
+    review_grp.add_argument(
+        "--references",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Check the citations against the reference list, in any "
+        "citation style, before the review — so the editor answers the "
+        "problems too. On by default; --no-references skips it. The same "
+        "check as the 'references' subcommand.",
+    )
+    review_grp.add_argument(
+        "--lookup",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Look up each reference entry in Crossref: does the work exist, "
+        "and do its details agree. Sends the text of the reference entries, "
+        "never the draft. On by default; --no-lookup keeps the reference "
+        "check offline.",
     )
     review_grp.add_argument(
         "--editor-criteria",
@@ -465,9 +491,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="A win condition. Turns on the goal loop: review, edit, and "
         "re-review the same reviewer's own findings until the goal holds "
         "for two rounds running, no round changes anything, or --max-rounds "
-        "is reached. Implies the editor runs every round, whether or not "
-        "--editor is also passed. Takes one reviewer, not a list "
-        "(see --goal-check).",
+        "is reached. The editor runs every round, so --no-editor is refused "
+        "with it. Takes one reviewer, not a list (see --goal-check).",
     )
     review_grp.add_argument(
         "--goal-check",
@@ -782,6 +807,13 @@ def _validate_goal_args(args: argparse.Namespace) -> None:
         )
     if args.max_rounds < 1:
         _die(1, "--max-rounds must be at least 1.")
+    if not args.editor:
+        _die(
+            1,
+            "--no-editor cannot be combined with --goal: the loop reaches its "
+            "goal by editing the draft every round. Drop --no-editor, or drop "
+            "--goal for a single review with comments only.",
+        )
     if args.goal_check == "figures":
         if not args.goal_figure:
             _die(
@@ -816,8 +848,7 @@ def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
     """The one reviewer checklist mode cannot run.
 
     The line editor selects no probes — it is a prose pass, and its whole
-    output is tracked changes the editor produces under ``--editor`` in review
-    mode. Running it here would produce a coverage table with no rows, which
+    output is tracked changes the editor produces in review mode. Running it here would produce a coverage table with no rows, which
     reads like a document that passed every check rather than like a run that
     checked nothing.
     """
@@ -829,7 +860,7 @@ def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
             _die(
                 1,
                 f"the {profile.identity.lower()} runs no checks; use review "
-                "mode with --editor.",
+                "mode, where the editor runs by default.",
             )
 
 
@@ -843,9 +874,10 @@ def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
     a style quota over the same abstract, and each re-edited the last one's
     insertions — five colours of tracked changes and no paper underneath.
 
-    Two spellings ask for it and mean the same thing: ``--reviewer
-    claims,methods --editor`` and ``--reviewer claims,methods,editor``. The
-    line editor named in a list is therefore taken OUT of the rounds here —
+    It runs by default, and ``--no-editor`` turns it off. Naming the line
+    editor in the list (``--reviewer claims,methods,editor``) asks for the
+    same pass, so it is refused beside ``--no-editor``. The line editor named
+    in a list is taken OUT of the rounds here —
     as a round it would run claim extraction, synthesis and self-critique to
     produce nothing, and its one job is the final pass. ``args.reviewers``
     is left holding the rounds only.
@@ -861,6 +893,12 @@ def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
         # those refusals read the list as typed.
         return False
     if EDITOR_PROFILE.name in names:
+        if not args.editor:
+            _die(
+                1,
+                "--no-editor contradicts 'editor' in the --reviewer list, which "
+                "asks for the editor pass. Drop one of them.",
+            )
         args.reviewers = [n for n in names if n != EDITOR_PROFILE.name]
         return True
     return bool(args.editor)
@@ -872,7 +910,7 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     The mirror of :func:`_reject_the_line_editor_under_checklist`, and refused
     for the same reason: a reviewer that selects no criteria has nothing for
     the criterion cascade to run and nothing for the gap loop to re-ground, so
-    without ``--editor`` the run does claim extraction, synthesis and
+    with ``--no-editor`` the run does claim extraction, synthesis and
     self-critique, costs model calls for all three, and produces a report with
     no findings and no edits — which reads like a draft that passed rather
     than like a run that examined nothing.
@@ -890,9 +928,9 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     # is a sensible thing to ask for.
     if any(PROFILES[n].criteria != () for n in names):
         return
-    # --goal forces the editor to run every round regardless of --editor
-    # (see _validate_goal_args / run_goal_loop) — the same "does this run
-    # examine anything" question, answered the same way.
+    # --goal runs the editor every round (see _validate_goal_args /
+    # run_goal_loop) — the same "does this run examine anything" question,
+    # answered the same way.
     if args.criteria or args.guidelines or args.editor or args.goal is not None:
         return
     if getattr(args, "final_editor", False):
@@ -900,10 +938,10 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     named = ", ".join(PROFILES[n].identity.lower() for n in names)
     _die(
         1,
-        f"the {named} runs no review criteria, so without --editor this run "
-        "would examine nothing and report nothing. Add --editor to get the "
-        "tracked changes it exists for, name a reviewer that runs checks, or "
-        "pass --criteria of your own.",
+        f"the {named} runs no review criteria, so with --no-editor this run "
+        "would examine nothing and report nothing. Drop --no-editor to get "
+        "the tracked changes it exists for, name a reviewer that runs checks, "
+        "or pass --criteria of your own.",
     )
 
 
@@ -1093,6 +1131,113 @@ def _resolve_guidelines(value: str) -> str:
         except OSError as exc:
             _die(2, f"could not read guidelines file {path}: {exc}")
     return value
+
+
+async def _check_references(args: argparse.Namespace, console: Console, document: Any) -> Any:
+    """The reference check of the default review, as a ``ReviewResult``.
+
+    The loop's model settles only what the text leaves open; the lookup sends
+    the entries to Crossref unless ``--no-lookup``. The confidentiality
+    tripwire runs inside, before anything leaves the machine.
+    """
+    from .references_check import check_open_document
+
+    console.print(
+        "[dim]reference check"
+        + (" with the Crossref lookup" if args.lookup else ", offline")
+        + "[/dim]"
+    )
+    return await check_open_document(
+        document,
+        model=args.model,
+        lookup=args.lookup,
+        confirm_own_draft=args.confirm_own_draft,
+    )
+
+
+def _with_references(result: Any, references: Any) -> Any:
+    """*result* with the reference check's problems and summary added."""
+    return result.model_copy(
+        update={
+            "findings": [*result.findings, *references.findings],
+            "reference_summary": references.summary,
+        }
+    )
+
+
+def _sign_references(comment_authors: dict[str, str] | None) -> dict[str, str]:
+    """Who signs the reference checker's comments: the checker, whoever signs
+    the rest."""
+    from .references_check import REFERENCE_CHECKER, REFERENCE_CHECKER_AUTHOR
+
+    return {**(comment_authors or {}), REFERENCE_CHECKER: REFERENCE_CHECKER_AUTHOR}
+
+
+def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
+    """What to run next, when the goal loop could help — with the command.
+
+    Two cases, each only when it applies: major or moderate findings from the
+    review, and citation problems an edit can fix (a Crossref "not found" is
+    not one). The command repeats the choices that decide what the loop
+    reviews — reviewer, criteria, guidelines, document type — and writes to a
+    new file, so running it does not overwrite this run's output.
+    """
+    from andamentum.references import LOOKUP_KINDS
+
+    from .references_check import REFERENCE_CHECKER
+
+    review_open = [
+        f
+        for f in result.findings
+        if f.perspective != REFERENCE_CHECKER and f.severity in ("major", "moderate")
+    ]
+    citations_open = [
+        f
+        for f in result.findings
+        if f.perspective == REFERENCE_CHECKER
+        and f.category.removeprefix("references:") not in LOOKUP_KINDS
+    ]
+    if not review_open and not citations_open:
+        return []
+
+    parts = ["andamentum-whetstone", shlex.quote(args.input), "--model", shlex.quote(args.model)]
+    names = getattr(args, "reviewers", None) or [args.reviewer]
+    if len(names) == 1 and names[0] != _default_reviewer_name():
+        parts += ["--reviewer", names[0]]
+    for value in args.criteria or []:
+        parts += ["--criteria", shlex.quote(value)]
+    if args.guidelines:
+        parts += ["--guidelines", shlex.quote(args.guidelines)]
+    if args.document_type != "auto":
+        parts += ["--document-type", args.document_type]
+    first = args.out[0]
+    goal_out = shlex.quote(str(first.with_name(f"{first.stem}.goal{first.suffix}")))
+    base = " ".join(parts)
+
+    steps: list[str] = []
+    if review_open:
+        n = len(review_open)
+        steps.append(
+            f"This review raised {n} major or moderate finding{'s' if n != 1 else ''}. "
+            f"To let whetstone revise the draft and review it again until none "
+            f"remain, run:\n\n"
+            f'`{base} --goal "no major or moderate problems remain" '
+            f"--goal-check structure --out {goal_out}`"
+        )
+    if citations_open:
+        n = len(citations_open)
+        steps.append(
+            f"The reference check found {n} citation problem{'s' if n != 1 else ''} "
+            f"that an edit can fix. To let whetstone correct {'them' if n != 1 else 'it'} and check "
+            f"again until the citations and the list agree, run:\n\n"
+            f'`{base} --goal "every citation matches the reference list" '
+            f"--goal-check citations --out {goal_out}`"
+        )
+    steps.append(
+        f"*Each round of the loop is a full review, so it costs up to "
+        f"{_DEFAULT_GOAL_MAX_ROUNDS} times this run (--max-rounds changes the cap).*"
+    )
+    return steps
 
 
 async def _edit_after_the_reviewers(
@@ -1384,6 +1529,14 @@ async def _review_and_write(
                 )
                 result = goal_run_result.final_review
                 document = goal_run_result.final_document
+                # With --goal-check citations the loop already ran the
+                # reference check every round, and its last reading is in the
+                # result. With any other goal it runs once, on the draft the
+                # loop hands back — the one being written.
+                if args.references and args.goal_check != "citations":
+                    references = await _check_references(args, console, document)
+                    result = _with_references(result, references)
+                    comment_authors = _sign_references(comment_authors)
             else:
                 # One reviewer or several. Several run IN SEQUENCE over the
                 # same, unchanged text: no round edits (the single editor pass
@@ -1400,6 +1553,18 @@ async def _review_and_write(
                     args.reviewer
                 )
                 final_editor = bool(getattr(args, "final_editor", False))
+                # The reference check runs FIRST, so its problems reach the
+                # editor with the review's own: a single reviewer's in-graph
+                # editor gets them as extra findings; a list gets them before
+                # its one final editor pass, after the reconciliation (they
+                # come from a deterministic check, not from a reviewer, and
+                # have nothing to reconcile).
+                references = (
+                    await _check_references(args, console, document)
+                    if getattr(args, "references", False)
+                    else None
+                )
+                single = len(reviewer_names) == 1
                 reviews: list[tuple[str, Any]] = []
                 for index, reviewer_name in enumerate(reviewer_names):
                     profile = PROFILES[reviewer_name]
@@ -1440,6 +1605,9 @@ async def _review_and_write(
                         # LLM call spent on a flag.
                         reviewer=profile,
                         patch_author=args.patch_author,
+                        extra_findings=(
+                            references.findings if references is not None and single else None
+                        ),
                     )
                     reviews.append((profile.identity, result))
                 result = reviews[-1][1]
@@ -1470,6 +1638,14 @@ async def _review_and_write(
                         PROFILES[name].identity: author_for(profile=PROFILES[name])
                         for name in reviewer_names
                     }
+                if references is not None:
+                    if single:
+                        result = result.model_copy(
+                            update={"reference_summary": references.summary}
+                        )
+                    else:
+                        result = _with_references(result, references)
+                    comment_authors = _sign_references(comment_authors)
                 if final_editor:
                     console.print(
                         "[dim]line editor: one pass over every reviewer's "
@@ -1485,6 +1661,7 @@ async def _review_and_write(
                     update = {"edits": edits, "declined_findings": declined}
                     result = result.model_copy(update=update)
                     result.metrics.edits_count = len(edits)
+                result.next_steps = _next_steps(args, result)
         result.metrics.wall_seconds = time.perf_counter() - _t0
     except Exception as exc:
         # Confidentiality tripwire — its own error class so we can give a
@@ -1597,6 +1774,12 @@ def _log_run_config(
             )
             table.add_row("guidelines:", guideline_preview)
         table.add_row("editor:", "on" if args.editor else "off")
+        table.add_row(
+            "reference check:",
+            ("on, with the Crossref lookup" if args.lookup else "on, offline")
+            if args.references
+            else "off",
+        )
         if args.editor:
             # Before the run, the only honest answer when the flag was not
             # given is who decides — the reviewer, then the editor's default.

@@ -282,6 +282,13 @@ async def _run_goal_loop(
     profile = reviewer if reviewer is not None else DEFAULT_PROFILE
     base_author = author_for(profile=profile, patch_author=patch_author)
 
+    # Before anything reads the draft: the citations check below may call the
+    # model before round 1's review would have run its own tripwire.
+    if not confirm_own_draft:
+        from .._confidentiality import check_confidentiality
+
+        check_confidentiality(document.confidentiality_text)
+
     # The citations check runs BEFORE each round's review, not after: its
     # problems are findings the round's editor answers. The first round's
     # reading doubles as the resolvability check, so it is not made twice.

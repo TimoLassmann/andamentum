@@ -420,7 +420,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   </header>
 
   <div class="verdict">
-    Point it at a draft you wrote and it hands back a Word file with a comment on every problem it found and, if you ask, a tracked change fixing what can be fixed by rewriting. <strong>Every finding is anchored to a verbatim quote from your document and dropped if that quote is not there</strong> — which is why a comment always sits on the words it is about.
+    Point it at a draft you wrote and it hands back a Word file with a comment on every problem it found, a tracked change fixing what can be fixed by rewriting, and a check of every reference. <strong>Every finding is anchored to a verbatim quote from your document and dropped if that quote is not there</strong> — which is why a comment always sits on the words it is about.
   </div>
 
   <div class="callout tone-danger">
@@ -431,15 +431,36 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   <h2><span class="n">01</span>Start here</h2>
 
-  <p>One command reviews a draft. Everything else on this page is a refinement of it.</p>
+  <p>One command does most of what whetstone can do. Everything else on this page is a way to change it.</p>
 
-  <pre><code><span class="tok-com"># review your draft, get a Word file with tracked changes and comments</span>
+  <pre><code><span class="tok-com"># review your draft, get one Word file with comments, rewrites and a report</span>
 andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
-    --editor --out draft.reviewed.docx</code></pre>
+    --out draft.reviewed.docx</code></pre>
 
-  <p>That reads the document, finds what is wrong with it, writes each problem as a Word comment on the passage it concerns, and — because <code>--editor</code> was passed — proposes concrete rewrites as tracked changes you accept or reject. Open the result in Word and work through it.</p>
+  <p>That one run does five things:</p>
 
-  <p>Three flags carry almost all the usefulness:</p>
+  <ul>
+    <li><strong>Reviews</strong> the draft and writes each problem as a Word comment on the passage it concerns.</li>
+    <li><strong>Rewrites</strong> what a rewrite can fix, as tracked changes you accept or reject.</li>
+    <li><strong>Checks the references</strong>: every citation against the reference list, in any citation style, and each entry against Crossref (section 07). The editor answers these problems too.</li>
+    <li><strong>Lists what the draft claims as new</strong>, so you can see what a reader will test you on.</li>
+    <li><strong>Suggests a next step</strong> when problems remain: the exact command for the goal loop (section 06), which revises and checks again until they are gone.</li>
+  </ul>
+
+  <p>Open the result in Word and work through it. Parts you do not want are switched off, not on:</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Flag</th><th>What it turns off</th></tr></thead>
+    <tbody>
+      <tr><td><code>--no-editor</code></td><td>The rewrites. You get comments only.</td></tr>
+      <tr><td><code>--no-references</code></td><td>The reference check.</td></tr>
+      <tr><td><code>--no-lookup</code></td><td>The Crossref lookup only. The citations are still checked against the list, offline.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Two flags are required:</p>
 
   <div class="table-scroll">
   <table>
@@ -447,7 +468,6 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
     <tbody>
       <tr><td><code>--model</code></td><td>Required. Any pydantic-ai model id. There is no default — the tool will not guess what you meant to spend.</td></tr>
       <tr><td><code>--out</code></td><td>Repeat it. The format comes from the extension: <code>.docx</code>, <code>.md</code>, <code>.html</code>.</td></tr>
-      <tr><td><code>--editor</code></td><td>Off by default. Without it you get comments; with it you also get rewrites.</td></tr>
     </tbody>
   </table>
   </div>
@@ -456,7 +476,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
 
   <div class="callout tone-info">
     <p class="eyebrow">What a run costs</p>
-    <p>A two-page draft is roughly thirty model calls and a minute of wall time on a hosted model. Nothing is sent anywhere except to the model you named — with one exception, <code>--check-novelty</code>, which searches the web and is off by default for that reason.</p>
+    <p>A two-page draft is roughly thirty model calls and a minute of wall time on a hosted model. The draft goes only to the model you named. Two other things can leave your machine. The <strong>reference entries</strong> go to Crossref, which is on by default: they describe published works, and the text of the draft is never sent (<code>--no-lookup</code> stops it). The <strong>sentences that claim novelty</strong> go to a web search, which is off by default because those sentences are unpublished (<code>--check-novelty</code> turns it on).</p>
   </div>
 
   <h2><span class="n">02</span>Choosing a reviewer</h2>
@@ -515,12 +535,12 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <p>Give <code>--reviewer</code> a comma-separated list and they run <strong>in that order</strong>, each reading the same unchanged text. No reviewer in a list rewrites anything; they comment. Order matters in two small ways: findings are listed in the order the reviewers ran, and when two reviewers raise the same point at the same severity, the merged comment keeps the earlier reviewer's wording.</p>
 
-  <pre><code>andamentum-whetstone draft.docx --reviewer claims,methods,adversary --editor \
+  <pre><code>andamentum-whetstone draft.docx --reviewer claims,methods,adversary \
     --model openai:gpt-5.4-mini --out draft.reviewed.docx</code></pre>
 
   <p>Each reviewer signs its own comments, so Word's reviewing pane separates them without you naming anyone. <strong>A point more than one reviewer raised is one comment, not one per reviewer</strong>: it keeps the most severe reviewer's wording and names the others ("Also raised by: Claims reviewer"). There is one report, not one per reviewer.</p>
 
-  <p>The rewrites come from <strong>one editor pass at the end</strong>. With <code>--editor</code>, or with <code>editor</code> anywhere in the list (the two spellings are the same run), the line editor reads every reviewer's findings at once after the last one has finished and writes one set of tracked changes, signed by the line editor. Two findings on one sentence get one rewrite; two that pull in opposite directions are both declined and left to you; and where the reconciliation found the reviewers disagreeing, the editor is told not to settle it. The earlier design ran the editor inside every round, and five reviewers each rewriting the same abstract — each re-editing the last one's insertions — produced tracked changes with no paper underneath.</p>
+  <p>The rewrites come from <strong>one editor pass at the end</strong>. It runs by default (<code>--no-editor</code> turns it off; naming <code>editor</code> in the list asks for the same pass). The line editor reads every reviewer's findings at once after the last one has finished and writes one set of tracked changes, signed by the line editor. Two findings on one sentence get one rewrite; two that pull in opposite directions are both declined and left to you; and where the reconciliation found the reviewers disagreeing, the editor is told not to settle it. The earlier design ran the editor inside every round, and five reviewers each rewriting the same abstract — each re-editing the last one's insertions — produced tracked changes with no paper underneath.</p>
 
   <p>The novelty machinery runs once, in the first round. Later reviewers neither list the draft's claims again nor search for them — the claims do not change because another reviewer read the draft — so <code>--check-novelty</code> on a list costs the same as on a single review.</p>
 
@@ -573,7 +593,7 @@ andamentum-whetstone draft.docx --reviewer methods \
         <td><code>references</code></td>
         <td>“Do my citations and my reference list agree”</td>
         <td>A comment on each problem citation or entry, and a summary</td>
-        <td>Before submitting — see section 07</td>
+        <td>Part of every review; alone, with no model — section 07</td>
       </tr>
     </tbody>
   </table>
@@ -606,7 +626,7 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h3>What a report contains</h3>
 
-  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths and the weaknesses. Then the findings — must fix, should fix, consider, and within each group in the order they occur in the draft — each with the passage it concerns, what is wrong, one fix, and what the editor did about it: the suggested rewrite, or what is left to you. A finding and its answer are one item: in Word the comment says "Suggested rewrite: the tracked change here" or "Left to you: …", instead of a comment, a tracked change with no reason, and a separate list saying the same thing again. Then what the draft claims as new.</p>
+  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths and the weaknesses. Then the findings — must fix, should fix, consider, and within each group in the order they occur in the draft — each with the passage it concerns, what is wrong, one fix, and what the editor did about it: the suggested rewrite, or what is left to you. A finding and its answer are one item: in Word the comment says "Suggested rewrite: the tracked change here" or "Left to you: …", instead of a comment, a tracked change with no reason, and a separate list saying the same thing again. Then what the draft claims as new. Then the <strong>reference check</strong> — how the draft cites, how many citations were read, and what Crossref found — whose problems are among the findings above, signed by the reference checker. Last, when problems remain, the <strong>next step</strong>: the goal-loop command that would revise and check again, written to a new file so it does not overwrite this one. (In the Word report these two follow the summary.)</p>
 
   <p>Last and quiet: one italic line naming the exact criteria, probes, editor criteria and author, each with where it came from, and the package version. It is provenance — worth having when you want to check what ran or compare two reports, and not worth the weight of a heading and a bulleted list at the top of the page.</p>
 
@@ -695,7 +715,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   </table>
   </div>
 
-  <p><code>--goal</code> takes one reviewer, not a list, and it runs the editor every round whether or not <code>--editor</code> is also passed — a round with nothing left to fix is what the loop is trying to confirm, not a step it should quietly skip.</p>
+  <p><code>--goal</code> takes one reviewer, not a list, and it runs the editor every round, so <code>--no-editor</code> is refused with it — a round with nothing left to fix is what the loop is trying to confirm, not a step it should quietly skip.</p>
 
   <h3>How it stops</h3>
 
@@ -734,7 +754,7 @@ andamentum-whetstone references draft.docx --no-lookup --out refs.md
 andamentum-whetstone references draft.pdf --model ollama:gemma4:26b-nvfp4 \
     --out draft.refs.docx</code></pre>
 
-  <p>It is not part of a normal review. Run it as its own command, or use it as the goal of the loop in section 06 (<code>--goal-check citations</code>).</p>
+  <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. The <code>references</code> command runs it alone, and needs no model. It is also a goal for the loop in section 06 (<code>--goal-check citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
 
   <h3>How it reads a draft</h3>
 
@@ -838,7 +858,7 @@ andamentum-whetstone references draft.pdf --model ollama:gemma4:26b-nvfp4 \
     <li><strong>gap loop</strong> — bounded re-grounding pass for findings that came back thin.</li>
     <li><strong>consolidate</strong> — merge near-duplicates so the author reads one comment instead of nine.</li>
     <li><strong>novelty</strong> — three nodes, split across the disclosure boundary. <em>Flag</em> runs on every review and lists what the draft claims as new; <em>search</em> and <em>judge</em> stay behind <code>--check-novelty</code> and go out over <code>deep_research</code>, whose import is deferred until you ask for it. Finding the claims costs one call to the model that has already read every word of the draft, so it discloses nothing further. Verifying them sends those sentences to a search engine, which was never reading the document — so that half is off by default, and an unpublished manuscript reaches a third party only when you decide it should. The list is worth having without any search: seven claims came out of a two-page demo draft, several of them unsupported anywhere in its own text. It also puts the flag in front of you at the moment it means something, holding the exact sentences that would be sent. At most 8 claims are flagged, so a search costs at most 8 search fan-outs plus 8 judge calls. Nothing is rendered when the draft stakes no claim, which is the ordinary case for a tutorial or a short story. In a list of reviewers the whole check belongs to the first round: the draft's claims do not change because a second reviewer read it, so later rounds neither flag nor search, and the report carries one list.</li>
-    <li><strong>editor</strong> — opt-in; proposes concrete <code>Edit</code>s, which become tracked changes rather than comments.</li>
+    <li><strong>editor</strong> — proposes concrete <code>Edit</code>s, which become tracked changes rather than comments. On by default from the command line (<code>--no-editor</code> turns it off); <code>editor=True</code> in Python.</li>
   </ul>
 
   <p>Criteria are data. Pass <code>criteria=[Criterion(...)]</code> to supply your own, or <code>guidelines_text="…"</code> to have a set of reviewer guidelines decomposed into criteria in one call.</p>

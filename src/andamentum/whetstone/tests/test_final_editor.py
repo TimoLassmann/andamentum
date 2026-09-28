@@ -69,10 +69,24 @@ def test_the_editor_is_the_final_pass_wherever_it_is_named() -> None:
     assert args.final_editor is True
 
 
-def test_a_list_without_the_editor_has_no_final_pass() -> None:
+def test_a_list_gets_the_final_pass_by_default() -> None:
     args = _args([*BASE, "--reviewer", "claims,methods"])
     assert args.reviewers == ["claims", "methods"]
+    assert args.final_editor is True
+
+
+def test_a_list_with_no_editor_has_no_final_pass() -> None:
+    args = _args([*BASE, "--reviewer", "claims,methods", "--no-editor"])
+    assert args.reviewers == ["claims", "methods"]
     assert args.final_editor is False
+
+
+def test_no_editor_beside_the_editor_in_the_list_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        _args([*BASE, "--reviewer", "claims,editor", "--no-editor"])
+    assert "contradicts" in capsys.readouterr().err
 
 
 def test_a_single_reviewer_keeps_its_own_editor() -> None:
@@ -90,7 +104,7 @@ def test_the_line_editor_signs_the_final_render() -> None:
     end is the one still unwritten, and it is the editor's."""
     args = _args([*BASE, "--reviewer", "claims,methods", "--editor"])
     assert cli_mod._resolve_author(args) == author_for(profile=EDITOR_PROFILE)
-    plain = _args([*BASE, "--reviewer", "claims,methods"])
+    plain = _args([*BASE, "--reviewer", "claims,methods", "--no-editor"])
     assert cli_mod._resolve_author(plain) == author_for(profile=PROFILES["methods"])
 
 

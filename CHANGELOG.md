@@ -4,6 +4,43 @@
 
 ### whetstone
 
+  - **One run does most things; flags turn parts off.** The default
+    `andamentum-whetstone draft.docx --model M --out OUT` now reviews,
+    writes rewrites as tracked changes (the editor is on by default), checks
+    the references with a Crossref lookup, and lists what the draft claims
+    as new. `--no-editor`, `--no-references` and `--no-lookup` turn parts
+    off. **Behaviour change:** `--editor` is now the default, and the
+    Crossref lookup sends the draft's reference entries (never its text)
+    to Crossref unless `--no-lookup`. The library `review_document` keeps
+    `editor=False`.
+  - The reference check runs before the review, so the editor answers its
+    problems beside the review's own; each of its comments is signed by the
+    reference checker. The confidentiality tripwire runs first, over the
+    headers and notes as well as the body.
+  - Two new report sections in all three renderers: **Reference check**
+    (how the draft cites, the counts, the Crossref result) and **Next
+    step** — when problems remain, the exact goal-loop command, writing to
+    a new `.goal` file. The goal loop stays opt-in: only the user can state
+    the goal, it rewrites the draft several times, and each round costs a
+    full review.
+  - New subcommand `andamentum-whetstone references` — the reference check
+    alone; no model needed (`--model` settles only what the text leaves
+    open).
+  - `--goal-check citations` now uses the reference checker (every citation
+    style), and its problems reach the round's editor, so the loop can fix a
+    wrong citation, not only report it. The simpler marker scan it used
+    (`goal/citations.py`) was removed.
+  - The review's `CITATIONS` prompt line now comes from the reference
+    checker (style, count, list size). The old marker regexes read
+    "(none)" for any superscript or footnote document. The unused
+    `Claim.has_citation` was removed.
+  - A point several reviewers raise is one comment, naming the others;
+    each finding has a headline, an issue and one fix; the editor's answer
+    sits in the finding's own comment ("Suggested rewrite" / "Left to
+    you"). Fixed: a Word file that registered its core properties under the
+    variant relationship type came out with two `docProps/core.xml` parts
+    and would not open.
+
   - **Checklist mode** — a third review mode beside `review` and `panel`,
     for the question "run the standard check" rather than "help me improve
     this draft". Instead of the criterion cascade it runs a fixed bank of
@@ -31,6 +68,25 @@
     bypasses it. Unlike `panel`, there is no mandatory authorship
     affirmation — checklist output is a defect table, not a document shaped
     like a journal peer-review report.
+
+### references (new)
+
+  - `andamentum.references.check_references(text, *, sections, hints,
+    model, lookup)`: finds the reference list and every candidate
+    citation, decides how the document cites from evidence (numbers in
+    brackets or parentheses, superscript, author-year, footnotes and
+    endnotes, Pandoc keys), checks the citations against the list, and
+    looks each entry up in Crossref. A model is asked only when the
+    evidence is mixed, with short excerpts and flat answers sized for
+    local models; without one, open cases are reported as undecided,
+    never guessed. Measured on a test set of 13 real CSL styles plus
+    formatting-stripped and notes variants, from Word and from PDF.
+
+### harvest
+
+  - `preserve_superscripts=True` (PDF only, off by default): raised text
+    becomes `<sup>`, and page footnotes become Markdown footnotes, read from
+    the PDF's own characters with pypdfium2.
 
 ### document_store
 

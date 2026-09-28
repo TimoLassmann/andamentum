@@ -152,7 +152,9 @@ policy restricts.
 
 - **Local-only operation** is supported end-to-end via Ollama
   models (`ollama:*`). Use this for any input that should not leave
-  your machine.
+  your machine — and for `andamentum-whetstone`, add `--no-lookup`:
+  its default run looks up the draft's reference entries in Crossref
+  (the entries only, never the draft's text).
 - Tiered cloud-call gates (interactive prompt for `andamentum-whetstone`;
   TTY-aware one-time stderr warning for `andamentum-research` and
   `andamentum-epistemic`; silent for the pipeline CLIs) are planned

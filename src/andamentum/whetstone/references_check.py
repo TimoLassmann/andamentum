@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from .reviewed_document import ReviewedDocument
 
+REFERENCE_CHECKER = "Reference checker"
 REFERENCE_CHECKER_AUTHOR = "Reference checker (andamentum-whetstone, AI)"
 
 def _offline(kind: str) -> bool:
@@ -51,15 +52,42 @@ async def check_document_references(
     reference check of someone else's manuscript still sends its reference
     list to a public service.
     """
-    from andamentum.references import check_references
-
-    from ._confidentiality import check_confidentiality
     from .reviewed_document import open_source
 
     document = await open_source(str(source))
-    if not confirm_own_draft:
-        check_confidentiality(document.text)
+    result = await check_open_document(
+        document,
+        model=model,
+        lookup=lookup,
+        mailto=mailto,
+        confirm_own_draft=confirm_own_draft,
+    )
+    return result, document
+
+
+async def check_open_document(
+    document: "ReviewedDocument",
+    *,
+    model: str | None,
+    lookup: bool,
+    mailto: str | None = None,
+    confirm_own_draft: bool = False,
+) -> ReviewResult:
+    """Check the references of a document the caller already opened.
+
+    The confidentiality tripwire runs first, over the same text a review
+    scans — the body with the running headers and notes, where a
+    "CONFIDENTIAL" stamp usually sits — because with *lookup* the reference
+    entries leave the machine here, and in the default review this runs
+    before the review's own tripwire.
+    """
+    from andamentum.references import check_references
+
+    from ._confidentiality import check_confidentiality
     from .docx.citation_hints import citation_hints
+
+    if not confirm_own_draft:
+        check_confidentiality(document.confidentiality_text)
 
     report = await check_references(
         document.text,
@@ -72,7 +100,7 @@ async def check_document_references(
         lookup=lookup,
         mailto=mailto,
     )
-    return to_review_result(report, document=document), document
+    return to_review_result(report, document=document)
 
 
 def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument") -> ReviewResult:
@@ -100,6 +128,9 @@ def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument")
                 sections_involved=[section_id] if section_id else [],
                 source="deterministic" if _offline(problem.kind) else "lookup",
                 category=f"references:{problem.kind}",
+                # Signs its Word comment, and tells the editor and the reader
+                # which check raised it, beside a review's own findings.
+                perspective=REFERENCE_CHECKER,
             )
         )
     unchecked = [r for r in report.lookups if r.status == "service_error"]

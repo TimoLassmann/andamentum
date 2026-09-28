@@ -29,6 +29,8 @@ from ..schemas import (
     SectionCard,
 )
 from ._finding_text import (
+    NEXT_STEP_HEADING,
+    REFERENCE_CHECK_HEADING,
     PRIORITY_LABEL,
     PRIORITY_ORDER,
     EditorAnswers,
@@ -173,6 +175,14 @@ def render_html(
 
     if result.novelty_claims:
         atoms.extend(_novelty_claim_atoms(result.novelty_claims))
+
+    if result.reference_summary:
+        atoms.append({"kind": "heading", "content": REFERENCE_CHECK_HEADING, "level": 2})
+        atoms.append({"kind": "prose", "content": result.reference_summary})
+
+    if result.next_steps:
+        atoms.append({"kind": "heading", "content": NEXT_STEP_HEADING, "level": 2})
+        atoms.append({"kind": "prose", "content": "\n\n".join(result.next_steps)})
 
     # ── Document map — reference, after the findings it helps locate ──
     if result.document_map and not panel_mode:

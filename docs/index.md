@@ -9,7 +9,8 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **scribe** | Block-based document authoring (paragraph, heading, figure, table) backed by SQLite, one-way render to .docx. |
 | **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (10 chart types, 7 journal palettes and the andamentum report palette). |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
-| [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with track changes. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `proofread`, `apply-patches`, `verify-provenance`. |
+| [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with comments and tracked changes. The default run reviews, rewrites, checks the references and suggests a next step; flags turn parts off, and `--goal` loops until a condition you state holds. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `references`, `proofread`, `apply-patches`, `verify-provenance`. |
+| [**references**](./whetstone.html) | Reference checking in any citation style — numbered, superscript, author-year, footnotes, Pandoc keys: citations against the list, then each entry against Crossref. Evidence first; a model only for what the text leaves open. |
 | **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
@@ -53,7 +54,7 @@ Nine scripts installed by the package. Run `--help` on any binary for full flag 
 |---|---|---|
 | `andamentum-scribe` | Block-based document authoring; renders to .docx. | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (deterministic plotting). | none |
-| `andamentum-whetstone` | Criterion-cascade draft review → markdown / HTML / .docx with track changes. Six subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist` |
+| `andamentum-whetstone` | Draft review → markdown / HTML / .docx with comments and tracked changes; the default run also checks the references. Seven subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `references`, `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist`; optional for `references` |
 | `andamentum-proofread` | Deterministic readability + style check. | none |
 | `andamentum-harvest` | Universal source → markdown extraction. | none |
 | `andamentum-chunker` | Structural-first semantic chunking. | required |

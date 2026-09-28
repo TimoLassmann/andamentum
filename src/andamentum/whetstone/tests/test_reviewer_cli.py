@@ -533,18 +533,20 @@ def test_review_refuses_the_line_editor_without_the_editor(
 ) -> None:
     """The mirror of the checklist refusal, for the mode that has no rows.
 
-    Without ``--editor`` the line editor makes no criterion call, runs no gap
+    With ``--no-editor`` the line editor makes no criterion call, runs no gap
     round and proposes no rewrite, but still pays for claim extraction,
     synthesis and self-critique — a full-price run whose report says nothing.
     """
     with pytest.raises(SystemExit) as exc:
-        _validate([*BASE, "--reviewer", "editor"])
+        _validate([*BASE, "--reviewer", "editor", "--no-editor"])
     assert exc.value.code == 1
     assert "runs no review criteria" in capsys.readouterr().err
 
 
 def test_review_accepts_the_line_editor_with_the_editor() -> None:
     _validate([*BASE, "--reviewer", "editor", "--editor"])
+    # The editor is on by default, so naming the reviewer alone is enough.
+    _validate([*BASE, "--reviewer", "editor"])
 
 
 def test_review_accepts_the_line_editor_given_criteria_of_its_own() -> None:
