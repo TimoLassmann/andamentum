@@ -86,3 +86,31 @@ async def test_the_option_is_off_by_default_and_changes_nothing(monkeypatch) -> 
     assert await extract("x.pdf") == markdown
     marked = await extract("x.pdf", preserve_superscripts=True)
     assert "<sup>" in marked
+
+
+def test_a_mark_docling_dropped_is_placed_after_its_preceding_text() -> None:
+    """Docling can leave a raised digit out of its sentence and set it down
+    elsewhere. The PDF still says where it belongs."""
+    from andamentum.harvest.pdf_script import PdfFootnote, PdfScript, RaisedRun
+
+    markdown = (
+        "Visual inspection of alignments remains useful. Further work followed.\n\n"
+        "9Li, 'Fast and accurate short,' 22.\n\n9\n"
+    )
+    script = PdfScript(
+        raised=[
+            RaisedRun(
+                page=2,
+                text="9",
+                before="ofalignmentsremainsuseful.",
+                attached_before=True,
+                attached_after=False,
+            )
+        ],
+        footnotes=[PdfFootnote(page=2, number=9, text="Li, “Fast and accurate short,” 22.")],
+    )
+    marked, stats = mark_markdown(markdown, script)
+    assert stats.moved == 1 and stats.unplaced == 0
+    assert "remains useful.[^2-9] Further" in marked
+    assert "[^2-9]: Li, “Fast and accurate short,” 22." in marked
+    assert "9Li," not in marked.split("[^2-9]:")[0]

@@ -382,3 +382,30 @@ async def test_a_list_that_starts_late_is_one_problem_not_one_per_citation() -> 
     report = await check_references(text, lookup=False)
     assert [p.headline for p in report.problems] == ["The list starts at entry 3"]
     assert "entries 1–2 are missing" in report.problems[0].issue
+
+
+def test_a_fragment_out_of_alphabetical_order_is_not_an_entry() -> None:
+    """A converter moved the tail of one entry before its head; the fragment
+    opens with a capital and a year, but breaks the list's alphabetical
+    order and has no author."""
+    text = (
+        "Bibliography\n"
+        "Langmead, B., and S. L. Salzberg. 'Fast Gapped-read Alignment'. Nature Methods, 2012.\n"
+        "Love, M. I., and W. Huber. 'Moderated Estimation'. Genome Biology, 2014.\n"
+        "Robinson, J. T., H. Thorvaldsdóttir. 'Integrative Genomics Viewer'. Nature, 2011.\n"
+        "Media LLC, 2020. Originally published as []. https://doi.org/10.1038/s41586-020-\n"
+        "Turro, E., W. J. Astle. 'Whole-genome Sequencing of Patients'. Nature.\n"
+    )
+    assert [e.lead[:5] for e in _entries(text)] == ["Langm", "Love,", "Robin", "Turro"]
+
+
+def test_an_unsorted_list_keeps_every_entry() -> None:
+    """Only a sorted list says anything about a line out of order."""
+    text = (
+        "References\n"
+        "Turro, E. (2020). Whole-genome sequencing. Nature, 583, 96.\n"
+        "Adams, K. (2019). A study. Journal, 1, 1.\n"
+        "Love, M. I. (2014). Moderated estimation. Genome Biology, 15, 550.\n"
+        "Baker, J. (2018). Another study. Journal, 2, 2.\n"
+    )
+    assert len(_entries(text)) == 4

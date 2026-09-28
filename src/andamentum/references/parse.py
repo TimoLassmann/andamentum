@@ -174,7 +174,36 @@ def _unnumbered(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
                 raw[-1]["end"] = piece_end  # continues the entry above
             elif opens or _looks_like_entry(piece):
                 raw.append({"number": None, "start": piece_start, "end": piece_end})
-    return [_entry(text, r) for r in raw]
+    return [_entry(text, r) for r in _rejoin_displaced(text, raw)]
+
+
+def _rejoin_displaced(text: str, raw: list[dict]) -> list[dict]:
+    """Fold fragments a converter moved out of place back into an entry.
+
+    An author-year or notes bibliography is alphabetical. When this one is
+    (at most one neighbouring pair, or one in five, out of order), an "entry" that falls outside the
+    range of its two neighbours is a displaced fragment — docling moved the
+    tail of one entry, "Media LLC, 2020. Originally published…", in front of
+    its head, between "Robinson" and "Turro" — and joins the entry before it.
+    An unsorted list is left alone: there the order says nothing.
+    """
+    if len(raw) < 4:
+        return raw
+    keys = [text[r["start"] : r["end"]].lstrip()[:12].lower() for r in raw]
+    breaks = sum(1 for a, b in zip(keys, keys[1:]) if a > b)
+    if breaks > max(1, 0.2 * (len(keys) - 1)):
+        return raw
+    kept: list[dict] = [raw[0]]
+    kept_keys = [keys[0]]
+    for index in range(1, len(raw)):
+        following = keys[index + 1] if index + 1 < len(raw) else None
+        displaced = keys[index] < kept_keys[-1] and (following is None or kept_keys[-1] <= following)
+        if displaced:
+            kept[-1] = {**kept[-1], "end": raw[index]["end"]}
+            continue
+        kept.append(raw[index])
+        kept_keys.append(keys[index])
+    return kept
 
 
 def _names_only(piece: str) -> bool:

@@ -76,6 +76,7 @@ class MarkStats:
     marked: int = 0
     notes: int = 0
     unplaced: int = 0
+    moved: int = 0  # placed by context alone: docling had dropped the digit
 
 
 @dataclass
@@ -267,18 +268,30 @@ def mark_markdown(markdown: str, script: PdfScript) -> tuple[str, MarkStats]:
             if found >= 0:
                 found += len(context)
                 break
-        if found < 0:
-            stats.unplaced += 1
-            continue
-        start = positions[found]
-        end = positions[found + len(needle_digits) - 1] + 1
-        # Close the spaces docling put around a run the PDF set tight.
-        if run.attached_before:
-            while start > 0 and markdown[start - 1] == " ":
-                start -= 1
-        if run.attached_after:
-            while end < len(markdown) and markdown[end] == " ":
-                end += 1
+        if found >= 0:
+            start = positions[found]
+            end = positions[found + len(needle_digits) - 1] + 1
+            # Close the spaces docling put around a run the PDF set tight.
+            if run.attached_before:
+                while start > 0 and markdown[start - 1] == " ":
+                    start -= 1
+            if run.attached_after:
+                while end < len(markdown) and markdown[end] == " ":
+                    end += 1
+            cursor = found + len(needle_digits)
+        else:
+            # Docling sometimes drops the raised digit from its sentence (and
+            # sets it down elsewhere): "…remains useful. Further…". The PDF
+            # still says where it belongs — right after its preceding text —
+            # so the mark goes there. Only the full context is trusted for
+            # this; a shortened one could match anywhere.
+            at = stripped.find(before, cursor) if len(before) >= 12 else -1
+            if at < 0:
+                stats.unplaced += 1
+                continue
+            start = end = positions[at + len(before) - 1] + 1
+            cursor = at + len(before)
+            stats.moved += 1
         key = (run.page, int(needle_digits)) if needle_digits.isdigit() else None
         if key is not None and key in footnotes and key not in used_notes:
             used_notes.add(key)
@@ -288,7 +301,6 @@ def mark_markdown(markdown: str, script: PdfScript) -> tuple[str, MarkStats]:
             replacement = f"<sup>{needle_digits}</sup>"
             stats.marked += 1
         edits.append((start, end, replacement))
-        cursor = found + len(needle_digits)
 
     # The footnotes' own text, where docling merged it into the body.
     for key in sorted(used_notes):
