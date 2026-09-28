@@ -37,6 +37,7 @@ async def extract(
     ocr: bool = True,
     figure_model: str = DEFAULT_FIGURE_MODEL,
     tdm_allowed_hosts: frozenset[str] = frozenset(),
+    preserve_superscripts: bool = False,
 ) -> str:
     """Convert any document source to clean markdown.
 
@@ -84,6 +85,16 @@ async def extract(
         Hostnames the caller attests they hold a text-and-data-mining
         licence for. Disarms the paywalled-publisher tripwire for those
         hosts. Default empty: tripwire fully active.
+    preserve_superscripts:
+        PDF only. Docling's PDF pipeline drops script information, so a
+        superscript citation "patients¹." arrives as "patients 1 ." and a
+        page's footnotes are merged into the body. With this on, the PDF's
+        own character sizes and positions are read (``pdf_script``): raised
+        runs are written as ``<sup>…</sup>``, and a raised number with a
+        footnote of that number on its page as a Markdown footnote
+        (``[^page-n]`` at the mark, ``[^page-n]: text`` at the end). Off by
+        default, so every existing caller gets exactly the markdown it got
+        before; other formats ignore it.
 
     Returns
     -------
@@ -107,7 +118,11 @@ async def extract(
     """
     fetched = await resolve(source, tdm_allowed_hosts=tdm_allowed_hosts)
     return await _dispatch(
-        fetched, mode=mode, ocr=ocr, figure_model=figure_model
+        fetched,
+        mode=mode,
+        ocr=ocr,
+        figure_model=figure_model,
+        preserve_superscripts=preserve_superscripts,
     )
 
 
@@ -119,6 +134,7 @@ async def extract_from_bytes(
     mode: ExtractionMode = "fast",
     ocr: bool = True,
     figure_model: str = DEFAULT_FIGURE_MODEL,
+    preserve_superscripts: bool = False,
 ) -> str:
     """Run the same extraction pipeline as `extract`, but on bytes you already have.
 
@@ -143,17 +159,49 @@ async def extract_from_bytes(
         Whether fast mode runs OCR — see `extract`.
     figure_model:
         Which model describes figures in accurate mode — see `extract`.
+    preserve_superscripts:
+        Mark a PDF's raised text and page footnotes — see `extract`.
     """
     fetched = Fetched(data=data, format=format, source_url=source_url)
     return await _dispatch(
-        fetched, mode=mode, ocr=ocr, figure_model=figure_model
+        fetched,
+        mode=mode,
+        ocr=ocr,
+        figure_model=figure_model,
+        preserve_superscripts=preserve_superscripts,
     )
 
 
 async def _dispatch(
-    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+    fetched: Fetched,
+    *,
+    mode: ExtractionMode,
+    ocr: bool,
+    figure_model: str,
+    preserve_superscripts: bool = False,
 ) -> str:
     """Format-specific routing — shared by ``extract`` and ``extract_from_bytes``."""
+    if fetched.format == "pdf" and preserve_superscripts:
+        markdown = await extract_with_docling(
+            fetched.data,
+            source_url=fetched.source_url,
+            fmt="pdf",
+            mode=mode,
+            ocr=ocr,
+            figure_model=figure_model,
+        )
+        # Docling's PDF pipeline drops script information; the PDF's own
+        # characters still carry it. See pdf_script.
+        from .pdf_script import analyse_pdf, mark_markdown
+
+        marked, stats = mark_markdown(markdown, analyse_pdf(fetched.data))
+        logger.info(
+            "marked %d raised run(s) and %d footnote(s) from the PDF (%d unplaced)",
+            stats.marked,
+            stats.notes,
+            stats.unplaced,
+        )
+        return marked
     if fetched.format == "html":
         return await _extract_html(
             fetched, mode=mode, ocr=ocr, figure_model=figure_model

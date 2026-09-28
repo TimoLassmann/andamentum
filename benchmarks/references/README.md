@@ -13,6 +13,12 @@ citation styles. No Crossref lookup — this is about reading.
        uv run python benchmarks/references/evaluate.py OUT
        uv run python benchmarks/references/evaluate.py OUT --model ollama:gemma4:26b-nvfp4
 
+   `--pdf` renders each document to PDF with LibreOffice and reads it the way
+   a PDF submission is read (harvest with `preserve_superscripts`, then
+   whetstone's baseline Word file). Citation spans do not carry over through
+   a conversion, so it scores the style read and the planted problems by
+   kind. Needs `soffice` (`--soffice PATH`) and loads docling.
+
 Each document has the same planted errors (a cited work missing from the
 list, a listed work never cited, a wrong year in author-year styles) and the
 same distractors (affiliation marks, `10⁵`, `m²`, `Fig. 2`, `(n = 12)`, a

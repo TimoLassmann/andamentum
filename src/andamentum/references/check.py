@@ -185,6 +185,32 @@ def _numeric(
     by_number = numbered(entries)
     cited_entries: set[int] = set()
     reported: set[int] = set()
+    # A list that starts above 1 while the text cites below its start is
+    # missing its head — deleted in the draft, or lost converting a PDF. One
+    # problem at the head of the list, not one per citation of a missing
+    # entry.
+    first = min(by_number) if by_number else 1
+    below = sorted({n for c in citations for n in c.numbers if n < first})
+    if below and entries:
+        head = min((e for e in entries if e.number is not None), key=lambda e: e.start)
+        missing = f"{below[0]}–{first - 1}" if first - 1 > below[0] else str(below[0])
+        problems.append(
+            Problem(
+                kind="cited_not_listed",
+                severity="major",
+                headline=f"The list starts at entry {first}",
+                issue=(
+                    f"The text cites entr{'ies' if len(below) > 1 else 'y'} "
+                    f"{', '.join(str(n) for n in below)}, but the reference list "
+                    f"begins at {first}, so entries {missing} are missing from it."
+                ),
+                fix="Restore the missing entries at the start of the list.",
+                start=head.start,
+                end=head.end,
+                entry_number=head.number,
+            )
+        )
+        reported.update(below)
     for citation in citations:
         for n in citation.numbers:
             for entry in by_number.get(n, []):

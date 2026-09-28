@@ -34,6 +34,8 @@ clean up before returning.
 
 from __future__ import annotations
 
+import html
+
 import logging
 import re
 import tempfile
@@ -52,6 +54,8 @@ _PATH_EXTENSIONS: frozenset[str] = frozenset(
 
 # A blank line, allowing the whitespace an editor may have left on it.
 _BLOCK_BREAK = re.compile(r"\n[ \t]*\n")
+_NOTE_DEFINITION = re.compile(r"^\[\^([^\]\s]+)\]:[ \t]*(.+)$", re.MULTILINE)
+_INLINE_MARKUP = re.compile(r"<sup>(.*?)</sup>|\[\^([^\]\s]+)\]")
 
 
 @dataclass(frozen=True)
@@ -203,6 +207,21 @@ def _write_baseline_docx(markdown: str) -> Path:
     """
     from docx import Document  # python-docx
 
+    from .docx.footnotes import PLACEHOLDER, add_footnotes
+
+    # Markdown footnotes ([^id] marks, "[^id]: text" definitions) become real
+    # Word footnotes, and <sup>…</sup> a superscript run: harvest writes both
+    # for a PDF (see harvest.pdf_script), and a Markdown draft may carry them.
+    # Docling escapes & < > as HTML entities in its markdown; written into
+    # Word as they stand, the reviewer read "&amp;" and a citation of
+    # "Li &amp; Durbin" read as one of "Durbin". Decoded here, once.
+    definitions = {
+        m.group(1): html.unescape(m.group(2).strip())
+        for m in _NOTE_DEFINITION.finditer(markdown)
+    }
+    markdown = _NOTE_DEFINITION.sub("", markdown)
+    notes: list[str] = []
+
     document = Document()
     for block in _BLOCK_BREAK.split(markdown):
         block = block.strip()
@@ -210,9 +229,24 @@ def _write_baseline_docx(markdown: str) -> Path:
             continue
         level = len(block) - len(block.lstrip("#"))
         if level and block[level : level + 1].isspace():
-            document.add_heading(block[level:].strip(), level=min(level, 9))
-        else:
-            document.add_paragraph(block)
+            document.add_heading(html.unescape(block[level:].strip()), level=min(level, 9))
+            continue
+        paragraph = document.add_paragraph()
+        position = 0
+        for inline in _INLINE_MARKUP.finditer(block):
+            if inline.start() > position:
+                paragraph.add_run(html.unescape(block[position : inline.start()]))
+            raised, note_id = inline.group(1), inline.group(2)
+            if raised is not None:
+                paragraph.add_run(raised).font.superscript = True
+            elif note_id in definitions:
+                notes.append(definitions[note_id])
+                paragraph.add_run(PLACEHOLDER.format(n=len(notes)))
+            else:
+                paragraph.add_run(inline.group(0))  # a mark with no note: as written
+            position = inline.end()
+        if position < len(block):
+            paragraph.add_run(html.unescape(block[position:]))
 
     handle = tempfile.NamedTemporaryFile(
         delete=False, suffix=".docx", prefix="whetstone-baseline-"
@@ -220,6 +254,7 @@ def _write_baseline_docx(markdown: str) -> Path:
     handle.close()
     out = Path(handle.name)
     document.save(str(out))
+    add_footnotes(out, notes)
     return out
 
 
@@ -261,11 +296,15 @@ async def _harvest_or_treat_as_markdown(source: str) -> str:
     baseline .docx was built from the fetched page."""
     from andamentum.harvest import extract
 
+    # preserve_superscripts: a PDF's raised text and page footnotes come
+    # through as <sup>…</sup> and Markdown footnotes, which the baseline
+    # writer turns into Word superscript runs and footnotes — what a reader
+    # of citations needs, and what docling's PDF pipeline otherwise drops.
     if _is_url(source):
-        return await extract(source)
+        return await extract(source, preserve_superscripts=True)
     path = Path(source)
     if path.exists():
-        return await extract(path)
+        return await extract(path, preserve_superscripts=True)
     if _looks_like_filesystem_path(source):
         raise FileNotFoundError(
             f"input file not found: {source!r}. The string looks like a "

@@ -69,15 +69,73 @@ async def score(case: dict, directory: Path, model: str | None) -> dict:
     }
 
 
+async def score_pdf(case: dict, directory: Path, model: str | None, *, soffice: str) -> dict:
+    """The document as a PDF, read through whetstone's real path."""
+    import subprocess
+
+    pdf_dir = directory / "pdf"
+    pdf_dir.mkdir(exist_ok=True)
+    pdf = pdf_dir / case["file"].replace(".docx", ".pdf")
+    if not pdf.exists():
+        subprocess.run(
+            [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(pdf_dir), str(directory / case["file"])],
+            check=True,
+            capture_output=True,
+        )
+    document = await open_source(str(pdf))
+    report = await check_references(
+        document.text,
+        sections=[(s.title, s.start, s.end) for s in document.sections],
+        hints=citation_hints(document.docx_path, expected_text=document.text),
+        model=model,
+        lookup=False,
+    )
+    expected = sorted(p["kind"] for p in case["planted"])
+    found = sorted(p.kind for p in report.problems)
+    remaining = list(found)
+    hits = 0
+    for kind in expected:
+        if kind in remaining:
+            remaining.remove(kind)
+            hits += 1
+    read_as = report.style.style if report.style else "none"
+    wanted = case["expected_style"]
+    ok = (read_as == wanted or (wanted == "unsupported" and read_as == "undecided")) and not remaining
+    return {
+        "style": case["style"],
+        "read_as": read_as,
+        "planted": f"{hits}/{len(expected)}",
+        "other": remaining,
+        "unjudged": sum(1 for j in report.judged if j.reason.startswith("not judged")),
+        "ok": ok,
+    }
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("corpus", type=Path)
     parser.add_argument("--model", default=None)
     parser.add_argument("--only", nargs="*", default=None, help="Style names to score.")
+    parser.add_argument(
+        "--pdf",
+        action="store_true",
+        help="Convert each document to PDF (LibreOffice) and read it through "
+        "harvest, as a PDF submission would be. Scores the style read and the "
+        "planted problems by kind; citation spans do not carry over.",
+    )
+    parser.add_argument("--soffice", default="soffice", help="LibreOffice binary for --pdf.")
     args = parser.parse_args()
     cases = json.loads((args.corpus / "manifest.json").read_text())
     if args.only:
         cases = [c for c in cases if c["style"] in args.only]
+    if args.pdf:
+        for case in cases:
+            row = await score_pdf(case, args.corpus, args.model, soffice=args.soffice)
+            print(
+                f"{'OK ' if row['ok'] else 'BAD'} {row['style']:<34} read {row['read_as']:<20} "
+                f"planted {row['planted']}  other problems {row['other']}  unjudged {row['unjudged']}"
+            )
+        return
     rows = []
     for case in cases:  # sequential: never two model calls at once
         rows.append(await score(case, args.corpus, args.model))

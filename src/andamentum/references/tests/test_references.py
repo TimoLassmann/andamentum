@@ -305,3 +305,80 @@ async def test_an_exact_match_in_a_later_search_beats_a_partial_one_earlier() ->
 
     report, _ = await _lookup(ONE, route)
     assert [r.status for r in report.lookups] == ["found"]
+
+
+# ── lists a PDF converter merged into paragraphs ────────────────────────────
+
+
+def _entries(text: str):
+    start, end = find_reference_list(text) or (0, 0)
+    return split_entries(text, start=start, end=end)
+
+
+def test_a_merged_numbered_list_is_split_at_the_next_number_even_across_a_gap() -> None:
+    text = (
+        "References\n"
+        "1.Rentzsch, P. CADD: predicting deleteriousness. Nucleic Acids Research vol. 47 D886 (2018). "
+        "2.Gudmundsson, S. et al. Variant interpretation. Human Mutation vol. 43, no. 8. Wiley (2021). "
+        "4.LeCun, Y. Deep learning. Nature vol. 521 436 (2015).\n"
+    )
+    assert [(e.number, e.year) for e in _entries(text)] == [(1, 2018), (2, 2021), (4, 2015)]
+
+
+def test_numbers_inside_an_entry_do_not_split_it() -> None:
+    """"no. 9." or "no. 4." sit before an entry's year: nothing before them is
+    a whole entry yet."""
+    text = (
+        "References\n"
+        "[1]B. Langmead, 'Fast gapped-read alignment', Nature Methods, vol. 9, no. 4. Springer, 2012. "
+        "[2]M. I. Love, 'Moderated estimation', Genome Biology, vol. 15, no. 12. Springer, 2014.\n"
+    )
+    assert [e.number for e in _entries(text)] == [1, 2]
+
+
+def test_a_merged_author_year_list_is_split_before_each_new_author() -> None:
+    text = (
+        "References\n"
+        "Rentzsch, P., Witten, D., & Cooper, G. M. (2018). CADD: predicting deleteriousness. "
+        "Nucleic Acids Research, 47, D886. https://doi.org/10.1093/nar/gky1016 "
+        "Gudmundsson, S., Singer-Berk, M. (2021). Variant interpretation. Human Mutation, 43, 1012.\n"
+        "https://doi.org/10.1002/humu.24309\n"
+    )
+    entries = _entries(text)
+    assert [e.lead[:11] for e in entries] == ["Rentzsch, P", "Gudmundsson"]
+    # A line that does not open like an entry continues the one above.
+    assert entries[1].text.endswith("humu.24309")
+
+
+def test_an_author_opened_line_without_a_year_is_still_an_entry() -> None:
+    """A converter can move an entry's year into the paragraph before it."""
+    text = (
+        "Bibliography\n"
+        "Li, H., and R. Durbin. 'Fast and Accurate Short Read Alignment'. Bioinformatics, 2009.\n"
+        "Turro, E., W. J. Astle, K. Megy, et al. 'Whole-genome Sequencing of Patients'. Nature.\n"
+    )
+    assert [e.lead[:5] for e in _entries(text)] == ["Li, H", "Turro"]
+
+
+def test_an_author_list_broken_across_lines_stays_one_entry() -> None:
+    """Elsevier lists every author; a converter breaks the list over lines,
+    and the second line opens with a name. An entry with no year yet is not
+    finished, so the line continues it."""
+    text = (
+        "References\n"
+        "Turro, E., Astle, W.J., Megy, K., Gräf, S., Greene, D., Shamardina, O.\n"
+        "Syrris, P., Tait, R.C., Talks, K., 2020. Whole-genome sequencing of patients. Nature 583, 96.\n"
+        "LeCun, Y., Bengio, Y., Hinton, G., 2015. Deep learning. Nature 521, 436.\n"
+    )
+    assert [e.lead[:5] for e in _entries(text)] == ["Turro", "LeCun"]
+
+
+async def test_a_list_that_starts_late_is_one_problem_not_one_per_citation() -> None:
+    text = (
+        "Body [1], [2], [3], [4].\n\nReferences\n"
+        "3. Turro E. Whole-genome sequencing. Nature 2020;583:96.\n"
+        "4. LeCun Y. Deep learning. Nature 2015;521:436.\n"
+    )
+    report = await check_references(text, lookup=False)
+    assert [p.headline for p in report.problems] == ["The list starts at entry 3"]
+    assert "entries 1–2 are missing" in report.problems[0].issue
