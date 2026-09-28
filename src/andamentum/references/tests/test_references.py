@@ -409,3 +409,56 @@ def test_an_unsorted_list_keeps_every_entry() -> None:
         "Baker, J. (2018). Another study. Journal, 2, 2.\n"
     )
     assert len(_entries(text)) == 4
+
+
+# ── Pandoc drafts ───────────────────────────────────────────────────────────
+
+PANDOC = """Introduction
+Rare diseases are common [@wakap2020]. Diagnosis is slow [see @zurynski2017, p. 4;
+@yang2022]. Costs are high [@missing2021]. Mail me at a@b.org.
+
+References
+[@wakap2020] Nguengang Wakap S, Lambert DM (2020) Estimating cumulative point prevalence of rare diseases. Eur J Hum Genet 28:165-173
+[@zurynski2017] Zurynski Y, Deverell M (2017) Australian children living with rare diseases. Orphanet J Rare Dis 12:68
+[@yang2022] Yang G, Cintina I (2022) The national economic burden of rare disease. Orphanet J Rare Dis 17:163
+[@nisar2021] Nisar H, Wajid B (2021) Whole-genome sequencing as a first-tier diagnostic framework. Front Genet 12:1
+[@yang2022] Yang G (2022) A second entry under the same key. J Test 1:1
+"""
+
+
+def test_a_keyed_list_keeps_each_key_and_drops_it_from_the_text() -> None:
+    entries = _entries(PANDOC)
+    assert [e.key for e in entries] == ["wakap2020", "zurynski2017", "yang2022", "nisar2021", "yang2022"]
+    assert entries[0].text.startswith("Nguengang Wakap S")
+    assert entries[0].number is None
+
+
+def test_a_pandoc_group_is_one_candidate_with_every_key() -> None:
+    candidates = [c for c in scan(PANDOC, start=0, end=PANDOC.index("References")) if c.source == "key"]
+    assert [c.keys for c in candidates] == [["wakap2020"], ["zurynski2017", "yang2022"], ["missing2021"]]
+    # An e-mail address is not a citation.
+    assert not any("b.org" in k for c in candidates for k in c.keys)
+
+
+async def test_every_key_problem_is_found_by_evidence() -> None:
+    report = await _offline(PANDOC)
+    assert report.style is not None
+    assert (report.style.style, report.style.decided_by) == ("pandoc_keys", "evidence")
+    by_kind = {(p.kind, p.headline) for p in report.problems}
+    assert ("cited_not_listed", "[@missing2021] is not in the list") in by_kind
+    assert ("duplicate_key", "Two entries have the key @yang2022") in by_kind
+    assert ("listed_not_cited", "Reference @nisar2021 is never cited") in by_kind
+    assert len(report.problems) == 3
+    missing = next(p for p in report.problems if p.kind == "cited_not_listed")
+    assert PANDOC[missing.start : missing.end] == "[@missing2021]"
+
+
+async def test_a_consistent_pandoc_draft_has_no_problems() -> None:
+    text = (
+        "Body [@a2020] and [@b2021; @a2020].\n\nReferences\n"
+        "[@a2020] Adams J (2020) First paper. J 1:1\n"
+        "[@b2021]: Brown K (2021) Second paper. J 2:2\n"
+    )
+    report = await _offline(text)
+    assert report.style is not None and report.style.style == "pandoc_keys"
+    assert report.problems == []

@@ -34,6 +34,7 @@ class StyleAnswer(BaseModel):
         "numeric_parentheses",
         "author_year",
         "notes",
+        "pandoc_keys",
         "undecided",
     ] = Field(description="How this document cites its references.")
     reason: str = Field(default="", description="One short sentence.")
@@ -58,6 +59,7 @@ Answer with ONE style:
 - numeric_parentheses: citations are numbers in parentheses, like (3).
 - author_year: citations name an author and a year, like (Smith et al., 2020).
 - notes: the citations are in footnotes or endnotes.
+- pandoc_keys: citations are Pandoc keys, like [@smith2020].
 - undecided: none of these clearly fits.
 
 Numbers can also be footnote marks, exponents, units, affiliations, list items
@@ -87,6 +89,7 @@ STYLE_WORDS = {
     "numeric_parentheses": "numbers in parentheses, like (3)",
     "author_year": "an author and a year, like (Smith et al., 2020)",
     "notes": "footnotes or endnotes that name the source",
+    "pandoc_keys": "Pandoc citation keys, like [@smith2020]",
 }
 
 

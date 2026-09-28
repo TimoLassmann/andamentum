@@ -6,7 +6,8 @@ the text it was given.
 An entry is a paragraph (one line of the text) of the list. A numbered list is
 recognised by its leading numbers (``1.``, ``1)``, ``[1]``, and the ``- [1]``
 list items a PDF converter writes), and an unnumbered line that follows a
-numbered one is a wrapped continuation of it. In an unnumbered list — the
+numbered one is a wrapped continuation of it. A Pandoc draft's list opens each
+entry with its key (``[@smith2020] …``). In an unnumbered list — the
 author-year styles — every line that carries a year or a DOI is an entry, and
 a line with neither (a stray heading, a figure legend after the list) is not.
 """
@@ -88,6 +89,9 @@ def split_entries(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
     author list broken across lines).
     """
     body = text[start:end]
+    keyed = _keyed(text, start=start, end=end)
+    if keyed:
+        return keyed
     cuts = _numbered_cuts(body)
     year_lines = sum(1 for line in body.splitlines() if _looks_like_entry(line))
     if len(cuts) >= 2 and len(cuts) >= 0.5 * year_lines:
@@ -98,6 +102,30 @@ def split_entries(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
             raw.append({"number": number, "start": start + cut + head + lead, "end": start + following[0]})
         return [e for e in (_entry(text, r) for r in raw) if e.text]
     return _unnumbered(text, start=start, end=end)
+
+
+# A Pandoc draft's own list: "[@smith2020] Smith, J. (2020). …", or with a
+# colon after the key. The key is what its citations name.
+_KEY_ENTRY = re.compile(r"^[ \t]*\[@([\w][\w:.#$%&+?<>~/-]*)\]:?[ \t]*", re.MULTILINE)
+
+
+def _keyed(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
+    """Entries of a list whose lines open with a Pandoc key, or none.
+
+    Keyed when most of the list's non-empty lines open with one; a line
+    without a key then continues the entry above it.
+    """
+    lines = [line for line in text[start:end].splitlines() if line.strip()]
+    heads = list(_KEY_ENTRY.finditer(text, start, end))
+    if not heads or len(heads) < 0.5 * len(lines):
+        return []
+    entries: list[ReferenceEntry] = []
+    for head, following in zip(heads, heads[1:] + [None]):
+        stop = following.start() if following is not None else end
+        entry = _entry(text, {"number": None, "start": head.end(), "end": stop})
+        if entry.text:
+            entries.append(entry.model_copy(update={"key": head.group(1)}))
+    return entries
 
 
 # An entry number anywhere in the list: "1.Rentzsch", "[4]LeCun", "3 Turro E,",

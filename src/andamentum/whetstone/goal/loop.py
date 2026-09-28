@@ -15,8 +15,9 @@ Each round:
 1. Run the ordinary ``review_document_v3(..., editor=True)`` over the
    document as it currently stands.
 2. Compute the goal verdict for THAT document (from the round's findings,
-   for ``structure``; from the document text directly, for ``citations`` and
-   ``figures``; from a separate ``llm_judge.judge_score`` call, for
+   for ``structure``; from the reference checker, for ``citations``, whose
+   problems are also handed to the round's editor beside the review's own
+   findings; from the document text directly, for ``figures``; from a separate ``llm_judge.judge_score`` call, for
    ``judged`` — never the reviewer/editor pass that produced the edit).
 3. Stop once the verdict is satisfied twice in a row — confirming the next
    round's ordinary edits, which may touch criteria unrelated to the goal,
@@ -47,8 +48,8 @@ from ..schemas import AuthorQuestion, ReviewResult
 from ..v3.criteria import Criterion
 from ..v3.graph import review_document_v3
 from ..v3.reviewers import DEFAULT_PROFILE, ReviewerProfile, author_for
-from .citations import check_reference_consistency
 from .figures import check_figure_text_match, unmentioned_figures
+from .references import ReferenceGoalReport, check_reference_goal
 from .spec import GoalSpec
 from .structure import structure_goal_met
 from .verdict import GoalVerdict
@@ -94,16 +95,12 @@ def _loop_allowed(count: int, cap: int) -> bool:
     return count < cap
 
 
-def _unresolvable_reason(spec: GoalSpec, document: ReviewedDocument) -> str | None:
+def _unresolvable_reason(
+    spec: GoalSpec, document: ReviewedDocument, *, references: ReferenceGoalReport | None
+) -> str | None:
     """Checked once, before spending a round. ``None`` means resolvable."""
-    if spec.check == "citations":
-        report = check_reference_consistency(document.text, document.sections)
-        if report.style == "no_reference_section_found":
-            return (
-                "No reference-list section (e.g. 'References', "
-                "'Bibliography') was found in the document, so citations "
-                "cannot be cross-checked against it."
-            )
+    if references is not None and references.unresolvable is not None:
+        return references.unresolvable
     if spec.check == "figures":
         missing = unmentioned_figures(document.text, spec.figures)
         if missing:
@@ -116,10 +113,17 @@ def _unresolvable_reason(spec: GoalSpec, document: ReviewedDocument) -> str | No
 
 
 async def _compute_verdict(
-    spec: GoalSpec, *, document: ReviewedDocument, result: ReviewResult, judge_model: str
+    spec: GoalSpec,
+    *,
+    document: ReviewedDocument,
+    result: ReviewResult,
+    judge_model: str,
+    references: ReferenceGoalReport | None,
 ) -> GoalVerdict:
     """Dispatch on ``spec.check`` — a closed, caller-supplied value, never a
-    classifier's guess (dialect Law 4)."""
+    classifier's guess (dialect Law 4). *references* is the round's reference
+    check, already run on *document* before the review so its problems could
+    reach the editor; set exactly when ``spec.check == "citations"``."""
     if spec.check == "structure":
         report = structure_goal_met(result)
         if report.satisfied:
@@ -132,17 +136,8 @@ async def _compute_verdict(
         return GoalVerdict(satisfied=report.satisfied, reason=reason)
 
     if spec.check == "citations":
-        report = check_reference_consistency(document.text, document.sections)
-        if report.satisfied:
-            reason = (
-                "Every citation marker has a matching reference-list entry, "
-                "and every entry is cited."
-            )
-        else:
-            reason = f"{len(report.mismatches)} reference mismatch(es): " + "; ".join(
-                f"{m.marker} ({m.kind})" for m in report.mismatches[:5]
-            )
-        return GoalVerdict(satisfied=report.satisfied, reason=reason)
+        assert references is not None
+        return GoalVerdict(satisfied=references.satisfied, reason=references.reason)
 
     if spec.check == "judged":
         # Imported here, not at module level: this is the one branch that
@@ -287,7 +282,13 @@ async def _run_goal_loop(
     profile = reviewer if reviewer is not None else DEFAULT_PROFILE
     base_author = author_for(profile=profile, patch_author=patch_author)
 
-    unresolvable = _unresolvable_reason(goal, document)
+    # The citations check runs BEFORE each round's review, not after: its
+    # problems are findings the round's editor answers. The first round's
+    # reading doubles as the resolvability check, so it is not made twice.
+    references = (
+        await check_reference_goal(document, model=model) if goal.check == "citations" else None
+    )
+    unresolvable = _unresolvable_reason(goal, document, references=references)
     if unresolvable is not None:
         return GoalRunResult(
             goal=goal,
@@ -308,6 +309,8 @@ async def _run_goal_loop(
 
     while _loop_allowed(round_idx, goal.max_rounds):
         round_idx += 1
+        if goal.check == "citations" and round_idx > 1:
+            references = await check_reference_goal(document, model=model)
         result = await review_document_v3(
             document,
             model=model,
@@ -322,9 +325,14 @@ async def _run_goal_loop(
             flag_novelty=round_idx == 1,
             novelty_search_depth=novelty_search_depth,
             patch_author=patch_author,
+            extra_findings=references.findings if references is not None else None,
         )
         verdict = await _compute_verdict(
-            goal, document=document, result=result, judge_model=resolved_judge_model
+            goal,
+            document=document,
+            result=result,
+            judge_model=resolved_judge_model,
+            references=references,
         )
         rounds.append(
             RoundRecord(

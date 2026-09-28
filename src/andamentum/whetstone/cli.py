@@ -128,8 +128,9 @@ EXAMPLES
         --reviewer reader --goal "the flow is correct" \\
         --out draft.reviewed.docx
 
-    # The same loop with a structural, no-LLM-judge check: stop once the
-    # active review criteria raise nothing major or moderate, twice running
+    # The same loop with the reference checker as the goal: its problems go
+    # to the editor, and the loop stops once the citations and the list
+    # agree, twice running
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
         --goal "every reference is consistent" --goal-check citations \\
         --out draft.reviewed.docx
@@ -478,9 +479,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "same pass that wrote the edit. 'structure': the active review "
         "criteria (see --reviewer / --criteria) raise no major or moderate "
         "finding; for \"the flow is correct\", pair with --reviewer reader. "
-        "'citations': every in-text citation marker has a matching "
-        "reference-list entry and vice versa — structural only, never "
-        "whether a citation says what the sentence claims. 'figures': each "
+        "'citations': the reference checker (the same one as the "
+        "'references' subcommand, any citation style, no Crossref lookup) "
+        "finds no problem — every citation points to an entry and every "
+        "entry is cited; its problems go to the editor each round beside "
+        "the review's own. Never whether a citation says what the sentence "
+        "claims. 'figures': each "
         "--goal-figure's image is checked against its caption and the "
         "sentences that mention it. Has no effect without --goal.",
     )

@@ -16,6 +16,7 @@ ProblemKind = Literal[
     "cited_not_listed",
     "listed_not_cited",
     "duplicate_number",
+    "duplicate_key",
     "duplicate_entry",
     "out_of_order",
     "year_mismatch",
@@ -27,6 +28,10 @@ ProblemKind = Literal[
     "details_differ",
 ]
 
+# The problems only the online lookup finds. Every other kind comes from the
+# text alone: exact, repeatable, and something an edit to the draft can fix.
+LOOKUP_KINDS: frozenset[str] = frozenset({"not_found", "doi_not_found", "details_differ"})
+
 # How a document cites. One value per document; see ``decide.decide_style``.
 Style = Literal[
     "numeric_brackets",  # [3], [4, 5], [7-9]
@@ -34,6 +39,7 @@ Style = Literal[
     "numeric_parentheses",  # (3), (4, 5)
     "author_year",  # (Smith et al., 2020), Smith and Lee (2019)
     "notes",  # footnotes or endnotes that carry the citations (Chicago notes)
+    "pandoc_keys",  # [@smith2020], [@lee2019; @park2021, p. 4] — a Pandoc draft
     "undecided",
 ]
 
@@ -47,6 +53,7 @@ CandidateSource = Literal[
     "narrative",  # Smith et al. (2020)
     "field",  # a reference manager's citation field (Zotero, EndNote, ...)
     "note",  # a footnote or endnote; its text is in ``note_text``
+    "key",  # a Pandoc citation, [@smith2020]; its keys are in ``keys``
 ]
 
 # What a note says, by its form. "comment" is prose that cites nothing.
@@ -88,6 +95,7 @@ class Candidate(BaseModel):
     end: int
     numbers: list[int] = Field(default_factory=list)  # numeric sources
     works: list[CitedWork] = Field(default_factory=list)  # author-year and note sources
+    keys: list[str] = Field(default_factory=list)  # Pandoc citation keys, without the @
     note_text: str = ""  # a note's own text
     note_form: NoteForm | None = None
 
@@ -114,7 +122,8 @@ class ReferenceEntry(BaseModel):
     """One entry of the reference list, as written."""
 
     number: int | None  # the entry's own number; None in an unnumbered list
-    text: str  # the entry without its number
+    text: str  # the entry without its number or key
+    key: str = ""  # the entry's Pandoc key, in a list written "[@key] ..."
     start: int
     end: int
     doi: str = ""  # a DOI written in the entry, if any

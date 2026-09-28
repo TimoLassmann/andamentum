@@ -6,12 +6,6 @@ Every check kind is built from data whetstone already produces, or a small,
 narrowly-scoped new deterministic function — see each submodule's docstring.
 """
 
-from .citations import (
-    ReferenceConsistencyReport,
-    ReferenceMismatch,
-    ReferenceStyle,
-    check_reference_consistency,
-)
 from .figures import (
     FigureCheckResult,
     FigureTextGoalReport,
@@ -19,6 +13,7 @@ from .figures import (
     check_figure_text_match,
     locate_figure_mentions,
 )
+from .references import ReferenceGoalReport, check_reference_goal
 from .loop import GoalRunResult, RoundRecord, StoppedReason, run_goal_loop
 from .spec import FigureRef, GoalCheck, GoalSpec
 from .structure import StructureGoalReport, structure_goal_met
@@ -33,14 +28,12 @@ __all__ = [
     "GoalRunResult",
     "GoalSpec",
     "GoalVerdict",
-    "ReferenceConsistencyReport",
-    "ReferenceMismatch",
-    "ReferenceStyle",
+    "ReferenceGoalReport",
     "RoundRecord",
     "StoppedReason",
     "StructureGoalReport",
     "check_figure_text_match",
-    "check_reference_consistency",
+    "check_reference_goal",
     "locate_figure_mentions",
     "run_goal_loop",
     "structure_goal_met",

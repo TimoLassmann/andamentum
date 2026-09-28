@@ -31,19 +31,10 @@ if TYPE_CHECKING:
 
 REFERENCE_CHECKER_AUTHOR = "Reference checker (andamentum-whetstone, AI)"
 
-_OFFLINE_KINDS = frozenset(
-    {
-        "cited_not_listed",
-        "listed_not_cited",
-        "duplicate_number",
-        "duplicate_entry",
-        "out_of_order",
-        "year_mismatch",
-        "ambiguous_citation",
-        "ibid_unclear",
-        "short_before_full",
-    }
-)
+def _offline(kind: str) -> bool:
+    from andamentum.references import LOOKUP_KINDS
+
+    return kind not in LOOKUP_KINDS
 
 
 async def check_document_references(
@@ -95,7 +86,7 @@ def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument")
                 severity=problem.severity,
                 # The number checks are exact; a lookup verdict rests on one
                 # service's coverage, so it is not claimed as certain.
-                confidence="high" if problem.kind in _OFFLINE_KINDS else "medium",
+                confidence="high" if _offline(problem.kind) else "medium",
                 rationale=problem.issue,
                 fix=problem.fix,
                 quotes=[
@@ -107,7 +98,7 @@ def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument")
                     )
                 ],
                 sections_involved=[section_id] if section_id else [],
-                source="deterministic" if problem.kind in _OFFLINE_KINDS else "lookup",
+                source="deterministic" if _offline(problem.kind) else "lookup",
                 category=f"references:{problem.kind}",
             )
         )
@@ -141,7 +132,14 @@ _STYLE_NAMES = {
     "numeric_parentheses": "numbers in parentheses, like (3)",
     "author_year": "author and year, like (Smith et al., 2020)",
     "notes": "footnotes or endnotes",
+    "pandoc_keys": "Pandoc citation keys, like [@smith2020]",
 }
+
+
+def style_name(style: str) -> str:
+    """A citation style in the words a reader uses. The one wording: the
+    reference report and the review prompt's citation line both use it."""
+    return _STYLE_NAMES.get(style, style)
 
 
 def _summary(report: "ReferenceReport") -> str:
@@ -175,7 +173,7 @@ def _summary(report: "ReferenceReport") -> str:
         how = {"evidence": "from the text", "model": "by the model"}[style.decided_by]
         lines.append("")
         lines.append(
-            f"- **How the document cites:** {_STYLE_NAMES[style.style]} "
+            f"- **How the document cites:** {style_name(style.style)} "
             f"(decided {how}: {style.reason})"
         )
         accepted = [j for j in report.judged if j.is_citation]
@@ -189,7 +187,7 @@ def _summary(report: "ReferenceReport") -> str:
             + (f"; {len(unjudged)} left unjudged — pass --model to judge them" if unjudged else "")
             + "."
         )
-        offline = [p for p in report.problems if p.kind in _OFFLINE_KINDS]
+        offline = [p for p in report.problems if _offline(p.kind)]
         lines.append(
             ("- **The notes, checked in order:** " if notes_only else "- **Citations against the list:** ")
             + (

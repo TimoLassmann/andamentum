@@ -32,6 +32,8 @@ def check_citations(
         problems, cited = _notes(entries, notes if notes is not None else citations)
     elif style == "author_year":
         problems, cited = _author_year(entries, citations)
+    elif style == "pandoc_keys":
+        problems, cited = _keyed(entries, citations)
     else:
         problems, cited = _numeric(entries, citations)
     # "Never cited" means something only when citations were found at all: a
@@ -40,7 +42,7 @@ def check_citations(
     if citations and complete:
         problems += _never_cited(entries, cited)
     problems += _duplicate_works(entries)
-    if style not in ("author_year", "notes"):
+    if style not in ("author_year", "notes", "pandoc_keys"):
         problems += _out_of_order(entries, citations)
     return problems
 
@@ -304,6 +306,60 @@ def _out_of_order(
     return []
 
 
+# ── Pandoc drafts ───────────────────────────────────────────────────────────
+
+
+def _keyed(
+    entries: list[ReferenceEntry], citations: list[Candidate]
+) -> tuple[list[Problem], set[int]]:
+    """A key names its entry exactly, so there is nothing to resolve: it is
+    in the list or it is not."""
+    problems: list[Problem] = []
+    by_key: dict[str, list[ReferenceEntry]] = {}
+    for entry in entries:
+        if entry.key:
+            by_key.setdefault(entry.key, []).append(entry)
+    cited: set[int] = set()
+    reported: set[str] = set()
+    for citation in citations:
+        for key in citation.keys:
+            cited.update(id(e) for e in by_key.get(key, []))
+            if key in by_key or key in reported:
+                continue
+            reported.add(key)
+            problems.append(
+                Problem(
+                    kind="cited_not_listed",
+                    severity="major",
+                    headline=f"[@{key}] is not in the list",
+                    issue=(
+                        f"You cite @{key} here, but no entry in the reference "
+                        f"list has that key, so a reader cannot find the source."
+                    ),
+                    fix="Add the entry, or correct the key.",
+                    start=citation.start,
+                    end=citation.end,
+                )
+            )
+    for key, same in by_key.items():
+        for extra in same[1:]:
+            problems.append(
+                Problem(
+                    kind="duplicate_key",
+                    severity="major",
+                    headline=f"Two entries have the key @{key}",
+                    issue=(
+                        f"Two entries share the key @{key}, so a citation of "
+                        f"it points to both."
+                    ),
+                    fix="Give each entry its own key.",
+                    start=extra.start,
+                    end=extra.end,
+                )
+            )
+    return problems, cited
+
+
 # ── author-year documents ───────────────────────────────────────────────────
 
 
@@ -390,7 +446,13 @@ def _never_cited(entries: list[ReferenceEntry], cited: set[int]) -> list[Problem
     for entry in entries:
         if id(entry) in cited:
             continue
-        name = f"Reference {entry.number}" if entry.number is not None else "This reference"
+        name = (
+            f"Reference {entry.number}"
+            if entry.number is not None
+            else f"Reference @{entry.key}"
+            if entry.key
+            else "This reference"
+        )
         problems.append(
             Problem(
                 kind="listed_not_cited",

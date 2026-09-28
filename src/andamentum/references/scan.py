@@ -5,10 +5,11 @@ Deterministic. The scan is deliberately generous — a superscript "2" after
 citation is the next stage's job (:mod:`.decide`), with the whole document's
 evidence in view.
 
-Seven sources: numbers in square brackets or parentheses; numbers the source
+The sources: numbers in square brackets or parentheses; numbers the source
 file formats as superscript (from a :class:`Hint`); digits glued to a word,
 for a text that lost its formatting; author-year citations in parentheses or
-in running text; and reference-manager fields.
+in running text; Pandoc citation keys (``[@smith2020]``); reference-manager
+fields; and notes.
 """
 
 from __future__ import annotations
@@ -59,6 +60,22 @@ _NOT_NAMES = frozenset(
     covid sars mers who cdc nih nhs usa uk eu
     """.split()
 )
+
+
+# A Pandoc citation: a bracketed group with one or more @keys, a prefix and
+# locators allowed — "[@smith2020]", "[see @lee2019, p. 4; -@park2021]".
+# Not a Markdown link ("[@x](url)"), and not an e-mail address ("a@b.org").
+# A group may wrap onto the next line, but not across a blank one.
+_KEY_GROUP = re.compile(
+    r"\[((?:[^\[\]\n]|\n(?![ \t]*\n))*?(?<![\w@])-?@\w(?:[^\[\]\n]|\n(?![ \t]*\n))*)\](?![(:])"
+)
+_KEY = re.compile(r"(?<![\w@])-?@(\w[\w:.#$%&+?<>~/-]*)")
+
+
+def _keys_in(group: str) -> list[str]:
+    # Pandoc allows punctuation inside a key but not at its end:
+    # "@smith2020." is the key "smith2020" and a full stop.
+    return [m.group(1).rstrip(".:?#$%&+<>~/-") for m in _KEY.finditer(group)]
 
 
 _PANDOC_NOTE_MARK = re.compile(r"\[\^([^\]\s]+)\](?!:)")
@@ -114,7 +131,7 @@ def scan(
     hints += markdown_notes
     covered += definitions
 
-    def add(source, span_start, span_end, *, numbers=(), works=(), note_text="", note_form=None) -> None:
+    def add(source, span_start, span_end, *, numbers=(), works=(), keys=(), note_text="", note_form=None) -> None:
         found.append(
             Candidate(
                 id=0,
@@ -124,6 +141,7 @@ def scan(
                 end=span_end,
                 numbers=list(numbers),
                 works=list(works),
+                keys=list(keys),
                 note_text=note_text,
                 note_form=note_form,
             )
@@ -161,6 +179,14 @@ def scan(
             if numbers:
                 add("superscript", hint.start, hint.end, numbers=numbers)
                 covered.append((hint.start, hint.end))
+
+    for m in _KEY_GROUP.finditer(text, start, end):
+        if _inside(m.start(), covered):
+            continue
+        keys = _keys_in(m.group(1))
+        if keys:
+            add("key", m.start(), m.end(), keys=keys)
+            covered.append((m.start(), m.end()))
 
     for pattern, source in ((_BRACKETS, "brackets"), (_PARENTHESES, "parentheses")):
         for m in pattern.finditer(text, start, end):

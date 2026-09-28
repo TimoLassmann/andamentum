@@ -724,7 +724,7 @@ def _disagreement_brief(disagreements: list[str]) -> str:
     )
 
 
-def _to_editor_finding(finding: WFinding) -> Finding | None:
+def to_editor_finding(finding: WFinding) -> Finding | None:
     """A rendered finding back into the shape the editor reads.
 
     The public :class:`~andamentum.whetstone.schemas.Finding` is what a round
@@ -791,7 +791,7 @@ async def edit_findings(
     *disagreements* are the points the reconciliation found the reviewers
     divided on, rendered into the brief as passages not to settle.
     """
-    internal = [f for f in (_to_editor_finding(w) for w in findings) if f is not None]
+    internal = [f for f in (to_editor_finding(w) for w in findings) if f is not None]
     skipped = len(findings) - len(internal)
     if skipped:
         logger.info(

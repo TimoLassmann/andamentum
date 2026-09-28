@@ -485,7 +485,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
   <table>
     <thead><tr><th>Profile</th><th>Asks</th><th>Not suited to</th></tr></thead>
     <tbody>
-      <tr><td><code>general</code></td><td>The criteria that suit this kind of document. The default.</td><td>&mdash;</td></tr>
+      <tr><td><code>default</code></td><td>The criteria that suit this kind of document. Used when you pass no reviewer.</td><td>&mdash;</td></tr>
       <tr><td><code>claims</code></td><td>Does any conclusion outrun the evidence stated in the text?</td><td>creative</td></tr>
       <tr><td><code>methods</code></td><td>Could another group repeat this from the text alone, and is each choice motivated?</td><td>external communication, essay, creative</td></tr>
       <tr><td><code>framing</code></td><td>Does the body deliver what the opening promises, and can a reader say what the document adds?</td><td>&mdash;</td></tr>
@@ -537,7 +537,7 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h2><span class="n">03</span>Which mode do I want</h2>
 
-  <p>Four things review a document, and they are not interchangeable. The first question is what you are asking for.</p>
+  <p>Five things check a document, and they are not interchangeable. The first question is what you are asking for.</p>
 
   <div class="table-scroll">
   <table>
@@ -568,6 +568,12 @@ andamentum-whetstone draft.docx --reviewer methods \
         <td>“Is the prose clean”</td>
         <td>Readability scores and style flags</td>
         <td>Any time — no model needed</td>
+      </tr>
+      <tr>
+        <td><code>references</code></td>
+        <td>“Do my citations and my reference list agree”</td>
+        <td>A comment on each problem citation or entry, and a summary</td>
+        <td>Before submitting — see section 07</td>
       </tr>
     </tbody>
   </table>
@@ -616,6 +622,7 @@ andamentum-whetstone draft.docx --reviewer methods \
       <tr><td><code>checklist</code></td><td>Probe bank plus coverage table.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>panel</code></td><td>Multi-expert simulated review. Needs <code>--i-am-the-author</code>.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>proofread</code></td><td>Readability and style. Delegates to <code>andamentum-proofread</code>.</td><td><span class="badge badge--success">none</span></td></tr>
+      <tr><td><code>references</code></td><td>Citations against the reference list, then each entry against Crossref. Section 07.</td><td><span class="badge badge--info">optional</span></td></tr>
       <tr><td><code>apply-patches</code></td><td>Apply a pre-built JSON patch list to a <code>.docx</code>.</td><td><span class="badge badge--success">none</span></td></tr>
       <tr><td><code>verify-provenance</code></td><td>Read-only: report the AI-provenance markers a <code>.docx</code> carries.</td><td><span class="badge badge--success">none</span></td></tr>
     </tbody>
@@ -663,7 +670,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
       </tr>
       <tr>
         <td><code>citations</code></td>
-        <td>Every in-text citation marker has a matching reference-list entry, and every entry is cited. Structural only — never whether a citation says what the sentence claims.</td>
+        <td>The reference checker of section 07 finds no problem: every citation points to an entry, and every entry is cited. Any citation style. Each round, its problems go to the editor next to the review's own findings, so the loop can fix a wrong citation number, not only report it. No Crossref lookup, because an edit cannot change what Crossref finds. Never whether a citation says what the sentence claims.</td>
       </tr>
       <tr>
         <td><code>figures</code></td>
@@ -701,7 +708,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
       <tr><td><code>goal_met</code></td><td>The check passed twice running. That round's own edits are discarded — a pass that already meets the goal gets no further unrequested rewrite.</td></tr>
       <tr><td><code>no_progress</code></td><td>A round with nothing to edit while the goal is still unmet, an edit with no net effect on the text, or the draft alternating between two earlier states.</td></tr>
       <tr><td><code>cap_reached</code></td><td><code>--max-rounds</code> was reached with the goal still unmet.</td></tr>
-      <tr><td><code>unresolvable</code></td><td>Checked once, before spending a round: no reference list for <code>citations</code>, or a named figure never mentioned in the text for <code>figures</code>. Zero rounds run.</td></tr>
+      <tr><td><code>unresolvable</code></td><td>Checked once, before spending a round: for <code>citations</code>, no reference list and no citation notes, or no way to tell how the document cites; for <code>figures</code>, a named figure never mentioned in the text. Zero rounds run.</td></tr>
     </tbody>
   </table>
   </div>
@@ -713,7 +720,85 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
     <p>Whetstone does not find figures in your document on its own. <code>--goal-figure "Figure 1=fig1.png"</code> names the label to look for and the image file to check it against — the label only needs the figure's number, so <code>"Figure 1"</code> also matches <code>"Fig. 1"</code> in the text. Locating and describing figures automatically is on the list, not yet built.</p>
   </div>
 
-  <h2><span class="n">07</span>The shared substrate</h2>
+  <h2><span class="n">07</span>Checking references</h2>
+
+  <p><code>andamentum-whetstone references</code> checks the citations of a draft against its reference list, and then looks up each entry in Crossref. Each problem becomes a Word comment on the citation or entry that it concerns, with what is wrong and what to do.</p>
+
+  <pre><code><span class="tok-com"># check the references; the lookup is on by default</span>
+andamentum-whetstone references draft.docx --out draft.refs.docx
+
+<span class="tok-com"># offline: citations against the list only, nothing sent anywhere</span>
+andamentum-whetstone references draft.docx --no-lookup --out refs.md
+
+<span class="tok-com"># a model for what the text leaves open — a local one keeps it local</span>
+andamentum-whetstone references draft.pdf --model ollama:gemma4:26b-nvfp4 \
+    --out draft.refs.docx</code></pre>
+
+  <p>It is not part of a normal review. Run it as its own command, or use it as the goal of the loop in section 06 (<code>--goal-check citations</code>).</p>
+
+  <h3>How it reads a draft</h3>
+
+  <p>It first decides how the document cites, from evidence in the text: which candidates point to a real entry, and whether the list is numbered. Numbers that are not citations — exponents, units, affiliation marks, figure and table numbers — are set aside by rules before they count as evidence.</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Style</th><th>Looks like</th></tr></thead>
+    <tbody>
+      <tr><td>Numbers in brackets</td><td><code>[3]</code>, <code>[4, 5]</code>, <code>[7–9]</code> — IEEE, PLOS, BMJ</td></tr>
+      <tr><td>Numbers in parentheses</td><td><code>(3)</code> — Nucleic Acids Research</td></tr>
+      <tr><td>Superscript numbers</td><td>disease³ — Nature, Cell, AMA. Also read when a PDF or a copy-paste lost the formatting (disease3)</td></tr>
+      <tr><td>Author and year</td><td><code>(Smith et al., 2020)</code>, Smith and Lee (2019) — APA, Harvard, Chicago author-date</td></tr>
+      <tr><td>Footnotes or endnotes</td><td>Chicago notes and bibliography, with or without a bibliography</td></tr>
+      <tr><td>Pandoc keys</td><td><code>[@smith2020]</code>, against a list written <code>[@smith2020] Smith, J. …</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>A Word file gives more evidence than its text: superscript formatting, Zotero, Mendeley and EndNote citation fields, and real footnotes and endnotes. A PDF gives the same evidence, read from the PDF's own characters.</p>
+
+  <div class="callout tone-info">
+    <p class="eyebrow">A model only when the text leaves it open</p>
+    <p>Most documents are read by evidence alone and make no model call. A model is used only when you pass <code>--model</code>, and only for two questions: how the document cites, when the evidence is mixed, and whether an ambiguous number is a citation. Each call sees short excerpts, never the whole draft, and returns one flat answer, so a small local model can do it. Without a model these cases are reported as undecided, never guessed, and "never cited" is not reported while any candidate is undecided.</p>
+  </div>
+
+  <h3>What it finds</h3>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Problem</th><th>Styles</th></tr></thead>
+    <tbody>
+      <tr><td>A citation with no entry in the list</td><td>all</td></tr>
+      <tr><td>An entry that no citation points to</td><td>all</td></tr>
+      <tr><td>The same work listed twice; two entries with one number or one key</td><td>all</td></tr>
+      <tr><td>A list that starts above 1 while the text cites below it — reported once</td><td>numbered</td></tr>
+      <tr><td>Numbers out of first-citation order — the first break only</td><td>numbered in citation order</td></tr>
+      <tr><td>The year in a citation differs from its entry</td><td>author-year, notes</td></tr>
+      <tr><td>One author and year that fit two entries, with no 2020a / 2020b</td><td>author-year, notes</td></tr>
+      <tr><td>“Ibid.” with no single source before it</td><td>notes</td></tr>
+      <tr><td>A short-form note before the work's full note</td><td>notes with no bibliography</td></tr>
+      <tr><td>No published record found; a DOI that does not resolve or names another work; details that differ from the record</td><td>all, with the lookup on</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout tone-info">
+    <p class="eyebrow">What leaves your machine</p>
+    <p>The lookup sends only the text of each reference entry to Crossref, never the text of the draft. <code>--no-lookup</code> sends nothing. "Not found" means that Crossref has no matching record; some conference papers and reports are not indexed there. When Crossref does not answer, the entry is reported as not checked, never as wrong.</p>
+  </div>
+
+  <h3>How it is measured</h3>
+
+  <p>A test set of 18 documents: the same references rendered in 13 real citation styles (CSL styles rendered by citeproc-py — APA, Harvard, Chicago author-date, Elsevier-Harvard, Springer, Nature, Cell, IEEE, AMA, NAR, PLOS, BMJ, MLA), three superscript styles again with the formatting removed, and two Chicago notes documents. Each has planted errors and distractors.</p>
+
+  <ul>
+    <li><strong>Word, with a model</strong> (<code>ollama:gemma4:31b-cloud</code>): 17 of 18 with every planted problem found and no false alarm. MLA cites by author and title with no year, and is reported as undecided.</li>
+    <li><strong>Word, evidence only</strong>: no false alarm on any document. The texts that lost their formatting, and the notes documents, leave some candidates undecided.</li>
+    <li><strong>PDF, with the same model</strong>: 16 with only the planted problems. The BMJ document also reports that its list starts at entry 3, which is true — the PDF converter dropped the first two entries.</li>
+  </ul>
+
+  <p class="table-note">Not checked: whether a cited work says what the sentence claims. Known limits: MLA (author and title, no year) is undecided, and a numbered list with only one entry is not recognised as numbered.</p>
+
+  <h2><span class="n">08</span>The shared substrate</h2>
 
   <p>All three review graphs stand on the same deterministic ground, and only one step in it uses a model.</p>
 
@@ -728,13 +813,13 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
     </div>
     <div class="field">
       <div class="field__name">build document model<span class="field__type">deterministic</span></div>
-      <div class="field__desc">Section gists, citation markers and <code>has_citation</code> are computed, never generated. The result is the shared store every later stage queries.</div>
+      <div class="field__desc">Section gists and a citation summary are computed, never generated. The summary — how the document cites, how often, and against how long a list — comes from the reference checker of section 07, with no model and no lookup, so a review and a reference check agree about whether a draft cites anything. Criteria that weigh evidence see it as one line. The result is the shared store every later stage queries.</div>
     </div>
   </div>
 
   <p>Review stages do not receive the whole document. They get a sections table-of-contents with gists, the claims, and two tools — <code>read_section</code> and <code>search_paper</code> — and fetch what they need. That is what keeps the design document-type agnostic: nothing in the model knows which section is “Methods”, and a blog post has none.</p>
 
-  <h2><span class="n">08</span>Review mode — the criterion cascade</h2>
+  <h2><span class="n">09</span>Review mode — the criterion cascade</h2>
 
   <p>One agent call per criterion, run in sequence, each seeing what the earlier ones found. That threading is the point: a later criterion can say <em>the evaluation is weak for the same reason the introduction overclaims</em>, which is a judgment about the document as a whole and the kind of finding that changes how an author revises.</p>
 
@@ -758,7 +843,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
 
   <p>Criteria are data. Pass <code>criteria=[Criterion(...)]</code> to supply your own, or <code>guidelines_text="…"</code> to have a set of reviewer guidelines decomposed into criteria in one call.</p>
 
-  <h2><span class="n">09</span>Checklist mode — the probe bank</h2>
+  <h2><span class="n">10</span>Checklist mode — the probe bank</h2>
 
   <p>The cascade asks evaluative questions: <em>“are claimed results backed by evidence?”</em> A small model answers “yes, broadly” and produces nothing. A probe asks for extraction under a quota: <em>“find the 3 claims the reported results support least well.”</em> That is a task a 20B local model does reliably, and it returns the same shape every run.</p>
 
@@ -829,19 +914,19 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   </div>
   <p class="table-note">Conflating the last two with a bare <code>0</code> is the single failure this mode is built to avoid: it reports a clean bill of health for a check that established nothing.</p>
 
-  <h2><span class="n">10</span>Panel mode</h2>
+  <h2><span class="n">11</span>Panel mode</h2>
 
   <p>A different shape again — N expert biosketches are generated from the document's own subject matter, each writes an independent scored review, and a synthesis reconciles them. Its own graph, invoked by its own subcommand.</p>
 
   <p>Panel requires <code>--i-am-the-author</code>. Simulating peer review of someone else's manuscript is exactly the use the tool refuses, so the gate is explicit rather than implied.</p>
 
-  <h2><span class="n">11</span>Anchoring, and how it is measured</h2>
+  <h2><span class="n">12</span>Anchoring, and how it is measured</h2>
 
-  <p>A finding's quote comes from harvested markdown; a Word comment has to be pinned back into the original <code>.docx</code>. Those are two different texts. The converter reshapes tables into rows, invents list numbering Word generates from styles, and Word stores tabs as structure rather than characters — so the pin is a search, and a search can miss or hit the wrong place.</p>
+  <p><strong>A review does not search for where a comment goes.</strong> The reviewer reads the text of the Word file that it annotates: a <code>.docx</code> is read as the text of its own paragraphs, and any other input is first written out as a Word file and read as that file. So each quote and each edit carries offsets into the file being written, and a comment is placed at those offsets. A document whose text does not match what was reviewed stops the render with an error, and nothing falls back to a search. The design that this replaced searched a converted rendering for each quote, and lost 15 of 43 rewrites on one real manuscript.</p>
 
-  <p>Matching is <strong>exact after normalisation</strong>, never fuzzy. A retry strips decoration the converter added, which is still an exact match of a smaller target and so cannot land on text that is not there. When a target occurs more than once the match is <strong>refused</strong> rather than guessed: a comment on the wrong sentence is worse than no comment, because the reader cannot tell it has moved.</p>
+  <p>One path still searches: <code>apply-patches</code>, whose input is a list of text patterns with no offsets. There, matching is <strong>exact after normalisation</strong>, never fuzzy. A retry strips decoration the converter added, which is still an exact match of a smaller target and so cannot land on text that is not there. When a target occurs more than once the match is <strong>refused</strong> rather than guessed: a comment on the wrong sentence is worse than no comment, because the reader cannot tell it has moved.</p>
 
-  <p>A deterministic benchmark — no model, no network — generates a corpus with a known answer key and scores three outcomes.</p>
+  <p>A deterministic benchmark for that path — no model, no network — generates a corpus with a known answer key and scores three outcomes.</p>
 
   <pre><code>uv run python -m andamentum.whetstone.tests.anchor_bench</code></pre>
 
@@ -857,7 +942,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   </div>
   <p class="table-note">Anchor rate alone is a bad target because guessing maximises it. <code>wrong</code> is the number that must stay zero, and a test fails if it does not. The two remaining misses are genuinely repeated sentences, correctly refused.</p>
 
-  <h2><span class="n">12</span>Python</h2>
+  <h2><span class="n">13</span>Python</h2>
 
   <pre><code><span class="tok-kw">from</span> andamentum.whetstone <span class="tok-kw">import</span> (
     review_document, run_checklist, run_panel,
@@ -872,11 +957,17 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</s
                              document_type=<span class="tok-str">"academic"</span>)
 
 <span class="tok-kw">for</span> finding <span class="tok-kw">in</span> result.findings:
-    <span class="tok-fn">print</span>(finding.severity, finding.title, finding.quotes)</code></pre>
+    <span class="tok-fn">print</span>(finding.severity, finding.title, finding.quotes)
+
+<span class="tok-com"># references — any text; model only for what the text leaves open</span>
+<span class="tok-kw">from</span> andamentum.references <span class="tok-kw">import</span> check_references
+report = <span class="tok-kw">await</span> <span class="tok-fn">check_references</span>(text, lookup=<span class="tok-kw">False</span>)
+<span class="tok-kw">for</span> problem <span class="tok-kw">in</span> report.problems:
+    <span class="tok-fn">print</span>(problem.headline, problem.start, problem.end)</code></pre>
 
   <p>Every function that calls a model takes <code>model</code> as a keyword-only argument. There is no shared config, no ambient default, and no silent fallback.</p>
 
-  <h2><span class="n">13</span>Provenance</h2>
+  <h2><span class="n">14</span>Provenance</h2>
 
   <p>Output is marked as AI-generated in three places at once, and the markers are not decorative.</p>
 

@@ -40,11 +40,12 @@ def _source_docx(path: Path) -> Path:
     return path
 
 
-def _stub_agents(*, rounds: list[dict]) -> ExitStack:
+def _stub_agents(*, rounds: list[dict], editor_prompts: list[str] | None = None) -> ExitStack:
     """One entry in *rounds* per review round: ``findings`` (a list of
     ``(severity, issue)`` pairs, possibly empty) and ``edit`` (an
     ``(original, replacement)`` pair, or ``None`` for "the editor proposes
-    nothing this round").
+    nothing this round"). *editor_prompts*, when given, collects every prompt
+    the editor is sent.
     """
     state = {"round": 0}
 
@@ -75,6 +76,8 @@ def _stub_agents(*, rounds: list[dict]) -> ExitStack:
                         weaknesses=["thin"],
                     )
                 elif name == "v3_editor":
+                    if editor_prompts is not None:
+                        editor_prompts.append(_prompt)
                     edit = spec["edit"]
                     if edit is None:
                         out = EditorOutput(edits=[])
@@ -235,7 +238,7 @@ async def test_citations_check_with_no_reference_section_is_unresolvable(
     assert result.goal_met is False
     assert result.stopped_reason == "unresolvable"
     assert result.rounds == []
-    assert "No reference-list section" in result.reason
+    assert result.reason.startswith("No reference list")
 
 
 async def test_a_non_met_stop_always_carries_an_author_question(tmp_path: Path) -> None:
@@ -306,3 +309,82 @@ async def test_judged_check_calls_the_judge_separately_every_round(
 
     assert result.goal_met is True
     assert calls == ["judge-model", "judge-model", "judge-model"]
+
+
+# ── --goal-check citations: the reference checker, with its problems edited ──
+
+CITING_SENTENCE = "Costs are high [2]."
+
+
+def _citing_docx(path: Path) -> Path:
+    document = Document()
+    document.add_heading("Methods", level=1)
+    document.add_paragraph(f"Rare diseases are common [1]. {CITING_SENTENCE} Care is slow [3].")
+    document.add_heading("References", level=1)
+    document.add_paragraph("1. Smith J (2020) A study of rare disease costs. J Test 1:1")
+    document.add_paragraph("3. Lee K (2021) Delays in rare disease care. J Test 2:2")
+    document.save(str(path))
+    return path
+
+
+async def test_reference_problems_reach_the_editor_and_the_goal_holds_once_fixed(
+    tmp_path: Path,
+) -> None:
+    """Round 1: the checker finds [2] missing from the list, and the editor —
+    shown that problem beside the review's own findings — rewrites the
+    citation. Rounds 2 and 3 find nothing, so the goal is confirmed twice.
+
+    The editor runs once per SECTION, and this document has two (Methods and
+    References), so every round takes two entries of *rounds*. The rewrite
+    offered to the References section does not anchor there and is dropped.
+    """
+    document = await open_source(str(_citing_docx(tmp_path / "draft.docx")))
+    fix = {"findings": [], "edit": (CITING_SENTENCE, "Costs are high [3].")}
+    quiet = {"findings": [], "edit": None}
+    prompts: list[str] = []
+    with _stub_agents(rounds=[fix, fix, quiet, quiet, quiet, quiet], editor_prompts=prompts):
+        result = await run_goal_loop(
+            document,
+            GoalSpec(text="every reference is consistent", check="citations", max_rounds=4),
+            model="stub",
+            document_type="academic",
+        )
+
+    assert result.goal_met is True, result.reason
+    assert len(result.rounds) == 3
+    first = result.rounds[0]
+    assert first.verdict.satisfied is False
+    assert "Citation 2 is not in the list" in first.verdict.reason
+    # The problem is a finding of the round, located at the citation itself.
+    [problem] = [f for f in first.review.findings if f.category == "references:cited_not_listed"]
+    assert problem.quotes[0].text == "[2]"
+    assert any("no entry numbered 2" in p for p in prompts[:2])
+    assert "Costs are high [3]." in result.final_document.text
+    assert all(r.verdict.satisfied for r in result.rounds[1:])
+
+
+async def test_a_document_whose_citation_style_cannot_be_told_is_unresolvable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With no numbers, keys, notes or author-year citations to go on, the
+    checker cannot decide the style — and says so before any round runs."""
+    document = Document()
+    document.add_heading("Methods", level=1)
+    document.add_paragraph("Rare diseases are common, as Smith showed in A Study of Costs.")
+    document.add_heading("Works Cited", level=1)
+    document.add_paragraph("Smith, John. A Study of Costs. Test Press.")
+    path = tmp_path / "mla.docx"
+    document.save(str(path))
+
+    async def no_model(*_args, **_kwargs):
+        raise AssertionError("the style is not the model's to decide here")
+
+    monkeypatch.setattr("andamentum.references.llm.ask_style", no_model)
+    result = await run_goal_loop(
+        await open_source(str(path)),
+        GoalSpec(text="every reference is consistent", check="citations"),
+        model="stub",
+        document_type="academic",
+    )
+    assert result.stopped_reason == "unresolvable"
+    assert result.rounds == []

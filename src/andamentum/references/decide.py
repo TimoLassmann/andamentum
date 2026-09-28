@@ -40,6 +40,7 @@ _FAMILY: dict[str, Style] = {
     "parenthetical": "author_year",
     "narrative": "author_year",
     "note": "notes",
+    "key": "pandoc_keys",
 }
 _CITING_FORMS = frozenset({"full", "short", "ibid"})
 NOTE_CHARS = 300  # of a note's text, shown to the model
@@ -58,6 +59,9 @@ def _supported(candidate: Candidate, entries: list[ReferenceEntry]) -> bool:
         # A note that reads as a citation is evidence for the notes style
         # whether or not a bibliography exists: notes-only documents have none.
         return candidate.note_form in _CITING_FORMS
+    if candidate.keys:
+        listed_keys = {e.key for e in entries if e.key}
+        return any(k in listed_keys for k in candidate.keys)
     if candidate.works:
         return any(resolve_work(w, entries).status != "missing" for w in candidate.works)
     listed = numbered(entries)
@@ -110,7 +114,8 @@ async def decide_style(
         # A numbered list goes with numeric citations, an unnumbered one with
         # author-year. Anything else (a numbered list cited by author and
         # year exists, but rarely) is left to the model.
-        agrees = best == "notes" or (best == "author_year") != list_numbered
+        # A key names its entry outright, whatever the list's shape.
+        agrees = best in ("notes", "pandoc_keys") or (best == "author_year") != list_numbered
         # A short document may have one or two citations. When every
         # candidate it has is of the same kind, there is nothing to weigh.
         alone = all(_FAMILY.get(c.source) == best for c in usable)
@@ -176,6 +181,7 @@ def _describe(style: str) -> str:
         "numeric_parentheses": "numbers in parentheses",
         "author_year": "author-year citations",
         "notes": "notes",
+        "pandoc_keys": "Pandoc citation keys",
     }.get(style, style)
 
 
@@ -208,7 +214,7 @@ def _style_prompt(
     for e in entries[: llm.ENTRIES_SHOWN]:
         prefix = f"{e.number}. " if e.number is not None else ""
         lines.append(f"  {prefix}{e.text[: llm.ENTRY_CHARS]}")
-    for source in ("brackets", "superscript", "glued", "parentheses", "parenthetical", "narrative", "note"):
+    for source in ("brackets", "superscript", "glued", "parentheses", "parenthetical", "narrative", "note", "key"):
         of_kind = [c for c in candidates if c.source == source]
         if not of_kind:
             continue
@@ -243,6 +249,10 @@ def _rule(
         if form == "comment":
             return False, "rule: a note of commentary"
         return None, "a note the rules cannot read"
+    if source == "key":
+        # "[@smith2020]" is a citation by its syntax; one whose key the list
+        # lacks is the error the check reports.
+        return True, "rule: a Pandoc citation key"
     if candidate.works:
         # In an author-year document, a well-formed author-year citation is a
         # citation whether or not its author is in the list — one that is not

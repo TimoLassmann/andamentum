@@ -1,38 +1,68 @@
 """Deterministic parts of the document model — no LLM.
 
-Citation detection, `has_citation`, section gists, and assembling the verified
-claims + deterministic facets into a `DocumentModel`.
+Section gists, the citation summary (read by :mod:`andamentum.references`,
+the package's one citation reader), and assembling the verified claims +
+deterministic facets into a `DocumentModel`.
 """
 
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
-from .model import Citation, Claim, DocumentModel, Section, SectionGist
+from .model import CitationSummary, Claim, DocumentModel, Section, SectionGist
 
-# In-text citation markers: numeric [12] / [12, 13] / [12-15], Pandoc [@key],
-# and author-year (Smith et al., 2020) / (Smith and Jones, 2019).
-_CITATION_RES = [
-    re.compile(r"\[\d+(?:\s*[,–\-]\s*\d+)*\]"),
-    re.compile(r"\[@[\w:.\-]+\]"),
-    re.compile(
-        r"\([A-Z][A-Za-z]+(?: et al\.?| (?:and|&) [A-Z][A-Za-z]+)?,?\s*\d{4}[a-z]?\)"
-    ),
-]
+if TYPE_CHECKING:
+    from andamentum.references import Hint
+
+async def read_citations(
+    source: str, sections: list[Section], *, hints: "list[Hint] | None" = None
+) -> CitationSummary:
+    """How *source* cites, read by the reference checker with no model and no
+    lookup: deterministic, no model call, nothing sent anywhere.
+
+    *hints* are what the Word file knows and its text does not — superscript
+    runs, reference-manager fields, footnote marks (see
+    :func:`~..docx.citation_hints.citation_hints`). Without them, a superscript
+    citation is still read when the text kept it glued to its word.
+    """
+    from andamentum.references import check_references
+
+    report = await check_references(
+        source,
+        sections=[(s.title, s.start, s.end) for s in sections],
+        hints=hints,
+        model=None,
+        lookup=False,
+    )
+    return CitationSummary(
+        found_list=report.found_list,
+        entries=len(report.entries),
+        style=report.style.style if report.style is not None else None,
+        citations=len(report.citations),
+    )
 
 
-def find_citation_markers(text: str) -> list[str]:
-    """All in-text citation markers in *text*, in order of appearance."""
-    hits: list[tuple[int, str]] = []
-    for rx in _CITATION_RES:
-        for m in rx.finditer(text):
-            hits.append((m.start(), m.group(0)))
-    return [m for _, m in sorted(hits)]
+def citations_line(summary: CitationSummary) -> str:
+    """The summary as one prompt line, in the words the reference report uses."""
+    from ..references_check import style_name
 
-
-def has_citation(text: str) -> bool:
-    """True if a citation marker appears in *text* (e.g. a claim's quote)."""
-    return any(rx.search(text) for rx in _CITATION_RES)
+    if summary.style is None:
+        return "CITATIONS: none found, and the document has no reference list."
+    if summary.style == "undecided":
+        return (
+            f"CITATIONS: the document has a reference list of {summary.entries} "
+            f"entries, but how the text cites it could not be decided."
+        )
+    target = (
+        f"a reference list of {summary.entries} entries"
+        if summary.found_list
+        else "no separate reference list"
+    )
+    return (
+        f"CITATIONS: {summary.citations} in the text, as "
+        f"{style_name(summary.style)}; {target}."
+    )
 
 
 def _heading_stripped(section: Section) -> str:
@@ -65,23 +95,19 @@ def gist_for(section: Section, *, max_chars: int = 160) -> str:
 
 
 def build_document_model(
-    source: str, sections: list[Section], claims: list[Claim]
+    source: str,
+    sections: list[Section],
+    claims: list[Claim],
+    *,
+    citations: CitationSummary | None = None,
 ) -> DocumentModel:
-    """Assemble verified claims + deterministic gists/citations into the model.
+    """Assemble verified claims + deterministic facets into the model.
 
-    Claims arrive already located (Phase-1 verify); here we set `has_citation`
-    deterministically and add the deterministic facets.
+    Claims arrive already located (Phase-1 verify). *citations* is
+    :func:`read_citations`'s summary, read by the caller because it is async.
     """
-    for c in claims:
-        c.has_citation = has_citation(c.quote)
-
     gists = [
         SectionGist(section_id=s.id, title=s.title, gist=gist_for(s)) for s in sections
-    ]
-    citations = [
-        Citation(marker=marker, section_id=s.id)
-        for s in sections
-        for marker in find_citation_markers(s.text)
     ]
     return DocumentModel(
         source=source,

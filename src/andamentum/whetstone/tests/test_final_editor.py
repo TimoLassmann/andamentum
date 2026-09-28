@@ -23,7 +23,7 @@ from rich.console import Console
 from andamentum.whetstone import cli as cli_mod
 from andamentum.whetstone.schemas import Edit, Finding, Quote, ReviewResult
 from andamentum.whetstone.v3 import editor as editor_mod
-from andamentum.whetstone.v3.editor import Declined, _to_editor_finding, edit_findings
+from andamentum.whetstone.v3.editor import Declined, to_editor_finding, edit_findings
 from andamentum.whetstone.v3.model import Section
 from andamentum.whetstone.v3.reviewers import EDITOR_PROFILE, PROFILES, author_for
 
@@ -124,7 +124,7 @@ def _finding(**kw: Any) -> Finding:
 
 
 def test_a_rendered_finding_maps_back_to_what_the_editor_reads() -> None:
-    internal = _to_editor_finding(_finding())
+    internal = to_editor_finding(_finding())
     assert internal is not None
     assert internal.criterion == "Evidence support"
     assert internal.severity == "moderate"
@@ -139,16 +139,16 @@ def test_a_rendered_finding_maps_back_to_what_the_editor_reads() -> None:
 def test_the_reviewer_is_written_into_the_issue() -> None:
     """Several reviewers' findings share one list; 'two said this' and 'one
     said this twice' must not look alike."""
-    internal = _to_editor_finding(_finding())
+    internal = to_editor_finding(_finding())
     assert internal is not None
     assert internal.issue == "[Claims reviewer] The verb outruns the data."
-    untagged = _to_editor_finding(_finding(perspective=None))
+    untagged = to_editor_finding(_finding(perspective=None))
     assert untagged is not None
     assert untagged.issue == "The verb outruns the data."
 
 
 def test_a_finding_with_no_quote_is_not_sent() -> None:
-    assert _to_editor_finding(_finding(quotes=[])) is None
+    assert to_editor_finding(_finding(quotes=[])) is None
 
 
 async def test_one_call_over_all_findings_carries_the_disagreements(

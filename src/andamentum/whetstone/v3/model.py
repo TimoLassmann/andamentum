@@ -1,7 +1,7 @@
 """The v3 document model — the compact, verified representation of a draft.
 
 Built once per run. The ONLY thing an LLM extracts is claims (verbatim spans);
-everything else (gists, citations, has_citation) is deterministic. Support /
+everything else (gists, the citation summary) is deterministic. Support /
 links / equations are NOT stored — criterion stages read the real source on
 demand. Every located item carries a `Span` so the source can be re-read and
 findings anchored.
@@ -46,7 +46,6 @@ class Claim(BaseModel):
     id: str
     quote: str  # verbatim span from the source
     span: Span
-    has_citation: bool = False  # deterministic: a citation marker sits in the span
 
 
 class SectionGist(BaseModel):
@@ -57,25 +56,36 @@ class SectionGist(BaseModel):
     gist: str
 
 
-class Citation(BaseModel):
-    """An in-text citation marker found in the source (deterministic)."""
+class CitationSummary(BaseModel):
+    """How the document cites, as the reference checker reads it.
 
-    marker: str  # e.g. "[12]", "[@smith2020]", "(Smith et al., 2020)"
-    section_id: str
+    Read by :mod:`andamentum.references` with no model and no lookup — the
+    same reader as ``andamentum-whetstone references``, so a review and a
+    reference check cannot disagree about whether a draft cites anything.
+    ``style`` is that checker's style id (``"undecided"`` when the text does
+    not settle it), or ``None`` when there is neither a list nor citing notes.
+    """
+
+    found_list: bool
+    entries: int = 0
+    style: str | None = None
+    citations: int = 0
 
 
 class DocumentModel(BaseModel):
     """The shared store every reasoning stage queries.
 
-    Holds the located claims + deterministic gists/citations, plus the sections
-    and full source so a stage can read the real text on demand.
+    Holds the located claims + deterministic gists and citation summary, plus
+    the sections and full source so a stage can read the real text on demand.
+    ``citations`` is ``None`` when the run did not read them — checklist mode,
+    whose prompts never show them.
     """
 
     source: str
     sections: list[Section] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     gists: list[SectionGist] = Field(default_factory=list)
-    citations: list[Citation] = Field(default_factory=list)
+    citations: CitationSummary | None = None
 
     def section_by_id(self, section_id: str) -> Section | None:
         return next((s for s in self.sections if s.id == section_id), None)

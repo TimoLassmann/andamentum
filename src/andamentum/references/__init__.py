@@ -44,6 +44,7 @@ from .check import check_citations
 from .decide import decide_style, judge_candidates
 from .lookup import lookup_entries
 from .models import (
+    LOOKUP_KINDS,
     Candidate,
     CitedWork,
     Hint,
@@ -59,6 +60,7 @@ from .parse import DOI, find_reference_list, split_entries
 from .scan import pandoc_notes, scan
 
 __all__ = [
+    "LOOKUP_KINDS",
     "Candidate",
     "CitedWork",
     "Hint",

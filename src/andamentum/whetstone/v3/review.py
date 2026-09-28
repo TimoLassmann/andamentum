@@ -4,7 +4,8 @@ One review function, run per criterion in the active set. The agent receives:
 
 - a SECTIONS table-of-contents block (id + title + size + gist),
 - CLAIMS BY SECTION (verbatim spans grouped under their origin section),
-- CITATIONS PRESENT (when the criterion's facets request it),
+- CITATIONS — how the document cites and how often, as the reference
+  checker reads it (when the criterion's facets request it),
 - prior-stage findings (from the SPECS cascade),
 
 and two layer-1 tools (``read_section``, ``search_paper`` — see
@@ -29,6 +30,7 @@ from andamentum.core.models import resolve_model
 from andamentum.core.text_match import find_span
 
 from .criteria import Criterion
+from .digest import citations_line
 from .locate import anchor_span
 from .model import DocumentModel, Severity, Span
 from .prompt_blocks import (
@@ -154,11 +156,10 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
     if "claims" in criterion.facets:
         parts.append(claims_block(model))
 
-    # CITATIONS PRESENT — facet-gated. Not shared: checklist mode omits it,
-    # and it is two lines rather than a block builder's worth of logic.
-    if "citations" in criterion.facets:
-        markers = sorted({c.marker for c in model.citations})
-        parts.append(f"CITATIONS PRESENT: {', '.join(markers) or '(none)'}")
+    # CITATIONS — facet-gated. Not shared: checklist mode omits it, and does
+    # not read the citations at all.
+    if "citations" in criterion.facets and model.citations is not None:
+        parts.append(citations_line(model.citations))
 
     return "\n\n".join(parts)
 

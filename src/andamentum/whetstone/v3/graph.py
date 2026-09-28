@@ -21,15 +21,16 @@ from pydantic_graph import BaseNode, End, Graph, GraphBuilder, GraphRunContext
 from ..schemas import (
     DeclinedFinding,
     Edit,
+    Finding as PublicFinding,
     NoveltyClaim,
     ReviewerHeader,
     ReviewResult,
 )
 from .consolidate import consolidate
 from .criteria import Criterion, criterion_set_for
-from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor
+from .editor import DEFAULT_EDITOR_CRITERIA, Declined, run_editor, to_editor_finding
 from .extract import build_claims
-from .digest import build_document_model
+from .digest import build_document_model, read_citations
 from .gaps import gap_loop
 from .gate import gate_and_aggregate
 from .model import Claim, DocumentModel, Section
@@ -46,6 +47,8 @@ from .sectionize import sectionize
 from .synth import StructuredReview, critique_and_revise, synthesise, to_review_result
 
 if TYPE_CHECKING:
+    from andamentum.references import Hint
+
     from ..reviewed_document import ReviewedDocument
     from .reviewers import ReviewerProfile
 
@@ -89,6 +92,15 @@ class V3Deps:
     # reviewer ran and there is nothing to print. Carried on Deps rather than
     # rebuilt at the end: it is an input to the run, not a result of it.
     reviewer_header: ReviewerHeader | None = None
+    # Findings the caller already has — the goal loop's reference problems —
+    # that the editor answers beside the review's own, and that the result
+    # lists after them. They are not reviewed, verified or consolidated: they
+    # come from a deterministic check, not from a criterion.
+    extra_findings: list[PublicFinding] = field(default_factory=list)
+    # What the Word file knows about its citations and its text does not
+    # (superscript runs, reference-manager fields, note marks), for the
+    # citation summary. Empty for a caller holding only text.
+    citation_hints: "list[Hint]" = field(default_factory=list)
 
 
 @dataclass
@@ -139,8 +151,11 @@ class ExtractClaims(BaseNode[V3State, V3Deps, ReviewResult]):
 @dataclass
 class BuildModel(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "ReviewCriteria":
+        citations = await read_citations(
+            ctx.state.source, ctx.state.sections, hints=ctx.deps.citation_hints
+        )
         ctx.state.document_model = build_document_model(
-            ctx.state.source, ctx.state.sections, ctx.state.claims
+            ctx.state.source, ctx.state.sections, ctx.state.claims, citations=citations
         )
         return ReviewCriteria()
 
@@ -317,7 +332,10 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
             # The findings are final by now — Gate has run — so the editor
             # answers the review rather than guessing at prose in parallel
             # with it. This is the whole point of running the editor last.
-            findings=ctx.state.findings,
+            findings=[
+                *ctx.state.findings,
+                *(f for f in map(to_editor_finding, ctx.deps.extra_findings) if f is not None),
+            ],
             brief=ctx.deps.brief,
         )
         return Finalize()
@@ -366,6 +384,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
         # that function assembles, and every other caller of it would have to
         # learn a parameter it has nothing to say about.
         result.reviewer_header = ctx.deps.reviewer_header
+        result.findings = [*result.findings, *ctx.deps.extra_findings]
         return End(result)
 
 
@@ -428,6 +447,8 @@ async def run_review_v3(
     novelty_search_depth: int = 2,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
+    extra_findings: list[PublicFinding] | None = None,
+    citation_hints: "list[Hint] | None" = None,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -456,6 +477,17 @@ async def run_review_v3(
     styles, which the ``#``-line sectioniser cannot see, so
     :func:`~andamentum.whetstone.reviewed_document.open_source` resolves them
     and passes them in. Omitted, the sections are derived from *markdown*.
+
+    ``extra_findings`` are findings the caller already holds, in the same
+    coordinates — the goal loop's reference problems. The editor answers them
+    beside the review's own findings, and the result lists them after those.
+    They are not reviewed, verified or consolidated; nothing reads them when
+    the editor is off except the result.
+
+    ``citation_hints`` are the Word file's superscript runs, reference-manager
+    fields and note marks, for the citation line the ``citations``-facet
+    criteria read. :func:`review_document_v3` reads them from the file it
+    opened; a caller with text only leaves them out.
 
     ``reviewer`` is the reviewer profile whose stance, criteria and editor
     criteria this run uses (see :mod:`.reviewers`). ``None`` means the default
@@ -575,6 +607,8 @@ async def run_review_v3(
         novelty_search_depth=novelty_search_depth,
         brief=resolved.brief,
         reviewer_header=resolved.header,
+        extra_findings=list(extra_findings or []),
+        citation_hints=list(citation_hints or []),
     )
     state = V3State(source=markdown, sections=list(sections or []))
     return await review_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
@@ -597,6 +631,7 @@ async def review_document_v3(
     novelty_search_depth: int = 2,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
+    extra_findings: list[PublicFinding] | None = None,
 ) -> ReviewResult:
     """v3 entry from a source path / URL / markdown blob, or an open document.
 
@@ -613,6 +648,7 @@ async def review_document_v3(
     precedence, confidentiality gate, classifier behaviour).
     """
     from ..reviewed_document import ReviewedDocument as _Opened
+    from ..docx.citation_hints import citation_hints as read_citation_hints
     from ..reviewed_document import open_source
 
     owned = not isinstance(source, _Opened)
@@ -637,6 +673,11 @@ async def review_document_v3(
             novelty_search_depth=novelty_search_depth,
             reviewer=reviewer,
             patch_author=patch_author,
+            extra_findings=extra_findings,
+            # Read from the file the text is the projection of, so a superscript
+            # citation counts in the review's citation line as it does in a
+            # reference check.
+            citation_hints=read_citation_hints(document.docx_path, expected_text=document.text),
         )
     finally:
         if owned:
