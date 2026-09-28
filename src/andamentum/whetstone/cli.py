@@ -1831,9 +1831,17 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
     table.add_row("wall time:", f"{m.wall_seconds:.1f}s")
     table.add_row("LLM calls:", str(m.llm_calls))
     table.add_row("sections:", str(m.sections_processed))
-    # v3 reports criterion-cascade findings as "investigated"; there is
-    # no separate deterministic / challenged column anymore.
-    table.add_row("findings:", str(m.investigated_findings_count))
+    # Counted from the result, not from the metrics: the metrics are set
+    # inside the review, before the reference check's problems join the
+    # findings, and the count here must match the report.
+    from .references_check import REFERENCE_CHECKER
+
+    from_references = sum(1 for f in result.findings if f.perspective == REFERENCE_CHECKER)
+    table.add_row(
+        "findings:",
+        str(len(result.findings))
+        + (f" ({from_references} from the reference check)" if from_references else ""),
+    )
     table.add_row("edits:", str(m.edits_count))
     table.add_row("author questions:", str(len(result.author_questions)))
     # Gap-loop rounds are stored on the same metric field v2 used for
