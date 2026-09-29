@@ -237,6 +237,11 @@ exclude = [
     "docs/.internal/**",
 ]
 
+[tool.ruff]
+# Research scripts under experiments/ are not library code; they are
+# neither linted nor formatted, so CI checks what ships.
+extend-exclude = ["experiments"]
+
 [tool.pyright]
 include = ["src"]
 pythonVersion = "3.13"
