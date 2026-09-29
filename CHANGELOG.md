@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### proofread
+
+  - **Slide mode.** `andamentum-proofread deck.pptx --slides` runs per-slide
+    checks instead of the prose checks: headline length, a headline that
+    opens on "This" or "These", banned words, acronyms not expanded on the
+    slide (`--allow MEK,RAS` for ones the room knows), one entity under two
+    names, and a body that restates its headline. Library:
+    `analyze_slides(list[Slide])`, pure. `python-pptx` is now declared; it
+    was already installed through docling.
+
 ### whetstone
 
   - **One run does most things; flags turn parts off.** The default

@@ -5,7 +5,9 @@ Accepts URLs, PDFs, .docx, .html, .pptx, .md, plain text files — anything
 on the extracted text. ``-`` reads raw text from stdin (no harvest pass).
 
 This is the ONE place inside ``andamentum.proofread`` that imports
-``andamentum.harvest``; the library proper remains a leaf service.
+``andamentum.harvest``; the library proper remains a leaf service. With
+``--slides`` it reads the deck through ``slides_io`` (python-pptx) instead,
+because harvest's markdown loses slide boundaries, notes and font sizes.
 
 Exit codes:
     0 — success
@@ -71,6 +73,25 @@ def _build_parser() -> argparse.ArgumentParser:
         default="-",
         metavar="FILE",
         help="Output file path. Default: '-' (stdout).",
+    )
+    parser.add_argument(
+        "--slides",
+        action="store_true",
+        help=(
+            "Treat <source> as a .pptx deck and run the per-slide checks "
+            "(headline length, deixis, banned words, unexpanded acronyms, one "
+            "entity under two names, body restating the headline) instead of "
+            "the prose checks."
+        ),
+    )
+    parser.add_argument(
+        "--allow",
+        default="",
+        metavar="ACRONYMS",
+        help=(
+            "With --slides: comma-separated acronyms the audience knows, "
+            "which need no expansion on the slide (e.g. 'MEK,RAS,FDA')."
+        ),
     )
     parser.add_argument(
         "--raw",
@@ -160,6 +181,44 @@ def _format_human(result: ProofreadResult) -> str:
     return "\n".join(lines)
 
 
+def _run_slides(args: argparse.Namespace) -> int:
+    from .slides import DEFAULT_ALLOWED_ACRONYMS, analyze_slides
+    from .slides_io import read_pptx
+
+    path = Path(args.source)
+    if path.suffix.lower() != ".pptx" or not path.is_file():
+        _die(1, f"--slides needs a local .pptx file: {args.source!r}")
+    try:
+        slides = read_pptx(path)
+    except Exception as exc:  # python-pptx raises several unrelated types on a bad file
+        _die(3, f"could not read {args.source!r} as a deck: {exc}")
+
+    allowed = DEFAULT_ALLOWED_ACRONYMS | {
+        a.strip() for a in args.allow.split(",") if a.strip()
+    }
+    result = analyze_slides(slides, allowed_acronyms=frozenset(allowed))
+    if args.format == "json":
+        output = json.dumps(result.model_dump(), indent=2)
+    else:
+        lines = [result.summary]
+        for f in result.findings:
+            lines.append(f"  slide {f.slide:>2}  {f.check:<16} {f.detail}")
+        output = "\n".join(lines)
+    _write(output, args.output)
+    return 0
+
+
+def _write(output: str, target: str) -> None:
+    if target == "-":
+        sys.stdout.write(output)
+        if not output.endswith("\n"):
+            sys.stdout.write("\n")
+    else:
+        out = Path(target)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(output, encoding="utf-8")
+
+
 async def _run(args: argparse.Namespace) -> int:
     try:
         text = await _load_text(args.source, args.raw)
@@ -181,20 +240,15 @@ async def _run(args: argparse.Namespace) -> int:
         else _format_human(result)
     )
 
-    if args.output == "-":
-        sys.stdout.write(output)
-        if not output.endswith("\n"):
-            sys.stdout.write("\n")
-    else:
-        out = Path(args.output)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(output, encoding="utf-8")
+    _write(output, args.output)
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.slides:
+        return _run_slides(args)
     try:
         return asyncio.run(_run(args))
     except KeyboardInterrupt:

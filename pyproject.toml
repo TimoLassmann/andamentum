@@ -77,6 +77,7 @@ dependencies = [
     "matplotlib>=3.8,<4",            # figures
     "rapidfuzz>=3.0,<4",             # chunker fuzzy anchor matching
     "textstat>=0.7.4,<1",            # proofread deterministic readability
+    "python-pptx>=1.0,<2",           # proofread --slides (already in the lock via docling)
 ]
 
 [project.urls]

@@ -9,3 +9,9 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 ## Layering
 
 - `proofread` library depends only on `pydantic` and `textstat`. The optional `proofread.cli` submodule is the ONLY place where `harvest` is imported — so the CLI can accept PDF / HTML / DOCX / PPTX / Markdown sources — and the rest of `proofread` MUST NOT touch `harvest` or any other andamentum sub-module. Other modules MAY depend on `proofread` (e.g. `whetstone` to attach deterministic readability scores to a review, `scribe` for pre-render style flags).
+
+## Slide mode
+
+- `analyze_slides(slides: list[Slide]) -> SlidesResult` (in `slides.py`) is pure, like `analyze`. Checks: headline length (62 wraps, 90 is two messages), deixis opener, banned words, acronyms not expanded on the slide, one entity under two names, and `restatement` (the body repeats two or more of the headline's lower-case content words).
+- `restatement` is a heuristic. A direct label of the entity the headline names can trip it; callers read each hit rather than treat it as a verdict. Capitalised words, acronyms and numbers are excluded on purpose, so entity labels mostly pass.
+- `slides_io.read_pptx` is the only place that imports `pptx`, and only the CLI imports `slides_io`. The library stays free of I/O. Harvest is not used for decks: its markdown loses slide boundaries, notes and font sizes.
