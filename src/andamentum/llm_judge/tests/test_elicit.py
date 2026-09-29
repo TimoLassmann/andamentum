@@ -45,6 +45,10 @@ class _Runs(list):
 
 @pytest.fixture
 def runs(monkeypatch):
+    # The tests resolve to "openai:..." and pydantic-ai builds the OpenAI
+    # client when the Agent is constructed, which needs a key to exist.
+    # Agent.run is faked below, so this placeholder never reaches a network.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder-not-a-key")
     calls = _Runs()
 
     async def fake_run(self, prompt, *, model_settings=None, **kwargs):
